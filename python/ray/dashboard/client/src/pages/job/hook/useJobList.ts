@@ -9,19 +9,20 @@ export const useJobList = () => {
   const [isRefreshing, setRefresh] = useState(true);
   const [filter, setFilter] = useState<
     {
-      key: "job_id" | "status";
+      key: "job_id" | "submission_id" | "status";
       val: string;
     }[]
   >([]);
   const refreshRef = useRef(isRefreshing);
-  const changeFilter = (key: "job_id" | "status", val: string) => {
-    const f = filter.find((e) => e.key === key);
-    if (f) {
-      f.val = val;
-    } else {
-      filter.push({ key, val });
+  const changeFilter = (
+    key: "job_id" | "submission_id" | "status",
+    val: string,
+  ) => {
+    const newFilter = filter.filter((e) => e.key !== key);
+    if (val.trim() !== "") {
+      newFilter.push({ key, val });
     }
-    setFilter([...filter]);
+    setFilter(newFilter);
   };
   const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRefresh(event.target.checked);

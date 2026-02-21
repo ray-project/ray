@@ -24,7 +24,7 @@ For a quick demo, you can run Prometheus locally on your machine. Follow the qui
 
 ```{admonition} Note
 :class: note
-If you need to change the root temporary directory by using "--temp-dir" in your Ray 
+If you need to change the root temporary directory by using "--temp-dir" in your Ray
 cluster setup, follow these [manual steps](#optional-manual-running-prometheus-locally) to set up Prometheus locally.
 ```
 
@@ -67,7 +67,17 @@ ray_dashboard_api_requests_count_requests_total
 
 You can then see the number of requests to the Ray Dashboard API over time.
 
-To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus process that was printed out when you ran the command. To find the PID, you can also run `ps aux | grep prometheus`.
+To stop Prometheus, run the following commands:
+
+```sh
+# case 1: Ray > 2.40
+ray metrics shutdown-prometheus
+
+# case 2: Otherwise
+# Run `ps aux | grep prometheus` to find the PID of the Prometheus process. Then, kill the process.
+kill <PID>
+```
+
 
 ### [Optional] Manual: Running Prometheus locally
 
@@ -177,6 +187,22 @@ scrape_configs:
   - files:
     - '/tmp/ray/prom_metrics_service_discovery.json'
 ```
+
+#### HTTP service discovery
+Ray also exposes the same list of addresses to scrape over an HTTP endpoint, compatible with [Prometheus HTTP Service Discovery](https://prometheus.io/docs/prometheus/latest/http_sd/).
+
+Use the following in your Prometheus config to use the HTTP endpoint for service discovery ([HTTP SD docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#http_sd_config)):
+
+```yaml
+scrape_configs:
+- job_name: 'ray'
+  http_sd_configs:
+  - url: 'http://<RayHeadnodeAddress>:<DashboardPort>/api/prometheus/sd'
+    refresh_interval: 60s
+```
+
+- `<DashboardPort>` is `8265` by default. See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details.
+- The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
 
 ### Manually discovering metrics endpoints
 

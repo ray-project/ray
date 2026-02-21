@@ -1,52 +1,707 @@
-# === @begin: util_cpp_lib (original: util) ===
-util_cpp_lib_private_dependencies = [
-    # Project-managed
-    aligned_alloc_cpp_lib_dep,
-    sha256_cpp_lib_dep,
-    event_proto_cpp_lib_dep,
-    export_event_proto_cpp_lib_dep,
+# Refactored to 1:1 mapping with BUILD.bazel targets (Stage 1).
+#
+# NOTE: Several util targets depend on common/ targets (status, status_or, id,
+# ray_config) but common/ is processed AFTER util/ in src/ray/meson.build
+# (circular dependency). These deps are documented as comments but cannot be
+# declared as Meson deps here. Headers resolve via global include paths (src/);
+# symbols resolve at final link time when all static libraries link into _raylet.
 
-    # Eugo-managed
-    boost_asio,
-    spdlog,
 
-    absl_container_flat_hash_map,
-    absl_container_flat_hash_set,
-    absl_debugging_failure_signal_handler,
-    absl_debugging_stacktrace,
-    absl_debugging_symbolize,
-    absl_random_random,
-    absl_synchronization,
-    absl_time,
+# ============================================================
+# Level 0: Leaf targets — no internal dependencies
+# ============================================================
 
-    # @com_google_googletest//:gtest_main"
+# === @begin: visibility_cpp_lib (@original: visibility) ===
+visibility_cpp_lib_dep = declare_dependency(
+    sources: ['visibility.h']
+)
+# === @end: visibility_cpp_lib (@original: visibility) ===
 
-    protobuf,
-    nlohmann_json,
+# === @begin: macros_cpp_lib (@original: macros) ===
+macros_cpp_lib_dep = declare_dependency(
+    sources: ['macros.h']
+)
+# === @end: macros_cpp_lib (@original: macros) ===
 
-    # OS-managed
-    threads
-]
+# === @begin: array_cpp_lib (@original: array) ===
+array_cpp_lib_dep = declare_dependency(
+    sources: ['array.h']
+)
+# === @end: array_cpp_lib (@original: array) ===
 
-util_cpp_lib = static_library(
-    'util_cpp_lib',
-    [
-        'event.cc',
-        'exponential_backoff.cc',
-        'filesystem.cc',
-        'logging.cc',
-        'memory.cc',
-        'process.cc',
-        'subreaper.cc',
-        'thread_checker.cc',
-        'util.cc',
-    ],
-    dependencies: util_cpp_lib_private_dependencies,
+# === @begin: type_traits_cpp_lib (@original: type_traits) ===
+type_traits_cpp_lib_dep = declare_dependency(
+    sources: ['type_traits.h']
+)
+# === @end: type_traits_cpp_lib (@original: type_traits) ===
+
+# === @begin: raii_cpp_lib (@original: raii) ===
+raii_cpp_lib_dep = declare_dependency(
+    sources: ['raii.h']
+)
+# === @end: raii_cpp_lib (@original: raii) ===
+
+# === @begin: size_literals_cpp_lib (@original: size_literals) ===
+size_literals_cpp_lib_dep = declare_dependency(
+    sources: ['size_literals.h']
+)
+# === @end: size_literals_cpp_lib (@original: size_literals) ===
+
+# === @begin: map_utils_cpp_lib (@original: map_utils) ===
+map_utils_cpp_lib_dep = declare_dependency(
+    sources: ['map_utils.h']
+)
+# === @end: map_utils_cpp_lib (@original: map_utils) ===
+
+# === @begin: stream_redirection_options_cpp_lib (@original: stream_redirection_options) ===
+stream_redirection_options_cpp_lib_dep = declare_dependency(
+    sources: ['stream_redirection_options.h']
+)
+# === @end: stream_redirection_options_cpp_lib (@original: stream_redirection_options) ===
+
+# === @begin: random_cpp_lib (@original: random) ===
+random_cpp_lib_dep = declare_dependency(
+    sources: ['random.h'],
+    dependencies: [absl_random_random]
+)
+# === @end: random_cpp_lib (@original: random) ===
+
+# === @begin: mutex_protected_cpp_lib (@original: mutex_protected) ===
+mutex_protected_cpp_lib_dep = declare_dependency(
+    sources: ['mutex_protected.h'],
+    dependencies: [absl_synchronization]
+)
+# === @end: mutex_protected_cpp_lib (@original: mutex_protected) ===
+
+# === @begin: sequencer_cpp_lib (@original: sequencer) ===
+sequencer_cpp_lib_dep = declare_dependency(
+    sources: ['sequencer.h'],
+    dependencies: [absl_container_flat_hash_map, absl_synchronization]
+)
+# === @end: sequencer_cpp_lib (@original: sequencer) ===
+
+# === @begin: time_cpp_lib (@original: time) ===
+time_cpp_lib = static_library('time_cpp_lib',
+    ['time.cc'],
     install: false
 )
 
-util_cpp_lib_dep = declare_dependency(
-    link_with: [util_cpp_lib],
-    dependencies: util_cpp_lib_private_dependencies
+time_cpp_lib_dep = declare_dependency(
+    link_with: [time_cpp_lib]
 )
-# === @end: util_cpp_lib (original: util) ===
+# === @end: time_cpp_lib (@original: time) ===
+
+# === @begin: memory_cpp_lib (@original: memory) ===
+memory_cpp_lib = static_library('memory_cpp_lib',
+    ['memory.cc'],
+    install: false
+)
+
+memory_cpp_lib_dep = declare_dependency(
+    link_with: [memory_cpp_lib]
+)
+# === @end: memory_cpp_lib (@original: memory) ===
+
+# === @begin: thread_checker_cpp_lib (@original: thread_checker) ===
+thread_checker_cpp_lib = static_library('thread_checker_cpp_lib',
+    ['thread_checker.cc'],
+    install: false
+)
+
+thread_checker_cpp_lib_dep = declare_dependency(
+    link_with: [thread_checker_cpp_lib]
+)
+# === @end: thread_checker_cpp_lib (@original: thread_checker) ===
+
+
+# ============================================================
+# Level 1: Depends on Level 0 targets only
+# ============================================================
+
+# === @begin: thread_utils_cpp_lib (@original: thread_utils) ===
+thread_utils_cpp_lib_dep = declare_dependency(
+    sources: ['thread_utils.h'],
+    dependencies: [thread_checker_cpp_lib_dep]
+)
+# === @end: thread_utils_cpp_lib (@original: thread_utils) ===
+
+# === @begin: concurrent_flat_map_cpp_lib (@original: concurrent_flat_map) ===
+concurrent_flat_map_cpp_lib_dep = declare_dependency(
+    sources: ['concurrent_flat_map.h'],
+    dependencies: [mutex_protected_cpp_lib_dep, absl_container_flat_hash_map]
+)
+# === @end: concurrent_flat_map_cpp_lib (@original: concurrent_flat_map) ===
+
+
+# ============================================================
+# Level 2: logging — most util targets depend on this
+# ============================================================
+
+# === @begin: logging_cpp_lib (@original: logging) ===
+logging_cpp_lib_dependencies = [
+    macros_cpp_lib_dep,
+    thread_utils_cpp_lib_dep,
+    spdlog,
+    absl_debugging_failure_signal_handler,
+    absl_strings,
+    # @com_google_googletest//:gtest_prod — vendored stub in eugo/include/gtest/
+]
+
+logging_cpp_lib = static_library('logging_cpp_lib',
+    ['logging.cc'],
+    dependencies: logging_cpp_lib_dependencies,
+    install: false
+)
+
+logging_cpp_lib_dep = declare_dependency(
+    link_with: [logging_cpp_lib],
+    dependencies: logging_cpp_lib_dependencies
+)
+# === @end: logging_cpp_lib (@original: logging) ===
+
+
+# ============================================================
+# Level 3: Targets depending on logging and/or externals
+# ============================================================
+
+# --- Header-only targets depending on logging ---
+
+# === @begin: graceful_shutdown_cpp_lib (@original: graceful_shutdown) ===
+graceful_shutdown_cpp_lib_dep = declare_dependency(
+    sources: ['graceful_shutdown.h'],
+    dependencies: [logging_cpp_lib_dep, absl_time]
+)
+# === @end: graceful_shutdown_cpp_lib (@original: graceful_shutdown) ===
+
+# === @begin: container_util_cpp_lib (@original: container_util) ===
+container_util_cpp_lib_dep = declare_dependency(
+    sources: ['container_util.h'],
+    dependencies: [
+        logging_cpp_lib_dep,
+        absl_container_flat_hash_map,
+        absl_container_flat_hash_set,
+        absl_container_flat_hash_map,  # TODO: should be absl_container_inlined_vector
+    ]
+)
+# === @end: container_util_cpp_lib (@original: container_util) ===
+
+# === @begin: counter_map_cpp_lib (@original: counter_map) ===
+counter_map_cpp_lib_dep = declare_dependency(
+    sources: ['counter_map.h'],
+    dependencies: [
+        logging_cpp_lib_dep,
+        mutex_protected_cpp_lib_dep,
+        absl_container_flat_hash_map,
+        absl_container_flat_hash_set,
+    ]
+)
+# === @end: counter_map_cpp_lib (@original: counter_map) ===
+
+# === @begin: shared_lru_cpp_lib (@original: shared_lru) ===
+shared_lru_cpp_lib_dep = declare_dependency(
+    sources: ['shared_lru.h'],
+    dependencies: [
+        logging_cpp_lib_dep,
+        map_utils_cpp_lib_dep,
+        absl_container_flat_hash_map,
+    ]
+)
+# === @end: shared_lru_cpp_lib (@original: shared_lru) ===
+
+# --- Static library targets (no common/ deps) ---
+
+# === @begin: env_cpp_lib (@original: env) ===
+env_cpp_lib_dependencies = [
+    logging_cpp_lib_dep,
+    absl_strings,
+]
+
+env_cpp_lib = static_library('env_cpp_lib',
+    ['env.cc'],
+    dependencies: env_cpp_lib_dependencies,
+    install: false
+)
+
+env_cpp_lib_dep = declare_dependency(
+    link_with: [env_cpp_lib],
+    dependencies: env_cpp_lib_dependencies
+)
+# === @end: env_cpp_lib (@original: env) ===
+
+# === @begin: exponential_backoff_cpp_lib (@original: exponential_backoff) ===
+exponential_backoff_cpp_lib_dependencies = [
+    logging_cpp_lib_dep,
+]
+
+exponential_backoff_cpp_lib = static_library('exponential_backoff_cpp_lib',
+    ['exponential_backoff.cc'],
+    dependencies: exponential_backoff_cpp_lib_dependencies,
+    install: false
+)
+
+exponential_backoff_cpp_lib_dep = declare_dependency(
+    link_with: [exponential_backoff_cpp_lib],
+    dependencies: exponential_backoff_cpp_lib_dependencies
+)
+# === @end: exponential_backoff_cpp_lib (@original: exponential_backoff) ===
+
+# === @begin: scoped_env_setter_cpp_lib (@original: scoped_env_setter) ===
+scoped_env_setter_cpp_lib_dependencies = [
+    env_cpp_lib_dep,
+]
+
+scoped_env_setter_cpp_lib = static_library('scoped_env_setter_cpp_lib',
+    ['scoped_env_setter.cc'],
+    dependencies: scoped_env_setter_cpp_lib_dependencies,
+    install: false
+)
+
+scoped_env_setter_cpp_lib_dep = declare_dependency(
+    link_with: [scoped_env_setter_cpp_lib],
+    dependencies: scoped_env_setter_cpp_lib_dependencies
+)
+# === @end: scoped_env_setter_cpp_lib (@original: scoped_env_setter) ===
+
+# --- Static library targets WITH common/ dependencies ---
+# NOTE: common/ is processed AFTER util/ due to circular dependency.
+# Common deps (status, status_or, id, ray_config) are listed in comments.
+# Headers resolve via global include path; symbols resolve at link time.
+
+# === @begin: filesystem_cpp_lib (@original: filesystem) ===
+# Bazel deps: //src/ray/common:status_or
+filesystem_cpp_lib_dependencies = [
+    # status_or_cpp_lib_dep,  # circular: common/ processed after util/
+]
+
+filesystem_cpp_lib = static_library('filesystem_cpp_lib',
+    ['filesystem.cc'],
+    dependencies: filesystem_cpp_lib_dependencies,
+    install: false
+)
+
+filesystem_cpp_lib_dep = declare_dependency(
+    link_with: [filesystem_cpp_lib],
+    dependencies: filesystem_cpp_lib_dependencies
+)
+# === @end: filesystem_cpp_lib (@original: filesystem) ===
+
+# === @begin: file_persistence_cpp_lib (@original: file_persistence) ===
+# Bazel deps: //src/ray/common:status, //src/ray/common:status_or
+file_persistence_cpp_lib_dependencies = [
+    # status_cpp_lib_dep,     # circular: common/ processed after util/
+    # status_or_cpp_lib_dep,  # circular: common/ processed after util/
+]
+
+file_persistence_cpp_lib = static_library('file_persistence_cpp_lib',
+    ['file_persistence.cc'],
+    dependencies: file_persistence_cpp_lib_dependencies,
+    install: false
+)
+
+file_persistence_cpp_lib_dep = declare_dependency(
+    link_with: [file_persistence_cpp_lib],
+    dependencies: file_persistence_cpp_lib_dependencies
+)
+# === @end: file_persistence_cpp_lib (@original: file_persistence) ===
+
+# === @begin: string_utils_cpp_lib (@original: string_utils) ===
+# Bazel deps: //src/ray/common:status_or
+string_utils_cpp_lib_dependencies = [
+    # status_or_cpp_lib_dep,  # circular: common/ processed after util/
+    absl_strings,
+]
+
+string_utils_cpp_lib = static_library('string_utils_cpp_lib',
+    ['string_utils.cc'],
+    dependencies: string_utils_cpp_lib_dependencies,
+    install: false
+)
+
+string_utils_cpp_lib_dep = declare_dependency(
+    link_with: [string_utils_cpp_lib],
+    dependencies: string_utils_cpp_lib_dependencies
+)
+# === @end: string_utils_cpp_lib (@original: string_utils) ===
+
+# === @begin: compat_cpp_lib (@original: compat) ===
+# Bazel deps: //src/ray/common:status
+compat_cpp_lib_dependencies = [
+    logging_cpp_lib_dep,
+    # status_cpp_lib_dep,  # circular: common/ processed after util/
+]
+
+compat_cpp_lib = static_library('compat_cpp_lib',
+    ['compat.cc'],
+    dependencies: compat_cpp_lib_dependencies,
+    install: false
+)
+
+compat_cpp_lib_dep = declare_dependency(
+    link_with: [compat_cpp_lib],
+    dependencies: compat_cpp_lib_dependencies
+)
+# === @end: compat_cpp_lib (@original: compat) ===
+
+# === @begin: cmd_line_utils_cpp_lib (@original: cmd_line_utils) ===
+cmd_line_utils_cpp_lib_dependencies = [
+    logging_cpp_lib_dep,
+    string_utils_cpp_lib_dep,
+]
+
+cmd_line_utils_cpp_lib = static_library('cmd_line_utils_cpp_lib',
+    ['cmd_line_utils.cc'],
+    dependencies: cmd_line_utils_cpp_lib_dependencies,
+    install: false
+)
+
+cmd_line_utils_cpp_lib_dep = declare_dependency(
+    link_with: [cmd_line_utils_cpp_lib],
+    dependencies: cmd_line_utils_cpp_lib_dependencies
+)
+# === @end: cmd_line_utils_cpp_lib (@original: cmd_line_utils) ===
+
+# === @begin: path_utils_cpp_lib (@original: path_utils) ===
+path_utils_cpp_lib_dependencies = [
+    absl_strings,
+]
+
+path_utils_cpp_lib = static_library('path_utils_cpp_lib',
+    ['path_utils.cc'],
+    dependencies: path_utils_cpp_lib_dependencies,
+    install: false
+)
+
+path_utils_cpp_lib_dep = declare_dependency(
+    link_with: [path_utils_cpp_lib],
+    dependencies: path_utils_cpp_lib_dependencies
+)
+# === @end: path_utils_cpp_lib (@original: path_utils) ===
+
+
+# ============================================================
+# Level 4: Targets depending on Level 3 targets
+# ============================================================
+
+# --- Header-only targets depending on compat ---
+
+# === @begin: process_interface_cpp_lib (@original: process_interface) ===
+process_interface_cpp_lib_dep = declare_dependency(
+    sources: ['process_interface.h'],
+    dependencies: [compat_cpp_lib_dep, absl_container_flat_hash_map]
+)
+# === @end: process_interface_cpp_lib (@original: process_interface) ===
+
+# === @begin: spdlog_fd_sink_cpp_lib (@original: spdlog_fd_sink) ===
+# Bazel deps: //src/ray/common:status
+spdlog_fd_sink_cpp_lib_dep = declare_dependency(
+    sources: ['spdlog_fd_sink.h'],
+    dependencies: [
+        compat_cpp_lib_dep,
+        # status_cpp_lib_dep,  # circular: common/ processed after util/
+        spdlog,
+    ]
+)
+# === @end: spdlog_fd_sink_cpp_lib (@original: spdlog_fd_sink) ===
+
+# === @begin: spdlog_newliner_sink_cpp_lib (@original: spdlog_newliner_sink) ===
+spdlog_newliner_sink_cpp_lib_dep = declare_dependency(
+    sources: ['spdlog_newliner_sink.h'],
+    dependencies: [compat_cpp_lib_dep, spdlog]
+)
+# === @end: spdlog_newliner_sink_cpp_lib (@original: spdlog_newliner_sink) ===
+
+# --- Static library targets ---
+
+# === @begin: scoped_dup2_wrapper_cpp_lib (@original: scoped_dup2_wrapper) ===
+scoped_dup2_wrapper_cpp_lib_dependencies = [
+    compat_cpp_lib_dep,
+    logging_cpp_lib_dep,
+]
+
+scoped_dup2_wrapper_cpp_lib = static_library('scoped_dup2_wrapper_cpp_lib',
+    ['scoped_dup2_wrapper.cc'],
+    dependencies: scoped_dup2_wrapper_cpp_lib_dependencies,
+    install: false
+)
+
+scoped_dup2_wrapper_cpp_lib_dep = declare_dependency(
+    link_with: [scoped_dup2_wrapper_cpp_lib],
+    dependencies: scoped_dup2_wrapper_cpp_lib_dependencies
+)
+# === @end: scoped_dup2_wrapper_cpp_lib (@original: scoped_dup2_wrapper) ===
+
+# === @begin: network_util_cpp_lib (@original: network_util) ===
+network_util_cpp_lib_dependencies = [
+    filesystem_cpp_lib_dep,
+    string_utils_cpp_lib_dep,
+    boost_asio,
+    gflags,
+    absl_container_flat_hash_map,
+    absl_strings,
+]
+
+network_util_cpp_lib = static_library('network_util_cpp_lib',
+    ['network_util.cc'],
+    dependencies: network_util_cpp_lib_dependencies,
+    install: false
+)
+
+network_util_cpp_lib_dep = declare_dependency(
+    link_with: [network_util_cpp_lib],
+    dependencies: network_util_cpp_lib_dependencies
+)
+# === @end: network_util_cpp_lib (@original: network_util) ===
+
+# === @begin: process_utils_cpp_lib (@original: process_utils) ===
+# Bazel deps: select linux: //src/ray/util:filesystem
+process_utils_cpp_lib_dependencies = [
+    compat_cpp_lib_dep,
+    logging_cpp_lib_dep,
+    absl_strings,
+]
+
+if host_machine.system() == 'linux'
+    process_utils_cpp_lib_dependencies += [filesystem_cpp_lib_dep]
+endif
+
+process_utils_cpp_lib = static_library('process_utils_cpp_lib',
+    ['process_utils.cc'],
+    dependencies: process_utils_cpp_lib_dependencies,
+    install: false
+)
+
+process_utils_cpp_lib_dep = declare_dependency(
+    link_with: [process_utils_cpp_lib],
+    dependencies: process_utils_cpp_lib_dependencies
+)
+# === @end: process_utils_cpp_lib (@original: process_utils) ===
+
+# === @begin: port_persistence_cpp_lib (@original: port_persistence) ===
+# Bazel deps: //src/ray/common:id, //src/ray/common:status, //src/ray/common:status_or
+port_persistence_cpp_lib_dependencies = [
+    file_persistence_cpp_lib_dep,
+    # id_cpp_lib_dep,         # circular: common/ processed after util/
+    # status_cpp_lib_dep,     # circular: common/ processed after util/
+    # status_or_cpp_lib_dep,  # circular: common/ processed after util/
+]
+
+port_persistence_cpp_lib = static_library('port_persistence_cpp_lib',
+    ['port_persistence.cc'],
+    dependencies: port_persistence_cpp_lib_dependencies,
+    install: false
+)
+
+port_persistence_cpp_lib_dep = declare_dependency(
+    link_with: [port_persistence_cpp_lib],
+    dependencies: port_persistence_cpp_lib_dependencies
+)
+# === @end: port_persistence_cpp_lib (@original: port_persistence) ===
+
+# === @begin: temporary_directory_cpp_lib (@original: temporary_directory) ===
+# Bazel deps: //src/ray/common:id
+temporary_directory_cpp_lib_dependencies = [
+    # id_cpp_lib_dep,  # circular: common/ processed after util/
+    absl_strings,
+]
+
+temporary_directory_cpp_lib = static_library('temporary_directory_cpp_lib',
+    ['temporary_directory.cc'],
+    dependencies: temporary_directory_cpp_lib_dependencies,
+    install: false
+)
+
+temporary_directory_cpp_lib_dep = declare_dependency(
+    link_with: [temporary_directory_cpp_lib],
+    dependencies: temporary_directory_cpp_lib_dependencies
+)
+# === @end: temporary_directory_cpp_lib (@original: temporary_directory) ===
+
+
+# ============================================================
+# Level 5: Higher-level targets
+# ============================================================
+
+# === @begin: fake_process_cpp_lib (@original: fake_process) ===
+fake_process_cpp_lib_dep = declare_dependency(
+    sources: ['fake_process.h'],
+    dependencies: [process_interface_cpp_lib_dep]
+)
+# === @end: fake_process_cpp_lib (@original: fake_process) ===
+
+# === @begin: process_cpp_lib (@original: process) ===
+# Bazel deps: //src/ray/common:status, //src/ray/common:status_or
+process_cpp_lib_dependencies = [
+    cmd_line_utils_cpp_lib_dep,
+    compat_cpp_lib_dep,
+    filesystem_cpp_lib_dep,
+    logging_cpp_lib_dep,
+    macros_cpp_lib_dep,
+    process_interface_cpp_lib_dep,
+    process_utils_cpp_lib_dep,
+    # status_cpp_lib_dep,     # circular: common/ processed after util/
+    # status_or_cpp_lib_dep,  # circular: common/ processed after util/
+    boost_asio,
+    absl_container_flat_hash_set,
+    absl_strings,
+    absl_synchronization,
+]
+
+process_cpp_lib = static_library('process_cpp_lib',
+    ['process.cc', 'subreaper.cc'],
+    dependencies: process_cpp_lib_dependencies,
+    install: false
+)
+
+process_cpp_lib_dep = declare_dependency(
+    link_with: [process_cpp_lib],
+    dependencies: process_cpp_lib_dependencies
+)
+# === @end: process_cpp_lib (@original: process) ===
+
+# === @begin: pipe_logger_cpp_lib (@original: pipe_logger) ===
+# Bazel deps: //src/ray/common:ray_config, //src/ray/common:status
+pipe_logger_cpp_lib_dependencies = [
+    compat_cpp_lib_dep,
+    logging_cpp_lib_dep,
+    spdlog_fd_sink_cpp_lib_dep,
+    spdlog_newliner_sink_cpp_lib_dep,
+    stream_redirection_options_cpp_lib_dep,
+    thread_utils_cpp_lib_dep,
+    # ray_config_cpp_lib_dep,  # circular: common/ processed after util/
+    # status_cpp_lib_dep,      # circular: common/ processed after util/
+    boost_iostreams,  # @boost//:iostreams
+    spdlog,
+    absl_container_flat_hash_map,  # TODO: should be absl_container_inlined_vector
+    absl_strings,
+    absl_synchronization,
+]
+
+pipe_logger_cpp_lib = static_library('pipe_logger_cpp_lib',
+    ['pipe_logger.cc'],
+    dependencies: pipe_logger_cpp_lib_dependencies,
+    install: false
+)
+
+pipe_logger_cpp_lib_dep = declare_dependency(
+    link_with: [pipe_logger_cpp_lib],
+    dependencies: pipe_logger_cpp_lib_dependencies
+)
+# === @end: pipe_logger_cpp_lib (@original: pipe_logger) ===
+
+# === @begin: event_cpp_lib (@original: event) ===
+event_cpp_lib_dependencies = [
+    logging_cpp_lib_dep,
+    random_cpp_lib_dep,
+    string_utils_cpp_lib_dep,
+    time_cpp_lib_dep,
+    event_proto_cpp_lib_dep,
+    export_event_proto_cpp_lib_dep,
+    boost_asio,
+    spdlog,
+    absl_container_flat_hash_map,
+    # @com_google_googletest//:gtest_prod — vendored stub in eugo/include/gtest/
+    protobuf,
+    nlohmann_json,
+]
+
+event_cpp_lib = static_library('event_cpp_lib',
+    ['event.cc'],
+    dependencies: event_cpp_lib_dependencies,
+    install: false
+)
+
+event_cpp_lib_dep = declare_dependency(
+    link_with: [event_cpp_lib],
+    dependencies: event_cpp_lib_dependencies
+)
+# === @end: event_cpp_lib (@original: event) ===
+
+
+# ============================================================
+# Level 6: internal/ subdirectory
+# ============================================================
+
+subdir('internal/')
+
+
+# ============================================================
+# Level 7: Depends on internal/ targets
+# ============================================================
+
+# === @begin: stream_redirection_cpp_lib (@original: stream_redirection) ===
+stream_redirection_cpp_lib_dependencies = [
+    pipe_logger_cpp_lib_dep,
+    scoped_dup2_wrapper_cpp_lib_dep,
+    stream_redirection_options_cpp_lib_dep,
+    stream_redirection_handle_cpp_lib_dep,
+    absl_container_flat_hash_map,
+]
+
+stream_redirection_cpp_lib = static_library('stream_redirection_cpp_lib',
+    ['stream_redirection.cc'],
+    dependencies: stream_redirection_cpp_lib_dependencies,
+    install: false
+)
+
+stream_redirection_cpp_lib_dep = declare_dependency(
+    link_with: [stream_redirection_cpp_lib],
+    dependencies: stream_redirection_cpp_lib_dependencies
+)
+# === @end: stream_redirection_cpp_lib (@original: stream_redirection) ===
+
+
+# ============================================================
+# Aggregate: util_cpp_lib_dep — backward-compatible wrapper
+# Other meson.build files reference util_cpp_lib_dep; this wraps
+# all individual targets into a single convenience dependency.
+# ============================================================
+util_cpp_lib_dep = declare_dependency(
+    dependencies: [
+        # Header-only
+        visibility_cpp_lib_dep,
+        macros_cpp_lib_dep,
+        array_cpp_lib_dep,
+        type_traits_cpp_lib_dep,
+        raii_cpp_lib_dep,
+        size_literals_cpp_lib_dep,
+        map_utils_cpp_lib_dep,
+        stream_redirection_options_cpp_lib_dep,
+        random_cpp_lib_dep,
+        mutex_protected_cpp_lib_dep,
+        sequencer_cpp_lib_dep,
+        thread_utils_cpp_lib_dep,
+        concurrent_flat_map_cpp_lib_dep,
+        graceful_shutdown_cpp_lib_dep,
+        container_util_cpp_lib_dep,
+        counter_map_cpp_lib_dep,
+        shared_lru_cpp_lib_dep,
+        process_interface_cpp_lib_dep,
+        fake_process_cpp_lib_dep,
+        spdlog_fd_sink_cpp_lib_dep,
+        spdlog_newliner_sink_cpp_lib_dep,
+        # Static libraries
+        time_cpp_lib_dep,
+        memory_cpp_lib_dep,
+        thread_checker_cpp_lib_dep,
+        logging_cpp_lib_dep,
+        env_cpp_lib_dep,
+        exponential_backoff_cpp_lib_dep,
+        scoped_env_setter_cpp_lib_dep,
+        filesystem_cpp_lib_dep,
+        file_persistence_cpp_lib_dep,
+        string_utils_cpp_lib_dep,
+        compat_cpp_lib_dep,
+        cmd_line_utils_cpp_lib_dep,
+        path_utils_cpp_lib_dep,
+        scoped_dup2_wrapper_cpp_lib_dep,
+        network_util_cpp_lib_dep,
+        process_utils_cpp_lib_dep,
+        process_cpp_lib_dep,
+        port_persistence_cpp_lib_dep,
+        temporary_directory_cpp_lib_dep,
+        pipe_logger_cpp_lib_dep,
+        event_cpp_lib_dep,
+        stream_redirection_cpp_lib_dep,
+        stream_redirection_handle_cpp_lib_dep,
+    ]
+)

@@ -1,15 +1,17 @@
-import gymnasium as gym
-import numpy as np
 import os
+import time
+import unittest
 from pathlib import Path
 from random import choice
-import unittest
+
+import gymnasium as gym
+import numpy as np
 
 import ray
-from ray.rllib.algorithms.algorithm import Algorithm
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -32,7 +34,7 @@ from ray.tune import register_env
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
         register_env("multi_cart", lambda cfg: MultiAgentCartPole(cfg))
 
     @classmethod
@@ -291,14 +293,14 @@ class TestAlgorithm(unittest.TestCase):
             # worker set and the eval worker set.
             self.assertTrue(
                 all(
-                    algo.env_runner_group.foreach_worker(
+                    algo.env_runner_group.foreach_env_runner(
                         func=lambda w, pid=pid: pid in w.policy_map
                     )
                 )
             )
             self.assertTrue(
                 all(
-                    algo.eval_env_runner_group.foreach_worker(
+                    algo.eval_env_runner_group.foreach_env_runner(
                         func=lambda w, pid=pid: pid in w.policy_map
                     )
                 )
@@ -316,14 +318,14 @@ class TestAlgorithm(unittest.TestCase):
 
             # Test restoring from the checkpoint (which has more policies
             # than what's defined in the config dict).
-            test = ppo.PPO.from_checkpoint(checkpoint=checkpoint)
+            test = ppo.PPO.from_checkpoint(checkpoint)
 
             # Make sure evaluation worker also got the restored, added policy.
             def _has_policies(w, pid=pid):
                 return w.get_policy("p0") is not None and w.get_policy(pid) is not None
 
             self.assertTrue(
-                all(test.eval_env_runner_group.foreach_worker(_has_policies))
+                all(test.eval_env_runner_group.foreach_env_runner(_has_policies))
             )
 
             # Make sure algorithm can continue training the restored policy.
@@ -360,7 +362,7 @@ class TestAlgorithm(unittest.TestCase):
                     )
 
                 self.assertTrue(
-                    all(test2.eval_env_runner_group.foreach_worker(_has_policies))
+                    all(test2.eval_env_runner_group.foreach_env_runner(_has_policies))
                 )
 
                 # Make sure algorithm can continue training the restored policy.
@@ -389,12 +391,12 @@ class TestAlgorithm(unittest.TestCase):
             # Make sure removed policy is no longer part of remote workers in the
             # worker set and the eval worker set.
             self.assertTrue(
-                algo.env_runner_group.foreach_worker(
+                algo.env_runner_group.foreach_env_runner(
                     func=lambda w, pid=pid: pid not in w.policy_map
                 )[0]
             )
             self.assertTrue(
-                algo.eval_env_runner_group.foreach_worker(
+                algo.eval_env_runner_group.foreach_env_runner(
                     func=lambda w, pid=pid: pid not in w.policy_map
                 )[0]
             )
@@ -478,15 +480,11 @@ class TestAlgorithm(unittest.TestCase):
         self.assertTrue(EVALUATION_RESULTS in r2)
         self.assertTrue(EVALUATION_RESULTS in r3)
 
-    def test_evaluation_wo_evaluation_env_runner_group(self):
+    def test_evaluation_wo_eval_env_runner_group(self):
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation.
         config = (
             ppo.PPOConfig()
-            .api_stack(
-                enable_env_runner_and_connector_v2=False,
-                enable_rl_module_and_learner=False,
-            )
             .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -496,12 +494,12 @@ class TestAlgorithm(unittest.TestCase):
         algo_wo_env_on_local_worker = config.build()
         self.assertRaisesRegex(
             ValueError,
-            "Can't evaluate on a local worker",
+            "doesn't have an env!",
             algo_wo_env_on_local_worker.evaluate,
         )
         algo_wo_env_on_local_worker.stop()
 
-        # Try again using `create_env_on_driver=True`.
+        # Try again using `create_local_env_runner=True`.
         # This force-adds the env on the local-worker, so this Algorithm
         # can `evaluate` even though it doesn't have an evaluation-worker
         # set.
@@ -513,13 +511,12 @@ class TestAlgorithm(unittest.TestCase):
             and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
         )
         algo_w_env_on_local_worker.stop()
-        config.create_env_on_local_worker = False
 
     def test_no_env_but_eval_workers_do_have_env(self):
         """Tests whether no env on workers, but env on eval workers works ok."""
         script_path = Path(__file__)
         input_file = os.path.join(
-            script_path.parent.parent.parent, "tests/data/cartpole/small.json"
+            script_path.parent.parent.parent, "offline/tests/data/cartpole/small.json"
         )
 
         env = gym.make("CartPole-v1")
@@ -599,14 +596,14 @@ class TestAlgorithm(unittest.TestCase):
         # EnvRunnerGroup and the eval EnvRunnerGroup.
         self.assertTrue(
             all(
-                algo.env_runner_group.foreach_worker(
+                algo.env_runner_group.foreach_env_runner(
                     lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )
         )
         self.assertTrue(
             all(
-                algo.eval_env_runner_group.foreach_worker(
+                algo.eval_env_runner_group.foreach_env_runner(
                     lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )
@@ -618,9 +615,52 @@ class TestAlgorithm(unittest.TestCase):
         self.assertTrue(all(f"p{i}" in mapped_pols for i in mapped))
         self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))
 
+    def test_evaluation_in_parallel_to_training(self):
+        SECONDS_TO_SLEEP = 2
+
+        class SluggishEnv(gym.Env):
+            def __init__(self, config):
+                self.action_space = gym.spaces.Discrete(2)
+                self.observation_space = gym.spaces.Box(-1, 1, dtype=np.float32)
+
+            def step(self, action):
+                time.sleep(SECONDS_TO_SLEEP)
+                return self.observation_space.sample(), 1, True, False, {}
+
+            def reset(self, *, seed=None, options=None):
+                super().reset(seed=seed)
+                return self.observation_space.sample(), {}
+
+        config = (
+            ppo.PPOConfig()
+            .environment(env=SluggishEnv)
+            .evaluation(
+                evaluation_parallel_to_training=True,
+                evaluation_interval=1,
+                evaluation_num_env_runners=1,
+                evaluation_duration=1,
+                evaluation_duration_unit="timesteps",
+            )
+            .training(train_batch_size=1, minibatch_size=1)  # Speed things up
+        )
+        algo = config.build()
+        metrics = algo.train()
+        # This can only be true if we do not execute training and evaluation in sequence
+        assert metrics["time_this_iter_s"] < SECONDS_TO_SLEEP * 2
+        assert metrics["time_this_iter_s"] > SECONDS_TO_SLEEP
+        algo.stop()
+
+        config.evaluation(evaluation_parallel_to_training=False)
+        algo_2 = config.build()
+        metrics_2 = algo_2.train()
+        # This must be true if we execute training and evaluation in sequence
+        assert metrics_2["time_this_iter_s"] > SECONDS_TO_SLEEP * 2
+        algo_2.stop()
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

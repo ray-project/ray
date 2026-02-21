@@ -1,25 +1,24 @@
 import copy
-from unittest import mock
 import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import List, Set
+from unittest import mock
 
 import jsonpatch
 import pytest
+import yaml
 
-from collections import defaultdict
-from ray.autoscaler.batching_node_provider import NodeData
 from ray.autoscaler._private.kuberay.node_provider import (
+    KubeRayNodeProvider,
+    ScaleRequest,
     _worker_group_index,
     _worker_group_max_replicas,
     _worker_group_replicas,
-    KubeRayNodeProvider,
-    ScaleRequest,
 )
 from ray.autoscaler._private.util import NodeID
-from pathlib import Path
-import yaml
-
+from ray.autoscaler.batching_node_provider import NodeData
 from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
-from typing import Set, List
 
 
 def _get_basic_ray_cr_workers_to_delete(
@@ -126,7 +125,7 @@ def test_create_node_cap_at_max(
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",
@@ -149,7 +148,7 @@ def test_create_node_cap_at_max(
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",
@@ -159,13 +158,6 @@ def test_create_node_cap_at_max(
                     type="fake-gpu-group",
                     replica_index=None,
                     ip="10.4.0.6",
-                    status="up-to-date",
-                ),
-                "raycluster-autoscaler-worker-fake-tpu-group-xtpcl": NodeData(
-                    kind="worker",
-                    type="tpu-group",
-                    replica_index="tpu-group-0",
-                    ip="10.136.1.29",
                     status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
@@ -180,6 +172,20 @@ def test_create_node_cap_at_max(
                     type="small-group",
                     replica_index=None,
                     ip="10.4.0.5",
+                    status="up-to-date",
+                ),
+                "raycluster-autoscaler-tpu-group-worker-s8jhq": NodeData(
+                    kind="worker",
+                    type="tpu-group",
+                    replica_index="tpu-group-0",
+                    ip="10.24.9.4",
+                    status="up-to-date",
+                ),
+                "raycluster-autoscaler-tpu-group-worker-jd69f": NodeData(
+                    kind="worker",
+                    type="tpu-group",
+                    replica_index="tpu-group-0",
+                    ip="10.24.8.4",
                     status="up-to-date",
                 ),
             },
@@ -217,7 +223,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head",
-                    type="head-group",
+                    type="headgroup",
                     replica_index=None,
                     ip="10.4.2.6",
                     status="up-to-date",

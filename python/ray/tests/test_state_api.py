@@ -1,83 +1,95 @@
-import os
-import time
 import json
-import sys
+import os
 import signal
+import sys
+import time
+import uuid
+import warnings
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple
-from unittest.mock import MagicMock, AsyncMock
+from typing import List, Optional
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from ray._private.state_api_test_utils import get_state_api_manager
-from ray.util.state import get_job
-from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.util.state.common import Humanify, PredicateType
-from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
-import ray.dashboard.consts as dashboard_consts
-import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import ActorID
-from ray._private.test_utils import (
+import ray._private.state as global_state
+import ray.dashboard.consts as dashboard_consts
+from ray._common.network_utils import find_free_port, parse_address
+from ray._common.test_utils import (
+    SignalActor,
+    async_wait_for_condition,
     run_string_as_driver,
     wait_for_condition,
-    async_wait_for_condition_async_predicate,
-    find_free_port,
-    SignalActor,
 )
+from ray._private.grpc_utils import init_grpc_channel
+from ray._private.state_api_test_utils import (
+    create_api_options,
+    get_state_api_manager,
+    verify_schema,
+)
+from ray._private.test_utils import wait_for_aggregator_agent_if_enabled
+from ray._raylet import ActorID, GcsClient, JobID, NodeID, TaskID
 from ray.cluster_utils import cluster_not_supported
-from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
     Address,
     CoreWorkerStats,
     ObjectRefInfo,
     TaskInfoEntry,
     TaskStatus,
-    WorkerType,
     TaskType,
+    WorkerType,
 )
 from ray.core.generated.gcs_pb2 import (
-    TaskEvents,
-    TaskStateUpdate,
     ActorTableData,
     GcsNodeInfo,
     PlacementGroupTableData,
+    TaskEvents,
+    TaskStateUpdate,
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
+    FilterPredicate,
     GcsStatus,
-    GetTaskEventsReply,
     GetAllActorInfoReply,
     GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
+    GetTaskEventsReply,
 )
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
+from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
+from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
 from ray.core.generated.reporter_pb2 import ListLogsReply, StreamLogReply
 from ray.core.generated.runtime_env_agent_pb2 import GetRuntimeEnvsInfoReply
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvState as RuntimeEnvStateProto,
 )
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.state_aggregator import (
     GCS_QUERY_FAILURE_WARNING,
     NODE_QUERY_FAILURE_WARNING,
     StateAPIManager,
-    _convert_filters_type,
 )
+from ray.dashboard.state_api_utils import convert_filters_type
+from ray.dashboard.utils import ray_address_to_api_server_url
+from ray.job_submission import JobSubmissionClient
+from ray.runtime_env import RuntimeEnv
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.state import (
+    StateApiClient,
     get_actor,
+    get_job,
     get_node,
     get_objects,
     get_placement_group,
     get_task,
     get_worker,
     list_actors,
+    list_cluster_events,
     list_jobs,
     list_nodes,
     list_objects,
@@ -88,40 +100,33 @@ from ray.util.state import (
     summarize_actors,
     summarize_objects,
     summarize_tasks,
-    list_cluster_events,
-    StateApiClient,
 )
-from ray._private.event.event_logger import get_event_id
 from ray.util.state.common import (
-    DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
+    GetApiOptions,
+    Humanify,
     ListApiOptions,
-    SummaryApiOptions,
     NodeState,
     ObjectState,
     PlacementGroupState,
     RuntimeEnvState,
-    SupportedFilterType,
+    StateSchema,
+    SummaryApiOptions,
     TaskState,
     WorkerState,
-    ClusterEventState,
-    StateSchema,
     state_column,
 )
-from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_cli import (
     AvailableFormat,
-    format_list_api_output,
     _parse_filter,
+    format_list_api_output,
+    ray_get,
+    ray_list,
     summary_state_cli_group,
 )
-from ray.util.state.state_cli import ray_get
-from ray.util.state.state_cli import ray_list
-from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
-from ray.job_submission import JobSubmissionClient
-from ray.runtime_env import RuntimeEnv
+from ray.util.state.state_manager import StateDataSourceClient
 
 """
 Unit tests
@@ -143,13 +148,11 @@ def state_source_client(gcs_address):
         ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
         ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
     )
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = init_grpc_channel(
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(
-        gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
-    )
+    gcs_client = GcsClient(address=gcs_address)
+    client = StateDataSourceClient(gcs_channel=gcs_channel, gcs_client=gcs_client)
     return client
 
 
@@ -161,23 +164,6 @@ async def state_api_manager_e2e(ray_start_with_dashboard):
     yield manager
 
 
-def verify_schema(state, result_dict: dict, detail: bool = False):
-    state_fields_columns = set()
-    if detail:
-        state_fields_columns = state.columns()
-    else:
-        state_fields_columns = state.base_columns()
-
-    for k in state_fields_columns:
-        assert k in result_dict
-
-    for k in result_dict:
-        assert k in state_fields_columns
-
-    # Make the field values can be converted without error as well
-    state(**result_dict)
-
-
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
     return ActorTableData(
         actor_id=id,
@@ -185,7 +171,7 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
         name="abc",
         pid=1234,
         class_name=class_name,
-        address=Address(raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
+        address=Address(node_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
         job_id=b"123",
         node_id=None,
         ray_namespace="",
@@ -222,7 +208,7 @@ def generate_worker_data(
 ):
     return WorkerTableData(
         worker_address=Address(
-            raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
+            node_id=id, ip_address="127.0.0.1", port=124, worker_id=id
         ),
         is_alive=True,
         timestamp=1234,
@@ -278,6 +264,28 @@ def generate_task_data(events_by_task):
     )
 
 
+def generate_failure_test_data():
+    return GetTaskEventsReply(
+        status=GcsStatus(code=34, message="Unknown filter predicate"),
+        events_by_task=[],
+        num_status_task_events_dropped=0,
+        num_profile_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
+    )
+
+
+def generate_early_return_task_data():
+    return GetTaskEventsReply(
+        num_profile_task_events_dropped=0,
+        num_status_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
+    )
+
+
 def generate_object_info(
     obj_id,
     size_bytes=1,
@@ -325,25 +333,34 @@ def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
     )
 
 
-def create_api_options(
-    timeout: int = DEFAULT_RPC_TIMEOUT,
-    limit: int = DEFAULT_LIMIT,
-    filters: List[Tuple[str, PredicateType, SupportedFilterType]] = None,
-    detail: bool = False,
-    exclude_driver: bool = True,
-):
-    if not filters:
-        filters = []
-    return ListApiOptions(
-        limit=limit,
-        timeout=timeout,
-        filters=filters,
-        server_timeout_multiplier=1.0,
-        detail=detail,
-        exclude_driver=exclude_driver,
+def test_list_api_options_has_conflicting_filters():
+    # single filter
+    options = ListApiOptions(filters=[("name", "=", "task_name")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, different keys
+    options = ListApiOptions(filters=[("name", "=", "task_name"), ("job_id", "=", "1")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, not equal predicate
+    options = ListApiOptions(
+        filters=[("name", "!=", "task_name_1"), ("name", "!=", "task_name_2")]
     )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, same value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_1")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_2")]
+    )
+    assert options.has_conflicting_filters()
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_ray_address_to_api_server_url(shutdown_only):
     ctx = ray.init()
     api_server_url = f'http://{ctx.address_info["webui_url"]}'
@@ -359,7 +376,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # explicit head node gcs address
     assert api_server_url == ray_address_to_api_server_url(gcs_address)
     # localhost string
-    gcs_port = gcs_address.split(":")[1]
+    _, gcs_port = parse_address(gcs_address)
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 
@@ -479,22 +496,6 @@ def test_parse_filter():
         _parse_filter("key>value!=")
 
 
-def test_id_to_ip_map():
-    node_id_1 = "1"
-    node_ip_1 = "ip_1"
-    node_id_2 = "2"
-    node_ip_2 = "ip_2"
-    m = IdToIpMap()
-    m.put(node_id_1, node_ip_1)
-    assert m.get_ip(node_ip_2) is None
-    assert m.get_node_id(node_id_2) is None
-    assert m.get_ip(node_id_1) == node_ip_1
-    assert m.get_node_id(node_ip_1) == node_id_1
-    m.pop(node_id_1)
-    assert m.get_ip(node_id_1) is None
-    assert m.get_node_id(node_id_1) is None
-
-
 # Without this, capsys will have a race condition
 # that causes
 # ValueError: I/O operation on closed file.
@@ -511,6 +512,10 @@ def clear_loggers():
             logger.removeHandler(handler)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers):
     ray.init()
     timeout = 10
@@ -535,6 +540,10 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_api_manager_e2e_list_actors(state_api_manager_e2e):
     @ray.remote
     class Actor:
@@ -567,7 +576,7 @@ del b
         assert result.num_after_truncation == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test actor id filtering on source
@@ -579,7 +588,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test state filtering on source
@@ -590,7 +599,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         # Test job filtering on source
@@ -602,7 +611,7 @@ del b
         assert len(result.result) == 1
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
     async def verify():
         with pytest.raises(ValueError):
@@ -612,7 +621,7 @@ del b
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.asyncio
@@ -736,65 +745,6 @@ async def test_api_manager_list_pgs(state_api_manager):
             option=create_api_options(limit=1)
         )
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
-
-
-@pytest.mark.asyncio
-async def test_api_manager_list_cluster_events(state_api_manager):
-    data_source_client = state_api_manager.data_source_client
-    event_id_1 = get_event_id()
-    event_id_2 = get_event_id()
-    data_source_client.get_all_cluster_events.return_value = {
-        "job_1": {
-            event_id_1: {
-                "timestamp": 10,
-                "severity": "DEBUG",
-                "message": "a",
-                "event_id": event_id_1,
-                "source_type": "GCS",
-            },
-            event_id_2: {
-                "timestamp": 10,
-                "severity": "INFO",
-                "message": "b",
-                "event_id": event_id_2,
-                "source_type": "GCS",
-            },
-        }
-    }
-    result = await state_api_manager.list_cluster_events(option=create_api_options())
-    data = result.result
-    data = data[0]
-    verify_schema(ClusterEventState, data)
-    assert result.total == 2
-
-    """
-    Test detail
-    """
-    # TODO(sang)
-
-    """
-    Test limit
-    """
-    assert len(result.result) == 2
-    result = await state_api_manager.list_cluster_events(
-        option=create_api_options(limit=1)
-    )
-    data = result.result
-    assert len(data) == 1
-    assert result.total == 2
-
-    """
-    Test filters
-    """
-    # If the column is not supported for filtering, it should raise an exception.
-    with pytest.raises(ValueError):
-        result = await state_api_manager.list_cluster_events(
-            option=create_api_options(filters=[("time", "=", "20")])
-        )
-    result = await state_api_manager.list_cluster_events(
-        option=create_api_options(filters=[("severity", "=", "INFO")])
-    )
-    assert len(result.result) == 1
 
 
 @pytest.mark.asyncio
@@ -927,6 +877,59 @@ async def test_api_manager_list_workers(state_api_manager):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("exception", "status_code"),
+    [
+        (None, 200),
+        (ValueError("Invalid filter parameter"), 400),
+        (DataSourceUnavailable("GCS connection failed"), 500),
+    ],
+)
+async def test_handle_list_api_status_codes(
+    exception: Optional[Exception], status_code: int
+):
+    """Test that handle_list_api calls do_reply with correct status codes.
+
+    This directly tests the HTTP layer logic that maps exceptions to status codes:
+    - Success → HTTP 200 OK
+    - ValueError → HTTP 400 BAD_REQUEST
+    - DataSourceUnavailable → HTTP 500 INTERNAL_ERROR
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ray.dashboard.state_api_utils import handle_list_api
+    from ray.util.state.common import ListApiResponse
+
+    # 1. Mock aiohttp request with proper query interface
+    mock_request = MagicMock()
+
+    def mock_get(key, default=None):
+        return default
+
+    mock_request.query = MagicMock()
+    mock_request.query.get = mock_get
+
+    # 2. Mock response whether success or failure.
+    if exception is None:
+        mock_backend = AsyncMock(
+            return_value=ListApiResponse(
+                result=[],
+                total=0,
+                num_after_truncation=0,
+                num_filtered=0,
+                partial_failure_warning="",
+            )
+        )
+    else:
+        mock_backend = AsyncMock(side_effect=exception)
+
+    response = await handle_list_api(mock_backend, mock_request)
+
+    # 3. Assert status_code is correct.
+    assert response.status == status_code
+
+
+@pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
 
@@ -1005,6 +1008,114 @@ async def test_api_manager_list_tasks(state_api_manager):
         option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
+
+    """
+    Test failure reply
+    """
+    data_source_client.get_all_task_info.side_effect = [generate_failure_test_data()]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    assert len(result.result) == 0
+    assert result.total == 0
+    assert result.num_filtered == 0
+    assert result.num_after_truncation == 0
+    assert len(result.warnings) > 0
+
+    """
+    Test early reply
+    """
+    data_source_client.get_all_task_info.side_effect = [
+        generate_early_return_task_data()
+    ]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    assert len(result.result) == 0
+    assert result.total == 0
+    assert result.num_filtered == 0
+    assert result.num_after_truncation == 0
+    assert result.warnings is None
+
+
+@pytest.mark.asyncio
+@patch.object(
+    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_client: None
+)
+async def test_state_data_source_client_get_all_task_info_no_early_return():
+    #  Setup
+    mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
+
+    client = StateDataSourceClient(None, None)
+    client._gcs_task_info_stub = mock_gcs_task_info_stub
+
+    mock_reply = MagicMock(GetTaskEventsReply)
+    mock_gcs_task_info_stub.GetTaskEvents = AsyncMock()
+    mock_gcs_task_info_stub.GetTaskEvents.side_effect = [mock_reply]
+
+    test_actor_id = ActorID.from_random()
+    test_job_id = JobID.from_int(1)
+    test_task_id_1 = TaskID.for_fake_task(test_job_id)
+    test_task_id_2 = TaskID.for_fake_task(test_job_id)
+    test_task_name = "task_name"
+    test_state = "running"
+    input_filters = []
+    input_filters.append(("actor_id", "=", test_actor_id.hex()))
+    input_filters.append(("job_id", "!=", test_job_id.hex()))
+    input_filters.append(("task_id", "=", test_task_id_1.hex()))
+    input_filters.append(("name", "=", test_task_name))
+    input_filters.append(("task_id", "!=", test_task_id_2.hex()))
+    input_filters.append(("state", "=", test_state))
+    input_timeout = 100
+    input_limit = 200
+    input_exclude_driver = True
+
+    # Execute the function
+    result = await client.get_all_task_info(
+        input_timeout, input_limit, input_filters, input_exclude_driver
+    )
+
+    # Verify
+    assert result is mock_reply
+    mock_gcs_task_info_stub.GetTaskEvents.assert_awaited_once()
+
+    input_args = mock_gcs_task_info_stub.GetTaskEvents.await_args
+    assert len(input_args.kwargs) == 1
+    assert input_args.kwargs["timeout"] == input_timeout
+
+    assert len(input_args.args) == 1
+    request_arg = input_args.args[0]
+    assert request_arg.limit == input_limit
+
+    filters_arg = request_arg.filters
+    task_filters_arg = request_arg.filters.task_filters
+    assert len(task_filters_arg) == 2
+    if task_filters_arg[0].predicate == FilterPredicate.EQUAL:
+        assert TaskID(task_filters_arg[0].task_id) == test_task_id_1
+        assert task_filters_arg[1].predicate == FilterPredicate.NOT_EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_2
+    else:
+        assert task_filters_arg[0].task_id == test_task_id_2
+        assert task_filters_arg[1].predicate == FilterPredicate.EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_1
+
+    actor_filters_arg = request_arg.filters.actor_filters
+    assert len(actor_filters_arg) == 1
+    assert ActorID(actor_filters_arg[0].actor_id) == test_actor_id
+    assert actor_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    job_filters_arg = request_arg.filters.job_filters
+    assert len(job_filters_arg) == 1
+    assert JobID(job_filters_arg[0].job_id) == test_job_id
+    assert job_filters_arg[0].predicate == FilterPredicate.NOT_EQUAL
+
+    task_name_filters_arg = request_arg.filters.task_name_filters
+    assert len(task_name_filters_arg) == 1
+    assert task_name_filters_arg[0].task_name == test_task_name
+    assert task_name_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    state_filters_arg = request_arg.filters.state_filters
+    assert len(state_filters_arg) == 1
+    assert state_filters_arg[0].state == test_state
+    assert state_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    assert filters_arg.exclude_driver == input_exclude_driver
 
 
 @pytest.mark.asyncio
@@ -1213,8 +1324,23 @@ async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     obj_1_id = b"1" * 28
     obj_2_id = b"2" * 28
-    data_source_client.get_all_registered_raylet_ids = MagicMock()
-    data_source_client.get_all_registered_raylet_ids.return_value = ["1", "2"]
+    data_source_client.get_all_node_info = AsyncMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(
+                node_id=b"1" * 28,
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="192.168.1.1",
+                node_manager_port=10001,
+            ),
+            GcsNodeInfo(
+                node_id=b"2" * 28,
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                node_manager_address="192.168.1.2",
+                node_manager_port=10002,
+            ),
+        ]
+    )
 
     data_source_client.get_object_info = AsyncMock()
     data_source_client.get_object_info.side_effect = [
@@ -1228,10 +1354,10 @@ async def test_api_manager_list_objects(state_api_manager):
     result = await state_api_manager.list_objects(option=create_api_options())
     data = result.result
     data_source_client.get_object_info.assert_any_await(
-        "1", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.1", 10001, timeout=DEFAULT_RPC_TIMEOUT
     )
     data_source_client.get_object_info.assert_any_await(
-        "2", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.2", 10002, timeout=DEFAULT_RPC_TIMEOUT
     )
     data = data
     assert len(data) == 2
@@ -1319,12 +1445,29 @@ async def test_api_manager_list_objects(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
-    data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
-        "1",
-        "2",
-        "3",
-    ]
+    data_source_client.get_all_node_info = AsyncMock()
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[
+            GcsNodeInfo(
+                node_id=b"1" * 28,
+                node_manager_address="192.168.1.1",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10000,
+            ),
+            GcsNodeInfo(
+                node_id=b"2" * 28,
+                node_manager_address="192.168.1.2",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10001,
+            ),
+            GcsNodeInfo(
+                node_id=b"3" * 28,
+                node_manager_address="192.168.1.3",
+                state=GcsNodeInfo.GcsNodeState.ALIVE,
+                runtime_env_agent_port=10002,
+            ),
+        ]
+    )
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
@@ -1337,14 +1480,14 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     result = await state_api_manager.list_runtime_envs(option=create_api_options())
     data = result.result
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "1", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.1", 10000, timeout=DEFAULT_RPC_TIMEOUT
     )
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "2", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.2", 10001, timeout=DEFAULT_RPC_TIMEOUT
     )
 
     data_source_client.get_runtime_envs_info.assert_any_await(
-        "3", timeout=DEFAULT_RPC_TIMEOUT
+        "192.168.1.3", 10002, timeout=DEFAULT_RPC_TIMEOUT
     )
     assert len(data) == 3
     verify_schema(RuntimeEnvState, data[0])
@@ -1460,39 +1603,39 @@ async def test_filter_non_existent_column(state_api_manager):
 
 def test_type_conversion():
     # Test string
-    r = _convert_filters_type([("actor_id", "=", "123")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "123")], ActorState)
     assert r[0][2] == "123"
-    r = _convert_filters_type([("actor_id", "=", "abcd")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "abcd")], ActorState)
     assert r[0][2] == "abcd"
-    r = _convert_filters_type([("actor_id", "=", "True")], ActorState)
+    r = convert_filters_type([("actor_id", "=", "True")], ActorState)
     assert r[0][2] == "True"
 
     # Test boolean
-    r = _convert_filters_type([("success", "=", "1")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "1")], RuntimeEnvState)
     assert r[0][2]
-    r = _convert_filters_type([("success", "=", "True")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "True")], RuntimeEnvState)
     assert r[0][2]
-    r = _convert_filters_type([("success", "=", "true")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "true")], RuntimeEnvState)
     assert r[0][2]
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("success", "=", "random_string")], RuntimeEnvState)
-    r = _convert_filters_type([("success", "=", "false")], RuntimeEnvState)
+        r = convert_filters_type([("success", "=", "random_string")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "false")], RuntimeEnvState)
     assert r[0][2] is False
-    r = _convert_filters_type([("success", "=", "False")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "False")], RuntimeEnvState)
     assert r[0][2] is False
-    r = _convert_filters_type([("success", "=", "0")], RuntimeEnvState)
+    r = convert_filters_type([("success", "=", "0")], RuntimeEnvState)
     assert r[0][2] is False
 
     # Test int
-    r = _convert_filters_type([("pid", "=", "0")], ObjectState)
+    r = convert_filters_type([("pid", "=", "0")], ObjectState)
     assert r[0][2] == 0
-    r = _convert_filters_type([("pid", "=", "123")], ObjectState)
+    r = convert_filters_type([("pid", "=", "123")], ObjectState)
     assert r[0][2] == 123
     # Only integer can be provided.
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "=", "123.3")], ObjectState)
+        r = convert_filters_type([("pid", "=", "123.3")], ObjectState)
     with pytest.raises(ValueError):
-        r = _convert_filters_type([("pid", "=", "abc")], ObjectState)
+        r = convert_filters_type([("pid", "=", "abc")], ObjectState)
 
     # currently, there's no schema that has float column.
 
@@ -1503,6 +1646,10 @@ Integration tests
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_state_data_source_client(ray_start_cluster):
     cluster = ray_start_cluster
     # head
@@ -1560,61 +1707,36 @@ async def test_state_data_source_client(ray_start_cluster):
     """
     Test tasks
     """
-    with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_task_info("1234")
 
     wait_for_condition(lambda: len(ray.nodes()) == 2)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-        result = await client.get_task_info(node_id)
-        assert isinstance(result, GetTasksInfoReply)
-
-    assert len(client.get_all_registered_raylet_ids()) == 2
 
     """
     Test objects
     """
-    with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_object_info("1234")
-
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
-        node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
-        result = await client.get_object_info(node_id)
+        port = node["NodeManagerPort"]
+        result = await client.get_object_info(ip, port)
         assert isinstance(result, GetObjectsInfoReply)
 
     """
     Test runtime env
     """
-    with pytest.raises(ValueError):
-        # Since we didn't register this node id, it should raise an exception.
-        result = await client.get_runtime_envs_info("1234")
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
-        def get_port():
+        def get_addr():
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
-        # The second index is the gRPC port
-        port = json.loads(get_port())[1]
-        ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
-        result = await client.get_runtime_envs_info(node_id)
+        wait_for_condition(lambda: get_addr() is not None)
+        result = await client.get_runtime_envs_info(
+            node["NodeManagerAddress"], node["RuntimeEnvAgentPort"]
+        )
         assert isinstance(result, GetRuntimeEnvsInfoReply)
 
     """
@@ -1654,17 +1776,16 @@ async def test_state_data_source_client(ray_start_cluster):
 
         # Querying to the dead node raises gRPC error, which should raise an exception.
         with pytest.raises(DataSourceUnavailable):
-            await client.get_object_info(node_id)
-
-        # Make sure unregister API works as expected.
-        client.unregister_raylet_client(node_id)
-        assert len(client.get_all_registered_raylet_ids()) == 1
-        # Since the node_id is unregistered, the API should raise ValueError.
-        with pytest.raises(ValueError):
-            result = await client.get_object_info(node_id)
+            await client.get_object_info(
+                node["NodeManagerAddress"], node["NodeManagerPort"]
+            )
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     cluster = ray_start_cluster
     # head
@@ -1718,53 +1839,19 @@ def test_humanify():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_state_data_source_client_limit_distributed_sources(ray_start_cluster):
     cluster = ray_start_cluster
     # head
-    cluster.add_node(num_cpus=8)
+    cluster.add_node(num_cpus=8, dashboard_agent_listen_port=find_free_port())
     ray.init(address=cluster.address)
     client = state_source_client(cluster.address)
-    for node in ray.nodes():
-        node_id = node["NodeID"]
-        ip = node["NodeManagerAddress"]
-        port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
 
-    """
-    Test tasks
-    """
-
-    @ray.remote
-    def long_running():
-        import time
-
-        time.sleep(300)
-
-    @ray.remote
-    def f():
-        ray.get([long_running.remote() for _ in range(2)])
-
-    # Driver: 2 * f
-    # Each worker: 2 * long_running
-    # -> 2 * f + 4 * long_running
-
-    refs = [f.remote() for _ in range(2)]  # noqa
-
-    async def verify():
-        result = await client.get_task_info(node_id, limit=2)
-        assert result.total == 6
-        assert len(result.owned_task_info_entries) == 2
-        return True
-
-    await async_wait_for_condition_async_predicate(verify)
-    for ref in refs:
-        ray.cancel(ref, force=True, recursive=True)
-    del refs
-
-    """
-    Test objects
-    """
+    [node] = ray.nodes()
+    ip, port = node["NodeManagerAddress"], int(node["NodeManagerPort"])
 
     @ray.remote
     def long_running_task(obj):  # noqa
@@ -1777,13 +1864,12 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     refs = [long_running_task.remote(obj) for obj in objs]
 
     async def verify():
-        result = await client.get_object_info(node_id, limit=2)
+        result = await client.get_object_info(ip, port, limit=2)
         # 4 objs (driver)
         # 4 refs (driver)
         # 4 pinned in memory for each task
         # 40 for 4 tasks * 10 objects each
-        # 1 from the previous test (refs) is for some reasons not GC'ed. (driver)
-        assert result.total == 53
+        assert result.total == 52
         # Only 1 core worker stat is returned because data is truncated.
         assert len(result.core_workers_stats) == 1
 
@@ -1793,13 +1879,12 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
             assert (
                 WorkerType.DESCRIPTOR.values_by_number[c.worker_type].name == "DRIVER"
             )
-            assert c.objects_total == 9
+            assert c.objects_total == 8
             assert len(c.object_refs) == 2
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
-    for ref in refs:
-        ray.cancel(ref, force=True, recursive=True)
+    await async_wait_for_condition(verify)
+    [ray.cancel(ref, force=True) for ref in refs]
     del refs
 
     """
@@ -1807,18 +1892,16 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
+        ip = node["NodeManagerAddress"]
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
 
-        def get_port():
+        def get_addr():
             return ray.experimental.internal_kv._internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
             )
 
-        wait_for_condition(lambda: get_port() is not None)
-        # The second index is the gRPC port
-        port = json.loads(get_port())[1]
-        ip = node["NodeManagerAddress"]
-        client.register_agent_client(node_id, ip, port)
+        wait_for_condition(lambda: get_addr() is not None)
 
     @ray.remote
     class Actor:
@@ -1831,7 +1914,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     ]
     ray.get([actor.ready.remote() for actor in actors])
 
-    result = await client.get_runtime_envs_info(node_id, limit=2)
+    result = await client.get_runtime_envs_info(ip, runtime_env_agent_port, limit=2)
     assert result.total == 3
     assert len(result.runtime_env_states) == 2
 
@@ -1848,6 +1931,10 @@ def is_hex(val):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_cli_apis_sanity_check(ray_start_cluster):
     """Test all of CLI APIs work as expected."""
     NUM_NODES = 4
@@ -1855,7 +1942,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
     for _ in range(NUM_NODES - 1):
-        cluster.add_node(num_cpus=2)
+        cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
     runner = CliRunner()
 
     client = JobSubmissionClient(
@@ -1995,6 +2082,10 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 class TestListActors:
     def test_list_get_actors(self, class_ray_instance):
         @ray.remote
@@ -2044,18 +2135,23 @@ class TestListActors:
         class A:
             pass
 
-        A.options(namespace="x").remote()
-        A.options(namespace="y").remote()
+        # generating unique names for actor namespaces as we are using a shared ray cluster for these tests
+        # and the tests run twice in the same cluster
+        namespace1 = "namespace_" + str(uuid.uuid4())
+        namespace2 = "namespace_" + str(uuid.uuid4())
+
+        A.options(namespace=namespace1, name="x").remote()
+        A.options(namespace=namespace2, name="y").remote()
 
         actors = list_actors()
         namespaces = Counter([actor["ray_namespace"] for actor in actors])
-        assert namespaces["x"] == 1
-        assert namespaces["y"] == 1
+        assert namespaces[namespace1] == 1
+        assert namespaces[namespace2] == 1
 
         # Check that we can filter by namespace
-        x_actors = list_actors(filters=[("ray_namespace", "=", "x")])
-        assert len(x_actors) == 1
-        assert x_actors[0]["ray_namespace"] == "x"
+        namespace1_actors = list_actors(filters=[("ray_namespace", "=", namespace1)])
+        assert len(namespace1_actors) == 1
+        assert namespace1_actors[0]["ray_namespace"] == namespace1
 
 
 @pytest.mark.skipif(
@@ -2070,6 +2166,10 @@ class TestListActors:
         "new_external_dashboard_url",
     ],
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_state_api_with_external_dashboard_override(
     shutdown_only, override_url, monkeypatch
 ):
@@ -2113,6 +2213,10 @@ def test_state_api_with_external_dashboard_override(
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_pgs(shutdown_only):
     ray.init()
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])  # noqa
@@ -2139,6 +2243,10 @@ def test_list_get_pgs(shutdown_only):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 async def test_cloud_envs(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
@@ -2149,7 +2257,11 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
             "test_cloud_id",
         )
         m.setenv("RAY_NODE_TYPE_NAME", "test-node-type")
-        cluster.add_node(num_cpus=1, node_name="worker_node")
+        cluster.add_node(
+            num_cpus=1,
+            node_name="worker_node",
+            dashboard_agent_listen_port=find_free_port(),
+        )
     client = state_source_client(cluster.address)
 
     async def verify():
@@ -2166,18 +2278,26 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
 
         return True
 
-    await async_wait_for_condition_async_predicate(verify)
+    await async_wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(
+        num_cpus=1,
+        node_name="worker_node",
+        dashboard_agent_listen_port=find_free_port(),
+    )
 
     cluster.remove_node(worker_node)
 
@@ -2185,7 +2305,7 @@ def test_list_get_nodes(ray_start_cluster):
         nodes = list_nodes(detail=True)
         for node in nodes:
             assert is_hex(node["node_id"])
-            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            assert node["labels"] == {"ray.io/node-id": node["node_id"]}
             if node["node_name"] == "head_node":
                 assert node["is_head_node"]
                 assert node["state"] == "ALIVE"
@@ -2220,6 +2340,10 @@ def test_list_get_nodes(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_jobs(shutdown_only):
     ray.init()
     # Test submission job
@@ -2287,6 +2411,10 @@ ray.get(f.remote())
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_workers(shutdown_only):
     ray.init()
 
@@ -2326,6 +2454,10 @@ def test_list_get_workers(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_cluster_events(shutdown_only):
     ray.init()
 
@@ -2340,7 +2472,7 @@ def test_list_cluster_events(shutdown_only):
         print(events)
         assert len(events) == 1
         assert (
-            "Error: No available node types can fulfill " "resource request"
+            "Error: No available node types can fulfill resource request"
         ) in events[0]["message"]
         return True
 
@@ -2463,6 +2595,168 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
+def test_list_get_tasks_call_site(shutdown_only):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the call site is captured in callee, and it contains string
+    "caller".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
+    )
+
+    @ray.remote
+    def callee():
+        import time
+
+        time.sleep(30)
+
+    @ray.remote
+    def caller():
+        return callee.remote()
+
+    caller_ref = caller.remote()
+    callee_ref = ray.get(caller_ref)
+
+    def verify():
+        callee_task = get_task(callee_ref)
+        assert callee_task["call_site"] is not None
+        assert "caller" in callee_task["call_site"]
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
+def test_list_actor_tasks_call_site(shutdown_only):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the call sites are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
+    )
+
+    @ray.remote
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(30)
+
+    @ray.remote
+    def create_actor():
+        a = Actor.remote()
+        m_ref = a.method.remote()
+        return a, m_ref
+
+    actor_ref, method_ref = ray.get(create_actor.remote())
+
+    def verify():
+        method_task = get_task(method_ref)
+        assert method_task["call_site"] is not None
+        assert "create_actor" in method_task["call_site"]
+
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["call_site"] is not None
+        assert "create_actor" in actor["call_site"]
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
+def test_list_get_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the call site is captured in callee, and it contains string
+    "caller".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=2, labels={"ray.io/accelerator-type": "A100", "region": "us-west4"}
+    )
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    def foo():
+        import time
+
+        time.sleep(5)
+
+    call_ref = foo.remote()
+
+    ray.get(call_ref)
+
+    def verify():
+        task = get_task(call_ref)
+        assert task["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
+def test_list_actor_tasks_label_selector(ray_start_cluster):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the call sites are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2, labels={"region": "us-west4"})
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    @ray.remote(label_selector={"region": "us-west4"})
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(5)
+
+    actor = Actor.remote()
+    ray.get(actor.method.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["label_selector"] == {"region": "us-west4"}
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
+
+
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_pg_worker_id_tasks(shutdown_only):
     ray.init(num_cpus=1)
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])
@@ -2516,6 +2810,10 @@ def test_pg_worker_id_tasks(shutdown_only):
     print(list_actors(detail=True))
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_parent_task_id(shutdown_only):
     """Test parent task id set up properly"""
     ray.init(num_cpus=2)
@@ -2549,6 +2847,10 @@ def test_parent_task_id(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
@@ -2586,6 +2888,10 @@ def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
     wait_for_condition(lambda: verify(get_task(task_id)))
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -2628,8 +2934,16 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
     wait_for_condition(lambda: verify(list_tasks(filters=[("name", "=", "f")])))
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_actor_tasks(shutdown_only):
-    ray.init(num_cpus=2)
+    ray_context = ray.init(num_cpus=2)
+    wait_for_aggregator_agent_if_enabled(
+        ray_context.address_info["address"],
+        ray_context.address_info["node_id"],
+    )
     job_id = ray.get_runtime_context().get_job_id()
 
     @ray.remote(max_concurrency=2)
@@ -2708,6 +3022,10 @@ def test_list_actor_tasks(shutdown_only):
     print(list_tasks())
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_get_objects(shutdown_only):
     ray.init()
     import numpy as np
@@ -2740,6 +3058,10 @@ def test_list_get_objects(shutdown_only):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Runtime env not working in Windows."
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_list_runtime_envs(shutdown_only):
     ray.init(runtime_env={"pip": ["requests"]})
 
@@ -2774,6 +3096,10 @@ def test_list_runtime_envs(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_limit(shutdown_only):
     ray.init()
 
@@ -2796,6 +3122,10 @@ def test_limit(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_network_failure(shutdown_only):
     """When the request fails due to network failure,
     verifies it raises an exception."""
@@ -2817,6 +3147,10 @@ def test_network_failure(shutdown_only):
         list_tasks(_explain=True)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_network_partial_failures(monkeypatch, ray_start_cluster):
     """When the request fails due to network failure,
     verifies it prints proper warning."""
@@ -2841,7 +3175,8 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
         wait_for_condition(lambda: len(list_objects()) == 4)
 
         # Make sure when there's 0 node failure, it doesn't print the error.
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             list_objects(_explain=True)
         assert len(record) == 0
 
@@ -2852,11 +3187,16 @@ def test_network_partial_failures(monkeypatch, ray_start_cluster):
             list_objects(raise_on_missing_output=False, _explain=True)
 
         # Make sure when _explain == False, warning is not printed.
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             list_objects(raise_on_missing_output=False, _explain=False)
         assert len(record) == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
     """When the request fails due to network timeout,
     verifies it prints proper warning."""
@@ -2879,7 +3219,8 @@ def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
     a = [f.remote() for _ in range(4)]  # noqa
 
     def verify():
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             list_objects(raise_on_missing_output=False, _explain=True, timeout=5)
         return len(record) == 1
 
@@ -2930,6 +3271,10 @@ async def test_cli_format_print(state_api_manager):
         assert header == col
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_filter(shutdown_only):
     ray.init()
 
@@ -3071,6 +3416,10 @@ def test_filter(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_data_truncate(shutdown_only, monkeypatch):
     """
     Verify the data is properly truncated when there are too many entries to return.
@@ -3117,11 +3466,16 @@ def test_data_truncate(shutdown_only, monkeypatch):
         a = A.remote()
         ray.get(a.ready.remote())
 
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             result = runner.invoke(ray_list, ["actors"])
         assert len(record) == 0
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_detail(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -3182,6 +3536,10 @@ def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):
     sys.platform == "win32",
     reason="Lambda test functions could not be pickled on Windows",
 )
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     import queue
     import threading
@@ -3304,9 +3662,9 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
 def test_state_api_server_enforce_concurrent_http_requests(
     api_func, monkeypatch, shutdown_only
 ):
-    import time
-    import threading
     import queue
+    import threading
+    import time
 
     # Set environment
     with monkeypatch.context() as m:
@@ -3388,6 +3746,10 @@ def test_state_api_server_enforce_concurrent_http_requests(
 
 
 @pytest.mark.parametrize("callsite_enabled", [True, False])
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
     # Set environment
     with monkeypatch.context() as m:
@@ -3399,7 +3761,8 @@ def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
         runner = CliRunner()
         wait_for_condition(lambda: len(list_objects()) > 0)
 
-        with pytest.warns(None) as record:
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
             result = runner.invoke(ray_list, ["objects"])
             assert result.exit_code == 0
 
@@ -3410,6 +3773,10 @@ def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
             assert "RAY_record_ref_creation_sites=1" in str(record[0].message)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster):
     """
     Verify when there are network partial failures,
@@ -3455,30 +3822,30 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
             assert False
 
         # Verify when raise_on_missing_output=False, it prints warnings.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             list_objects(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             summarize_objects(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
         # Verify when CLI is used, exceptions are not raised.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(ray_list, ["objects", "--timeout=3"])
-        assert len(record) == 1
         assert result.exit_code == 0
 
         # Verify summary CLI also doesn't raise an exception.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(summary_state_cli_group, ["objects", "--timeout=3"])
         assert result.exit_code == 0
-        assert len(record) == 1
         return True
 
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         # defer for 10s for the second node.
@@ -3520,30 +3887,30 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
             assert False
 
         # Verify when raise_on_missing_output=False, it prints warnings.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        assert len(record) == 1
 
         # Verify when CLI is used, exceptions are not raised.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(ray_list, ["tasks", "--timeout=3"])
-        assert len(record) == 1
         assert result.exit_code == 0
 
         # Verify summary CLI also doesn't raise an exception.
-        with pytest.warns(None) as record:
+        with pytest.warns(UserWarning):
             result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
         assert result.exit_code == 0
-        assert len(record) == 1
         return True
 
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_get_id_not_found(shutdown_only):
     """Test get API CLI fails correctly when there's no corresponding id
 
@@ -3557,11 +3924,15 @@ def test_get_id_not_found(shutdown_only):
     assert f"Resource with id={id} not found in the cluster." in result.output
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_core_state_api_usage_tags(shutdown_only):
-    from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
+    from ray._common.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
-    gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
+    gcs_client = GcsClient(address=ctx.address_info["gcs_address"])
     list_actors()
     list_tasks()
     list_jobs()
@@ -3622,6 +3993,10 @@ def test_job_info_is_running_task(shutdown_only):
     assert all_job_info[job_id].is_running_tasks is True
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
 def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     """
     When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
@@ -3646,8 +4021,44 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
 
+@pytest.mark.parametrize(
+    "event_routing_config", ["default", "aggregator"], indirect=True
+)
+@pytest.mark.usefixtures("event_routing_config")
+def test_get_actor_timeout_multiplier(shutdown_only):
+    """Test that GetApiOptions applies the same timeout multiplier as ListApiOptions.
+
+    This test reproduces the issue where get_actor with timeout=1 fails even though
+    the actual operation takes less than 1 second, because GetApiOptions doesn't
+    apply the 0.8 server timeout multiplier that ListApiOptions uses.
+
+    Related issue: https://github.com/ray-project/ray/issues/54153
+    """
+
+    @ray.remote
+    class TestActor:
+        def ready(self):
+            pass
+
+    actor = TestActor.remote()
+    ray.get(actor.ready.remote())
+
+    # Test that both options classes apply the same timeout multiplier
+    test_timeout = 1
+    get_options = GetApiOptions(timeout=test_timeout)
+    list_options = ListApiOptions(timeout=test_timeout)
+
+    # After __post_init__, both should have the same effective timeout
+    assert get_options.timeout == list_options.timeout
+
+    # Test that get_actor works with a 1-second timeout
+    actors = list_actors()
+    actor_id = actors[0]["actor_id"]
+
+    # This should work without timeout issues
+    result = get_actor(actor_id, timeout=1)
+    assert result["actor_id"] == actor_id
+
+
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

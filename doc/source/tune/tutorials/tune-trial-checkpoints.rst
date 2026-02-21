@@ -17,7 +17,7 @@ Function API Checkpointing
 --------------------------
 
 If using Ray Tune's Function API, one can save and load checkpoints in the following manner.
-To create a checkpoint, use the :meth:`~ray.train.Checkpoint.from_directory` APIs.
+To create a checkpoint, use the :meth:`~ray.tune.Checkpoint.from_directory` APIs.
 
 .. literalinclude:: /tune/doc_code/trial_checkpoint.py
     :language: python
@@ -26,9 +26,9 @@ To create a checkpoint, use the :meth:`~ray.train.Checkpoint.from_directory` API
 
 In the above code snippet:
 
-- We implement *checkpoint saving* with :meth:`train.report(..., checkpoint=checkpoint) <ray.train.report>`. Note that every checkpoint must be reported alongside a set of metrics -- this way, checkpoints can be ordered with respect to a specified metric.
+- We implement *checkpoint saving* with :meth:`tune.report(..., checkpoint=checkpoint) <ray.tune.report>`. Note that every checkpoint must be reported alongside a set of metrics -- this way, checkpoints can be ordered with respect to a specified metric.
 - The saved checkpoint during training iteration `epoch` is saved to the path ``<storage_path>/<exp_name>/<trial_name>/checkpoint_<epoch>`` on the node on which training happens and can be further synced to a consolidated storage location depending on the :ref:`storage configuration <tune-storage-options>`.
-- We implement *checkpoint loading* with :meth:`train.get_checkpoint() <ray.train.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
+- We implement *checkpoint loading* with :meth:`tune.get_checkpoint() <ray.tune.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
 
   .. TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide.
 
@@ -43,7 +43,7 @@ In the above code snippet:
         :end-before: __function_api_checkpointing_periodic_end__
 
 
-See :class:`here for more information on creating checkpoints <ray.train.Checkpoint>`.
+See :class:`here for more information on creating checkpoints <ray.tune.Checkpoint>`.
 
 
 .. _tune-class-trainable-checkpointing:
@@ -60,8 +60,10 @@ You can also implement checkpoint/restore using the Trainable Class API:
 
 You can checkpoint with three different mechanisms: manually, periodically, and at termination.
 
-Manual Checkpointing
-~~~~~~~~~~~~~~~~~~~~
+.. _tune-class-trainable-checkpointing_manual-checkpointing:
+
+Manual Checkpointing by Trainable
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A custom Trainable can manually trigger checkpointing by returning ``should_checkpoint: True``
 (or ``tune.result.SHOULD_CHECKPOINT: True``) in the result dictionary of `step`.
@@ -73,6 +75,25 @@ This can be especially helpful in spot instances:
     :end-before: __class_api_manual_checkpointing_end__
 
 In the above example, if ``detect_instance_preemption`` returns True, manual checkpointing can be triggered.
+
+
+.. _tune-callback-checkpointing:
+
+Manual Checkpointing by Tuner Callback
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Similar to :ref:`tune-class-trainable-checkpointing_manual-checkpointing`,
+you can also trigger checkpointing through :class:`Tuner <ray.tune.Tuner>` :class:`Callback <ray.tune.callback.Callback>` methods
+by setting the ``result["should_checkpoint"] = True`` (or ``result[tune.result.SHOULD_CHECKPOINT] = True``) flag
+within the :meth:`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback.
+In contrast to checkpointing within the Trainable Class API, this approach decouples checkpointing logic from
+the training logic, and provides access to all :class:`Trial <ray.tune.Trial>` instances allowing for more
+complex checkpointing strategies.
+
+.. literalinclude:: /tune/doc_code/trial_checkpoint.py
+    :language: python
+    :start-after: __callback_api_checkpointing_start__
+    :end-before: __callback_api_checkpointing_end__
 
 
 Periodic Checkpointing
@@ -100,7 +121,7 @@ If you want a checkpoint to be created at the end of a trial, you can additional
 
 Configurations
 --------------
-Checkpointing can be configured through :class:`CheckpointConfig <ray.train.CheckpointConfig>`.
+Checkpointing can be configured through :class:`CheckpointConfig <ray.tune.CheckpointConfig>`.
 Some of the configurations do not apply to Function Trainable API, since checkpointing frequency
 is determined manually within the user-defined training loop. See the compatibility matrix below.
 
@@ -129,7 +150,7 @@ is determined manually within the user-defined training loop. See the compatibil
 
 
 Summary
-=======
+-------
 
 In this user guide, we covered how to save and load trial checkpoints in Tune. Once checkpointing is enabled,
 move onto one of the following guides to find out how to:

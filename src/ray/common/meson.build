@@ -1,12 +1,20 @@
-# === @begin: constants ===
-# header-only library
+# === @begin: constants_cpp_lib (@original: constants) ===
+# header-only
 constants_cpp_lib_dep = declare_dependency(
     sources: ['constants.h']
 )
-# === @end: constants ===
+# === @end: constants_cpp_lib (@original: constants) ===
 
 
-# === @begin: source_location_cpp_lib (original: source_location) ===
+# === @begin: macros_cpp_lib (@original: macros) ===
+# header-only
+macros_cpp_lib_dep = declare_dependency(
+    sources: ['macros.h']
+)
+# === @end: macros_cpp_lib (@original: macros) ===
+
+
+# === @begin: source_location_cpp_lib (@original: source_location) ===
 source_location_cpp_lib = static_library(
     'source_location_cpp_lib',
     ['source_location.cc'],
@@ -16,14 +24,20 @@ source_location_cpp_lib = static_library(
 source_location_cpp_lib_dep = declare_dependency(
     link_with: [source_location_cpp_lib]
 )
-# === @end: source_location_cpp_lib (original: source_location) ===
+# === @end: source_location_cpp_lib (@original: source_location) ===
 
 
-# === @begin: status_cpp_lib (original: status) ===
+# === @begin: status_cpp_lib (@original: status) ===
 status_cpp_lib_dependencies = [
     # Package-managed
+    macros_cpp_lib_dep,
+    source_location_cpp_lib_dep,
     util_cpp_lib_dep,
-    source_location_cpp_lib_dep
+
+    # Eugo-managed
+    boost_system,
+    absl_container_flat_hash_map,
+    absl_strings,
 ]
 
 status_cpp_lib = static_library(
@@ -37,29 +51,41 @@ status_cpp_lib_dep = declare_dependency(
     link_with: [status_cpp_lib],
     dependencies: status_cpp_lib_dependencies
 )
-# === @end: status_cpp_lib (original: status) ===
+# === @end: status_cpp_lib (@original: status) ===
 
 
-# === @begin: id_cpp_lib (original: id) ===
+# === @begin: status_or_cpp_lib (@original: status_or) ===
+# header-only
+status_or_cpp_lib_dep = declare_dependency(
+    sources: ['status_or.h'],
+    dependencies: [
+        macros_cpp_lib_dep,
+        status_cpp_lib_dep,
+        logging_cpp_lib_dep,
+        absl_base_core_headers,
+    ]
+)
+# === @end: status_or_cpp_lib (@original: status_or) ===
+
+
+# === @begin: id_cpp_lib (@original: id) ===
 id_cpp_lib_dependencies = [
-    # Project-managed
+    # Package-managed
     constants_cpp_lib_dep,
     status_cpp_lib_dep,
     common_proto_cpp_lib_dep,
-    gcs_proto_cpp_lib_dep,
-    util_cpp_lib_dep,
+    sha256_cpp_lib_dep,
+    logging_cpp_lib_dep,
+    random_cpp_lib_dep,
+    visibility_cpp_lib_dep,
 
     # Eugo-managed
-    flatbuffers,
-    msgpack_cxx
+    msgpack_cxx,
 ]
 
 id_cpp_lib = static_library(
     'id_cpp_lib',
-    [
-        'id.cc',
-        'common_protocol.cc'
-    ],
+    ['id.cc'],
     install: false,
     dependencies: id_cpp_lib_dependencies
 )
@@ -68,21 +94,36 @@ id_cpp_lib_dep = declare_dependency(
     link_with: [id_cpp_lib],
     dependencies: id_cpp_lib_dependencies
 )
-# === @end: id_cpp_lib (original: id) ===
+# === @end: id_cpp_lib (@original: id) ===
 
 
-# === @begin: ray_object_cpp_lib (original: c) ===
+# === @begin: buffer_cpp_lib (@original: buffer) ===
+# header-only
+buffer_cpp_lib_dependencies = [
+        status_cpp_lib_dep,
+        aligned_alloc_cpp_lib_dep,
+        logging_cpp_lib_dep,
+]
+
+buffer_cpp_lib_dep = declare_dependency(
+    sources: ['buffer.h'],
+    dependencies: buffer_cpp_lib_dependencies
+)
+# === @end: buffer_cpp_lib (@original: buffer) ===
+
+
+# === @begin: ray_object_cpp_lib (@original: ray_object) ===
 ray_object_cpp_lib_dependencies = [
     # Package-managed
+    buffer_cpp_lib_dep,
     id_cpp_lib_dep,
-    status_cpp_lib_dep,
-    aligned_alloc_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
-    util_cpp_lib_dep,
+    logging_cpp_lib_dep,
 
     # Eugo-managed
     absl_time,
-    absl_types_optional
+    absl_types_optional,
+    msgpack_cxx,
 ]
 
 ray_object_cpp_lib = static_library(
@@ -96,18 +137,18 @@ ray_object_cpp_lib_dep = declare_dependency(
     link_with: [ray_object_cpp_lib],
     dependencies: ray_object_cpp_lib_dependencies
 )
-# === @end: ray_object_cpp_lib (original: c) ===
+# === @end: ray_object_cpp_lib (@original: ray_object) ===
 
 
-# === @begin: ray_config_cpp_lib (original: ray_config) ===
+# === @begin: ray_config_cpp_lib (@original: ray_config) ===
 ray_config_cpp_lib_dependencies = [
     # Package-managed
-    util_cpp_lib_dep,
+    logging_cpp_lib_dep,
 
     # Eugo-managed
-    absl_algorithm,
+    boost_algorithm,                # @boost//:algorithm
     absl_strings,
-    nlohmann_json
+    nlohmann_json,
 ]
 
 ray_config_cpp_lib = static_library(
@@ -121,35 +162,61 @@ ray_config_cpp_lib_dep = declare_dependency(
     link_with: [ray_config_cpp_lib],
     dependencies: ray_config_cpp_lib_dependencies
 )
-# === @end: ray_config_cpp_lib (original: ray_config) ===
+# === @end: ray_config_cpp_lib (@original: ray_config) ===
 
 
-# === @begin: grpc_util (originial: grpc_util) ===
+# === @begin: grpc_util_cpp_lib (@original: grpc_util) ===
 # header-only
 grpc_util_cpp_lib_dep = declare_dependency(
+    sources: ['grpc_util.h'],
     dependencies: [
         # Package-managed
         ray_config_cpp_lib_dep,
         status_cpp_lib_dep,
+        logging_cpp_lib_dep,
+        type_traits_cpp_lib_dep,
 
         # Eugo-managed
         grpc,
-        absl_container_flat_hash_map
+        absl_container_flat_hash_map,
     ]
 )
-# === @end: grpc_util (originial: grpc_util) ===
+# === @end: grpc_util_cpp_lib (@original: grpc_util) ===
 
 
-# === @begin: event_stats_cpp_lib (original: event_stats) ===
+# === @begin: flatbuf_utils_cpp_lib (@original: flatbuf_utils) ===
+# header-only
+flatbuf_utils_cpp_lib_dep = declare_dependency(
+    sources: ['flatbuf_utils.h'],
+    dependencies: [flatbuffers]
+)
+# === @end: flatbuf_utils_cpp_lib (@original: flatbuf_utils) ===
+
+
+# === @begin: python_callbacks_cpp_lib (@original: python_callbacks) ===
+# header-only
+python_callbacks_cpp_lib_dep = declare_dependency(
+    sources: ['python_callbacks.h']
+)
+# === @end: python_callbacks_cpp_lib (@original: python_callbacks) ===
+
+
+# === @begin: metrics_cpp_lib (@original: metrics) ===
+# header-only
+metrics_cpp_lib_dep = declare_dependency(
+    sources: ['metrics.h'],
+    dependencies: [stats_metric_cpp_lib_dep]
+)
+# === @end: metrics_cpp_lib (@original: metrics) ===
+
+
+# === @begin: event_stats_cpp_lib (@original: event_stats) ===
 event_stats_cpp_lib_dependencies = [
     # Package-managed
+    metrics_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     stats_metric_cpp_lib_dep,
-    util_cpp_lib_dep,
-
-    # Eugo-managed
-    absl_container_flat_hash_map,
-    absl_synchronization
+    time_cpp_lib_dep,
 ]
 
 event_stats_cpp_lib = static_library(
@@ -163,49 +230,160 @@ event_stats_cpp_lib_dep = declare_dependency(
     link_with: [event_stats_cpp_lib],
     dependencies: event_stats_cpp_lib_dependencies
 )
-# === @end: event_stats (original: event_stats) ===
+# === @end: event_stats_cpp_lib (@original: event_stats) ===
 
 
-# === @begin: asio/ ===
-subdir('asio')
-# === @end: asio/ ===
+# === @begin: asio_cpp_lib (@original: asio) ===
+asio_cpp_lib_dependencies = [
+    # Package-managed
+    event_stats_cpp_lib_dep,
+    metrics_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+    array_cpp_lib_dep,
+
+    # Eugo-managed
+    boost_asio,
+    absl_container_flat_hash_map,
+    absl_synchronization,
+]
+
+asio_cpp_lib = static_library(
+    'asio_cpp_lib',
+    [
+        'asio/asio_chaos.cc',
+        'asio/instrumented_io_context.cc',
+        'asio/io_service_pool.cc',
+        'asio/periodical_runner.cc',
+    ],
+    install: false,
+    dependencies: asio_cpp_lib_dependencies
+)
+
+asio_cpp_lib_dep = declare_dependency(
+    link_with: [asio_cpp_lib],
+    dependencies: asio_cpp_lib_dependencies
+)
+# === @end: asio_cpp_lib (@original: asio) ===
 
 
-# === @begin: memory_monitor_cpp_lib (original: memory_monitor) ===
-memory_monitor_cpp_lib_dependencies = [
+# === @begin: memory_monitor_interface_cpp_lib (@original: memory_monitor_interface) ===
+# header-only
+memory_monitor_interface_cpp_lib_dep = declare_dependency(
+    sources: ['memory_monitor_interface.h'],
+    dependencies: [
+        compat_cpp_lib_dep,
+        absl_container_flat_hash_map,
+    ]
+)
+# === @end: memory_monitor_interface_cpp_lib (@original: memory_monitor_interface) ===
+
+
+# === @begin: memory_monitor_utils_cpp_lib (@original: memory_monitor_utils) ===
+memory_monitor_utils_cpp_lib_dependencies = [
+    # Package-managed
+    memory_monitor_interface_cpp_lib_dep,
+    compat_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    boost_algorithm,                # @boost//:algorithm
+    absl_strings,
+    # @com_google_googletest//:gtest_prod — handled by vendored stub
+]
+
+memory_monitor_utils_cpp_lib = static_library(
+    'memory_monitor_utils_cpp_lib',
+    ['memory_monitor_utils.cc'],
+    install: false,
+    dependencies: memory_monitor_utils_cpp_lib_dependencies
+)
+
+memory_monitor_utils_cpp_lib_dep = declare_dependency(
+    link_with: [memory_monitor_utils_cpp_lib],
+    dependencies: memory_monitor_utils_cpp_lib_dependencies
+)
+# === @end: memory_monitor_utils_cpp_lib (@original: memory_monitor_utils) ===
+
+
+# === @begin: threshold_memory_monitor_cpp_lib (@original: threshold_memory_monitor) ===
+# NOTE: In Bazel this target has target_compatible_with = ["@platforms//os:linux"],
+# but the code compiles fine on all platforms via #ifdefs.
+threshold_memory_monitor_cpp_lib_dependencies = [
     # Package-managed
     asio_cpp_lib_dep,
-    ray_config_cpp_lib_dep,
-    util_cpp_lib_dep,
+    memory_monitor_interface_cpp_lib_dep,
+    memory_monitor_utils_cpp_lib_dep,
+    logging_cpp_lib_dep,
+    thread_utils_cpp_lib_dep,
 
     # Eugo-managed
     absl_strings,
-    #"@com_google_googletest//:gtest_prod",
-    nlohmann_json
 ]
 
-memory_monitor_cpp_lib = static_library(
-    'memory_monitor_cpp_lib',
-    ['memory_monitor.cc'],
+threshold_memory_monitor_cpp_lib = static_library(
+    'threshold_memory_monitor_cpp_lib',
+    ['threshold_memory_monitor.cc'],
     install: false,
-    dependencies: memory_monitor_cpp_lib_dependencies
+    dependencies: threshold_memory_monitor_cpp_lib_dependencies
 )
 
-memory_monitor_cpp_lib_dep = declare_dependency(
-    link_with: [memory_monitor_cpp_lib],
-    dependencies: memory_monitor_cpp_lib_dependencies
+threshold_memory_monitor_cpp_lib_dep = declare_dependency(
+    link_with: [threshold_memory_monitor_cpp_lib],
+    dependencies: threshold_memory_monitor_cpp_lib_dependencies
 )
-# === @end: memory_monitor_cpp_lib (original: memory_monitor) ===
+# === @end: threshold_memory_monitor_cpp_lib (@original: threshold_memory_monitor) ===
 
 
-# === @begin: file_system_monitor_cpp_lib (original: file_system_monitor) ===
+# === @begin: noop_memory_monitor_cpp_lib (@original: noop_memory_monitor) ===
+# header-only
+noop_memory_monitor_cpp_lib_dep = declare_dependency(
+    sources: ['noop_memory_monitor.h'],
+    dependencies: [memory_monitor_interface_cpp_lib_dep]
+)
+# === @end: noop_memory_monitor_cpp_lib (@original: noop_memory_monitor) ===
+
+
+# === @begin: memory_monitor_factory_cpp_lib (@original: memory_monitor_factory) ===
+# NOTE: Bazel uses select() to choose threshold_memory_monitor_factory.cc on Linux
+# and noop_memory_monitor_factory.cc on non-Linux. We compile both on all platforms
+# since the code compiles cleanly everywhere, matching the previous consolidated target.
+memory_monitor_factory_cpp_lib_dependencies = [
+    # Package-managed
+    memory_monitor_interface_cpp_lib_dep,
+    noop_memory_monitor_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+    threshold_memory_monitor_cpp_lib_dep,
+    logging_cpp_lib_dep,
+]
+
+memory_monitor_factory_cpp_lib = static_library(
+    'memory_monitor_factory_cpp_lib',
+    [
+        'threshold_memory_monitor_factory.cc',
+        'noop_memory_monitor_factory.cc',
+    ],
+    install: false,
+    dependencies: memory_monitor_factory_cpp_lib_dependencies
+)
+
+memory_monitor_factory_cpp_lib_dep = declare_dependency(
+    link_with: [memory_monitor_factory_cpp_lib],
+    dependencies: memory_monitor_factory_cpp_lib_dependencies
+)
+# === @end: memory_monitor_factory_cpp_lib (@original: memory_monitor_factory) ===
+
+
+# === @begin: cgroup2/ ===
+subdir('cgroup2')
+# === @end: cgroup2/ ===
+
+
+# === @begin: file_system_monitor_cpp_lib (@original: file_system_monitor) ===
 file_system_monitor_cpp_lib_dependencies = [
     # Package-managed
     asio_cpp_lib_dep,
-    util_cpp_lib_dep,
-
-    # Eugo-managed
-    #    "@com_google_googletest//:gtest_prod",
+    event_cpp_lib_dep,
+    # @com_google_googletest//:gtest_prod — handled by vendored stub
 ]
 
 file_system_monitor_cpp_lib = static_library(
@@ -219,17 +397,17 @@ file_system_monitor_cpp_lib_dep = declare_dependency(
     link_with: [file_system_monitor_cpp_lib],
     dependencies: file_system_monitor_cpp_lib_dependencies
 )
-# === @end: file_system_monitor_cpp_lib (original: file_system_monitor) ===
+# === @end: file_system_monitor_cpp_lib (@original: file_system_monitor) ===
 
 
-# === @begin: runtime_env_cpp_lib (original: runtime_env) ===
+# === @begin: runtime_env_cpp_lib (@original: runtime_env) ===
 runtime_env_cpp_lib_dependencies = [
     # Package-managed
     id_cpp_lib_dep,
     common_proto_cpp_lib_dep,
 
     # Eugo-managed
-    absl_container_flat_hash_map
+    absl_container_flat_hash_map,
 ]
 
 runtime_env_cpp_lib = static_library(
@@ -243,74 +421,185 @@ runtime_env_cpp_lib_dep = declare_dependency(
     link_with: [runtime_env_cpp_lib],
     dependencies: runtime_env_cpp_lib_dependencies
 )
-# === @end: runtime_env_cpp_lib (original: runtime_env) ===
+# === @end: runtime_env_cpp_lib (@original: runtime_env) ===
 
 
-# === @begin: ray_syncer ===
-subdir('ray_syncer/')
-# === @end: ray_syncer ===
+# NOTE: ray_syncer moved to top-level src/ray/ray_syncer/ during upstream restructure
+# NOTE: network_cpp_lib removed — client_connection.cc moved to raylet_ipc_client/, network_util.cc moved to util/
 
 
-# === @begin: network_cpp_lib (original: network) ===
-network_cpp_lib_dependencies = [
+# === @begin: function_descriptor_cpp_lib (@original: function_descriptor) ===
+function_descriptor_cpp_lib_dependencies = [
     # Package-managed
-    asio_cpp_lib_dep,
-    id_cpp_lib_dep,
-    status_cpp_lib_dep,
-    node_manager_cpp_fbs_lib_dep
+    grpc_util_cpp_lib_dep,
+    common_proto_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_strings,                   # includes str_format
 ]
 
-network_cpp_lib = static_library(
-    'network_cpp_lib',
-    [
-        'client_connection.cc',
-        'network_util.cc'
-    ],
+function_descriptor_cpp_lib = static_library(
+    'function_descriptor_cpp_lib',
+    ['function_descriptor.cc'],
     install: false,
-    dependencies: network_cpp_lib_dependencies
+    dependencies: function_descriptor_cpp_lib_dependencies
 )
 
-network_cpp_lib_dep = declare_dependency(
-    link_with: [network_cpp_lib],
-    dependencies: network_cpp_lib_dependencies
+function_descriptor_cpp_lib_dep = declare_dependency(
+    link_with: [function_descriptor_cpp_lib],
+    dependencies: function_descriptor_cpp_lib_dependencies
 )
-# === @end: network_cpp_lib (original: network) ===
+# === @end: function_descriptor_cpp_lib (@original: function_descriptor) ===
 
 
-# === @begin: task_common_cpp_lib (original: task_common) ===
+# === @begin: scheduling/ ===
+subdir('scheduling')
+# === @end: scheduling/ ===
+
+
+# === @begin: bundle_spec_cpp_lib (@original: bundle_spec) ===
+bundle_spec_cpp_lib_dependencies = [
+    # Package-managed
+    grpc_util_cpp_lib_dep,
+    id_cpp_lib_dep,
+    cluster_resource_data_cpp_lib_dep,
+    label_selector_cpp_lib_dep,
+    placement_group_util_cpp_lib_dep,
+    scheduling_ids_cpp_lib_dep,
+    common_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    protobuf,
+]
+
+bundle_spec_cpp_lib = static_library(
+    'bundle_spec_cpp_lib',
+    ['bundle_spec.cc'],
+    install: false,
+    dependencies: bundle_spec_cpp_lib_dependencies
+)
+
+bundle_spec_cpp_lib_dep = declare_dependency(
+    link_with: [bundle_spec_cpp_lib],
+    dependencies: bundle_spec_cpp_lib_dependencies
+)
+# === @end: bundle_spec_cpp_lib (@original: bundle_spec) ===
+
+
+# === @begin: placement_group_cpp_lib (@original: placement_group) ===
+placement_group_cpp_lib_dependencies = [
+    # Package-managed
+    bundle_spec_cpp_lib_dep,
+    id_cpp_lib_dep,
+    common_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    protobuf,
+]
+
+placement_group_cpp_lib = static_library(
+    'placement_group_cpp_lib',
+    ['placement_group.cc'],
+    install: false,
+    dependencies: placement_group_cpp_lib_dependencies
+)
+
+placement_group_cpp_lib_dep = declare_dependency(
+    link_with: [placement_group_cpp_lib],
+    dependencies: placement_group_cpp_lib_dependencies
+)
+# === @end: placement_group_cpp_lib (@original: placement_group) ===
+
+
+# === @begin: bundle_location_index_cpp_lib (@original: bundle_location_index) ===
+bundle_location_index_cpp_lib_dependencies = [
+    # Package-managed
+    id_cpp_lib_dep,
+    placement_group_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
+bundle_location_index_cpp_lib = static_library(
+    'bundle_location_index_cpp_lib',
+    ['bundle_location_index.cc'],
+    install: false,
+    dependencies: bundle_location_index_cpp_lib_dependencies
+)
+
+bundle_location_index_cpp_lib_dep = declare_dependency(
+    link_with: [bundle_location_index_cpp_lib],
+    dependencies: bundle_location_index_cpp_lib_dependencies
+)
+# === @end: bundle_location_index_cpp_lib (@original: bundle_location_index) ===
+
+
+# === @begin: lease_cpp_lib (@original: lease) ===
+lease_cpp_lib_dependencies = [
+    # Package-managed
+    function_descriptor_cpp_lib_dep,
+    id_cpp_lib_dep,
+    runtime_env_cpp_lib_dep,
+    label_selector_cpp_lib_dep,
+    resource_set_cpp_lib_dep,
+    scheduling_class_util_cpp_lib_dep,
+    common_proto_cpp_lib_dep,
+]
+
+lease_cpp_lib = static_library(
+    'lease_cpp_lib',
+    ['lease/lease_spec.cc'],
+    install: false,
+    dependencies: lease_cpp_lib_dependencies
+)
+
+lease_cpp_lib_dep = declare_dependency(
+    link_with: [lease_cpp_lib],
+    dependencies: lease_cpp_lib_dependencies
+)
+# === @end: lease_cpp_lib (@original: lease) ===
+
+
+# === @begin: task_common_cpp_lib (@original: task_common) ===
 task_common_cpp_lib_dependencies = [
     # Package-managed
     event_stats_cpp_lib_dep,
+    function_descriptor_cpp_lib_dep,
     grpc_util_cpp_lib_dep,
-    id_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     ray_object_cpp_lib_dep,
     runtime_env_cpp_lib_dep,
+
+    # Scheduling
+    fallback_strategy_cpp_lib_dep,
+    label_selector_cpp_lib_dep,
+    resource_set_cpp_lib_dep,
+    scheduling_class_util_cpp_lib_dep,
+
+    # FlatBuffers
     node_manager_cpp_fbs_lib_dep,
-    util_cpp_lib_dep,
+
+    # Util
+    container_util_cpp_lib_dep,
+
+    # NOTE: //src/ray/observability:metric_interface not available here
+    # (observability/ processed after common/ in src/ray/meson.build).
+    # Resolved at final link time via _raylet shared library.
 
     # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
     absl_strings,
-    absl_synchronization
 ]
 
 task_common_cpp_lib = static_library(
     'task_common_cpp_lib',
-    [
-        'bundle_location_index.cc',
-        'bundle_spec.cc',
-        'function_descriptor.cc',
-        'placement_group.cc',
-        'scheduling/cluster_resource_data.cc',
-        'scheduling/fixed_point.cc',
-        'scheduling/resource_instance_set.cc',
-        'scheduling/resource_set.cc',
-        'scheduling/scheduling_ids.cc',
-        'task/task.cc',
-        'task/task_spec.cc'
-    ],
+    ['task/task_spec.cc'],
     install: false,
     dependencies: task_common_cpp_lib_dependencies
 )
@@ -319,34 +608,67 @@ task_common_cpp_lib_dep = declare_dependency(
     link_with: [task_common_cpp_lib],
     dependencies: task_common_cpp_lib_dependencies
 )
-# === @end: task_common_cpp_lib (original: task_common) ===
+# === @end: task_common_cpp_lib (@original: task_common) ===
 
 
-# === @begin: ray_common_cpp_lib (original: runtime_env) ===
-ray_common_cpp_lib_dependencies = [
+# === @begin: protobuf_utils_cpp_lib (@original: protobuf_utils) ===
+protobuf_utils_cpp_lib_dependencies = [
     # Package-managed
-    stats_metric_cpp_lib_dep,
-    asio_cpp_lib_dep,
     constants_cpp_lib_dep,
-    event_stats_cpp_lib_dep,
-    file_system_monitor_cpp_lib_dep,
-    grpc_util_cpp_lib_dep,
     id_cpp_lib_dep,
-    memory_monitor_cpp_lib_dep,
-    network_cpp_lib_dep,
     ray_config_cpp_lib_dep,
-    ray_syncer_cpp_lib_dep,
-    status_cpp_lib_dep,
     task_common_cpp_lib_dep,
-    #    "//src/ray/common:test_util",
+    autoscaler_proto_cpp_lib_dep,
+    export_task_event_proto_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
+    time_cpp_lib_dep,
 
     # Eugo-managed
-    #    "@com_google_googletest//:gtest",
+    absl_time,
 ]
 
-# Header-only guy? Or even virtual dependency? meh
-ray_common_cpp_lib_dep = declare_dependency(
-    dependencies: ray_common_cpp_lib_dependencies
+protobuf_utils_cpp_lib = static_library(
+    'protobuf_utils_cpp_lib',
+    ['protobuf_utils.cc'],
+    install: false,
+    dependencies: protobuf_utils_cpp_lib_dependencies
 )
-# === @end: ray_common_cpp_lib (original: ray_common) ===
+
+protobuf_utils_cpp_lib_dep = declare_dependency(
+    link_with: [protobuf_utils_cpp_lib],
+    dependencies: protobuf_utils_cpp_lib_dependencies
+)
+# === @end: protobuf_utils_cpp_lib (@original: protobuf_utils) ===
+
+
+# === @begin: ray_common_cpp_lib (@original: ray_common) ===
+# Umbrella dependency that aggregates all common/ sub-targets.
+ray_common_cpp_lib_dep = declare_dependency(
+    dependencies: [
+        buffer_cpp_lib_dep,
+        bundle_location_index_cpp_lib_dep,
+        bundle_spec_cpp_lib_dep,
+        constants_cpp_lib_dep,
+        event_stats_cpp_lib_dep,
+        file_system_monitor_cpp_lib_dep,
+        flatbuf_utils_cpp_lib_dep,
+        grpc_util_cpp_lib_dep,
+        id_cpp_lib_dep,
+        lease_cpp_lib_dep,
+        macros_cpp_lib_dep,
+        memory_monitor_factory_cpp_lib_dep,
+        memory_monitor_interface_cpp_lib_dep,
+        metrics_cpp_lib_dep,
+        noop_memory_monitor_cpp_lib_dep,
+        placement_group_cpp_lib_dep,
+        protobuf_utils_cpp_lib_dep,
+        python_callbacks_cpp_lib_dep,
+        ray_config_cpp_lib_dep,
+        ray_object_cpp_lib_dep,
+        runtime_env_cpp_lib_dep,
+        status_cpp_lib_dep,
+        status_or_cpp_lib_dep,
+        task_common_cpp_lib_dep,
+    ]
+)
+# === @end: ray_common_cpp_lib (@original: ray_common) ===

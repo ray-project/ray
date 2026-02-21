@@ -21,7 +21,7 @@ Use this option only if you face problems with the first option
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 You can switch on the fault tolerant behavior (1) (restart_failed_sub_environments)
 through the `--restart-failed-envs` flag. If this flag is not set, the script will
@@ -82,7 +82,7 @@ from ray.rllib.examples.envs.classes.cartpole_crashing import (
     CartPoleCrashing,
     MultiAgentCartPoleCrashing,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
@@ -92,9 +92,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=2000000,
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_env_runners=4,
-    num_envs_per_env_runner=2,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.

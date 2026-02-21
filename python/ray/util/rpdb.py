@@ -17,9 +17,8 @@ import uuid
 from pdb import Pdb
 from typing import Callable
 
-import setproctitle
-
 import ray
+from ray._common.network_utils import build_address, is_ipv6
 from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
@@ -43,7 +42,9 @@ class _LF2CRLF_FileWrapper(object):
         self.flush = fh.flush
         self.fileno = fh.fileno
         if hasattr(fh, "encoding"):
-            self._send = lambda data: connection.sendall(data.encode(fh.encoding))
+            self._send = lambda data: connection.sendall(
+                data.encode(fh.encoding, errors="replace")
+            )
         else:
             self._send = connection.sendall
 
@@ -102,7 +103,9 @@ class _RemotePdb(Pdb):
         self._breakpoint_uuid = breakpoint_uuid
         self._quiet = quiet
         self._patch_stdstreams = patch_stdstreams
-        self._listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listen_socket = socket.socket(
+            socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+        )
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         self._listen_socket.bind((host, port))
         self._ip_address = ip_address
@@ -110,14 +113,14 @@ class _RemotePdb(Pdb):
     def listen(self):
         if not self._quiet:
             _cry(
-                "RemotePdb session open at %s:%s, "
+                "RemotePdb session open at %s, "
                 "use 'ray debug' to connect..."
-                % (self._ip_address, self._listen_socket.getsockname()[1])
+                % build_address(self._ip_address, self._listen_socket.getsockname()[1])
             )
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
         if not self._quiet:
-            _cry("RemotePdb accepted connection from %s." % repr(address))
+            _cry(f"RemotePdb accepted connection from {address}")
         self.handle = _LF2CRLF_FileWrapper(connection)
         Pdb.__init__(
             self,
@@ -249,10 +252,10 @@ def _connect_ray_pdb(
         quiet=quiet,
     )
     sockname = rdb._listen_socket.getsockname()
-    pdb_address = "{}:{}".format(ip_address, sockname[1])
+    pdb_address = build_address(ip_address, sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
-        "proctitle": setproctitle.getproctitle(),
+        "proctitle": ray._raylet.getproctitle(),
         "pdb_address": pdb_address,
         "filename": parentframeinfo.filename,
         "lineno": parentframeinfo.lineno,
@@ -342,16 +345,31 @@ def _post_mortem():
 
 
 def _connect_pdb_client(host, port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if sys.platform == "win32":
+        import msvcrt
+
+    s = socket.socket(
+        socket.AF_INET6 if is_ipv6(host) else socket.AF_INET, socket.SOCK_STREAM
+    )
     s.connect((host, port))
 
     while True:
         # Get the list of sockets which are readable.
-        read_sockets, write_sockets, error_sockets = select.select(
-            [sys.stdin, s], [], []
-        )
+        if sys.platform == "win32":
+            ready_to_read = select.select([s], [], [], 1)[0]
+            if msvcrt.kbhit():
+                ready_to_read.append(sys.stdin)
+            if not ready_to_read and not sys.stdin.isatty():
+                # in tests, when using pexpect, the pipe makes
+                # the msvcrt.kbhit() trick fail. Assume we are waiting
+                # for stdin, since this will block waiting for input
+                ready_to_read.append(sys.stdin)
+        else:
+            ready_to_read, write_sockets, error_sockets = select.select(
+                [sys.stdin, s], [], []
+            )
 
-        for sock in read_sockets:
+        for sock in ready_to_read:
             if sock == s:
                 # Incoming message from remote debugger.
                 data = sock.recv(4096)

@@ -1,6 +1,8 @@
-import click
-import ray
 import sys
+
+import click
+
+import ray
 
 
 @click.command()
@@ -10,12 +12,12 @@ def main(ray_version, ray_commit):
     print("Sanity check python version: {}".format(sys.version))
     assert (
         ray_version == ray.__version__
-    ), "Given Ray version {} is not matching with downloaded " "version {}".format(
+    ), "Given Ray version {} is not matching with downloaded version {}".format(
         ray_version, ray.__version__
     )
     assert (
         ray_commit == ray.__commit__
-    ), "Given Ray commit {} is not matching with downloaded " "version {}".format(
+    ), "Given Ray commit {} is not matching with downloaded version {}".format(
         ray_commit, ray.__commit__
     )
     assert ray.__file__ is not None

@@ -17,16 +17,10 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <string.h>
+#include <cstddef>
+#include <cstring>
 
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-
-#include "ray/object_manager/plasma/compat.h"
+#include "ray/util/compat.h"
 
 namespace plasma {
 

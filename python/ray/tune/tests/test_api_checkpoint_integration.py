@@ -6,14 +6,12 @@ from pathlib import Path
 import pytest
 
 import ray
-from ray import train
-from ray.air import ScalingConfig
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager
-from ray.train import CheckpointConfig
+from ray.train import ScalingConfig
 from ray.train._internal.storage import StorageContext
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Trainable, register_trainable
+from ray.tune import CheckpointConfig, Trainable, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 
@@ -27,6 +25,7 @@ def ray_start_4_cpus_2_gpus_extra():
     ray.shutdown()
 
 
+# TODO: [V2] Delete the `data_parallel` variant once V1 is fully removed.
 @pytest.mark.parametrize("trainable_type", ["class", "function", "data_parallel"])
 @pytest.mark.parametrize("patch_iter", [False, True])
 def test_checkpoint_freq_dir_name(
@@ -77,12 +76,14 @@ def test_checkpoint_freq_dir_name(
                 if step > 0 and step % 3 == 0:
                     with tempfile.TemporaryDirectory() as checkpoint_dir:
                         (Path(checkpoint_dir) / "data.ckpt").write_text(str(step))
-                        train.report(
+                        ray.tune.report(
                             {"step": step},
-                            checkpoint=train.Checkpoint.from_directory(checkpoint_dir),
+                            checkpoint=ray.tune.Checkpoint.from_directory(
+                                checkpoint_dir
+                            ),
                         )
                 else:
-                    train.report({"step": step})
+                    ray.tune.report({"step": step})
 
         if trainable_type == "function":
             register_trainable("test_checkpoint_freq", train_fn)

@@ -1,14 +1,51 @@
 group: reef tests
+depends_on:
+  - forge
 steps:
+  - label: ":test_tube: test-rules"
+    key: test-rules
+    commands:
+      - curl -sfL "https://raw.githubusercontent.com/ray-project/rayci/stable/run_rayci.sh" | bash -s -- test-rules
+    instance_type: small
+    tags:
+      - tools
+      - always
   - label: ":coral: reef: ci+release tooling tests"
     key: reef-tests
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //ci/ray_ci/... //release/... ci
+      - bazel run //ci/ray_ci:test_in_docker --
+          //ci/ray_ci/... //release/... //ci/pipeline/... ci
           --only-tags=release_unit,ci_unit
-          --parallelism-per-worker 2
-          --build-name oss-ci-base_test
+          --cache-test-results --parallelism-per-worker 2
+          --build-name forge
           --build-type skip
     instance_type: small
-    depends_on:
-      - oss-ci-base_test
-      - forge
+    tags: tools
+  - label: ":coral: reef: raydepsets tests"
+    key: raydepsets-tests
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker --
+          //ci/raydepsets/... ci
+          --cache-test-results
+          --build-name forge
+          --build-type skip
+    instance_type: small
+    tags: tools
+  - label: ":coral: reef: privileged container tests"
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker --
+          //ci/ray_ci:test_privileged ci
+          --cache-test-results
+          --build-name oss-ci-base_test-py3.10
+          --build-type cgroup
+          --privileged
+    instance_type: small
+    depends_on: oss-ci-base_test-multipy
+    tags: tools
+  - label: ":coral: reef: iwyu tests"
+    commands:
+      - bazel test --config iwyu //bazel/tests/cpp:example_test
+    instance_type: small
+    depends_on: oss-ci-base_build-multipy
+    job_env: oss-ci-base_build-py3.10
+    tags: tools

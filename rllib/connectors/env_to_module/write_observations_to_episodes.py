@@ -119,9 +119,9 @@ class WriteObservationsToEpisodes(ConnectorV2):
         for sa_episode, obs in self.single_agent_episode_iterator(
             episodes=episodes, zip_with_batch_column=observations
         ):
-            # Make sure episodes are NOT finalized yet (we are expecting to run in an
+            # Make sure episodes are NOT numpy'ized yet (we are expecting to run in an
             # env-to-module pipeline).
-            assert not sa_episode.is_finalized
+            assert not sa_episode.is_numpy
             # Write new information into the episode.
             sa_episode.set_observations(at_indices=-1, new_data=obs)
             # Change the observation space of the sa_episode.

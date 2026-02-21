@@ -17,7 +17,9 @@ This section discusses concepts from:
 (serve-e2e-ft-guide)=
 ## Guide: end-to-end fault tolerance for your Serve app
 
-Serve provides some [fault tolerance](serve-ft-detail) features out of the box. You can provide end-to-end fault tolerance by tuning these features and running Serve on top of [KubeRay].
+Serve provides some [fault tolerance](serve-ft-detail) features out of the box. Two options to get end-to-end fault tolerance are the following:
+* tune these features and run Serve on top of [KubeRay]
+* use the [Anyscale platform](https://docs.anyscale.com/platform/services/head-node-ft?utm_source=ray_docs&utm_medium=docs&utm_campaign=tolerance), a managed Ray platform
 
 ### Replica health-checking
 
@@ -33,6 +35,34 @@ You can also use the deployment options to customize how frequently Serve runs t
 :start-after: __health_check_start__
 :end-before: __health_check_end__
 :language: python
+```
+
+In this example, `check_health` raises an error if the connection to an external database is lost. The Serve controller periodically calls this method on each replica of the deployment. If the method raises an exception for a replica, Serve marks that replica as unhealthy and restarts it. Health checks are configured and performed on a per-replica basis.
+
+:::{note}
+You shouldn't call ``check_health`` directly through a deployment handle (e.g., ``await deployment_handle.check_health.remote()``). This would invoke the health check on a single, arbitrary replica. The ``check_health`` method is designed as an interface for the Serve controller, not for direct user calls.
+:::
+
+:::{note}
+In a composable deployment graph, each deployment is responsible for its own health, independent of the other deployments it's bound to. For example, in an application defined by ``app = ParentDeployment.bind(ChildDeployment.bind())``, ``ParentDeployment`` doesn't restart if ``ChildDeployment`` replicas fail their health checks. When the ``ChildDeployment`` replicas recover, the handle in ``ParentDeployment`` updates automatically to route requests to the healthy replicas.
+:::
+
+### Replica constructor retries
+
+When a replica's constructor (the `__init__` method) fails, Ray Serve automatically retries creating the replica. You can configure this behavior in two ways:
+
+- **Per-deployment**: Use the `max_constructor_retry_count` option in `@serve.deployment()` to set the maximum retries for that deployment. Default is `20`.
+- **Per-replica**: Use the `RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT` environment variable to limit retries per replica. Default is `3`.
+
+The total maximum constructor retries for a deployment is `min(num_replicas * RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)`.
+
+For example:
+
+```python
+# Set max constructor retries for this deployment
+@serve.deployment(max_constructor_retry_count=10)
+class MyDeployment:
+    ...
 ```
 
 ### Worker node recovery

@@ -37,8 +37,9 @@ python/ray/autoscaler/kuberay/config
 
 # Python byte code files
 *.pyc
+__pycache__/
 python/.eggs
-
+.eggs
 # Backup files
 *.bak
 
@@ -126,6 +127,8 @@ scripts/nodes.txt
 .idea/**/tasks.xml
 .idea/dictionaries
 .llvm-local.bazelrc
+.user.bazelrc
+.aider*
 
 # Sensitive or high-churn files:
 .idea/**/dataSources/
@@ -151,6 +154,10 @@ scripts/nodes.txt
 **/.cache
 .benchmarks
 python-driver-*
+
+# Ray Train unit test artifacts
+lightning_logs/
+hf-internal-testing/
 
 # Vscode
 .vscode/
@@ -180,6 +187,7 @@ java/**/pom.xml
 # python virtual env
 venv
 .venv
+.conda
 
 # pyenv version file
 .python-version
@@ -238,3 +246,8 @@ tag-mapping.json
 eugo_build
 eugo_build_whl
 .mesonpy*
+# Custom BYOD build rayci yaml file
+.buildkite/release/custom_byod_build.rayci.yml
+
+# Claude files
+/.claude/

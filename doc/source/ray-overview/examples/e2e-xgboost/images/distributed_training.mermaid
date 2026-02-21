@@ -1,0 +1,25 @@
+flowchart LR
+ subgraph Ray_Data["Ray Data"]
+    direction TB
+        C["Batch Preprocessing<br>CPU"]
+        B["Distributed Read<br>CPU"]
+  end
+ subgraph XGBoost_Training["Ray Train"]
+    direction TB
+        T["XGBoost Training<br>GPU"]
+  end
+    A[("Data Source")] -- parallel read --> B
+    B -- parallel batches --> C
+    C -- parallel shards --> T
+    T --> E[("Artifact Storage")]
+
+    C@{ shape: processes}
+    B@{ shape: processes}
+    T@{ shape: processes}
+    style C fill:#C8E6C9
+    style B fill:#C8E6C9
+    style T fill:#E1BEE7
+    style A fill:#BBDEFB
+    style E fill:#BBDEFB
+    style Ray_Data fill:#757575
+    style XGBoost_Training fill:#757575

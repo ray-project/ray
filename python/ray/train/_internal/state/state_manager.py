@@ -1,11 +1,11 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import ray
-from ray.data import Dataset
 from ray.train._internal.state.schema import (
+    ActorStatusEnum,
     RunStatusEnum,
     TrainDatasetInfo,
     TrainRunInfo,
@@ -13,6 +13,9 @@ from ray.train._internal.state.schema import (
 )
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +37,10 @@ class TrainRunStateManager:
         run_name: str,
         run_status: str,
         controller_actor_id: str,
-        datasets: Dict[str, Dataset],
+        datasets: Dict[str, "Dataset"],
         worker_group: WorkerGroup,
         start_time_ms: float,
+        resources: List[Dict[str, float]],
         status_detail: str = "",
     ) -> None:
         """Collect Train Run Info and report to StateActor."""
@@ -50,7 +54,6 @@ class TrainRunStateManager:
         def collect_train_worker_info():
             train_context = ray.train.get_context()
             core_context = ray.runtime_context.get_runtime_context()
-
             return TrainWorkerInfo(
                 world_rank=train_context.get_world_rank(),
                 local_rank=train_context.get_local_rank(),
@@ -60,6 +63,8 @@ class TrainRunStateManager:
                 node_ip=ray.util.get_node_ip_address(),
                 gpu_ids=ray.get_gpu_ids(),
                 pid=os.getpid(),
+                resources=resources[0],
+                status=ActorStatusEnum.ALIVE,
             )
 
         futures = [
@@ -97,6 +102,7 @@ class TrainRunStateManager:
             start_time_ms=start_time_ms,
             run_status=run_status,
             status_detail=status_detail,
+            resources=resources,
         )
 
         # Clear the cached info to avoid registering the same run twice

@@ -1,18 +1,16 @@
-import copy
 import logging
 import threading
 import time
-from dataclasses import replace
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.interfaces import (
+    NodeIdStr,
+    RefBundle,
+)
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag
-from ray.data.block import Block, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
@@ -21,7 +19,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data import Dataset
+    from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,6 @@ class StreamSplitDataIterator(DataIterator):
     def create(
         base_dataset: "Dataset",
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ) -> List["StreamSplitDataIterator"]:
         """Create a split iterator from the given base Dataset and options.
@@ -44,12 +41,13 @@ class StreamSplitDataIterator(DataIterator):
         See also: `Dataset.streaming_split`.
         """
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
+        # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
-            max_concurrency=n,
+            max_concurrency=n + 1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(base_dataset, n, equal, locality_hints)
+        ).remote(base_dataset, n, locality_hints)
 
         return [
             StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
@@ -70,27 +68,42 @@ class StreamSplitDataIterator(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool, None]:
         def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
-            future: ObjectRef[
-                Optional[ObjectRef[Block]]
-            ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
+            # Initial get with 0 prefetched bytes.
+            future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
+                cur_epoch, self._output_split_idx, 0
+            )
             while True:
-                block_ref_and_md: Optional[
-                    Tuple[ObjectRef[Block], BlockMetadata]
-                ] = ray.get(future)
+                block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
                     break
                 else:
-                    future = self._coord_actor.get.remote(
-                        cur_epoch, self._output_split_idx
+                    # Calculate prefetched bytes: BatchIterator's current prefetch
+                    # plus the block we just received (which will be added to
+                    # BatchIterator's sliding window when we yield it).
+                    prefetched_bytes = (
+                        self._iter_stats.iter_prefetched_bytes
+                        + block_ref_and_md.size_bytes()
                     )
-                    yield RefBundle(blocks=(block_ref_and_md,), owns_blocks=False)
+                    future = self._coord_actor.get.remote(
+                        cur_epoch,
+                        self._output_split_idx,
+                        prefetched_bytes,
+                    )
+                    yield RefBundle(
+                        blocks=block_ref_and_md.blocks,
+                        owns_blocks=False,
+                        schema=block_ref_and_md.schema,
+                    )
 
-        return gen_blocks(), self._iter_stats, False
+        self._base_dataset._plan._run_index += 1
+        # Return None for executor since StreamSplitDataIterator has its own
+        # mechanism for reporting prefetched bytes via SplitCoordinator.
+        return gen_blocks(), self._iter_stats, False, None
 
     def stats(self) -> str:
         """Implements DataIterator."""
@@ -108,16 +121,15 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         return self._base_dataset.schema()
 
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
+
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
 
     def _get_dataset_tag(self):
-        return create_dataset_tag(
-            self._base_dataset._plan._dataset_name,
-            self._base_dataset._uuid,
-            self._output_split_idx,
-        )
+        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
 
 
 @ray.remote(num_cpus=0)
@@ -132,20 +144,17 @@ class SplitCoordinator:
         self,
         dataset: "Dataset",
         n: int,
-        equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
-        # Automatically set locality with output to the specified location hints.
-        if locality_hints:
-            dataset.context.execution_options.locality_with_output = locality_hints
-            logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
         # Set current DataContext.
-        ray.data.DataContext._set_current(dataset.context)
+        # This needs to be a deep copy so that updates to the base dataset's
+        # context does not affect this process's global DataContext.
+        self._data_context = dataset.context.copy()
+        ray.data.DataContext._set_current(self._data_context)
 
         self._base_dataset = dataset
         self._n = n
-        self._equal = equal
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
         self._executor = None
@@ -155,23 +164,18 @@ class SplitCoordinator:
         self._unfinished_clients_in_epoch = n
         self._cur_epoch = -1
 
+        # Track prefetched bytes reported by each client (from BatchIterator).
+        # Guarded by self._lock.
+        self._client_prefetched_bytes: Dict[int, int] = {}
+
+        # Add a new stats field to track coordinator overhead
+        self._coordinator_overhead_s = 0.0
+
         def gen_epochs():
             while True:
-                executor = StreamingExecutor(
-                    copy.deepcopy(dataset.context.execution_options),
-                    create_dataset_tag(
-                        self._base_dataset._name, self._base_dataset._uuid
-                    ),
-                )
-                self._executor = executor
-
-                def add_split_op(dag):
-                    return OutputSplitter(dag, n, equal, locality_hints)
-
+                self._executor = self._base_dataset._plan.create_executor()
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    executor,
-                    dataset._plan,
-                    dag_rewrite=add_split_op,
+                    self._executor, dataset._plan
                 )
                 yield output_iterator
 
@@ -183,8 +187,14 @@ class SplitCoordinator:
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats()
-        return self._base_dataset._plan.stats()
+            stats = self._executor.get_stats()
+        else:
+            stats = self._base_dataset._plan.stats()
+
+        # Set the tracked overhead time
+        stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
+
+        return stats
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -198,11 +208,23 @@ class SplitCoordinator:
         return epoch_id
 
     def get(
-        self, epoch_id: int, output_split_idx: int
-    ) -> Optional[Tuple[ObjectRef[Block], BlockMetadata]]:
+        self,
+        epoch_id: int,
+        output_split_idx: int,
+        client_prefetched_bytes: int = 0,
+    ) -> Optional[RefBundle]:
         """Blocking get operation.
 
         This is intended to be called concurrently from multiple clients.
+
+        Args:
+            epoch_id: The epoch ID from start_epoch().
+            output_split_idx: The output split index for this client.
+            client_prefetched_bytes: The prefetched bytes reported by the
+                client's BatchIterator, used for resource accounting.
+
+        Returns:
+            The next RefBundle for this split, or None if the epoch is done.
         """
         start_time = time.perf_counter()
         if epoch_id != self._cur_epoch:
@@ -210,6 +232,7 @@ class SplitCoordinator:
                 "Invalid iterator: the dataset has moved on to another epoch."
             )
 
+        returned_normally = False
         try:
             # Ensure there is at least one bundle.
             with self._lock:
@@ -223,24 +246,73 @@ class SplitCoordinator:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
+            schema = next_bundle.schema
             block = next_bundle.blocks[-1]
-            next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
+            next_bundle = RefBundle(
+                blocks=next_bundle.blocks[:-1],
+                schema=next_bundle.schema,
+                owns_blocks=next_bundle.owns_blocks,
+                output_split_idx=next_bundle.output_split_idx,
+            )
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
                 self._next_bundle[output_split_idx] = next_bundle
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
+                # Update client prefetched bytes and report to resource manager.
+                self._client_prefetched_bytes[
+                    output_split_idx
+                ] = client_prefetched_bytes
+                self._report_prefetched_bytes_to_executor()
 
-            return block
+            returned_normally = True
+            return RefBundle(
+                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+            )
         except StopIteration:
             return None
         finally:
-            stats = self.stats()
-            if stats and stats.streaming_split_coordinator_s:
-                stats.streaming_split_coordinator_s.add(
-                    time.perf_counter() - start_time
-                )
+            # Clear prefetched bytes on any exit (StopIteration or other
+            # exceptions) to avoid stale backpressure data.
+            if not returned_normally:
+                with self._lock:
+                    self._client_prefetched_bytes[output_split_idx] = 0
+                    self._report_prefetched_bytes_to_executor()
+            # Track overhead time in the instance variable
+            self._coordinator_overhead_s += time.perf_counter() - start_time
+
+    def _get_total_prefetched_bytes(self) -> int:
+        """Get the total prefetched bytes including coordinator buffer and clients.
+
+        Must be called while holding self._lock.
+        """
+        # Bytes buffered in the coordinator.
+        total = sum(bundle.size_bytes() for bundle in self._next_bundle.values())
+        # Bytes prefetched by each client's BatchIterator.
+        total += sum(self._client_prefetched_bytes.values())
+        return total
+
+    def _report_prefetched_bytes_to_executor(self) -> None:
+        """Report total prefetched bytes to the executor's resource manager.
+
+        Must be called while holding self._lock.
+        """
+        if self._executor is not None:
+            total_bytes = self._get_total_prefetched_bytes()
+            self._executor.set_external_consumer_bytes(total_bytes)
+
+    def get_client_prefetched_bytes(self) -> Dict[int, int]:
+        """Get prefetched bytes for each client (for testing)."""
+        with self._lock:
+            return dict(self._client_prefetched_bytes)
+
+    def shutdown_executor(self):
+        """Shuts down the internal data executor."""
+        with self._lock:
+            # Call shutdown on the executor
+            if self._executor is not None:
+                self._executor.shutdown(force=False)
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""

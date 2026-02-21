@@ -1,46 +1,46 @@
 import abc
 import dataclasses
-from dataclasses import dataclass, field
 import logging
-from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Collection, Dict, Optional, Type, Union
 
 import gymnasium as gym
 
-from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.models.distributions import Distribution
-from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic,
-)
-from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
-    Deprecated,
+from ray._common.deprecation import (
     DEPRECATED_VALUE,
+    Deprecated,
     deprecation_warning,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.distribution.distribution import Distribution
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic,
+    override,
+)
+from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
+    deserialize_type,
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
-    deserialize_type,
 )
 from ray.rllib.utils.typing import StateDict
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.rllib.core.models.catalog import Catalog
     from ray.rllib.core.rl_module.multi_rl_module import (
         MultiRLModule,
         MultiRLModuleSpec,
     )
-    from ray.rllib.core.models.catalog import Catalog
 
 logger = logging.getLogger("ray.rllib")
+torch, _ = try_import_torch()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 @dataclass
 class RLModuleSpec:
     """Utility spec class to make constructing RLModules (in single-agent case) easier.
@@ -63,8 +63,12 @@ class RLModuleSpec:
             Note that `inference_only=True` AND `learner_only=True` is not allowed.
         model_config: The model config dict or default RLlib dataclass to use.
         catalog_class: The Catalog class to use.
-        load_state_path: The path to the module state to load from. NOTE: This must be
-            an absolute path.
+        load_state_path: The path to the RLModule state to load from.
+            Deprecated. This field will be removed in the future Ray release.
+            To restore RLModule state use
+            `Algorithm.restore_from_path(path=..., component=...)` instead.
+            See docs for more details: :
+            https://docs.ray.io/en/latest/rllib/rl-modules.html#checkpointing-rlmodules
     """
 
     module_class: Optional[Type["RLModule"]] = None
@@ -93,8 +97,6 @@ class RLModuleSpec:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
             raise ValueError("Observation space is not set.")
-        if self.action_space is None:
-            raise ValueError("Action space is not set.")
 
         try:
             module = self.module_class(
@@ -254,35 +256,37 @@ class RLModuleSpec:
         )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RLModule(Checkpointable, abc.ABC):
     """Base class for RLlib modules.
 
-    Subclasses should call super().__init__(config) in their __init__ method.
+    Subclasses should call `super().__init__(observation_space=.., action_space=..,
+    inference_only=.., learner_only=.., model_config={..})` in their __init__ methods.
+
     Here is the pseudocode for how the forward methods are called:
 
-    Example for creating a sampling loop:
+    Example for creating a (inference-only) sampling loop:
 
     .. testcode::
 
-        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-            PPOTorchRLModule
+        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+            DefaultPPOTorchRLModule
         )
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
         import gymnasium as gym
         import torch
 
         env = gym.make("CartPole-v1")
 
-        # Create a single agent RL module spec.
-        module_spec = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+        # Create an instance of the default RLModule used by PPO.
+        module = DefaultPPOTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
             catalog_class=PPOCatalog,
         )
-        module = module_spec.build()
         action_dist_class = module.get_inference_action_dist_cls()
         obs, info = env.reset()
         terminated = False
@@ -290,7 +294,7 @@ class RLModule(Checkpointable, abc.ABC):
         while not terminated:
             fwd_ins = {"obs": torch.Tensor([obs])}
             fwd_outputs = module.forward_exploration(fwd_ins)
-            # this can be either deterministic or stochastic distribution
+            # This can be either deterministic or stochastic distribution.
             action_dist = action_dist_class.from_logits(
                 fwd_outputs["action_dist_inputs"]
             )
@@ -306,20 +310,25 @@ class RLModule(Checkpointable, abc.ABC):
             PPOTorchRLModule
         )
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
         import gymnasium as gym
         import torch
 
+        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+            DefaultPPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         env = gym.make("CartPole-v1")
 
-        # Create a single agent RL module spec.
-        module_spec = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+        # Create an instance of the default RLModule used by PPO.
+        module = DefaultPPOTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
             catalog_class=PPOCatalog,
         )
-        module = module_spec.build()
 
         fwd_ins = {"obs": torch.Tensor([obs])}
         fwd_outputs = module.forward_train(fwd_ins)
@@ -334,20 +343,25 @@ class RLModule(Checkpointable, abc.ABC):
             PPOTorchRLModule
         )
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+        from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
         import gymnasium as gym
         import torch
 
+        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+            DefaultPPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         env = gym.make("CartPole-v1")
 
-        # Create a single agent RL module spec.
-        module_spec = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+        # Create an instance of the default RLModule used by PPO.
+        module = DefaultPPOTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
             catalog_class=PPOCatalog,
         )
-        module = module_spec.build()
 
         while not terminated:
             fwd_ins = {"obs": torch.Tensor([obs])}
@@ -361,7 +375,23 @@ class RLModule(Checkpointable, abc.ABC):
 
 
     Args:
-        config: The config for the RLModule.
+        observation_space: The observation space of the model. Note that in multi-agent
+            setups, this is typically the observation space of an agent that maps to
+            this RLModule.
+        action_space: The action space of the model. Note that in multi-agent
+            setups, this is typically the action space of an agent that maps to
+            this RLModule.
+        inference_only: If True, this RLModule should construct itself in an inference-
+            only fashion. This is done automatically, if the user implements the
+            `InferenceOnlyAPI` with their custom RLModule subclass. False by default.
+        learner_only: If True, RLlib won't built this RLModule on EnvRunner actors.
+            False by default.
+        model_config: A config dict to specify features of this RLModule.
+
+    Attributes:
+        action_dist_cls: An optional ray.rllib.core.distribution.distribution.
+            Distribution subclass to use for sampling actions, given parameters from
+            a batch (`Columns.ACTION_DIST_INPUTS`).
 
     Abstract Methods:
         ``~_forward_train``: Forward pass during training.
@@ -369,20 +399,11 @@ class RLModule(Checkpointable, abc.ABC):
         ``~_forward_exploration``: Forward pass during training for exploration.
 
         ``~_forward_inference``: Forward pass during inference.
-
-
-    Note:
-        There is a reason that the specs are not written as abstract properties.
-        The reason is that torch overrides `__getattr__` and `__setattr__`. This means
-        that if we define the specs as properties, then any error in the property will
-        be interpreted as a failure to retrieve the attribute and will invoke
-        `__getattr__` which will give a confusing error about the attribute not found.
-        More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
     framework: str = None
 
-    STATE_FILE_NAME = "module_state.pkl"
+    STATE_FILE_NAME = "module_state"
 
     def __init__(
         self,
@@ -394,6 +415,7 @@ class RLModule(Checkpointable, abc.ABC):
         learner_only: bool = False,
         model_config: Optional[Union[dict, DefaultModelConfig]] = None,
         catalog_class=None,
+        **kwargs,
     ):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
         #  primitive components based on obs- and action spaces.
@@ -417,22 +439,23 @@ class RLModule(Checkpointable, abc.ABC):
             self.inference_only = inference_only
             self.learner_only = learner_only
             self.model_config = model_config
-            try:
-                self.catalog = catalog_class(
-                    observation_space=self.observation_space,
-                    action_space=self.action_space,
-                    model_config_dict=self.model_config,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Could not create a Catalog object for your RLModule! If you are "
-                    "not using the new API stack yet, make sure to switch it off in "
-                    "your config: `config.api_stack(enable_rl_module_and_learner=False"
-                    ", enable_env_runner_and_connector_v2=False)`. Some algos already "
-                    "use the new stack by default. Ignore this message, if your "
-                    "RLModule does not use a Catalog to build its sub-components."
-                )
-                self._catalog_ctor_error = e
+            if catalog_class is not None:
+                try:
+                    self.catalog = catalog_class(
+                        observation_space=self.observation_space,
+                        action_space=self.action_space,
+                        model_config_dict=self.model_config,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Didn't create a Catalog object for your RLModule! If you are "
+                        "not using the new API stack yet, make sure to switch it off in"
+                        " your config: `config.api_stack(enable_rl_module_and_learner="
+                        "False, enable_env_runner_and_connector_v2=False)`. All algos "
+                        "use the new stack by default. Ignore this message, if your "
+                        "RLModule does not use a Catalog to build its sub-components."
+                    )
+                    self._catalog_ctor_error = e
 
         # TODO (sven): Deprecate this. We keep it here for now in case users
         #  still have custom models (or subclasses of RLlib default models)
@@ -461,8 +484,17 @@ class RLModule(Checkpointable, abc.ABC):
                 "[Algo]RLModule) and that you are NOT overriding the constructor, but "
                 "only the `setup()` method of your subclass."
             )
-        self.setup()
+        try:
+            self.setup()
+        except AttributeError as e:
+            if "'NoneType' object has no attribute " in e.args[0]:
+                raise (self._catalog_ctor_error or e)
+            raise e
+
         self._is_setup = True
+        # Cache value for returning from `is_stateful` so we don't have to call
+        # the module's `get_initial_state()` method all the time (might be expensive).
+        self._is_stateful = None
 
     @OverrideToImplementCustomLogic
     def setup(self):
@@ -473,22 +505,7 @@ class RLModule(Checkpointable, abc.ABC):
         abstraction can be used to create any components (e.g. NN layers) that your
         RLModule needs.
         """
-        return None
-
-    @OverrideToImplementCustomLogic
-    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for this RLModule used for exploration.
-
-        This class is used to create action distributions from outputs of the
-        forward_exploration method. If the case that no action distribution class is
-        needed, this method can return None.
-
-        Note that RLlib's distribution classes all implement the `Distribution`
-        interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
-        """
-        raise NotImplementedError
+        pass
 
     @OverrideToImplementCustomLogic
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
@@ -501,7 +518,24 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
+        """
+        raise NotImplementedError
+
+    @OverrideToImplementCustomLogic
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for exploration.
+
+        This class is used to create action distributions from outputs of the
+        forward_exploration method. If the case that no action distribution class is
+        needed, this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -516,7 +550,8 @@ class RLModule(Checkpointable, abc.ABC):
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
         `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
+        :py:class:`~ray.rllib.core.distribution.distribution.Distribution` class for
+        more details.
         """
         raise NotImplementedError
 
@@ -526,6 +561,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         If you need a more nuanced distinction between forward passes in the different
         phases of training and evaluation, override the following methods instead:
+
         For distinct action computation logic w/o exploration, override the
         `self._forward_inference()` method.
         For distinct action computation logic with exploration, override the
@@ -549,8 +585,7 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_inference().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -578,13 +613,11 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_exploration().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_exploration().
+            The output of the forward pass.
         """
         return self._forward_exploration(batch, **kwargs)
 
@@ -607,19 +640,17 @@ class RLModule(Checkpointable, abc.ABC):
         method instead.
 
         Args:
-            batch: The input batch. This input batch should comply with
-                input_specs_train().
+            batch: The input batch.
             **kwargs: Additional keyword arguments.
 
         Returns:
-            The output of the forward pass. This output should comply with the
-            output_specs_train().
+            The output of the forward pass.
         """
         if self.inference_only:
             raise RuntimeError(
                 "Calling `forward_train` on an inference_only module is not allowed! "
-                "Set the `inference_only=False` flag in the RLModule's config when "
-                "building the module."
+                "Set the `inference_only=False` flag in the RLModuleSpec (or the "
+                "RLModule's constructor)."
             )
         return self._forward_train(batch, **kwargs)
 
@@ -653,12 +684,14 @@ class RLModule(Checkpointable, abc.ABC):
         state is an empty dict and recurrent otherwise.
         This behavior can be customized by overriding this method.
         """
-        initial_state = self.get_initial_state()
-        assert isinstance(initial_state, dict), (
-            "The initial state of an RLModule must be a dict, but is "
-            f"{type(initial_state)} instead."
-        )
-        return bool(initial_state)
+        if self._is_stateful is None:
+            initial_state = self.get_initial_state()
+            assert isinstance(initial_state, dict), (
+                "The initial state of an RLModule must be a dict, but is "
+                f"{type(initial_state)} instead."
+            )
+            self._is_stateful = bool(initial_state)
+        return self._is_stateful
 
     @OverrideToImplementCustomLogic
     @override(Checkpointable)
@@ -682,12 +715,6 @@ class RLModule(Checkpointable, abc.ABC):
         Returns:
             This RLModule's state dict.
         """
-        if components is not None or not_components is not None:
-            raise ValueError(
-                "`component` arg and `not_component` arg not supported in "
-                "`RLModule.get_state()` base implementation! Override this method in "
-                "your custom RLModule subclass."
-            )
         return {}
 
     @OverrideToImplementCustomLogic
@@ -731,47 +758,33 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self
 
-    @Deprecated(new="RLModule.as_multi_rl_module()", error=True)
-    def as_multi_agent(self, *args, **kwargs):
+    @Deprecated(error=False)
+    def output_specs_train(self):
         pass
 
-    @Deprecated(new="RLModule.save_to_path(...)", error=True)
-    def save_state(self, *args, **kwargs):
+    @Deprecated(error=False)
+    def output_specs_inference(self):
         pass
 
-    @Deprecated(new="RLModule.restore_from_path(...)", error=True)
-    def load_state(self, *args, **kwargs):
+    @Deprecated(error=False)
+    def output_specs_exploration(self):
         pass
 
-    @Deprecated(new="RLModule.save_to_path(...)", error=True)
-    def save_to_checkpoint(self, *args, **kwargs):
+    @Deprecated(error=False)
+    def input_specs_inference(self):
         pass
 
-    def output_specs_inference(self) -> SpecType:
-        return [Columns.ACTION_DIST_INPUTS]
+    @Deprecated(error=False)
+    def input_specs_exploration(self):
+        pass
 
-    def output_specs_exploration(self) -> SpecType:
-        return [Columns.ACTION_DIST_INPUTS]
+    @Deprecated(error=False)
+    def input_specs_train(self):
+        pass
 
-    def output_specs_train(self) -> SpecType:
-        """Returns the output specs of the forward_train method."""
-        return {}
-
-    def input_specs_inference(self) -> SpecType:
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
-
-    def input_specs_exploration(self) -> SpecType:
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
-
-    def input_specs_train(self) -> SpecType:
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
-
-    def _default_input_specs(self) -> SpecType:
-        """Returns the default input specs."""
-        return [Columns.OBS]
+    @Deprecated(error=False)
+    def _default_input_specs(self):
+        pass
 
 
 @Deprecated(

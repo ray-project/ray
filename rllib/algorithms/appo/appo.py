@@ -10,29 +10,31 @@ Luo et al. 2020
 https://arxiv.org/pdf/1912.00167
 """
 
-from typing import Optional, Type
 import logging
+from typing import Optional, Type
 
+from typing_extensions import Self
+
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import IMPALA, IMPALAConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
+    LEARNER_STATS_KEY,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
 )
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY
 
 logger = logging.getLogger(__name__)
 
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
-TARGET_ACTION_DIST_LOGITS_KEY = "target_action_dist_logits"
+OLD_ACTION_DIST_KEY = "old_action_dist"
 
 
 class APPOConfig(IMPALAConfig):
@@ -57,7 +59,6 @@ class APPOConfig(IMPALAConfig):
     .. testcode::
 
         from ray.rllib.algorithms.appo import APPOConfig
-        from ray import air
         from ray import tune
 
         config = APPOConfig()
@@ -68,7 +69,7 @@ class APPOConfig(IMPALAConfig):
         # Use to_dict() to get the old-style python config dict when running with tune.
         tune.Tuner(
             "APPO",
-            run_config=air.RunConfig(
+            run_config=tune.RunConfig(
                 stop={"training_iteration": 1},
                 verbose=0,
             ),
@@ -100,7 +101,6 @@ class APPOConfig(IMPALAConfig):
         # __sphinx_doc_begin__
         # APPO specific settings:
         self.vtrace = True
-        self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
         self.clip_param = 0.4
@@ -109,18 +109,23 @@ class APPOConfig(IMPALAConfig):
         self.kl_target = 0.01
         self.target_worker_clipping = 2.0
 
+        # If a circular buffer should be used to store training batches. The
+        # alternative is a simple `Queue`.
+        self.use_circular_buffer = True
         # Circular replay buffer settings.
         # Used in [1] for discrete action tasks:
         # `circular_buffer_num_batches=4` and `circular_buffer_iterations_per_batch=2`
         # For cont. action tasks:
         # `circular_buffer_num_batches=16` and `circular_buffer_iterations_per_batch=20`
-        self.circular_buffer_num_batches = 4
+        self.circular_buffer_num_batches = 8
         self.circular_buffer_iterations_per_batch = 2
+
+        # Size of the simple queue (if `use_circular_buffer` is False).
+        self.simple_queue_size = 32
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
-        self.min_time_s_per_iteration = 10
-        self.target_network_update_freq = 1
+        self.target_network_update_freq = 2
         self.broadcast_interval = 1
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
@@ -151,35 +156,36 @@ class APPOConfig(IMPALAConfig):
 
         # Deprecated keys.
         self.target_update_frequency = DEPRECATED_VALUE
+        self.use_critic = DEPRECATED_VALUE
 
     @override(IMPALAConfig)
     def training(
         self,
         *,
         vtrace: Optional[bool] = NotProvided,
-        use_critic: Optional[bool] = NotProvided,
         use_gae: Optional[bool] = NotProvided,
         lambda_: Optional[float] = NotProvided,
         clip_param: Optional[float] = NotProvided,
         use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
-        tau: Optional[float] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
+        tau: Optional[float] = NotProvided,
         target_worker_clipping: Optional[float] = NotProvided,
+        use_circular_buffer: Optional[bool] = NotProvided,
         circular_buffer_num_batches: Optional[int] = NotProvided,
         circular_buffer_iterations_per_batch: Optional[int] = NotProvided,
+        simple_queue_size: Optional[int] = NotProvided,
         # Deprecated keys.
         target_update_frequency=DEPRECATED_VALUE,
+        use_critic=DEPRECATED_VALUE,
         **kwargs,
-    ) -> "APPOConfig":
+    ) -> Self:
         """Sets the training related configuration.
 
         Args:
             vtrace: Whether to use V-trace weighted advantages. If false, PPO GAE
                 advantages will be used instead.
-            use_critic: Should use a critic as a baseline (otherwise don't use value
-                baseline; required for using GAE). Only applies if vtrace=False.
             use_gae: If true, use the Generalized Advantage Estimator (GAE)
                 with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
                 Only applies if vtrace=False.
@@ -189,9 +195,18 @@ class APPOConfig(IMPALAConfig):
             kl_coeff: Coefficient for weighting the KL-loss term.
             kl_target: Target term for the KL-term to reach (via adjusting the
                 `kl_coeff` automatically).
-            tau: The factor by which to update the target policy network towards
-                the current policy network. Can range between 0 and 1.
-                e.g. updated_param = tau * current_param + (1 - tau) * target_param
+            target_network_update_freq: NOTE: This parameter is only applicable on
+                the new API stack. The frequency with which to update the target
+                policy network from the main trained policy network. The metric
+                used is `NUM_ENV_STEPS_TRAINED_LIFETIME` and the unit is `n` (see [1]
+                4.1.1), where: `n = [circular_buffer_num_batches (N)] *
+                [circular_buffer_iterations_per_batch (K)] * [train batch size]`
+                For example, if you set `target_network_update_freq=2`, and N=4, K=2,
+                and `train_batch_size_per_learner=500`, then the target net is updated
+                every 2*4*2*500=8000 trained env steps (every 16 batch updates on each
+                learner).
+                The authors in [1] suggests that this setting is robust to a range of
+                choices (try values between 0.125 and 4).
             target_network_update_freq: The frequency to update the target policy and
                 tune the kl loss coefficients that are used during training. After
                 setting this parameter, the algorithm waits for at least
@@ -199,9 +214,15 @@ class APPOConfig(IMPALAConfig):
                 on before updating the target networks and tune the kl loss
                 coefficients. NOTE: This parameter is only applicable when using the
                 Learner API (enable_rl_module_and_learner=True).
+            tau: The factor by which to update the target policy network towards
+                the current policy network. Can range between 0 and 1.
+                e.g. updated_param = tau * current_param + (1 - tau) * target_param
             target_worker_clipping: The maximum value for the target-worker-clipping
                 used for computing the IS ratio, described in [1]
                 IS = min(π(i) / π(target), ρ) * (π / π(i))
+            use_circular_buffer: Whether to use a circular buffer for storing
+                training batches. If false, a simple Queue will be used. Defaults to
+                True.
             circular_buffer_num_batches: The number of train batches that fit
                 into the circular buffer. Each such train batch can be sampled for
                 training max. `circular_buffer_iterations_per_batch` times.
@@ -210,6 +231,8 @@ class APPOConfig(IMPALAConfig):
                 evicted from the buffer either if it's the oldest batch in the buffer
                 and a new batch is added OR if the batch reaches this max. number of
                 being sampled.
+            simple_queue_size: The size of the simple queue (if `use_circular_buffer`
+                is False) for storing training batches.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -220,14 +243,19 @@ class APPOConfig(IMPALAConfig):
                 new="target_network_update_freq",
                 error=True,
             )
+        if use_critic != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="use_critic",
+                help="`use_critic` no longer supported! APPO always uses a value "
+                "function (critic).",
+                error=True,
+            )
 
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
         if vtrace is not NotProvided:
             self.vtrace = vtrace
-        if use_critic is not NotProvided:
-            self.use_critic = use_critic
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
@@ -240,18 +268,22 @@ class APPOConfig(IMPALAConfig):
             self.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
-        if tau is not NotProvided:
-            self.tau = tau
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
+        if tau is not NotProvided:
+            self.tau = tau
         if target_worker_clipping is not NotProvided:
             self.target_worker_clipping = target_worker_clipping
+        if use_circular_buffer is not NotProvided:
+            self.use_circular_buffer = use_circular_buffer
         if circular_buffer_num_batches is not NotProvided:
             self.circular_buffer_num_batches = circular_buffer_num_batches
         if circular_buffer_iterations_per_batch is not NotProvided:
             self.circular_buffer_iterations_per_batch = (
                 circular_buffer_iterations_per_batch
             )
+        if simple_queue_size is not NotProvided:
+            self.simple_queue_size = simple_queue_size
 
         return self
 
@@ -262,7 +294,7 @@ class APPOConfig(IMPALAConfig):
         # On new API stack, circular buffer should be used, not `minibatch_buffer_size`.
         if self.enable_rl_module_and_learner:
             if self.minibatch_buffer_size != 1 or self.replay_proportion != 0.0:
-                raise ValueError(
+                self._value_error(
                     "`minibatch_buffer_size/replay_proportion` not valid on new API "
                     "stack with APPO! "
                     "Use `circular_buffer_num_batches` for the number of train batches "
@@ -271,7 +303,7 @@ class APPOConfig(IMPALAConfig):
                     "`circular_buffer_iterations_per_batch`."
                 )
             if self.num_multi_gpu_tower_stacks != 1:
-                raise ValueError(
+                self._value_error(
                     "`num_multi_gpu_tower_stacks` not supported on new API stack with "
                     "APPO! In order to train on multi-GPU, use "
                     "`config.learners(num_learners=[number of GPUs], "
@@ -281,7 +313,7 @@ class APPOConfig(IMPALAConfig):
                     "1-8)."
                 )
             if self.learner_queue_size != 16:
-                raise ValueError(
+                self._value_error(
                     "`learner_queue_size` not supported on new API stack with "
                     "APPO! In order set the size of the circular buffer (which acts as "
                     "a 'learner queue'), use "
@@ -315,19 +347,13 @@ class APPOConfig(IMPALAConfig):
             from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
                 APPOTorchRLModule as RLModule,
             )
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
-                APPOTfRLModule as RLModule,
-            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
                 "Use either 'torch' or 'tf2'."
             )
 
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-        return RLModuleSpec(module_class=RLModule, catalog_class=PPOCatalog)
+        return RLModuleSpec(module_class=RLModule)
 
     @property
     @override(AlgorithmConfig)
@@ -398,7 +424,7 @@ class APPO(IMPALA):
 
     @classmethod
     @override(IMPALA)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> APPOConfig:
         return APPOConfig()
 
     @classmethod

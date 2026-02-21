@@ -36,7 +36,7 @@ class TestDQN(unittest.TestCase):
 
         # Rainbow.
         print("Rainbow")
-        config.training(num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5)
+        config.training(num_atoms=10, double_q=True, dueling=True, n_step=5)
         algo = config.build()
         for i in range(num_iterations):
             results = algo.train()
@@ -47,7 +47,8 @@ class TestDQN(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

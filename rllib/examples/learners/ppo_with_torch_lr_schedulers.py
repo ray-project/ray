@@ -11,7 +11,7 @@ This example shows:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --lr-const-factor=0.9
+`python [script file name].py --lr-const-factor=0.9
 --lr-const-iters=10 --lr-exp-decay=0.9`
 
 Use the `--lr-const-factor` to define the facotr by which to multiply the
@@ -49,15 +49,21 @@ With `--lr-const-factor=0.1`, `--lr-const-iters=10, and `--lr-exp_decay=0.3`.
 +------------------------+------------------------+------------------------+
 """
 import functools
-import numpy as np
 from typing import Optional
 
+import numpy as np
+
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.callbacks.callbacks import RLlibCallback
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -65,13 +71,11 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 torch, _ = try_import_torch()
 
 
-class LRChecker(DefaultCallbacks):
+class LRChecker(RLlibCallback):
     def on_algorithm_init(
         self,
         *,
@@ -126,7 +130,6 @@ class LRChecker(DefaultCallbacks):
 
 
 parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=250000)
-parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--lr-const-factor",
     type=float,
@@ -204,6 +207,4 @@ if __name__ == "__main__":
     }
 
     if __name__ == "__main__":
-        from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
         run_rllib_example_script_experiment(config, args, stop=stop)

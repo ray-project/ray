@@ -1,7 +1,8 @@
 import os
-import pytest
 import sys
 import tempfile
+
+import pytest
 
 import ray
 

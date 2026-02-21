@@ -19,6 +19,8 @@
 #include <string>
 #include <utility>
 
+#include "ray/common/status_or.h"
+
 // Filesystem and path manipulation APIs.
 // (NTFS stream & attribute paths are not supported.)
 
@@ -42,21 +44,8 @@ static inline bool IsDirSep(char ch) {
   return result;
 }
 
-/// \return The result of joining multiple path components.
-template <class... Paths>
-std::string JoinPaths(std::string base, const Paths &...components) {
-  auto join = [](auto &joined_path, const auto &component) {
-    // if the components begin with "/" or "////", just get the path name.
-    if (!component.empty() &&
-        component.front() == std::filesystem::path::preferred_separator) {
-      joined_path = std::filesystem::path(joined_path)
-                        .append(std::filesystem::path(component).filename().string())
-                        .string();
-    } else {
-      joined_path = std::filesystem::path(joined_path).append(component).string();
-    }
-  };
-  (join(base, std::string_view(components)), ...);
-  return base;
-}
+// Read the whole content for the given [fname], and return as string.
+// Return IO error status if open and read operation fail.
+StatusOr<std::string> ReadEntireFile(const std::string &fname);
+
 }  // namespace ray

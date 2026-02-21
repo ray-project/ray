@@ -31,7 +31,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-frames=4 --env=ALE/Pong-v5`
+`python [script file name].py --num-frames=4 --env=ALE/Pong-v5`
 
 Use the `--num-frames` option to define the number of observations to framestack.
 If you don't want to use Connectors to perform the framestacking, set the
@@ -84,7 +84,7 @@ from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
@@ -96,7 +96,6 @@ parser = add_rllib_example_script_args(
 )
 # Use Pong by default.
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
 )
 parser.add_argument(
@@ -119,7 +118,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define our custom connector pipelines.
-    def _make_env_to_module_connector(env):
+    def _make_env_to_module_connector(env, spaces, device):
         # Create the env-to-module connector. We return an individual connector piece
         # here, which RLlib automatically integrates into a pipeline (and
         # add its default connector piece to the end of that pipeline).
@@ -183,7 +182,7 @@ if __name__ == "__main__":
                 if args.use_gym_wrapper_framestacking
                 else _make_env_to_module_connector
             ),
-            num_envs_per_env_runner=1 if args.num_agents > 0 else 2,
+            num_envs_per_env_runner=2,
         )
         .training(
             # Use our frame stacking learner connector.

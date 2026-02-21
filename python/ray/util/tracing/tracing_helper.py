@@ -76,12 +76,12 @@ class _OpenTelemetryProxy:
         try:
             return importlib.import_module(module)
         except ImportError:
-            if os.getenv("RAY_TRACING_ENABLED", "False").lower() in ["true", "1"]:
+            if _is_tracing_enabled():
                 raise ImportError(
-                    "Install opentelemetry with "
-                    "'pip install opentelemetry-api==1.0.0rc1' "
-                    "and 'pip install opentelemetry-sdk==1.0.0rc1' to enable "
-                    "tracing. See more at docs.ray.io/tracing.html"
+                    "Install OpenTelemetry with "
+                    "'pip install opentelemetry-api==1.34.1 opentelemetry-sdk==1.34.1 opentelemetry-exporter-otlp==1.34.1' "
+                    "to enable tracing. See the Ray documentation for details: "
+                    "https://docs.ray.io/en/latest/ray-observability/user-guides/ray-tracing.html#installation"
                 )
 
 
@@ -331,14 +331,10 @@ def _inject_tracing_into_function(function):
     if not _is_tracing_enabled():
         return function
 
-    setattr(
+    function.__signature__ = _add_param_to_signature(
         function,
-        "__signature__",
-        _add_param_to_signature(
-            function,
-            inspect.Parameter(
-                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
-            ),
+        inspect.Parameter(
+            "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
         ),
     )
 
@@ -420,14 +416,12 @@ def _tracing_actor_method_invocation(method):
         **_kwargs: Any,
     ) -> Any:
         # If tracing feature flag is not on, perform a no-op
-        if not _is_tracing_enabled() or self._actor_ref()._ray_is_cross_language:
+        if not _is_tracing_enabled() or self._actor._ray_is_cross_language:
             if kwargs is not None:
                 assert "_ray_trace_ctx" not in kwargs
             return method(self, args, kwargs, *_args, **_kwargs)
 
-        class_name = (
-            self._actor_ref()._ray_actor_creation_function_descriptor.class_name
-        )
+        class_name = self._actor._ray_actor_creation_function_descriptor.class_name
         method_name = self._method_name
         assert "_ray_trace_ctx" not in _kwargs
 
@@ -440,7 +434,7 @@ def _tracing_actor_method_invocation(method):
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
-            span.set_attribute("ray.actor_id", self._actor_ref()._ray_actor_id.hex())
+            span.set_attribute("ray.actor_id", self._actor._ray_actor_id.hex())
 
             return method(self, args, kwargs, *_args, **_kwargs)
 
@@ -540,23 +534,40 @@ def _inject_tracing_into_class(_cls):
         if name == "__del__":
             continue
 
-        # Add _ray_trace_ctx to method signature
-        setattr(
-            method,
-            "__signature__",
-            _add_param_to_signature(
-                method,
-                inspect.Parameter(
-                    "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
-                ),
+        # If the method is already wrapped, we still need to set __signature__
+        # on the deeply unwrapped original. This is because cloudpickle doesn't
+        # preserve __signature__ attributes, and _ActorClassMethodMetadata.create
+        # uses inspect.unwrap which goes all the way to the original method.
+        unwrapped_method = inspect.unwrap(method)
+
+        # Add _ray_trace_ctx to the UNWRAPPED method's signature.
+        # This ensures inspect.unwrap() will find the signature.
+        # Note: We always set the signature, even if it was already set by a
+        # previous call, because the signature might have been lost during
+        # serialization/deserialization.
+        unwrapped_method.__signature__ = _add_param_to_signature(
+            unwrapped_method,
+            inspect.Parameter(
+                "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
             ),
         )
+
+        # If method was already wrapped by tracing (e.g., preserved through
+        # cloudpickle), don't re-wrap it. We use a custom marker attribute
+        # instead of __wrapped__ because __wrapped__ could be from any
+        # decorator, not just tracing.
+        if getattr(method, "__ray_tracing_wrapped__", False):
+            continue
 
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
             wrapped_method = wraps(method)(async_span_wrapper(method))
         else:
             wrapped_method = wraps(method)(span_wrapper(method))
+
+        # Mark the wrapped method so we don't re-wrap it if this class
+        # is processed again (e.g., after cloudpickle round-trip).
+        wrapped_method.__ray_tracing_wrapped__ = True
 
         setattr(_cls, name, wrapped_method)
 

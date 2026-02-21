@@ -1,7 +1,8 @@
 import collections
 import logging
+from typing import TYPE_CHECKING, List, Optional
+
 import numpy as np
-from typing import List, Optional, TYPE_CHECKING
 
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import OldAPIStack
@@ -110,7 +111,7 @@ def collect_episodes(
     # This will drop get_metrics() calls that are too slow.
     # We can potentially make this an asynchronous call if this turns
     # out to be a problem.
-    metric_lists = workers.foreach_worker(
+    metric_lists = workers.foreach_env_runner(
         lambda w: w.get_metrics(),
         local_env_runner=True,
         remote_worker_ids=remote_worker_ids,

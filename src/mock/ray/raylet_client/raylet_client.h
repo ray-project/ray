@@ -16,10 +16,6 @@ namespace ray {
 
 class MockRayletClientInterface : public RayletClientInterface {
  public:
-  MOCK_METHOD(ray::Status,
-              WaitForDirectActorCallArgs,
-              (const std::vector<rpc::ObjectReference> &references, int64_t tag),
-              (override));
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
@@ -29,24 +25,29 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(
       void,
       RequestWorkerLease,
-      (const rpc::TaskSpec &resource_spec,
+      (const rpc::LeaseSpec &lease_spec,
        bool grant_or_reject,
        const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
        const int64_t backlog_size,
        const bool is_selected_based_on_locality),
       (override));
-  MOCK_METHOD(ray::Status,
-              ReturnWorker,
+  MOCK_METHOD(void,
+              ReturnWorkerLease,
               (int worker_port,
-               const WorkerID &worker_id,
+               const LeaseID &lease_id,
                bool disconnect_worker,
                const std::string &disconnect_worker_error_detail,
                bool worker_exiting),
               (override));
   MOCK_METHOD(void,
-              GetTaskFailureCause,
-              (const TaskID &task_id,
-               const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
+              GetWorkerFailureCause,
+              (const LeaseID &lease_id,
+               const rpc::ClientCallback<rpc::GetWorkerFailureCauseReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              PrestartWorkers,
+              (const rpc::PrestartWorkersRequest &request,
+               const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback),
               (override));
   MOCK_METHOD(void,
               ReleaseUnusedActorWorkers,
@@ -55,7 +56,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(void,
               CancelWorkerLease,
-              (const TaskID &task_id,
+              (const LeaseID &lease_id,
                const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback),
               (override));
   MOCK_METHOD(
@@ -105,6 +106,7 @@ class MockRayletClientInterface : public RayletClientInterface {
                uint64_t data_size,
                uint64_t metadata_size,
                void *data,
+               void *metadata,
                const rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback),
               (override));
   MOCK_METHOD(void,
@@ -127,6 +129,37 @@ class MockRayletClientInterface : public RayletClientInterface {
                const std::string &reason_message,
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
+              (override));
+  MOCK_METHOD(
+      void,
+      CancelLeasesWithResourceShapes,
+      ((const std::vector<google::protobuf::Map<std::string, double>>)&resource_shapes,
+       const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback),
+      (override));
+  MOCK_METHOD(void,
+              IsLocalWorkerDead,
+              (const WorkerID &worker_id,
+               const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              GetNodeStats,
+              (const rpc::GetNodeStatsRequest &request,
+               const rpc::ClientCallback<rpc::GetNodeStatsReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              KillLocalActor,
+              (const rpc::KillLocalActorRequest &request,
+               const rpc::ClientCallback<rpc::KillLocalActorReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              GlobalGC,
+              (const rpc::ClientCallback<rpc::GlobalGCReply> &callback),
+              (override));
+  MOCK_METHOD(int64_t, GetPinsInFlight, (), (const, override));
+  MOCK_METHOD(void,
+              CancelLocalTask,
+              (const rpc::CancelLocalTaskRequest &request,
+               const rpc::ClientCallback<rpc::CancelLocalTaskReply> &callback),
               (override));
 };
 

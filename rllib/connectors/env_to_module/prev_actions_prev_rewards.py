@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
-from gymnasium.spaces import Box
 import numpy as np
+from gymnasium.spaces import Box
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -117,8 +117,8 @@ class PrevActionsPrevRewards(ConnectorV2):
         for sa_episode in self.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=True
         ):
-            # Episode is not finalized yet and thus still operates on lists of items.
-            assert not sa_episode.is_finalized
+            # Episode is not numpy'ized yet and thus still operates on lists of items.
+            assert not sa_episode.is_numpy
 
             augmented_obs = {self.ORIG_OBS_KEY: sa_episode.get_observations(-1)}
 

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.serve;
 
@@ -22,6 +21,18 @@ option java_package = "io.ray.serve.generated";
 option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
+
+// Configuration options for Serve's autoscaling policy
+message AutoscalingPolicy {
+  // Policy function needs to be a string import path.
+  string policy_function = 1;
+
+  // The cloudpickled policy definition.
+  bytes _serialized_policy_def = 2;
+
+  // Keyword arguments for class-based policies (cloudpickled dict).
+  bytes policy_kwargs = 3;
+}
 
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {
@@ -32,7 +43,10 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // The frequency of how long does each replica sending metrics to autoscaler.
+  // [DEPRECATED] The frequency of how long does each replica sending metrics to
+  // autoscaler, but this will be replaced by the environment variables
+  // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
+  // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S in a future release.
   double metrics_interval_s = 3;
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
@@ -56,23 +70,25 @@ message AutoscalingConfig {
   // [DEPRECATED] Use `downscaling_factor` instead.
   optional double downscale_smoothing_factor = 10;
 
-  // The cloudpickled policy definition.
-  bytes _serialized_policy_def = 11;
-
-  // The import path of the policy if user passed a string. Will be the concatenation
-  // of the policy module and the policy name if user passed a callable.
-  string _policy = 12;
+  // The autoscaling policy definition.
+  AutoscalingPolicy policy = 11;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
   // scales up. Must be a non-negative integer.
-  double target_ongoing_requests = 13;
+  double target_ongoing_requests = 12;
 
   // The multiplicative "gain" factor to limit upscale.
-  optional double upscaling_factor = 14;
+  optional double upscaling_factor = 13;
 
   // The multiplicative "gain" factor to limit downscale.
-  optional double downscaling_factor = 15;
+  optional double downscaling_factor = 14;
+
+  // How long to wait before scaling down replicas from 1 to 0
+  optional double downscale_to_zero_delay_s = 15;
+
+  // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
+  string aggregation_function = 16;
 }
 
 //[Begin] LOGGING CONFIG
@@ -87,9 +103,57 @@ message LoggingConfig {
   string log_level = 2;
   string logs_dir = 3;
   bool enable_access_log = 4;
+  repeated string additional_log_standard_attrs = 5;
 }
 
 //[End] Logging Config
+
+//[Begin] ROUTING CONFIG
+message RequestRouterConfig {
+  // Cloudpickled request router definition.
+  bytes _serialized_request_router_cls = 1;
+
+  // The import path of the request router if user passed a string. It's the
+  // concatenation of the request router module and the request router name
+  // if user passed a callable.
+  string request_router_class = 2;
+
+  // Frequency at which the controller records routing stats for a replica.
+  double request_routing_stats_period_s = 3;
+
+  // Timeout after which a replica started a record routing stats without a response.
+  double request_routing_stats_timeout_s = 4;
+
+  // kwargs which Ray Serve passes to the router class' initialize_state method.
+  bytes request_router_kwargs = 5;
+}
+//[End] ROUTING CONFIG
+
+//[Begin] GANG SCHEDULING CONFIG
+// Placement strategy for replicas within a gang.
+enum GangPlacementStrategy {
+  PACK = 0;
+  SPREAD = 1;
+}
+
+// Policy for handling runtime failures of replicas in a gang.
+enum GangRuntimeFailurePolicy {
+  RESTART_GANG = 0;
+  RESTART_REPLICA = 1;
+}
+
+// Configuration for gang scheduling of deployment replicas.
+message GangSchedulingConfig {
+  // Number of replicas per gang. num_replicas must be a multiple of gang_size.
+  int32 gang_size = 1;
+
+  // Placement strategy for replicas within a gang.
+  GangPlacementStrategy gang_placement_strategy = 2;
+
+  // What to do when a replica fails after gang is running.
+  GangRuntimeFailurePolicy runtime_failure_policy = 3;
+}
+//[End] GANG SCHEDULING CONFIG
 
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
@@ -134,6 +198,15 @@ message DeploymentConfig {
   repeated string user_configured_option_names = 13;
 
   LoggingConfig logging_config = 14;
+
+  // The deployment's routing configuration.
+  RequestRouterConfig request_router_config = 19;
+
+  // The maximum number of retries in case the deployment constructor results in failure
+  int32 max_constructor_retry_count = 20;
+
+  // Gang scheduling configuration for atomic replica scheduling.
+  GangSchedulingConfig gang_scheduling_config = 21;
 }
 
 // Deployment language.
@@ -183,12 +256,17 @@ message EndpointSet {
   map<string, EndpointInfo> endpoints = 1;
 }
 
-// Now Actor handle can be transfered across language through ray call, but the list of
+// Now Actor handle can be transferred across language through ray call, but the list of
 // Actor handles can't. So we use this message wrapped a Actor name list to pass actor
 // list across language. When Actor handle list supports across language, this message can
 // be replaced.
 message ActorNameList {
   repeated string names = 1;
+}
+
+message DeploymentTargetInfo {
+  repeated string replica_names = 1;
+  bool is_available = 2;
 }
 
 message DeploymentVersion {
@@ -198,6 +276,8 @@ message DeploymentVersion {
   string placement_group_bundles = 4;
   string placement_group_strategy = 5;
   int32 max_replicas_per_node = 6;
+  string placement_group_bundle_label_selector = 7;
+  string placement_group_fallback_strategy = 8;
 }
 
 message ReplicaConfig {
@@ -209,6 +289,8 @@ message ReplicaConfig {
   string placement_group_bundles = 6;
   string placement_group_strategy = 7;
   int32 max_replicas_per_node = 8;
+  string placement_group_bundle_label_selector = 9;
+  string placement_group_fallback_strategy = 10;
 }
 
 enum TargetCapacityDirection {
@@ -246,8 +328,9 @@ enum DeploymentStatus {
   DEPLOYMENT_STATUS_UPDATING = 0;
   DEPLOYMENT_STATUS_HEALTHY = 1;
   DEPLOYMENT_STATUS_UNHEALTHY = 2;
-  DEPLOYMENT_STATUS_UPSCALING = 3;
-  DEPLOYMENT_STATUS_DOWNSCALING = 4;
+  DEPLOYMENT_STATUS_DEPLOY_FAILED = 3;
+  DEPLOYMENT_STATUS_UPSCALING = 4;
+  DEPLOYMENT_STATUS_DOWNSCALING = 5;
 }
 
 enum DeploymentStatusTrigger {
@@ -349,6 +432,8 @@ service UserDefinedService {
   rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
   rpc Method2(UserDefinedMessage2) returns (UserDefinedResponse2);
   rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+  rpc ClientStreaming(stream UserDefinedMessage) returns (UserDefinedResponse);
+  rpc BidiStreaming(stream UserDefinedMessage) returns (stream UserDefinedResponse);
 }
 
 service FruitService {
@@ -382,4 +467,26 @@ message DeploymentArgs {
   optional string route_prefix = 5;
   bool ingress = 6;
   optional string docs_path = 7;
+}
+
+message ApplicationArgs {
+  bool external_scaler_enabled = 1;
+}
+
+message ASGIRequest {
+  bytes pickled_request_metadata = 1;
+  bytes request_args = 2;
+  bytes request_kwargs = 3;
+}
+
+message ASGIResponse {
+  bytes serialized_message = 1;
+  bool is_error = 2;
+}
+
+service ASGIService {
+  rpc HandleRequest(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestStreaming(ASGIRequest) returns (stream ASGIResponse);
+  rpc HandleRequestWithRejection(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestWithRejectionStreaming(ASGIRequest) returns (stream ASGIResponse);
 }

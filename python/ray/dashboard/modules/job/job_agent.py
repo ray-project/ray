@@ -41,7 +41,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
-            ray._private.usage.usage_lib.record_library_usage("job_submission")
+            ray._common.usage.usage_lib.record_library_usage("job_submission")
             submission_id = await self.get_job_manager().submit_job(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
@@ -51,6 +51,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
                 entrypoint_memory=submit_request.entrypoint_memory,
                 entrypoint_resources=submit_request.entrypoint_resources,
+                entrypoint_label_selector=submit_request.entrypoint_label_selector,
             )
 
             resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
@@ -76,7 +77,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_agent.gcs_aio_client,
+            self._dashboard_agent.gcs_client,
             self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
@@ -109,7 +110,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_agent.gcs_aio_client,
+            self._dashboard_agent.gcs_client,
             self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
@@ -142,7 +143,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_agent.gcs_aio_client,
+            self._dashboard_agent.gcs_client,
             self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
@@ -170,7 +171,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     async def tail_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_agent.gcs_aio_client,
+            self._dashboard_agent.gcs_client,
             self.get_job_manager().job_info_client(),
             job_or_submission_id,
         )
@@ -197,7 +198,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def get_job_manager(self):
         if not self._job_manager:
             self._job_manager = JobManager(
-                self._dashboard_agent.gcs_aio_client, self._dashboard_agent.log_dir
+                self._dashboard_agent.gcs_client, self._dashboard_agent.log_dir
             )
         return self._job_manager
 

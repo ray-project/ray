@@ -5,8 +5,15 @@ from typing import Callable, Iterable, List, Optional, Tuple, Union
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    BlockMetadataWithSchema,
+)
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 logger = logging.getLogger(__name__)
@@ -47,21 +54,26 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
-    ) -> List[Union[BlockMetadata, Block]]:
+    ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
         if upstream_map_fn:
-            # TODO: Support dynamic block splitting in
-            # all-to-all ops, to avoid having to re-fuse
-            # upstream blocks together.
-            upstream_map_iter = upstream_map_fn([block])
-            mapped_block = next(upstream_map_iter)
-            builder = BlockAccessor.for_block(mapped_block).builder()
-            builder.add_block(mapped_block)
-            for mapped_block in upstream_map_iter:
+            # Create a local TaskContext for the upstream map function.
+            # May be used by expressions that depend on task-level state.
+            local_ctx = TaskContext(task_idx=idx, op_name="shuffle_map")
+            with TaskContext.current(local_ctx):
+                # TODO: Support dynamic block splitting in
+                # all-to-all ops, to avoid having to re-fuse
+                # upstream blocks together.
+                upstream_map_iter = upstream_map_fn([block])
+                mapped_block = next(upstream_map_iter)
+                builder = BlockAccessor.for_block(mapped_block).builder()
                 builder.add_block(mapped_block)
-            # Drop the upstream inputs to reduce memory usage.
-            del mapped_block
-            block = builder.build()
+                for mapped_block in upstream_map_iter:
+                    builder.add_block(mapped_block)
+                # Drop the upstream inputs to reduce memory usage.
+                del mapped_block
+                block = builder.build()
+
         block = BlockAccessor.for_block(block)
         if (
             block.size_bytes()
@@ -100,8 +112,12 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
 
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
-        metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
-        return slices + [metadata]
+        from ray.data.block import BlockMetadataWithSchema
+
+        meta = block.get_metadata(exec_stats=stats.build())
+        schema = block.schema()
+        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        return slices + [meta_with_schema]
 
     @staticmethod
     def reduce(
@@ -109,7 +125,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         random_seed: Optional[int],
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
-    ) -> Tuple[Block, BlockMetadata]:
+    ) -> Tuple[Block, "BlockMetadataWithSchema"]:
         # TODO: Support fusion with other downstream operators.
         stats = BlockExecStats.builder()
         builder = DelegatingBlockBuilder()
@@ -125,8 +141,12 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         new_metadata = BlockMetadata(
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
-            schema=accessor.schema(),
             input_files=None,
             exec_stats=stats.build(),
         )
-        return new_block, new_metadata
+        from ray.data.block import BlockMetadataWithSchema
+
+        meta_with_schema = BlockMetadataWithSchema(
+            metadata=new_metadata, schema=accessor.schema()
+        )
+        return new_block, meta_with_schema

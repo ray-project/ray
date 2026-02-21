@@ -1,13 +1,15 @@
 import os
+import sys
 import time
 
 import pytest
 
 import ray
-from ray._private.test_utils import (
-    raw_metrics,
+from ray._common.test_utils import (
+    PrometheusTimeseries,
     wait_for_condition,
 )
+from ray._private.test_utils import raw_metric_timeseries
 
 METRIC_CONFIG = {
     "_system_config": {
@@ -31,8 +33,10 @@ def test_unintentional_worker_failures_metric(shutdown_only):
     # unintentional
     actor2.exit.remote()
 
+    timeseries = PrometheusTimeseries()
+
     def verify():
-        metrics = raw_metrics(context)
+        metrics = raw_metric_timeseries(context, timeseries)
         for sample in metrics["ray_unintentional_worker_failures_total"]:
             assert sample.value == 1
         return True
@@ -43,9 +47,4 @@ def test_unintentional_worker_failures_metric(shutdown_only):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

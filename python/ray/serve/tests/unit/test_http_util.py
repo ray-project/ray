@@ -2,11 +2,20 @@ import asyncio
 import pickle
 import sys
 from typing import Generator, Tuple
+from unittest.mock import MagicMock, patch
 
 import pytest
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.http_util import ASGIReceiveProxy, MessageQueue
+from ray._common.utils import get_or_create_event_loop
+from ray.serve import HTTPOptions
+from ray.serve._private.http_util import (
+    ASGIReceiveProxy,
+    MessageQueue,
+    configure_http_middlewares,
+    configure_http_options_with_defaults,
+)
 
 
 @pytest.mark.asyncio
@@ -247,6 +256,102 @@ class TestASGIReceiveProxy:
                 await asgi_receive_proxy()
         finally:
             receiver_task.cancel()
+
+
+class MockMiddleware:
+    """Mock middleware class for testing."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def __eq__(self, other):
+        return isinstance(other, MockMiddleware) and self.name == other.name
+
+    def __repr__(self):
+        return f"MockMiddleware({self.name})"
+
+
+@pytest.fixture
+def base_http_options():
+    """Provides basic HTTPOptions for testing."""
+    return HTTPOptions(
+        host="0.0.0.0",
+        port=8000,
+        request_timeout_s=30.0,
+        keep_alive_timeout_s=5.0,
+        middlewares=[],
+    )
+
+
+class TestConfigureHttpOptionsWithDefaults:
+    """Test suite for configure_http_options_with_defaults function."""
+
+    def test_basic_configuration(self, base_http_options):
+        """Test basic configuration preserves settings."""
+        result = configure_http_options_with_defaults(base_http_options)
+
+        # Request timeout should be preserved
+        assert result.request_timeout_s == 30.0
+        # Keep alive timeout should be preserved (no env override)
+        assert result.keep_alive_timeout_s == 5.0
+        # Should initialize middlewares list
+        assert result.middlewares == []
+        # Original should not be modified
+        assert base_http_options.request_timeout_s == 30.0
+
+    @patch("ray.serve._private.http_util.call_function_from_import_path")
+    @patch(
+        "ray.serve._private.http_util.RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH",
+        "my.module.callback",
+    )
+    def test_callback_middleware_injection(self, mock_call_function, base_http_options):
+        """Test that the callback middleware is injected correctly."""
+
+        # Arrange: Create a valid middleware by wrapping it with Starlette's Middleware class
+        class CustomMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                response = await call_next(request)  # Simply pass the request through
+                return response
+
+        # Mock the app argument
+        mock_app = MagicMock()
+
+        wrapped_middleware = Middleware(CustomMiddleware, app=mock_app)
+        mock_call_function.return_value = [
+            wrapped_middleware
+        ]  # Return list of wrapped middleware
+
+        # Act
+        result = configure_http_middlewares(base_http_options)
+
+        # Assert
+        mock_call_function.assert_called_once_with(
+            "my.module.callback"
+        )  # Verify callback execution
+        assert len(result.middlewares) == 1  # Ensure one middleware was injected
+        assert isinstance(result.middlewares[0], Middleware)
+
+    def test_callback_middleware_disabled(self, base_http_options):
+        """Test that callback middleware is not loaded when disabled."""
+        with patch(
+            "ray.serve._private.http_util.RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH",
+            "",
+        ):
+            result = configure_http_options_with_defaults(base_http_options)
+
+            # Assert that no callback middleware is added
+            assert result.middlewares == []
+
+    def test_deep_copy_behavior(self, base_http_options):
+        """Test that an original HTTPOptions object is not modified."""
+        original_timeout = base_http_options.request_timeout_s
+
+        result = configure_http_options_with_defaults(base_http_options)
+
+        # Original should remain unchanged
+        assert base_http_options.request_timeout_s == original_timeout
+        # Result should be a different object
+        assert result is not base_http_options
 
 
 if __name__ == "__main__":

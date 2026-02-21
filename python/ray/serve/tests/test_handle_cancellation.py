@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
@@ -214,7 +214,7 @@ def test_cancel_generator_async(serve_instance):
             g.cancel()
 
             with pytest.raises(RequestCancelledError):
-                assert await g.__anext__() == "hi"
+                await g.__anext__()
 
             await signal_actor.wait.remote()
 

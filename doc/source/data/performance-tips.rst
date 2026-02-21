@@ -15,6 +15,23 @@ faster.
 
 If your transformation isn't vectorized, there's no performance benefit.
 
+Enabling Polars for sort operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can speed up :meth:`~ray.data.Dataset.sort` and operations that sort internally,
+such as :meth:`~ray.data.grouped_data.GroupedData.map_groups`, by enabling Polars:
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_polars_sort = True
+
+When you enable this flag, Ray Data uses Polars instead of PyArrow for the internal
+sorting step, which can improve performance for large tabular datasets.
+This flag doesn't affect other operations such as :meth:`~ray.data.Dataset.map_batches`.
+
 Optimizing reads
 ----------------
 
@@ -25,7 +42,7 @@ Tuning output blocks for read
 
 By default, Ray Data automatically selects the number of output blocks for read according to the following procedure:
 
-- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
+- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <loading-data-api>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
 - Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``override_num_blocks`` also determines the number of map tasks.
 
 Ray Data decides the default value for number of output blocks based on the following heuristics, applied in order:
@@ -51,7 +68,7 @@ For example, the following code batches multiple files into the same read task t
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_csv(["example://iris.csv"] * 16)
+    ds = ray.data.read_csv(["s3://anonymous@ray-example-data/iris.csv"] * 16)
     print(ds.materialize())
 
 .. testoutput::
@@ -81,7 +98,7 @@ Notice how the number of output blocks is equal to ``override_num_blocks`` in th
     ray.init(num_cpus=2)
 
     # Repeat the iris.csv file 16 times.
-    ds = ray.data.read_csv(["example://iris.csv"] * 16, override_num_blocks=16)
+    ds = ray.data.read_csv(["s3://anonymous@ray-example-data/iris.csv"] * 16, override_num_blocks=16)
     print(ds.materialize())
 
 .. testoutput::
@@ -121,7 +138,7 @@ Here's an example where we manually specify ``override_num_blocks=1``, but the o
     MaterializedDataset(
        num_blocks=3,
        num_rows=5000,
-       schema={data: numpy.ndarray(shape=(10000,), dtype=int64)}
+       schema={data: ArrowTensorTypeV2(shape=(10000,), dtype=int64)}
     )
 
 
@@ -143,7 +160,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.read_csv("example://iris.csv").map(lambda row: row)
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").map(lambda row: row)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -171,7 +188,7 @@ For example, this code sets the number of files equal to ``override_num_blocks``
     # Pretend there are two CPUs.
     ray.init(num_cpus=2)
 
-    ds = ray.data.read_csv("example://iris.csv", override_num_blocks=1).map(lambda row: row)
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv", override_num_blocks=1).map(lambda row: row)
     print(ds.materialize().stats())
 
 .. testoutput::
@@ -205,38 +222,21 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 .. testcode::
 
     import ray
+
     # Read just two of the five columns of the Iris dataset.
-    ray.data.read_parquet(
+    ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
         columns=["sepal.length", "variety"],
     )
+    
+    print(ds.schema())
 
 .. testoutput::
 
-    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
-
-.. _parquet_row_pruning:
-
-Parquet row pruning (filter pushdown)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Similar to Parquet column pruning, you can pass in a filter to :func:`ray.data.read_parquet` (filter pushdown)
-which is applied at the file scan so only rows that match the filter predicate
-are returned. This can be used in conjunction with column pruning when appropriate to get the benefits of both.
-
-.. testcode::
-
-    import ray
-    # Only read rows with `sepal.length` greater than 5.0.
-    # The row count will be less than the total number of rows (150) in the full dataset.
-    ray.data.read_parquet(
-        "s3://anonymous@ray-example-data/iris.parquet",
-        filter=pyarrow.dataset.field("sepal.length") > 5.0,
-    ).count()
-
-.. testoutput::
-
-    118
+    Column        Type
+    ------        ----
+    sepal.length  double
+    variety       string
 
 
 .. _data_memory:
@@ -360,7 +360,7 @@ Handling too-small blocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When different operators of your Dataset produce different-sized outputs, you may end up with very small blocks, which can hurt performance and even cause crashes from excessive metadata.
-Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are each at least 1 MB and ideally 100 MB.
+Use :meth:`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are each at least 1 MB and ideally >100 MB.
 
 If your blocks are smaller than this, consider repartitioning into larger blocks.
 There are two ways to do this:
@@ -426,6 +426,7 @@ Configuring resources and locality
 By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
 
 You may want to customize these limits in the following scenarios:
+
 - If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
 - If you want to fine-tune the memory limit to maximize performance.
 - For data loading into training jobs, you may want to set the object store memory to a low value (for example, 2 GB) to limit resource usage.
@@ -434,22 +435,15 @@ You can configure execution options with the global DataContext. The options are
 
 .. code-block::
 
-   ctx = ray.data.DataContext.get_current()
-   ctx.execution_options.resource_limits.cpu = 10
-   ctx.execution_options.resource_limits.gpu = 5
-   ctx.execution_options.resource_limits.object_store_memory = 10e9
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        cpu=10,
+        gpu=5,
+        object_store_memory=10e9,
+    )
 
 .. note::
-    It's **not** recommended to modify the Ray Core object store memory limit, as this can reduce available memory for task execution. The one exception to this is if you are using machines with a very large amount of RAM (1 TB or more each); then it's recommended to set the object store to ~30-40%.
-
-Locality with output (ML ingest use case)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block::
-
-   ctx.execution_options.locality_with_output = True
-
-Setting this parameter to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This setting can be useful if you know you are consuming the output data directly on the consumer node (such as, for ML training ingest). However, other use cases may incur a performance penalty with this setting.
+    Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
 
 Reproducibility
 ---------------

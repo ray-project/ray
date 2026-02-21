@@ -2,16 +2,17 @@ import pathlib
 from typing import Any, Dict, Optional
 
 import tree
-from ray.rllib.core import Columns, DEFAULT_POLICY_ID
-from ray.rllib.core.rl_module.apis import ValueFunctionAPI
-from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.torch.torch_distributions import (
+
+from ray.rllib.core import DEFAULT_POLICY_ID, Columns
+from ray.rllib.core.distribution.torch.torch_distribution import (
     TorchCategorical,
     TorchDiagGaussian,
     TorchMultiCategorical,
     TorchMultiDistribution,
     TorchSquashedGaussian,
 )
+from ray.rllib.core.rl_module.apis import ValueFunctionAPI
+from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical as OldTorchCategorical,
     TorchDiagGaussian as OldTorchDiagGaussian,
@@ -187,7 +188,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
     def get_initial_state(self):
         """Converts the initial state list of ModelV2 into a dict (new API stack)."""
         init_state_list = self._model_v2.get_initial_state()
-        return {i: s for i, s in enumerate(init_state_list)}
+        return dict(enumerate(init_state_list))
 
     def _translate_dist_class(self, old_dist_class):
         map_ = {

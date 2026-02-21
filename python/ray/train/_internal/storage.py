@@ -529,7 +529,6 @@ class StorageContext:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
         # TODO(justinvyu): Fix this cyclical import.
-        from ray.train._checkpoint import Checkpoint
 
         logger.debug(
             "Copying checkpoint files to storage path:\n"
@@ -555,7 +554,7 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
-        persisted_checkpoint = Checkpoint(
+        persisted_checkpoint = checkpoint.__class__(
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )

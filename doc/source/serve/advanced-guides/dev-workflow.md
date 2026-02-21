@@ -97,7 +97,7 @@ This mode runs each deployment in a background thread and supports most of the s
 
 ## Testing on a remote cluster
 
-To test on a remote cluster, use `serve run` again, but this time, pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
+To test on a remote cluster, use `serve run` again, but this time, pass in an `--address` argument to specify the address of the Ray cluster to connect to. For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
 
 When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.
 
@@ -107,7 +107,7 @@ Let's see a simple example that just packages the code. Run the following comman
 serve run  --address=ray://<head-node-ip-address>:10001 --working-dir="./project/src" local_dev:app
 ```
 
-This connects to the remote cluster with the Ray Client, uploads the `working_dir` directory, and runs your Serve application.  Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
+This connects to the remote cluster with the Ray Client, uploads the `working_dir` directory, and runs your Serve application. Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
 
 Once this is up and running, we can send requests to the application:
 

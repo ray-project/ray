@@ -1,5 +1,5 @@
 import sys
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -31,6 +31,7 @@ def _build_and_check(
     expected_ingress_name: str,
     expected_deployments: List[Deployment],
     app_name: str = "default",
+    default_runtime_env: Optional[Dict[str, Any]] = None,
 ):
     built_app: BuiltApplication = build_app(
         app,
@@ -38,6 +39,7 @@ def _build_and_check(
         # Each real DeploymentHandle has a unique ID (intentionally), so the below
         # equality checks don't work. Use a fake implementation instead.
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        default_runtime_env=default_runtime_env,
     )
     assert built_app.name == app_name
     assert built_app.ingress_deployment_name == expected_ingress_name
@@ -127,6 +129,21 @@ def test_single_deployment_custom_name():
             )
         ],
     )
+
+    # Change to `with pytest.raises(ValueError)` when the warning is removed.
+    with pytest.warns(UserWarning):
+
+        @serve.deployment(name="test#deployment")
+        def my_deployment():
+            return "Hello!"
+
+    with pytest.warns(UserWarning):
+
+        @serve.deployment()
+        def my_deployment():
+            return "Hello!"
+
+        my_deployment.options(name="test#deployment")
 
 
 def test_multi_deployment_basic():
@@ -304,6 +321,228 @@ def test_multi_deployment_same_app_passed_twice():
             ),
         ],
     )
+
+
+def test_default_runtime_env():
+    @serve.deployment
+    class NoRayActorOptions:
+        pass
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0, "num_gpus": 1})
+    class NoRuntimeEnv:
+        pass
+
+    @serve.deployment(ray_actor_options={"runtime_env": {"env_vars": {"ENV": "VAR"}}})
+    class RuntimeEnvNoWorkingDir:
+        pass
+
+    @serve.deployment(
+        ray_actor_options={"runtime_env": {"working_dir": "s3://test.zip"}}
+    )
+    class RuntimeEnvWithWorkingDir:
+        pass
+
+    @serve.deployment
+    class Outer:
+        pass
+
+    app = Outer.bind(
+        NoRayActorOptions.bind(),
+        NoRuntimeEnv.bind(),
+        RuntimeEnvNoWorkingDir.bind(),
+        RuntimeEnvWithWorkingDir.bind(),
+    )
+
+    handles = tuple(
+        FakeDeploymentHandle(name, app_name="default")
+        for name in [
+            "NoRayActorOptions",
+            "NoRuntimeEnv",
+            "RuntimeEnvNoWorkingDir",
+            "RuntimeEnvWithWorkingDir",
+        ]
+    )
+
+    # 1) Test behavior when no default_runtime_env is passed.
+    _build_and_check(
+        app,
+        expected_ingress_name="Outer",
+        expected_deployments=[
+            Outer.options(name="Outer", _init_args=handles, _init_kwargs={}),
+            NoRayActorOptions.options(
+                name="NoRayActorOptions", _init_args=tuple(), _init_kwargs={}
+            ),
+            NoRuntimeEnv.options(
+                name="NoRuntimeEnv", _init_args=tuple(), _init_kwargs={}
+            ),
+            RuntimeEnvNoWorkingDir.options(
+                name="RuntimeEnvNoWorkingDir", _init_args=tuple(), _init_kwargs={}
+            ),
+            RuntimeEnvWithWorkingDir.options(
+                name="RuntimeEnvWithWorkingDir", _init_args=tuple(), _init_kwargs={}
+            ),
+        ],
+    )
+
+    # 2) Test behavior when a default_runtime_env is passed without a working_dir.
+    default_runtime_env = {"env_vars": {"DEFAULT": "ENV"}}
+    _build_and_check(
+        app,
+        expected_ingress_name="Outer",
+        expected_deployments=[
+            Outer.options(
+                name="Outer",
+                _init_args=handles,
+                _init_kwargs={},
+                ray_actor_options={"num_cpus": 1, "runtime_env": default_runtime_env},
+            ),
+            NoRayActorOptions.options(
+                name="NoRayActorOptions",
+                _init_args=tuple(),
+                _init_kwargs={},
+                ray_actor_options={"num_cpus": 1, "runtime_env": default_runtime_env},
+            ),
+            NoRuntimeEnv.options(
+                name="NoRuntimeEnv",
+                _init_args=tuple(),
+                _init_kwargs={},
+                ray_actor_options={
+                    "num_cpus": 0,
+                    "num_gpus": 1,
+                    "runtime_env": default_runtime_env,
+                },
+            ),
+            # ray_actor_options shouldn't be affected.
+            RuntimeEnvNoWorkingDir.options(
+                name="RuntimeEnvNoWorkingDir", _init_args=tuple(), _init_kwargs={}
+            ),
+            # ray_actor_options shouldn't be affected.
+            RuntimeEnvWithWorkingDir.options(
+                name="RuntimeEnvWithWorkingDir", _init_args=tuple(), _init_kwargs={}
+            ),
+        ],
+        default_runtime_env=default_runtime_env,
+    )
+
+    # 3) Test behavior when a default_runtime_env is passed with a working_dir.
+    default_runtime_env = {
+        "working_dir": "s3://default.zip",
+        "env_vars": {"DEFAULT": "ENV"},
+    }
+    _build_and_check(
+        app,
+        expected_ingress_name="Outer",
+        expected_deployments=[
+            Outer.options(
+                name="Outer",
+                _init_args=handles,
+                _init_kwargs={},
+                ray_actor_options={"num_cpus": 1, "runtime_env": default_runtime_env},
+            ),
+            NoRayActorOptions.options(
+                name="NoRayActorOptions",
+                _init_args=tuple(),
+                _init_kwargs={},
+                ray_actor_options={
+                    "num_cpus": 1,
+                    "runtime_env": default_runtime_env,
+                },
+            ),
+            NoRuntimeEnv.options(
+                name="NoRuntimeEnv",
+                _init_args=tuple(),
+                _init_kwargs={},
+                ray_actor_options={
+                    "num_cpus": 0,
+                    "num_gpus": 1,
+                    "runtime_env": default_runtime_env,
+                },
+            ),
+            # Only the working_dir field should be overridden.
+            RuntimeEnvNoWorkingDir.options(
+                name="RuntimeEnvNoWorkingDir",
+                _init_args=tuple(),
+                _init_kwargs={},
+                ray_actor_options={
+                    "num_cpus": 1,
+                    "runtime_env": {
+                        "working_dir": "s3://default.zip",
+                        **RuntimeEnvNoWorkingDir.ray_actor_options["runtime_env"],
+                    },
+                },
+            ),
+            # ray_actor_options shouldn't be affected.
+            RuntimeEnvWithWorkingDir.options(
+                name="RuntimeEnvWithWorkingDir", _init_args=tuple(), _init_kwargs={}
+            ),
+        ],
+        default_runtime_env=default_runtime_env,
+    )
+
+
+def test_external_scaler_enabled():
+    """Test that external_scaler_enabled is correctly set in BuiltApplication.
+
+    This test verifies that when build_app is called with external_scaler_enabled=True
+    or external_scaler_enabled=False, the resulting BuiltApplication object correctly
+    stores the external_scaler_enabled value.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    app = D.bind()
+
+    # Test with external_scaler_enabled=True
+    built_app_with_scaler: BuiltApplication = build_app(
+        app,
+        name="app-with-scaler",
+        external_scaler_enabled=True,
+    )
+    assert built_app_with_scaler.external_scaler_enabled is True
+    assert built_app_with_scaler.name == "app-with-scaler"
+
+    # Test with external_scaler_enabled=False (explicit)
+    built_app_without_scaler: BuiltApplication = build_app(
+        app,
+        name="app-without-scaler",
+        external_scaler_enabled=False,
+    )
+    assert built_app_without_scaler.external_scaler_enabled is False
+    assert built_app_without_scaler.name == "app-without-scaler"
+
+    # Test with default value (should be False)
+    built_app_default: BuiltApplication = build_app(
+        app,
+        name="app-default",
+    )
+    assert built_app_default.external_scaler_enabled is False
+    assert built_app_default.name == "app-default"
+
+
+def test_ingress_name_got_modified():
+    """Test that the ingress deployment name is modified when there are name
+    collisions.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    app = D.bind(D.bind(D.bind()))
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    # The ingress deployment name should be modified to avoid collision.
+    assert built_app.ingress_deployment_name == "D_2"
+
+    # The ingress deployment should be the last one.
+    assert len(built_app.deployments) == 3
+    assert built_app.deployments[-1].name == "D_2"
 
 
 if __name__ == "__main__":

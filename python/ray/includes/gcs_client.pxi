@@ -14,28 +14,37 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # We need to best-effort import everything we need.
 #
-# For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
+# For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
-from typing import List
+from ray._common.utils import get_or_create_event_loop
+from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
     ConnectOnSingletonIoContext,
-    CStatusCode,
-    CStatusCode_OK,
     MultiItemPyCallback,
     OptionalItemPyCallback,
     StatusPyCallback,
+    CGetClusterStatusReply,
+    CStatusOr,
+    CGcsNodeState,
+    CNodeSelector,
+    CGcsNodeInfo,
+    CAddEventsRequest,
+    CAddEventsReply,
+    CRayStatus,
 )
 from ray.includes.optional cimport optional, make_optional
-from ray.core.generated import gcs_pb2
+from ray.core.generated import gcs_pb2, autoscaler_pb2
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from cython.operator import dereference, postincrement
 cimport cpython
 
 
-cdef class NewGcsClient:
+cdef class InnerGcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
 
@@ -45,7 +54,7 @@ cdef class NewGcsClient:
     @staticmethod
     def standalone(gcs_address: str,
                    cluster_id: Optional[str],
-                   timeout_ms: int) -> "NewGcsClient":
+                   timeout_ms: int) -> "InnerGcsClient":
         cdef GcsClientOptions gcs_options = None
         if cluster_id:
             gcs_options = GcsClientOptions.create(
@@ -64,7 +73,7 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 ConnectOnSingletonIoContext(dereference(inner), c_timeout_ms))
 
-        gcs_client = NewGcsClient()
+        gcs_client = InnerGcsClient()
         gcs_client.inner = inner
         return gcs_client
 
@@ -73,7 +82,7 @@ cdef class NewGcsClient:
         cdef c_pair[c_string, int] pair = self.inner.get().GetGcsServerAddress()
         host = pair.first.decode("utf-8")
         port = pair.second
-        return f"{host}:{port}"
+        return build_address(host, port)
 
     @property
     def cluster_id(self) -> ray.ClusterID:
@@ -179,13 +188,12 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVGet(
-                    ns, key, timeout_ms,
-                    OptionalItemPyCallback[c_string](
-                        &convert_optional_str_none_for_not_found,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVGet(
+                ns, key, timeout_ms,
+                OptionalItemPyCallback[c_string](
+                    &convert_optional_str_none_for_not_found,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_multi_get(
@@ -197,33 +205,29 @@ cdef class NewGcsClient:
             c_vector[c_string] c_keys = [key for key in keys]
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVMultiGet(
-                    ns, c_keys, timeout_ms,
-                    OptionalItemPyCallback[unordered_map[c_string, c_string]](
-                        &convert_optional_multi_get,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVMultiGet(
+                ns, c_keys, timeout_ms,
+                OptionalItemPyCallback[unordered_map[c_string, c_string]](
+                    &convert_optional_multi_get,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_put(
         self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
         timeout=None
-    ) -> Future[int]:
-        # TODO(ryw): the sync `internal_kv_put` returns bool while this async version
-        # returns int. We should make them consistent.
+    ) -> Future[bool]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVPut(
-                    ns, key, value, overwrite, timeout_ms,
-                    OptionalItemPyCallback[int](
-                        &convert_optional_int,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVPut(
+                ns, key, value, overwrite, timeout_ms,
+                OptionalItemPyCallback[c_bool](
+                    &convert_optional_bool,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
@@ -233,13 +237,12 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVDel(
-                    ns, key, del_by_prefix, timeout_ms,
-                    OptionalItemPyCallback[int](
-                        &convert_optional_int,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVDel(
+                ns, key, del_by_prefix, timeout_ms,
+                OptionalItemPyCallback[int](
+                    &convert_optional_int,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None
@@ -249,13 +252,12 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVKeys(
-                    ns, prefix, timeout_ms,
-                    OptionalItemPyCallback[c_vector[c_string]](
-                        &convert_optional_vector_str,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVKeys(
+                ns, prefix, timeout_ms,
+                OptionalItemPyCallback[c_vector[c_string]](
+                    &convert_optional_vector_str,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_exists(self, c_string key, namespace=None, timeout=None
@@ -265,50 +267,54 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().AsyncInternalKVExists(
-                    ns, key, timeout_ms,
-                    OptionalItemPyCallback[c_bool](
-                        &convert_optional_bool,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().InternalKV().AsyncInternalKVExists(
+                ns, key, timeout_ms,
+                OptionalItemPyCallback[c_bool](
+                    &convert_optional_bool,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     #############################################################
     # NodeInfo methods
     #############################################################
     def check_alive(
-        self, node_ips: List[bytes], timeout: Optional[float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[CNodeID] c_node_ids;
             c_vector[c_bool] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
+        for node_id in node_ids:
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
             status = self.inner.get().Nodes().CheckAlive(
-                c_node_ips, timeout_ms, results)
+                c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
-        self, node_ips: List[bytes], timeout: Optional[float] = None
+        self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> Future[List[bool]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[CNodeID] c_node_ids;
             fut = incremented_fut()
+        c_node_ids.reserve(len(node_ids));
+        for node_id in node_ids:
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Nodes().AsyncCheckAlive(
-                    c_node_ips, timeout_ms,
-                    MultiItemPyCallback[c_bool](
-                        &convert_multi_bool,
-                        assign_and_decrement_fut,
-                        fut)))
+            self.inner.get().Nodes().AsyncCheckAlive(
+                c_node_ids, timeout_ms,
+                MultiItemPyCallback[c_bool](
+                    &convert_multi_bool,
+                    assign_and_decrement_fut,
+                    fut))
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
-        self, node_ids: List[bytes], timeout: Optional[float] = None
+        self, node_ids: Sequence[bytes], timeout: Optional[int | float] = None
     ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         cdef:
@@ -316,44 +322,82 @@ cdef class NewGcsClient:
             c_vector[CNodeID] c_node_ids
             c_vector[c_string] results
             CRayStatus status
+        c_node_ids.reserve(len(node_ids));
         for node_id in node_ids:
-            c_node_ids.push_back(CNodeID.FromBinary(node_id))
+            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
             status = self.inner.get().Nodes().DrainNodes(
                 c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
-        self, timeout: Optional[float] = None
+        self, timeout: Optional[int | float] = None,
+        node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
+        state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        cdef c_vector[CGcsNodeInfo] reply
-        cdef CRayStatus status
+        """Get all node info with optional filters.
+
+        Args:
+            timeout: Timeout in seconds
+            node_selectors: Optional list of GetAllNodeInfoRequest.NodeSelector
+                proto objects to filter nodes.
+            state_filter: Optional int representing the GcsNodeState enum value
+                to filter by node state.
+
+        Returns:
+            Dictionary mapping NodeID to GcsNodeInfo
+        """
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[CGcsNodeInfo] reply
+            CRayStatus status
+            optional[CStatusOr[c_vector[CGcsNodeInfo]]] status_or
+            optional[CGcsNodeState] c_state_filter = nullopt
+            c_vector[CNodeSelector] c_node_selectors
+            CNodeSelector c_node_selector
+
+        # Convert state_filter int to CGcsNodeState
+        if state_filter is not None:
+            c_state_filter.emplace(<CGcsNodeState>state_filter)
+
+        # Convert Python NodeSelector protos to C++ CNodeSelector
+        if node_selectors is not None:
+            for py_selector in node_selectors:
+                c_node_selector = CNodeSelector()
+                c_node_selector.ParseFromString(py_selector.SerializeToString())
+                c_node_selectors.push_back(c_node_selector)
+
         with nogil:
-            status = self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply)
+            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selectors)
+        status = status_or.value().status()
+        if status_or.value().ok():
+            reply = move(status_or.value().value())
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, timeout: Optional[float] = None
+        self, node_id: Optional[NodeID] = None, timeout: Optional[int | float] = None
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[CNodeID] c_node_ids
             fut = incremented_fut()
+        if node_id:
+            c_node_ids.push_back((<NodeID>node_id).native())
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Nodes().AsyncGetAll(
-                    MultiItemPyCallback[CGcsNodeInfo](
-                        convert_get_all_node_info,
-                        assign_and_decrement_fut,
-                        fut),
-                    timeout_ms))
+            self.inner.get().Nodes().AsyncGetAll(
+                MultiItemPyCallback[CGcsNodeInfo](
+                    convert_get_all_node_info,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout_ms,
+                c_node_ids)
         return asyncio.wrap_future(fut)
 
     #############################################################
     # NodeResources methods
     #############################################################
     def get_all_resource_usage(
-        self, timeout: Optional[float] = None
+        self, timeout: Optional[int | float] = None
     ) -> GetAllResourceUsageReply:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef CGetAllResourceUsageReply c_reply
@@ -378,7 +422,7 @@ cdef class NewGcsClient:
         actor_id: Optional[ActorID] = None,
         job_id: Optional[JobID] = None,
         actor_state_name: Optional[str] = None,
-        timeout: Optional[float] = None
+        timeout: Optional[int | float] = None
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -394,40 +438,15 @@ cdef class NewGcsClient:
             c_actor_state_name = <c_string>actor_state_name.encode()
 
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Actors().AsyncGetAllByFilter(
-                    c_actor_id, c_job_id, c_actor_state_name,
-                    MultiItemPyCallback[CActorTableData](
-                        &convert_get_all_actor_info,
-                        assign_and_decrement_fut,
-                        fut),
-                    timeout_ms))
+            self.inner.get().Actors().AsyncGetAllByFilter(
+                c_actor_id, c_job_id, c_actor_state_name,
+                MultiItemPyCallback[CActorTableData](
+                    &convert_get_all_actor_info,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout_ms)
         return asyncio.wrap_future(fut)
 
-    def async_kill_actor(
-        self, actor_id: ActorID, c_bool force_kill, c_bool no_restart,
-        timeout: Optional[float] = None
-    ) -> ConcurrentFuture[None]:
-        """
-        On success: returns None.
-        On failure: raises an exception.
-        """
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            fut = incremented_fut()
-            CActorID c_actor_id = actor_id.native()
-
-        with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Actors().AsyncKillActor(
-                    c_actor_id,
-                    force_kill,
-                    no_restart,
-                    StatusPyCallback(convert_status, assign_and_decrement_fut,  fut),
-                    timeout_ms
-                )
-            )
-        return asyncio.wrap_future(fut)
     #############################################################
     # Job methods
     #############################################################
@@ -436,7 +455,7 @@ cdef class NewGcsClient:
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[float] = None
+        timeout: Optional[int | float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef c_string c_job_or_submission_id
         cdef optional[c_string] c_optional_job_or_submission_id = nullopt
@@ -459,7 +478,7 @@ cdef class NewGcsClient:
         self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
-        timeout: Optional[float] = None
+        timeout: Optional[int | float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             c_string c_job_or_submission_id
@@ -473,16 +492,15 @@ cdef class NewGcsClient:
             c_optional_job_or_submission_id = \
                 make_optional[c_string](c_job_or_submission_id)
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Jobs().AsyncGetAll(
-                    c_optional_job_or_submission_id,
-                    c_skip_submission_job_info_field,
-                    c_skip_is_running_tasks_field,
-                    MultiItemPyCallback[CJobTableData](
-                        &convert_get_all_job_info,
-                        assign_and_decrement_fut,
-                        fut),
-                    timeout_ms))
+            self.inner.get().Jobs().AsyncGetAll(
+                c_optional_job_or_submission_id,
+                c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field,
+                MultiItemPyCallback[CJobTableData](
+                    &convert_get_all_job_info,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout_ms)
         return asyncio.wrap_future(fut)
 
     #############################################################
@@ -504,7 +522,8 @@ cdef class NewGcsClient:
     #############################################################
     def request_cluster_resource_constraint(
             self,
-            bundles: c_vector[unordered_map[c_string, double]],
+            bundles: c_vector[unordered_map[c_string, cython.double]],
+            label_selectors: c_vector[unordered_map[c_string, c_string]],
             count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
@@ -513,7 +532,7 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .Autoscaler()
-                .RequestClusterResourceConstraint(timeout_ms, bundles, count_array)
+                .RequestClusterResourceConstraint(timeout_ms, bundles, label_selectors, count_array)
             )
 
     def get_cluster_resource_state(
@@ -545,6 +564,22 @@ cdef class NewGcsClient:
             )
 
         return serialized_reply
+
+    def async_get_cluster_status(
+        self,
+        timeout_s=None
+    ) -> Future[autoscaler_pb2.GetClusterStatusReply]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            fut = incremented_fut()
+        with nogil:
+            self.inner.get().Autoscaler().AsyncGetClusterStatus(
+                timeout_ms,
+                OptionalItemPyCallback[CGetClusterStatusReply](
+                    &convert_get_cluster_status_reply,
+                    assign_and_decrement_fut,
+                    fut))
+        return asyncio.wrap_future(fut)
 
     def report_autoscaling_state(
         self,
@@ -583,34 +618,113 @@ cdef class NewGcsClient:
 
         return (is_accepted, rejection_reason_message.decode())
 
+    #############################################################
+    # Publisher methods
+    #############################################################
 
-# Util functions for async handling
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id: Optional[JobID] = None, timeout = None):
+        cdef:
+            CErrorTableData error_info
+            c_string c_key_id = key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
 
-cdef incremented_fut():
-    fut = concurrent.futures.Future()
-    cpython.Py_INCREF(fut)
-    return fut
+        if job_id is None:
+            job_id = ray.JobID.nil()
+        error_info.set_job_id(job_id.binary())
+        error_info.set_type(error_type)
+        error_info.set_error_message(message)
+        error_info.set_timestamp(time.time())
 
-cdef void assign_and_decrement_fut(result, fut) with gil:
-    assert isinstance(fut, concurrent.futures.Future)
+        with nogil:
+            self.inner.get().Publisher().PublishError(
+                move(c_key_id), move(error_info), timeout_ms)
 
-    assert not fut.done()
-    try:
-        ret, exc = result
-        if exc:
-            fut.set_exception(exc)
+    def publish_logs(self, log_json: dict, timeout = None):
+        cdef:
+            CLogBatch log_batch
+            c_string c_key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        job_id = log_json.get("job")
+        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
+        log_batch.set_pid(
+            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
+        log_batch.set_job_id(job_id.encode() if job_id else b"")
+        log_batch.set_is_error(bool(log_json.get("is_err")))
+        for line in log_json.get("lines", []):
+            log_batch.add_lines(line)
+        actor_name = log_json.get("actor_name")
+        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        task_name = log_json.get("task_name")
+        log_batch.set_task_name(task_name.encode() if task_name else b"")
+
+        c_key_id = job_id.encode() if job_id else b""
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Publisher().PublishLogs(
+                    move(c_key_id), move(log_batch), timeout_ms))
+
+    def async_publish_node_resource_usage(
+            self, key_id: str, node_resource_usage_json: str) -> Future[None]:
+        cdef:
+            c_string c_key_id = key_id
+            c_string c_node_resource_usage_json = node_resource_usage_json.encode()
+            fut = incremented_fut()
+        with nogil:
+            self.inner.get().Publisher().AsyncPublishNodeResourceUsage(
+                move(c_key_id),
+                move(c_node_resource_usage_json),
+                StatusPyCallback(convert_status, assign_and_decrement_fut, fut))
+        return asyncio.wrap_future(fut)
+
+    def report_cluster_config(
+                self,
+                serialized_cluster_config: c_string):
+        """Report cluster config to GCS"""
+        cdef:
+            int64_t timeout_ms = -1
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Autoscaler().ReportClusterConfig(
+                    timeout_ms, serialized_cluster_config
+                )
+            )
+
+    #############################################################
+    # TaskInfo methods
+    #############################################################
+    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None):
+        """Send async AddEvents request to GCS."""
+        cdef:
+            CAddEventsRequest c_req
+            int64_t timeout_ms
+            fut = incremented_fut()
+        timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+
+        # Parse the protobuf payload
+        cdef c_string payload = serialized_request
+        cdef bint parsed = False
+        if executor is not None:
+            parsed = await get_or_create_event_loop().run_in_executor(
+                executor,
+                lambda: c_req.ParseFromString(payload),
+            )
         else:
-            fut.set_result(ret)
-    finally:
-        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
-        # and we DECREF it here to balance it.
-        cpython.Py_DECREF(fut)
+            parsed = c_req.ParseFromString(payload)
 
-cdef raise_or_return(tup):
-    ret, exc = tup
-    if exc:
-        raise exc
-    return ret
+        if not parsed:
+            # Fail fast on parse error
+            assign_and_decrement_fut((None, ValueError("Invalid AddEventsRequest payload")), fut)
+            return await asyncio.wrap_future(fut)
+
+        with nogil:
+            self.inner.get().Tasks().AsyncAddEvents(
+                move(c_req),
+                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
+                timeout_ms)
+        return await asyncio.wrap_future(fut)
 
 #############################################################
 # Converter functions: C++ types -> Python types, use by both Sync and Async APIs.
@@ -623,7 +737,7 @@ cdef raise_or_return(tup):
 #############################################################
 
 cdef convert_get_all_node_info(
-        CRayStatus status, c_vector[CGcsNodeInfo]&& c_data) with gil:
+        CRayStatus status, c_vector[CGcsNodeInfo] c_data) with gil:
     # -> Dict[NodeID, gcs_pb2.GcsNodeInfo]
     # No GIL block for C++ looping && serialization.
     # GIL block for Pyhton deserialization and dict building.
@@ -645,7 +759,7 @@ cdef convert_get_all_node_info(
         return None, e
 
 cdef convert_get_all_job_info(
-        CRayStatus status, c_vector[CJobTableData]&& c_data) with gil:
+        CRayStatus status, c_vector[CJobTableData] c_data) with gil:
     # -> Dict[JobID, gcs_pb2.JobTableData]
     # No GIL block for C++ looping && serialization.
     # GIL block for Pyhton deserialization and dict building.
@@ -667,7 +781,7 @@ cdef convert_get_all_job_info(
         return None, e
 
 cdef convert_get_all_actor_info(
-        CRayStatus status, c_vector[CActorTableData]&& c_data) with gil:
+        CRayStatus status, c_vector[CActorTableData] c_data) with gil:
     # -> Dict[ActorID, gcs_pb2.ActorTableData]
     cdef c_vector[c_string] serialized_reply
     try:
@@ -685,15 +799,42 @@ cdef convert_get_all_actor_info(
     except Exception as e:
         return None, e
 
-cdef convert_status(CRayStatus status) with gil:
-    # -> None
+cdef convert_get_cluster_status_reply(
+    CRayStatus status, optional[CGetClusterStatusReply] c_data
+) with gil: # -> Tuple[autoscaler_pb2.GetClusterStatusReply, Exception]
+    cdef c_string serialized_reply
     try:
         check_status_timeout_as_rpc_error(status)
-        return None, None
+        assert c_data.has_value()
+        with nogil:
+            serialized_reply = c_data.value().SerializeAsString()
+        proto = autoscaler_pb2.GetClusterStatusReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
     except Exception as e:
         return None, e
+
+cdef convert_status(CRayStatus status) with gil:
+    # This function is currently only used by `async_kill_actor` to
+    # convert RayStatus to an HTTP status code.
+    #
+    # Returns:
+    #   Tuple[int, Optional[Exception]]:
+    #     - int: HTTP status code.
+    #       (1) 200: Success
+    #       (2) 404: Actor not found
+    #       (3) 500: Other errors
+    #     - Optional[Exception]: Exception raised by RayStatus
+    try:
+        if status.IsNotFound():
+            return 404, None
+        check_status_timeout_as_rpc_error(status)
+        return 200, None
+    except Exception as e:
+        return 500, e
+
 cdef convert_optional_str_none_for_not_found(
-        CRayStatus status, optional[c_string]&& c_str) with gil:
+        CRayStatus status, optional[c_string] c_str) with gil:
     # If status is NotFound, return None.
     # If status is OK, return the value.
     # Else, raise exception.
@@ -709,7 +850,7 @@ cdef convert_optional_str_none_for_not_found(
 
 cdef convert_optional_multi_get(
         CRayStatus status,
-        optional[unordered_map[c_string, c_string]]&& c_map) with gil:
+        optional[unordered_map[c_string, c_string]] c_map) with gil:
     # -> Dict[str, str]
     cdef unordered_map[c_string, c_string].iterator it
     try:
@@ -725,7 +866,7 @@ cdef convert_optional_multi_get(
     except Exception as e:
         return None, e
 
-cdef convert_optional_int(CRayStatus status, optional[int]&& c_int) with gil:
+cdef convert_optional_int(CRayStatus status, optional[int] c_int) with gil:
     # -> int
     try:
         check_status_timeout_as_rpc_error(status)
@@ -735,7 +876,7 @@ cdef convert_optional_int(CRayStatus status, optional[int]&& c_int) with gil:
         return None, e
 
 cdef convert_optional_vector_str(
-        CRayStatus status, optional[c_vector[c_string]]&& c_vec) with gil:
+        CRayStatus status, optional[c_vector[c_string]] c_vec) with gil:
     # -> List[bytes]
     try:
         check_status_timeout_as_rpc_error(status)
@@ -743,7 +884,7 @@ cdef convert_optional_vector_str(
     except Exception as e:
         return None, e
 
-cdef convert_optional_bool(CRayStatus status, optional[c_bool]&& b) with gil:
+cdef convert_optional_bool(CRayStatus status, optional[c_bool] b) with gil:
     # -> bool
     try:
         check_status_timeout_as_rpc_error(status)
@@ -752,7 +893,7 @@ cdef convert_optional_bool(CRayStatus status, optional[c_bool]&& b) with gil:
     except Exception as e:
         return None, e
 
-cdef convert_multi_bool(CRayStatus status, c_vector[c_bool]&& c_data) with gil:
+cdef convert_multi_bool(CRayStatus status, c_vector[c_bool] c_data) with gil:
     # -> List[bool]
     try:
         check_status_timeout_as_rpc_error(status)
@@ -760,7 +901,7 @@ cdef convert_multi_bool(CRayStatus status, c_vector[c_bool]&& c_data) with gil:
     except Exception as e:
         return None, e
 
-cdef convert_multi_str(CRayStatus status, c_vector[c_string]&& vec) with gil:
+cdef convert_multi_str(CRayStatus status, c_vector[c_string] vec) with gil:
     # -> List[bytes]
     cdef c_vector[c_string].iterator it
     try:

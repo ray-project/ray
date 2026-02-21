@@ -1,25 +1,24 @@
 import collections
-from functools import partial
 import itertools
 import sys
+from functools import partial
 from numbers import Number
-from typing import Dict, Iterator, Set, Union
-from typing import List, Optional
+from typing import Dict, Iterator, List, Optional, Set, Union
 
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray._common.deprecation import Deprecated, deprecation_warning
 from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
-from ray.rllib.utils.compression import pack, unpack, is_compressed
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.compression import is_compressed, pack, unpack
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     ModuleID,
     PolicyID,
-    TensorType,
     SampleBatchType,
+    TensorType,
     ViewRequirementsDict,
 )
 from ray.util import log_once
@@ -55,7 +54,7 @@ def attempt_count_timesteps(tensor_dict: dict):
         and len(seq_lens) > 0
     ):
         if torch and torch.is_tensor(seq_lens):
-            return seq_lens.sum().item()
+            return int(seq_lens.sum().item())
         else:
             return int(sum(seq_lens))
 
@@ -891,12 +890,25 @@ class SampleBatch(dict):
         return self
 
     @ExperimentalAPI
-    def to_device(self, device, framework="torch"):
+    def to_device(
+        self,
+        device,
+        framework: str = "torch",
+        pin_memory: bool = False,
+        use_stream: bool = False,
+        stream: Optional[Union["torch.cuda.Stream", "torch.cuda.Stream"]] = None,
+    ):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                self[k] = convert_to_torch_tensor(v, device)
+                self[k] = convert_to_torch_tensor(
+                    v,
+                    device,
+                    pin_memory=pin_memory,
+                    use_stream=use_stream,
+                    stream=stream,
+                )
         else:
             raise NotImplementedError
         return self
@@ -1491,13 +1503,24 @@ class MultiAgentBatch:
         )
 
     @ExperimentalAPI
-    def to_device(self, device, framework="torch"):
+    def to_device(
+        self,
+        device,
+        framework="torch",
+        pin_memory: bool = False,
+        use_stream: bool = False,
+        stream: Optional[Union["torch.cuda.Stream", "torch.cuda.Stream"]] = None,
+    ):
         """TODO: transfer batch to given device as framework tensor."""
         if framework == "torch":
             assert torch is not None
             for pid, policy_batch in self.policy_batches.items():
                 self.policy_batches[pid] = policy_batch.to_device(
-                    device, framework=framework
+                    device,
+                    framework=framework,
+                    pin_memory=pin_memory,
+                    use_stream=use_stream,
+                    stream=stream,
                 )
         else:
             raise NotImplementedError
@@ -1640,7 +1663,7 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
             s.max_seq_len is None or max_seq_len is None
         ) and s.max_seq_len != max_seq_len:
             raise ValueError(
-                "Samples must consistently either provide or omit " "`max_seq_len`!"
+                "Samples must consistently either provide or omit `max_seq_len`!"
             )
         elif zero_padded and s.max_seq_len != max_seq_len:
             raise ValueError(
@@ -1790,7 +1813,7 @@ def _concat_values(*values, time_major=None) -> TensorType:
 
 @DeveloperAPI
 def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
-    """Converts a MultiAgentBatch to a SampleBatch if neccessary.
+    """Converts a MultiAgentBatch to a SampleBatch if necessary.
 
     Args:
         batch: The SampleBatchType to convert.

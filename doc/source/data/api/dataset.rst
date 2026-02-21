@@ -4,7 +4,30 @@ Dataset API
 ==============
 
 .. include:: ray.data.Dataset.rst
-.. include:: ray.data.Schema.rst
+
+Compute Strategy API
+--------------------
+.. currentmodule:: ray.data
+.. autosummary::
+  :nosignatures:
+  :toctree: doc/
+
+  ActorPoolStrategy
+  TaskPoolStrategy
+
+Schema
+------
+.. currentmodule:: ray.data
+
+.. autoclass:: Schema
+    :members:
+
+DatasetSummary
+--------------
+.. currentmodule:: ray.data.stats
+
+.. autoclass:: DatasetSummary
+    :members:
 
 Developer API
 -------------
@@ -34,4 +57,3 @@ Deprecated API
   :toctree: doc/
 
   Dataset.iter_tf_batches
-  Dataset.to_torch

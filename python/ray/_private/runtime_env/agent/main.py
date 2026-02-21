@@ -1,20 +1,23 @@
-import sys
-import os
 import argparse
 import logging
-import pathlib
+import os
+import socket
+import sys
+
+import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.utils import (
+    get_or_create_event_loop,
+)
+from ray._private import logging_utils
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_middleware,
+)
+from ray._private.process_watcher import create_check_raylet_task
+from ray._raylet import RUNTIME_ENV_AGENT_PORT_NAME, GcsClient, persist_port
 from ray.core.generated import (
     runtime_env_agent_pb2,
 )
-from ray._private.utils import open_log
-from ray._private.ray_logging import (
-    configure_log_file,
-)
-from ray._private.utils import (
-    get_or_create_event_loop,
-)
-from ray._private.process_watcher import create_check_raylet_task
 
 
 def import_libs():
@@ -25,21 +28,19 @@ def import_libs():
 
 import_libs()
 
+import aiohttp  # noqa: E402
 import runtime_env_consts  # noqa: E402
-from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 from aiohttp import web  # noqa: E402
-
-
-def open_capture_files(log_dir):
-    filename = "runtime_env_agent"
-    return (
-        open_log(pathlib.Path(log_dir) / f"{filename}.out"),
-        open_log(pathlib.Path(log_dir) / f"{filename}.err"),
-    )
-
+from runtime_env_agent import RuntimeEnvAgent  # noqa: E402
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime env agent.")
+    parser.add_argument(
+        "--node-id",
+        required=True,
+        type=str,
+        help="the unique ID of this node.",
+    )
     parser.add_argument(
         "--node-ip-address",
         required=True,
@@ -52,6 +53,13 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="The port on which the runtime env agent will receive HTTP requests.",
+    )
+    parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="The path of this ray session directory.",
     )
 
     parser.add_argument(
@@ -95,20 +103,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--logging-rotate-bytes",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
-        help="Specify the max bytes for rotating "
-        "log file, default is {} bytes.".format(ray_constants.LOGGING_ROTATE_BYTES),
+        help="Specify the max bytes for rotating log file",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
-        required=False,
+        required=True,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        help="Specify the backup count of rotated log file, default is {}.".format(
-            ray_constants.LOGGING_ROTATE_BACKUP_COUNT
-        ),
+        help="Specify the backup count of rotated log file",
     )
     parser.add_argument(
         "--log-dir",
@@ -124,31 +127,57 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the temporary directory use by Ray process.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump runtime env agent stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump runtime env agent stderr.",
+    )
 
     args = parser.parse_args()
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
 
     logging_params = dict(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.log_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
     )
 
-    # Setup stdout/stderr redirect files
-    out_file, err_file = open_capture_files(args.log_dir)
-    configure_log_file(out_file, err_file)
+    # Setup stdout/stderr redirect files if redirection enabled.
+    logging_utils.redirect_stdout_stderr_if_needed(
+        args.stdout_filepath,
+        args.stderr_filepath,
+        logging_rotation_bytes,
+        logging_rotation_backup_count,
+    )
 
+    gcs_client = GcsClient(address=args.gcs_address, cluster_id=args.cluster_id_hex)
     agent = RuntimeEnvAgent(
         runtime_env_dir=args.runtime_env_dir,
         logging_params=logging_params,
-        gcs_address=args.gcs_address,
-        cluster_id_hex=args.cluster_id_hex,
+        gcs_client=gcs_client,
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
     )
+
+    ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
 
     # POST /get_or_create_runtime_env
     # body is serialzied protobuf GetOrCreateRuntimeEnvRequest
@@ -186,7 +215,7 @@ if __name__ == "__main__":
             body=reply.SerializeToString(), content_type="application/octet-stream"
         )
 
-    app = web.Application()
+    app = web.Application(middlewares=[get_token_auth_middleware(aiohttp)])
 
     app.router.add_post("/get_or_create_runtime_env", get_or_create_runtime_env)
     app.router.add_post(
@@ -208,18 +237,26 @@ if __name__ == "__main__":
 
         # No need to await this task.
         check_raylet_task = create_check_raylet_task(
-            args.log_dir, args.gcs_address, parent_dead_callback, loop
+            args.log_dir, gcs_client, parent_dead_callback, loop
         )
-    runtime_env_agent_ip = (
-        "127.0.0.1" if args.node_ip_address == "127.0.0.1" else "0.0.0.0"
+
+    port = args.runtime_env_agent_port or 0
+    infos = socket.getaddrinfo(args.node_ip_address, port, type=socket.SOCK_STREAM)
+    family, socktype, proto, _, sockaddr = infos[0]
+    sock = socket.socket(family, socktype, proto)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(sockaddr)
+
+    bound_port = sock.getsockname()[1]
+    persist_port(
+        args.session_dir,
+        args.node_id,
+        RUNTIME_ENV_AGENT_PORT_NAME,
+        bound_port,
     )
+
     try:
-        web.run_app(
-            app,
-            host=runtime_env_agent_ip,
-            port=args.runtime_env_agent_port,
-            loop=loop,
-        )
+        web.run_app(app, sock=sock, loop=loop)
     except SystemExit as e:
         agent._logger.info(f"SystemExit! {e}")
         # We have to poke the task exception, or there's an error message

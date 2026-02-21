@@ -9,8 +9,8 @@ import tempfile
 import numpy as np
 
 import ray
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.tune import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -42,7 +42,7 @@ def pbt_function(config):
 
     # NOTE: See below why step is initialized to 1
     step = 1
-    checkpoint = train.get_checkpoint()
+    checkpoint = tune.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "checkpoint.json"), "r") as f:
@@ -97,9 +97,9 @@ def pbt_function(config):
                 with open(os.path.join(tempdir, "checkpoint.json"), "w") as f:
                     checkpoint_dict = {"acc": accuracy, "step": step}
                     json.dump(checkpoint_dict, f)
-                train.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
+                tune.report(metrics, checkpoint=Checkpoint.from_directory(tempdir))
         else:
-            train.report(metrics)
+            tune.report(metrics)
         step += 1
 
 
@@ -118,7 +118,7 @@ def run_tune_pbt(smoke_test=False):
 
     tuner = tune.Tuner(
         pbt_function,
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="pbt_function_api_example",
             verbose=False,
             stop={
@@ -127,10 +127,10 @@ def run_tune_pbt(smoke_test=False):
                 "done": True,
                 "training_iteration": 10 if smoke_test else 1000,
             },
-            failure_config=train.FailureConfig(
+            failure_config=tune.FailureConfig(
                 fail_fast=True,
             ),
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=tune.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,
             ),

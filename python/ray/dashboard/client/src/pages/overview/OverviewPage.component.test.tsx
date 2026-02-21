@@ -3,12 +3,22 @@ import React, { PropsWithChildren } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import { STYLE_WRAPPER } from "../../util/test-utils";
+import { useRayStatus } from "../job/hook/useClusterStatus";
 import { useJobList } from "../job/hook/useJobList";
 import { OverviewPage } from "./OverviewPage";
 
 jest.mock("../job/hook/useJobList");
+jest.mock("../job/hook/useClusterStatus");
+
+const mockedUseRayStatus = jest.mocked(useRayStatus);
 
 describe("OverviewPage", () => {
+  beforeEach(() => {
+    mockedUseRayStatus.mockReturnValue({
+      clusterStatus: undefined,
+    });
+  });
+
   it("renders", async () => {
     expect.assertions(3);
 
@@ -72,6 +82,8 @@ const Wrapper =
               grafanaHost: grafanaHostDisabled
                 ? "DISABLED"
                 : "http://localhost:3000",
+              grafanaOrgId: "1",
+              grafanaClusterFilter: undefined,
               dashboardUids: {
                 default: "rayDefaultDashboard",
                 serve: "rayServeDashboard",
@@ -84,6 +96,11 @@ const Wrapper =
               nodeMapByIp: {},
               namespaceMap: {},
               dashboardDatasource: "Prometheus",
+              serverTimeZone: undefined,
+              currentTimeZone: undefined,
+              themeMode: "light",
+              // eslint-disable-next-line @typescript-eslint/no-empty-function
+              toggleTheme: () => {},
             }}
           >
             {children}

@@ -4,14 +4,15 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
     delete_package,
     download_and_unpack_package,
     get_local_dir_from_uri,
-    get_uri_for_file,
     get_uri_for_directory,
+    get_uri_for_file,
     get_uri_for_package,
     install_wheel_package,
     is_whl_uri,
@@ -22,7 +23,8 @@ from ray._private.runtime_env.packaging import (
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
-from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray._private.utils import get_directory_size_bytes
+from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ def _check_is_uri(s: str) -> bool:
 
 def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
+    include_gitignore: bool,
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
     upload_fn=None,
@@ -100,7 +103,11 @@ def upload_py_modules_if_needed(
                 is_dir = Path(module_path).is_dir()
                 excludes = runtime_env.get("excludes", None)
                 if is_dir:
-                    module_uri = get_uri_for_directory(module_path, excludes=excludes)
+                    module_uri = get_uri_for_directory(
+                        module_path,
+                        include_gitignore=include_gitignore,
+                        excludes=excludes,
+                    )
                 else:
                     module_uri = get_uri_for_file(module_path)
                 if upload_fn is None:
@@ -109,8 +116,9 @@ def upload_py_modules_if_needed(
                             module_uri,
                             scratch_dir,
                             module_path,
-                            excludes=excludes,
+                            include_gitignore=include_gitignore,
                             include_parent_dir=is_dir,
+                            excludes=excludes,
                             logger=logger,
                         )
                     except Exception as e:
@@ -164,11 +172,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     name = "py_modules"
 
-    def __init__(
-        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
-    ):
+    def __init__(self, resources_dir: str, gcs_client: GcsClient):
         self._resources_dir = os.path.join(resources_dir, "py_modules_files")
-        self._gcs_aio_client = gcs_aio_client
+        self._gcs_client = gcs_client
         try_to_create_directory(self._resources_dir)
 
     def _get_local_dir_from_uri(self, uri: str):
@@ -201,7 +207,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
     ) -> int:
 
         module_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri, self._resources_dir, self._gcs_client, logger=logger
         )
 
         if is_whl_uri(uri):

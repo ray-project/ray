@@ -2,25 +2,35 @@ import asyncio
 import json
 import os
 import sys
-from pathlib import Path
 import tempfile
-
 from collections import defaultdict
-from ray._private.test_utils import check_call_subprocess
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import pytest
+import requests
 
 import ray
-import requests
-import pytest
-
+from ray._common.test_utils import wait_for_condition
 from ray._private.profiling import chrome_tracing_dump
+from ray._private.test_utils import (
+    check_call_subprocess,
+    wait_for_aggregator_agent_if_enabled,
+)
 from ray.util.state import (
     get_actor,
-    list_tasks,
     list_actors,
-    list_workers,
     list_nodes,
+    list_tasks,
+    list_workers,
 )
-from ray._private.test_utils import wait_for_condition
+
+pytestmark = [
+    pytest.mark.parametrize(
+        "event_routing_config", ["default", "aggregator"], indirect=True
+    ),
+    pytest.mark.usefixtures("event_routing_config"),
+]
 
 
 def test_timeline(shutdown_only):
@@ -257,6 +267,10 @@ def test_actor_repr_name(shutdown_only):
 
 
 def test_experimental_import_deprecation():
+    for name in list(sys.modules):
+        if name.startswith("ray.experimental.state"):
+            sys.modules.pop(name, None)
+
     with pytest.warns(DeprecationWarning):
         from ray.experimental.state.api import list_tasks  # noqa: F401
 
@@ -282,6 +296,10 @@ def test_experimental_import_deprecation():
 
 
 def test_actor_task_with_repr_name(ray_start_with_dashboard):
+    wait_for_aggregator_agent_if_enabled(
+        ray_start_with_dashboard["gcs_address"], ray_start_with_dashboard["node_id"]
+    )
+
     @ray.remote
     class ReprActor:
         def __init__(self, x) -> None:
@@ -345,8 +363,12 @@ def test_actor_task_with_repr_name(ray_start_with_dashboard):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Release test not expected to work on non-linux."
 )
-def test_state_api_scale_smoke(shutdown_only):
-    ray.init()
+def test_state_api_scale_smoke(shutdown_only, monkeypatch):
+    address_info = ray.init()
+    wait_for_aggregator_agent_if_enabled(
+        address_info["gcs_address"], address_info["node_id"]
+    )
+    monkeypatch.setenv("RAY_ADDRESS", address_info["gcs_address"])
     release_test_file_path = (
         "../../release/nightly_tests/stress_tests/test_state_api_scale.py"
     )
@@ -376,10 +398,36 @@ def test_ray_timeline(shutdown_only):
         assert len(dumped) > 0
 
 
-if __name__ == "__main__":
-    import sys
+def test_state_init_multiple_threads(shutdown_only):
+    ray.init()
+    global_state = ray._private.state.state
+    global_state._connect_and_get_accessor()
+    gcs_options = global_state.gcs_options
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    def disconnect():
+        global_state.disconnect()
+        global_state._initialize_global_state(gcs_options)
+        return True
+
+    def get_nodes_from_state_api():
+        try:
+            return len(global_state.node_table()) == 1
+        except ray.exceptions.RaySystemError:
+            # There's a gap between disconnect and _initialize_global_state
+            # and this will be raised if we try to connect during that gap
+            return True
+
+    disconnect()
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        futures = [executor.submit(get_nodes_from_state_api) for _ in range(50)]
+        futures.extend([executor.submit(disconnect) for _ in range(50)])
+        futures.extend([executor.submit(get_nodes_from_state_api) for _ in range(50)])
+        results = [future.result() for future in futures]
+
+    # Assert that all calls returned True
+    assert all(results)
+    assert len(results) == 150
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

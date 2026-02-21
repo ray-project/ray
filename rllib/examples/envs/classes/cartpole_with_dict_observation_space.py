@@ -1,6 +1,6 @@
 import gymnasium as gym
-from gymnasium.envs.classic_control import CartPoleEnv
 import numpy as np
+from gymnasium.envs.classic_control import CartPoleEnv
 
 
 class CartPoleWithDictObservationSpace(CartPoleEnv):
@@ -64,7 +64,7 @@ class CartPoleWithDictObservationSpace(CartPoleEnv):
         return {
             "x-pos": np.array([original_cartpole_obs[0]], np.float32),
             "angular-pos": {
-                "value": original_cartpole_obs[2],
+                "value": np.array(original_cartpole_obs[2]),
                 "some_random_stuff": np.random.randint(3),
             },
             "velocs": (

@@ -19,14 +19,13 @@ import argparse
 import os
 
 import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.examples.envs.classes.parametric_actions_cartpole import (
-    ParametricActionsCartPole,
-)
+from ray import tune
 from ray.rllib.examples._old_api_stack.models.parametric_actions_model import (
     ParametricActionsModel,
     TorchParametricActionsModel,
+)
+from ray.rllib.examples.envs.classes.parametric_actions_cartpole import (
+    ParametricActionsCartPole,
 )
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.metrics import (
@@ -36,6 +35,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
+from ray.tune.result import TRAINING_ITERATION
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
     results = tune.Tuner(
         args.run,
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=tune.RunConfig(stop=stop, verbose=1),
         param_space=config,
     ).fit()
 

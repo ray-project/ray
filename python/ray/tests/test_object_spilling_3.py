@@ -12,9 +12,9 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.tests.test_object_spilling import assert_no_thrashing, is_dir_empty
+from ray.tests.test_object_spilling import is_dir_empty
 
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
@@ -82,7 +82,6 @@ def test_multiple_directories(tmp_path, shutdown_only):
     for temp_dir in temp_dirs:
         temp_folder = temp_dir
         wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
-    assert_no_thrashing(ray_context["address"])
 
     # Now kill ray and see all directories are deleted.
     print("Check directories are deleted...")
@@ -296,7 +295,7 @@ def test_spill_dir_cleanup_on_node_removal(fs_only_object_spilling_config):
 def test_spill_deadlock(object_spilling_config, shutdown_only):
     object_spilling_config, _ = object_spilling_config
     # Limit our object store to 75 MiB of memory.
-    address = ray.init(
+    ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
@@ -321,7 +320,6 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
                 ref = random.choice(replay_buffer)
                 sample = ray.get(ref, timeout=None)
                 assert np.array_equal(sample, arr)
-    assert_no_thrashing(address["address"])
 
 
 def test_spill_reconstruction_errors(ray_start_cluster, object_spilling_config):
@@ -395,9 +393,5 @@ def test_evict_secondary_copies_before_spill(ray_start_cluster, object_spilling_
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

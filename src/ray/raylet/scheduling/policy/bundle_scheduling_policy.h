@@ -16,8 +16,6 @@
 
 #include <vector>
 
-#include "ray/common/bundle_spec.h"
-#include "ray/common/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
@@ -53,6 +51,18 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   std::pair<std::vector<int>, std::vector<const ResourceRequest *>> SortRequiredResources(
       const std::vector<const ResourceRequest *> &resource_request_list);
 
+  /// Checks if every bundle is individually feasible on at least one node in the cluster.
+  ///
+  /// \param resource_request_list The list of resource and label constraints for each
+  /// bundle.
+  /// \param candidate_nodes The candidate nodes in the cluster available for
+  /// scheduling.
+  /// \return True if all bundles are feasible on at least one node, false
+  /// otherwise.
+  bool IsRequestFeasible(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;
+
   /// Score all nodes according to the specified resources.
   ///
   /// \param required_resources The resources to be scheduled.
@@ -61,14 +71,7 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   std::pair<scheduling::NodeID, const Node *> GetBestNode(
       const ResourceRequest &required_resources,
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
-      const SchedulingOptions &options,
-      const absl::flat_hash_map<scheduling::NodeID, double>
-          &available_cpus_before_bundle_scheduling) const;
-
-  /// Return the map of node id -> available cpus before the current bundle scheduling.
-  /// It is used to calculate how many CPUs have been allocated for the current bundles.
-  const absl::flat_hash_map<scheduling::NodeID, double>
-  GetAvailableCpusBeforeBundleScheduling() const;
+      const SchedulingOptions &options) const;
 
  protected:
   /// The cluster resource manager.

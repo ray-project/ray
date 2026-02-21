@@ -1,0 +1,17 @@
+name: "oss-ci-base_cu128-py$PYTHON"
+froms: ["nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04"]
+dockerfile: ci/docker/base.gpu.Dockerfile
+srcs:
+  - .bazelrc
+  - .bazelversion
+  - ci/env/install-dependencies.sh
+  - ci/env/install-llvm-binaries.sh
+  - ci/env/install-bazel.sh
+  - ci/env/install-miniforge.sh
+  - ci/suppress_output
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+  - PYTHON
+  - BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubuntu20.04
+tags:
+  - cr.ray.io/rayproject/oss-ci-base_cu128-py$PYTHON

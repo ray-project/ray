@@ -15,9 +15,9 @@ public class GlobalStateAccessor {
   private static GlobalStateAccessor globalStateAccessor;
 
   public static synchronized GlobalStateAccessor getInstance(
-      String bootstrapAddress, String redisPassword) {
+      String bootstrapAddress, String redisUsername, String redisPassword) {
     if (null == globalStateAccessor) {
-      globalStateAccessor = new GlobalStateAccessor(bootstrapAddress, redisPassword);
+      globalStateAccessor = new GlobalStateAccessor(bootstrapAddress, redisUsername, redisPassword);
     }
     return globalStateAccessor;
   }
@@ -29,9 +29,9 @@ public class GlobalStateAccessor {
     }
   }
 
-  private GlobalStateAccessor(String bootstrapAddress, String redisPassword) {
+  private GlobalStateAccessor(String bootstrapAddress, String redisUsername, String redisPassword) {
     globalStateAccessorNativePointer =
-        nativeCreateGlobalStateAccessor(bootstrapAddress, redisPassword);
+        nativeCreateGlobalStateAccessor(bootstrapAddress, redisUsername, redisPassword);
     validateGlobalStateAccessorPointer();
     connect();
   }
@@ -148,7 +148,8 @@ public class GlobalStateAccessor {
     }
   }
 
-  private native long nativeCreateGlobalStateAccessor(String redisAddress, String redisPassword);
+  private native long nativeCreateGlobalStateAccessor(
+      String redisAddress, String redisUsername, String redisPassword);
 
   private native void nativeDestroyGlobalStateAccessor(long nativePtr);
 

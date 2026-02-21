@@ -2,15 +2,17 @@ import asyncio
 import gc
 import sys
 
+import httpx
 import numpy as np
 import pytest
-import requests
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor
+from ray._common.test_utils import SignalActor
+from ray.serve._private.constants import RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 
@@ -75,16 +77,54 @@ def test_np_in_composed_model(serve_instance):
     cm_d = ComposedModel.bind(sum_d)
     serve.run(cm_d)
 
-    result = requests.get("http://127.0.0.1:8000/")
+    result = httpx.get(get_application_url())
     assert result.status_code == 200
     assert float(result.text) == 100.0
 
 
+# https://github.com/ray-project/ray/issues/12395
 def test_replica_memory_growth(serve_instance):
-    # https://github.com/ray-project/ray/issues/12395
+    # NOTE(zcin): this test checks that there are no circular references
+    # since depending on the size of the objects locked in that cycle,
+    # it could cause large memory growth for the replica in the short
+    # term. Unfortunately the asyncio Python gRPC implementation has a
+    # circular reference between
+    # https://github.com/grpc/grpc/blob/04f05a3/src/python/grpcio/grpc/_server.py#L987
+    # & https://github.com/grpc/grpc/blob/04f05a3/src/python/grpcio/grpc/_server.py#L993
+    # So just by using the asyncio Python gRPC API in the replica, it
+    # will violate the checks in this test. However the objects locked
+    # in that cycle are metadata objects on the order of tens to
+    # hundreds of bytes, which is very small and should be fine to be
+    # garbage collected by the slower GC cycle that checks for circular
+    # references. Therefore we whitelist those objects in the test.
+    def whitelist(phase, info):
+        if phase == "start":
+            return
+
+        for item in gc.garbage[:]:
+            if getattr(type(item), "__name__", None) == "_Metadatum":
+                gc.garbage.remove(item)
+            elif isinstance(item, tuple) and all(
+                getattr(type(s), "__name__", None) == "_Metadatum" for s in item
+            ):
+                gc.garbage.remove(item)
+            elif (
+                getattr(type(item), "__name__", None)
+                == "__pyx_scope_struct_35__find_method_handler"
+            ):
+                gc.garbage.remove(item)
+            elif (
+                getattr(item, "__name__", None) == "query_handlers"
+                and item.func_globals["_find_method_handler"]
+            ):
+                gc.garbage.remove(item)
+            elif getattr(type(item), "__name__", None) == "_HandlerCallDetails":
+                gc.garbage.remove(item)
+
     @serve.deployment
     def gc_unreachable_objects(*args):
         gc.set_debug(gc.DEBUG_SAVEALL)
+        gc.callbacks.append(whitelist)
         gc.collect()
         gc_garbage_len = len(gc.garbage)
         if gc_garbage_len > 0:
@@ -94,7 +134,7 @@ def test_replica_memory_growth(serve_instance):
     handle = serve.run(gc_unreachable_objects.bind())
 
     def get_gc_garbage_len_http():
-        result = requests.get("http://127.0.0.1:8000")
+        result = httpx.get(get_application_url())
         assert result.status_code == 200
         return result.json()
 
@@ -238,11 +278,15 @@ def test_uvicorn_duplicate_headers(serve_instance):
             return JSONResponse({"a": "b"})
 
     serve.run(A.bind())
-    resp = requests.get("http://127.0.0.1:8000")
+    resp = httpx.get("http://127.0.0.1:8000")
     # If the header duplicated, it will be "9, 9"
     assert resp.headers["content-length"] == "9"
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    reason="Health check will block if user code is running in the main event loop",
+)
 def test_healthcheck_timeout(serve_instance):
     # https://github.com/ray-project/ray/issues/24554
 

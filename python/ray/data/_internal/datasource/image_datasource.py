@@ -80,14 +80,14 @@ class ImageDatasource(FileBasedDatasource):
         except UnidentifiedImageError as e:
             raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
 
-        if self.size is not None:
+        if self.size is not None and image.size != tuple(reversed(self.size)):
             height, width = self.size
             image = image.resize((width, height), resample=Image.BILINEAR)
-        if self.mode is not None:
+        if self.mode is not None and image.mode != self.mode:
             image = image.convert(self.mode)
 
         builder = DelegatingBlockBuilder()
-        array = np.array(image)
+        array = np.asarray(image)
         item = {"image": array}
         builder.add(item)
         block = builder.build()
@@ -100,8 +100,8 @@ class ImageDatasource(FileBasedDatasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for file_size in self._file_sizes():
-            # NOTE: check if file size is not None, because some metadata provider
-            # such as FastFileMetadataProvider does not provide file size information.
+            # NOTE: check if file size is not None, because some metadata providers
+            # may not provide file size information.
             if file_size is not None:
                 total_size += file_size
         return total_size * self._encoding_ratio
@@ -115,7 +115,7 @@ class ImageDatasource(FileBasedDatasource):
         )
         num_files = len(non_empty_path_and_size)
         if num_files == 0:
-            logger.warn(
+            logger.warning(
                 "All input image files are empty. "
                 "Use on-disk file size to estimate images in-memory size."
             )
@@ -133,7 +133,7 @@ class ImageDatasource(FileBasedDatasource):
             elif self.mode in ["RGBA", "CMYK", "I", "F"]:
                 dimension = 4
             else:
-                logger.warn(f"Found unknown image mode: {self.mode}.")
+                logger.warning(f"Found unknown image mode: {self.mode}.")
                 return IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
             height, width = self.size
             single_image_size = height * width * dimension
@@ -146,7 +146,7 @@ class ImageDatasource(FileBasedDatasource):
 
         sampling_duration = time.perf_counter() - start_time
         if sampling_duration > 5:
-            logger.warn(
+            logger.warning(
                 "Image input size estimation took "
                 f"{round(sampling_duration, 2)} seconds."
             )
@@ -162,13 +162,12 @@ class ImageFileMetadataProvider(DefaultFileMetadataProvider):
     def _get_block_metadata(
         self,
         paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
     ) -> BlockMetadata:
         metadata = super()._get_block_metadata(
-            paths, schema, rows_per_file=rows_per_file, file_sizes=file_sizes
+            paths, rows_per_file=rows_per_file, file_sizes=file_sizes
         )
         if metadata.size_bytes is not None:
             metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)

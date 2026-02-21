@@ -26,6 +26,7 @@ absl_debugging_symbolize = dependency('absl', method: 'cmake', modules: ['absl::
 absl_algorithm = dependency('absl', method: 'cmake', modules: ['absl::algorithm'])
 absl_strings = dependency('absl', method: 'cmake', modules: ['absl::strings'])
 absl_memory = dependency('absl', method: 'cmake', modules: ['absl::memory'])
+absl_hash = dependency('absl', method: 'cmake', modules: ['absl::hash'])
 # === @end: absl ===
 
 
@@ -34,12 +35,20 @@ absl_memory = dependency('absl', method: 'cmake', modules: ['absl::memory'])
 # For now, modules resolution for Boost is imperfect so we have to bring the entire boost.
 # Anyway, bringing standalone parts would bring almost all others so not a big problem
 boost = dependency('boost', modules: ['fiber', 'thread'])
+boost_algorithm = boost
 boost_any = boost
 boost_asio = boost
+boost_asio_ssl = boost
 boost_beast = boost
 boost_bimap = boost
+boost_bind = boost
 boost_circular_buffer = boost
 boost_fiber = boost
+boost_functional = boost
+boost_iostreams = boost
+boost_optional = boost
+boost_process = boost
+boost_range = boost
 boost_system = boost
 boost_thread = boost
 # === @end: boost ===

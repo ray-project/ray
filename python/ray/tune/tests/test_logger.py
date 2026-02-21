@@ -21,7 +21,7 @@ from ray.air.constants import (
     EXPR_RESULT_FILE,
 )
 from ray.cloudpickle import cloudpickle
-from ray.train import Checkpoint
+from ray.tune import Checkpoint
 from ray.tune.logger import (
     CSVLogger,
     CSVLoggerCallback,

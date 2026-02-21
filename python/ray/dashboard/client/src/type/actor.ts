@@ -9,7 +9,7 @@ export enum ActorEnum {
 }
 
 export type Address = {
-  rayletId: string;
+  nodeId: string;
   ipAddress: string;
   port: number;
   workerId: string;
@@ -32,6 +32,8 @@ export type Actor = {
   };
   exitDetail: string;
   reprName: string;
+  callSite?: string | undefined;
+  labelSelector: { [key: string]: string } | null;
 };
 
 export type ActorDetail = {

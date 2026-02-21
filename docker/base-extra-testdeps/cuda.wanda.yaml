@@ -1,0 +1,11 @@
+name: "$IMAGE_TYPE-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra-testdeps"
+froms: ["cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra"]
+dockerfile: release/ray_release/byod/byod.Dockerfile
+srcs:
+  - python/deplocks/base_extra_testdeps/$IMAGE_TYPE-base_extra_testdeps_py$PYTHON_VERSION.lock
+build_args:
+  - BASE_IMAGE=cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra
+  - PYTHON_VERSION
+  - IMAGE_TYPE
+tags:
+  - cr.ray.io/rayproject/$IMAGE_TYPE-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra-testdeps

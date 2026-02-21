@@ -1,13 +1,23 @@
 import copy
 import os
-from typing import Any, Dict, Optional, List, Tuple
+import shlex
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
-from ray_release.test import Test, TestState
-from ray_release.config import DEFAULT_ANYSCALE_PROJECT, DEFAULT_CLOUD_ID, as_smoke_test
+from ray_release.config import (
+    DEFAULT_ANYSCALE_PROJECT,
+    DEFAULT_CLOUD_ID,
+    as_smoke_test,
+    get_test_project_id,
+)
+from ray_release.custom_byod_build_init_helper import (
+    generate_custom_build_step_key,
+    get_prerequisite_step,
+)
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
+from ray_release.test import Test, TestState
 from ray_release.util import DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
@@ -17,9 +27,9 @@ DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
 RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
 
-DOCKER_PLUGIN_KEY = "docker#v5.2.0"
+DOCKER_PLUGIN_KEY = "docker#v5.8.0"
 
-DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
+_DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
         "ANYSCALE_PROJECT": str(DEFAULT_ANYSCALE_PROJECT),
@@ -33,7 +43,8 @@ DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "plugins": [
         {
             DOCKER_PLUGIN_KEY: {
-                "image": "rayproject/ray",
+                "image": "python:3.10",
+                "shell": ["/bin/bash", "-elic"],
                 "propagate-environment": True,
                 "volumes": [
                     "/var/lib/buildkite/builds:/var/lib/buildkite/builds",
@@ -65,6 +76,7 @@ def get_step_for_test_group(
     priority: int = 0,
     global_config: Optional[str] = None,
     is_concurrency_limit: bool = True,
+    block_step_key: Optional[str] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -83,6 +95,7 @@ def get_step_for_test_group(
                     env=env,
                     priority_val=priority,
                     global_config=global_config,
+                    block_step_key=block_step_key,
                 )
 
                 if not is_concurrency_limit:
@@ -106,23 +119,21 @@ def get_step(
     env: Optional[Dict] = None,
     priority_val: int = 0,
     global_config: Optional[str] = None,
+    block_step_key: Optional[str] = None,
 ):
     env = env or {}
-
-    step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
+    step = copy.deepcopy(_DEFAULT_STEP_TEMPLATE)
 
     cmd = [
         "./release/run_release_test.sh",
-        test["name"],
-        "--log-streaming-limit",
-        "100",
+        shlex.quote(test["name"]),
     ]
 
     for file in test_collection_file or []:
-        cmd += ["--test-collection-file", file]
+        cmd += ["--test-collection-file", shlex.quote(file)]
 
     if global_config:
-        cmd += ["--global-config", global_config]
+        cmd += ["--global-config", shlex.quote(global_config)]
 
     if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
         cmd += ["--report"]
@@ -130,14 +141,24 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
-    step["plugins"][0][DOCKER_PLUGIN_KEY]["command"] = cmd
+    num_retries = test.get("run", {}).get("num_retries")
+    if num_retries:
+        step["retry"]["automatic"][0]["limit"] = num_retries
+
+    step["commands"] = [" ".join(cmd)]
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
     env_dict = load_environment(env_to_use)
     env_dict.update(env)
 
+    # Set the project id for the test, based on the follow priority:
+    #  1. Specified in the test, as "project_id" field.
+    #  2. Specified in the specific test environment, as RELEASE_DEFAULT_PROJECT env var
+    #  3. Specified in the global environment, as RELEASE_DEFAULT_PROJECT env var
+    default_project_id = env_dict.get("RELEASE_DEFAULT_PROJECT")
+    env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
+
     step["env"].update(env_dict)
-    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.9"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -159,16 +180,10 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # If a test is not stable, allow to soft fail
-    stable = test.get("stable", True)
     clone_test = copy.deepcopy(test)  # avoid modifying the original test
     clone_test.update_from_s3()
     jailed = clone_test.get_state() == TestState.JAILED
     full_label = ""
-    if not stable:
-        step["soft_fail"] = True
-    if not stable:
-        full_label += "[unstable]"
     if jailed:
         full_label += "[jailed]"
 
@@ -179,4 +194,26 @@ def get_step(
 
     step["label"] = full_label
 
+    image = test.get_anyscale_byod_image()
+    base_image = test.get_anyscale_base_byod_image()
+    if test.require_custom_byod_image():
+        step["depends_on"] = generate_custom_build_step_key(image)
+    else:
+        step["depends_on"] = get_prerequisite_step(image, base_image)
+
+    if block_step_key:
+        if not step["depends_on"]:
+            step["depends_on"] = block_step_key
+        else:
+            step["depends_on"] = [step["depends_on"], block_step_key]
+    return step
+
+
+def generate_block_step(num_tests: int):
+    step = {
+        "block": "Run release tests",
+        "depends_on": None,
+        "key": "block_run_release_tests",
+        "prompt": f"You are triggering {num_tests} tests. Do you want to proceed?",
+    }
     return step

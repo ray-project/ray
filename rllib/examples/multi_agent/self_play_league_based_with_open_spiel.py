@@ -32,27 +32,29 @@ be played by the user against the "main" agent on the command line.
 import functools
 
 import numpy as np
+import torch
 
 import ray
-from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
+from ray.rllib.env.utils import try_import_open_spiel, try_import_pyspiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.multi_agent.utils import (
-    ask_user_for_action,
     SelfPlayLeagueBasedCallback,
     SelfPlayLeagueBasedCallbackOldAPIStack,
+    ask_user_for_action,
 )
-from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
-from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.registry import get_trainable_cls, register_env
+from ray.tune.result import TRAINING_ITERATION
 
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
@@ -60,9 +62,13 @@ pyspiel = try_import_pyspiel(error=True)
 # Import after try_import_open_spiel, so we can error out with hints
 from open_spiel.python.rl_environment import Environment  # noqa: E402
 
-
 parser = add_rllib_example_script_args(default_timesteps=2000000)
-parser.set_defaults(env="markov_soccer")
+parser.set_defaults(
+    env="markov_soccer",
+    num_env_runners=2,
+    checkpoint_freq=1,
+    checkpoint_at_end=True,
+)
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
@@ -126,7 +132,7 @@ if __name__ == "__main__":
             "league_exploiter_0",
             "league_exploiter_1",
         }
-        if args.enable_new_api_stack:
+        if not args.old_api_stack:
             policies = names
             spec = {
                 mid: RLModuleSpec(
@@ -134,7 +140,11 @@ if __name__ == "__main__":
                         RandomRLModule
                         if mid in ["main_exploiter_0", "league_exploiter_0"]
                         else None
-                    )
+                    ),
+                    model_config=DefaultModelConfig(
+                        fcnet_hiddens=[1024, 1024],
+                        # fcnet_activation="tanh",
+                    ),
                 )
                 for mid in names
             }
@@ -155,30 +165,20 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        # Use new API stack ...
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
         .environment("open_spiel_env")
-        .framework(args.framework)
         # Set up the main piece in this experiment: The league-bases self-play
         # callback, which controls adding new policies/Modules to the league and
         # properly matching the different policies in the league with each other.
         .callbacks(
             functools.partial(
                 SelfPlayLeagueBasedCallback
-                if args.enable_new_api_stack
+                if not args.old_api_stack
                 else SelfPlayLeagueBasedCallbackOldAPIStack,
                 win_rate_threshold=args.win_rate_threshold,
             )
         )
         .env_runners(
-            num_env_runners=(args.num_env_runners or 2),
-            num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
-        )
-        .resources(
-            num_cpus_for_main_process=1,
+            num_envs_per_env_runner=1 if not args.old_api_stack else 5,
         )
         .training(
             num_epochs=20,
@@ -190,7 +190,7 @@ if __name__ == "__main__":
             policies=_get_multi_agent()["policies"],
             policy_mapping_fn=(
                 agent_to_module_mapping_fn
-                if args.enable_new_api_stack
+                if not args.old_api_stack
                 else policy_mapping_fn
             ),
             # At first, only train main_0 (until good enough to win against
@@ -213,7 +213,9 @@ if __name__ == "__main__":
             TRAINING_ITERATION: args.stop_iters,
             "league_size": args.min_league_size,
         }
-        results = run_rllib_example_script_experiment(config, args, stop=stop)
+        results = run_rllib_example_script_experiment(
+            config, args, stop=stop, keep_ray_up=True
+        )
 
     # Restore trained Algorithm (set to non-explore behavior) and play against
     # human on command line.
@@ -230,6 +232,9 @@ if __name__ == "__main__":
                 raise ValueError("No last checkpoint found in results!")
             algo.restore(checkpoint)
 
+        if not args.old_api_stack:
+            rl_module = algo.get_module("main")
+
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.
         human_player = 1
@@ -244,8 +249,12 @@ if __name__ == "__main__":
                     action = ask_user_for_action(time_step)
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
-                    if config.enable_env_runner_and_connector_v2:
-                        action = algo.env_runner.module.forward_inference({"obs": obs})
+                    if not args.old_api_stack:
+                        action = np.argmax(
+                            rl_module.forward_inference(
+                                {"obs": torch.from_numpy(obs).unsqueeze(0).float()}
+                            )["action_dist_inputs"][0].numpy()
+                        )
                     else:
                         action = algo.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a

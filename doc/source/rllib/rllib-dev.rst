@@ -56,7 +56,7 @@ or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.co
     - must offer substantial new functionality not possible to add to other algorithms
     - should support custom RLModules
     - should use RLlib abstractions and support distributed execution
-    - should include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, testing of which is part of the CI
+    - should include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__, testing of which is part of the CI
 
 Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests.
 
@@ -69,14 +69,6 @@ New feature developments, discussions, and upcoming priorities are tracked on th
 
 API Stability
 =============
-
-New API stack vs Old API stack
-------------------------------
-
-Starting in Ray 2.10, you can opt-in to the alpha version of a "new API stack", a fundamental overhaul from the ground up with respect to architecture,
-design principles, code base, and user facing APIs.
-
-:ref:`See here for more details <rllib-new-api-stack-guide>` on this effort and how to activate the new API stack through your config.
 
 
 API Decorators in the Codebase
@@ -100,7 +92,7 @@ Benchmarks
 ==========
 
 A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__,
-and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, sorted by algorithm.
+and there is also a list of working hyperparameter configurations in `examples/algorithms <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__, sorted by algorithm.
 Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
 
 
@@ -112,7 +104,7 @@ Finding Memory Leaks In Workers
 
 Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
 
-.. autoclass:: ray.rllib.algorithms.callbacks.MemoryTrackingCallbacks
+.. autoclass:: ray.rllib.callbacks.callbacks.MemoryTrackingCallbacks
 
 The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights & Biases:
 

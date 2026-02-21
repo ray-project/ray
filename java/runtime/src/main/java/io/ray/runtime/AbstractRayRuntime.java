@@ -393,7 +393,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
       if (options == null) {
         LOGGER.debug("Creating Actor {} with default options.", functionDescriptor);
       } else {
-        LOGGER.debug("Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.jvmOptions);
+        LOGGER.debug(
+            "Creating Actor {}, jvmOptions = {}.", functionDescriptor, options.getJvmOptions());
       }
     }
     if (rayConfig.runMode == RunMode.LOCAL && functionDescriptor.getLanguage() != Language.JAVA) {
@@ -403,7 +404,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
-      Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
+      Preconditions.checkState(
+          options.getJvmOptions() == null || options.getJvmOptions().isEmpty());
     }
 
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);

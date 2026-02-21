@@ -3,10 +3,8 @@ import warnings
 
 import pytest
 
+from ray._common.test_utils import run_string_as_driver
 from ray.util.annotations import Deprecated
-from ray._private.test_utils import (
-    run_string_as_driver,
-)
 
 
 # Use default filterwarnings behavior for this test
@@ -104,9 +102,5 @@ for _ in range(3):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

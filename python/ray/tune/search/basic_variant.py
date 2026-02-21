@@ -87,7 +87,7 @@ class _TrialIterator:
             Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
             (``np.random``). Please note that full reproducibility cannot
-            be guaranteed in a distributed enviroment.
+            be guaranteed in a distributed environment.
     """
 
     def __init__(
@@ -402,11 +402,12 @@ class BasicVariantGenerator(SearchAlgorithm):
         if any(iterator.lazy_eval for iterator in self._iterators):
             return False
         state_dict = self.get_state()
+        file_name = self.CKPT_FILE_TMPL.format(session_str)
         _atomic_save(
             state=state_dict,
             checkpoint_dir=dirpath,
-            file_name=self.CKPT_FILE_TMPL.format(session_str),
-            tmp_file_name=".tmp_generator",
+            file_name=file_name,
+            tmp_file_name=f"tmp-{file_name}",
         )
 
     def has_checkpoint(self, dirpath: str):

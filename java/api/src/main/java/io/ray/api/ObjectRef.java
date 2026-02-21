@@ -17,7 +17,7 @@ public interface ObjectRef<T> {
    * Fetch the object from the object store, this method will block until the object is locally
    * available.
    *
-   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @param timeoutMs The maximum amount of time in milliseconds to wait before returning.
    * @throws RayTimeoutException If it's timeout to get the object.
    */
   T get(long timeoutMs);

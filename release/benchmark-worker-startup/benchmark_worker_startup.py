@@ -40,17 +40,18 @@ This script uses test_single_configuration.py to run the actual
 measurements.
 """
 
-from collections import defaultdict
-from dataclasses import dataclass
-from ray._private.test_utils import safe_write_to_results_json
-from ray.job_submission import JobSubmissionClient, JobStatus
 import argparse
 import asyncio
 import random
-import ray
 import statistics
 import subprocess
 import sys
+from collections import defaultdict
+from dataclasses import dataclass
+
+import ray
+from ray._private.test_utils import safe_write_to_results_json
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 def main(

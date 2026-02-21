@@ -2,14 +2,14 @@
 
 echo "Linting changes as part of pre-push hook"
 echo ""
-echo "ci/lint/format.sh:"
-ci/lint/format.sh
+echo "pre-commit:"
+pre-commit run --from-ref master --to-ref HEAD
 
 lint_exit_status=$?
 if [ $lint_exit_status -ne 0 ]; then
 	echo ""
 	echo "Linting changes failed."
-	echo "Please make sure 'ci/lint/format.sh'"\
+	echo "Please make sure 'pre-commit'"\
 		"runs with no errors before pushing."
 	echo "If you want to ignore this and push anyways,"\
 		"re-run with '--no-verify'."

@@ -1,6 +1,7 @@
+import random
+
 import gymnasium as gym
 from gymnasium.spaces import Discrete
-import random
 
 
 class RepeatInitialObsEnv(gym.Env):

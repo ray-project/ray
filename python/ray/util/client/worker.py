@@ -2,10 +2,12 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
+
 import base64
 import json
 import logging
 import os
+import queue
 import tempfile
 import threading
 import time
@@ -17,11 +19,14 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import grpc
 
-import ray._private.tls_utils
 import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray._private.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+from ray._private.ray_constants import (
+    DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD,
+    env_float,
+    env_integer,
+)
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
@@ -52,13 +57,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-INITIAL_TIMEOUT_SEC = 5
-MAX_TIMEOUT_SEC = 30
-
+INITIAL_TIMEOUT_SEC = env_integer("RAY_CLIENT_INITIAL_CONNECTION_TIMEOUT_S", 5)
+MAX_TIMEOUT_SEC = env_integer("RAY_CLIENT_MAX_CONNECTION_TIMEOUT_S", 30)
 # The max amount of time an operation can run blocking in the server. This
 # allows for Ctrl-C of the client to work without explicitly cancelling server
 # operations.
-MAX_BLOCKING_OPERATION_TIME_S: float = 2.0
+MAX_BLOCKING_OPERATION_TIME_S: float = env_float(
+    "RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S", 2.0
+)
 
 # If the total size (bytes) of all outbound messages to schedule tasks since
 # the connection began exceeds this value, a warning should be raised
@@ -66,9 +72,9 @@ MESSAGE_SIZE_THRESHOLD = 10 * 2**20  # 10 MB
 
 # Links to the Ray Design Pattern doc to use in the task overhead warning
 # message
-DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.f7ins22n6nyl"  # noqa E501
+DESIGN_PATTERN_FINE_GRAIN_TASKS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/too-fine-grained-tasks.html"  # noqa E501
 
-DESIGN_PATTERN_LARGE_OBJECTS_LINK = "https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit#heading=h.1afmymq455wu"  # noqa E501
+DESIGN_PATTERN_LARGE_OBJECTS_LINK = "https://docs.ray.io/en/latest/ray-core/patterns/closure-capture-large-objects.html"  # noqa E501
 
 
 def backoff(timeout: int) -> int:
@@ -158,6 +164,14 @@ class Worker:
         self._req_id_lock = threading.Lock()
         self._req_id = 0
 
+        # ReleaseObject grabs a lock, so it should not be called directly from
+        # __del__ methods that may be executed at any time on the Python main thread.
+        self._release_queue = queue.SimpleQueue()
+        self._release_thread = threading.Thread(
+            target=self._release_server_worker, daemon=True
+        )
+        self._release_thread.start()
+
     def _connect_channel(self, reconnecting=False) -> None:
         """
         Attempts to connect to the server specified by conn_str. If
@@ -168,27 +182,28 @@ class Worker:
             self.channel.unsubscribe(self._on_channel_state_change)
             self.channel.close()
 
+        from ray._private.grpc_utils import init_grpc_channel
+
+        # Prepare credentials if secure connection is requested
+        credentials = None
         if self._secure:
             if self._credentials is not None:
                 credentials = self._credentials
             elif os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
-                (
-                    server_cert_chain,
-                    private_key,
-                    ca_cert,
-                ) = ray._private.tls_utils.load_certs_from_env()
-                credentials = grpc.ssl_channel_credentials(
-                    certificate_chain=server_cert_chain,
-                    private_key=private_key,
-                    root_certificates=ca_cert,
-                )
+                # init_grpc_channel will handle this via load_certs_from_env()
+                credentials = None
             else:
+                # Default SSL credentials (no specific certs)
                 credentials = grpc.ssl_channel_credentials()
-            self.channel = grpc.secure_channel(
-                self._conn_str, credentials, options=GRPC_OPTIONS
-            )
-        else:
-            self.channel = grpc.insecure_channel(self._conn_str, options=GRPC_OPTIONS)
+
+        # Create channel with auth interceptors via helper
+        # This automatically adds auth interceptors when token auth is enabled
+        self.channel = init_grpc_channel(
+            self._conn_str,
+            options=GRPC_OPTIONS,
+            asynchronous=False,
+            credentials=credentials,
+        )
 
         self.channel.subscribe(self._on_channel_state_change)
 
@@ -228,15 +243,14 @@ class Worker:
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
                 logger.debug(
-                    "Ray client server unavailable, " f"retrying in {timeout}s..."
+                    f"Ray client server unavailable, retrying in {timeout}s..."
                 )
                 logger.debug(f"Received when checking init: {e.details()}")
                 # Ray is not ready yet, wait a timeout.
                 time.sleep(timeout)
             # Fallthrough, backoff, and retry at the top of the loop
             logger.debug(
-                "Waiting for Ray to become ready on the server, "
-                f"retry in {timeout}s..."
+                f"Waiting for Ray to become ready on the server, retry in {timeout}s..."
             )
             if not reconnecting:
                 # Don't increase backoff when trying to reconnect --
@@ -361,7 +375,7 @@ class Worker:
         from being replayed on the server side in the event that the client
         must retry a requsest.
         Args:
-            metadata - the gRPC metadata to append the IDs to
+            metadata: the gRPC metadata to append the IDs to
         """
         if not self._reconnect_enabled:
             # IDs not needed if the reconnects are disabled
@@ -416,19 +430,14 @@ class Worker:
         else:
             deadline = time.monotonic() + timeout
 
-        max_blocking_operation_time = MAX_BLOCKING_OPERATION_TIME_S
-        if "RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S" in os.environ:
-            max_blocking_operation_time = float(
-                os.environ["RAY_CLIENT_MAX_BLOCKING_OPERATION_TIME_S"]
-            )
         while True:
             if deadline:
                 op_timeout = min(
-                    max_blocking_operation_time,
+                    MAX_BLOCKING_OPERATION_TIME_S,
                     max(deadline - time.monotonic(), 0.001),
                 )
             else:
-                op_timeout = max_blocking_operation_time
+                op_timeout = MAX_BLOCKING_OPERATION_TIME_S
             try:
                 res = self._get(to_get, op_timeout)
                 break
@@ -523,7 +532,7 @@ class Worker:
     ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
         if not isinstance(object_refs, list):
             raise TypeError(
-                "wait() expected a list of ClientObjectRef, " f"got {type(object_refs)}"
+                f"wait() expected a list of ClientObjectRef, got {type(object_refs)}"
             )
         for ref in object_refs:
             if not isinstance(ref, ClientObjectRef):
@@ -644,8 +653,37 @@ class Worker:
 
     def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
-            logger.debug(f"Releasing {id.hex()}")
-            self.data_client.ReleaseObject(ray_client_pb2.ReleaseRequest(ids=[id]))
+            logger.debug(f"Put {id.hex()} to release queue")
+            self._release_queue.put(id)
+
+    def _release_server_worker(self):
+        """Background thread to release objects from the server.
+
+        Runs forever until a sentinel is received.
+        """
+        while not self.closed:
+            try:
+                id = self._release_queue.get(timeout=1)
+                if id is None:  # Sentinel value for shutdown
+                    logger.debug("Received sentinel, will stop release thread.")
+                    break
+
+                if self.data_client is not None:
+                    logger.debug(f"Releasing {id.hex()}")
+                    try:
+                        self.data_client.ReleaseObject(
+                            ray_client_pb2.ReleaseRequest(ids=[id])
+                        )
+                    except Exception as e:
+                        # Log the error but continue processing
+                        # This prevents the release thread from crashing
+                        logger.warning(
+                            f"Failed to release object {id.hex()}: {e}. "
+                            "This is expected if the connection is closed."
+                        )
+            except queue.Empty:
+                continue
+        logger.debug("Release thread finished.")
 
     def call_retain(self, id: bytes) -> None:
         logger.debug(f"Retaining {id.hex()}")
@@ -653,6 +691,13 @@ class Worker:
 
     def close(self):
         self._in_shutdown = True
+
+        self._release_queue.put(None)  # Sentinel
+        timeout = 5
+        self._release_thread.join(timeout=timeout)
+        if self._release_thread.is_alive():
+            logger.warning(f"The release thread failed to join in {timeout}s.")
+
         self.closed = True
         self.data_client.close()
         self.log_client.close()
@@ -724,7 +769,7 @@ class Worker:
         resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
-            output_dict = {k: v for k, v in resp.resource_table.table.items()}
+            output_dict = dict(resp.resource_table.table)
             return output_dict
         elif resp.WhichOneof("response_type") == "runtime_context":
             return resp.runtime_context
@@ -836,12 +881,27 @@ class Worker:
                 serialized_job_config = None
             else:
                 with tempfile.TemporaryDirectory() as tmp_dir:
+                    from ray._private.ray_constants import (
+                        RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
+                    )
+
                     runtime_env = job_config.runtime_env or {}
+                    # Determine whether to respect .gitignore files based on environment variable
+                    # Default is True (respect .gitignore). Set to False if env var is "1".
+                    include_gitignore = (
+                        os.environ.get(RAY_RUNTIME_ENV_IGNORE_GITIGNORE, "0") != "1"
+                    )
                     runtime_env = upload_py_modules_if_needed(
-                        runtime_env, tmp_dir, logger=logger
+                        runtime_env,
+                        scratch_dir=tmp_dir,
+                        include_gitignore=include_gitignore,
+                        logger=logger,
                     )
                     runtime_env = upload_working_dir_if_needed(
-                        runtime_env, tmp_dir, logger=logger
+                        runtime_env,
+                        scratch_dir=tmp_dir,
+                        include_gitignore=include_gitignore,
+                        logger=logger,
                     )
                     # Remove excludes, it isn't relevant after the upload step.
                     runtime_env.pop("excludes", None)
@@ -899,7 +959,7 @@ def make_client_id() -> str:
 def decode_exception(e: grpc.RpcError) -> Exception:
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
-        # error is serialized into the the exception details. If the code
+        # error is serialized into the exception details. If the code
         # isn't ABORTED, then return the original error since there's no
         # serialized error to decode.
         # See server.py::return_exception_in_context for details

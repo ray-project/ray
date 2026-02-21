@@ -29,7 +29,7 @@ namespace ray {
 namespace raylet_scheduling_policy {
 
 /// A composite scheduling policy that routes the request to the underlining
-/// scheduling_policy according to the scheduling_type.
+/// scheduling_policy according to the scheduling_type_.
 class CompositeSchedulingPolicy : public ISchedulingPolicy {
  public:
   CompositeSchedulingPolicy(scheduling::NodeID local_node_id,
@@ -64,7 +64,7 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
 };
 
 /// A composite scheduling policy that routes the request to the underlining
-/// bundle_scheduling_policy according to the scheduling_type.
+/// bundle_scheduling_policy according to the scheduling_type_.
 class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
  public:
   explicit CompositeBundleSchedulingPolicy(

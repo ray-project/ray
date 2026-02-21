@@ -4,9 +4,10 @@ from pybuildkite.buildkite import Buildkite
 
 from ci.ray_ci.bisect.validator import Validator
 from ci.ray_ci.utils import logger
-from ray_release.test import Test
+
 from ray_release.aws import get_secret_token
 from ray_release.configs.global_config import get_global_config
+from ray_release.test import Test
 
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_POSTMERGE_PIPELINE = "postmerge"

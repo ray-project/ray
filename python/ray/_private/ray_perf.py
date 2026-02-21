@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
-from ray._private.ray_microbenchmark_helpers import timeit
-from ray._private.ray_client_microbenchmark import main as client_microbenchmark_main
-import numpy as np
 import multiprocessing
+
+import numpy as np
+
 import ray
+from ray._private.ray_client_microbenchmark import main as client_microbenchmark_main
+from ray._private.ray_microbenchmark_helpers import timeit
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +83,7 @@ def check_optimized_build():
         msg = (
             "WARNING: Unoptimized build! "
             "To benchmark an optimized build, try:\n"
-            "\tbazel build -c opt //:ray_pkg\n"
+            "\tbazel run -c opt //:gen_ray_pkg\n"
             "You can also make this permanent by adding\n"
             "\tbuild --compilation_mode=opt\n"
             "to your user-wide ~/.bazelrc file. "

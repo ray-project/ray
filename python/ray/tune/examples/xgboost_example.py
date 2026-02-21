@@ -66,7 +66,7 @@ def train_breast_cancer_cv(config: dict):
     )
 
 
-def get_best_model_checkpoint(best_result: "ray.train.Result"):
+def get_best_model_checkpoint(best_result: "ray.tune.Result"):
     best_bst = TuneReportCheckpointCallback.get_model(
         best_result.checkpoint, filename=CHECKPOINT_FILENAME
     )

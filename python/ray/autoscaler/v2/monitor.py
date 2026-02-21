@@ -13,10 +13,16 @@ from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private.utils
+from ray._common.network_utils import build_address, parse_address
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
+from ray._common.usage.usage_lib import record_extra_usage_tag
+from ray._private import logging_utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
-from ray._private.usage.usage_lib import record_extra_usage_tag
+from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_METRIC_PORT,
@@ -65,20 +71,23 @@ class AutoscalerMonitor:
         log_dir: Optional[str] = None,
         monitor_ip: Optional[str] = None,
     ):
+        # Record v2 usage (we do this as early as possible to capture usage)
+        record_autoscaler_v2_usage(GcsClient(address))
+
         self.gcs_address = address
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:
-            monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
+            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
             self.gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         self._session_name = self._get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
-        worker.mode = 0
-        head_node_ip = self.gcs_address.split(":")[0]
+        worker.set_mode(SCRIPT_MODE)
+        head_node_ip = parse_address(self.gcs_address)[0]
 
         self.autoscaler = None
         if log_dir:
@@ -198,16 +207,6 @@ if __name__ == "__main__":
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
-        "--redis-address", required=False, type=str, help="This is deprecated"
-    )
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="This is deprecated",
-    )
-    parser.add_argument(
         "--autoscaling-config",
         required=False,
         type=str,
@@ -247,18 +246,18 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BYTES,
+        default=LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.",
+        f"{LOGGING_ROTATE_BYTES} bytes.",
     )
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        default=LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is "
-        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.",
+        f"{LOGGING_ROTATE_BACKUP_COUNT}.",
     )
     parser.add_argument(
         "--monitor-ip",
@@ -267,15 +266,44 @@ if __name__ == "__main__":
         default=None,
         help="The IP address of the machine hosting the monitor process.",
     )
+    parser.add_argument(
+        "--stdout-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump monitor stdout.",
+    )
+    parser.add_argument(
+        "--stderr-filepath",
+        required=False,
+        type=str,
+        default="",
+        help="The filepath to dump monitor stderr.",
+    )
 
     args = parser.parse_args()
+
+    # Disable log rotation for windows platform.
+    logging_rotation_bytes = args.logging_rotate_bytes if sys.platform != "win32" else 0
+    logging_rotation_backup_count = (
+        args.logging_rotate_backup_count if sys.platform != "win32" else 1
+    )
+
     setup_component_logger(
         logging_level=args.logging_level,
         logging_format=args.logging_format,
         log_dir=args.logs_dir,
         filename=args.logging_filename,
-        max_bytes=args.logging_rotate_bytes,
-        backup_count=args.logging_rotate_backup_count,
+        max_bytes=logging_rotation_bytes,
+        backup_count=logging_rotation_backup_count,
+    )
+
+    # Setup stdout/stderr redirect files if redirection enabled.
+    logging_utils.redirect_stdout_stderr_if_needed(
+        args.stdout_filepath,
+        args.stderr_filepath,
+        logging_rotation_bytes,
+        logging_rotation_backup_count,
     )
 
     logger.info(
@@ -288,9 +316,6 @@ if __name__ == "__main__":
     gcs_address = args.gcs_address
     if gcs_address is None:
         raise ValueError("--gcs-address must be set!")
-
-    # Record v2 usage (we do this as early as possible to capture usage)
-    record_autoscaler_v2_usage(GcsClient(gcs_address))
 
     if not args.autoscaling_config:
         logger.info("No autoscaling config provided: use read only node provider.")

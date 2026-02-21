@@ -1,25 +1,23 @@
-from collections import defaultdict
 import logging
 import pickle
+from collections import defaultdict
 from typing import Any
 
 import numpy as np
-from ray.rllib.utils.annotations import override
 import tree  # dm_tree
 
+from ray import cloudpickle
 from ray.rllib.connectors.connector import (
     AgentConnector,
     Connector,
     ConnectorContext,
 )
-from ray import cloudpickle
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
-from ray.rllib.utils.annotations import OldAPIStack
-
 
 logger = logging.getLogger(__name__)
 

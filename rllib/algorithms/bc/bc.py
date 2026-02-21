@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
@@ -16,7 +15,7 @@ class BCConfig(MARWILConfig):
         # Run this from the ray directory root.
         config = BCConfig().training(lr=0.00001, gamma=0.99)
         config = config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json")
+            input_="./rllib/offline/tests/data/cartpole/large.json")
 
         # Build an Algorithm object from the config and run 1 training iteration.
         algo = config.build()
@@ -37,7 +36,7 @@ class BCConfig(MARWILConfig):
         # Set the config object's data path.
         # Run this from the ray directory root.
         config.offline_data(
-            input_="./rllib/tests/data/cartpole/large.json"
+            input_="./rllib/offline/tests/data/cartpole/large.json"
         )
         # Set the config object's env, used for evaluation.
         config.environment(env="CartPole-v1")
@@ -70,12 +69,11 @@ class BCConfig(MARWILConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
-
-            return RLModuleSpec(
-                module_class=BCTorchRLModule,
-                catalog_class=BCCatalog,
+            from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import (
+                DefaultBCTorchRLModule,
             )
+
+            return RLModuleSpec(module_class=DefaultBCTorchRLModule)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -107,7 +105,7 @@ class BCConfig(MARWILConfig):
         super().validate()
 
         if self.beta != 0.0:
-            raise ValueError("For behavioral cloning, `beta` parameter must be 0.0!")
+            self._value_error("For behavioral cloning, `beta` parameter must be 0.0!")
 
 
 class BC(MARWIL):
@@ -118,5 +116,5 @@ class BC(MARWIL):
 
     @classmethod
     @override(MARWIL)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> BCConfig:
         return BCConfig()

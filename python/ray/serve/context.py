@@ -8,26 +8,46 @@ import contextvars
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ReplicaID
+from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
+
+
+@DeveloperAPI
+@dataclass
+class GangContext:
+    """Context information for a replica that is part of a gang."""
+
+    gang_id: str
+    """Unique identifier for this gang."""
+
+    rank: int
+    """This replica's rank within the gang (0-indexed)."""
+
+    world_size: int
+    """Total number of replicas in this gang."""
+
+    member_replica_ids: List[str]
+    """List of replica IDs in this gang, ordered by rank."""
 
 
 @DeveloperAPI
@@ -40,11 +60,18 @@ class ReplicaContext:
         - deployment: name of the deployment the replica is a part of.
         - replica_tag: unique ID for the replica.
         - servable_object: instance of the user class/function this replica is running.
+        - rank: the rank of the replica.
+        - world_size: the number of replicas in the deployment.
+        - gang_context: context information for the gang the replica is part of.
     """
 
     replica_id: ReplicaID
     servable_object: Callable
     _deployment_config: DeploymentConfig
+    rank: ReplicaRank
+    world_size: int
+    _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
+    gang_context: Optional[GangContext] = None
 
     @property
     def app_name(self) -> str:
@@ -77,8 +104,8 @@ def _get_global_client(
         set to False, returns None.
 
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
     """
 
     try:
@@ -107,12 +134,20 @@ def _set_internal_replica_context(
     replica_id: ReplicaID,
     servable_object: Callable,
     _deployment_config: DeploymentConfig,
+    rank: ReplicaRank,
+    world_size: int,
+    handle_registration_callback: Optional[Callable[[str, str], None]] = None,
+    gang_context: Optional[GangContext] = None,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
         replica_id=replica_id,
         servable_object=servable_object,
         _deployment_config=_deployment_config,
+        rank=rank,
+        world_size=world_size,
+        _handle_registration_callback=handle_registration_callback,
+        gang_context=gang_context,
     )
 
 
@@ -127,9 +162,10 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
         existing Serve application's Serve Controller. None if there is
         no running Serve controller actor and raise_if_no_controller_running
         is set to False.
+
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: If there is no running Serve controller actor
+            and raise_if_no_controller_running is set to True.
     """
 
     # Initialize ray if needed.
@@ -178,11 +214,39 @@ class _RequestContext:
     multiplexed_model_id: str = ""
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
+    cancel_on_parent_request_cancel: bool = False
+    # Ray tracing context for this request (if tracing is enabled)
+    # This is extracted from _ray_trace_ctx kwarg at the replica entry point
+    # Advanced users can access this to propagate tracing to external systems
+    _ray_trace_ctx: Optional[dict] = None
 
 
 _serve_request_context = contextvars.ContextVar(
-    "Serve internal request context variable", default=_RequestContext()
+    "Serve internal request context variable", default=None
 )
+
+_serve_batch_request_context = contextvars.ContextVar(
+    "Serve internal batching request context variable", default=None
+)
+
+
+def _get_serve_request_context():
+    """Get the current request context.
+
+    Returns:
+        The current request context
+    """
+
+    if _serve_request_context.get() is None:
+        _serve_request_context.set(_RequestContext())
+    return _serve_request_context.get()
+
+
+def _get_serve_batch_request_context():
+    """Get the list of request contexts for the current batch."""
+    if _serve_batch_request_context.get() is None:
+        _serve_batch_request_context.set([])
+    return _serve_batch_request_context.get()
 
 
 def _set_request_context(
@@ -195,7 +259,8 @@ def _set_request_context(
     """Set the request context. If the value is not set,
     the current context value will be used."""
 
-    current_request_context = _serve_request_context.get()
+    current_request_context = _get_serve_request_context()
+
     _serve_request_context.set(
         _RequestContext(
             route=route or current_request_context.route,
@@ -207,6 +272,16 @@ def _set_request_context(
             or current_request_context.multiplexed_model_id,
         )
     )
+
+
+def _unset_request_context():
+    """Unset the request context."""
+    _serve_request_context.set(_RequestContext())
+
+
+def _set_batch_request_context(request_contexts: List[_RequestContext]):
+    """Add the request context to the batch request context."""
+    _serve_batch_request_context.set(request_contexts)
 
 
 # `_requests_pending_assignment` is a map from request ID to a
@@ -246,3 +321,37 @@ def _remove_request_pending_assignment(parent_request_id: str, response_id: str)
 
     if len(_requests_pending_assignment[parent_request_id]) == 0:
         del _requests_pending_assignment[parent_request_id]
+
+
+# `_in_flight_requests` is a map from request ID to a dictionary of replica results.
+# The request ID points to an ongoing Serve request, and the replica results are
+# in-flight child requests that have been assigned to a downstream replica.
+
+# A dictionary is used over a set to track the replica results for more
+# efficient addition and deletion time complexity. A uniquely generated
+# `response_id` is used to identify each replica result.
+
+_in_flight_requests: Dict[str, Dict[str, ReplicaResult]] = defaultdict(dict)
+
+# Note that the functions below that manipulate `_in_flight_requests`
+# are NOT thread-safe. They are only expected to be called from the
+# same thread/asyncio event-loop.
+
+
+def _get_in_flight_requests(parent_request_id):
+    if parent_request_id in _in_flight_requests:
+        return _in_flight_requests[parent_request_id]
+
+    return {}
+
+
+def _add_in_flight_request(parent_request_id, response_id, replica_result):
+    _in_flight_requests[parent_request_id][response_id] = replica_result
+
+
+def _remove_in_flight_request(parent_request_id, response_id):
+    if response_id in _in_flight_requests[parent_request_id]:
+        del _in_flight_requests[parent_request_id][response_id]
+
+    if len(_in_flight_requests[parent_request_id]) == 0:
+        del _in_flight_requests[parent_request_id]

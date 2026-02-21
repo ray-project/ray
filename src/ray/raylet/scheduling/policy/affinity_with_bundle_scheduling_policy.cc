@@ -43,11 +43,11 @@ bool AffinityWithBundleSchedulingPolicy::IsNodeFeasibleAndAvailable(
 
 scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
-  RAY_CHECK(options.scheduling_type == SchedulingType::AFFINITY_WITH_BUNDLE);
+  RAY_CHECK(options.scheduling_type_ == SchedulingType::AFFINITY_WITH_BUNDLE);
 
   auto bundle_scheduling_context =
       dynamic_cast<const AffinityWithBundleSchedulingContext *>(
-          options.scheduling_context.get());
+          options.scheduling_context_.get());
   const BundleID &bundle_id = bundle_scheduling_context->GetAffinityBundleID();
   if (bundle_id.second != -1) {
     const auto &node_id_opt = bundle_location_index_.GetBundleLocation(bundle_id);
@@ -63,7 +63,7 @@ scheduling::NodeID AffinityWithBundleSchedulingPolicy::Schedule(
     const auto &bundle_locations_opt = bundle_location_index_.GetBundleLocations(pg_id);
     if (bundle_locations_opt) {
       // Find a target with gpu nodes avoided (if required).
-      if (options.avoid_gpu_nodes) {
+      if (options.avoid_gpu_nodes_) {
         for (const auto &iter : *(bundle_locations_opt.value())) {
           auto target_node_id = scheduling::NodeID(iter.second.first.Binary());
           if (IsNodeFeasibleAndAvailable(

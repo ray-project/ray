@@ -2,13 +2,12 @@ import logging
 import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Iterator, Optional, Type
+from typing import Iterator, Optional, Type, Union
 
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 import ray
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.data.iterator import _IterableFromIterator
+from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train import Checkpoint
 from ray.util import PublicAPI
 
@@ -109,6 +108,7 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
     methods and inject the data integration logics if the `train_dataset` and
     `eval_dataset` are Ray Data Iterables.
     """
+    from ray.data.iterator import _IterableFromIterator
 
     if TRANSFORMERS_IMPORT_ERROR is not None:
         raise TRANSFORMERS_IMPORT_ERROR
@@ -126,12 +126,19 @@ def prepare_trainer(trainer: "Trainer") -> "Trainer":
                 return super().get_train_dataloader()
 
         def get_eval_dataloader(
-            self, eval_dataset: Optional[Dataset] = None
+            self, eval_dataset: Optional[Union[str, Dataset]] = None
         ) -> DataLoader:
             if eval_dataset is None:
                 eval_dataset = self.eval_dataset
 
-            if isinstance(eval_dataset, _IterableFromIterator):
+            if (
+                isinstance(eval_dataset, str)
+                and isinstance(self.eval_dataset, dict)
+                and isinstance(self.eval_dataset[eval_dataset], _IterableFromIterator)
+            ):
+                dataset = RayTorchIterableDataset(self.eval_dataset[eval_dataset])
+                return DataLoader(dataset, batch_size=1, collate_fn=lambda x: x[0])
+            elif isinstance(eval_dataset, _IterableFromIterator):
                 dataset = RayTorchIterableDataset(eval_dataset)
                 return DataLoader(dataset, batch_size=1, collate_fn=lambda x: x[0])
             else:

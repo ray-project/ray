@@ -18,6 +18,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/metrics.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
@@ -73,16 +74,23 @@ struct StatsHandle {
   const std::shared_ptr<GuardedGlobalStats> global_stats;
   // Whether RecordEnd or RecordExecution is called.
   std::atomic<bool> end_or_execution_recorded;
+  // Metric emission specific configurations
+  const bool emit_stats;
+  const std::optional<std::string> context_name;
 
   StatsHandle(std::string event_name_,
-              int64_t start_time_,
+              const int64_t start_time_,
               std::shared_ptr<GuardedEventStats> handler_stats_,
-              std::shared_ptr<GuardedGlobalStats> global_stats_)
+              std::shared_ptr<GuardedGlobalStats> global_stats_,
+              const bool emit_stats_,
+              const std::optional<std::string> &context_name_)
       : event_name(std::move(event_name_)),
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
         global_stats(std::move(global_stats_)),
-        end_or_execution_recorded(false) {}
+        end_or_execution_recorded(false),
+        emit_stats(emit_stats_),
+        context_name(context_name_) {}
 
   ~StatsHandle() {
     if (!end_or_execution_recorded) {
@@ -106,26 +114,33 @@ class EventTracker {
   /// The returned opaque stats handle MUST be given to a subsequent
   /// RecordExecution() or RecordEnd() call.
   ///
-  /// \param name A human-readable name to which collected stats will be associated.
-  /// \param expected_queueing_delay_ns How much to pad the observed queueing start time,
+  /// \param name A human-readable name to which collected stats will be associated for
+  /// logging. \param expected_queueing_delay_ns How much to pad the observed queueing
+  /// start time,
   ///  in nanoseconds.
+  ///  \param emit_metrics Emit the underlying stat as a service metric
+  ///  \param event_context_name A human-readable name to which collected stats will be
+  ///  associated for metrics.
   /// \return An opaque stats handle, to be given to RecordExecution() or RecordEnd().
-  std::shared_ptr<StatsHandle> RecordStart(const std::string &name,
-                                           int64_t expected_queueing_delay_ns = 0);
+  std::shared_ptr<StatsHandle> RecordStart(
+      std::string name,
+      bool emit_metrics = false,
+      int64_t expected_queueing_delay_ns = 0,
+      const std::optional<std::string> &event_context_name = std::nullopt);
 
   /// Records stats about the provided function's execution. This is used in conjunction
   /// with RecordStart() to manually instrument an event loop handler that calls .post().
   ///
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordExecution(const std::function<void()> &fn,
-                              std::shared_ptr<StatsHandle> handle);
+  void RecordExecution(const std::function<void()> &fn,
+                       std::shared_ptr<StatsHandle> handle);
 
   /// Records the end of an event. This is used in conjunction
   /// with RecordStart() to manually instrument an event.
   ///
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordEnd(std::shared_ptr<StatsHandle> handle);
+  void RecordEnd(std::shared_ptr<StatsHandle> handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.
@@ -138,7 +153,7 @@ class EventTracker {
   ///
   /// \param event_name The name of the event whose stats should be returned.
   /// \return A snapshot view of the event's stats.
-  absl::optional<EventStats> get_event_stats(const std::string &event_name) const
+  std::optional<EventStats> get_event_stats(const std::string &event_name) const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns snapshot views of the count, queueing, and execution statistics for all
@@ -174,4 +189,12 @@ class EventTracker {
 
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
+
+  ray::stats::Count operation_count_metric_{ray::GetOperationCountCounterMetric()};
+  ray::stats::Gauge operation_active_gauge_metric_{
+      ray::GetOperationActiveCountGaugeMetric()};
+  ray::stats::Histogram operation_run_time_ms_histogram_metric_{
+      ray::GetOperationRunTimeMsHistogramMetric()};
+  ray::stats::Histogram operation_queue_time_ms_histogram_metric_{
+      ray::GetOperationQueueTimeMsHistogramMetric()};
 };

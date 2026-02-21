@@ -2,29 +2,36 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
+
 import asyncio
 import collections
 import functools
 import inspect
-import json
 import logging
 import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any, Callable
+from types import ModuleType
+from typing import Callable, List, Optional, Set, Union
 
-from aiohttp.web import Response
+from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
-from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_bool
+import ray.dashboard.utils as dashboard_utils
+from ray._private.ray_constants import env_bool
+from ray._raylet import RAY_INTERNAL_DASHBOARD_NAMESPACE
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
-from ray.dashboard.utils import CustomEncoder, to_google_style
+from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.routes import method_route_table_factory, rest_response
+from ray.dashboard.utils import (
+    DashboardAgentModule,
+    DashboardHeadModule,
+)
 
 try:
     create_task = asyncio.create_task
@@ -34,151 +41,8 @@ except AttributeError:
 
 logger = logging.getLogger(__name__)
 
-
-def method_route_table_factory():
-    class MethodRouteTable:
-        """A helper class to bind http route to class method."""
-
-        _bind_map = collections.defaultdict(dict)
-        _routes = aiohttp.web.RouteTableDef()
-
-        class _BindInfo:
-            def __init__(self, filename, lineno, instance):
-                self.filename = filename
-                self.lineno = lineno
-                self.instance = instance
-
-        @classmethod
-        def routes(cls):
-            return cls._routes
-
-        @classmethod
-        def bound_routes(cls):
-            bound_items = []
-            for r in cls._routes._items:
-                if isinstance(r, RouteDef):
-                    route_method = getattr(r.handler, "__route_method__")
-                    route_path = getattr(r.handler, "__route_path__")
-                    instance = cls._bind_map[route_method][route_path].instance
-                    if instance is not None:
-                        bound_items.append(r)
-                else:
-                    bound_items.append(r)
-            routes = aiohttp.web.RouteTableDef()
-            routes._items = bound_items
-            return routes
-
-        @classmethod
-        def _register_route(cls, method, path, **kwargs):
-            def _wrapper(handler):
-                if path in cls._bind_map[method]:
-                    bind_info = cls._bind_map[method][path]
-                    raise Exception(
-                        f"Duplicated route path: {path}, "
-                        f"previous one registered at "
-                        f"{bind_info.filename}:{bind_info.lineno}"
-                    )
-
-                bind_info = cls._BindInfo(
-                    handler.__code__.co_filename, handler.__code__.co_firstlineno, None
-                )
-
-                @functools.wraps(handler)
-                async def _handler_route(*args) -> aiohttp.web.Response:
-                    try:
-                        # Make the route handler as a bound method.
-                        # The args may be:
-                        #   * (Request, )
-                        #   * (self, Request)
-                        req = args[-1]
-                        return await handler(bind_info.instance, req)
-                    except Exception:
-                        logger.exception("Handle %s %s failed.", method, path)
-                        return rest_response(
-                            success=False, message=traceback.format_exc()
-                        )
-
-                cls._bind_map[method][path] = bind_info
-                _handler_route.__route_method__ = method
-                _handler_route.__route_path__ = path
-                return cls._routes.route(method, path, **kwargs)(_handler_route)
-
-            return _wrapper
-
-        @classmethod
-        def head(cls, path, **kwargs):
-            return cls._register_route(hdrs.METH_HEAD, path, **kwargs)
-
-        @classmethod
-        def get(cls, path, **kwargs):
-            return cls._register_route(hdrs.METH_GET, path, **kwargs)
-
-        @classmethod
-        def post(cls, path, **kwargs):
-            return cls._register_route(hdrs.METH_POST, path, **kwargs)
-
-        @classmethod
-        def put(cls, path, **kwargs):
-            return cls._register_route(hdrs.METH_PUT, path, **kwargs)
-
-        @classmethod
-        def patch(cls, path, **kwargs):
-            return cls._register_route(hdrs.METH_PATCH, path, **kwargs)
-
-        @classmethod
-        def delete(cls, path, **kwargs):
-            return cls._register_route(hdrs.METH_DELETE, path, **kwargs)
-
-        @classmethod
-        def view(cls, path, **kwargs):
-            return cls._register_route(hdrs.METH_ANY, path, **kwargs)
-
-        @classmethod
-        def static(cls, prefix: str, path: PathLike, **kwargs: Any) -> None:
-            cls._routes.static(prefix, path, **kwargs)
-
-        @classmethod
-        def bind(cls, instance):
-            def predicate(o):
-                if inspect.ismethod(o):
-                    return hasattr(o, "__route_method__") and hasattr(
-                        o, "__route_path__"
-                    )
-                return False
-
-            handler_routes = inspect.getmembers(instance, predicate)
-            for _, h in handler_routes:
-                cls._bind_map[h.__func__.__route_method__][
-                    h.__func__.__route_path__
-                ].instance = instance
-
-    return MethodRouteTable
-
-
 DashboardHeadRouteTable = method_route_table_factory()
 DashboardAgentRouteTable = method_route_table_factory()
-
-
-def rest_response(
-    success, message, convert_google_style=True, **kwargs
-) -> aiohttp.web.Response:
-    # In the dev context we allow a dev server running on a
-    # different port to consume the API, meaning we need to allow
-    # cross-origin access
-    if os.environ.get("RAY_DASHBOARD_DEV") == "1":
-        headers = {"Access-Control-Allow-Origin": "*"}
-    else:
-        headers = {}
-    return aiohttp.web.json_response(
-        {
-            "result": success,
-            "msg": message,
-            "data": to_google_style(kwargs) if convert_google_style else kwargs,
-        },
-        dumps=functools.partial(json.dumps, cls=CustomEncoder),
-        headers=headers,
-        status=200 if success else 500,
-    )
 
 
 # The cache value type used by aiohttp_cache.
@@ -205,6 +69,10 @@ def aiohttp_cache(
                 #   * (Request, )
                 #   * (self, Request)
                 req = args[-1]
+                # If nocache=1 in query string, bypass cache.
+                if req.query.get("nocache") == "1":
+                    return await handler(*args)
+
                 # Make key.
                 if req.method in _AIOHTTP_CACHE_NOBODY_METHODS:
                     key = req.path_qs
@@ -223,7 +91,8 @@ def aiohttp_cache(
                         response = task.result()
                     except Exception:
                         response = rest_response(
-                            success=False, message=traceback.format_exc()
+                            status_code=dashboard_utils.HTTPStatusCode.INTERNAL_ERROR,
+                            message=traceback.format_exc(),
                         )
                     data = {
                         "status": response.status,
@@ -260,16 +129,98 @@ def aiohttp_cache(
         return _wrapper
 
 
+def is_browser_request(req: Request) -> bool:
+    """Best-effort detection if the request was made by a browser.
+
+    Uses three heuristics:
+        1) If the `User-Agent` header starts with 'Mozilla'. This heuristic is weak,
+        but hard for a browser to bypass e.g., fetch/xhr and friends cannot alter the
+        user agent, but requests made with an HTTP library can stumble into this if
+        they choose to user a browser-like user agent. At the time of writing, all
+        common browsers' user agents start with 'Mozilla'.
+        2) If any of the `Sec-Fetch-*` headers are present.
+        3) If any of the various CORS headers are present
+    """
+    return req.headers.get("User-Agent", "").startswith("Mozilla") or any(
+        h in req.headers
+        for h in (
+            # Origin and Referer are sent by browser user agents to give
+            # information about the requesting origin
+            "Referer",
+            "Origin",
+            # Sec-Fetch headers are sent with many but not all `fetch`
+            # requests, and will eventually be sent on all requests.
+            "Sec-Fetch-Mode",
+            "Sec-Fetch-Dest",
+            "Sec-Fetch-Site",
+            "Sec-Fetch-User",
+            # CORS headers specifying which other headers are modified
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+        )
+    )
+
+
+def get_browser_request_middleware(
+    aiohttp_module: ModuleType,
+    allowed_methods: Optional[Set[str]] = None,
+    allowed_paths: Optional[List[str]] = None,
+):
+    """Create middleware that restricts browser access to specified HTTP methods.
+
+    This middleware blocks browser requests to prevent DNS rebinding and CSRF
+    attacks. Only explicitly allowed methods are permitted from browsers.
+
+    Args:
+        aiohttp_module: The aiohttp module to use
+        allowed_methods: Set of HTTP methods browsers are allowed to use.
+        allowed_paths: List of paths that bypass the method check entirely,
+            allowing any method from browsers.
+
+    Returns:
+        An aiohttp middleware function
+    """
+    allowed_methods = allowed_methods or set()
+
+    @aiohttp_module.web.middleware
+    async def browser_request_middleware(request, handler):
+        if not is_browser_request(request):
+            return await handler(request)
+
+        # Allow whitelisted paths to bypass the check
+        if allowed_paths and request.path in allowed_paths:
+            return await handler(request)
+
+        # No methods allowed for browsers, return `403` status.
+        if not allowed_methods:
+            return aiohttp_module.web.Response(
+                status=403, text="Browser requests not allowed."
+            )
+
+        # This specific method is not allowed, return `405` status.
+        if request.method not in allowed_methods:
+            return aiohttp_module.web.Response(
+                status=405,
+                text=f"'{request.method}' method not allowed for browser traffic.",
+            )
+
+        return await handler(request)
+
+    return browser_request_middleware
+
+
 def init_ray_and_catch_exceptions() -> Callable:
     """Decorator to be used on methods that require being connected to Ray."""
 
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
-        async def decorator(self, *args, **kwargs):
+        async def decorator(
+            self: Union[DashboardAgentModule, DashboardHeadModule], *args, **kwargs
+        ):
             try:
                 if not ray.is_initialized():
                     try:
-                        address = self.get_gcs_address()
+                        address = self.gcs_address
                         logger.info(f"Connecting to ray with address={address}")
                         # Set the gcs rpc timeout to shorter
                         os.environ["RAY_gcs_server_request_timeout_seconds"] = str(

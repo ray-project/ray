@@ -1,12 +1,11 @@
 import gymnasium as gym
 import numpy as np
+from gymnasium.envs.classic_control.cartpole import CartPoleEnv
 from PIL import Image, ImageDraw
 
-from gymnasium.envs.classic_control.cartpole import CartPoleEnv
+from ray.rllib.utils.framework import try_import_torch
 
-from ray.rllib.utils.framework import try_import_tf
-
-_, tf, _ = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class CartPoleDebug(CartPoleEnv):
@@ -99,7 +98,7 @@ def create_cartpole_dream_image(
     # Return image.
     np_img = np.asarray(image)
     if as_tensor:
-        return tf.convert_to_tensor(np_img, dtype=tf.uint8)
+        return torch.from_numpy(np_img, dtype=torch.uint8)
     return np_img
 
 
@@ -143,7 +142,7 @@ def create_frozenlake_dream_image(
     # Return image.
     np_img = np.asarray(image)
     if as_tensor:
-        return tf.convert_to_tensor(np_img, dtype=tf.uint8)
+        return torch.from_numpy(np_img, dtype=torch.uint8)
     return np_img
 
 

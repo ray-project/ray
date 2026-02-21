@@ -1,0 +1,21 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+head_node_type:
+    name: head_node
+    instance_type: m6i.16xlarge
+    resources:
+      CPU: 0
+      GPU: 0
+      custom_resources:
+        node: 1
+
+worker_node_types:
+    - name: worker_node
+      instance_type: m6i.4xlarge
+      min_workers: 9
+      max_workers: 9
+      use_spot: false
+      resources:
+        custom_resources:
+          node: 1

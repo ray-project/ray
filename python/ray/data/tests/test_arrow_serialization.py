@@ -9,13 +9,14 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import parse as parse_version
-from pytest_lazyfixture import lazy_fixture
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
 import ray.data
 import ray.train
 from ray._private.arrow_serialization import (
+    PicklableArrayPayload,
     _align_bit_offset,
     _bytes_for_bits,
     _copy_bitpacked_buffer_if_needed,
@@ -23,7 +24,7 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray._private.utils import _get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
     _object_extension_type_allowed,
@@ -234,10 +235,7 @@ def fixed_size_list_array():
 @pytest.fixture
 def map_array():
     return pa.array(
-        [
-            [(key, item) for key, item in zip("abcdefghij", range(10))]
-            for _ in range(1000)
-        ],
+        [list(zip("abcdefghij", range(10))) for _ in range(1000)],
         type=pa.map_(pa.string(), pa.int64()),
     )
 
@@ -349,10 +347,7 @@ def complex_nested_array():
                 ]
             ),
             pa.array(
-                [
-                    [(key, item) for key, item in zip("abcdefghij", range(10))]
-                    for _ in range(1000)
-                ],
+                [list(zip("abcdefghij", range(10))) for _ in range(1000)],
                 type=pa.map_(pa.string(), pa.int64()),
             ),
         ],
@@ -448,7 +443,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
         )
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()
@@ -498,7 +493,7 @@ def test_custom_arrow_data_serializer_fallback(
     cap_mult = 0.1
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = parse_version(_get_pyarrow_version())
+    pyarrow_version = get_pyarrow_version()
     if pyarrow_version >= parse_version("7.0.0"):
         # get_total_buffer_size API was added in Arrow 7.0.0.
         buf_size = data.get_total_buffer_size()
@@ -583,6 +578,57 @@ def test_custom_arrow_data_serializer_parquet_roundtrip(
     assert t2.equals(pickle.loads(s_t2))
 
 
+def test_arrow_schema_ipc_serialization(ray_start_regular_shared):
+    """Test that Arrow Schema uses IPC serialization for performance."""
+    from ray._private.arrow_serialization import (
+        _arrow_schema_reduce,
+        _restore_schema_from_ipc,
+    )
+
+    # Verify the reducer is registered
+    ray._private.worker.global_worker.get_serialization_context()
+    assert pa.Schema in pickle.CloudPickler.dispatch
+    assert pickle.CloudPickler.dispatch[pa.Schema] == _arrow_schema_reduce
+
+    # Create a complex schema with various types
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("name", pa.string()),
+            pa.field("timestamp", pa.timestamp("us", tz="UTC")),
+            pa.field("tags", pa.list_(pa.string())),
+            pa.field("metadata", pa.map_(pa.string(), pa.string())),
+            pa.field(
+                "nested",
+                pa.struct(
+                    [
+                        pa.field("x", pa.float64()),
+                        pa.field("y", pa.float64()),
+                    ]
+                ),
+            ),
+            pa.field("category", pa.dictionary(pa.int8(), pa.string())),
+            pa.field("decimal_val", pa.decimal128(18, 6)),
+        ],
+        metadata={b"foo": b"bar"},
+    )
+
+    # Test roundtrip serialization
+    serialized = pickle.dumps(schema)
+    deserialized = pickle.loads(serialized)
+    assert schema.equals(deserialized)
+    assert schema.metadata == deserialized.metadata
+
+    # Verify the reducer uses IPC format (check via direct call)
+    restore_func, (ipc_bytes,) = _arrow_schema_reduce(schema)
+    assert restore_func == _restore_schema_from_ipc
+    # IPC bytes should match what schema.serialize() produces
+    assert ipc_bytes == schema.serialize().to_pybytes()
+    # Verify restore works
+    restored = restore_func(ipc_bytes)
+    assert schema.equals(restored)
+
+
 def test_custom_arrow_data_serializer_disable(shutdown_only):
     ray.shutdown()
     ray.worker._post_init_hooks = []
@@ -601,3 +647,69 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     assert d_view["a"].chunk(0).buffers()[1].size == t["a"].chunk(0).buffers()[1].size
     # Check that the serialized slice view is large
     assert len(s_view) > 0.8 * len(s_t)
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("10.0.0"),
+    reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
+)
+def test_fixed_shape_tensor_array_serialization():
+    a = pa.FixedShapeTensorArray.from_numpy_ndarray(
+        np.arange(4 * 2 * 3).reshape(4, 2, 3)
+    )
+    payload = PicklableArrayPayload.from_array(a)
+    a2 = payload.to_array()
+    assert a == a2
+
+
+class _VariableShapeTensorType(pa.ExtensionType):
+    def __init__(
+        self,
+        value_type: pa.DataType,
+        ndim: int,
+    ) -> None:
+        self.value_type = value_type
+        self.ndim = ndim
+        super().__init__(
+            pa.struct(
+                [
+                    pa.field("data", pa.list_(value_type)),
+                    pa.field("shape", pa.list_(pa.int32(), ndim)),
+                ]
+            ),
+            "variable_shape_tensor",
+        )
+
+    def __arrow_ext_serialize__(self) -> bytes:
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type: pa.DataType, serialized: bytes):
+        ndim = storage_type[1].type.list_size
+        value_type = storage_type[0].type.value_type
+        return cls(value_type, ndim)
+
+
+def test_variable_shape_tensor_serialization():
+    t = _VariableShapeTensorType(pa.float32(), 2)
+    values = [
+        {
+            "data": np.arange(2 * 3, dtype=np.float32).tolist(),
+            "shape": [2, 3],
+        },
+        {
+            "data": np.arange(4 * 5, dtype=np.float32).tolist(),
+            "shape": [4, 5],
+        },
+    ]
+    storage = pa.array(values, type=t.storage_type)
+    ar = pa.ExtensionArray.from_storage(t, storage)
+    payload = PicklableArrayPayload.from_array(ar)
+    ar2 = payload.to_array()
+    assert ar == ar2
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

@@ -1,24 +1,25 @@
 import collections
-from gymnasium.spaces import Space
 import logging
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from gymnasium.spaces import Space
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
+from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.typing import (
     AgentID,
-    EpisodeID,
     EnvID,
+    EpisodeID,
     PolicyID,
     TensorType,
     ViewRequirementsDict,
@@ -29,7 +30,7 @@ _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ class SimpleListCollector(SampleCollector):
         self,
         policy_map: PolicyMap,
         clip_rewards: Union[bool, float],
-        callbacks: "DefaultCallbacks",
+        callbacks: "RLlibCallback",
         multiple_episodes_in_batch: bool = True,
         rollout_fragment_length: int = 200,
         count_steps_by: str = "env_steps",

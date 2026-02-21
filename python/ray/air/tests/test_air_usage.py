@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pyarrow.fs
@@ -10,7 +11,7 @@ from packaging.version import Version
 
 import ray
 from ray import train, tune
-from ray._private.usage.usage_lib import TagKey
+from ray._common.usage.usage_lib import TagKey
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.integrations import comet, mlflow, wandb
@@ -48,7 +49,7 @@ def train_fn(config):
 
 @pytest.fixture
 def tuner(tmp_path):
-    yield tune.Tuner(train_fn, run_config=train.RunConfig(storage_path=str(tmp_path)))
+    yield tune.Tuner(train_fn, run_config=tune.RunConfig(storage_path=str(tmp_path)))
 
 
 @pytest.fixture

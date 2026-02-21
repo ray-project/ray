@@ -1,11 +1,53 @@
 import logging
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
+
 logger = logging.getLogger(__name__)
+
+
+def _create_user_agent() -> str:
+    import ray
+
+    return f"ray/{ray.__version__}"
+
+
+def _create_client_info():
+    from google.api_core.client_info import ClientInfo
+
+    return ClientInfo(
+        user_agent=_create_user_agent(),
+    )
+
+
+def _create_client_info_gapic():
+    from google.api_core.gapic_v1.client_info import ClientInfo
+
+    return ClientInfo(
+        user_agent=_create_user_agent(),
+    )
+
+
+def _create_client(project_id: str):
+    from google.cloud import bigquery
+
+    return bigquery.Client(
+        project=project_id,
+        client_info=_create_client_info(),
+    )
+
+
+def _create_read_client():
+    from google.cloud import bigquery_storage
+
+    return bigquery_storage.BigQueryReadClient(
+        client_info=_create_client_info_gapic(),
+    )
 
 
 class BigQueryDatasource(Datasource):
@@ -29,16 +71,21 @@ class BigQueryDatasource(Datasource):
                 + "(must be mutually exclusive)."
             )
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        from google.cloud import bigquery, bigquery_storage
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
+        from google.cloud import bigquery_storage
 
         def _read_single_partition(stream) -> Block:
-            client = bigquery_storage.BigQueryReadClient()
+            client = _create_read_client()
             reader = client.read_rows(stream.name)
             return reader.to_arrow()
 
         if self._query:
-            query_client = bigquery.Client(project=self._project_id)
+            query_client = _create_client(project_id=self._project_id)
             query_job = query_client.query(self._query)
             query_job.result()
             destination = str(query_job.destination)
@@ -49,7 +96,7 @@ class BigQueryDatasource(Datasource):
             dataset_id = self._dataset.split(".")[0]
             table_id = self._dataset.split(".")[1]
 
-        bqs_client = bigquery_storage.BigQueryReadClient()
+        bqs_client = _create_read_client()
         table = f"projects/{self._project_id}/datasets/{dataset_id}/tables/{table_id}"
 
         if parallelism == -1:
@@ -78,7 +125,6 @@ class BigQueryDatasource(Datasource):
             metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=None,
-                schema=None,
                 input_files=None,
                 exec_stats=None,
             )
@@ -87,6 +133,7 @@ class BigQueryDatasource(Datasource):
             read_task = ReadTask(
                 lambda stream=stream: [_read_single_partition(stream)],
                 metadata,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
 
@@ -97,9 +144,8 @@ class BigQueryDatasource(Datasource):
 
     def _validate_dataset_table_exist(self, project_id: str, dataset: str) -> None:
         from google.api_core import exceptions
-        from google.cloud import bigquery
 
-        client = bigquery.Client(project=project_id)
+        client = _create_client(project_id=project_id)
         dataset_id = dataset.split(".")[0]
         try:
             client.get_dataset(dataset_id)

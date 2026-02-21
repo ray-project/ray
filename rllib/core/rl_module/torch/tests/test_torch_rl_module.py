@@ -1,6 +1,6 @@
+import gc
 import tempfile
 import unittest
-import gc
 
 import gymnasium as gym
 import torch
@@ -8,7 +8,7 @@ import torch
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
-from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
+from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.torch_utils import _dynamo_is_available
 
@@ -155,8 +155,9 @@ class TestRLModuleGPU(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     # One can specify the specific TestCase class to run.
     # None for all unittest.TestCase classes in this file.

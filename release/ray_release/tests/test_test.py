@@ -1,36 +1,36 @@
 import asyncio
 import json
-import sys
 import os
 import platform
-from unittest import mock
+import sys
 from typing import List
+from unittest import mock
+from unittest.mock import AsyncMock, patch
 
 import aioboto3
 import boto3
 import pytest
-from unittest.mock import patch, AsyncMock
 
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import (
-    init_global_config,
     get_global_config,
+    init_global_config,
 )
 from ray_release.test import (
+    DATAPLANE_ECR_ML_REPO,
+    DATAPLANE_ECR_REPO,
+    LINUX_TEST_PREFIX,
+    MACOS_BISECT_DAILY_RATE_LIMIT,
+    MACOS_TEST_PREFIX,
+    WINDOWS_TEST_PREFIX,
+    ResultStatus,
     Test,
     TestResult,
     TestState,
     TestType,
-    ResultStatus,
     _convert_env_list_to_dict,
-    DATAPLANE_ECR_REPO,
-    DATAPLANE_ECR_ML_REPO,
-    MACOS_TEST_PREFIX,
-    LINUX_TEST_PREFIX,
-    WINDOWS_TEST_PREFIX,
-    MACOS_BISECT_DAILY_RATE_LIMIT,
 )
-
+from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, dict_hash
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
@@ -71,6 +71,7 @@ def _stub_test_result(
         timestamp=0,
         pull_request="1",
         rayci_step_id=rayci_step_id,
+        duration_ms=5.0,
     )
 
 
@@ -84,50 +85,8 @@ def test_convert_env_list_to_dict():
 
 
 def test_get_python_version():
-    assert _stub_test({}).get_python_version() == "3.9"
+    assert _stub_test({}).get_python_version() == "3.10"
     assert _stub_test({"python": "3.11"}).get_python_version() == "3.11"
-
-
-def test_get_ray_image():
-    os.environ["BUILDKITE_BRANCH"] = "master"
-    os.environ["BUILDKITE_COMMIT"] = "1234567890"
-    assert (
-        _stub_test(
-            {
-                "python": "3.9",
-                "cluster": {"byod": {}},
-            }
-        ).get_ray_image()
-        == "rayproject/ray:123456-py39-cpu"
-    )
-    assert (
-        _stub_test(
-            {
-                "python": "3.9",
-                "cluster": {
-                    "byod": {
-                        "type": "gpu",
-                    }
-                },
-            }
-        ).get_ray_image()
-        == "rayproject/ray-ml:123456-py39-gpu"
-    )
-    os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
-    assert (
-        _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-        == "rayproject/ray:1.0.0.123456-py39-cpu"
-    )
-    with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
-        assert (
-            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:pr-123.123456-py39-cpu"
-        )
-    with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
-        assert (
-            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-            == "rayproject/ray:my_tag"
-        )
 
 
 def test_get_byod_runtime_env():
@@ -142,16 +101,14 @@ def test_get_byod_runtime_env():
         }
     )
     runtime_env = test.get_byod_runtime_env()
-    assert runtime_env.get("RAY_BACKEND_LOG_JSON") == "1"
     assert runtime_env.get("a") == "b"
 
 
 def test_get_anyscale_byod_image():
-    os.environ["BUILDKITE_BRANCH"] = "master"
-    os.environ["BUILDKITE_COMMIT"] = "1234567890"
+    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
     assert (
         _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
-        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37-cpu"
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:a1b2c3d4-py37-cpu"
     )
     assert _stub_test(
         {
@@ -163,7 +120,8 @@ def test_get_anyscale_byod_image():
             },
         }
     ).get_anyscale_byod_image() == (
-        f"{get_global_config()['byod_ecr']}/" f"{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+        f"{get_global_config()['byod_ecr']}/"
+        f"{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu"
     )
     assert _stub_test(
         {
@@ -177,8 +135,44 @@ def test_get_anyscale_byod_image():
         }
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}"
-        f"/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu-"
-        "ab7ed2b7a7e8d3f855a7925b0d296b0f9c75fac91882aba47854d92d27e13e53"
+        f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
+        "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+    )
+
+
+def test_get_anyscale_byod_image_ray_version():
+    os.environ["RAYCI_BUILD_ID"] = "a1b2c3d4"
+    assert (
+        _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:a1b2c3d4-py37-cpu"
+    )
+    assert _stub_test(
+        {
+            "python": "3.8",
+            "cluster": {
+                "ray_version": "2.50.0",
+                "byod": {
+                    "type": "gpu",
+                },
+            },
+        }
+    ).get_anyscale_byod_image() == (f"{ANYSCALE_RAY_IMAGE_PREFIX}:2.50.0-py38-cu121")
+    assert _stub_test(
+        {
+            "python": "3.8",
+            "cluster": {
+                "ray_version": "2.50.0",
+                "byod": {
+                    "type": "gpu",
+                    "post_build_script": "foo.sh",
+                },
+            },
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}"
+        f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
+        "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+        "-2.50.0"
     )
 
 
@@ -195,6 +189,15 @@ def test_is_jailed_with_open_issue(mock_repo, mock_issue) -> None:
     assert not Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
         mock_repo
     )
+
+
+@patch("github.Repository")
+def test_is_jailed_with_open_issue_github_exception(mock_repo) -> None:
+    from github import GithubException
+
+    mock_repo.get_issue.side_effect = GithubException(404, {"message": "Not Found"}, {})
+    test = Test(name="test", state="jailed", github_issue_number="1")
+    assert not test.is_jailed_with_open_issue(mock_repo)
 
 
 def test_is_stable() -> None:
@@ -214,19 +217,21 @@ def test_is_stable() -> None:
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
-            "testResult": {"status": "PASSED"},
+            "testResult": {"status": "PASSED", "testAttemptDurationMillis": "5"},
         }
     )
     assert result.is_passing()
     assert result.branch == "food"
     assert result.pull_request == "1"
     assert result.rayci_step_id == "g4_s5"
+    assert result.duration_ms == 5
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
         }
     )
     assert result.is_failing()
+    assert result.duration_ms is None
 
 
 def test_from_bazel_event() -> None:
@@ -479,6 +484,143 @@ def test_gen_microcheck_tests() -> None:
                 )
                 == test["output"]
             )
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag(mock_get_byod_base_image_tag):
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "byod": {
+                    "post_build_script": "test_post_build_script.sh",
+                    "python_depset": "test_python_depset.lock",
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": "test_post_build_script.sh",
+        "python_depset": "test_python_depset.lock",
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag_ray_version(mock_get_byod_base_image_tag):
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "ray_version": "2.50.0",
+                "byod": {
+                    "post_build_script": "test_post_build_script.sh",
+                    "python_depset": "test_python_depset.lock",
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": "test_post_build_script.sh",
+        "python_depset": "test_python_depset.lock",
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}-2.50.0"
+
+
+def test_require_custom_byod_image():
+    # No custom build needed
+    assert not _stub_test({"cluster": {"byod": {}}}).require_custom_byod_image()
+    # post_build_script triggers custom build
+    assert _stub_test(
+        {"cluster": {"byod": {"post_build_script": "foo.sh"}}}
+    ).require_custom_byod_image()
+    # python_depset triggers custom build
+    assert _stub_test(
+        {"cluster": {"byod": {"python_depset": "deps.lock"}}}
+    ).require_custom_byod_image()
+    # runtime_env triggers custom build
+    assert _stub_test(
+        {"cluster": {"byod": {"runtime_env": ["FOO=bar"]}}}
+    ).require_custom_byod_image()
+    # empty runtime_env does not trigger custom build
+    assert not _stub_test(
+        {"cluster": {"byod": {"runtime_env": []}}}
+    ).require_custom_byod_image()
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
+    """Tests with only runtime_env get a custom image tag including env hash."""
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "byod": {
+                    "runtime_env": ["MY_VAR=123"],
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": None,
+        "python_depset": None,
+        "runtime_env": {"MY_VAR": "123"},
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
+
+    # A different test with the same runtime_env but a different run script
+    # should produce the same image tag (run script doesn't affect the image).
+    test2 = _stub_test(
+        {
+            "name": "linux://other_test",
+            "cluster": {
+                "byod": {
+                    "runtime_env": ["MY_VAR=123"],
+                },
+            },
+            "run": {
+                "script": "python different_script.py",
+            },
+        }
+    )
+    assert test2.get_byod_image_tag() == f"test-image-{hash_value}"
+
+
+@patch("ray_release.test.Test.get_byod_base_image_tag")
+def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image_tag):
+    """Tests with runtime_env AND post_build_script include both in the hash."""
+    test = _stub_test(
+        {
+            "name": "linux://test",
+            "cluster": {
+                "byod": {
+                    "post_build_script": "test_script.sh",
+                    "runtime_env": ["KEY=val"],
+                },
+            },
+        }
+    )
+    mock_get_byod_base_image_tag.return_value = "test-image"
+    custom_info = {
+        "post_build_script": "test_script.sh",
+        "python_depset": None,
+        "runtime_env": {"KEY": "val"},
+    }
+    hash_value = dict_hash(custom_info)
+    assert test.get_byod_image_tag() == f"test-image-{hash_value}"
+
+    # Verify this is different from the hash without runtime_env
+    custom_info_no_env = {
+        "post_build_script": "test_script.sh",
+        "python_depset": None,
+    }
+    assert dict_hash(custom_info) != dict_hash(custom_info_no_env)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,9 @@ proto_cpp_grpc_default_kwargs = {
 
 
 # === @begin: proto_py (original: python_grpc_compile) ===
+# @TODO: Merge our approach from other packages w/ one from `patching_protoc_py.sh` to keep this entirely in `meson` w/o extra shell scripts.
+# This will require to pass the current source and build folder instead of SOURCE_ROOT and BUILD_ROOT.
+#
 protoc_py = files('patching_protoc_py.sh')
 protoc_py_with_default_args = [protoc_py, '@INPUT@', '@SOURCE_ROOT@', '@BUILD_ROOT@', '@OUTPUT0@', '@OUTPUT1@']
 proto_py_default_install_dir = py.get_install_dir() / 'ray/core/generated/'

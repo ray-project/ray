@@ -25,6 +25,8 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
     std::unique_ptr<InstrumentedIOContextWithThread> io_context =
         std::make_unique<InstrumentedIOContextWithThread>(
             "DefaultCoreWorkerMemoryStoreWithThread");
+    // C++ limitation: std::make_unique cannot be used because std::unique_ptr cannot
+    // invoke private constructors.
     return std::unique_ptr<DefaultCoreWorkerMemoryStoreWithThread>(
         new DefaultCoreWorkerMemoryStoreWithThread(std::move(io_context)));
   }
@@ -33,6 +35,8 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
     std::unique_ptr<InstrumentedIOContextWithThread> io_context =
         std::make_unique<InstrumentedIOContextWithThread>(
             "DefaultCoreWorkerMemoryStoreWithThread");
+    // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
+    // invoke private constructors.
     return std::shared_ptr<DefaultCoreWorkerMemoryStoreWithThread>(
         new DefaultCoreWorkerMemoryStoreWithThread(std::move(io_context)));
   }

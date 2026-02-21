@@ -4,10 +4,15 @@ import subprocess
 import time
 
 import ray
+from ray._common.network_utils import build_address
+from ray._common.ray_constants import (
+    LOGGING_ROTATE_BACKUP_COUNT,
+    LOGGING_ROTATE_BYTES,
+)
+from ray._common.utils import try_to_create_directory
 from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
-from ray._private.utils import try_to_create_directory
 from ray._raylet import GcsClient
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
@@ -21,7 +26,7 @@ BACKOFF_S = 5
 
 def _get_log_dir() -> str:
     return os.path.join(
-        ray._private.utils.get_ray_temp_dir(),
+        ray._common.utils.get_ray_temp_dir(),
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
@@ -30,7 +35,7 @@ def _get_log_dir() -> str:
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
     """Wait until the Ray head container is ready. Then start the autoscaler."""
     head_ip = get_node_ip_address()
-    ray_address = f"{head_ip}:6379"
+    ray_address = build_address(head_ip, 6379)
     while True:
         try:
             # Autoscaler Ray version might not exactly match GCS version, so skip the
@@ -44,12 +49,12 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
                     "--skip-version-check",
                 ]
             )
-            # Logging is not ready yet. Print to stdout for now.
-            print("The Ray head is ready. Starting the autoscaler.")
+            logger.info("The Ray head is ready. Starting the autoscaler.")
             break
         except subprocess.CalledProcessError:
-            print("The Ray head is not yet ready.")
-            print(f"Will check again in {BACKOFF_S} seconds.")
+            logger.warning(
+                f"The Ray head is not ready. Will check again in {BACKOFF_S} seconds."
+            )
             time.sleep(BACKOFF_S)
 
     # The Ray head container sets up the log directory. Thus, we set up logging
@@ -98,12 +103,12 @@ def _setup_logging() -> None:
 
     # Write logs at info level to monitor.log.
     setup_component_logger(
-        logging_level=ray_constants.LOGGER_LEVEL,  # info
+        logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=log_dir,
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
-        max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
-        backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        max_bytes=LOGGING_ROTATE_BYTES,
+        backup_count=LOGGING_ROTATE_BACKUP_COUNT,
     )
 
     # For the autoscaler, the root logger _also_ needs to write to stderr, not just

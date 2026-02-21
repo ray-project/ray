@@ -17,13 +17,13 @@ class XGBoostTrainer(DataParallelTrainer):
     -------
 
     .. testcode::
+        :skipif: True
 
         import xgboost
 
         import ray.data
         import ray.train
-        from ray.train.xgboost import RayTrainReportCallback
-        from ray.train.xgboost.v2 import XGBoostTrainer
+        from ray.train.xgboost import RayTrainReportCallback, XGBoostTrainer
 
         def train_fn_per_worker(config: dict):
             # (Optional) Add logic to resume training state from a checkpoint.
@@ -71,11 +71,6 @@ class XGBoostTrainer(DataParallelTrainer):
         )
         result = trainer.fit()
         booster = RayTrainReportCallback.get_model(result.checkpoint)
-
-    .. testoutput::
-        :hide:
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.

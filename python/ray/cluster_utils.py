@@ -193,6 +193,7 @@ class Cluster:
             namespace=namespace,
             ignore_reinit_error=True,
             address=self.address,
+            _redis_username=self.redis_username,
             _redis_password=self.redis_password,
         )
         logger.info(output_info)
@@ -233,6 +234,9 @@ class Cluster:
                 )
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
+                self.redis_username = node_args.get(
+                    "redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+                )
                 self.redis_password = node_args.get(
                     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
                 )
@@ -286,14 +290,14 @@ class Cluster:
             node: Worker node of which all associated processes
                 will be removed.
         """
-        global_node = ray._private.worker._global_node
+        global_node = ray._private.worker.global_worker.node
         if global_node is not None:
             if node._raylet_socket_name == global_node._raylet_socket_name:
                 ray.shutdown()
                 raise ValueError(
                     "Removing a node that is connected to this Ray client "
-                    "is not allowed because it will break the driver."
-                    "You can use the get_other_node utility to avoid removing"
+                    "is not allowed because it will break the driver. "
+                    "You can use the get_other_node utility to avoid removing "
                     "a node that the Ray client is connected."
                 )
 
@@ -408,4 +412,4 @@ class Cluster:
         # need to reset internal kv since gcs is down
         ray.experimental.internal_kv._internal_kv_reset()
         # Delete the cluster address.
-        ray._private.utils.reset_ray_address()
+        ray._common.utils.reset_ray_address()

@@ -26,6 +26,9 @@ export enum ServeDeploymentStatus {
   UPDATING = "UPDATING",
   HEALTHY = "HEALTHY",
   UNHEALTHY = "UNHEALTHY",
+  DEPLOY_FAILED = "DEPLOY_FAILED",
+  UPSCALING = "UPSCALING",
+  DOWNSCALING = "DOWNSCALING",
 }
 
 export type ServeDeployment = {

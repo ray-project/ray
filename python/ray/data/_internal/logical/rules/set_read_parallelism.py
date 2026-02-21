@@ -6,10 +6,16 @@ from ray import available_resources as ray_available_resources
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.util import _autodetect_parallelism
 from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.datasource.datasource import Datasource, Reader
+
+__all__ = [
+    "SetReadParallelismRule",
+    "compute_additional_split_factor",
+]
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +24,11 @@ def compute_additional_split_factor(
     datasource_or_legacy_reader: Union[Datasource, Reader],
     parallelism: int,
     mem_size: int,
-    target_max_block_size: int,
+    target_max_block_size: Optional[int],
     cur_additional_split_factor: Optional[int] = None,
 ) -> Tuple[int, str, int, Optional[int]]:
+    """Returns parallelism to use and the min safe parallelism to avoid OOMs."""
+
     ctx = DataContext.get_current()
     detected_parallelism, reason, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
@@ -34,7 +42,13 @@ def compute_additional_split_factor(
         logger.debug(
             f"Expected in-memory size {mem_size}," f" block size {expected_block_size}"
         )
-        size_based_splits = round(max(1, expected_block_size / target_max_block_size))
+        if target_max_block_size is None:
+            # Unlimited block size -> no extra splits
+            size_based_splits = 1
+        else:
+            size_based_splits = round(
+                max(1, expected_block_size / target_max_block_size)
+            )
     else:
         size_based_splits = 1
     if cur_additional_split_factor:
@@ -99,20 +113,22 @@ class SetReadParallelismRule(Rule):
         return plan
 
     def _apply(self, op: PhysicalOperator, logical_op: Read):
+        estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
+
         (
             detected_parallelism,
             reason,
             estimated_num_blocks,
             k,
         ) = compute_additional_split_factor(
-            logical_op._datasource_or_legacy_reader,
-            logical_op._parallelism,
-            logical_op._mem_size,
-            op.actual_target_max_block_size,
+            logical_op.datasource_or_legacy_reader,
+            logical_op.parallelism,
+            estimated_in_mem_bytes,
+            op.target_max_block_size_override or op.data_context.target_max_block_size,
             op._additional_split_factor,
         )
 
-        if logical_op._parallelism == -1:
+        if logical_op.parallelism == -1:
             assert reason != ""
             logger.debug(
                 f"Using autodetected parallelism={detected_parallelism} "

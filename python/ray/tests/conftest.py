@@ -2,6 +2,7 @@
 This file defines the common pytest fixtures used in current directory.
 """
 
+import copy
 import json
 import logging
 import os
@@ -14,36 +15,47 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import gettempdir
-from typing import List, Tuple
+from typing import List, Optional
 from unittest import mock
-import psutil
+
 import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._common.network_utils import build_address, find_free_port
+from ray._common.test_utils import wait_for_condition
+from ray._private.authentication_test_utils import (
+    authentication_env_guard,
+    clear_auth_token_sources,
+    reset_auth_token_state,
+    set_auth_mode,
+    set_env_auth_token,
+)
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env import virtualenv_utils
-from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
-
 from ray._private.test_utils import (
+    RayletKiller,
+    external_redis_test_enabled,
     get_and_run_resource_killer,
+    get_redis_cli,
     init_error_pubsub,
     init_log_pubsub,
-    setup_tls,
-    teardown_tls,
-    enable_external_redis,
+    kill_processes,
     redis_replicas,
-    get_redis_cli,
+    redis_sentinel_replicas,
+    reset_autoscaler_v2_enabled_cache,
+    setup_tls,
     start_redis_instance,
     start_redis_sentinel_instance,
-    redis_sentinel_replicas,
-    find_available_port,
-    wait_for_condition,
-    find_free_port,
-    RayletKiller,
+    teardown_tls,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
+import psutil
+
+# TODO (mengjin) Improve the logging in the conftest files so that the logger can log
+# information in stdout as well as stderr and replace the print statements in the test
+# files
 logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
@@ -57,7 +69,9 @@ def pre_envs(monkeypatch):
     yield
 
 
-def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
+def wait_for_redis_to_start(
+    redis_ip_address: str, redis_port: bool, password=None, username=None
+):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -66,7 +80,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        password: The password of the redis server.
+        username: The username of the Redis server.
+        password: The password of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -74,7 +89,7 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     import redis
 
     redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password
+        host=redis_ip_address, port=redis_port, username=username, password=password
     )
     # Wait for the Redis server to start.
     num_retries = START_REDIS_WAIT_RETRIES
@@ -84,8 +99,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
         try:
             # Run some random command and see if it worked.
             logger.debug(
-                "Waiting for redis server at {}:{} to respond...".format(
-                    redis_ip_address, redis_port
+                "Waiting for redis server at {} to respond...".format(
+                    build_address(redis_ip_address, redis_port)
                 )
             )
             redis_client.client_list()
@@ -99,14 +114,14 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
         # redis.AuthenticationError isn't trapped here.
         except redis.AuthenticationError as authEx:
             raise RuntimeError(
-                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
+                f"Unable to connect to Redis at {build_address(redis_ip_address, redis_port)}."
             ) from authEx
         except redis.ConnectionError as connEx:
             if i >= num_retries - 1:
                 raise RuntimeError(
-                    f"Unable to connect to Redis at {redis_ip_address}:"
-                    f"{redis_port} after {num_retries} retries. Check that "
-                    f"{redis_ip_address}:{redis_port} is reachable from this "
+                    f"Unable to connect to Redis at {build_address(redis_ip_address, redis_port)} "
+                    f"after {num_retries} retries. Check that "
+                    f"{build_address(redis_ip_address, redis_port)} is reachable from this "
                     "machine. If it is not, your firewall may be blocking "
                     "this port. If the problem is a flaky connection, try "
                     "setting the environment variable "
@@ -174,6 +189,49 @@ def is_process_listen_to_port(pid, port):
     return False
 
 
+def find_user_process_by_port_and_status(
+    port: int, statuses_to_check: Optional[list[str]]
+):
+    """
+    Test helper function to find the processes that have a connection to a provided
+    port and with statuses in the provided list.
+
+    Args:
+        port: The port to check.
+        statuses_to_check: The list of statuses to check. If None, the function will not
+            check the status of the connection.
+
+    Returns:
+        The first process that have a connection
+    """
+    # Here the function finds all the processes and checks if each of them is with the
+    # provided port and status. This is inefficient comparing to leveraging
+    # psutil.net_connections to directly filter the processes by port. However, the
+    # method is chosen because the net_connections method will need root access to run
+    # on macOS: https://psutil.readthedocs.io/en/latest/#psutil.net_connections.
+    # Therefore, the current solution is chosen to make the function work for all
+    processes = []
+    for pid in psutil.pids():
+        process = psutil.Process(pid)
+        try:
+            conns = process.connections()
+            for conn in conns:
+                if conn.laddr.port == port:
+                    if statuses_to_check is None or conn.status in statuses_to_check:
+                        processes.append(process)
+        except (psutil.AccessDenied, psutil.ZombieProcess, psutil.NoSuchProcess):
+            continue
+
+    if not processes:
+        print(
+            f"Failed to find processes that have connections to the port {port} and "
+            f"with connection status in {statuses_to_check}.  It could "
+            "be because the process needs higher privilege to access its "
+            "information or the port is not listened by any processes."
+        )
+    return processes
+
+
 def redis_alive(port, enable_tls):
     try:
         # If there is no redis libs installed, skip the check.
@@ -204,10 +262,38 @@ def redis_alive(port, enable_tls):
     return False
 
 
-def start_redis_with_sentinel(db_dir):
-    temp_dir = ray._private.utils.get_ray_temp_dir()
+def _find_available_ports(start: int, end: int, *, num: int = 1) -> List[int]:
+    ports = []
+    for _ in range(num):
+        random_port = 0
+        with socket.socket() as s:
+            s.bind(("", 0))
+            random_port = s.getsockname()[1]
+        if random_port >= start and random_port <= end and random_port not in ports:
+            ports.append(random_port)
+            continue
 
-    redis_ports = find_available_port(49159, 55535, redis_sentinel_replicas() + 1)
+        for port in range(start, end + 1):
+            if port in ports:
+                continue
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("", port))
+                ports.append(port)
+                break
+            except OSError:
+                pass
+
+    if len(ports) != num:
+        raise RuntimeError(f"Can't find {num} available port from {start} to {end}.")
+
+    return ports
+
+
+def start_redis_with_sentinel(db_dir):
+    temp_dir = ray._common.utils.get_ray_temp_dir()
+
+    redis_ports = _find_available_ports(49159, 55535, num=redis_sentinel_replicas() + 1)
     sentinel_port = redis_ports[0]
     master_port = redis_ports[1]
     redis_processes = [
@@ -236,35 +322,58 @@ def start_redis(db_dir):
     retry_num = 0
     while True:
         is_need_restart = False
-        # Setup external Redis and env var for initialization.
-        redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
-        redis_ports = list(
-            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
-        )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            temp_dir = ray._private.utils.get_ray_temp_dir()
-            port, free_port = find_available_port(49159, 55535, 2)
-            node_id, proc = start_redis_instance(
-                temp_dir,
-                port,
-                enable_tls=enable_tls,
-                replica_of=leader_port,
-                leader_id=leader_id,
-                db_dir=db_dir,
-                free_port=free_port,
-            )
+            temp_dir = ray._common.utils.get_ray_temp_dir()
+            port, free_port = _find_available_ports(49159, 55535, num=2)
             try:
+                node_id = None
+                proc = None
+                node_id, proc = start_redis_instance(
+                    temp_dir,
+                    port,
+                    enable_tls=enable_tls,
+                    replica_of=leader_port,
+                    leader_id=leader_id,
+                    db_dir=db_dir,
+                    free_port=free_port,
+                )
                 wait_for_condition(
                     redis_alive, 3, 100, port=port, enable_tls=enable_tls
                 )
             except Exception as e:
-                print(e)
+                print(f"Fails to start redis on port {port} with exception {e}")
+                if (
+                    proc is not None
+                    and proc.process is not None
+                    and proc.process.poll() is None
+                ):
+                    proc.process.kill()
+
+                # TODO (mengjin) Here we added more debug logs here to help further
+                # troubleshoot the potential race condition where the available port
+                # we found above is taken by another process and the Redis server
+                # cannot be started. Here we won't fail the test but we can check the
+                # output log of the test to further investigate the issue if needed.
+                if "Redis process exited unexpectedly" in str(e):
+                    # Output the process that listens to the port
+                    processes = find_user_process_by_port_and_status(
+                        port, [psutil.CONN_LISTEN]
+                    )
+
+                    for process in processes:
+                        print(
+                            f"Another process({process.pid}) with command"
+                            f"\"{' '.join(process.args)}\" is listening on the port"
+                            f"{port}"
+                        )
+
                 continue
+
             redis_ports.append(port)
             if leader_port is None:
                 leader_port = port
@@ -300,6 +409,13 @@ def start_redis(db_dir):
 
 
 def kill_all_redis_server():
+    """
+    Find all redis server processes running on this host via cmdline
+    and kill them.
+    Note: killed redis process will raise ResourceWarning
+          when the python Subprocess tracking the
+          underlying process is garbage collected.
+    """
     import psutil
 
     # Find Redis server processes
@@ -347,14 +463,21 @@ def _setup_redis(request, with_sentinel=False):
         else:
             del os.environ["RAY_external_storage_namespace"]
 
-        for proc in processes:
-            proc.process.kill()
-        kill_all_redis_server()
+        kill_processes(processes)
 
 
 @pytest.fixture
-def maybe_external_redis(request):
-    if enable_external_redis():
+def maybe_setup_external_redis(request):
+    if external_redis_test_enabled():
+        with _setup_redis(request):
+            yield
+    else:
+        yield
+
+
+@pytest.fixture(scope="module")
+def maybe_setup_external_redis_shared(request):
+    if external_redis_test_enabled():
         with _setup_redis(request):
             yield
     else:
@@ -374,12 +497,31 @@ def external_redis_with_sentinel(request):
 
 
 @pytest.fixture
-def shutdown_only(maybe_external_redis):
+def local_autoscaling_cluster(request, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
+
+    # Start a mock multi-node autoscaling cluster.
+    head_resources, worker_node_types, system_config = copy.deepcopy(request.param)
+    cluster = AutoscalingCluster(
+        head_resources=head_resources,
+        worker_node_types=worker_node_types,
+        autoscaler_v2=enable_v2,
+    )
+    cluster.start(_system_config=system_config)
+
+    yield None
+
+    # Shutdown the cluster
+    cluster.shutdown()
+
+
+@pytest.fixture
+def shutdown_only(maybe_setup_external_redis):
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -400,7 +542,7 @@ def class_ray_instance():
     yield ray.init()
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @contextmanager
@@ -414,11 +556,11 @@ def _ray_start(**kwargs):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
-def ray_start_with_dashboard(request, maybe_external_redis):
+def ray_start_with_dashboard(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     if param.get("num_cpus") is None:
         param["num_cpus"] = 1
@@ -449,7 +591,7 @@ def make_sure_dashboard_http_port_unused():
 
 # The following fixture will start ray with 0 cpu.
 @pytest.fixture
-def ray_start_no_cpu(request, maybe_external_redis):
+def ray_start_no_cpu(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=0, **param) as res:
         yield res
@@ -457,7 +599,7 @@ def ray_start_no_cpu(request, maybe_external_redis):
 
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
-def ray_start_regular(request, maybe_external_redis):
+def ray_start_regular(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -480,22 +622,22 @@ def ray_start_regular_shared(request):
         yield res
 
 
-@pytest.fixture(scope="module", params=[{"local_mode": True}, {"local_mode": False}])
-def ray_start_shared_local_modes(request):
-    param = getattr(request, "param", {})
-    with _ray_start(**param) as res:
-        yield res
-
-
-@pytest.fixture
-def ray_start_2_cpus(request, maybe_external_redis):
+@pytest.fixture(scope="module")
+def ray_start_regular_shared_2_cpus(request):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_10_cpus(request, maybe_external_redis):
+def ray_start_2_cpus(request, maybe_setup_external_redis):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
+@pytest.fixture
+def ray_start_10_cpus(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=10, **param) as res:
         yield res
@@ -503,9 +645,9 @@ def ray_start_10_cpus(request, maybe_external_redis):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
-    cluster_not_supported_ = kwargs.pop("skip_cluster", cluster_not_supported)
-    if cluster_not_supported_:
+    if kwargs.pop("skip_cluster", cluster_not_supported):
         pytest.skip("Cluster not supported")
+
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -520,6 +662,7 @@ def _ray_start_cluster(**kwargs):
         do_init = True
     init_kwargs.update(kwargs)
     namespace = init_kwargs.pop("namespace")
+
     cluster = Cluster()
     remote_nodes = []
     for i in range(num_nodes):
@@ -531,6 +674,7 @@ def _ray_start_cluster(**kwargs):
         if len(remote_nodes) == 1 and do_init:
             ray.init(address=cluster.address, namespace=namespace)
     yield cluster
+
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
@@ -538,14 +682,22 @@ def _ray_start_cluster(**kwargs):
 
 # This fixture will start a cluster with empty nodes.
 @pytest.fixture
-def ray_start_cluster(request, maybe_external_redis):
+def ray_start_cluster(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(**param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_enabled(request, maybe_external_redis):
+def ray_start_cluster_enabled(request, maybe_setup_external_redis):
+    param = getattr(request, "param", {})
+    param["skip_cluster"] = False
+    with _ray_start_cluster(**param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_cluster_enabled_shared(request, maybe_setup_external_redis_shared):
     param = getattr(request, "param", {})
     param["skip_cluster"] = False
     with _ray_start_cluster(**param) as res:
@@ -553,14 +705,14 @@ def ray_start_cluster_enabled(request, maybe_external_redis):
 
 
 @pytest.fixture
-def ray_start_cluster_init(request, maybe_external_redis):
+def ray_start_cluster_init(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_head(request, maybe_external_redis):
+def ray_start_cluster_head(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
         yield res
@@ -586,24 +738,28 @@ def ray_start_cluster_head_with_external_redis_sentinel(
 
 
 @pytest.fixture
-def ray_start_cluster_head_with_env_vars(request, maybe_external_redis, monkeypatch):
+def ray_start_cluster_head_with_env_vars(
+    request, maybe_setup_external_redis, monkeypatch
+):
     param = getattr(request, "param", {})
-    env_vars = param.pop("env_vars", {})
+    env_vars = param.get("env_vars", {})
+    # Create a copy of param without env_vars to pass to _ray_start_cluster
+    cluster_param = {k: v for k, v in param.items() if k != "env_vars"}
     for k, v in env_vars.items():
         monkeypatch.setenv(k, v)
-    with _ray_start_cluster(do_init=True, num_nodes=1, **param) as res:
+    with _ray_start_cluster(do_init=True, num_nodes=1, **cluster_param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_cluster_2_nodes(request, maybe_external_redis):
+def ray_start_cluster_2_nodes(request, maybe_setup_external_redis):
     param = getattr(request, "param", {})
     with _ray_start_cluster(do_init=True, num_nodes=2, **param) as res:
         yield res
 
 
 @pytest.fixture
-def ray_start_object_store_memory(request, maybe_external_redis):
+def ray_start_object_store_memory(request, maybe_setup_external_redis):
     # Start the Ray processes.
     store_size = request.param
     system_config = get_default_fixure_system_config()
@@ -640,11 +796,18 @@ def call_ray_start_context(request):
         parameter = parameter.get("cmd", default_cmd)
 
     command_args = parameter.split(" ")
-
     try:
-        out = ray._private.utils.decode(
+        out = ray._common.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
+    # If the exit code is non-zero subprocess.check_output raises a CalledProcessError
+    except subprocess.CalledProcessError as e:
+        print("Ray start cmd failed!")
+        print(f"Command: {' '.join(e.cmd)}")
+        print(f"Exit code: {e.returncode}")
+        if e.output:
+            print(f"Output:\n{e.output.decode()}")
+        raise
     except Exception as e:
         print(type(e), e)
         raise
@@ -666,35 +829,14 @@ def call_ray_start_context(request):
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"], env=env)
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
-
-
-@pytest.fixture
-def call_ray_start_with_external_redis(request):
-    ports = getattr(request, "param", "6379")
-    port_list = ports.split(",")
-    for port in port_list:
-        temp_dir = ray._private.utils.get_ray_temp_dir()
-        start_redis_instance(temp_dir, int(port), password="123")
-    address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
-    cmd = f"ray start --head --address={address_str} --redis-password=123"
-    subprocess.call(cmd.split(" "))
-
-    yield address_str.split(",")[0]
-
-    # Disconnect from the Ray cluster.
-    ray.shutdown()
-    # Kill the Ray cluster.
-    subprocess.check_call(["ray", "stop"])
-    # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
 @pytest.fixture
 def init_and_serve():
     import ray.util.client.server.server as ray_client_server
 
-    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    server_handle, _ = ray_client_server.init_and_serve("localhost", 50051)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
     time.sleep(2)
@@ -705,28 +847,42 @@ def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
+    ray._common.utils.reset_ray_address()
 
 
-# Used to test both Ray Client and non-Ray Client codepaths.
-# Usage: In your test, call `ray.init(address)`.
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster_enabled, request):
-    assert request.param in {"ray_client", "no_ray_client"}
-    use_ray_client: bool = request.param == "ray_client"
-    if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
-        pytest.skip("Skipping due to we don't have ray client in minimal.")
-
-    cluster = ray_start_cluster_enabled
+def _start_cluster(cluster, request):
     cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
-    if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10004"
-        cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10004"
-    else:
-        address = cluster.address
+    return cluster, cluster.address
 
-    yield cluster, address
+
+# Used to enforce that `start_cluster` and `start_cluster_shared` fixtures aren't mixed.
+_START_CLUSTER_SHARED_USED = False
+
+
+@pytest.fixture
+def start_cluster(ray_start_cluster_enabled, request):
+    if _START_CLUSTER_SHARED_USED:
+        pytest.fail(
+            "Cannot mix `start_cluster` and `start_cluster_shared` "
+            "fixtures in the same session."
+        )
+    yield _start_cluster(ray_start_cluster_enabled, request)
+
+
+@pytest.fixture(scope="module")
+def _start_cluster_shared(ray_start_cluster_enabled_shared, request):
+    global _START_CLUSTER_SHARED_USED
+    _START_CLUSTER_SHARED_USED = True
+
+    yield _start_cluster(ray_start_cluster_enabled_shared, request)
+
+
+# Same as `start_cluster` but module-scoped (shared across all tests in a file).
+# Runs ray.shutdown after each test.
+@pytest.fixture
+def start_cluster_shared(_start_cluster_shared, request):
+    yield _start_cluster_shared
+    ray.shutdown()
 
 
 @pytest.fixture(scope="function")
@@ -858,12 +1014,6 @@ smart_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/"},
 }
-ray_storage_object_spilling_config = {
-    "type": "ray_storage",
-    # Force the storage config so we don't need to patch each test to separately
-    # configure the storage param under this.
-    "params": {"_force_storage_for_testing": spill_local_path},
-}
 buffer_open_object_spilling_config = {
     "type": "smart_open",
     "params": {"uri": f"s3://{bucket_name}/", "buffer_size": 1000},
@@ -912,9 +1062,6 @@ def fs_only_object_spilling_config(request, tmp_path):
     scope="function",
     params=[
         file_system_object_spilling_config,
-        ray_storage_object_spilling_config,
-        # TODO(sang): Add a mock dependency to test S3.
-        # smart_open_object_spilling_config,
     ],
 )
 def object_spilling_config(request, tmp_path):
@@ -1126,7 +1273,6 @@ def append_short_test_summary(rep):
         # ":" is not legal in filenames in windows
         test_name = test_name.replace(":", "$")
 
-    header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
 
     if rep.passed and os.path.exists(summary_file):
@@ -1147,13 +1293,6 @@ def append_short_test_summary(rep):
     if not hasattr(rep.longrepr, "chain"):
         return
 
-    if not os.path.exists(header_file):
-        with open(header_file, "wt") as fp:
-            test_label = os.environ.get("BUILDKITE_LABEL", "Unknown")
-            job_id = os.environ.get("BUILDKITE_JOB_ID")
-
-            fp.write(f"### Pytest failures for: [{test_label}](#{job_id})\n\n")
-
     # Use `wt` here to overwrite so we only have one result per test (exclude retries)
     with open(summary_file, "wt") as fp:
         fp.write(_get_markdown_annotation(rep))
@@ -1172,12 +1311,10 @@ def _get_markdown_annotation(rep) -> str:
     markdown += "<details>\n"
     markdown += f"<summary>{short_message}</summary>\n\n"
 
-    # Add link to test definition
+    # Add location to the test definition
     test_file, test_lineno, _test_node = rep.location
-    test_path, test_url = _get_repo_github_path_and_link(
-        os.path.abspath(test_file), test_lineno
-    )
-    markdown += f"Link to test: [{test_path}:{test_lineno}]({test_url})\n\n"
+    test_path = os.path.abspath(test_file)
+    markdown += f"Test location: {test_path}:{test_lineno}\n\n"
 
     # Print main traceback
     markdown += "##### Traceback\n\n"
@@ -1185,27 +1322,20 @@ def _get_markdown_annotation(rep) -> str:
     markdown += str(main_tb)
     markdown += "\n```\n\n"
 
-    # Print link to test definition in github
-    path, url = _get_repo_github_path_and_link(main_loc.path, main_loc.lineno)
-    markdown += f"[{path}:{main_loc.lineno}]({url})\n\n"
+    # Print test definition location
+    markdown += f"{main_loc.path}:{main_loc.lineno}\n\n"
 
     # If this is a longer exception chain, users can expand the full traceback
     if len(rep.longrepr.chain) > 1:
         markdown += "<details><summary>Full traceback</summary>\n\n"
 
-        # Here we just print each traceback and the link to the respective
-        # lines in GutHub
+        # Here we just print each traceback and the respective lines.
         for tb, loc, _ in rep.longrepr.chain:
-            if loc:
-                path, url = _get_repo_github_path_and_link(loc.path, loc.lineno)
-                github_link = f"[{path}:{loc.lineno}]({url})\n\n"
-            else:
-                github_link = ""
-
             markdown += "```\n"
             markdown += str(tb)
             markdown += "\n```\n\n"
-            markdown += github_link
+            if loc:
+                markdown += f"{loc.path}:{loc.lineno}\n\n"
 
         markdown += "</details>\n"
 
@@ -1226,19 +1356,6 @@ def _get_pip_packages() -> List[str]:
         return list(freeze.freeze())
     except Exception:
         return ["invalid"]
-
-
-def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
-    base_url = "https://github.com/ray-project/ray/blob/{commit}/{path}#L{lineno}"
-
-    commit = os.environ.get("BUILDKITE_COMMIT")
-
-    if not commit:
-        return file, ""
-
-    path = file.split("com_github_ray_project_ray/")[-1]
-
-    return path, base_url.format(commit=commit, path=path, lineno=lineno)
 
 
 def create_ray_logs_for_failed_test(rep):
@@ -1312,18 +1429,6 @@ def set_runtime_env_plugins(request):
         del os.environ["RAY_RUNTIME_ENV_PLUGINS"]
 
 
-@pytest.fixture
-def set_runtime_env_plugin_schemas(request):
-    runtime_env_plugin_schemas = getattr(request, "param", "0")
-    try:
-        os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"] = runtime_env_plugin_schemas
-        # Clear and reload schemas.
-        RuntimeEnvPluginSchemaManager.clear()
-        yield runtime_env_plugin_schemas
-    finally:
-        del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
-
-
 @pytest.fixture(scope="function")
 def temp_file(request):
     with tempfile.NamedTemporaryFile("r+b") as fp:
@@ -1348,3 +1453,149 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+# Clean up Ray address file before the test run starts, since sometimes bazel test times out
+# and kill the test process, without cleaning up the Ray address file.
+def pytest_sessionstart(session):
+    """Called after the Session object has been created and before performing collection and entering the run test loop."""
+
+    # Delete the cluster address file just in case.
+    ray._common.utils.reset_ray_address()
+
+
+"""
+pytest httpserver related test fixtures
+"""
+
+
+@pytest.fixture(scope="module")
+def make_httpserver(httpserver_listen_address, httpserver_ssl_context):
+    """
+    Module-scoped override of pytest-httpserver's make_httpserver fixture.
+    Copies the implementation the make_httpserver fixture.
+    """
+    # Lazy import pytest_httpserver to avoid import errors in library tests that doesn't
+    # have pytest_httpserver installed.
+    from pytest_httpserver.httpserver import HTTPServer
+
+    host, port = httpserver_listen_address
+    if not host:
+        host = HTTPServer.DEFAULT_LISTEN_HOST
+    if not port:
+        port = HTTPServer.DEFAULT_LISTEN_PORT
+
+    server = HTTPServer(host=host, port=port, ssl_context=httpserver_ssl_context)
+    server.start()
+    yield server
+    server.clear()
+    if server.is_running():
+        server.stop()
+
+
+@pytest.fixture(scope="function")
+def event_routing_config(request, monkeypatch):
+    """
+    fixture to toggle event routing modes.
+    Modes:
+      - "default": Uses the existing core_worker to gcs code path.
+      - "aggregator": Enable publishing events to GCS through the Aggregator agent.
+    """
+    mode = getattr(request, "param", "default")
+    # clear envs to ensure default behavior
+    monkeypatch.delenv(
+        "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", raising=False
+    )
+    monkeypatch.delenv("RAY_enable_core_worker_ray_event_to_aggregator", raising=False)
+
+    if mode == "aggregator":
+        print("using aggregator mode")
+        # Enable aggregator path in core worker
+        monkeypatch.setenv("RAY_enable_core_worker_ray_event_to_aggregator", "1")
+        # Explicitly disable core worker to GCS so that all events are only sent to GCS once (through the aggregator pathway)
+        monkeypatch.setenv("RAY_enable_core_worker_task_event_to_gcs", "0")
+        # Ensure aggregator agent publishes to GCS
+        monkeypatch.setenv(
+            "RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_GCS", "True"
+        )
+    yield
+
+
+@pytest.fixture
+def cleanup_auth_token_env():
+    """Reset authentication environment variables, files, and caches."""
+
+    with authentication_env_guard():
+        clear_auth_token_sources(remove_default=True)
+        reset_auth_token_state()
+        yield
+        reset_auth_token_state()
+
+
+@pytest.fixture
+def setup_cluster_with_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with token authentication enabled."""
+
+    test_token = "test_token_12345678901234567890123456789012"
+    set_auth_mode("token")
+    set_env_auth_token(test_token)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+            "token": test_token,
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.fixture
+def setup_cluster_without_token_auth(cleanup_auth_token_env):
+    """Spin up a Ray cluster with authentication disabled."""
+
+    set_auth_mode("disabled")
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    cluster = Cluster()
+    # Use dynamic port to avoid port conflicts on Windows where sockets
+    # linger in TIME_WAIT state between tests
+    cluster.add_node(dashboard_agent_listen_port=find_free_port())
+
+    try:
+        context = ray.init(address=cluster.address)
+        dashboard_url = context.address_info["webui_url"]
+        yield {
+            "cluster": cluster,
+            "dashboard_url": f"http://{dashboard_url}",
+        }
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.fixture
+def ray_start_cluster_with_zero_copy_tensors(monkeypatch):
+    """Start a Ray cluster with zero-copy PyTorch tensors enabled."""
+    with monkeypatch.context() as m:
+        # Enable zero-copy sharing of PyTorch tensors in Ray
+        m.setenv("RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", "1")
+
+        # Initialize Ray with the required environment variable.
+        ray.init(runtime_env={"env_vars": {"RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1"}})
+
+        # Yield control to the test session
+        yield
+
+        # Shutdown Ray after tests complete
+        ray.shutdown()

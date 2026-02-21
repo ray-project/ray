@@ -1,5 +1,21 @@
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
+from ray.data._internal.datasource.mcap_datasource import (
+    MCAPDatasource,
+    TimeRange,
+)
 from ray.data._internal.datasource.sql_datasource import Connection
-from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
+from ray.data._internal.datasource.turbopuffer_datasink import (
+    TurbopufferDatasink,
+)
+from ray.data._internal.savemode import SaveMode
+from ray.data.datasource.datasink import (
+    Datasink,
+    DummyOutputDatasink,
+    WriteResult,
+    WriteReturnType,
+)
 from ray.data.datasource.datasource import (
     Datasource,
     RandomIntRowDatasource,
@@ -8,6 +24,7 @@ from ray.data.datasource.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
+    FileShuffleConfig,
     _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
@@ -17,11 +34,9 @@ from ray.data.datasource.file_datasink import (
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    FastFileMetadataProvider,
     FileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
-from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -34,18 +49,17 @@ from ray.data.datasource.partitioning import (
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
     "BaseFileMetadataProvider",
-    "BlockBasedFileDatasink",
     "Connection",
     "Datasink",
     "Datasource",
-    "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
+    "DeltaSharingDatasource",
     "DummyOutputDatasink",
-    "FastFileMetadataProvider",
     "FileBasedDatasource",
+    "FileShuffleConfig",
     "FileMetadataProvider",
     "FilenameProvider",
-    "ParquetMetadataProvider",
+    "MCAPDatasource",
     "PartitionStyle",
     "PathPartitionFilter",
     "PathPartitionParser",
@@ -54,5 +68,11 @@ __all__ = [
     "ReadTask",
     "Reader",
     "RowBasedFileDatasink",
+    "TurbopufferDatasink",
+    "BlockBasedFileDatasink",
     "_S3FileSystemWrapper",
+    "TimeRange",
+    "WriteResult",
+    "WriteReturnType",
+    "SaveMode",
 ]

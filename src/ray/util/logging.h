@@ -54,7 +54,9 @@
 #include <chrono>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -94,6 +96,7 @@ inline constexpr std::string_view kLogKeyMessage = "message";
 inline constexpr std::string_view kLogKeyFilename = "filename";
 inline constexpr std::string_view kLogKeyLineno = "lineno";
 inline constexpr std::string_view kLogKeyComponent = "component";
+inline constexpr std::string_view kLogKeyClusterID = "cluster_id";
 inline constexpr std::string_view kLogKeyJobID = "job_id";
 inline constexpr std::string_view kLogKeyWorkerID = "worker_id";
 inline constexpr std::string_view kLogKeyNodeID = "node_id";
@@ -101,6 +104,7 @@ inline constexpr std::string_view kLogKeyActorID = "actor_id";
 inline constexpr std::string_view kLogKeyTaskID = "task_id";
 inline constexpr std::string_view kLogKeyObjectID = "object_id";
 inline constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id";
+inline constexpr std::string_view kLogKeyLeaseID = "lease_id";
 
 // Define your specialization DefaultLogKey<your_type>::key to get .WithField(t)
 // See src/ray/common/id.h
@@ -136,11 +140,16 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                      \
-  RAY_PREDICT_TRUE((condition))                                                   \
-  ? RAY_IGNORE_EXPR(0)                                                            \
-  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                           << " Check failed: " #condition " "
+#define RAY_CHECK_WITH_DISPLAY(condition, display)                                      \
+  RAY_PREDICT_TRUE((condition))                                                         \
+  ? RAY_IGNORE_EXPR(0)                                                                  \
+  : ::ray::Voidify() & (::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL)      \
+                        << " An unexpected system state has occurred. You have likely " \
+                           "discovered a bug in Ray. Please report this issue at "      \
+                           "https://github.com/ray-project/ray/issues and we'll work "  \
+                           "with you to fix it. Check failed: " display " ")
+
+#define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
 #ifdef NDEBUG
 
@@ -180,6 +189,10 @@ enum class RayLogLevel {
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) && \
       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)              \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES << "] "
+
+#define RAY_LOG_ONCE_PER_PROCESS(level)                   \
+  static std::atomic_bool once_log_flag##__LINE__(false); \
+  if (!once_log_flag##__LINE__.exchange(true)) RAY_LOG(level)
 
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
@@ -258,14 +271,41 @@ class RayLog {
   ///
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
-  /// \param logDir Logging output file name. If empty, the log won't output to file.
-  static void StartRayLog(const std::string &appName,
+  /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
+  /// but to stdout.
+  /// \param err_log_filepath Logging error filepath. If empty, the log won't output to
+  /// file, but to stderr.
+  /// Because of log rotations, the logs be saved to log file names with `.<number>`
+  /// suffixes.
+  /// Example: if log_filepath is /my/path/raylet.out, the output can be
+  /// /my/path/raylet.out, /my/path/raylet.out.1 and /my/path/raylet.out.2
+  ///
+  /// \param log_rotation_max_size max bytes for of log rotation. 0 means no rotation.
+  /// \param log_rotation_file_num max number of rotating log files.
+  static void StartRayLog(const std::string &app_name,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
-                          const std::string &logDir = "");
+                          const std::string &log_filepath = "",
+                          const std::string &err_log_filepath = "",
+                          size_t log_rotation_max_size = 0,
+                          size_t log_rotation_file_num = 1);
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
   static void ShutDownRayLog();
+
+  /// Get max bytes value from env variable.
+  /// Return default value, which indicates no rotation, if env not set, parse failure or
+  /// return value 0.
+  ///
+  /// Log rotation is disable on windows platform.
+  static size_t GetRayLogRotationMaxBytesOrDefault();
+
+  /// Get log rotation backup count.
+  /// Return default value, which indicates no rotation, if env not set, parse failure or
+  /// return value 1.
+  ///
+  /// Log rotation is disabled on windows platform.
+  static size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();
@@ -376,9 +416,6 @@ class RayLog {
   /// to indicate which component generates the log.
   /// This is empty if we log to file.
   static std::string component_name_;
-  /// The directory where the log files are stored.
-  /// If this is empty, logs are printed to stdout.
-  static std::string log_dir_;
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
@@ -387,9 +424,9 @@ class RayLog {
   // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
-  static long log_rotation_max_size_;
+  inline static size_t log_rotation_max_size_ = 0;
   // Log rotation file number.
-  static long log_rotation_file_num_;
+  inline static size_t log_rotation_file_num_ = 1;
   // Ray default logger name.
   static std::string logger_name_;
 

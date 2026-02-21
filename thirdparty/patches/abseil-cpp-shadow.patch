@@ -1,0 +1,12 @@
+diff --git absl/container/internal/btree.h absl/container/internal/btree.h
+--- absl/container/internal/btree.h
++++ absl/container/internal/btree.h
+@@ -223,7 +223,7 @@ struct key_compare_adapter {
+ 
+    public:
+     using Base::Base;
+-    checked_compare(Compare comp) : Base(std::move(comp)) {}  // NOLINT
++    checked_compare(Compare _comp) : Base(std::move(_comp)) {}  // NOLINT
+ 
+     // Allow converting to Compare for use in key_comp()/value_comp().
+     explicit operator Compare() const { return comp(); }

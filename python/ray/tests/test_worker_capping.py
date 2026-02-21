@@ -1,13 +1,13 @@
 import asyncio
 import os
-import pytest
 import sys
 import tempfile
 import time
 
-import ray
+import pytest
 
-from ray._private.test_utils import Semaphore
+import ray
+from ray._common.test_utils import Semaphore
 
 
 def test_nested_tasks(shutdown_only):
@@ -293,7 +293,4 @@ def test_idle_workers(shutdown_only):
 
 if __name__ == "__main__":
     os.environ["RAY_worker_cap_enabled"] = "true"
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

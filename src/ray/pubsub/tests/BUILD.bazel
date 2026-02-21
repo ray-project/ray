@@ -1,0 +1,60 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "publisher_test",
+    size = "small",
+    srcs = ["publisher_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/pubsub:publisher",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "subscriber_test",
+    size = "small",
+    srcs = [
+        "subscriber_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/pubsub:subscriber",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "pubsub_integration_test",
+    size = "small",
+    srcs = ["pubsub_integration_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:grpc_util",
+        "//src/ray/protobuf:pubsub_cc_grpc",
+        "//src/ray/pubsub:publisher",
+        "//src/ray/pubsub:subscriber",
+        "//src/ray/util:network_util",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "python_gcs_subscriber_auth_test",
+    size = "small",
+    srcs = ["python_gcs_subscriber_auth_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:gcs_service_cc_grpc",
+        "//src/ray/pubsub:python_gcs_subscriber",
+        "//src/ray/rpc:grpc_server",
+        "//src/ray/rpc/authentication:authentication_token",
+        "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/util:env",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

@@ -1,9 +1,8 @@
 import subprocess
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pybuildkite.buildkite import Buildkite
-
 
 BRANCH = "master"
 BLOCK_STEP_KEY = "unblock-me"

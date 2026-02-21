@@ -2,15 +2,13 @@ import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
+from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME, hex_to_binary
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
-from ray._private.utils import hex_to_binary, get_ray_doc_version
+from ray._private.label_utils import validate_label_selector
+from ray._private.utils import get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-import ray._private.ray_constants as ray_constants
-
-bundle_reservation_check = None
 
 VALID_PLACEMENT_GROUP_STRATEGIES = {
     "PACK",
@@ -18,23 +16,6 @@ VALID_PLACEMENT_GROUP_STRATEGIES = {
     "STRICT_PACK",
     "STRICT_SPREAD",
 }
-
-
-# We need to import this method to use for ready API.
-# But ray.remote is only available in runtime, and
-# if we define this method inside ready method, this function is
-# exported whenever ready is called, which can impact performance,
-# https://github.com/ray-project/ray/issues/6240.
-def _export_bundle_reservation_check_method_if_needed():
-    global bundle_reservation_check
-    if bundle_reservation_check:
-        return
-
-    @ray.remote(num_cpus=0)
-    def bundle_reservation_check_func(placement_group):
-        return placement_group
-
-    bundle_reservation_check = bundle_reservation_check_func
 
 
 @PublicAPI
@@ -60,8 +41,8 @@ class PlacementGroup:
     def ready(self) -> "ray._raylet.ObjectRef":
         """Returns an ObjectRef to check ready status.
 
-        This API runs a small dummy task to wait for placement group creation.
-        It is compatible to ray.get and ray.wait.
+        This API returns an ObjectRef that becomes ready when the placement group
+        is created. It is compatible with ray.get, ray.wait, and await.
 
         Example:
             .. testcode::
@@ -75,19 +56,10 @@ class PlacementGroup:
                 ray.wait([pg.ready()])
 
         """
-        self._fill_bundle_cache_if_needed()
+        if self.is_empty:
+            return ray.put(self)
 
-        _export_bundle_reservation_check_method_if_needed()
-
-        assert len(self.bundle_cache) != 0, (
-            "ready() cannot be called on placement group object with a "
-            "bundle length == 0, current bundle length: "
-            f"{len(self.bundle_cache)}"
-        )
-
-        return bundle_reservation_check.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=self),
-        ).remote(self)
+        return _call_placement_group_ready_async(self)
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         """Wait for the placement group to be ready within the specified time.
@@ -123,6 +95,15 @@ class PlacementGroup:
 
 
 @client_mode_wrap
+def _call_placement_group_ready_async(pg: PlacementGroup) -> "ray._raylet.ObjectRef":
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+    # Serialize pg so that ray.get() returns the PlacementGroup
+    serialized = worker.get_serialization_context().serialize(pg)
+    return worker.core_worker.async_wait_placement_group_ready(pg.id, serialized)
+
+
+@client_mode_wrap
 def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -> bool:
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -147,8 +128,8 @@ def placement_group(
     strategy: str = "PACK",
     name: str = "",
     lifetime: Optional[str] = None,
-    _max_cpu_fraction_per_node: float = 1.0,
     _soft_target_node_id: Optional[str] = None,
+    bundle_label_selector: List[Dict[str, str]] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -168,20 +149,14 @@ def placement_group(
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
-        _max_cpu_fraction_per_node: (Experimental) Disallow placing bundles on nodes
-            if it would cause the fraction of CPUs used by bundles from *any* placement
-            group on the node to exceed this fraction. This effectively sets aside
-            CPUs that placement groups cannot occupy on nodes. when
-            `max_cpu_fraction_per_node < 1.0`, at least 1 CPU will be excluded from
-            placement group scheduling. Note: This feature is experimental and is not
-            recommended for use with autoscaling clusters (scale-up will not trigger
-            properly).
         _soft_target_node_id: (Private, Experimental) Soft hint where bundles of
             this placement group should be placed.
             The target node is specified by it's hex ID.
             If the target node has no available resources or died,
             bundles can be placed elsewhere.
             This currently only works with STRICT_PACK pg.
+        bundle_label_selector: A list of label selectors to apply to a
+            placement group on a per-bundle level.
 
     Raises:
         ValueError: if bundle type is not a list.
@@ -191,7 +166,6 @@ def placement_group(
     Return:
         PlacementGroup: Placement group object.
     """
-
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
@@ -199,9 +173,12 @@ def placement_group(
         bundles=bundles,
         strategy=strategy,
         lifetime=lifetime,
-        _max_cpu_fraction_per_node=_max_cpu_fraction_per_node,
         _soft_target_node_id=_soft_target_node_id,
+        bundle_label_selector=bundle_label_selector,
     )
+
+    if bundle_label_selector is None:
+        bundle_label_selector = []
 
     if lifetime == "detached":
         detached = True
@@ -213,8 +190,8 @@ def placement_group(
         bundles,
         strategy,
         detached,
-        _max_cpu_fraction_per_node,
         _soft_target_node_id,
+        bundle_label_selector,
     )
 
     return PlacementGroup(placement_group_id)
@@ -345,23 +322,13 @@ def validate_placement_group(
     bundles: List[Dict[str, float]],
     strategy: str = "PACK",
     lifetime: Optional[str] = None,
-    _max_cpu_fraction_per_node: float = 1.0,
     _soft_target_node_id: Optional[str] = None,
+    bundle_label_selector: List[Dict[str, str]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
     Raises ValueError if inputs are invalid.
     """
-
-    assert _max_cpu_fraction_per_node is not None
-
-    if _max_cpu_fraction_per_node <= 0 or _max_cpu_fraction_per_node > 1:
-        raise ValueError(
-            "Invalid argument `_max_cpu_fraction_per_node`: "
-            f"{_max_cpu_fraction_per_node}. "
-            "_max_cpu_fraction_per_node must be a float between 0 and 1. "
-        )
-
     if _soft_target_node_id and strategy != "STRICT_PACK":
         raise ValueError(
             "_soft_target_node_id currently only works "
@@ -374,6 +341,14 @@ def validate_placement_group(
         )
 
     _validate_bundles(bundles)
+
+    if bundle_label_selector is not None:
+        if len(bundles) != len(bundle_label_selector):
+            raise ValueError(
+                f"Invalid bundle label selector {bundle_label_selector}. "
+                f"The length of `bundle_label_selector` should equal the length of `bundles`."
+            )
+        _validate_bundle_label_selector(bundle_label_selector)
 
     if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
@@ -435,6 +410,39 @@ def _validate_bundles(bundles: List[Dict[str, float]]):
             )
 
 
+def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]]):
+    """Validates each label selector and raises a ValueError if any label selector is invalid."""
+
+    if not isinstance(bundle_label_selector, list):
+        raise ValueError(
+            "Placement group bundle_label_selector must be a list, "
+            f"got {type(bundle_label_selector)}."
+        )
+
+    if len(bundle_label_selector) == 0:
+        # No label selectors provided, no-op.
+        return
+
+    for label_selector in bundle_label_selector:
+        if (
+            not isinstance(label_selector, dict)
+            or not all(isinstance(k, str) for k in label_selector.keys())
+            or not all(isinstance(v, str) for v in label_selector.values())
+        ):
+            raise ValueError(
+                "Bundle label selector must be a list of string dictionary"
+                " label selectors. For example: "
+                '`[{ray.io/market_type": "spot"}, {"ray.io/accelerator-type": "A100"}]`.'
+            )
+        # Call helper function to validate label selector key-value syntax.
+        error_message = validate_label_selector(label_selector)
+        if error_message:
+            raise ValueError(
+                f"Invalid label selector provided in bundle_label_selector list."
+                f" Detailed error: '{error_message}'"
+            )
+
+
 def _valid_resource_shape(resources, bundle_specs):
     """
     If the resource shape cannot fit into every
@@ -445,7 +453,7 @@ def _valid_resource_shape(resources, bundle_specs):
         for resource, requested_val in resources.items():
             # Skip "bundle" resource as it is automatically added
             # to all nodes with bundles by the placement group.
-            if resource == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
+            if resource == PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
                 continue
             if bundle.get(resource, 0) < requested_val:
                 fit_in_bundle = False

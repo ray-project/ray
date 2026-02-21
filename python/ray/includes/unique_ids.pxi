@@ -4,9 +4,6 @@ We define different types for different IDs for type safety.
 See https://github.com/ray-project/ray/issues/3721.
 """
 
-# WARNING: Any additional ID types defined in this file must be added to the
-# _ID_TYPES list at the bottom of this file.
-
 import logging
 import os
 
@@ -27,7 +24,7 @@ from ray.includes.unique_ids cimport (
 
 
 import ray
-from ray._private.utils import decode
+from ray._common.utils import decode
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +35,11 @@ def check_id(b, size=kUniqueIDSize):
     if len(b) != size:
         raise ValueError("ID string needs to have length " +
                          str(size) + ", got " + str(len(b)))
+
+
+def check_nil(id_obj):
+    if id_obj.is_nil():
+        raise ValueError(f"{id_obj.__class__.__name__} is nil")
 
 
 cdef extern from "ray/common/constants.h" nogil:
@@ -168,6 +170,7 @@ cdef class TaskID(BaseID):
         return ActorID(self.data.ActorId().Binary())
 
     def job_id(self):
+        check_nil(self)
         return JobID(self.data.JobId().Binary())
 
     cdef size_t hash(self):
@@ -218,7 +221,7 @@ cdef class NodeID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CNodeID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -276,7 +279,7 @@ cdef class WorkerID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CWorkerID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -322,6 +325,7 @@ cdef class ActorID(BaseID):
 
     @property
     def job_id(self):
+        check_nil(self)
         return JobID(self.data.JobId().Binary())
 
     def binary(self):
@@ -344,7 +348,7 @@ cdef class FunctionID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CFunctionID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -359,7 +363,7 @@ cdef class ActorClassID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CActorClassID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -373,7 +377,7 @@ cdef class ClusterID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CClusterID.FromBinary(<c_string>id)
+        self.data = CUniqueID.FromBinary(<c_string>id)
 
     @classmethod
     def from_hex(cls, hex_id):
@@ -430,17 +434,3 @@ cdef class PlacementGroupID(BaseID):
 
     cdef size_t hash(self):
         return self.data.Hash()
-
-_ID_TYPES = [
-    ActorClassID,
-    ActorID,
-    NodeID,
-    JobID,
-    WorkerID,
-    FunctionID,
-    ObjectID,
-    TaskID,
-    UniqueID,
-    PlacementGroupID,
-    ClusterID,
-]

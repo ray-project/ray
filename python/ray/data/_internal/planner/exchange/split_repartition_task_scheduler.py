@@ -2,12 +2,21 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
+from ray.data._internal.execution.interfaces.transform_fn import (
+    AllToAllTransformFnResult,
+)
+from ray.data._internal.planner.exchange.interfaces import (
+    ExchangeTaskScheduler,
+)
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
-from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data._internal.util import unzip
+from ray.data.block import (
+    Block,
+    BlockMetadata,
+    BlockMetadataWithSchema,
+)
 from ray.types import ObjectRef
 
 
@@ -27,7 +36,7 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
         ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[RefBundle], StatsDict]:
+    ) -> AllToAllTransformFnResult:
         input_num_rows = 0
         input_owned_by_consumer = True
         for ref_bundle in refs:
@@ -89,11 +98,13 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             if len(split_block_refs[j]) > 0
         ]
 
-        reduce_block_refs, reduce_metadata = zip(*reduce_return)
-        reduce_metadata = reduce_bar.fetch_until_complete(list(reduce_metadata))
-        reduce_block_refs, reduce_metadata = list(reduce_block_refs), list(
-            reduce_metadata
-        )
+        reduce_block_refs, reduce_metadata_schema = [], []
+        if reduce_return:
+            reduce_block_refs, reduce_metadata_schema = unzip(reduce_return)
+        reduce_metadata_schema: List[
+            "BlockMetadataWithSchema"
+        ] = reduce_bar.fetch_until_complete(list(reduce_metadata_schema))
+        reduce_block_refs = list(reduce_block_refs)
 
         # Handle empty blocks.
         if len(reduce_block_refs) < output_num_blocks:
@@ -106,33 +117,50 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             )
 
             num_empty_blocks = output_num_blocks - len(reduce_block_refs)
-            first_block_schema = reduce_metadata[0].schema
-            if first_block_schema is None:
-                raise ValueError(
-                    "Cannot split partition on blocks with unknown block format."
-                )
-            elif isinstance(first_block_schema, pa.Schema):
+            if len(reduce_metadata_schema) > 0:
+                first_block_schema = reduce_metadata_schema[0].schema
+                if isinstance(first_block_schema, pa.Schema):
+                    builder = ArrowBlockBuilder()
+                elif isinstance(first_block_schema, PandasBlockSchema):
+                    builder = PandasBlockBuilder()
+                else:
+                    raise ValueError(
+                        "Cannot split partition on blocks with unknown block schema:"
+                        f" {first_block_schema}."
+                    )
+            else:
+                # If the result is empty, default to Arrow format for the empty blocks.
                 builder = ArrowBlockBuilder()
-            elif isinstance(first_block_schema, PandasBlockSchema):
-                builder = PandasBlockBuilder()
+
             empty_block = builder.build()
-            empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                exec_stats=None
+            empty_meta_with_schema = BlockMetadataWithSchema.from_block(
+                empty_block
             )  # No stats for empty block.
             empty_block_refs, empty_metadata = zip(
-                *[(ray.put(empty_block), empty_meta) for _ in range(num_empty_blocks)]
+                *[
+                    (ray.put(empty_block), empty_meta_with_schema)
+                    for _ in range(num_empty_blocks)
+                ]
             )
             reduce_block_refs.extend(empty_block_refs)
-            reduce_metadata.extend(empty_metadata)
+            reduce_metadata_schema.extend(empty_metadata)
 
         output = []
-        for block, meta in zip(reduce_block_refs, reduce_metadata):
+        assert len(reduce_block_refs) == len(reduce_metadata_schema), (
+            len(reduce_block_refs),
+            len(reduce_metadata_schema),
+        )
+        for block, meta_with_schema in zip(reduce_block_refs, reduce_metadata_schema):
             output.append(
-                RefBundle([(block, meta)], owns_blocks=input_owned_by_consumer)
+                RefBundle(
+                    [(block, meta_with_schema.metadata)],
+                    owns_blocks=input_owned_by_consumer,
+                    schema=meta_with_schema.schema,
+                )
             )
         stats = {
             "split": split_metadata,
-            "reduce": reduce_metadata,
+            "reduce": reduce_metadata_schema,
         }
 
         return (output, stats)

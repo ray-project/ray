@@ -1,10 +1,24 @@
+import abc
+import logging
+import uuid
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
-from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -13,8 +27,22 @@ from ray.data._internal.execution.interfaces.execution_options import (
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
-from ray.data._internal.stats import StatsDict
+from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.stats import StatsDict, Timer
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+
+    from ray.data.block import BlockMetadataWithSchema
+
+logger = logging.getLogger(__name__)
+
+# Timeout for getting metadata from Ray object references (in seconds)
+METADATA_GET_TIMEOUT_S = 1.0
+
+# Timeout for waiting for metadata object to become available (in seconds)
+METADATA_WAIT_TIMEOUT_S = 0.1
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -26,17 +54,44 @@ class OpTask(ABC):
     The task can be either a regular task or an actor task.
     """
 
-    def __init__(self, task_index: int):
-        self._task_index = task_index
+    def __init__(
+        self,
+        task_index: int,
+        task_resource_bundle: Optional[ExecutionResources] = None,
+    ):
+        self._task_index: int = task_index
+        self._task_resource_bundle: Optional[ExecutionResources] = task_resource_bundle
 
     def task_index(self) -> int:
         """Return the index of the task."""
         return self._task_index
 
+    def get_requested_resource_bundle(self) -> Optional[ExecutionResources]:
+        return self._task_resource_bundle
+
     @abstractmethod
     def get_waitable(self) -> Waitable:
         """Return the ObjectRef or ObjectRefGenerator to wait on."""
-        pass
+        ...
+
+    def _cancel(self, force: bool):
+
+        is_actor_task = not self.get_task_id().actor_id().is_nil()
+
+        ray.cancel(
+            self.get_waitable(),
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
+
+    def get_task_id(self) -> ray.TaskID:
+        object_ref = self.get_waitable()
+
+        # Get generator's `ObjectRef`
+        if isinstance(object_ref, ObjectRefGenerator):
+            object_ref = object_ref._generator_ref
+        return object_ref.task_id()
 
 
 class DataOpTask(OpTask):
@@ -46,17 +101,30 @@ class DataOpTask(OpTask):
         self,
         task_index: int,
         streaming_gen: ObjectRefGenerator,
-        output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[Optional[Exception]], None],
+        output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
+        task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
+        block_ready_callback: Callable[
+            [ray.ObjectRef[Block]], None
+        ] = lambda block_ref: None,
+        metadata_ready_callback: Callable[
+            [ray.ObjectRef[BlockMetadata]], None
+        ] = lambda metadata_ref: None,
+        task_resource_bundle: Optional[ExecutionResources] = None,
     ):
-        """
+        """Create a DataOpTask
         Args:
+            task_index: Index of the task. Used for callbacks.
             streaming_gen: The streaming generator of this task. It should yield blocks.
             output_ready_callback: The callback to call when a new RefBundle is output
                 from the generator.
             task_done_callback: The callback to call when the task is done.
+            block_ready_callback: A callback that's invoked when a new block reference
+                is ready. This is exposed as a seam for testing.
+            metadata_ready_callback: A callback that's invoked when a new block metadata
+                reference is ready. This is exposed as a seam for testing.
+            task_resource_bundle: The execution resources of this task.
         """
-        super().__init__(task_index)
+        super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -64,6 +132,17 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self._block_ready_callback = block_ready_callback
+        self._metadata_ready_callback = metadata_ready_callback
+
+        # If the generator hasn't produced block metadata yet, or if the block metadata
+        # object isn't available after we get a reference, we need store the pending
+        # references and wait until Ray (re)constructs the block metadata. Either case
+        # can happen if a node dies after producing a block.
+        self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
+        self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
+
+        self._has_finished = False
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -78,36 +157,94 @@ class DataOpTask(OpTask):
         """
         bytes_read = 0
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
-            try:
-                block_ref = self._streaming_gen._next_sync(0)
-                if block_ref.is_nil():
+            if self._pending_block_ref.is_nil():
+                assert self._pending_meta_ref.is_nil(), (
+                    "This method expects streaming generators to yield blocks then "
+                    "metadata. So, if we have a reference to metadata but not the "
+                    "block, it means there's an error in the implementation."
+                )
+
+                try:
+                    self._pending_block_ref = self._streaming_gen._next_sync(
+                        timeout_s=0
+                    )
+                except StopIteration:
+                    self._task_done_callback(None)
+                    self._has_finished = True
+                    break
+
+                if self._pending_block_ref.is_nil():
                     # The generator currently doesn't have new output.
                     # And it's not stopped yet.
                     break
-            except StopIteration:
-                self._task_done_callback(None)
-                break
+
+                self._block_ready_callback(self._pending_block_ref)
+
+            if self._pending_meta_ref.is_nil():
+                try:
+                    self._pending_meta_ref = self._streaming_gen._next_sync(
+                        timeout_s=METADATA_WAIT_TIMEOUT_S
+                    )
+                except StopIteration:
+                    # The generator should always yield 2 values (block and metadata)
+                    # each time. If we get a StopIteration here, it means an error
+                    # happened in the task.
+                    # And in this case, the block_ref is the exception object.
+                    # TODO(hchen): Ray Core should have a better interface for
+                    # detecting and obtaining the exception.
+                    try:
+                        ray.get(self._pending_block_ref)
+                        assert False, "Above ray.get should raise an exception."
+                    except Exception as ex:
+                        self._task_done_callback(ex)
+                        self._has_finished = True
+                        raise ex from None
+
+                if self._pending_meta_ref.is_nil():
+                    # We have a reference to the block but the metadata isn't ready
+                    # yet.
+                    break
+
+                self._metadata_ready_callback(self._pending_meta_ref)
 
             try:
-                meta = ray.get(next(self._streaming_gen))
-            except StopIteration:
-                # The generator should always yield 2 values (block and metadata)
-                # each time. If we get a StopIteration here, it means an error
-                # happened in the task.
-                # And in this case, the block_ref is the exception object.
-                # TODO(hchen): Ray Core should have a better interface for
-                # detecting and obtaining the exception.
-                try:
-                    ray.get(block_ref)
-                    assert False, "Above ray.get should raise an exception."
-                except Exception as ex:
-                    self._task_done_callback(ex)
-                    raise ex from None
+                # The timeout for `ray.get` includes the time required to ship the
+                # block metadata to this node. So, if we set the timeout to 0, `ray.get`
+                # will timeout and possible cancel the download. To avoid this issue,
+                # we set the timeout to a small non-zero value.
+                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                    self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
+                )
+            except ray.exceptions.GetTimeoutError:
+                # We have a reference to the block and its metadata, but the metadata
+                # object isn't available. This can happen if the node dies.
+                logger.warning(
+                    f"Metadata object not ready for "
+                    f"ref={self._pending_meta_ref.hex()} "
+                    f"(operator={self.__class__.__name__}). "
+                    f"Metadata may still be computing or worker may have failed and "
+                    f"object is being reconstructed. Will retry in next iteration."
+                )
+                break
+
+            meta = meta_with_schema.metadata
             self._output_ready_callback(
-                RefBundle([(block_ref, meta)], owns_blocks=True)
+                RefBundle(
+                    [(self._pending_block_ref, meta)],
+                    owns_blocks=True,
+                    schema=meta_with_schema.schema,
+                ),
             )
+            self._pending_block_ref = ray.ObjectRef.nil()
+            self._pending_meta_ref = ray.ObjectRef.nil()
+
             bytes_read += meta.size_bytes
+
         return bytes_read
+
+    @property
+    def has_finished(self) -> bool:
+        return self._has_finished
 
 
 class MetadataOpTask(OpTask):
@@ -118,13 +255,14 @@ class MetadataOpTask(OpTask):
         task_index: int,
         object_ref: ray.ObjectRef,
         task_done_callback: Callable[[], None],
+        task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """
         Args:
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
         """
-        super().__init__(task_index)
+        super().__init__(task_index, task_resource_bundle)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
@@ -134,6 +272,21 @@ class MetadataOpTask(OpTask):
     def on_task_finished(self):
         """Callback when the task is finished."""
         self._task_done_callback()
+
+
+@dataclass
+class _ActorPoolInfo:
+    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
+
+    running: int
+    pending: int
+    restarting: int
+
+    def __str__(self):
+        return (
+            f"running={self.running}, restarting={self.restarting}, "
+            f"pending={self.pending}"
+        )
 
 
 class PhysicalOperator(Operator):
@@ -169,31 +322,51 @@ class PhysicalOperator(Operator):
     execution (now the default execution mode) the calls could be interleaved.
     """
 
+    _OPERATOR_ID_LABEL_KEY = "__data_operator_id"
+
     def __init__(
         self,
         name: str,
         input_dependencies: List["PhysicalOperator"],
-        target_max_block_size: Optional[int],
+        data_context: DataContext,
+        target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
 
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
-        self._target_max_block_size = target_max_block_size
+        self._output_block_size_option_override = OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size_override
+        )
         self._started = False
+        self._shutdown = False
         self._in_task_submission_backpressure = False
+        self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
-        self._metrics = OpRuntimeMetrics(self)
+        self._task_output_backpressure_policy: Optional[str] = None
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
-        self._execution_completed = False
+        self._is_execution_marked_finished = False
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
+        self._data_context = data_context
+        self._id = str(uuid.uuid4())
+        # Initialize metrics after data_context is set
+        self._metrics = OpRuntimeMetrics(self)
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    @property
+    def id(self) -> str:
+        """Return a unique identifier for this operator."""
+        return self._id
+
+    @property
+    def data_context(self) -> DataContext:
+        return self._data_context
 
     # Override the following 3 methods to correct type hints.
 
@@ -215,42 +388,71 @@ class PhysicalOperator(Operator):
         self._logical_operators = list(logical_ops)
 
     @property
-    def target_max_block_size(self) -> Optional[int]:
+    def target_max_block_size_override(self) -> Optional[int]:
         """
         Target max block size output by this operator. If this returns None,
         then the default from DataContext should be used.
         """
-        return self._target_max_block_size
+        if self._output_block_size_option_override is None:
+            return None
+        else:
+            return self._output_block_size_option_override.target_max_block_size
 
-    @property
-    def actual_target_max_block_size(self) -> int:
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+        self._output_block_size_option_override = OutputBlockSizeOption.of(
+            target_max_block_size=target_max_block_size
+        )
+
+    def mark_execution_finished(self):
+        """Manually mark that this operator has finished execution."""
+        self._is_execution_marked_finished = True
+
+    def has_execution_finished(self) -> bool:
+        """Return True when this operator has finished execution.
+
+        The outputs may or may not have been taken.
         """
-        The actual target max block size output by this operator.
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
+
+        internal_input_queue_num_blocks = 0
+        if isinstance(self, InternalQueueOperatorMixin):
+            internal_input_queue_num_blocks = self.internal_input_queue_num_blocks()
+
+        # NOTE: Execution is considered finished if
+        #   - The operator was explicitly marked finished OR
+        #   - The following auto-completion conditions are met
+        #       - All input blocks have been ingested
+        #       - Internal queue is empty
+        #       - There are no active or pending tasks
+        return self._is_execution_marked_finished or (
+            self._inputs_complete
+            and self.num_active_tasks() == 0
+            and internal_input_queue_num_blocks == 0
+        )
+
+    def has_completed(self) -> bool:
+        """Returns whether this operator has been fully completed.
+
+        An operator is completed iff:
+            * The operator has finished execution (i.e., `has_execution_finished()` is True).
+            * All outputs have been taken (i.e., `has_next()` is False) from it.
         """
-        target_max_block_size = self._target_max_block_size
-        if target_max_block_size is None:
-            target_max_block_size = DataContext.get_current().target_max_block_size
-        return target_max_block_size
+        from ..operators.base_physical_operator import InternalQueueOperatorMixin
 
-    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
-        self._target_max_block_size = target_max_block_size
+        internal_output_queue_num_blocks = 0
+        if isinstance(self, InternalQueueOperatorMixin):
+            internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
 
-    def mark_execution_completed(self):
-        """Manually mark this operator has completed execution."""
-        self._execution_completed = True
-
-    def completed(self) -> bool:
-        """Return True when this operator is completed.
-
-        An operator is completed the operator has stopped execution and all
-        outputs are taken.
-        """
-        if not self._execution_completed:
-            if self._inputs_complete and self.num_active_tasks() == 0:
-                # If all inputs are complete and there are no active tasks,
-                # then the operator has completed execution.
-                self._execution_completed = True
-        return self._execution_completed and not self.has_next()
+        # NOTE: We check for (internal_output_queue_size == 0) and
+        # (not self.has_next()) because ReorderingBundleQueue can
+        # return False for self.has_next(), but have a non-empty queue size.
+        # Draining the internal output queue is important to free object refs.
+        return (
+            self.has_execution_finished()
+            and internal_output_queue_num_blocks == 0
+            # TODO following check is redundant; remove
+            and not self.has_next()
+        )
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -266,6 +468,49 @@ class PhysicalOperator(Operator):
         """Subclasses should override this method to report extra metrics
         that are specific to them."""
         return {}
+
+    def _get_logical_args(self) -> Dict[str, Dict[str, Any]]:
+        """Return the logical arguments that were translated to create this
+        PhysicalOperator."""
+        res = {}
+        for i, logical_op in enumerate(self._logical_operators):
+            logical_op_id = f"{logical_op}_{i}"
+            res[logical_op_id] = logical_op._get_args()
+        return res
+
+    # TODO(@balaji): Disambiguate this with `incremental_resource_usage`.
+    def per_task_resource_allocation(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The amount of logical resources used by each task.
+
+        For regular tasks, these are the resources required to schedule a task. For
+        actor tasks, these are the resources required to schedule an actor divided by
+        the number of actor threads (i.e., `max_concurrency`).
+
+        Returns:
+            The resource requirement per task.
+        """
+        return ExecutionResources.zero()
+
+    def get_max_concurrency_limit(self: "PhysicalOperator") -> Optional[int]:
+        """The maximum number of tasks that can be run concurrently.
+
+        Some operators manually configure a maximum concurrency. For example, if you
+        specify `concurrency` in `map_batches`.
+        """
+        return None
+
+    # TODO(@balaji): Disambiguate this with `base_resource_usage`.
+    def min_scheduling_resources(
+        self: "PhysicalOperator",
+    ) -> ExecutionResources:
+        """The minimum resource bundle required to schedule a worker.
+
+        For regular tasks, this is the resources required to schedule a task. For actor
+        tasks, this is the resources required to schedule an actor.
+        """
+        return self.incremental_resource_usage()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -308,7 +553,7 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
-    def should_add_input(self) -> bool:
+    def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
         Operators can customize the implementation of this method to apply additional
@@ -330,6 +575,11 @@ class PhysicalOperator(Operator):
                 input. For most operators, this is always `0` since there is only
                 one upstream input operator.
         """
+        assert 0 <= input_index < len(self._input_dependencies), (
+            f"Input index out of bounds (total inputs {len(self._input_dependencies)}, "
+            f"index is {input_index})"
+        )
+
         self._metrics.on_input_received(refs)
         self._add_input_inner(refs, input_index)
 
@@ -338,7 +588,7 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
-        """Called when the upstream operator at index `input_index` has completed().
+        """Called when the upstream operator at index `input_index` has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for the given input index.
@@ -346,7 +596,7 @@ class PhysicalOperator(Operator):
         pass
 
     def all_inputs_done(self) -> None:
-        """Called when all upstream operators have completed().
+        """Called when all upstream operators has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for any input index.
@@ -408,64 +658,73 @@ class PhysicalOperator(Operator):
         """
         return False
 
-    def internal_queue_size(self) -> int:
-        """If the operator has an internal input queue, return its size.
-
-        This is used to report tasks pending submission to actor pools.
-        """
-        return 0
-
-    def shutdown(self) -> None:
+    def shutdown(self, timer: Timer, force: bool = False) -> None:
         """Abort execution and release all resources used by this operator.
 
         This release any Ray resources acquired by this operator such as active
         tasks, actors, and objects.
         """
-        if not self._started:
+        if self._shutdown:
+            return
+        elif not self._started:
             raise ValueError("Operator must be started before being shutdown.")
 
-    def current_processor_usage(self) -> ExecutionResources:
-        """Returns the current estimated CPU and GPU usage of this operator, excluding
-        object store memory.
+        # Mark operator as shut down
+        self._shutdown = True
+        # Time shutdown sequence duration
+        with timer.timer():
+            self._do_shutdown(force)
 
-        This method is called by the executor to decide how to allocate processors
+    def _do_shutdown(self, force: bool):
+        # Default implementation simply cancels any outstanding active task
+        self._cancel_active_tasks(force=force)
+
+    def current_logical_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
+
+        This method is called by the executor to decide how to allocate resources
         between different operators.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
-    def running_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated running CPU and GPU usage of this operator, excluding
-        object store memory.
+    def running_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated running CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
-        executor to display the number of currently running CPUs and GPUs in the
-        progress bar.
+        executor to display the number of currently running CPUs, GPUs, and memory in
+        the progress bar.
 
-        Note, this method returns `current_processor_usage() -
-        pending_processor_usage()` by default. Subclasses should only override
-        `pending_processor_usage()` if needed.
+        Note, this method returns `current_logical_usage() -
+        pending_logical_usage()` by default. Subclasses should only override
+        `pending_logical_usage()` if needed.
         """
-        usage = self.current_processor_usage()
-        usage = usage.subtract(self.pending_processor_usage())
+        usage = self.current_logical_usage()
+        usage = usage.subtract(self.pending_logical_usage())
         return usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated pending CPU and GPU usage of this operator, excluding
-        object store memory.
+    def pending_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
         executor to display the number of currently pending actors in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
-    def base_resource_usage(self) -> ExecutionResources:
-        """Returns the minimum amount of resources required for execution.
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Returns lower/upper boundary of resource requirements for this operator:
 
-        For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its base usage.
+        - Minimal: lower bound (min) of resources required to start this operator
+        (for most operators this is 0, except the ones that utilize actors)
+        - Maximum: upper bound (max) of how many resources this operator could
+        utilize.
         """
-        return ExecutionResources()
+        return ExecutionResources.zero(), ExecutionResources.inf()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
@@ -475,36 +734,41 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_submission_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's in_backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+        self._task_submission_backpressure_policy = policy_name
+
+    def notify_in_task_output_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
+        """Called periodically from the executor to update internal output backpressure
+        status for stats collection purposes.
+
+        Args:
+            in_backpressure: Value this operator's output backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
+        """
+        # only update on change to in_backpressure
+        if self._in_task_output_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_output_backpressure(in_backpressure)
+            self._in_task_output_backpressure = in_backpressure
+        self._task_output_backpressure_policy = policy_name
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
-
-    def implements_accurate_memory_accounting(self) -> bool:
-        """Return whether this operator implements accurate memory accounting.
-
-        An operator that implements accurate memory accounting should should properly
-        report its memory usage via the following APIs:
-          - `self._metrics.on_input_queued`.
-          - `self._metrics.on_input_dequeued`.
-          - `self._metrics.on_output_queued`.
-          - `self._metrics.on_output_dequeued`.
-        """
-        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
-        # all operators in the dataset have implemented accurate memory accounting.
-        # Eventually all operators should implement accurate memory accounting.
-        return False
 
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
@@ -519,11 +783,78 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    def actor_info_progress_str(self) -> str:
-        """Returns Actor progress strings for Alive, Restarting and Pending Actors.
+    def get_actor_info(self) -> _ActorPoolInfo:
+        """Returns the current status of actors being used by the operator"""
+        return _ActorPoolInfo(running=0, pending=0, restarting=0)
 
-        This method will be called in summary_str API in OpState. Subcallses can
-        override it to return Actor progress strings for Alive, Restarting and Pending
-        Actors.
-        """
-        return ""
+    def _cancel_active_tasks(self, force: bool):
+        tasks: List[OpTask] = self.get_active_tasks()
+
+        # Interrupt all (still) running tasks immediately
+        for task in tasks:
+            task._cancel(force=force)
+
+        # In case of forced cancellation block until task actually return
+        # to guarantee all tasks are done upon return from this method
+        if force:
+            # Wait for all tasks to get cancelled before returning
+            for task in tasks:
+                try:
+                    ray.get(task.get_waitable())
+                except ray.exceptions.RayError:
+                    # Cancellation either succeeded, or the task might have already
+                    # failed with a different error, or cancellation failed.
+                    # In all cases, we swallow the exception.
+                    pass
+
+    def upstream_op_num_outputs(self):
+        upstream_op_num_outputs = sum(
+            op.num_outputs_total() or 0 for op in self.input_dependencies
+        )
+        return upstream_op_num_outputs
+
+
+class ReportsExtraResourceUsage(abc.ABC):
+    @abc.abstractmethod
+    def extra_resource_usage(self: PhysicalOperator) -> ExecutionResources:
+        """Returns resources used by this operator beyond standard accounting."""
+        ...
+
+
+def estimate_total_num_of_blocks(
+    num_tasks_submitted: int,
+    upstream_op_num_outputs: int,
+    metrics: OpRuntimeMetrics,
+    total_num_tasks: Optional[int] = None,
+) -> Tuple[int, int, int]:
+    """This method is trying to estimate total number of blocks/rows based on
+    - How many outputs produced by the input deps
+    - How many blocks/rows produced by tasks of this operator
+    """
+
+    if (
+        upstream_op_num_outputs > 0
+        and metrics.average_num_inputs_per_task
+        and metrics.average_num_outputs_per_task
+        and metrics.average_rows_outputs_per_task
+    ):
+        estimated_num_tasks = total_num_tasks
+        if estimated_num_tasks is None:
+            estimated_num_tasks = (
+                upstream_op_num_outputs / metrics.average_num_inputs_per_task
+            )
+
+        estimated_num_output_bundles = round(
+            estimated_num_tasks * metrics.average_num_outputs_per_task
+        )
+        estimated_output_num_rows = round(
+            estimated_num_tasks * metrics.average_rows_outputs_per_task
+        )
+
+        return (
+            estimated_num_tasks,
+            estimated_num_output_bundles,
+            estimated_output_num_rows,
+        )
+
+    return (0, 0, 0)

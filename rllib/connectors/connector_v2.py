@@ -1,6 +1,6 @@
 import abc
-from collections import defaultdict
 import inspect
+from collections import defaultdict
 from typing import (
     Any,
     Callable,
@@ -19,8 +19,9 @@ import tree
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic, override
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID, StateDict
 from ray.util.annotations import PublicAPI
@@ -156,6 +157,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                     episodes,
                     explore=None,
                     shared_data=None,
+                    metrics=None,
                     **kwargs,
                 ):
                     assert "obs" in batch
@@ -176,7 +178,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
             input_action_space: The input action space (either coming from the
-                environment if `self is the first connector piece in the pipeline or
+                environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
 
         Returns:
@@ -205,7 +207,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
             input_action_space: The input action space (either coming from the
-                environment if `self is the first connector piece in the pipeline or
+                environment if `self` is the first connector piece in the pipeline or
                 from the previous connector piece in the pipeline).
 
         Returns:
@@ -223,6 +225,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
+        metrics: Optional[MetricsLogger] = None,
         **kwargs,
     ) -> Any:
         """Method for transforming an input `batch` into an output `batch`.
@@ -260,6 +263,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             shared_data: Optional additional context data that needs to be exchanged
                 between different ConnectorV2 pieces (in the same pipeline) or across
                 ConnectorV2 pipelines (meaning between env-to-module and module-to-env).
+            metrics: Optional MetricsLogger instance to log custom metrics to.
             kwargs: Forward API-compatibility kwargs.
 
         Returns:
@@ -685,7 +689,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         if isinstance(items_to_add, list):
             if len(items_to_add) != num_items:
                 raise ValueError(
-                    f"Mismatch breteen `num_items` ({num_items}) and the length "
+                    f"Mismatch between `num_items` ({num_items}) and the length "
                     f"of the provided list ({len(items_to_add)}) in "
                     f"{ConnectorV2.__name__}.add_n_batch_items()!"
                 )

@@ -10,17 +10,7 @@ node_manager_rpc_cpp_lib_dependencies = [
     grpc
 ]
 
-node_manager_rpc_cpp_lib = static_library(
-    'node_manager_rpc_cpp_lib',
-    [
-        'node_manager_client_pool.cc'
-    ],
-    dependencies: node_manager_rpc_cpp_lib_dependencies,
-    install: false
-)
-
 node_manager_rpc_cpp_lib_dep = declare_dependency(
-    link_with: [node_manager_rpc_cpp_lib],
     dependencies: node_manager_rpc_cpp_lib_dependencies
 )
 # === @end: node_manager_rpc_cpp_lib (original: node_manager_rpc) ===

@@ -3,19 +3,17 @@ from typing import Any, List, Optional
 import gymnasium as gym
 import torch
 
-from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
-    DQNRainbowTorchLearner,
-)
+from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
 )
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
     AddNextObservationsFromEpisodesToTrainBatch,
 )
-from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core import Columns, DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import EpisodeType
@@ -23,7 +21,7 @@ from ray.rllib.utils.typing import EpisodeType
 ICM_MODULE_ID = "_intrinsic_curiosity_model"
 
 
-class DQNTorchLearnerWithCuriosity(DQNRainbowTorchLearner):
+class DQNTorchLearnerWithCuriosity(DQNTorchLearner):
     def build(self) -> None:
         super().build()
         add_intrinsic_curiosity_connectors(self)

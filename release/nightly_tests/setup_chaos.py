@@ -8,27 +8,29 @@ from ray._private.test_utils import (
     RayletKiller,
     WorkerKillerActor,
     EC2InstanceTerminator,
+    EC2InstanceTerminatorWithGracePeriod,
 )
 
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
 
-    # '--kill-workers' to be deprecated in favor of '--chaos'
-    parser.add_argument("--kill-workers", action="store_true", default=False)
-
     parser.add_argument(
         "--chaos",
         type=str,
-        default="",
-        help=(
-            "Chaos to inject into the test environment. "
-            "Options: KillRaylet, KillWorker, TerminateEC2Instance."
-        ),
+        default="KillRaylet",
+        choices=[
+            "KillRaylet",
+            "KillWorker",
+            "TerminateEC2Instance",
+            "TerminateEC2InstanceWithGracePeriod",
+        ],
+        help="Chaos to inject into the test environment.",
     )
 
     parser.add_argument("--kill-interval", type=int, default=60)
     parser.add_argument("--max-to-kill", type=int, default=2)
+    parser.add_argument("--batch-size-to-kill", type=int, default=1)
     parser.add_argument(
         "--no-start",
         action="store_true",
@@ -92,21 +94,15 @@ def task_node_filter(task_names):
 
 
 def get_chaos_killer(args):
-    if args.chaos != "":
-        chaos_type = args.chaos
-    elif args.kill_workers:
-        chaos_type = "KillWorker"
-    else:
-        chaos_type = "KillRaylet"  # default
-
-    if chaos_type == "KillRaylet":
+    if args.chaos == "KillRaylet":
         return RayletKiller, task_node_filter(args.task_names)
-    elif chaos_type == "KillWorker":
+    elif args.chaos == "KillWorker":
         return WorkerKillerActor, task_filter(args.task_names)
-    elif chaos_type == "TerminateEC2Instance":
+    elif args.chaos == "TerminateEC2Instance":
         return EC2InstanceTerminator, task_node_filter(args.task_names)
-    else:
-        raise ValueError(f"Chaos type {chaos_type} not supported.")
+    elif args.chaos == "TerminateEC2InstanceWithGracePeriod":
+        return EC2InstanceTerminatorWithGracePeriod, task_node_filter(args.task_names)
+    assert False, f"Chaos type {args.chaos} not supported."
 
 
 def main():
@@ -125,12 +121,11 @@ def main():
         lifetime="detached",
         no_start=args.no_start,
         max_to_kill=args.max_to_kill,
+        batch_size_to_kill=args.batch_size_to_kill,
         kill_delay_s=args.kill_delay,
         kill_filter_fn=kill_filter_fn,
     )
-    print(
-        f"Successfully deployed a {'worker' if args.kill_workers else 'node'} killer."
-    )
+    print(f"Successfully deployed a {resource_killer_cls} killer.")
 
 
 main()

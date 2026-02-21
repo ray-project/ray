@@ -18,8 +18,9 @@
 #include <string>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/cmd_line_utils.h"
+#include "ray/util/network_util.h"
 #include "ray/util/process.h"
-#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -30,6 +31,7 @@ using ray::core::WorkerType;
 
 void ProcessHelper::StartRayNode(const std::string node_id_address,
                                  const int port,
+                                 const std::string redis_username,
                                  const std::string redis_password,
                                  const std::vector<std::string> &head_args) {
   std::vector<std::string> cmdargs({"ray",
@@ -37,6 +39,8 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
                                     "--head",
                                     "--port",
                                     std::to_string(port),
+                                    "--redis-username",
+                                    redis_username,
                                     "--redis-password",
                                     redis_password,
                                     "--node-ip-address",
@@ -45,18 +49,18 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  auto spawn_result = Process::Spawn(cmdargs, true);
-  RAY_CHECK(!spawn_result.second);
-  spawn_result.first.Wait();
+  auto [proc, ec] = Process::Spawn(cmdargs, true);
+  RAY_CHECK(!ec) << "Failed to spawn process to start ray node: " << ec.message();
+  proc->Wait();
   return;
 }
 
 void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  auto spawn_result = Process::Spawn(cmdargs, true);
-  RAY_CHECK(!spawn_result.second);
-  spawn_result.first.Wait();
+  auto [proc, ec] = Process::Spawn(cmdargs, true);
+  RAY_CHECK(!ec) << "Failed to spawn process to stop ray node: " << ec.message();
+  proc->Wait();
   return;
 }
 
@@ -79,20 +83,21 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
-    bootstrap_ip = GetNodeIpAddress();
+    bootstrap_ip = ray::GetNodeIpAddressFromPerspective();
     StartRayNode(bootstrap_ip,
                  bootstrap_port,
+                 ConfigInternal::Instance().redis_username,
                  ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().head_args);
   }
 
-  std::string bootstrap_address = bootstrap_ip + ":" + std::to_string(bootstrap_port);
+  std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
   std::string node_ip = ConfigInternal::Instance().node_ip_address;
   if (node_ip.empty()) {
     if (!bootstrap_ip.empty()) {
-      node_ip = GetNodeIpAddress(bootstrap_address);
+      node_ip = ray::GetNodeIpAddressFromPerspective(bootstrap_address);
     } else {
-      node_ip = GetNodeIpAddress();
+      node_ip = ray::GetNodeIpAddressFromPerspective();
     }
   }
 
@@ -102,7 +107,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     std::string node_to_connect;
     auto status =
         global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);
-    RAY_CHECK_OK(status);
+    RAY_CHECK_OK(status)
+        << "Failed to get node to connect for driver when starting the cluster";
     ray::rpc::GcsNodeInfo node_info;
     node_info.ParseFromString(node_to_connect);
     ConfigInternal::Instance().raylet_socket_name = node_info.raylet_socket_name();
@@ -110,9 +116,12 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
         node_info.object_store_socket_name();
     ConfigInternal::Instance().node_manager_port = node_info.node_manager_port();
   }
-  RAY_CHECK(!ConfigInternal::Instance().raylet_socket_name.empty());
-  RAY_CHECK(!ConfigInternal::Instance().plasma_store_socket_name.empty());
-  RAY_CHECK(ConfigInternal::Instance().node_manager_port > 0);
+  RAY_CHECK(!ConfigInternal::Instance().raylet_socket_name.empty())
+      << "Failed to start ray cluster, raylet socket name could not be resolved";
+  RAY_CHECK(!ConfigInternal::Instance().plasma_store_socket_name.empty())
+      << "Failed to start ray cluster, plasma store socket name could not be resolved";
+  RAY_CHECK(ConfigInternal::Instance().node_manager_port > 0)
+      << "Failed to start ray cluster, node manager port could not be resolved";
 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     auto session_dir = *global_state_accessor->GetInternalKV("session", "session_dir");
@@ -144,11 +153,12 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
-  options.raylet_ip_address = node_ip;
   options.driver_name = "cpp_worker";
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
-  options.startup_token = ConfigInternal::Instance().startup_token;
+  if (ConfigInternal::Instance().worker_type != WorkerType::DRIVER) {
+    options.worker_id = WorkerID::FromHex(ConfigInternal::Instance().worker_id);
+  }
   options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
   rpc::JobConfig job_config;
   job_config.set_default_actor_lifetime(
@@ -169,7 +179,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     }
   }
   std::string serialized_job_config;
-  RAY_CHECK(job_config.SerializeToString(&serialized_job_config));
+  RAY_CHECK(job_config.SerializeToString(&serialized_job_config))
+      << "Could not start ray cluster: failed to serialize job config";
   options.serialized_job_config = serialized_job_config;
   CoreWorkerProcess::Initialize(options);
 }

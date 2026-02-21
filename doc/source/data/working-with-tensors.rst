@@ -21,10 +21,7 @@ Ray Data represents tensors as
 
 .. testoutput::
 
-    Dataset(
-       num_rows=100,
-       schema={image: numpy.ndarray(shape=(28, 28), dtype=uint8)}
-    )
+    Dataset(num_rows=100, schema=...)
 
 Batches of fixed-shape tensors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -108,7 +105,7 @@ Saving tensor data
 ------------------
 
 Save tensor data with formats like Parquet, NumPy, and JSON. To view all supported
-formats, see the :ref:`Input/Output reference <input-output>`.
+formats, see the :ref:`Saving Data API <saving-data-api>`.
 
 .. tab-set::
 

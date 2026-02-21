@@ -1,22 +1,42 @@
-import os
 import gc
+import json
+import os
+import signal
 import sys
 
 import pytest
 
 import ray
-from ray._private.test_utils import wait_for_condition
-from ray.core.generated import gcs_pb2
-from ray.core.generated import common_pb2
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import (
+    RPC_FAILURE_MAP,
+    RPC_FAILURE_TYPES,
+)
+from ray.core.generated import common_pb2, gcs_pb2
 
 
-def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_cluster):
+@pytest.mark.parametrize("deterministic_failure", RPC_FAILURE_TYPES)
+def test_actor_reconstruction_triggered_by_lineage_reconstruction(
+    monkeypatch, ray_start_cluster, deterministic_failure
+):
     # Test the sequence of events:
     # actor goes out of scope and killed
     # -> lineage reconstruction triggered by object lost
     # -> actor is restarted
     # -> actor goes out of scope again after lineage reconstruction is done
     # -> actor is permanently dead when there is no reference.
+    # This test also injects network failure to make sure relevant rpcs are retried.
+    failure = RPC_FAILURE_MAP[deterministic_failure].copy()
+    failure["num_failures"] = 1
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        json.dumps(
+            {
+                "ray::rpc::ActorInfoGcsService.grpc_client.RestartActorForLineageReconstruction": failure,
+                "ray::rpc::ActorInfoGcsService.grpc_client.ReportActorOutOfScope": failure,
+            }
+        ),
+    )
     cluster = ray_start_cluster
     cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
@@ -29,10 +49,16 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
         def ping(self):
             return [1] * 1024 * 1024
 
+        def pid(self):
+            return os.getpid()
+
     actor = Actor.remote()
     actor_id = actor._actor_id
 
     obj1 = actor.ping.remote()
+    os.kill(ray.get(actor.pid.remote()), signal.SIGKILL)
+
+    # obj2 should be ready after actor is restarted
     obj2 = actor.ping.remote()
 
     # Make the actor out of scope
@@ -40,9 +66,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
 
     def verify1():
         gc.collect()
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -65,9 +89,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
     assert ray.get(obj2) == [1] * 1024 * 1024
 
     def verify2():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -86,9 +108,7 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
     del obj2
 
     def verify3():
-        actor_info = ray._private.state.state.global_state_accessor.get_actor_info(
-            actor_id
-        )
+        actor_info = ray._private.state.state.get_actor_info(actor_id)
         assert actor_info is not None
         actor_info = gcs_pb2.ActorTableData.FromString(actor_info)
         assert actor_info.state == gcs_pb2.ActorTableData.ActorState.DEAD
@@ -103,7 +123,4 @@ def test_actor_reconstruction_triggered_by_lineage_reconstruction(ray_start_clus
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

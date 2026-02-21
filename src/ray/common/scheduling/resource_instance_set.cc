@@ -16,9 +16,12 @@
 
 #include <cmath>
 #include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "ray/common/bundle_spec.h"
+#include "ray/common/scheduling/placement_group_util.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -96,10 +99,10 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     resources_[resource_id] = std::move(instances);
 
     // Popluate the pg_indexed_resources_map_
-    // TODO (myan): The parsing of the resource_id String can be costly and impact the
+    // TODO(myan): The parsing of the resource_id String can be costly and impact the
     // task creation throughput if the parting is required every time we allocate
     // resources for a task and updating the available resources. The current benchmark
-    // shows no observable impact for now. But in the furture, ideas of improvement are:
+    // shows no observable impact for now. But in the future, ideas of improvement are:
     // (1) to add the placement group id as well as the bundle index inside the
     // ResourceID class. And instead of parse the String, leveraging the fields in the
     // ResourceID class directly; (2) to update the pg resource id format to start with
@@ -188,8 +191,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
     if (data) {
       // Aggregate based on resource type
       ResourceID original_resource_id{data->original_resource};
-      pg_resource_map[original_resource_id].push_back(
-          std::make_pair(resource_id, data.value()));
+      pg_resource_map[original_resource_id].emplace_back(resource_id, data.value());
     } else {
       // Directly allocate the resources if the resource is not with a placement group
       auto allocation = TryAllocate(resource_id, demand);
@@ -199,8 +201,8 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
         allocations[resource_id] = std::move(*allocation);
       } else {
         // Allocation failed. Restore partially allocated resources.
-        for (const auto &[resource_id, allocation] : allocations) {
-          Free(resource_id, allocation);
+        for (const auto &[id, allocated] : allocations) {
+          Free(id, allocated);
         }
         return std::nullopt;
       }
@@ -371,7 +373,15 @@ void NodeResourceInstanceSet::AllocateWithReference(
   RAY_CHECK_EQ(available.size(), ref_allocation.size());
 
   for (size_t i = 0; i < ref_allocation.size(); i++) {
-    RAY_CHECK_GE(available[i], ref_allocation[i]);
+    if (available[i] < ref_allocation[i]) {
+      // Only CPU resource can go negative due to the behavior
+      // that ray.get() will temporarily release the CPU resource.
+      // See https://github.com/ray-project/ray/pull/50517.
+      RAY_CHECK(IsCPUOrPlacementGroupCPUResource(resource_id))
+          << "Resource " << resource_id.Binary()
+          << " has less availability than requested. Available: "
+          << debug_string(available) << ", requested: " << debug_string(ref_allocation);
+    }
     available[i] -= ref_allocation[i];
   }
 

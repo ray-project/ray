@@ -1,10 +1,11 @@
 import asyncio
-import pytest
 import sys
 import time
 
+import pytest
+
 import ray
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 
 
 def test_list_named_actors_namespace(ray_start_regular):
@@ -84,10 +85,6 @@ async def test_list_named_actors_with_normal_task(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
 
     # Test suite is timing out. Disable on windows for now.
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

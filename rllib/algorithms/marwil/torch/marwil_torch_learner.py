@@ -39,10 +39,16 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
-            num_valid = torch.sum(batch[Columns.LOSS_MASK])
+            # Get the loss mask from the batch.
+            mask = batch[Columns.LOSS_MASK].clone()
+            # Check, if a burn-in should be used to recover from a poor state.
+            if self.config.burnin_len > 0:
+                # Train only on the timesteps after the burn-in period.
+                mask[:, : self.config.burnin_len] = False
+            num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):
-                return torch.sum(data_[batch[Columns.LOSS_MASK]]) / num_valid
+                return torch.sum(data_[mask]) / num_valid
 
         else:
             possibly_masked_mean = torch.mean
@@ -117,9 +123,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # Log import loss stats. In case of the BC loss this is simply
         # the policy loss.
         if config.beta == 0.0:
-            self.metrics.log_dict(
-                {POLICY_LOSS_KEY: policy_loss}, key=module_id, window=1
-            )
+            self.metrics.log_value((module_id, POLICY_LOSS_KEY), policy_loss, window=1)
         # Log more stats, if using the MARWIL loss.
         else:
             ma_sqd_adv_norms = self.moving_avg_sqd_adv_norms_per_module[module_id]

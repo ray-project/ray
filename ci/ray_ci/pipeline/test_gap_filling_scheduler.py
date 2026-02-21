@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from ci.ray_ci.pipeline.gap_filling_scheduler import GapFillingScheduler, BLOCK_STEP_KEY
+from ci.ray_ci.pipeline.gap_filling_scheduler import BLOCK_STEP_KEY, GapFillingScheduler
 
 
 @mock.patch(

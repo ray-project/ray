@@ -1,59 +1,516 @@
-# === @begin: scheduler_cpp_lib (original: scheduler) ===
-scheduler_cpp_lib_dependencies = [
+# Refactored to 1:1 mapping with BUILD.bazel targets (Stage 1).
+# Each Bazel ray_cc_library() maps to one Meson target.
+#
+# NOTE: This subdir is processed via subdir('raylet/scheduling/') directly from
+# src/ray/meson.build, BEFORE raylet/ and observability/ are processed. Therefore:
+#   - //src/ray/raylet:metrics, :worker_interface, :worker_pool,
+#     :lease_dependency_manager are NOT available (documented as comments)
+#   - //src/ray/observability:metric_interface, :fake_metric are NOT available
+# These deps are resolved at final link time via _raylet shared library.
+#
+# Available from parent scope:
+#   From common/: task_common_cpp_lib_dep (consolidates lease, bundle_location_index,
+#     placement_group), ray_config_cpp_lib_dep, id_cpp_lib_dep, grpc_util_cpp_lib_dep,
+#     ray_object_cpp_lib_dep, ray_common_cpp_lib_dep
+#   From common/scheduling/: cluster_resource_data_cpp_lib_dep,
+#     placement_group_util_cpp_lib_dep
+#   From protobuf/: gcs_proto_cpp_lib_dep, node_manager_proto_cpp_lib_dep
+#   From util/: logging_cpp_lib_dep, container_util_cpp_lib_dep
+#   From stats/: stats_metric_cpp_lib_dep, stats_cpp_lib_dep
+#   From ray_syncer/: ray_syncer_cpp_lib_dep
+#   From rpc/: grpc_common_cpp_lib_dep
+#   From object_manager/: object_manager_common_dep
+#   From gcs_rpc_client/: gcs_client_cpp_lib_dep
+
+
+# === @begin: scheduling_context_cpp_lib (@original: scheduling_context) ===
+# header-only
+scheduling_context_cpp_lib_dep = declare_dependency(
+    sources: ['policy/scheduling_context.h'],
+    dependencies: [
+        id_cpp_lib_dep,
+        task_common_cpp_lib_dep,     # covers //src/ray/common:placement_group
+    ]
+)
+# === @end: scheduling_context_cpp_lib (@original: scheduling_context) ===
+
+
+# === @begin: scheduler_internal_cpp_lib (@original: scheduler_internal) ===
+# header-only
+scheduler_internal_cpp_lib_dep = declare_dependency(
+    sources: ['internal.h'],
+    dependencies: [
+        task_common_cpp_lib_dep,     # covers //src/ray/common:lease
+        cluster_resource_data_cpp_lib_dep,
+        node_manager_proto_cpp_lib_dep,
+        grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types
+    ]
+)
+# === @end: scheduler_internal_cpp_lib (@original: scheduler_internal) ===
+
+
+# === @begin: cluster_lease_manager_interface_cpp_lib (@original: cluster_lease_manager_interface) ===
+# header-only
+cluster_lease_manager_interface_cpp_lib_dep = declare_dependency(
+    sources: ['cluster_lease_manager_interface.h'],
+    dependencies: [
+        node_manager_proto_cpp_lib_dep,
+        grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types
+    ]
+)
+# === @end: cluster_lease_manager_interface_cpp_lib (@original: cluster_lease_manager_interface) ===
+
+
+# === @begin: scheduling_options_cpp_lib (@original: scheduling_options) ===
+# header-only
+scheduling_options_cpp_lib_dep = declare_dependency(
+    sources: ['policy/scheduling_options.h'],
+    dependencies: [
+        scheduling_context_cpp_lib_dep,
+        ray_config_cpp_lib_dep,
+    ]
+)
+# === @end: scheduling_options_cpp_lib (@original: scheduling_options) ===
+
+
+# === @begin: scheduling_policy_cpp_lib (@original: scheduling_policy) ===
+# header-only
+scheduling_policy_cpp_lib_dep = declare_dependency(
+    sources: ['policy/scheduling_policy.h'],
+    dependencies: [
+        scheduling_options_cpp_lib_dep,
+        cluster_resource_data_cpp_lib_dep,
+    ]
+)
+# === @end: scheduling_policy_cpp_lib (@original: scheduling_policy) ===
+
+
+# === @begin: local_resource_manager_cpp_lib (@original: local_resource_manager) ===
+local_resource_manager_cpp_lib_dependencies = [
     # Package-managed
-    gcs_client_cpp_lib_dep,
-    ray_common_cpp_lib_dep,
-    stats_cpp_lib_dep,
-    common_proto_cpp_lib_dep,
-    util_cpp_lib_dep,
+    cluster_resource_data_cpp_lib_dep,
+    placement_group_util_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
+    node_manager_proto_cpp_lib_dep,
+    ray_syncer_cpp_lib_dep,
+    stats_metric_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # NOT AVAILABLE (processed after): //src/ray/observability:metric_interface
+    # Resolved at final link time via _raylet shared library.
 
     # Eugo-managed
-    boost_asio,
-    boost_system,
-    prometheus_cpp_pull,
-    absl_base_core_headers,
-    absl_container_flat_hash_set,
-    absl_memory,
-    absl_random_random,
-    absl_random_bit_gen_ref,
-    absl_strings,
-    #"@com_google_googletest//:gtest",
-    opencensus_cpp_prometheus_exporter,
-    opencensus_cpp_stats,
-    opencensus_cpp_tags,
-
-    # System-managed
-    threads
+    absl_container_flat_hash_map,
+    # gtest_prod: handled by vendored stub in eugo/include/gtest/gtest_prod.h (FRIEND_TEST only)
 ]
 
-scheduler_cpp_lib = static_library(
-    'scheduler_cpp_lib',
-    [
-        'scheduling_policy.cc',
-        'scheduler_resource_reporter.cc',
-        'scheduler_stats.cc',
-        'cluster_resource_scheduler.cc',
-        'cluster_resource_manager.cc',
-        'cluster_task_manager.cc',
-        'local_resource_manager.cc',
+local_resource_manager_cpp_lib = static_library(
+    'local_resource_manager_cpp_lib',
+    ['local_resource_manager.cc'],
+    install: false,
+    dependencies: local_resource_manager_cpp_lib_dependencies
+)
 
-        'policy/node_affinity_scheduling_policy.cc',
-        'policy/scorer.cc',
-        'policy/affinity_with_bundle_scheduling_policy.cc',
-        'policy/random_scheduling_policy.cc',
-        'policy/hybrid_scheduling_policy.cc',
-        'policy/spread_scheduling_policy.cc',
-        'policy/node_label_scheduling_policy.cc',
-        'policy/bundle_scheduling_policy.cc',
-        'policy/composite_scheduling_policy.cc'
+local_resource_manager_cpp_lib_dep = declare_dependency(
+    link_with: [local_resource_manager_cpp_lib],
+    dependencies: local_resource_manager_cpp_lib_dependencies
+)
+# === @end: local_resource_manager_cpp_lib (@original: local_resource_manager) ===
+
+
+# === @begin: local_lease_manager_interface_cpp_lib (@original: local_lease_manager_interface) ===
+# header-only
+local_lease_manager_interface_cpp_lib_dep = declare_dependency(
+    sources: ['local_lease_manager_interface.h'],
+    dependencies: [
+        scheduler_internal_cpp_lib_dep,
+        # NOT AVAILABLE (processed after): //src/ray/observability:fake_metric
+        # NOT AVAILABLE (processed after): //src/ray/raylet:metrics
+        absl_container_flat_hash_map,
+    ]
+)
+# === @end: local_lease_manager_interface_cpp_lib (@original: local_lease_manager_interface) ===
+
+
+# === @begin: cluster_resource_manager_cpp_lib (@original: cluster_resource_manager) ===
+cluster_resource_manager_cpp_lib_dependencies = [
+    # Package-managed
+    local_resource_manager_cpp_lib_dep,
+    task_common_cpp_lib_dep,         # covers :bundle_location_index, :lease
+    grpc_util_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+    cluster_resource_data_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
+    container_util_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # NOT AVAILABLE (processed after): //src/ray/raylet:metrics
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    # gtest_prod: handled by vendored stub (FRIEND_TEST only)
+]
+
+cluster_resource_manager_cpp_lib = static_library(
+    'cluster_resource_manager_cpp_lib',
+    ['cluster_resource_manager.cc'],
+    install: false,
+    dependencies: cluster_resource_manager_cpp_lib_dependencies
+)
+
+cluster_resource_manager_cpp_lib_dep = declare_dependency(
+    link_with: [cluster_resource_manager_cpp_lib],
+    dependencies: cluster_resource_manager_cpp_lib_dependencies
+)
+# === @end: cluster_resource_manager_cpp_lib (@original: cluster_resource_manager) ===
+
+
+# === @begin: scheduler_resource_reporter_cpp_lib (@original: scheduler_resource_reporter) ===
+scheduler_resource_reporter_cpp_lib_dependencies = [
+    # Package-managed
+    local_lease_manager_interface_cpp_lib_dep,
+    scheduler_internal_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
+scheduler_resource_reporter_cpp_lib = static_library(
+    'scheduler_resource_reporter_cpp_lib',
+    ['scheduler_resource_reporter.cc'],
+    install: false,
+    dependencies: scheduler_resource_reporter_cpp_lib_dependencies
+)
+
+scheduler_resource_reporter_cpp_lib_dep = declare_dependency(
+    link_with: [scheduler_resource_reporter_cpp_lib],
+    dependencies: scheduler_resource_reporter_cpp_lib_dependencies
+)
+# === @end: scheduler_resource_reporter_cpp_lib (@original: scheduler_resource_reporter) ===
+
+
+# === @begin: scorer_cpp_lib (@original: scorer) ===
+scorer_cpp_lib_dependencies = [
+    cluster_resource_data_cpp_lib_dep,
+]
+
+scorer_cpp_lib = static_library(
+    'scorer_cpp_lib',
+    ['policy/scorer.cc'],
+    install: false,
+    dependencies: scorer_cpp_lib_dependencies
+)
+
+scorer_cpp_lib_dep = declare_dependency(
+    link_with: [scorer_cpp_lib],
+    dependencies: scorer_cpp_lib_dependencies
+)
+# === @end: scorer_cpp_lib (@original: scorer) ===
+
+
+# === @begin: hybrid_scheduling_policy_cpp_lib (@original: hybrid_scheduling_policy) ===
+hybrid_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    scheduling_policy_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_random_random,
+    absl_random_bit_gen_ref,
+    # gtest_prod: handled by vendored stub (FRIEND_TEST only)
+]
+
+hybrid_scheduling_policy_cpp_lib = static_library(
+    'hybrid_scheduling_policy_cpp_lib',
+    ['policy/hybrid_scheduling_policy.cc'],
+    install: false,
+    dependencies: hybrid_scheduling_policy_cpp_lib_dependencies
+)
+
+hybrid_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [hybrid_scheduling_policy_cpp_lib],
+    dependencies: hybrid_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: hybrid_scheduling_policy_cpp_lib (@original: hybrid_scheduling_policy) ===
+
+
+# === @begin: affinity_with_bundle_scheduling_policy_cpp_lib (@original: affinity_with_bundle_scheduling_policy) ===
+affinity_with_bundle_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    scheduling_policy_cpp_lib_dep,
+    task_common_cpp_lib_dep,         # covers :bundle_location_index
+]
+
+affinity_with_bundle_scheduling_policy_cpp_lib = static_library(
+    'affinity_with_bundle_scheduling_policy_cpp_lib',
+    ['policy/affinity_with_bundle_scheduling_policy.cc'],
+    install: false,
+    dependencies: affinity_with_bundle_scheduling_policy_cpp_lib_dependencies
+)
+
+affinity_with_bundle_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [affinity_with_bundle_scheduling_policy_cpp_lib],
+    dependencies: affinity_with_bundle_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: affinity_with_bundle_scheduling_policy_cpp_lib (@original: affinity_with_bundle_scheduling_policy) ===
+
+
+# === @begin: node_label_scheduling_policy_cpp_lib (@original: node_label_scheduling_policy) ===
+node_label_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    scheduling_context_cpp_lib_dep,
+    scheduling_policy_cpp_lib_dep,
+]
+
+node_label_scheduling_policy_cpp_lib = static_library(
+    'node_label_scheduling_policy_cpp_lib',
+    ['policy/node_label_scheduling_policy.cc'],
+    install: false,
+    dependencies: node_label_scheduling_policy_cpp_lib_dependencies
+)
+
+node_label_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [node_label_scheduling_policy_cpp_lib],
+    dependencies: node_label_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: node_label_scheduling_policy_cpp_lib (@original: node_label_scheduling_policy) ===
+
+
+# === @begin: random_scheduling_policy_cpp_lib (@original: random_scheduling_policy) ===
+random_scheduling_policy_cpp_lib_dependencies = [
+    scheduling_policy_cpp_lib_dep,
+]
+
+random_scheduling_policy_cpp_lib = static_library(
+    'random_scheduling_policy_cpp_lib',
+    ['policy/random_scheduling_policy.cc'],
+    install: false,
+    dependencies: random_scheduling_policy_cpp_lib_dependencies
+)
+
+random_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [random_scheduling_policy_cpp_lib],
+    dependencies: random_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: random_scheduling_policy_cpp_lib (@original: random_scheduling_policy) ===
+
+
+# === @begin: bundle_scheduling_policy_cpp_lib (@original: bundle_scheduling_policy) ===
+bundle_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    cluster_resource_manager_cpp_lib_dep,
+    scheduling_context_cpp_lib_dep,
+    scheduling_policy_cpp_lib_dep,
+    scorer_cpp_lib_dep,
+]
+
+bundle_scheduling_policy_cpp_lib = static_library(
+    'bundle_scheduling_policy_cpp_lib',
+    ['policy/bundle_scheduling_policy.cc'],
+    install: false,
+    dependencies: bundle_scheduling_policy_cpp_lib_dependencies
+)
+
+bundle_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [bundle_scheduling_policy_cpp_lib],
+    dependencies: bundle_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: bundle_scheduling_policy_cpp_lib (@original: bundle_scheduling_policy) ===
+
+
+# === @begin: node_affinity_scheduling_policy_cpp_lib (@original: node_affinity_scheduling_policy) ===
+node_affinity_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    hybrid_scheduling_policy_cpp_lib_dep,
+    scheduling_policy_cpp_lib_dep,
+]
+
+node_affinity_scheduling_policy_cpp_lib = static_library(
+    'node_affinity_scheduling_policy_cpp_lib',
+    ['policy/node_affinity_scheduling_policy.cc'],
+    install: false,
+    dependencies: node_affinity_scheduling_policy_cpp_lib_dependencies
+)
+
+node_affinity_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [node_affinity_scheduling_policy_cpp_lib],
+    dependencies: node_affinity_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: node_affinity_scheduling_policy_cpp_lib (@original: node_affinity_scheduling_policy) ===
+
+
+# === @begin: spread_scheduling_policy_cpp_lib (@original: spread_scheduling_policy) ===
+spread_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    hybrid_scheduling_policy_cpp_lib_dep,
+    scheduling_policy_cpp_lib_dep,
+    container_util_cpp_lib_dep,
+]
+
+spread_scheduling_policy_cpp_lib = static_library(
+    'spread_scheduling_policy_cpp_lib',
+    ['policy/spread_scheduling_policy.cc'],
+    install: false,
+    dependencies: spread_scheduling_policy_cpp_lib_dependencies
+)
+
+spread_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [spread_scheduling_policy_cpp_lib],
+    dependencies: spread_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: spread_scheduling_policy_cpp_lib (@original: spread_scheduling_policy) ===
+
+
+# === @begin: composite_scheduling_policy_cpp_lib (@original: composite_scheduling_policy) ===
+composite_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    affinity_with_bundle_scheduling_policy_cpp_lib_dep,
+    bundle_scheduling_policy_cpp_lib_dep,
+    cluster_resource_manager_cpp_lib_dep,
+    hybrid_scheduling_policy_cpp_lib_dep,
+    node_affinity_scheduling_policy_cpp_lib_dep,
+    node_label_scheduling_policy_cpp_lib_dep,
+    random_scheduling_policy_cpp_lib_dep,
+    spread_scheduling_policy_cpp_lib_dep,
+]
+
+composite_scheduling_policy_cpp_lib = static_library(
+    'composite_scheduling_policy_cpp_lib',
+    ['policy/composite_scheduling_policy.cc'],
+    install: false,
+    dependencies: composite_scheduling_policy_cpp_lib_dependencies
+)
+
+composite_scheduling_policy_cpp_lib_dep = declare_dependency(
+    link_with: [composite_scheduling_policy_cpp_lib],
+    dependencies: composite_scheduling_policy_cpp_lib_dependencies
+)
+# === @end: composite_scheduling_policy_cpp_lib (@original: composite_scheduling_policy) ===
+
+
+# === @begin: cluster_resource_scheduler_cpp_lib (@original: cluster_resource_scheduler) ===
+cluster_resource_scheduler_cpp_lib_dependencies = [
+    # Package-managed
+    cluster_resource_manager_cpp_lib_dep,
+    composite_scheduling_policy_cpp_lib_dep,
+    scheduler_internal_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # NOT AVAILABLE (processed after): //src/ray/observability:metric_interface
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    # gtest_prod: handled by vendored stub (FRIEND_TEST only)
+]
+
+cluster_resource_scheduler_cpp_lib = static_library(
+    'cluster_resource_scheduler_cpp_lib',
+    ['cluster_resource_scheduler.cc'],
+    install: false,
+    dependencies: cluster_resource_scheduler_cpp_lib_dependencies
+)
+
+cluster_resource_scheduler_cpp_lib_dep = declare_dependency(
+    link_with: [cluster_resource_scheduler_cpp_lib],
+    dependencies: cluster_resource_scheduler_cpp_lib_dependencies
+)
+# === @end: cluster_resource_scheduler_cpp_lib (@original: cluster_resource_scheduler) ===
+
+
+# === @begin: local_lease_manager_cpp_lib (@original: local_lease_manager) ===
+local_lease_manager_cpp_lib_dependencies = [
+    # Package-managed
+    cluster_resource_scheduler_cpp_lib_dep,
+    local_lease_manager_interface_cpp_lib_dep,
+    scheduler_internal_cpp_lib_dep,
+    task_common_cpp_lib_dep,         # covers :lease
+    ray_object_cpp_lib_dep,
+    cluster_resource_data_cpp_lib_dep,
+    placement_group_util_cpp_lib_dep,
+    object_manager_common_dep,
+
+    # NOT AVAILABLE (processed after): //src/ray/raylet:lease_dependency_manager
+    # NOT AVAILABLE (processed after): //src/ray/raylet:metrics
+    # NOT AVAILABLE (processed after): //src/ray/raylet:worker_interface
+    # NOT AVAILABLE (processed after): //src/ray/raylet:worker_pool
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    absl_container_flat_hash_set,
+]
+
+local_lease_manager_cpp_lib = static_library(
+    'local_lease_manager_cpp_lib',
+    ['local_lease_manager.cc'],
+    install: false,
+    dependencies: local_lease_manager_cpp_lib_dependencies
+)
+
+local_lease_manager_cpp_lib_dep = declare_dependency(
+    link_with: [local_lease_manager_cpp_lib],
+    dependencies: local_lease_manager_cpp_lib_dependencies
+)
+# === @end: local_lease_manager_cpp_lib (@original: local_lease_manager) ===
+
+
+# === @begin: cluster_lease_manager_cpp_lib (@original: cluster_lease_manager) ===
+# NOTE: Bazel target also includes scheduler_stats.cc in its srcs.
+cluster_lease_manager_cpp_lib_dependencies = [
+    # Package-managed
+    cluster_lease_manager_interface_cpp_lib_dep,
+    cluster_resource_scheduler_cpp_lib_dep,
+    local_lease_manager_interface_cpp_lib_dep,
+    scheduler_internal_cpp_lib_dep,
+    scheduler_resource_reporter_cpp_lib_dep,
+    task_common_cpp_lib_dep,         # covers :lease
+    ray_config_cpp_lib_dep,
+    stats_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
+cluster_lease_manager_cpp_lib = static_library(
+    'cluster_lease_manager_cpp_lib',
+    [
+        'cluster_lease_manager.cc',
+        'scheduler_stats.cc',
     ],
     install: false,
-    dependencies: scheduler_cpp_lib_dependencies
+    dependencies: cluster_lease_manager_cpp_lib_dependencies
 )
 
-scheduler_cpp_lib_dep = declare_dependency(
-    link_with: [scheduler_cpp_lib],
-    dependencies: scheduler_cpp_lib_dependencies
+cluster_lease_manager_cpp_lib_dep = declare_dependency(
+    link_with: [cluster_lease_manager_cpp_lib],
+    dependencies: cluster_lease_manager_cpp_lib_dependencies
 )
-# === @end: scheduler_cpp_lib (original: scheduler) ===
+# === @end: cluster_lease_manager_cpp_lib (@original: cluster_lease_manager) ===
+
+
+# === @begin: scheduler_cpp_lib (@original: scheduler) ===
+# Umbrella target — no srcs, just deps on all scheduling sub-targets.
+# Bazel uses linkopts for -lpthread; in Meson we use 'threads' dep.
+scheduler_cpp_lib_dep = declare_dependency(
+    dependencies: [
+        affinity_with_bundle_scheduling_policy_cpp_lib_dep,
+        bundle_scheduling_policy_cpp_lib_dep,
+        cluster_lease_manager_cpp_lib_dep,
+        cluster_resource_manager_cpp_lib_dep,
+        cluster_resource_scheduler_cpp_lib_dep,
+        composite_scheduling_policy_cpp_lib_dep,
+        hybrid_scheduling_policy_cpp_lib_dep,
+        local_lease_manager_cpp_lib_dep,
+        local_resource_manager_cpp_lib_dep,
+        node_affinity_scheduling_policy_cpp_lib_dep,
+        node_label_scheduling_policy_cpp_lib_dep,
+        random_scheduling_policy_cpp_lib_dep,
+        spread_scheduling_policy_cpp_lib_dep,
+
+        # System-managed
+        threads,
+    ]
+)
+# === @end: scheduler_cpp_lib (@original: scheduler) ===
 

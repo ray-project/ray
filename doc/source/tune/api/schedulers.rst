@@ -12,12 +12,12 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. code-block:: python
 
-    from ray import train, tune
-    from tune.schedulers import ASHAScheduler
+    from ray import tune
+    from ray.tune.schedulers import ASHAScheduler
 
     def train_fn(config):
         # This objective function is just for demonstration purposes
-        train.report({"loss": config["param"]})
+        tune.report({"loss": config["param"]})
 
     tuner = tune.Tuner(
         train_fn,
@@ -44,7 +44,7 @@ setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by
 .. code-block:: python
 
     from ray import tune
-    from tune.schedulers import ASHAScheduler
+    from ray.tune.schedulers import ASHAScheduler
 
     asha_scheduler = ASHAScheduler(
         time_attr='training_iteration',
@@ -236,11 +236,11 @@ Tune includes a distributed implementation of `Population Based Bandits (PB2) <h
 This algorithm builds upon PBT, with the main difference being that instead of using random perturbations,
 PB2 selects new hyperparameter configurations using a Gaussian Process model.
 
-The Tune implementation of PB2 requires GPy and sklearn to be installed:
+The Tune implementation of PB2 requires scikit-learn to be installed:
 
 .. code-block:: bash
 
-    pip install GPy scikit-learn
+    pip install scikit-learn
 
 
 PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`` which is taken in by ``Tuner``, e.g.:
@@ -270,7 +270,7 @@ support :ref:`save and restore <tune-trial-checkpoint>`).
 Low-performing trials clone the checkpoints of top performers and perturb the configurations
 in the hope of discovering an even better variation.
 
-The primary motivation for PB2 is the ability to find promising hyperparamters with only a small population size.
+The primary motivation for PB2 is the ability to find promising hyperparameters with only a small population size.
 With that in mind, you can run this :doc:`PB2 PPO example </tune/examples/includes/pb2_ppo_example>` to compare PB2 vs. PBT,
 with a population size of ``4`` (as in the paper).
 The example uses the ``BipedalWalker`` environment so does not require any additional licenses.

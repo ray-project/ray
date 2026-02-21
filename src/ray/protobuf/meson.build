@@ -1,6 +1,5 @@
-# === @begin: experimental/ ===
-subdir('experimental/')
-# === @end: experimental/ ===
+# NOTE: experimental/ subdir removed — instance_manager.proto moved to top level (see below)
+# NOTE: export_api/ subdir removed — export_*.proto files moved to top level (see below)
 
 
 # === @begin: runtime_env_common.proto ===
@@ -45,6 +44,13 @@ runtime_env_common_proto_py = custom_target(
 # === @end: runtime_env_common.proto ===
 
 
+# === @begin: public/ (runtime_environment.proto + events_* codegen) ===
+# MUST come before common.proto because common.proto imports public/runtime_environment.proto.
+# Events static_libraries are defined later in this file (after common_proto_cpp_dep is available).
+subdir('public/')
+# === @end: public/ ===
+
+
 # === @begin: common.proto ===
 common_proto = ['common.proto']
 
@@ -56,7 +62,7 @@ common_proto_cpp = custom_target(
 
 common_proto_cpp_dep = declare_dependency(
     sources: common_proto_cpp,
-    dependencies: [runtime_env_common_proto_cpp_dep]
+    dependencies: [runtime_environment_proto_cpp_dep]
 )
 
 common_proto_cpp_lib_dependencies = [
@@ -98,7 +104,8 @@ autoscaler_proto_cpp = custom_target(
 )
 
 autoscaler_proto_cpp_dep = declare_dependency(
-    sources: autoscaler_proto_cpp
+    sources: autoscaler_proto_cpp,
+    dependencies: [common_proto_cpp_dep]
 )
 
 autoscaler_proto_cpp_lib_dependencies = [
@@ -229,6 +236,48 @@ ray_syncer_proto_cpp_grpc_lib_dep = declare_dependency(
 # === @end: ray_syncer.proto ===
 
 
+# === @begin: profile_events.proto ===
+profile_events_proto = ['profile_events.proto']
+
+# @begin: proto_cpp (original: profile_events_cc_proto)
+profile_events_proto_cpp = custom_target(
+    input: profile_events_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+profile_events_proto_cpp_dep = declare_dependency(
+    sources: profile_events_proto_cpp
+)
+
+profile_events_proto_cpp_lib_dependencies = [
+    # Package-managed
+    profile_events_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+profile_events_proto_cpp_lib = static_library(
+    'profile_events_proto_cpp_lib',
+    dependencies: profile_events_proto_cpp_lib_dependencies,
+    install: false
+)
+
+profile_events_proto_cpp_lib_dep = declare_dependency(
+    link_with: [profile_events_proto_cpp_lib],
+    dependencies: profile_events_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: profile_events_cc_proto)
+
+# @begin: proto_py (original: profile_events_py_proto)
+profile_events_proto_py = custom_target(
+    input: profile_events_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: profile_events_py_proto)
+# === @end: profile_events.proto ===
+
+
 # === @begin: gcs.proto ===
 gcs_proto = ['gcs.proto']
 
@@ -240,7 +289,7 @@ gcs_proto_cpp = custom_target(
 
 gcs_proto_cpp_dep = declare_dependency(
     sources: gcs_proto_cpp,
-    dependencies: [common_proto_cpp_dep]
+    dependencies: [common_proto_cpp_dep, profile_events_proto_cpp_dep]
 )
 
 gcs_proto_cpp_lib_dependencies = [
@@ -325,7 +374,7 @@ node_manager_proto_cpp = custom_target(
 
 node_manager_proto_cpp_dep = declare_dependency(
     sources: node_manager_proto_cpp,
-    dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, autoscaler_proto_cpp_dep]
+    dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, autoscaler_proto_cpp_dep, runtime_environment_proto_cpp_dep]
 )
 
 node_manager_proto_cpp_lib_dependencies = [
@@ -402,7 +451,7 @@ reporter_proto_cpp = custom_target(
 
 reporter_proto_cpp_dep = declare_dependency(
     sources: reporter_proto_cpp,
-    dependencies: [opencensus_metrics_proto_cpp_dep]
+    dependencies: [common_proto_cpp_dep, opencensus_metrics_proto_cpp_dep]
 )
 
 reporter_proto_cpp_lib_dependencies = [
@@ -550,6 +599,318 @@ pubsub_proto_py = custom_target(
 # === @end: pubsub.proto ===
 
 
+# === @begin: events_task_profile_events.proto ===
+events_task_profile_events_proto = ['events_task_profile_events.proto']
+
+# @begin: proto_cpp (original: events_task_profile_events_cc_proto)
+events_task_profile_events_proto_cpp = custom_target(
+    input: events_task_profile_events_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+events_task_profile_events_proto_cpp_dep = declare_dependency(
+    sources: events_task_profile_events_proto_cpp,
+    dependencies: [profile_events_proto_cpp_dep]
+)
+
+events_task_profile_events_proto_cpp_lib_dependencies = [
+    # Package-managed
+    events_task_profile_events_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+events_task_profile_events_proto_cpp_lib = static_library(
+    'events_task_profile_events_proto_cpp_lib',
+    dependencies: events_task_profile_events_proto_cpp_lib_dependencies,
+    install: false
+)
+
+events_task_profile_events_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_task_profile_events_proto_cpp_lib],
+    dependencies: events_task_profile_events_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: events_task_profile_events_cc_proto)
+
+# @begin: proto_py (original: events_task_profile_events_py_proto)
+events_task_profile_events_proto_py = custom_target(
+    input: events_task_profile_events_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: events_task_profile_events_py_proto)
+# === @end: events_task_profile_events.proto ===
+
+
+# ==========================================================================
+# public/events_* static libraries (codegen targets defined in public/meson.build)
+# Now that common_proto_cpp_dep and events_task_profile_events_proto_cpp_dep
+# are available, we can create the static libraries for the events protos.
+# ==========================================================================
+
+# --- events with no common dep (timestamp only) ---
+
+# @begin: events_driver_job_lifecycle_event_proto_cpp_lib
+events_driver_job_lifecycle_event_proto_cpp_lib_dependencies = [
+    events_driver_job_lifecycle_event_proto_cpp_dep,
+    protobuf
+]
+events_driver_job_lifecycle_event_proto_cpp_lib = static_library(
+    'events_driver_job_lifecycle_event_proto_cpp_lib',
+    dependencies: events_driver_job_lifecycle_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_driver_job_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_driver_job_lifecycle_event_proto_cpp_lib],
+    dependencies: events_driver_job_lifecycle_event_proto_cpp_lib_dependencies
+)
+# @end: events_driver_job_lifecycle_event_proto_cpp_lib
+
+# @begin: events_node_definition_event_proto_cpp_lib
+events_node_definition_event_proto_cpp_lib_dependencies = [
+    events_node_definition_event_proto_cpp_dep,
+    protobuf
+]
+events_node_definition_event_proto_cpp_lib = static_library(
+    'events_node_definition_event_proto_cpp_lib',
+    dependencies: events_node_definition_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_node_definition_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_node_definition_event_proto_cpp_lib],
+    dependencies: events_node_definition_event_proto_cpp_lib_dependencies
+)
+# @end: events_node_definition_event_proto_cpp_lib
+
+# @begin: events_node_lifecycle_event_proto_cpp_lib
+events_node_lifecycle_event_proto_cpp_lib_dependencies = [
+    events_node_lifecycle_event_proto_cpp_dep,
+    protobuf
+]
+events_node_lifecycle_event_proto_cpp_lib = static_library(
+    'events_node_lifecycle_event_proto_cpp_lib',
+    dependencies: events_node_lifecycle_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_node_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_node_lifecycle_event_proto_cpp_lib],
+    dependencies: events_node_lifecycle_event_proto_cpp_lib_dependencies
+)
+# @end: events_node_lifecycle_event_proto_cpp_lib
+
+# --- events with common dep ---
+
+# @begin: events_actor_definition_event_proto_cpp_lib
+events_actor_definition_event_proto_cpp_lib_dependencies = [
+    events_actor_definition_event_proto_cpp_dep,
+    common_proto_cpp_dep,
+    protobuf
+]
+events_actor_definition_event_proto_cpp_lib = static_library(
+    'events_actor_definition_event_proto_cpp_lib',
+    dependencies: events_actor_definition_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_actor_definition_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_actor_definition_event_proto_cpp_lib],
+    dependencies: events_actor_definition_event_proto_cpp_lib_dependencies
+)
+# @end: events_actor_definition_event_proto_cpp_lib
+
+# @begin: events_actor_lifecycle_event_proto_cpp_lib
+events_actor_lifecycle_event_proto_cpp_lib_dependencies = [
+    events_actor_lifecycle_event_proto_cpp_dep,
+    common_proto_cpp_dep,
+    protobuf
+]
+events_actor_lifecycle_event_proto_cpp_lib = static_library(
+    'events_actor_lifecycle_event_proto_cpp_lib',
+    dependencies: events_actor_lifecycle_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_actor_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_actor_lifecycle_event_proto_cpp_lib],
+    dependencies: events_actor_lifecycle_event_proto_cpp_lib_dependencies
+)
+# @end: events_actor_lifecycle_event_proto_cpp_lib
+
+# @begin: events_task_lifecycle_event_proto_cpp_lib
+events_task_lifecycle_event_proto_cpp_lib_dependencies = [
+    events_task_lifecycle_event_proto_cpp_dep,
+    common_proto_cpp_dep,
+    protobuf
+]
+events_task_lifecycle_event_proto_cpp_lib = static_library(
+    'events_task_lifecycle_event_proto_cpp_lib',
+    dependencies: events_task_lifecycle_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_task_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_task_lifecycle_event_proto_cpp_lib],
+    dependencies: events_task_lifecycle_event_proto_cpp_lib_dependencies
+)
+# @end: events_task_lifecycle_event_proto_cpp_lib
+
+# --- events with runtime_environment + common dep ---
+
+# @begin: events_actor_task_definition_event_proto_cpp_lib
+events_actor_task_definition_event_proto_cpp_lib_dependencies = [
+    events_actor_task_definition_event_proto_cpp_dep,
+    runtime_environment_proto_cpp_dep,
+    common_proto_cpp_dep,
+    protobuf
+]
+events_actor_task_definition_event_proto_cpp_lib = static_library(
+    'events_actor_task_definition_event_proto_cpp_lib',
+    dependencies: events_actor_task_definition_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_actor_task_definition_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_actor_task_definition_event_proto_cpp_lib],
+    dependencies: events_actor_task_definition_event_proto_cpp_lib_dependencies
+)
+# @end: events_actor_task_definition_event_proto_cpp_lib
+
+# @begin: events_task_definition_event_proto_cpp_lib
+events_task_definition_event_proto_cpp_lib_dependencies = [
+    events_task_definition_event_proto_cpp_dep,
+    runtime_environment_proto_cpp_dep,
+    common_proto_cpp_dep,
+    protobuf
+]
+events_task_definition_event_proto_cpp_lib = static_library(
+    'events_task_definition_event_proto_cpp_lib',
+    dependencies: events_task_definition_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_task_definition_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_task_definition_event_proto_cpp_lib],
+    dependencies: events_task_definition_event_proto_cpp_lib_dependencies
+)
+# @end: events_task_definition_event_proto_cpp_lib
+
+# @begin: events_driver_job_definition_event_proto_cpp_lib
+events_driver_job_definition_event_proto_cpp_lib_dependencies = [
+    events_driver_job_definition_event_proto_cpp_dep,
+    runtime_environment_proto_cpp_dep,
+    common_proto_cpp_dep,
+    protobuf
+]
+events_driver_job_definition_event_proto_cpp_lib = static_library(
+    'events_driver_job_definition_event_proto_cpp_lib',
+    dependencies: events_driver_job_definition_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_driver_job_definition_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_driver_job_definition_event_proto_cpp_lib],
+    dependencies: events_driver_job_definition_event_proto_cpp_lib_dependencies
+)
+# @end: events_driver_job_definition_event_proto_cpp_lib
+
+# --- events_base_event (depends on ALL events_* + events_task_profile_events from parent) ---
+
+# @begin: events_base_event_proto_cpp_lib
+events_base_event_proto_cpp_lib_dependencies = [
+    events_base_event_proto_cpp_dep,
+    events_actor_definition_event_proto_cpp_dep,
+    events_actor_lifecycle_event_proto_cpp_dep,
+    events_actor_task_definition_event_proto_cpp_dep,
+    events_driver_job_definition_event_proto_cpp_dep,
+    events_driver_job_lifecycle_event_proto_cpp_dep,
+    events_node_definition_event_proto_cpp_dep,
+    events_node_lifecycle_event_proto_cpp_dep,
+    events_task_definition_event_proto_cpp_dep,
+    events_task_lifecycle_event_proto_cpp_dep,
+    events_task_profile_events_proto_cpp_dep,
+    common_proto_cpp_dep,
+    protobuf
+]
+events_base_event_proto_cpp_lib = static_library(
+    'events_base_event_proto_cpp_lib',
+    dependencies: events_base_event_proto_cpp_lib_dependencies,
+    install: false
+)
+events_base_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_base_event_proto_cpp_lib],
+    dependencies: events_base_event_proto_cpp_lib_dependencies
+)
+# @end: events_base_event_proto_cpp_lib
+
+
+# ==========================================================================
+# events_event_aggregator_service.proto (in this directory, not public/)
+# Depends on common.proto and public/events_base_event.proto
+# ==========================================================================
+
+# === @begin: events_event_aggregator_service.proto ===
+events_event_aggregator_service_proto = ['events_event_aggregator_service.proto']
+
+# @begin: proto_cpp (original: events_event_aggregator_service_cc_proto)
+events_event_aggregator_service_proto_cpp = custom_target(
+    input: events_event_aggregator_service_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+events_event_aggregator_service_proto_cpp_dep = declare_dependency(
+    sources: events_event_aggregator_service_proto_cpp,
+    dependencies: [common_proto_cpp_dep, events_base_event_proto_cpp_dep]
+)
+
+events_event_aggregator_service_proto_cpp_lib_dependencies = [
+    events_event_aggregator_service_proto_cpp_dep,
+    protobuf
+]
+
+events_event_aggregator_service_proto_cpp_lib = static_library(
+    'events_event_aggregator_service_proto_cpp_lib',
+    dependencies: events_event_aggregator_service_proto_cpp_lib_dependencies,
+    install: false
+)
+
+events_event_aggregator_service_proto_cpp_lib_dep = declare_dependency(
+    link_with: [events_event_aggregator_service_proto_cpp_lib],
+    dependencies: events_event_aggregator_service_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: events_event_aggregator_service_cc_proto)
+
+# @begin: proto_cpp_grpc (original: events_event_aggregator_service_cc_grpc)
+events_event_aggregator_service_proto_cpp_grpc = custom_target(
+    input: events_event_aggregator_service_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+events_event_aggregator_service_proto_cpp_grpc_dep = declare_dependency(
+    sources: events_event_aggregator_service_proto_cpp_grpc
+)
+
+events_event_aggregator_service_proto_cpp_grpc_lib_dependencies = [
+    events_event_aggregator_service_proto_cpp_grpc_dep,
+    events_event_aggregator_service_proto_cpp_lib_dep,
+    protobuf,
+    grpc
+]
+
+events_event_aggregator_service_proto_cpp_grpc_lib = static_library(
+    'events_event_aggregator_service_proto_cpp_grpc_lib',
+    dependencies: events_event_aggregator_service_proto_cpp_grpc_lib_dependencies,
+    install: false
+)
+
+events_event_aggregator_service_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [events_event_aggregator_service_proto_cpp_grpc_lib],
+    dependencies: events_event_aggregator_service_proto_cpp_grpc_lib_dependencies
+)
+# @end: proto_cpp_grpc (original: events_event_aggregator_service_cc_grpc)
+
+# @begin: proto_py (original: events_event_aggregator_service_py_proto)
+events_event_aggregator_service_proto_py = custom_target(
+    input: events_event_aggregator_service_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: events_event_aggregator_service_py_proto)
+# === @end: events_event_aggregator_service.proto ===
+
+
 # === @begin: gcs_service.proto ===
 gcs_service_proto = ['gcs_service.proto']
 
@@ -561,7 +922,7 @@ gcs_service_proto_cpp = custom_target(
 
 gcs_service_proto_cpp_dep = declare_dependency(
     sources: gcs_service_proto_cpp,
-    dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, pubsub_proto_cpp_dep]
+    dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, pubsub_proto_cpp_dep, events_event_aggregator_service_proto_cpp_dep]
 )
 
 gcs_service_proto_cpp_lib_dependencies = [
@@ -921,46 +1282,7 @@ event_proto_py = custom_target(
 # === @end: event.proto ===
 
 
-# === @begin: agent_manager.proto ===
-agent_manager_proto = ['agent_manager.proto']
-
-# @begin: proto_cpp (@original: agent_manager_cc_proto)
-agent_manager_proto_cpp = custom_target(
-    input: agent_manager_proto,
-    kwargs: proto_cpp_default_kwargs
-)
-
-agent_manager_proto_cpp_dep = declare_dependency(
-    sources: agent_manager_proto_cpp
-)
-
-agent_manager_proto_cpp_lib_dependencies = [
-    # Package-managed
-    agent_manager_proto_cpp_dep,
-
-    # Eugo-managed
-    protobuf
-]
-
-agent_manager_proto_cpp_lib = static_library(
-    'agent_manager_proto_cpp_lib',
-    dependencies: agent_manager_proto_cpp_lib_dependencies,
-    install: false
-)
-
-agent_manager_proto_cpp_lib_dep = declare_dependency(
-    link_with: [agent_manager_proto_cpp_lib],
-    dependencies: agent_manager_proto_cpp_lib_dependencies
-)
-# @end: proto_cpp (@original: agent_manager_cc_proto)
-
-# @begin: proto_py (@original: agent_manager_py_proto)
-agent_manager_proto_py = custom_target(
-    input: agent_manager_proto,
-    kwargs: proto_py_default_kwargs
-)
-# @end: proto_py (@original: agent_manager_py_proto)
-# === @end: agent_manager.proto ===
+# NOTE: agent_manager.proto was deleted upstream
 
 
 # === @begin: runtime_env_agent.proto ===
@@ -974,7 +1296,7 @@ runtime_env_agent_proto_cpp = custom_target(
 
 runtime_env_agent_proto_cpp_dep = declare_dependency(
     sources: runtime_env_agent_proto_cpp,
-    dependencies: [runtime_env_common_proto_cpp_dep, agent_manager_proto_cpp_dep]
+    dependencies: [runtime_env_common_proto_cpp_dep, runtime_environment_proto_cpp_dep, common_proto_cpp_dep]
 )
 
 runtime_env_agent_proto_cpp_lib_dependencies = [
@@ -1028,7 +1350,7 @@ usage_proto_cpp_lib_dependencies = [
 ]
 
 usage_proto_cpp_lib = static_library(
-    'usage_proto_cpp_lib_proto_cpp_lib',
+    'usage_proto_cpp_lib',
     dependencies: usage_proto_cpp_lib_dependencies,
     install: false
 )
@@ -1060,16 +1382,50 @@ dependency_proto_py = custom_target(
 # === @end: dependency.proto ===
 
 
-# === @begin: job_agent.proto ===
-job_agent_proto = ['job_agent.proto']
+# NOTE: job_agent.proto was deleted upstream
 
-# @begin: proto_py (@original: job_agent_py_proto)
-job_agent_proto_py = custom_target(
-    input: job_agent_proto,
-    kwargs: proto_py_default_kwargs,
+
+# === @begin: instance_manager.proto ===
+# (moved from experimental/ to top level)
+instance_manager_proto = ['instance_manager.proto']
+
+# @begin: proto_cpp (original: instance_manager_cc_proto)
+instance_manager_proto_cpp = custom_target(
+    input: instance_manager_proto,
+    kwargs: proto_cpp_default_kwargs
 )
-# @end: proto_py (@original: job_agent_py_proto)
-# === @end: job_agent.proto ===
+
+instance_manager_proto_cpp_dep = declare_dependency(
+    sources: instance_manager_proto_cpp
+)
+
+instance_manager_proto_cpp_lib_dependencies = [
+    # Package-managed
+    instance_manager_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+instance_manager_proto_cpp_lib = static_library(
+    'instance_manager_proto_cpp_lib',
+    dependencies: instance_manager_proto_cpp_lib_dependencies,
+    install: false
+)
+
+instance_manager_proto_cpp_lib_dep = declare_dependency(
+    link_with: [instance_manager_proto_cpp_lib],
+    dependencies: instance_manager_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: instance_manager_cc_proto)
+
+# @begin: proto_py (original: instance_manager_py_proto)
+instance_manager_proto_py = custom_target(
+    input: instance_manager_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: instance_manager_py_proto)
+# === @end: instance_manager.proto ===
 
 
 # === @begin: ray_client.proto ===
@@ -1098,6 +1454,484 @@ serve_proto_py = custom_target(
 # === @end: serve.proto ===
 
 
-# === @begin: export_api/ ===
-subdir('export_api/')
-# === @end: export_api/ ===
+# === @begin: export_runtime_env.proto ===
+# (moved from export_api/ to top level)
+export_runtime_env_proto = ['export_runtime_env.proto']
+
+# @begin: proto_cpp (@original: export_runtime_env_cc_proto)
+export_runtime_env_proto_cpp = custom_target(
+    input: export_runtime_env_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_runtime_env_proto_cpp_dep = declare_dependency(
+    sources: export_runtime_env_proto_cpp
+)
+
+export_runtime_env_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_runtime_env_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_runtime_env_proto_cpp_lib = static_library(
+    'export_runtime_env_proto_cpp_lib',
+    dependencies: export_runtime_env_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_runtime_env_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_runtime_env_proto_cpp_lib],
+    dependencies: export_runtime_env_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: export_runtime_env_cc_proto)
+
+# @begin: proto_py (@original: export_runtime_env_py_proto)
+export_runtime_env_proto_py = custom_target(
+    input: export_runtime_env_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: export_runtime_env_py_proto)
+# === @end: export_runtime_env.proto ===
+
+
+# === @begin: export_train_state.proto ===
+export_train_state_proto = ['export_train_state.proto']
+
+# @begin: proto_cpp (original: export_train_state_cc_proto)
+export_train_state_proto_cpp = custom_target(
+    input: export_train_state_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_train_state_proto_cpp_dep = declare_dependency(
+    sources: export_train_state_proto_cpp
+)
+
+export_train_state_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_train_state_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_train_state_proto_cpp_lib = static_library(
+    'export_train_state_proto_cpp_lib',
+    dependencies: export_train_state_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_train_state_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_train_state_proto_cpp_lib],
+    dependencies: export_train_state_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: export_train_state_cc_proto)
+
+# @begin: proto_py (original: export_train_state_py_proto)
+export_train_state_proto_py = custom_target(
+    input: export_train_state_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: export_train_state_py_proto)
+# === @end: export_train_state.proto ===
+
+
+# === @begin: export_dataset_operator_event.proto ===
+export_dataset_operator_event_proto = ['export_dataset_operator_event.proto']
+
+# @begin: proto_cpp (original: export_dataset_operator_event_cc_proto)
+export_dataset_operator_event_proto_cpp = custom_target(
+    input: export_dataset_operator_event_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_dataset_operator_event_proto_cpp_dep = declare_dependency(
+    sources: export_dataset_operator_event_proto_cpp
+)
+
+export_dataset_operator_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_dataset_operator_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_dataset_operator_event_proto_cpp_lib = static_library(
+    'export_dataset_operator_event_proto_cpp_lib',
+    dependencies: export_dataset_operator_event_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_dataset_operator_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_dataset_operator_event_proto_cpp_lib],
+    dependencies: export_dataset_operator_event_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: export_dataset_operator_event_cc_proto)
+
+# @begin: proto_py (original: export_dataset_operator_event_py_proto)
+export_dataset_operator_event_proto_py = custom_target(
+    input: export_dataset_operator_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: export_dataset_operator_event_py_proto)
+# === @end: export_dataset_operator_event.proto ===
+
+
+# === @begin: export_dataset_operator_schema.proto ===
+export_dataset_operator_schema_proto = ['export_dataset_operator_schema.proto']
+
+# @begin: proto_cpp (original: export_dataset_operator_schema_cc_proto)
+export_dataset_operator_schema_proto_cpp = custom_target(
+    input: export_dataset_operator_schema_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_dataset_operator_schema_proto_cpp_dep = declare_dependency(
+    sources: export_dataset_operator_schema_proto_cpp
+)
+
+export_dataset_operator_schema_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_dataset_operator_schema_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_dataset_operator_schema_proto_cpp_lib = static_library(
+    'export_dataset_operator_schema_proto_cpp_lib',
+    dependencies: export_dataset_operator_schema_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_dataset_operator_schema_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_dataset_operator_schema_proto_cpp_lib],
+    dependencies: export_dataset_operator_schema_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: export_dataset_operator_schema_cc_proto)
+
+# @begin: proto_py (original: export_dataset_operator_schema_py_proto)
+export_dataset_operator_schema_proto_py = custom_target(
+    input: export_dataset_operator_schema_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: export_dataset_operator_schema_py_proto)
+# === @end: export_dataset_operator_schema.proto ===
+
+
+# === @begin: export_dataset_metadata.proto ===
+export_dataset_metadata_proto = ['export_dataset_metadata.proto']
+
+# @begin: proto_cpp (original: export_dataset_metadata_cc_proto)
+export_dataset_metadata_proto_cpp = custom_target(
+    input: export_dataset_metadata_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_dataset_metadata_proto_cpp_dep = declare_dependency(
+    sources: export_dataset_metadata_proto_cpp
+)
+
+export_dataset_metadata_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_dataset_metadata_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_dataset_metadata_proto_cpp_lib = static_library(
+    'export_dataset_metadata_proto_cpp_lib',
+    dependencies: export_dataset_metadata_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_dataset_metadata_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_dataset_metadata_proto_cpp_lib],
+    dependencies: export_dataset_metadata_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (original: export_dataset_metadata_cc_proto)
+
+# @begin: proto_py (original: export_dataset_metadata_py_proto)
+export_dataset_metadata_proto_py = custom_target(
+    input: export_dataset_metadata_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (original: export_dataset_metadata_py_proto)
+# === @end: export_dataset_metadata.proto ===
+
+
+# === @begin: export_task_event.proto ===
+# (moved from export_api/ to top level)
+export_task_event_proto = ['export_task_event.proto']
+
+# @begin: proto_cpp (@original: export_task_event_cc_proto)
+export_task_event_proto_cpp = custom_target(
+    input: export_task_event_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_task_event_proto_cpp_dep = declare_dependency(
+    sources: export_task_event_proto_cpp,
+    dependencies: [common_proto_cpp_dep, export_runtime_env_proto_cpp_dep, profile_events_proto_cpp_dep]
+)
+
+export_task_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_task_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_task_event_proto_cpp_lib = static_library(
+    'export_task_event_proto_cpp_lib',
+    dependencies: export_task_event_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_task_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_task_event_proto_cpp_lib],
+    dependencies: export_task_event_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: export_task_event_cc_proto)
+
+# @begin: proto_py (@original: export_task_event_py_proto)
+export_task_event_proto_py = custom_target(
+    input: export_task_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: export_task_event_py_proto)
+# === @end: export_task_event.proto ===
+
+
+# === @begin: export_node_data.proto ===
+# (moved from export_api/ to top level)
+export_node_data_proto = ['export_node_data.proto']
+
+# @begin: proto_cpp (@original: export_node_data_cc_proto)
+export_node_data_proto_cpp = custom_target(
+    input: export_node_data_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_node_data_proto_cpp_dep = declare_dependency(
+    sources: export_node_data_proto_cpp
+)
+
+export_node_data_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_node_data_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_node_data_proto_cpp_lib = static_library(
+    'export_node_data_proto_cpp_lib',
+    dependencies: export_node_data_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_node_data_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_node_data_proto_cpp_lib],
+    dependencies: export_node_data_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: export_node_data_cc_proto)
+
+# @begin: proto_py (@original: export_node_data_py_proto)
+export_node_data_proto_py = custom_target(
+    input: export_node_data_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: export_node_data_py_proto)
+# === @end: export_node_data.proto ===
+
+
+# === @begin: export_actor_data.proto ===
+# (moved from export_api/ to top level)
+export_actor_data_proto = ['export_actor_data.proto']
+
+# @begin: proto_cpp (@original: export_actor_data_cc_proto)
+export_actor_data_proto_cpp = custom_target(
+    input: export_actor_data_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_actor_data_proto_cpp_dep = declare_dependency(
+    sources: export_actor_data_proto_cpp,
+    dependencies: [common_proto_cpp_dep]
+)
+
+export_actor_data_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_actor_data_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_actor_data_proto_cpp_lib = static_library(
+    'export_actor_data_proto_cpp_lib',
+    dependencies: export_actor_data_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_actor_data_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_actor_data_proto_cpp_lib],
+    dependencies: export_actor_data_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: export_actor_data_cc_proto)
+
+# @begin: proto_py (@original: export_actor_data_py_proto)
+export_actor_data_proto_py = custom_target(
+    input: export_actor_data_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: export_actor_data_py_proto)
+# === @end: export_actor_data.proto ===
+
+
+# === @begin: export_driver_job_event.proto ===
+# (moved from export_api/ to top level)
+export_driver_job_event_proto = ['export_driver_job_event.proto']
+
+# @begin: proto_cpp (@original: export_driver_job_event_cc_proto)
+export_driver_job_event_proto_cpp = custom_target(
+    input: export_driver_job_event_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_driver_job_event_proto_cpp_dep = declare_dependency(
+    sources: export_driver_job_event_proto_cpp,
+    dependencies: [common_proto_cpp_dep, export_runtime_env_proto_cpp_dep]
+)
+
+export_driver_job_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_driver_job_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_driver_job_event_proto_cpp_lib = static_library(
+    'export_driver_job_event_proto_cpp_lib',
+    dependencies: export_driver_job_event_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_driver_job_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_driver_job_event_proto_cpp_lib],
+    dependencies: export_driver_job_event_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: export_driver_job_event_cc_proto)
+
+# @begin: proto_py (@original: export_driver_job_event_py_proto)
+export_driver_job_event_proto_py = custom_target(
+    input: export_driver_job_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: export_driver_job_event_py_proto)
+# === @end: export_driver_job_event.proto ===
+
+
+# === @begin: export_submission_job_event.proto ===
+# (moved from export_api/ to top level — no longer imports anything)
+export_submission_job_event_proto = ['export_submission_job_event.proto']
+
+# @begin: proto_cpp (@original: export_submission_job_event_cpp_proto)
+export_submission_job_event_proto_cpp = custom_target(
+    input: export_submission_job_event_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_submission_job_event_proto_cpp_dep = declare_dependency(
+    sources: export_submission_job_event_proto_cpp
+)
+
+export_submission_job_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_submission_job_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_submission_job_event_proto_cpp_lib = static_library(
+    'export_submission_job_event_proto_cpp_lib',
+    dependencies: export_submission_job_event_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_submission_job_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_submission_job_event_proto_cpp_lib],
+    dependencies: export_submission_job_event_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: export_submission_job_event_cpp_proto)
+
+# @begin: proto_py (@original: export_submission_job_event_py_proto)
+export_submission_job_event_proto_py = custom_target(
+    input: export_submission_job_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: export_submission_job_event_py_proto)
+# === @end: export_submission_job_event.proto ===
+
+
+# === @begin: export_event.proto ===
+# (moved from export_api/ to top level — now includes additional export deps)
+export_event_proto = ['export_event.proto']
+
+# @begin: proto_cpp (@original: export_event_cpp_proto)
+export_event_proto_cpp = custom_target(
+    input: export_event_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+export_event_proto_cpp_dep = declare_dependency(
+    sources: export_event_proto_cpp,
+    dependencies: [
+        export_task_event_proto_cpp_dep,
+        export_node_data_proto_cpp_dep,
+        export_actor_data_proto_cpp_dep,
+        export_driver_job_event_proto_cpp_dep,
+        export_submission_job_event_proto_cpp_dep,
+        export_train_state_proto_cpp_dep,
+        export_dataset_operator_event_proto_cpp_dep,
+        export_dataset_operator_schema_proto_cpp_dep,
+        export_dataset_metadata_proto_cpp_dep
+    ]
+)
+
+export_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
+export_event_proto_cpp_lib = static_library(
+    'export_event_proto_cpp_lib',
+    dependencies: export_event_proto_cpp_lib_dependencies,
+    install: false
+)
+
+export_event_proto_cpp_lib_dep = declare_dependency(
+    link_with: [export_event_proto_cpp_lib],
+    dependencies: export_event_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: export_event_cpp_proto)
+
+# @begin: proto_py (@original: export_event_py_proto)
+export_event_proto_py = custom_target(
+    input: export_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: export_event_py_proto)
+# === @end: export_event.proto ===

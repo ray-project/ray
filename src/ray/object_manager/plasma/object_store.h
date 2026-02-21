@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/object_manager/plasma/allocator.h"
 #include "ray/object_manager/plasma/common.h"

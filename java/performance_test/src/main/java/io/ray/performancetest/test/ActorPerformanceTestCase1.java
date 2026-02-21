@@ -14,12 +14,6 @@ public class ActorPerformanceTestCase1 {
     final boolean useDirectByteBuffer = false;
     final boolean ignoreReturn = false;
     ActorPerformanceTestBase.run(
-        args,
-        layers,
-        actorsPerLayer,
-        hasReturn,
-        ignoreReturn,
-        argSize,
-        useDirectByteBuffer);
+        args, layers, actorsPerLayer, hasReturn, ignoreReturn, argSize, useDirectByteBuffer);
   }
 }

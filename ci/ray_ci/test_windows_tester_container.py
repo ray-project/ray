@@ -1,5 +1,5 @@
-from unittest import mock
 from typing import List
+from unittest import mock
 
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 
@@ -16,7 +16,7 @@ def test_init() -> None:
             "docker",
             "build",
             "-t",
-            "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:unknown-hi",
+            "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp:hi",
             "-f",
             "c:\\workdir\\ci\\ray_ci\\windows\\tests.env.Dockerfile",
             "c:\\workdir",

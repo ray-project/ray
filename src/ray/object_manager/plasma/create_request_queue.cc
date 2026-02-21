@@ -14,13 +14,14 @@
 
 #include "ray/object_manager/plasma/create_request_queue.h"
 
-#include <stdlib.h>
-
+#include <cstdlib>
+#include <list>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
-#include "ray/util/util.h"
 
 namespace plasma {
 
@@ -30,8 +31,8 @@ uint64_t CreateRequestQueue::AddRequest(const ObjectID &object_id,
                                         size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
-  queue_.emplace_back(
-      new CreateRequest(object_id, req_id, client, create_callback, object_size));
+  queue_.emplace_back(std::make_unique<CreateRequest>(
+      object_id, req_id, client, create_callback, object_size));
   num_bytes_pending_ += object_size;
   return req_id;
 }
@@ -53,8 +54,8 @@ bool CreateRequestQueue::GetRequestResult(uint64_t req_id,
     return false;
   }
 
-  *result = it->second->result;
-  *error = it->second->error;
+  *result = it->second->result_;
+  *error = it->second->error_;
   fulfilled_requests_.erase(it);
   return true;
 }
@@ -73,8 +74,8 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 
 Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
                                           std::unique_ptr<CreateRequest> &request) {
-  request->error = request->create_callback(fallback_allocator, &request->result);
-  if (request->error == PlasmaError::OutOfMemory) {
+  request->error_ = request->create_callback_(fallback_allocator, &request->result_);
+  if (request->error_ == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
   } else {
     return Status::OK();
@@ -90,10 +91,11 @@ Status CreateRequestQueue::ProcessRequests() {
 
     // if allocation failed due to OOM, and fs_monitor_ indicates the local disk is full,
     // we should failed the request with out of disk error
-    if ((*request_it)->error == PlasmaError::OutOfMemory && fs_monitor_.OverCapacity()) {
-      (*request_it)->error = PlasmaError::OutOfDisk;
-      RAY_LOG(INFO) << "Out-of-disk: Failed to create object " << (*request_it)->object_id
-                    << " of size " << (*request_it)->object_size / 1024 / 1024 << "MB\n";
+    if ((*request_it)->error_ == PlasmaError::OutOfMemory && fs_monitor_.OverCapacity()) {
+      (*request_it)->error_ = PlasmaError::OutOfDisk;
+      RAY_LOG(INFO) << "Out-of-disk: Failed to create object "
+                    << (*request_it)->object_id_ << " of size "
+                    << (*request_it)->object_size_ / 1024 / 1024 << "MB\n";
       FinishRequest(request_it);
       return Status::OutOfDisk("System running out of disk.");
     }
@@ -117,31 +119,31 @@ Status CreateRequestQueue::ProcessRequests() {
         RAY_LOG(DEBUG) << "Reset grace period " << status << " " << spill_pending;
         oom_start_time_ns_ = -1;
         return Status::TransientObjectStoreFull("Waiting for objects to spill.");
-      } else if (now - oom_start_time_ns_ < grace_period_ns) {
+      }
+      if (now - oom_start_time_ns_ < grace_period_ns) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
         RAY_LOG(DEBUG) << "In grace period before fallback allocation / oom.";
         return Status::ObjectStoreFull("Waiting for grace period.");
-      } else {
-        // Trigger the fallback allocator.
-        status = ProcessRequest(/*fallback_allocator=*/true, *request_it);
-        if (!status.ok()) {
-          // This only happens when an allocation is bigger than available disk space.
-          // We should throw OutOfDisk Error here.
-          (*request_it)->error = PlasmaError::OutOfDisk;
-          std::string dump = "";
-          if (dump_debug_info_callback_ && !logged_oom) {
-            dump = dump_debug_info_callback_();
-            logged_oom = true;
-          }
-          RAY_LOG(INFO) << "Out-of-disk: Failed to create object "
-                        << (*request_it)->object_id << " of size "
-                        << (*request_it)->object_size / 1024 / 1024 << "MB\n"
-                        << dump;
-        }
-        FinishRequest(request_it);
       }
+      // Trigger the fallback allocator.
+      status = ProcessRequest(/*fallback_allocator=*/true, *request_it);
+      if (!status.ok()) {
+        // This only happens when an allocation is bigger than available disk space.
+        // We should throw OutOfDisk Error here.
+        (*request_it)->error_ = PlasmaError::OutOfDisk;
+        std::string dump = "";
+        if (dump_debug_info_callback_ && !logged_oom) {
+          dump = dump_debug_info_callback_();
+          logged_oom = true;
+        }
+        RAY_LOG(INFO) << "Out-of-disk: Failed to create object "
+                      << (*request_it)->object_id_ << " of size "
+                      << (*request_it)->object_size_ / 1024 / 1024 << "MB\n"
+                      << dump;
+      }
+      FinishRequest(request_it);
     }
   }
 
@@ -152,22 +154,22 @@ void CreateRequestQueue::FinishRequest(
     std::list<std::unique_ptr<CreateRequest>>::iterator request_it) {
   // Fulfill the request.
   auto &request = *request_it;
-  auto it = fulfilled_requests_.find(request->request_id);
+  auto it = fulfilled_requests_.find(request->request_id_);
   RAY_CHECK(it != fulfilled_requests_.end());
   RAY_CHECK(it->second == nullptr);
   it->second = std::move(request);
-  RAY_CHECK(num_bytes_pending_ >= it->second->object_size);
-  num_bytes_pending_ -= it->second->object_size;
+  RAY_CHECK(num_bytes_pending_ >= it->second->object_size_);
+  num_bytes_pending_ -= it->second->object_size_;
   queue_.erase(request_it);
 }
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(
     const std::shared_ptr<ClientInterface> &client) {
   for (auto it = queue_.begin(); it != queue_.end();) {
-    if ((*it)->client == client) {
-      fulfilled_requests_.erase((*it)->request_id);
-      RAY_CHECK(num_bytes_pending_ >= (*it)->object_size);
-      num_bytes_pending_ -= (*it)->object_size;
+    if ((*it)->client_ == client) {
+      fulfilled_requests_.erase((*it)->request_id_);
+      RAY_CHECK(num_bytes_pending_ >= (*it)->object_size_);
+      num_bytes_pending_ -= (*it)->object_size_;
       it = queue_.erase(it);
     } else {
       it++;
@@ -175,7 +177,7 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(
   }
 
   for (auto it = fulfilled_requests_.begin(); it != fulfilled_requests_.end();) {
-    if (it->second && it->second->client == client) {
+    if (it->second && it->second->client_ == client) {
       fulfilled_requests_.erase(it++);
     } else {
       it++;

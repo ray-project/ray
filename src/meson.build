@@ -1,2 +1,1 @@
-subdir('proto/')
 subdir('ray/')

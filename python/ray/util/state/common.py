@@ -2,16 +2,21 @@ import datetime
 import json
 import logging
 import sys
+import warnings
 from abc import ABC
 from dataclasses import asdict, field, fields
 from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
-from ray._private.ray_constants import env_integer
-from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents
-from ray.util.state.custom_types import (
+
+# TODO(aguo): Instead of a version check, modify the below models
+# to use pydantic BaseModel instead of dataclass.
+# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
+# generate an __init__ method. Additionally, it will raise an error if
+# it detects `init=True` to be set.
+from ray._common.pydantic_compat import IS_PYDANTIC_2
+from ray._private.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
     TypePlacementGroupStatus,
@@ -21,15 +26,11 @@ from ray.util.state.custom_types import (
     TypeWorkerExitType,
     TypeWorkerType,
 )
-from ray.util.state.exception import RayStateApiException
+from ray._private.ray_constants import env_integer
+from ray.core.generated.common_pb2 import TaskStatus, TaskType
+from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-
-# TODO(aguo): Instead of a version check, modify the below models
-# to use pydantic BaseModel instead of dataclass.
-# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
-# generate an __init__ method. Additionally, it will raise an error if
-# it detects `init=True` to be set.
-from ray._private.pydantic_compat import IS_PYDANTIC_2
+from ray.util.state.exception import RayStateApiException
 
 try:
     from pydantic.dataclasses import dataclass
@@ -46,6 +47,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
+DEFAULT_DOWNLOAD_FILENAME = "file.txt"
 
 # Max number of entries from API server to the client
 RAY_MAX_LIMIT_FROM_API_SERVER = env_integer(
@@ -150,7 +152,7 @@ class ListApiOptions:
         # To return the data to users, when there's a partial failure
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
-        self.timeout = int(self.timeout * self.server_timeout_multiplier)
+        self.timeout = max(1, int(self.timeout * self.server_timeout_multiplier))
         assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
@@ -163,11 +165,50 @@ class ListApiOptions:
                     "Available predicates: =, !=."
                 )
 
+    def has_conflicting_filters(self) -> bool:
+        # Check the filters in the ListApiOptions conflicts. Specifically for:
+        # - multiple '=' filters with the same key but different values.
+        # TODO(myan): More conflicts situation can be added for further optimization.
+        # For example, 2 filters with same key and same value but one with '=' predicate
+        # and ther other with '!=' predicate
+        equal_filters = {}
+        for filter in self.filters:
+            filter_key, filter_predicate, filter_value = filter
+            if filter_predicate == "=":
+                if (
+                    filter_key in equal_filters
+                    and equal_filters[filter_key] != filter_value
+                ):
+                    warnings.warn(
+                        "There are multiple '=' filters with the same "
+                        f"key '{filter_key}' but different values"
+                        f"'{equal_filters[filter_key]}' & '{filter_value}'. "
+                        "Empty result set will be returned",
+                        UserWarning,
+                    )
+                    return True
+                elif filter_key not in equal_filters:
+                    equal_filters[filter_key] = filter_value
+
+        return False
+
 
 @dataclass(init=not IS_PYDANTIC_2)
 class GetApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
+    # When the request is processed on the server side,
+    # we should apply multiplier so that server side can finish
+    # processing a request within timeout. Otherwise,
+    # timeout will always lead Http timeout.
+    server_timeout_multiplier: float = 0.8
+
+    def __post_init__(self):
+        # To return the data to users, when there's a partial failure
+        # we need to have a timeout that's smaller than the users' timeout.
+        # 80% is configured arbitrarily.
+        self.timeout = max(1, int(self.timeout * self.server_timeout_multiplier))
+        assert self.timeout != 0, "0 second timeout is not supported."
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -349,8 +390,12 @@ class GetLogOptions:
     # One of {file, stream}. File means it will return the whole log.
     # stream means it will keep the connection and streaming the log.
     media_type: str = "file"
-    # The file name of the log.
+    # The filename to match when finding the log to download from the Ray log directory.
+    # NOTE: This can be a nested path relative to the Ray log directory.
     filename: Optional[str] = None
+    # The filename to download the log as on the client side.
+    # If not provided, the filename will be "file.txt".
+    download_filename: str = DEFAULT_DOWNLOAD_FILENAME
     # The actor id of the log. It is used only for worker logs.
     actor_id: Optional[str] = None
     # The task id of the log.
@@ -467,6 +512,14 @@ class ActorState(StateSchema):
     num_restarts_due_to_lineage_reconstruction: int = state_column(
         filterable=False, detail=True
     )
+    #: Number of times this actor is restarted due to node preemption.
+    num_restarts_due_to_node_preemption: int = state_column(
+        filterable=False, detail=True
+    )
+    #: The call site of the actor creation.
+    call_site: Optional[str] = state_column(detail=True, filterable=False)
+    #: The label selector for the actor.
+    label_selector: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -640,7 +693,7 @@ class WorkerState(StateSchema):
         detail=True,
         format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
-    #: The time worker is succesfully launched
+    #: The time worker is successfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
         filterable=False,
@@ -760,6 +813,10 @@ class TaskState(StateSchema):
     error_message: Optional[str] = state_column(detail=True, filterable=False)
     # Is task paused by the debugger
     is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
+    #: The call site of the task.
+    call_site: Optional[str] = state_column(detail=True, filterable=False)
+    #: The label selector for the task.
+    label_selector: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1278,7 +1335,7 @@ class TaskSummaries:
             task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
             task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
             task_groups.sort(
-                key=lambda x: x.state_counts.get("FAIELD", 0), reverse=True
+                key=lambda x: x.state_counts.get("FAILED", 0), reverse=True
             )
             task_groups.sort(key=get_pending_tasks_count, reverse=True)
             task_groups.sort(key=get_running_tasks_count, reverse=True)
@@ -1579,6 +1636,8 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "runtime_env_info",
                 "parent_task_id",
                 "placement_group_id",
+                "call_site",
+                "label_selector",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
@@ -1668,7 +1727,6 @@ def remove_ansi_escape_codes(text: str) -> str:
 
 
 def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
-
     """Convert a dict to a state schema.
 
     Args:

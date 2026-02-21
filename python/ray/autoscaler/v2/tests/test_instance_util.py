@@ -34,7 +34,7 @@ class InstanceUtilTest(unittest.TestCase):
 
         g = InstanceUtil.get_valid_transitions()
 
-        assert g[Instance.QUEUED] == {Instance.REQUESTED}
+        assert g[Instance.QUEUED] == {Instance.REQUESTED, Instance.TERMINATED}
         all_status.remove(Instance.QUEUED)
 
         assert g[Instance.REQUESTED] == {
@@ -51,6 +51,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.TERMINATED,
+            Instance.ALLOCATION_TIMEOUT,
         }
         all_status.remove(Instance.ALLOCATED)
 
@@ -71,6 +72,9 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.TERMINATED,
         }
         all_status.remove(Instance.RAY_RUNNING)
+
+        assert g[Instance.ALLOCATION_TIMEOUT] == {Instance.TERMINATING}
+        all_status.remove(Instance.ALLOCATION_TIMEOUT)
 
         assert g[Instance.RAY_STOP_REQUESTED] == {
             Instance.RAY_STOPPING,
@@ -207,6 +211,7 @@ class InstanceUtilTest(unittest.TestCase):
             Instance.RAY_STOPPED,
             Instance.TERMINATING,
             Instance.TERMINATION_FAILED,
+            Instance.ALLOCATION_TIMEOUT,
         }
         for s in positive_status:
             instance.status = s
@@ -309,6 +314,7 @@ class InstanceUtilTest(unittest.TestCase):
         add_reachable_from(expected_reachable, Instance.QUEUED, transitions)
         # Add REQUESTED again since it's also reachable from QUEUED.
         add_reachable_from(expected_reachable, Instance.REQUESTED, transitions)
+        add_reachable_from(expected_reachable, Instance.ALLOCATION_TIMEOUT, transitions)
 
         for s, expected in expected_reachable.items():
             assert InstanceUtil.get_reachable_statuses(s) == expected, (

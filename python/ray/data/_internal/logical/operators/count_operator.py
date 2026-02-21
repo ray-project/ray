@@ -1,6 +1,8 @@
-from typing import List
-
 from ray.data._internal.logical.interfaces import LogicalOperator
+
+__all__ = [
+    "Count",
+]
 
 
 class Count(LogicalOperator):
@@ -15,6 +17,6 @@ class Count(LogicalOperator):
 
     def __init__(
         self,
-        input_dependencies: List["LogicalOperator"],
+        input_op: LogicalOperator,
     ):
-        super().__init__("Count", input_dependencies)
+        super().__init__(input_dependencies=[input_op])

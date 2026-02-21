@@ -8,7 +8,6 @@ import {
   Paper,
   Typography,
 } from "@mui/material";
-import { grey } from "@mui/material/colors";
 import React, { useMemo, useState } from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
@@ -218,7 +217,10 @@ export const StateApiLogsFilesList = ({
                       href={downloadUrl}
                       download={fileName}
                       size="small"
-                      sx={{ verticalAlign: "baseline", color: grey[700] }}
+                      sx={{
+                        verticalAlign: "baseline",
+                        "& svg": { color: "text.secondary" },
+                      }}
                     >
                       <RiDownload2Line size={16} />
                     </IconButton>

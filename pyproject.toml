@@ -14,7 +14,7 @@ requires = [
 name = 'ray'
 version = '3.0.0.dev0'
 readme = 'README.rst'
-requires-python = '>=3.12'
+requires-python = '>=3.14'
 license = {file = 'LICENSE'}
 
 # @EUGO_CHANGE:
@@ -26,12 +26,226 @@ dependencies = [
     'jsonschema',
     'msgpack<2.0.0,>=1.0.0',
     'packaging',
-    'protobuf!=3.19.5,>=3.15.3',
+    'protobuf>=3.20.3',
     'pyyaml',
-    'aiosignal',
-    'frozenlist',
+    # 'aiosignal', # TODO+_EUGO not in upstream - needed?
+    # 'frozenlist', # TODO+_EUGO not in upstream - needed?
+    # 'watchfiles', # TODO+_EUGO its in requirements.txt but not in setup.py - needed?
     'requests',
 ]
+
+
+
+# Python version-specific requirements
+grpcio>=1.42.0
+
+numpy>=1.20
+
+pyarrow >= 9.0.0
+
+# ray[all]
+smart_open
+lz4
+numpy>=1.20
+aiorwlock
+scipy
+colorful
+rich
+opentelemetry-sdk>=1.30.0
+opentelemetry-api
+opentelemetry-exporter-prometheus
+opentelemetry-proto
+fastapi
+ormsgpack>=1.7.0
+gymnasium==1.2.2
+virtualenv!=20.21.1,>=20.0.24
+opencensus
+aiohttp_cors
+dm_tree
+uvicorn
+prometheus_client>=0.7.1
+pandas
+tensorboardX
+aiohttp>=3.13.3
+starlette
+typer
+fsspec
+pandas>=1.3
+pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3  # Serve users can use pydantic<2
+py-spy>=0.2.0; python_version < '3.12'
+py-spy>=0.4.0; python_version >= '3.12'
+memray; sys_platform != "win32" # memray is not supported on Windows
+pyOpenSSL
+celery
+taskiq
+
+
+pandas_dep = "pandas >= 1.3"
+    numpy_dep = "numpy >= 1.20"
+    pyarrow_deps = [
+        "pyarrow >= 9.0.0",
+    ]
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
+    setup_spec.extras = {
+        "cgraph": [
+            "cupy-cuda12x; sys_platform != 'darwin'",
+        ],
+        "client": [
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issues: https://github.com/grpc/grpc/issues/33714
+            "grpcio != 1.56.0; sys_platform == 'darwin'",
+            "grpcio",
+        ],
+        "data": [
+            numpy_dep,
+            pandas_dep,
+            *pyarrow_deps,
+            "fsspec",
+        ],
+        "default": [
+            # If adding dependencies necessary to launch the dashboard api server,
+            # please add it to python/ray/dashboard/optional_deps.py as well.
+            "aiohttp >= 3.13.3",
+            "aiohttp_cors",
+            "colorful",
+            "py-spy >= 0.2.0; python_version < '3.12'",
+            "py-spy >= 0.4.0; python_version >= '3.12'",
+            "requests",
+            "grpcio >= 1.42.0",
+            "opencensus",
+            "opentelemetry-sdk >= 1.30.0",
+            "opentelemetry-exporter-prometheus",
+            "opentelemetry-proto",
+            pydantic_dep,
+            "prometheus_client >= 0.7.1",
+            "smart_open",
+            "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
+        ],
+        "observability": [
+            "memray; sys_platform != 'win32'",
+        ],
+        "serve": [
+            "uvicorn[standard]",
+            "requests",
+            "starlette",
+            "fastapi",
+            "watchfiles",
+        ],
+        "tune": [
+            "pandas",
+            # TODO: Remove pydantic dependency from tune once tune doesn't import train
+            pydantic_dep,
+            "tensorboardX>=1.9",
+            "requests",
+            *pyarrow_deps,
+            "fsspec",
+        ],
+    }
+
+    # Both "adag" and "cgraph" are for Compiled Graphs.
+    # "adag" is deprecated and will be removed in the future.
+    setup_spec.extras["adag"] = list(setup_spec.extras["cgraph"])
+
+    # Ray Serve depends on the Ray dashboard components.
+    setup_spec.extras["serve"] = list(
+        set(setup_spec.extras["serve"] + setup_spec.extras["default"])
+    )
+
+    # Ensure gRPC library exists for Ray Serve gRPC support.
+    setup_spec.extras["serve-grpc"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "grpcio >= 1.42.0",
+                "pyOpenSSL",
+            ]
+        )
+    )
+
+    # This is required for supporting the asynchronous inference, allowing the ray serve applications to
+    # allow asynchronously execute their code, via the use of celery task processor.
+    setup_spec.extras["serve-async-inference"] = list(
+        set(
+            setup_spec.extras["serve"]
+            + [
+                "celery",
+                "taskiq",
+            ]
+        )
+    )
+
+    setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+
+    setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
+        "dm_tree",
+        "gymnasium==1.2.2",
+        "lz4",
+        "ormsgpack>=1.7.0",
+        "pyyaml",
+        "scipy",
+    ]
+
+    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
+
+    # Ray AI Runtime should encompass Data, Tune, and Serve.
+    setup_spec.extras["air"] = list(
+        set(
+            setup_spec.extras["tune"]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["train"]
+            + setup_spec.extras["serve"]
+        )
+    )
+
+    # NOTE: While we keep ray[all] for compatibility, you probably
+    # shouldn't use it because it contains too many dependencies
+    # and no deployment needs all of them. Instead you should list
+    # the extras you actually need, see
+    # https://docs.ray.io/en/latest/ray-overview/installation.html#from-wheels
+    #
+    # "all" will not include "cpp" anymore. It is a big depedendency
+    # that most people do not need.
+    #
+    # Instead, when cpp is supported, we add a "all-cpp".
+    setup_spec.extras["all"] = list(
+        set(
+            chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
+        )
+    )
+    setup_spec.extras["all-cpp"] = list(
+        set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
+    )
+
+    # "llm" is not included in all, by design. vllm's dependency set is very
+    # large and specific, will likely run into dependency conflicts with other
+    # ML libraries. As a result, it is an "extra-extra" that is not part
+    # ray[all].
+    #
+    # ray[llm] depends on ray[data].
+    #
+    # Keep this in sync with python/requirements/llm/llm-requirements.txt
+    #
+    setup_spec.extras["llm"] = list(
+        set(
+            [
+                "vllm[audio]>=0.15.0",
+                "nixl>=0.6.1",
+                # TODO(llm): remove after next vLLM version bump
+                "transformers>=4.57.3",
+                "jsonref>=1.1.0",
+                "jsonschema",
+                "ninja",
+                # async-timeout is a backport of asyncio.timeout for python < 3.11
+                "async-timeout; python_version < '3.11'",
+                "typer",
+                "meson",
+                "pybind11",
+                "hf_transfer",
+            ]
+            + setup_spec.extras["data"]
+            + setup_spec.extras["serve"]
+        )
+    )
 
 
 [project.optional-dependencies]
@@ -169,3 +383,73 @@ ray = 'ray.scripts.scripts:main'
 rllib = 'ray.rllib.scripts:cli' # In original version, it was only provided with `[rllib]` extra. One day, we'll find how to achieve that in meson-python.
 serve = 'ray.serve.scripts:cli'
 tune = 'ray.tune.cli.scripts:cli'
+
+
+[tool.ruff]
+line-length = 88
+extend-exclude = [
+    "python/ray/thirdparty_files/",
+    "python/ray/_private/thirdparty/",
+    "python/ray/_private/runtime_env/agent/thirdparty_files/",
+    "python/build/",
+    "python/ray/workflow/tests/mock_server.py",
+    "python/ray/serve/tests/test_config_files/syntax_error.py",
+    "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2.py",
+    "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2_grpc.py",
+]
+
+[tool.ruff.lint]
+extend-select = ["I", "B", "Q", "C4", "W"]
+ignore = [
+    "B003",
+    "B005",
+    "B007",
+    "B008",
+    "B011",
+    "B012",
+    "B015",
+    "B017",
+    "B028",
+    "C408",
+    "C417",
+    "E741",
+    # TODO(MortalHappiness): Remove the following rules from the ignore list
+    # The above are rules ignored originally in flake8
+    # The following are rules ignored in ruff
+    "B023",
+    "B024",
+    "B026",
+    "B027",
+    "B904",
+    "C419",
+    # Below are auto-fixable rules
+    "I001",
+]
+
+[tool.ruff.lint.flake8-quotes]
+avoid-escape = false
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder", "afterray"]
+known-local-folder = ["ray", "ray_release"]
+known-third-party = ["grpc"]
+
+[tool.ruff.lint.isort.sections]
+afterray = ["psutil", "setproctitle"]
+
+# Some of the directories need to be kept in the blacklist for isort ("I" rule):
+# python/ray/cloudpickle/*
+# doc/*
+# python/ray/__init__.py
+# For the rest we will gradually remove them from the blacklist as we
+# reformat the code to follow the style guide.
+[tool.ruff.lint.per-file-ignores]
+"doc/*" = ["I"]
+"python/ray/__init__.py" = ["I"]
+"python/ray/dag/__init__.py" = ["I"]
+"python/ray/air/__init__.py" = ["I"]
+"release/*_tests/*.py" = ["I"]
+
+# TODO(matthewdeng): Remove this line
+"python/ray/tune/__init__.py" = ["I"]

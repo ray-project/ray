@@ -21,8 +21,7 @@ def test_user_exception(
     ctx.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
 
     def f(row):
-        1 / 0
-        return row
+        _ = 1 / 0
 
     with pytest.raises(UserCodeException) as exc_info:
         ray.data.range(1).map(f).take_all()
@@ -52,7 +51,7 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
 
     with pytest.raises(FakeException) as exc_info:
         with patch(
-            "ray.data._internal.plan.ExecutionPlan.has_computed_output",
+            "ray.data.dataset._ExecutionCache.get_bundle",
             side_effect=FakeException(),
         ):
             ray.data.range(1).materialize()
@@ -80,7 +79,7 @@ def test_full_traceback_logged_with_ray_debugger(
     monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", 1)
 
     def f(row):
-        1 / 0
+        _ = 1 / 0
         return row
 
     with pytest.raises(Exception) as exc_info:

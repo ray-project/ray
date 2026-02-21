@@ -50,7 +50,7 @@ def get_data_loader(data_dir="~/data"):
             [
                 transforms.Resize(image_size),
                 transforms.ToTensor(),
-                transforms.Normalize((0.5,), (0.5,)),
+                transforms.Normalize((0.13066,), (0.30131,)),
             ]
         ),
     )

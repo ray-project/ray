@@ -15,12 +15,12 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
-#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/rpc/worker/core_worker_client.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
@@ -34,15 +34,15 @@ using ReportLocalityDataCallback =
 class FutureResolver {
  public:
   FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 std::shared_ptr<ReferenceCounter> ref_counter,
+                 std::shared_ptr<ReferenceCounterInterface> ref_counter,
                  ReportLocalityDataCallback report_locality_data_callback,
                  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
-                 const rpc::Address &rpc_address)
-      : in_memory_store_(store),
-        reference_counter_(ref_counter),
+                 rpc::Address rpc_address)
+      : in_memory_store_(std::move(store)),
+        reference_counter_(std::move(ref_counter)),
         report_locality_data_callback_(std::move(report_locality_data_callback)),
-        owner_clients_(core_worker_client_pool),
-        rpc_address_(rpc_address) {}
+        owner_clients_(std::move(core_worker_client_pool)),
+        rpc_address_(std::move(rpc_address)) {}
 
   /// Resolve the value for a future. This will periodically contact the given
   /// owner until the owner dies or the owner has finished creating the object.
@@ -70,10 +70,10 @@ class FutureResolver {
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   /// Used to record nested ObjectRefs of resolved futures.
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
 
   /// Used to report locality data received during future resolution.
-  const ReportLocalityDataCallback report_locality_data_callback_;
+  ReportLocalityDataCallback report_locality_data_callback_;
 
   /// Pool of owner core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> owner_clients_;
@@ -81,7 +81,7 @@ class FutureResolver {
   /// Address of our RPC server. Used to notify borrowed objects' owners of our
   /// address, so the owner can contact us to ask when our reference to the
   /// object has gone out of scope.
-  const rpc::Address rpc_address_;
+  rpc::Address rpc_address_;
 };
 
 }  // namespace core

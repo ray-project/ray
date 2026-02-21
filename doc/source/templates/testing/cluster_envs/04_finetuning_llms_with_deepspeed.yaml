@@ -17,7 +17,7 @@ python:
     bitsandbytes,
     wandb,
     pytorch-lightning,
-    protobuf<3.21.0,
+    protobuf,
     torchmetrics,
     lm_eval==0.3.0,
     tiktoken==0.1.2,

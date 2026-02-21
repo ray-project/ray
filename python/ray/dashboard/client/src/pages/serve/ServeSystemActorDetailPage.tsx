@@ -237,14 +237,14 @@ const ServeSystemActorLogs = ({
   actor: {
     actorId,
     pid,
-    address: { workerId, rayletId },
+    address: { workerId, nodeId },
   },
   systemLogFilePath,
 }: ServeSystemActorLogsProps) => {
   const tabs: MultiTabLogViewerTabDetails[] = [
     {
       title: type === "controller" ? "Controller logs" : "proxy logs",
-      nodeId: rayletId,
+      nodeId: nodeId,
       filename: systemLogFilePath.startsWith("/")
         ? systemLogFilePath.substring(1)
         : systemLogFilePath,

@@ -1,16 +1,17 @@
-import gymnasium as gym
-from gymnasium.spaces import Box, Dict, Discrete, Tuple
-import numpy as np
 import unittest
 
+import gymnasium as gym
+import numpy as np
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
+
 import ray
+from ray import tune
 from ray.rllib.algorithms import sac
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import check_train_results_new_api_stack
-from ray import tune
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -68,7 +69,9 @@ class TestSAC(unittest.TestCase):
                 train_batch_size=10,
             )
             .env_runners(
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
                 num_env_runners=0,
                 rollout_fragment_length=10,
             )
@@ -130,9 +133,7 @@ class TestSAC(unittest.TestCase):
 
         # Dict space .sample() returns an ordered dict.
         # Make sure the keys in samples are ordered differently.
-        dict_samples = [
-            {k: v for k, v in reversed(dict_space.sample().items())} for _ in range(10)
-        ]
+        dict_samples = [dict(reversed(dict_space.sample().items())) for _ in range(10)]
 
         class NestedDictEnv(gym.Env):
             def __init__(self):
@@ -164,7 +165,9 @@ class TestSAC(unittest.TestCase):
             .env_runners(
                 num_env_runners=0,
                 rollout_fragment_length=5,
-                env_to_module_connector=lambda env: FlattenObservations(),
+                env_to_module_connector=(
+                    lambda env, spaces, device: FlattenObservations()
+                ),
             )
         )
         num_iterations = 1
@@ -177,7 +180,8 @@ class TestSAC(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

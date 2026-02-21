@@ -7,9 +7,9 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.internal_api import memory_summary
-from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
 import ray.exceptions
+from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
+from ray._private.internal_api import memory_summary
 from ray.util.state import list_tasks
 
 # Task status.
@@ -160,7 +160,8 @@ def test_lineage_evicted(config, ray_start_cluster):
         ray.get(dependent_task.remote(obj))
         assert False
     except ray.exceptions.RayTaskError as e:
-        assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
+        assert "ObjectReconstructionFailedError" in str(e)
+        assert "LINEAGE_EVICTED" in str(e)
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
@@ -206,7 +207,7 @@ def test_multiple_returns(config, ray_start_cluster, reconstruction_enabled):
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj1))
             ray.get(dependent_task.remote(obj2))
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj2)
 
 
@@ -269,7 +270,7 @@ def test_nested(config, ray_start_cluster, reconstruction_enabled):
     if reconstruction_enabled:
         ray.get(ref, timeout=60)
     else:
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(ref, timeout=60)
 
 
@@ -318,7 +319,7 @@ def test_spilled(config, ray_start_cluster, reconstruction_enabled):
     else:
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj), timeout=60)
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj, timeout=60)
 
 
@@ -499,7 +500,7 @@ def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enab
     if reconstruction_enabled:
         ray.get(x)
     else:
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(x)
         with pytest.raises(ray.exceptions.ObjectFreedError):
             ray.get(obj)
@@ -559,7 +560,9 @@ def test_object_reconstruction_dead_actor(config, ray_start_cluster):
 def test_object_reconstruction_pending_creation(config, ray_start_cluster):
     # Test to make sure that an object being reconstructured
     # has pending_creation set to true.
-    config["fetch_fail_timeout_milliseconds"] = 5000
+    config["fetch_fail_timeout_milliseconds"] = (
+        5000 if sys.platform == "linux" else 9000
+    )
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0, resources={"head": 1}, _system_config=config)
     ray.init(address=cluster.address)
@@ -603,9 +606,4 @@ def test_object_reconstruction_pending_creation(config, ray_start_cluster):
 
 
 if __name__ == "__main__":
-    import pytest
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

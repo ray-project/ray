@@ -1,13 +1,13 @@
-from unittest import mock
+import os
 import sys
 import tempfile
-import os
+from unittest import mock
 
 import pytest
 
 from ci.ray_ci.automation.update_version_lib import (
-    list_java_files,
     get_current_version,
+    list_java_files,
     update_file_version,
 )
 
@@ -104,6 +104,7 @@ def test_update_file_version(main_version, java_version, new_version):
         non_java_file_paths = [
             "ci/ray_ci/utils.py",
             "python/ray/_version.py",
+            "rayci.env",
             "src/ray/common/constants.h",
         ]
         select_java_file_paths = [
@@ -193,6 +194,7 @@ def test_update_file_version_fail_no_java_file():
         non_java_file_paths = [
             "ci/ray_ci/utils.py",
             "python/ray/_version.py",
+            "rayci.env",
             "src/ray/common/constants.h",
         ]
         for file_path in non_java_file_paths:

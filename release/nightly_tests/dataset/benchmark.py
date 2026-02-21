@@ -2,7 +2,7 @@ import gc
 import json
 import os
 import time
-from typing import Callable, Dict
+from typing import Callable, Dict, Union
 
 from ray.data.dataset import Dataset
 from typing import Any
@@ -20,39 +20,37 @@ class BenchmarkMetric(Enum):
     THROUGHPUT = "tput"
     ACCURACY = "accuracy"
 
-    # Extra metrics not matching the above categories/keys, stored as a Dict[str, Any].
-    EXTRA_METRICS = "extra_metrics"
-
 
 class Benchmark:
-    """Utility class used for Ray Data release tests and benchmarks, which works
-    for both local and distributed benchmarking. When run on the nightly release
-    test pipeline, the results are written to our internal database, which
-    can then be rendered on the dashboard. Usage tips:
+    """Runs benchmarks in a way that's compatible with our release test infrastructure.
 
-    A typical workflow would be:
+    Here's an example of typical usage:
 
-    benchmark = Benchmark("benchmark-name")
+    .. testcode::
 
-    # set up (such as input read or generation)
-    ...
+        import time
+        from benchmark import Benchmark
 
-    benchmark.run_materialize_ds("case-1", fn_1)
-    # Could be Ray Data iterator, Torch DataLoader, TF Dataset...
-    benchmark.run_iterate_ds("case-2", dataset)
-    benchmark.run_fn("case-3", fn_3)
+        def sleep(sleep_s)
+            time.sleep(sleep_s)
+            # Return any extra metrics you want to record. This can include
+            # configuration parameters, accuracy, etc.
+            return {"sleep_s": sleep_s}
 
-    # Writes a JSON with metrics of the form:
-    # {"case-1": {...}, "case-2": {...}, "case-3": {...}}
-    benchmark.write_result()
+        benchmark = Benchmark()
+        benchmark.run_fn("short", sleep, 1)
+        benchmark.run_fn("long", sleep, 10)
+        benchmark.write_result()
 
-    See example usage in ``aggregate_benchmark.py``.
+    This code outputs a JSON file with contents like this:
+
+    .. code-block:: json
+
+        {"short": {"time": 1.0, "sleep_s": 1}, "long": {"time": 10.0 "sleep_s": 10}}
     """
 
-    def __init__(self, name):
-        self.name = name
+    def __init__(self):
         self.result = {}
-        print(f"Running benchmark: {name}")
 
     def run_materialize_ds(
         self,
@@ -134,49 +132,54 @@ class Benchmark:
         print(f"Result of case {name}: {self.result[name]}")
 
     def run_fn(
-        self, name: str, fn: Callable[..., Dict[str, Any]], *fn_args, **fn_kwargs
+        self,
+        name: str,
+        fn: Callable[..., Dict[Union[str, BenchmarkMetric], Any]],
+        *fn_args,
+        **fn_kwargs,
     ):
-        """Run a benchmark for a specific function; this is the most general
-        benchmark utility available and will work if the other benchmark methods
-        are too specific. However, ``fn`` is expected to return a
-        `Dict[str, Any]` of metric labels to metric values, which are reported
-        at the end of the benchmark. Runtime is automatically calculated and reported,
-        but all other metrics of interest must be calculated and returned by ``fn``."""
+        """Benchmark a function.
 
+        This is the most general benchmark utility available. Use it if the other
+        methods are too specific.
+
+        ``run_fn`` automatically records the runtime of ``fn``. To report additional
+        metrics, return a ``Dict[str, Any]`` of metric labels to metric values from your
+        function.
+        """
         gc.collect()
 
         print(f"Running case: {name}")
         start_time = time.perf_counter()
-        # e.g. fn may output a dict of metrics
         fn_output = fn(*fn_args, **fn_kwargs)
+        assert fn_output is None or isinstance(fn_output, dict), fn_output
         duration = time.perf_counter() - start_time
 
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
         }
         if isinstance(fn_output, dict):
-            extra_metrics = {}
-            for metric_key, metric_val in fn_output.items():
-                if isinstance(metric_key, BenchmarkMetric):
-                    curr_case_metrics[metric_key.value] = metric_val
+            for key, value in fn_output.items():
+                if isinstance(key, BenchmarkMetric):
+                    curr_case_metrics[key.value] = value
+                elif isinstance(key, str):
+                    curr_case_metrics[key] = value
                 else:
-                    extra_metrics[metric_key] = metric_val
-            curr_case_metrics[BenchmarkMetric.EXTRA_METRICS.value] = extra_metrics
+                    raise ValueError(f"Unexpected metric key type: {type(key)}")
 
         self.result[name] = curr_case_metrics
         print(f"Result of case {name}: {curr_case_metrics}")
 
-    def write_result(self, output_path="/tmp/result.json"):
-        """Write all collected benchmark results to `output_path`.
-        The result is a dict of the form:
-        ``{case_name: {metric_name: metric_value, ...}}``."""
+    def write_result(self):
+        """Write all results to the appropriate JSON file.
 
-        test_output_json = os.environ.get("TEST_OUTPUT_JSON", output_path)
+        Our release test infrastructure consumes the JSON file and uploads the results
+        to our internal dashboard.
+        """
+        # 'TEST_OUTPUT_JSON' is set in the release test environment.
+        test_output_json = os.environ.get("TEST_OUTPUT_JSON", "./result.json")
         with open(test_output_json, "w") as f:
-            self.result["name"] = self.name
             f.write(json.dumps(self.result))
 
-        print(
-            f"Finished benchmark {self.name}, metrics exported to {test_output_json}:"
-        )
-        print(self.result)
+        print(f"Finished benchmark, metrics exported to '{test_output_json}':")
+        print(json.dumps(self.result, indent=4))

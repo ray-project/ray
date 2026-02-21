@@ -13,19 +13,19 @@ import requests
 import yaml
 
 import ray
+from ray._common.network_utils import build_address
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
     chdir,
     format_web_url,
     get_current_unused_port,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
     wait_until_server_available,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
@@ -66,11 +66,19 @@ def get_node_ip_by_id(node_id: str) -> str:
     return node.node_ip
 
 
+class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._session.headers[
+            "User-Agent"
+        ] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"  # noqa: E501
+
+
 @pytest_asyncio.fixture
 async def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
-        ip, _ = ctx.address_info["webui_url"].split(":")
-        agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
+        node_ip = ctx.address_info["node_ip_address"]
+        agent_address = build_address(node_ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
         assert wait_until_server_available(agent_address)
         head_address = ctx.address_info["webui_url"]
         assert wait_until_server_available(head_address)
@@ -164,8 +172,7 @@ ray.get(f.remote())
                 yield {
                     "runtime_env": {"py_modules": [str(Path(tmp_dir) / "test_module")]},
                     "entrypoint": (
-                        "python -c 'import test_module;"
-                        "print(test_module.run_test())'"
+                        "python -c 'import test_module;print(test_module.run_test())'"
                     ),
                     "expected_logs": "Hello from test_module!\n",
                 }
@@ -240,8 +247,12 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     agent_client, head_client = job_sdk_client
 
     runtime_env = runtime_env_option["runtime_env"]
-    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
-    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
     runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
     request = validate_request_type(
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
@@ -275,6 +286,66 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     # There is only one node, so there is no need to replace the client of the JobAgent
     resp = await agent_client.get_job_logs_internal(job_id)
     assert runtime_env_option["expected_logs"] in resp.logs
+
+
+@pytest.mark.asyncio
+async def test_submit_job_rejects_browsers(
+    job_sdk_client, runtime_env_option, monkeypatch
+):
+    # This flag allows for local testing of runtime env conda functionality
+    # without needing a built Ray wheel.  Rather than insert the link to the
+    # wheel into the conda spec, it links to the current Python site.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
+    agent_client, head_client = job_sdk_client
+    agent_address = agent_client._agent_address
+    agent_client = JobAgentSubmissionBrowserClient(agent_address)
+
+    runtime_env = runtime_env_option["runtime_env"]
+    runtime_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = upload_py_modules_if_needed(
+        runtime_env, include_gitignore=True, logger=logger
+    )
+    runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
+        JobSubmitRequest,
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        _ = await agent_client.submit_job_internal(request)
+
+    assert "status code 403" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_delete_job_rejects_browsers(job_sdk_client, monkeypatch):
+    """Test that DELETE job requests from browsers are rejected."""
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
+    agent_client, head_client = job_sdk_client
+
+    # First, submit a job using the normal client
+    runtime_env = RuntimeEnv().to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": "echo hello"},
+        JobSubmitRequest,
+    )
+    submit_result = await agent_client.submit_job_internal(request)
+    job_id = submit_result.submission_id
+
+    # Now try to delete the job using browser-like headers
+    agent_address = agent_client._agent_address
+    browser_client = JobAgentSubmissionBrowserClient(agent_address)
+
+    with pytest.raises(RuntimeError) as exc:
+        _ = await browser_client.delete_job_internal(job_id)
+
+    assert "status code 403" in str(exc.value)
+
+    await browser_client.close()
 
 
 @pytest.mark.asyncio
@@ -350,7 +421,9 @@ raise RuntimeError('Intentionally failed.')
             file.write(driver_script)
 
         runtime_env = {"working_dir": tmp_dir}
-        runtime_env = upload_working_dir_if_needed(runtime_env, tmp_dir, logger=logger)
+        runtime_env = upload_working_dir_if_needed(
+            runtime_env, include_gitignore=True, scratch_dir=tmp_dir, logger=logger
+        )
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
         request = validate_request_type(
@@ -392,7 +465,10 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
-            if "Runtime env is setting up." in line:
+            if (
+                "Runtime env is setting up." in line
+                or "Running entrypoint for job" in line
+            ):
                 continue
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
@@ -433,8 +509,8 @@ async def test_job_log_in_multiple_node(
         dashboard_agent_listen_port=DEFAULT_DASHBOARD_AGENT_LISTEN_PORT + 2
     )
 
-    ip, port = cluster.webui_url.split(":")
-    agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
+    node_ip = cluster.head_node.node_ip_address
+    agent_address = build_address(node_ip, DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
     assert wait_until_server_available(agent_address)
     client = JobAgentSubmissionClient(format_web_url(agent_address))
 
@@ -503,7 +579,7 @@ async def test_job_log_in_multiple_node(
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
             resp = await client.get_job_logs_internal(job_id)
-            assert result_log in resp.logs, resp.logs
+            assert result_log in resp.logs, f"logs: {resp.logs}"
 
             job_check_status[index] = True
         return True
@@ -530,7 +606,7 @@ def test_agent_logs_not_streamed_to_drivers():
 import ray
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._private.test_utils import format_web_url
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 
 ray.init()
 address = ray._private.worker._global_node.webui_url
@@ -559,18 +635,18 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
     """
     import subprocess
 
-    cmd = (
-        "ray start --head " f"--dashboard-agent-listen-port {get_current_unused_port()}"
-    )
+    dashboard_agent_port = get_current_unused_port()
+    cmd = f"ray start --head --dashboard-agent-listen-port {dashboard_agent_port}"
     subprocess.check_output(cmd, shell=True)
 
     try:
         # We will need to wait for the ray to be started in the subprocess.
         address_info = ray.init("auto", ignore_reinit_error=True).address_info
 
-        ip, _ = address_info["webui_url"].split(":")
+        node_ip = address_info["node_ip_address"]
+
         dashboard_agent_listen_port = address_info["dashboard_agent_listen_port"]
-        agent_address = f"{ip}:{dashboard_agent_listen_port}"
+        agent_address = build_address(node_ip, dashboard_agent_listen_port)
         print("agent address = ", agent_address)
 
         agent_client = JobAgentSubmissionClient(format_web_url(agent_address))
@@ -607,7 +683,7 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
 
             return True
 
-        await async_wait_for_condition_async_predicate(verify, retry_interval_ms=2000)
+        await async_wait_for_condition(verify, retry_interval_ms=2000)
     finally:
         subprocess.check_output("ray stop --force", shell=True)
 

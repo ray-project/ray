@@ -17,7 +17,7 @@
 namespace ray {
 void PlacementGroupSpecification::ConstructBundles() {
   for (int i = 0; i < message_->bundles_size(); i++) {
-    bundles_.push_back(BundleSpecification(message_->bundles(i)));
+    bundles_.emplace_back(message_->bundles(i));
   }
 }
 
@@ -43,9 +43,5 @@ BundleSpecification PlacementGroupSpecification::GetBundle(int position) const {
 
 std::string PlacementGroupSpecification::GetName() const {
   return std::string(message_->name());
-}
-
-double PlacementGroupSpecification::GetMaxCpuFractionPerNode() const {
-  return message_->max_cpu_fraction_per_node();
 }
 }  // namespace ray

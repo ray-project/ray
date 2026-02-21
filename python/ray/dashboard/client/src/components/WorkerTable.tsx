@@ -1,5 +1,6 @@
 import { KeyboardArrowDown, KeyboardArrowRight } from "@mui/icons-material";
 import {
+  Box,
   Button,
   Grid,
   IconButton,
@@ -9,6 +10,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
 } from "@mui/material";
 import React, {
   PropsWithChildren,
@@ -70,7 +72,15 @@ export const ExpandableTableRow = ({
             size="large"
           >
             {length}
-            {isExpanded ? <KeyboardArrowDown /> : <KeyboardArrowRight />}
+            {isExpanded ? (
+              <KeyboardArrowDown
+                sx={(theme) => ({ color: theme.palette.text.secondary })}
+              />
+            ) : (
+              <KeyboardArrowRight
+                sx={(theme) => ({ color: theme.palette.text.secondary })}
+              />
+            )}
           </IconButton>
         </TableCell>
         {children}
@@ -94,7 +104,14 @@ const WorkerDetailTable = ({
   const actors = {} as { [actorId: string]: ActorDetail };
   (coreWorkerStats || [])
     .filter((e) => actorMap[e.actorId])
-    .forEach((e) => (actors[e.actorId] = actorMap[e.actorId]));
+    .forEach((e) => {
+      if (actorMap[e.actorId]) {
+        actors[e.actorId] = {
+          ...actorMap[e.actorId],
+          workerId: e.workerId || "N/A",
+        };
+      }
+    });
 
   if (!Object.values(actors).length) {
     return <p>The Worker Haven't Had Related Actor Yet.</p>;
@@ -130,6 +147,12 @@ const RayletWorkerTable = ({
             label="Pid"
             onChange={(value) => changeFilter("pid", value)}
           />
+          <SearchInput
+            label="Worker ID"
+            onChange={(value) =>
+              changeFilter("coreWorkerStats.0.workerId", value)
+            }
+          />
           <Button onClick={open}>Expand All</Button>
           <Button onClick={close}>Collapse All</Button>
         </div>
@@ -140,6 +163,7 @@ const RayletWorkerTable = ({
             {[
               "",
               "Pid",
+              "Worker ID",
               "CPU",
               "CPU Times",
               "Memory",
@@ -197,6 +221,24 @@ const RayletWorkerTable = ({
                   stateKey={key}
                 >
                   <TableCell align="center">{pid}</TableCell>
+                  <TableCell align="center">
+                    {coreWorkerStats[0]?.workerId ? (
+                      <Tooltip title={coreWorkerStats[0].workerId} arrow>
+                        <Box
+                          sx={{
+                            maxWidth: "120px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {coreWorkerStats[0].workerId}
+                        </Box>
+                      </Tooltip>
+                    ) : (
+                      "N/A"
+                    )}
+                  </TableCell>
                   <TableCell align="center">
                     <PercentageBar num={Number(cpuPercent)} total={100}>
                       {cpuPercent}%

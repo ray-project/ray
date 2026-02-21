@@ -14,6 +14,11 @@
 
 #include "ray/core_worker/common.h"
 
+#include <memory>
+#include <string>
+
+#include "ray/util/process_utils.h"
+
 namespace ray {
 namespace core {
 
@@ -57,8 +62,8 @@ void SerializeReturnObject(const ObjectID &object_id,
   if (!return_object) {
     // This should only happen if the local raylet died. Caller should
     // retry the task.
-    RAY_LOG(WARNING) << "Failed to create task return object " << object_id
-                     << " in the object store, exiting.";
+    RAY_LOG(WARNING).WithField(object_id)
+        << "Failed to create task return object in the object store, exiting.";
     QuickExit();
   }
   return_object_proto->set_size(return_object->GetSize());
@@ -76,6 +81,10 @@ void SerializeReturnObject(const ObjectID &object_id,
   }
   for (const auto &nested_ref : return_object->GetNestedRefs()) {
     return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
+  }
+  const auto &direct_transport_metadata = return_object->GetDirectTransportMetadata();
+  if (direct_transport_metadata.has_value()) {
+    return_object_proto->set_direct_transport_metadata(*direct_transport_metadata);
   }
 }
 

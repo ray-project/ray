@@ -8,21 +8,22 @@ import grpc
 import pytest
 
 from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
+from ray.serve._private.constants import HEALTHY_MESSAGE
 from ray.serve._private.proxy import (
     DRAINING_MESSAGE,
-    HEALTHY_MESSAGE,
     HTTPProxy,
     ResponseGenerator,
     ResponseStatus,
     gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import ProxyRequest
+from ray.serve._private.proxy_request_response import ProxyRequest, gRPCStreamingType
 from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
     ProxyRouter,
 )
 from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -54,16 +55,6 @@ class FakeRef:
 
     def cancel(self):
         pass
-
-
-class FakeActorHandle:
-    @property
-    def receive_asgi_messages(self):
-        class FakeReceiveASGIMessagesActorMethod:
-            def remote(self, request_id):
-                return FakeRef()
-
-        return FakeReceiveASGIMessagesActorMethod()
 
 
 class FakeGrpcHandle:
@@ -105,6 +96,8 @@ class FakeProxyRouter(ProxyRouter):
         self.handle = None
         self.app_is_cross_language = None
         self._ready_for_traffic = False
+        self.route_patterns = {}
+        self._route_pattern_apps = {}
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.endpoints = endpoints
@@ -388,7 +381,8 @@ class TestgRPCProxy:
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         unary_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method", stream=False
+            service_method="service_method",
+            streaming_type=gRPCStreamingType.UNARY_UNARY,
         )
         assert unary_entrypoint.__name__ == "unary_unary"
 
@@ -409,7 +403,8 @@ class TestgRPCProxy:
 
         # Ensure gRPC streaming call uses the correct entry point.
         streaming_entrypoint = grpc_proxy.service_handler_factory(
-            service_method="service_method", stream=True
+            service_method="service_method",
+            streaming_type=gRPCStreamingType.UNARY_STREAM,
         )
         assert streaming_entrypoint.__name__ == "unary_stream"
 
@@ -447,7 +442,7 @@ class TestHTTPProxy:
             node_ip_address=node_ip_address,
             is_head=is_head,
             proxy_router=FakeProxyRouter(),
-            proxy_actor=FakeActorHandle(),
+            self_actor_name="fake-proxy-name",
         )
 
     @pytest.mark.asyncio
@@ -713,7 +708,7 @@ async def test_head_http_unhealthy_until_route_table_updated():
         # proxy is on head node
         is_head=True,
         proxy_router=ProxyRouter(get_handle_override),
-        proxy_actor=FakeActorHandle(),
+        self_actor_name="fake-proxy-name",
     )
     proxy_request = FakeProxyRequest(
         request_type="http",
@@ -757,7 +752,7 @@ async def test_worker_http_unhealthy_until_replicas_populated():
         # proxy is on worker node
         is_head=False,
         proxy_router=ProxyRouter(lambda *args: handle),
-        proxy_actor=FakeActorHandle(),
+        self_actor_name="fake-proxy-name",
     )
     proxy_request = FakeProxyRequest(
         request_type="http",
@@ -802,6 +797,157 @@ async def test_worker_http_unhealthy_until_replicas_populated():
     assert messages[0]["headers"] is not None
     assert messages[0]["status"] == 200
     assert messages[1]["body"].decode("utf-8") == HEALTHY_MESSAGE
+
+
+class TestProxyRouterMatchRoutePattern:
+    """Test ProxyRouter.match_route_pattern functionality."""
+
+    @pytest.fixture
+    def mock_get_handle(self):
+        def _get_handle(endpoint: DeploymentID, info: EndpointInfo):
+            return MockDeploymentHandle(deployment_name=endpoint.name)
+
+        return _get_handle
+
+    def test_match_route_pattern_no_patterns(self, mock_get_handle):
+        """Test that match_route_pattern returns route_prefix when no patterns exist."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api", route_patterns=None
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api"
+
+    def test_match_route_pattern_with_patterns(self, mock_get_handle):
+        """Test that match_route_pattern matches specific route patterns."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/"),
+                        RoutePattern(methods=None, path="/api/users/{user_id}"),
+                        RoutePattern(methods=None, path="/api/items/{item_id}/details"),
+                    ],
+                )
+            }
+        )
+
+        # Test matching parameterized route
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/users/{user_id}"
+
+        # Test matching nested parameterized route
+        scope = {"type": "http", "path": "/api/items/abc/details", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/items/{item_id}/details"
+
+        # Test matching root
+        scope = {"type": "http", "path": "/api/", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api/"
+
+    def test_match_route_pattern_caching(self, mock_get_handle):
+        """Test that mock Starlette apps are cached for performance."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+
+        # First call should create and cache the mock app
+        assert "/api" not in router._route_pattern_apps
+        result1 = router.match_route_pattern("/api", scope)
+        assert result1 == "/api/users/{user_id}"
+        assert "/api" in router._route_pattern_apps
+
+        # Second call should use cached app
+        cached_app = router._route_pattern_apps["/api"]
+        result2 = router.match_route_pattern("/api", scope)
+        assert result2 == "/api/users/{user_id}"
+        assert router._route_pattern_apps["/api"] is cached_app
+
+    def test_match_route_pattern_cache_invalidation(self, mock_get_handle):
+        """Test that cache is cleared when routes are updated."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        router.match_route_pattern("/api", scope)
+        assert "/api" in router._route_pattern_apps
+
+        # Update routes should clear cache
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/items/{item_id}")
+                    ],
+                )
+            }
+        )
+        assert len(router._route_pattern_apps) == 0
+
+    def test_match_route_pattern_empty_patterns(self, mock_get_handle):
+        """Test that empty pattern list returns route_prefix."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api", route_patterns=[]
+                )
+            }
+        )
+
+        scope = {"type": "http", "path": "/api/users/123", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        assert result == "/api"
+
+    def test_match_route_pattern_no_match_fallback(self, mock_get_handle):
+        """Test that unmatched requests fall back to route_prefix."""
+        router = ProxyRouter(mock_get_handle)
+        router.update_routes(
+            {
+                DeploymentID("api", "default"): EndpointInfo(
+                    route="/api",
+                    route_patterns=[
+                        RoutePattern(methods=None, path="/api/users/{user_id}")
+                    ],
+                )
+            }
+        )
+
+        # Request to path not in patterns
+        scope = {"type": "http", "path": "/api/admin/settings", "method": "GET"}
+        result = router.match_route_pattern("/api", scope)
+        # Should fall back to prefix since no pattern matches
+        assert result == "/api"
 
 
 if __name__ == "__main__":

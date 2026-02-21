@@ -11,6 +11,7 @@ ray[default] but not in ray (e.g., `pip uninstall aiohttp`) and set
 
 import os
 import sys
+
 import pytest
 
 import ray
@@ -67,7 +68,4 @@ def test_ray_init(shutdown_only):
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

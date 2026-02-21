@@ -37,7 +37,7 @@ def train_func(config):
 
     # Prepare PyTorch Data Loaders
     # ====================================================
-    hf_datasets = load_dataset("glue", "mrpc")
+    hf_datasets = load_dataset("nyu-mll/glue", "mrpc")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
     def collate_fn(batch):
@@ -173,6 +173,6 @@ if __name__ == "__main__":
     result = trainer.fit()
 
     # Retrieve the best checkponints from results
-    result.best_checkpoints
+    _ = result.best_checkpoints
 
 # __deepspeed_torch_basic_example_no_raydata_end__

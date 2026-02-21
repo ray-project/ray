@@ -3,18 +3,18 @@ import unittest
 import gymnasium as gym
 import numpy as np
 
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
     SHARED_ENCODER_ID,
-    SharedTorchEncoder,
-    VPGTorchRLModuleUsingSharedEncoder,
-    VPGTorchMultiRLModuleWithSharedEncoder,
+    SharedEncoder,
+    VPGMultiRLModuleWithSharedEncoder,
+    VPGPolicyAfterSharedEncoder,
 )
-from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
 
 
 class TestRLModuleSpecs(unittest.TestCase):
@@ -56,16 +56,16 @@ class TestRLModuleSpecs(unittest.TestCase):
         act_space = gym.spaces.Discrete(2)
 
         spec = MultiRLModuleSpec(
-            multi_rl_module_class=VPGTorchMultiRLModuleWithSharedEncoder,
+            multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
             rl_module_specs={
                 SHARED_ENCODER_ID: RLModuleSpec(
-                    module_class=SharedTorchEncoder,
+                    module_class=SharedEncoder,
                     observation_space=obs_space,
                     action_space=act_space,
                     model_config={"embedding_dim": EMBEDDING_DIM},
                 ),
                 "agent_1": RLModuleSpec(
-                    module_class=VPGTorchRLModuleUsingSharedEncoder,
+                    module_class=VPGPolicyAfterSharedEncoder,
                     observation_space=obs_space,
                     action_space=act_space,
                     model_config={
@@ -74,7 +74,7 @@ class TestRLModuleSpecs(unittest.TestCase):
                     },
                 ),
                 "agent_2": RLModuleSpec(
-                    module_class=VPGTorchRLModuleUsingSharedEncoder,
+                    module_class=VPGPolicyAfterSharedEncoder,
                     observation_space=obs_space,
                     action_space=act_space,
                     model_config={
@@ -88,7 +88,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         spec.build()
 
     def test_get_spec_from_module_multi_agent(self):
-        """Tests wether MultiRLModuleSpec.from_module() works."""
+        """Tests whether MultiRLModuleSpec.from_module() works."""
         env = gym.make("CartPole-v1")
         num_agents = 2
         module_specs = {}
@@ -107,7 +107,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         self.assertEqual(spec, spec_from_module)
 
     def test_get_spec_from_module_single_agent(self):
-        """Tests wether RLModuleSpec.from_module() works."""
+        """Tests whether RLModuleSpec.from_module() works."""
         env = gym.make("CartPole-v1")
         spec = RLModuleSpec(
             module_class=VPGTorchRLModule,
@@ -121,7 +121,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         self.assertEqual(spec, spec_from_module)
 
     def test_update_specs(self):
-        """Tests wether RLModuleSpec.update() works."""
+        """Tests whether RLModuleSpec.update() works."""
         env = gym.make("CartPole-v0")
 
         # Test if RLModuleSpec.update() works.
@@ -181,11 +181,11 @@ class TestRLModuleSpecs(unittest.TestCase):
         )
 
         marl_spec_1 = MultiRLModuleSpec(
-            multi_rl_module_class=VPGTorchMultiRLModuleWithSharedEncoder,
+            multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
             rl_module_specs={"agent_1": module_spec_1},
         )
         marl_spec_2 = MultiRLModuleSpec(
-            multi_rl_module_class=VPGTorchMultiRLModuleWithSharedEncoder,
+            multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
             rl_module_specs={"agent_1": module_spec_2},
         )
 
@@ -200,7 +200,7 @@ class TestRLModuleSpecs(unittest.TestCase):
         # Test if updating MultiRLModuleSpec without overwriting works. This
         # means that the single agent specs should not be overwritten
         marl_spec_3 = MultiRLModuleSpec(
-            multi_rl_module_class=VPGTorchMultiRLModuleWithSharedEncoder,
+            multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
             rl_module_specs={"agent_1": module_spec_1},
         )
 
@@ -224,7 +224,7 @@ class TestRLModuleSpecs(unittest.TestCase):
             model_config="I'm new!",
         )
         marl_spec_3 = MultiRLModuleSpec(
-            multi_rl_module_class=VPGTorchMultiRLModuleWithSharedEncoder,
+            multi_rl_module_class=VPGMultiRLModuleWithSharedEncoder,
             rl_module_specs={"agent_2": module_spec_3},
         )
         self.assertEqual(marl_spec_1.rl_module_specs.get("agent_2"), None)
@@ -235,7 +235,8 @@ class TestRLModuleSpecs(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

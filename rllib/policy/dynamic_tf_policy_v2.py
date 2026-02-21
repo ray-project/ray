@@ -1,9 +1,10 @@
-from collections import OrderedDict
-import gymnasium as gym
 import logging
 import re
-import tree  # pip install dm_tree
+from collections import OrderedDict
 from typing import Dict, List, Optional, Tuple, Type, Union
+
+import gymnasium as gym
+import tree  # pip install dm_tree
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -733,7 +734,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 {SampleBatch.SEQ_LENS: train_batch[SampleBatch.SEQ_LENS]}
             )
 
-        self._loss_input_dict.update({k: v for k, v in train_batch.items()})
+        self._loss_input_dict.update(dict(train_batch))
 
         if log_once("loss_init"):
             logger.debug(

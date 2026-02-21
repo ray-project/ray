@@ -89,6 +89,7 @@ $ nsys --version
 # NVIDIA Nsight Systems version 2022.4.1.21-0db2c85
 ```
 
+(run-nsight-on-ray)=
 #### Run Nsight on Ray
 
 To enable GPU profiling, specify the config in the `runtime_env` as follows:
@@ -101,12 +102,12 @@ ray.init()
 
 @ray.remote(num_gpus=1, runtime_env={ "nsight": "default"})
 class RayActor:
-    def run():
-    a = torch.tensor([1.0, 2.0, 3.0]).cuda()
-    b = torch.tensor([4.0, 5.0, 6.0]).cuda()
-    c = a * b
+    def run(self):
+        a = torch.tensor([1.0, 2.0, 3.0]).cuda()
+        b = torch.tensor([4.0, 5.0, 6.0]).cuda()
+        c = a * b
 
-    print("Result on GPU:", c)
+        print("Result on GPU:", c)
 
 ray_actor = RayActor.remote()
 # The Actor or Task process runs with : "nsys profile [default options] ..."
@@ -117,7 +118,7 @@ You can find the `"default"` config in [nsight.py](https://github.com/ray-projec
 
 #### Custom options
 
-You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight System Profiler by specifying a dictionary of option values, which overwrites the `default` config, however, Ray preserves the the `--output` option of the default config.
+You can also add [custom options](https://docs.nvidia.com/nsight-systems/UserGuide/index.html#cli-profile-command-switch-options) for Nsight System Profiler by specifying a dictionary of option values, which overwrites the `default` config, however, Ray preserves the `--output` option of the default config.
 
 
 ```python
@@ -134,12 +135,12 @@ runtime_env={ "nsight": {
     "cuda-graph-trace": "graph",
 }})
 class RayActor:
-    def run():
-    a = torch.tensor([1.0, 2.0, 3.0]).cuda()
-    b = torch.tensor([4.0, 5.0, 6.0]).cuda()
-    c = a * b
+    def run(self):
+        a = torch.tensor([1.0, 2.0, 3.0]).cuda()
+        b = torch.tensor([4.0, 5.0, 6.0]).cuda()
+        c = a * b
 
-    print("Result on GPU:", c)
+        print("Result on GPU:", c)
 
 ray_actor = RayActor.remote()
 
@@ -150,7 +151,7 @@ ray.get(ray_actor.run.remote())
 
 **Note:**: The default report filename (`-o, --output`) is `worker_process_{pid}.nsys-rep` in the logs dir.
 
-
+(profiling-result)=
 #### Profiling result
 
 Find profiling results under the `/tmp/ray/session_*/logs/{profiler_name}` directory. This specific directory location may change in the future. You can download the profiling reports from the {ref}`Ray Dashboard <dash-logs-view>`.

@@ -1,5 +1,6 @@
-import numpy as np
 from typing import Any, Dict, Optional
+
+import numpy as np
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -104,6 +105,6 @@ class FifoReplayBuffer(ReplayBuffer):
 
         Args:
             state: The new state to set this buffer. Can be obtained by calling
-            `self.get_state()`.
+                `self.get_state()`.
         """
         pass

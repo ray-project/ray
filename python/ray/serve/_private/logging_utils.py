@@ -3,16 +3,14 @@ import logging
 import os
 import sys
 import traceback
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 import ray
-from ray._private.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
-from ray._private.ray_logging.filters import CoreContextFilter
-from ray._private.ray_logging.formatters import JSONFormatter
+from ray._common.filters import CoreContextFilter
+from ray._common.formatters import JSONFormatter, TextFormatter
+from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_CPU_PROFILING,
-    RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_TO_STDERR,
     SERVE_LOG_APPLICATION,
@@ -32,13 +30,19 @@ from ray.serve._private.constants import (
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import EncodingType, LoggingConfig
 
-try:
-    import cProfile
-except ImportError:
-    pass
-
-
 buildin_print = builtins.print
+
+
+def should_skip_context_filter(record: logging.LogRecord) -> bool:
+    """Check if the log record should skip the context filter."""
+    return getattr(record, "skip_context_filter", False)
+
+
+class ServeCoreContextFilter(CoreContextFilter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if should_skip_context_filter(record):
+            return True
+        return super().filter(record)
 
 
 class ServeComponentFilter(logging.Filter):
@@ -63,6 +67,8 @@ class ServeComponentFilter(logging.Filter):
         Note: the filter doesn't do any filtering, it only adds the component
         attributes.
         """
+        if should_skip_context_filter(record):
+            return True
         if self.component_type and self.component_type == ServeComponentType.REPLICA:
             setattr(record, SERVE_LOG_DEPLOYMENT, self.component_name)
             setattr(record, SERVE_LOG_REPLICA, self.component_id)
@@ -84,7 +90,10 @@ class ServeContextFilter(logging.Filter):
     """
 
     def filter(self, record):
-        request_context = ray.serve.context._serve_request_context.get()
+        if should_skip_context_filter(record):
+            return True
+
+        request_context = ray.serve.context._get_serve_request_context()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
         if request_context.request_id:
@@ -111,10 +120,11 @@ class ServeLogAttributeRemovalFilter(logging.Filter):
         return True
 
 
-class ServeFormatter(logging.Formatter):
+class ServeFormatter(TextFormatter):
     """Serve Logging Formatter
 
     The formatter will generate the log format on the fly based on the field of record.
+    Optimized to pre-compute format strings and formatters for better performance.
     """
 
     COMPONENT_LOG_FMT = f"%({SERVE_LOG_LEVEL_NAME})s %({SERVE_LOG_TIME})s {{{SERVE_LOG_COMPONENT}}} {{{SERVE_LOG_COMPONENT_ID}}} "  # noqa:E501
@@ -123,39 +133,55 @@ class ServeFormatter(logging.Formatter):
         self,
         component_name: str,
         component_id: str,
+        fmt: Optional[str] = None,
+        datefmt: Optional[str] = None,
+        style: str = "%",
+        validate: bool = True,
     ):
+        super().__init__(fmt, datefmt, style, validate)
         self.component_log_fmt = ServeFormatter.COMPONENT_LOG_FMT.format(
             component_name=component_name, component_id=component_id
         )
+
+        # Pre-compute format strings and formatters for performance
+        self._precompute_formatters()
+
+    def set_additional_log_standard_attrs(self, *args, **kwargs):
+        super().set_additional_log_standard_attrs(*args, **kwargs)
+        self._precompute_formatters()
+
+    def _precompute_formatters(self):
+        self.base_formatter = self._create_formatter([])
+        self.request_formatter = self._create_formatter(
+            [SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID]]
+        )
+
+    def _create_formatter(self, initial_attrs: list) -> logging.Formatter:
+        attrs = initial_attrs.copy()
+        attrs.extend([f"%({k})s" for k in self.additional_log_standard_attrs])
+        attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
+
+        format_string = self.component_log_fmt + " ".join(attrs)
+        return logging.Formatter(format_string)
 
     def format(self, record: logging.LogRecord) -> str:
         """Format the log record into the format string.
 
         Args:
             record: The log record to be formatted.
-
             Returns:
                 The formatted log record in string format.
         """
-        record_format = self.component_log_fmt
-        record_formats_attrs = []
+        # Use pre-computed formatters for better performance
         if SERVE_LOG_REQUEST_ID in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
-        if SERVE_LOG_ROUTE in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE])
-        record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
-        record_format += " ".join(record_formats_attrs)
-
-        # create a formatter using the format string
-        formatter = logging.Formatter(record_format)
-
-        # format the log record using the formatter
-        return formatter.format(record)
+            return self.request_formatter.format(record)
+        else:
+            return self.base_formatter.format(record)
 
 
-def access_log_msg(*, method: str, status: str, latency_ms: float):
+def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
-    return f"{method.upper()} {status.upper()} {latency_ms:.1f}ms"
+    return f"{method} {route} {status} {latency_ms:.1f}ms"
 
 
 def log_to_stderr_filter(record: logging.LogRecord) -> bool:
@@ -183,8 +209,8 @@ def get_component_logger_file_path() -> Optional[str]:
     """
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     for handler in logger.handlers:
-        if isinstance(handler, logging.handlers.RotatingFileHandler):
-            absolute_path = handler.baseFilename
+        if isinstance(handler, logging.handlers.MemoryHandler):
+            absolute_path = handler.target.baseFilename
             ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
             if absolute_path.startswith(ray_logs_dir):
                 return absolute_path[len(ray_logs_dir) :]
@@ -280,6 +306,7 @@ def configure_component_logger(
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
     stream_handler_only: bool = False,
+    buffer_size: int = 1,
 ):
     """Configure a logger to be used by a Serve component.
 
@@ -293,13 +320,25 @@ def configure_component_logger(
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
 
+    serve_formatter = ServeFormatter(component_name, component_id)
+    json_formatter = JSONFormatter()
+    if logging_config.additional_log_standard_attrs:
+        json_formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
+        serve_formatter.set_additional_log_standard_attrs(
+            logging_config.additional_log_standard_attrs
+        )
+
     # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True or if
     # `stream_handler_only` is set to True.
     if RAY_SERVE_LOG_TO_STDERR or stream_handler_only:
         stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+        stream_handler.setFormatter(serve_formatter)
         stream_handler.addFilter(log_to_stderr_filter)
         stream_handler.addFilter(ServeContextFilter())
+        if logging_config.enable_access_log is False:
+            stream_handler.addFilter(log_access_log_filter)
         logger.addHandler(stream_handler)
 
     # Skip setting up file handler and stdout/stderr redirect if `stream_handler_only`
@@ -332,26 +371,32 @@ def configure_component_logger(
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
-    if RAY_SERVE_ENABLE_JSON_LOGGING:
-        logger.warning(
-            "'RAY_SERVE_ENABLE_JSON_LOGGING' is deprecated, please use "
-            "'LoggingConfig' to enable json format."
-        )
-    if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        file_handler.addFilter(CoreContextFilter())
-        file_handler.addFilter(ServeContextFilter())
-        file_handler.addFilter(
+    # Create a memory handler that buffers log records and flushes to file handler
+    # Buffer capacity: buffer_size records
+    # Flush triggers: buffer full, ERROR messages, or explicit flush
+    memory_handler = logging.handlers.MemoryHandler(
+        capacity=buffer_size,
+        target=file_handler,
+        flushLevel=logging.ERROR,  # Auto-flush on ERROR/CRITICAL
+    )
+    # Add filters directly to the memory handler effective for both buffered and non buffered cases
+    if logging_config.encoding == EncodingType.JSON:
+        memory_handler.addFilter(ServeCoreContextFilter())
+        memory_handler.addFilter(ServeContextFilter())
+        memory_handler.addFilter(
             ServeComponentFilter(component_name, component_id, component_type)
         )
-        file_handler.setFormatter(JSONFormatter())
+        file_handler.setFormatter(json_formatter)
     else:
-        file_handler.setFormatter(ServeFormatter(component_name, component_id))
+        file_handler.setFormatter(serve_formatter)
 
     if logging_config.enable_access_log is False:
-        file_handler.addFilter(log_access_log_filter)
+        memory_handler.addFilter(log_access_log_filter)
+    else:
+        memory_handler.addFilter(ServeContextFilter())
 
     # Remove unwanted attributes from the log record.
-    file_handler.addFilter(ServeLogAttributeRemovalFilter())
+    memory_handler.addFilter(ServeLogAttributeRemovalFilter())
 
     # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
     if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
@@ -359,7 +404,44 @@ def configure_component_logger(
         sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
         sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
-    logger.addHandler(file_handler)
+    # Add the memory handler instead of the file handler directly
+    logger.addHandler(memory_handler)
+
+
+# Configure a dedicated rotating file logger for autoscaling snapshots.
+def configure_autoscaling_snapshot_logger(
+    *, component_id: str, logging_config: LoggingConfig
+) -> logging.Logger:
+    """Configure a dedicated logger for autoscaling snapshots.
+
+    - Writes to `autoscaling_snapshot_<pid>.log` under the Serve logs dir.
+    """
+    logger_obj = logging.getLogger(f"{SERVE_LOGGER_NAME}.snapshot")
+    logger_obj.propagate = False
+    logger_obj.setLevel(logging_config.log_level)
+    logger_obj.handlers.clear()
+
+    logs_dir = logging_config.logs_dir or get_serve_logs_dir()
+    os.makedirs(logs_dir, exist_ok=True)
+
+    max_bytes = ray._private.worker._global_node.max_bytes
+    backup_count = ray._private.worker._global_node.backup_count
+
+    file_name = get_component_file_name(
+        component_name="autoscaling_snapshot",
+        component_id=component_id,
+        component_type=None,
+        suffix=".log",
+    )
+    file_path = os.path.join(logs_dir, file_name)
+
+    handler = logging.handlers.RotatingFileHandler(
+        file_path, maxBytes=max_bytes, backupCount=backup_count
+    )
+    handler.setFormatter(JSONFormatter())
+
+    logger_obj.addHandler(handler)
+    return logger_obj
 
 
 def configure_default_serve_logger():
@@ -431,61 +513,6 @@ def configure_component_memory_profiler(
                 "is not installed. No memory profiling is happening. "
                 "`pip install memray` to enable memory profiling."
             )
-
-
-def configure_component_cpu_profiler(
-    component_name: str,
-    component_id: str,
-    component_type: Optional[ServeComponentType] = None,
-) -> Tuple[Optional[cProfile.Profile], Optional[str]]:
-    """Configures the CPU profiler for this component.
-
-    Does nothing if RAY_SERVE_ENABLE_CPU_PROFILING is disabled.
-
-    Returns:
-        2-tuple containing profiler object and log file name for profile stats.
-    """
-
-    if RAY_SERVE_ENABLE_CPU_PROFILING:
-        logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-        try:
-            import cProfile
-        except ImportError:
-            logger.warning(
-                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but cProfile "
-                "is not installed. No CPU profiling is happening."
-            )
-            return None, None
-        try:
-            # Need marshal to dump data. Check if marshal is installed before
-            # starting the profiler.
-            import marshal  # noqa: F401
-        except ImportError:
-            logger.warning(
-                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but marshal "
-                "is not installed. No CPU profiling is happening."
-            )
-            return None, None
-
-        logs_dir = get_serve_logs_dir()
-        cpu_profiler_file_name = get_component_file_name(
-            component_name=component_name,
-            component_id=component_id,
-            component_type=component_type,
-            suffix="_cprofile.prof",
-        )
-        cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
-
-        profile = cProfile.Profile()
-        profile.enable()
-        logger.info(
-            "RAY_SERVE_ENABLE_CPU_PROFILING is enabled. Started cProfile "
-            "on this actor."
-        )
-        return profile, cpu_profiler_file_path
-    else:
-        return None, None
 
 
 def get_serve_logs_dir() -> str:

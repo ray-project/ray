@@ -1,10 +1,11 @@
 """Utils to detect runtime environment."""
 
-import sys
-from ray._private.runtime_env.utils import check_output_cmd
 import logging
 import os
+import sys
 from typing import List
+
+from ray._private.runtime_env.utils import check_output_cmd
 
 _WIN32 = os.name == "nt"
 
@@ -78,7 +79,7 @@ async def create_or_get_virtualenv(path: str, cwd: str, logger: logging.Logger):
         #
         # --app-data
         # --reset-app-data
-        #   Set an empty seperated app data folder for current virtualenv.
+        #   Set an empty separated app data folder for current virtualenv.
         #
         # --no-periodic-update
         #   Disable the periodic (once every 14 days) update of the embedded

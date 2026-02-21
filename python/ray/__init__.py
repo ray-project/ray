@@ -3,6 +3,7 @@ from ray._private import log  # isort: skip # noqa: F401
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING
 
 log.generate_logging_config()
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ def _configure_system():
                 "previous versions may leak memory."
             )
 
-    # Importing psutil & setproctitle. Must be before ray._raylet is
+    # Importing psutil. Must be before ray._raylet is
     # initialized.
     thirdparty_files = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "thirdparty_files"
@@ -111,7 +112,6 @@ from ray._private.state import (  # noqa: E402,F401
     available_resources,
 )
 from ray._private.worker import (  # noqa: E402,F401
-    LOCAL_MODE,
     SCRIPT_MODE,
     WORKER_MODE,
     RESTORE_WORKER_MODE,
@@ -197,10 +197,8 @@ __all__ = [
     "put",
     "remote",
     "shutdown",
-    "show_in_dashboard",
     "timeline",
     "wait",
-    "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
     "LoggingConfig",
@@ -221,7 +219,6 @@ AUTO_INIT_APIS = {
 # Public APIs that should not automatically trigger ray.init().
 NON_AUTO_INIT_APIS = {
     "ClientBuilder",
-    "LOCAL_MODE",
     "Language",
     "SCRIPT_MODE",
     "WORKER_MODE",
@@ -239,7 +236,6 @@ NON_AUTO_INIT_APIS = {
     "method",
     "nodes",
     "remote",
-    "show_in_dashboard",
     "shutdown",
     "timeline",
     "LoggingConfig",
@@ -280,15 +276,24 @@ __all__ += [
 ]
 
 
-# Delay importing of expensive, isolated subpackages.
-def __getattr__(name: str):
-    import importlib
+# Delay importing of expensive, isolated subpackages. Note that for proper type
+# checking support these imports must be kept in sync between type checking and
+# runtime behavior.
+if TYPE_CHECKING:
+    from ray import autoscaler
+    from ray import data
+    from ray import workflow
+else:
 
-    if name in ["data", "workflow", "autoscaler"]:
-        return importlib.import_module("." + name, __name__)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    def __getattr__(name: str):
+        import importlib
+
+        if name in ["data", "workflow", "autoscaler"]:
+            return importlib.import_module("." + name, __name__)
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 del os
 del logging
 del sys
+del TYPE_CHECKING

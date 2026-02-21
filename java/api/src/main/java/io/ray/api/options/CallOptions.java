@@ -8,26 +8,40 @@ import java.util.Map;
 /** The options for RayCall. */
 public class CallOptions extends BaseTaskOptions {
 
-  public final String name;
-  public final PlacementGroup group;
-  public final int bundleIndex;
-  public final String concurrencyGroupName;
+  private final String name;
+  private final PlacementGroup group;
+  private final int bundleIndex;
+  private final String concurrencyGroupName;
   private final String serializedRuntimeEnvInfo;
 
-  private CallOptions(
-      String name,
-      Map<String, Double> resources,
-      PlacementGroup group,
-      int bundleIndex,
-      String concurrencyGroupName,
-      RuntimeEnv runtimeEnv) {
-    super(resources);
-    this.name = name;
-    this.group = group;
-    this.bundleIndex = bundleIndex;
-    this.concurrencyGroupName = concurrencyGroupName;
+  private CallOptions(Builder builder) {
+    super(builder.resources);
+    this.name = builder.name;
+    this.group = builder.group;
+    this.bundleIndex = builder.bundleIndex;
+    this.concurrencyGroupName = builder.concurrencyGroupName;
     this.serializedRuntimeEnvInfo =
-        runtimeEnv == null ? "" : runtimeEnv.serializeToRuntimeEnvInfo();
+        builder.runtimeEnv == null ? "" : builder.runtimeEnv.serializeToRuntimeEnvInfo();
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public PlacementGroup getGroup() {
+    return group;
+  }
+
+  public int getBundleIndex() {
+    return bundleIndex;
+  }
+
+  public String getConcurrencyGroupName() {
+    return concurrencyGroupName;
+  }
+
+  public String getSerializedRuntimeEnvInfo() {
+    return serializedRuntimeEnvInfo;
   }
 
   /** This inner class for building CallOptions. */
@@ -100,7 +114,7 @@ public class CallOptions extends BaseTaskOptions {
     }
 
     public CallOptions build() {
-      return new CallOptions(name, resources, group, bundleIndex, concurrencyGroupName, runtimeEnv);
+      return new CallOptions(this);
     }
   }
 }

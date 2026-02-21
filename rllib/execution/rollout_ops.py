@@ -1,11 +1,12 @@
 import logging
 from typing import List, Optional, Union
+
 import tree
 
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
-    SampleBatch,
     DEFAULT_POLICY_ID,
+    SampleBatch,
     concat_samples,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI, OldAPIStack
@@ -49,9 +50,9 @@ def synchronous_parallel_sample(
         concat: Whether to aggregate all resulting batches or episodes. in case of
             batches the list of batches is concatinated at the end. in case of
             episodes all episode lists from workers are flattened into a single list.
-        sample_timeout_s: The timeout in sec to use on the `foreach_worker` call.
-            After this time, the call will return with a result (or not if all workers
-            are stalling). If None, will block indefinitely and not timeout.
+        sample_timeout_s: The timeout in sec to use on the `foreach_env_runner` call.
+            After this time, the call will return with a result (or not if all
+            EnvRunners are stalling). If None, will block indefinitely and not timeout.
         _uses_new_env_runners: Whether the new `EnvRunner API` is used. In this case
             episodes instead of `SampleBatch` objects are returned.
 
@@ -103,7 +104,7 @@ def synchronous_parallel_sample(
                 stats_dicts = [worker_set.local_env_runner.get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
-            sampled_data = worker_set.foreach_worker(
+            sampled_data = worker_set.foreach_env_runner(
                 (
                     (lambda w: w.sample(**random_action_kwargs))
                     if not _return_metrics
@@ -144,7 +145,8 @@ def synchronous_parallel_sample(
                 )
             else:
                 agent_or_env_steps += sum(
-                    int(stat_dict[NUM_ENV_STEPS_SAMPLED]) for stat_dict in stats_dicts
+                    int(stat_dict.get(NUM_ENV_STEPS_SAMPLED, 0))
+                    for stat_dict in stats_dicts
                 )
             sample_batches_or_episodes.extend(sampled_data)
             all_stats_dicts.extend(stats_dicts)

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from ray._private.test_utils import wait_for_condition
+from ray._common.test_utils import wait_for_condition
 from ray.job_submission import JobStatus, JobSubmissionClient
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,10 @@ def _compatibility_script_path(file_name: str) -> str:
 
 
 class TestBackwardsCompatibility:
+    @pytest.mark.skipif(
+        sys.platform == "darwin",
+        reason="ray 2.0.1 runs differently on apple silicon than today's.",
+    )
     def test_cli(self):
         """
         Test that the current commit's CLI works with old server-side Ray versions.
@@ -76,18 +80,20 @@ def test_error_message():
     )
     wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
 
-    # `entrypoint_num_cpus`, `entrypoint_num_gpus`, and `entrypoint_resources`
+    # `entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_resources`, and
+    # `entrypoint_label_selector`
     # are not supported in ray<2.2.0.
     for unsupported_submit_kwargs in [
         {"entrypoint_num_cpus": 1},
         {"entrypoint_num_gpus": 1},
         {"entrypoint_resources": {"custom": 1}},
+        {"entrypoint_label_selector": {"fragile_node": "!1"}},
     ]:
         with pytest.raises(
             Exception,
             match="Ray version 2.0.1 is running on the cluster. "
-            "`entrypoint_num_cpus`, `entrypoint_num_gpus`, and "
-            "`entrypoint_resources` kwargs"
+            "`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
+            "`entrypoint_resources`, and `entrypoint_label_selector` kwargs"
             " are not supported on the Ray cluster. Please ensure the cluster is "
             "running Ray 2.2 or higher.",
         ):

@@ -1,13 +1,12 @@
 # coding: utf-8
+import sys
+
 import pytest
 
 import ray
 import ray.cluster_utils
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True
-)
 def test_args_force_positional(ray_start_regular):
     def force_positional(*, a="hello", b="helxo", **kwargs):
         return a, b, kwargs
@@ -36,9 +35,6 @@ def test_args_force_positional(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{"local_mode": False}, {"local_mode": True}], indirect=True
-)
 def test_args_intertwined(ray_start_regular):
     def args_intertwined(a, *args, x="hello", **kwargs):
         return a, args, x, kwargs
@@ -80,11 +76,4 @@ def test_args_intertwined(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
-
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

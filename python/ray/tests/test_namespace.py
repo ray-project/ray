@@ -4,11 +4,11 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import run_string_as_driver
 from ray._private import ray_constants
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
 )
 from ray.cluster_utils import Cluster
 
@@ -267,9 +267,5 @@ def test_namespace_validation(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
 
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

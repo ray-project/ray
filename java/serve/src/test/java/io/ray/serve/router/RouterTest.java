@@ -12,8 +12,8 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.deployment.DeploymentId;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
-import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.generated.DeploymentTargetInfo;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.replica.ReplicaContext;
@@ -70,8 +70,8 @@ public class RouterTest {
 
       // Router
       Router router = new Router(controllerHandle, new DeploymentId(deploymentName, appName));
-      ActorNameList.Builder builder = ActorNameList.newBuilder();
-      builder.addNames(actorName);
+      DeploymentTargetInfo.Builder builder = DeploymentTargetInfo.newBuilder();
+      builder.addReplicaNames(actorName).setIsAvailable(true);
       router.getReplicaSet().updateWorkerReplicas(builder.build());
 
       // assign

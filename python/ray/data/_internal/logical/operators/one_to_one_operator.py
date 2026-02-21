@@ -1,8 +1,22 @@
-import abc
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+)
 from ray.data.block import BlockMetadata
+
+if TYPE_CHECKING:
+    import pyarrow
+
+    from ray.data.block import Schema
+
+__all__ = [
+    "AbstractOneToOne",
+    "Download",
+    "Limit",
+]
 
 
 class AbstractOneToOne(LogicalOperator):
@@ -12,31 +26,36 @@ class AbstractOneToOne(LogicalOperator):
 
     def __init__(
         self,
-        name: str,
         input_op: Optional[LogicalOperator],
+        can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
+        *,
+        name: Optional[str] = None,
     ):
-        """
+        """Initialize an AbstractOneToOne operator.
+
         Args:
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
+            can_modify_num_rows: Whether the UDF can change the row count. False if
+                # of input rows = # of output rows. True otherwise.
+            num_outputs: If known, the number of blocks produced by this operator.
+            name: Name for this operator. This is the name that will appear when
+                inspecting the logical plan of a Dataset.
         """
-        super().__init__(name, [input_op] if input_op else [], num_outputs)
+        super().__init__(
+            input_dependencies=[input_op] if input_op else [],
+            num_outputs=num_outputs,
+            name=name,
+        )
+        self.can_modify_num_rows = can_modify_num_rows
 
     @property
     def input_dependency(self) -> LogicalOperator:
-        return self._input_dependencies[0]
-
-    @property
-    @abc.abstractmethod
-    def can_modify_num_rows(self) -> bool:
-        """Whether this operator can modify the number of rows,
-        i.e. number of input rows != number of output rows."""
+        return self.input_dependencies[0]
 
 
-class Limit(AbstractOneToOne):
+class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for limit."""
 
     def __init__(
@@ -45,36 +64,68 @@ class Limit(AbstractOneToOne):
         limit: int,
     ):
         super().__init__(
-            f"limit={limit}",
-            input_op,
+            input_op=input_op,
+            can_modify_num_rows=True,
+            name=f"limit={limit}",
         )
-        self._limit = limit
+        self.limit = limit
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return True
-
-    def aggregate_output_metadata(self) -> BlockMetadata:
+    def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
             num_rows=self._num_rows(),
             size_bytes=None,
-            schema=self._schema(),
             input_files=self._input_files(),
             exec_stats=None,
         )
 
-    def _schema(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata().schema
+    def infer_schema(
+        self,
+    ) -> Optional["Schema"]:
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_schema()
 
     def _num_rows(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        input_rows = self._input_dependencies[0].aggregate_output_metadata().num_rows
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        input_rows = self.input_dependencies[0].infer_metadata().num_rows
         if input_rows is not None:
-            return min(input_rows, self._limit)
+            return min(input_rows, self.limit)
         else:
             return None
 
     def _input_files(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregate_output_metadata().input_files
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert isinstance(self.input_dependencies[0], LogicalOperator)
+        return self.input_dependencies[0].infer_metadata().input_files
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # Pushing filter through limit is safe: Filter(Limit(data, n), pred)
+        # becomes Limit(Filter(data, pred), n), which filters earlier
+        return PredicatePassThroughBehavior.PASSTHROUGH
+
+
+class Download(AbstractOneToOne):
+    """Logical operator for download operation.
+
+    Supports downloading from multiple URI columns in a single operation.
+    """
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        uri_column_names: List[str],
+        output_bytes_column_names: List[str],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ):
+        super().__init__(input_op=input_op, can_modify_num_rows=False)
+        if len(uri_column_names) != len(output_bytes_column_names):
+            raise ValueError(
+                f"Number of URI columns ({len(uri_column_names)}) must match "
+                f"number of output columns ({len(output_bytes_column_names)})"
+            )
+        self.uri_column_names = uri_column_names
+        self.output_bytes_column_names = output_bytes_column_names
+        self.ray_remote_args = ray_remote_args or {}
+        self.filesystem = filesystem

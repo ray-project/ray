@@ -122,7 +122,6 @@ def train_regression(num_workers=2, use_gpu=False):
     )
 
     result = trainer.fit()
-    print(result.metrics)
     return result
 
 

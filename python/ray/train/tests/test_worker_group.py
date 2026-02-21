@@ -7,6 +7,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.train._internal.worker_group import Worker, WorkerGroup, WorkerMetadata
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -102,7 +103,7 @@ def test_worker_shutdown(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     time.sleep(1)
     assert "CPU" not in ray.available_resources()
-    assert len(ray._private.state.actors()) == 2
+    assert len(list_actors()) == 2
     wg.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2

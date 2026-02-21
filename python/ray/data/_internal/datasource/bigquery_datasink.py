@@ -3,11 +3,15 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 import pyarrow.parquet as pq
 
+if TYPE_CHECKING:
+    import pyarrow as pa
+
 import ray
+from ray.data._internal.datasource import bigquery_datasource
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_import
@@ -20,7 +24,7 @@ DEFAULT_MAX_RETRY_CNT = 10
 RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
-class BigQueryDatasink(Datasink):
+class BigQueryDatasink(Datasink[None]):
     def __init__(
         self,
         project_id: str,
@@ -37,15 +41,14 @@ class BigQueryDatasink(Datasink):
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
 
-    def on_write_start(self) -> None:
+    def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         from google.api_core import exceptions
-        from google.cloud import bigquery
 
         if self.project_id is None or self.dataset is None:
             raise ValueError("project_id and dataset are required args")
 
         # Set up datasets to write
-        client = bigquery.Client(project=self.project_id)
+        client = bigquery_datasource._create_client(project_id=self.project_id)
         dataset_id = self.dataset.split(".", 1)[0]
         try:
             client.get_dataset(dataset_id)
@@ -77,7 +80,7 @@ class BigQueryDatasink(Datasink):
 
             block = BlockAccessor.for_block(block).to_arrow()
 
-            client = bigquery.Client(project=project_id)
+            client = bigquery_datasource._create_client(project_id=project_id)
             job_config = bigquery.LoadJobConfig(autodetect=True)
             job_config.source_format = bigquery.SourceFormat.PARQUET
             job_config.write_disposition = bigquery.WriteDisposition.WRITE_APPEND
@@ -95,7 +98,7 @@ class BigQueryDatasink(Datasink):
                     try:
                         logger.info(job.result())
                         break
-                    except exceptions.Forbidden as e:
+                    except (exceptions.Forbidden, exceptions.TooManyRequests) as e:
                         retry_cnt += 1
                         if retry_cnt > self.max_retry_cnt:
                             break
@@ -110,12 +113,12 @@ class BigQueryDatasink(Datasink):
                 if retry_cnt > self.max_retry_cnt:
                     logger.info(
                         f"Maximum ({self.max_retry_cnt}) retry count exceeded. Ray"
-                        + " will attempt to retry the block write via fault tolerance."
+                        " will attempt to retry the block write via fault tolerance."
                     )
                     raise RuntimeError(
                         f"Write failed due to {retry_cnt}"
-                        + " repeated API rate limit exceeded responses. Consider"
-                        + " specifiying the max_retry_cnt kwarg with a higher value."
+                        " repeated API rate limit exceeded responses. Consider"
+                        " specifying the max_retry_cnt kwarg with a higher value."
                     )
 
         _write_single_block = cached_remote_fn(_write_single_block)

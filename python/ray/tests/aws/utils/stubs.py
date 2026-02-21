@@ -1,33 +1,32 @@
-from typing import Dict, List
-import ray
 import copy
 import json
-
+from typing import Dict, List
+from unittest import mock
 from uuid import uuid4
-from ray.tests.aws.utils import helpers
-from ray.tests.aws.utils.constants import (
-    DEFAULT_INSTANCE_PROFILE,
-    DEFAULT_KEY_PAIR,
-    DEFAULT_SUBNET,
-    A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS,
-    DEFAULT_LT,
-    TWENTY_SUBNETS_IN_DIFFERENT_AZS,
-    DEFAULT_CLUSTER_NAME,
-)
-from ray.autoscaler._private.aws.config import key_pair
-from ray.tests.aws.utils.helpers import (
-    get_cloudwatch_dashboard_config_file_path,
-    get_cloudwatch_alarm_config_file_path,
-)
+
+from botocore.stub import ANY
+
+import ray
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_TAG,
     CLOUDWATCH_CONFIG_HASH_TAG_BASE,
 )
+from ray.autoscaler._private.aws.config import key_pair
 from ray.autoscaler.tags import NODE_KIND_HEAD, TAG_RAY_NODE_KIND
-
-from unittest import mock
-
-from botocore.stub import ANY
+from ray.tests.aws.utils import helpers
+from ray.tests.aws.utils.constants import (
+    A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS,
+    DEFAULT_CLUSTER_NAME,
+    DEFAULT_INSTANCE_PROFILE,
+    DEFAULT_KEY_PAIR,
+    DEFAULT_LT,
+    DEFAULT_SUBNET,
+    TWENTY_SUBNETS_IN_DIFFERENT_AZS,
+)
+from ray.tests.aws.utils.helpers import (
+    get_cloudwatch_alarm_config_file_path,
+    get_cloudwatch_dashboard_config_file_path,
+)
 
 
 def configure_iam_role_default(iam_client_stub):
@@ -261,31 +260,6 @@ def describe_launch_template_versions_by_name_default(ec2_client_stub, versions)
     )
 
 
-def describe_instance_status_ok(ec2_client_stub, instance_ids):
-    ec2_client_stub.add_response(
-        "describe_instance_status",
-        expected_params={"InstanceIds": instance_ids},
-        service_response={
-            "InstanceStatuses": [
-                {
-                    "InstanceId": instance_id,
-                    "InstanceState": {"Code": 16, "Name": "running"},
-                    "AvailabilityZone": "us-west-2",
-                    "SystemStatus": {
-                        "Status": "ok",
-                        "Details": [{"Status": "passed", "Name": "reachability"}],
-                    },
-                    "InstanceStatus": {
-                        "Status": "ok",
-                        "Details": [{"Status": "passed", "Name": "reachability"}],
-                    },
-                }
-            ]
-            for instance_id in instance_ids
-        },
-    )
-
-
 def get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id):
     ec2_client_stub.add_response(
         "describe_instances",
@@ -312,7 +286,7 @@ def get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id):
 
 def update_hash_tag_success(ec2_client_stub, node_id, config_type, cloudwatch_helper):
     hash_key_value = "-".join([CLOUDWATCH_CONFIG_HASH_TAG_BASE, config_type])
-    cur_hash_value = get_sha1_hash_of_cloudwatch_config_file(
+    cur_hash_value = get_sha256_hash_of_cloudwatch_config_file(
         config_type, cloudwatch_helper
     )
     ec2_client_stub.add_response(
@@ -338,7 +312,7 @@ def add_cwa_installed_tag_response(ec2_client_stub, node_id):
 
 def get_head_node_config_hash_different(ec2_client_stub, config_type, cwh, node_id):
     hash_key_value = "-".join([CLOUDWATCH_CONFIG_HASH_TAG_BASE, config_type])
-    cur_hash_value = get_sha1_hash_of_cloudwatch_config_file(config_type, cwh)
+    cur_hash_value = get_sha256_hash_of_cloudwatch_config_file(config_type, cwh)
     filters = cwh._get_current_cluster_session_nodes(cwh.cluster_name)
     filters.append(
         {
@@ -523,8 +497,8 @@ def get_param_ssm_same(ssm_client_stub, ssm_param_name, cloudwatch_helper, confi
     return command_id
 
 
-def get_sha1_hash_of_cloudwatch_config_file(config_type, cloudwatch_helper):
-    cw_value_file = cloudwatch_helper._sha1_hash_file(config_type)
+def get_sha256_hash_of_cloudwatch_config_file(config_type, cloudwatch_helper):
+    cw_value_file = cloudwatch_helper._sha256_hash_file(config_type)
     return cw_value_file
 
 

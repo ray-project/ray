@@ -1,12 +1,12 @@
 """Example showing how to set up a custom progress reporter for an RLlib Algorithm.
 
-The script sets the `progress_reporter` arg in the air.RunConfig and passes that to
+The script sets the `progress_reporter` arg in the tune.RunConfig and passes that to
 Tune's Tuner:
 
 ```
 tune.Tuner(
     param_space=...,  # <- your RLlib config
-    run_config=air.RunConfig(
+    run_config=tune.RunConfig(
         progress_reporter=[some already instantiated TuneReporterBase object],
     ),
 )
@@ -43,8 +43,7 @@ You should see something similar to the following in your console output:
 +-------+-------------------+------------------+------------------+------------------+
 
 """
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
@@ -52,7 +51,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-
+from ray.tune.result import TRAINING_ITERATION
 
 my_multi_agent_progress_reporter = tune.CLIReporter(
     # In the following dict, the keys are the (possibly nested) keys that can be found
@@ -110,7 +109,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=2,
             # Plugin our own progress reporter.

@@ -1,5 +1,6 @@
-import gymnasium as gym
 from typing import Type
+
+import gymnasium as gym
 
 
 class ActionTransform(gym.ActionWrapper):

@@ -52,7 +52,7 @@ class TrialScheduler:
         Args:
             metric: Metric to optimize
             mode: One of ["min", "max"]. Direction to optimize.
-            **spec: Any kwargs for forward compatiblity.
+            **spec: Any kwargs for forward compatibility.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         if self._metric and metric:

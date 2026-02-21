@@ -4,12 +4,13 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import pyarrow
 
 import ray
+from ray._private.dict import unflattened_lookup
 from ray.air.constants import (
     EXPR_ERROR_PICKLE_FILE,
     EXPR_PROGRESS_FILE,
@@ -17,14 +18,11 @@ from ray.air.constants import (
 )
 from ray.util.annotations import PublicAPI
 
-if TYPE_CHECKING:
-    from ray.train import Checkpoint
-
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="stable")
 @dataclass
+@PublicAPI(stability="stable")
 class Result:
     """The final result of a ML training run or a Tune trial.
 
@@ -62,11 +60,13 @@ class Result:
     """
 
     metrics: Optional[Dict[str, Any]]
-    checkpoint: Optional["Checkpoint"]
+    checkpoint: Optional["ray.tune.Checkpoint"]
     error: Optional[Exception]
     path: str
     metrics_dataframe: Optional["pd.DataFrame"] = None
-    best_checkpoints: Optional[List[Tuple["Checkpoint", Dict[str, Any]]]] = None
+    best_checkpoints: Optional[
+        List[Tuple["ray.tune.Checkpoint", Dict[str, Any]]]
+    ] = None
     _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
 
@@ -248,7 +248,9 @@ class Result:
         )
 
     @PublicAPI(stability="alpha")
-    def get_best_checkpoint(self, metric: str, mode: str) -> Optional["Checkpoint"]:
+    def get_best_checkpoint(
+        self, metric: str, mode: str
+    ) -> Optional["ray.tune.Checkpoint"]:
         """Get the best checkpoint from this trial based on a specific metric.
 
         Any checkpoints without an associated metric value will be filtered out.
@@ -271,7 +273,9 @@ class Result:
 
         op = max if mode == "max" else min
         valid_checkpoints = [
-            ckpt_info for ckpt_info in self.best_checkpoints if metric in ckpt_info[1]
+            ckpt_info
+            for ckpt_info in self.best_checkpoints
+            if unflattened_lookup(metric, ckpt_info[1], default=None) is not None
         ]
 
         if not valid_checkpoints:
@@ -280,4 +284,4 @@ class Result:
                 f"You may choose from the following metrics: {self.metrics.keys()}."
             )
 
-        return op(valid_checkpoints, key=lambda x: x[1][metric])[0]
+        return op(valid_checkpoints, key=lambda x: unflattened_lookup(metric, x[1]))[0]

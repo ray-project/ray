@@ -1,3 +1,5 @@
+.. _start-ray:
+
 Starting Ray
 ============
 
@@ -75,6 +77,13 @@ Calling ``ray.init()`` starts a local Ray instance on your laptop/machine. This 
             ray::Init()
 
 When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
+
+.. note::
+
+  The behavior of ``ray.shutdown()`` depends on how the cluster was initialized:
+
+  * If ``ray.init()`` started a new local cluster, ``ray.shutdown()`` will terminate all the local Ray processes.
+  * If you connected to an existing cluster (e.g., via ``ray.init(address="auto")`` or ``ray.init(address="ray://<ip>:<port>")``), ``ray.shutdown()`` only disconnects the client -- it does **not** shut down the remote cluster.
 
 .. tab-set::
 

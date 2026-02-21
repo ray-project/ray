@@ -34,8 +34,6 @@ if [[ "$OSTYPE" == "msys" ]]; then
 fi
 
 export PATH=/opt/python/cp39-cp39/bin:$PATH
-pip install -U --ignore-installed -c python/requirements_compiled.txt \
-  aws_requests_auth boto3 urllib3 cryptography pyopenssl
 ./ci/env/env_info.sh
 
 # Sync the directory to buildkite artifacts
@@ -47,12 +45,13 @@ chmod -R 777 "$ARTIFACT_MOUNT_PATH"
 
 # Upload to the wheels S3 bucket when running on postmerge pipeline.
 readonly PIPELINE_POSTMERGE="0189e759-8c96-4302-b6b5-b4274406bf89"
+
 if [[ "${BUILDKITE_PIPELINE_ID:-}" == "${PIPELINE_POSTMERGE}" ]]; then
   # Upload to branch directory.
-  python .buildkite/copy_files.py --destination "$BRANCH_DESTINATION" --path "./$ARTIFACT_PATH"
+  bazel run ".buildkite:copy_files" -- --destination "$BRANCH_DESTINATION" --path "$PWD/$ARTIFACT_PATH"
 
   # Upload to latest directory.
   if [[ "$BUILDKITE_BRANCH" == "master" ]]; then
-    python .buildkite/copy_files.py --destination "$MASTER_DESTINATION" --path "./$ARTIFACT_PATH"
+    bazel run ".buildkite:copy_files" -- --destination "$MASTER_DESTINATION" --path "$PWD/$ARTIFACT_PATH"
   fi
 fi

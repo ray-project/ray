@@ -1,13 +1,12 @@
 import os
 import sys
 from unittest import mock
-import pytest
-import requests
 from unittest.mock import patch
 
-import ray
-from ray._private.accelerators import TPUAcceleratorManager
-from ray._private.accelerators import tpu
+import pytest
+import requests
+
+from ray._private.accelerators import TPUAcceleratorManager, tpu
 
 
 @patch("glob.glob")
@@ -61,6 +60,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v5p-8", "TPU-V5P"),
         ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
         ("gke", "v6e-8", "TPU-V6E"),
+        ("gke", "tpu7x-16", "TPU-V7X"),
     ],
 )
 @patch("requests.get")
@@ -99,7 +99,7 @@ def test_get_current_node_tpu_worker_id(mock_os, mock_request, test_case):
         mock_os.return_value = None
     else:
         mock_os.return_value = worker_id
-    assert TPUAcceleratorManager._get_current_node_tpu_worker_id() == expected_value
+    assert TPUAcceleratorManager.get_current_node_tpu_worker_id() == expected_value
 
 
 @pytest.mark.parametrize(
@@ -233,27 +233,23 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
 @pytest.mark.parametrize(
     "test_config",
     [
-        (0, {"TPU-v4-16-head": 1, "my-tpu": 1}),
-        (1, {"my-tpu": 1}),
+        (0, "v4-16", {"TPU-v4-16-head": 1, "my-tpu": 1}),
+        (1, "v4-16", {"my-tpu": 1}),
+        (0, "tpu7x-16", {"TPU-v7x-16-head": 1, "my-tpu": 1}),
     ],
 )
 def test_tpu_pod_detect_and_configure_worker(test_config):
-    worker_id, expected_value = test_config
+    worker_id, pod_type, expected_value = test_config
     final_resources = {}
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="my-tpu",
     ):
         with patch(
-            "ray._private.accelerators.tpu.TPUAcceleratorManager."
-            "_get_current_node_tpu_pod_type",
-            return_value="v4-16",
+            "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_worker_id",
+            return_value=worker_id,
         ):
-            with patch(
-                "ray._private.accelerators.tpu.TPUAcceleratorManager"
-                "._get_current_node_tpu_worker_id",
-                return_value=worker_id,
-            ):
+            with patch.dict(os.environ, {"TPU_ACCELERATOR_TYPE": pod_type}):
                 final_resources = (
                     TPUAcceleratorManager.get_current_node_additional_resources()
                 )
@@ -261,36 +257,31 @@ def test_tpu_pod_detect_and_configure_worker(test_config):
     assert final_resources == expected_value
 
 
-def test_get_current_pod_name_smoke():
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
-        return_value="my-tpu",
-    ):
-        name = ray.util.accelerators.tpu.get_current_pod_name()
-    assert name == "my-tpu"
-
-
-def test_empty_get_current_pod_name_returns_none():
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
-        return_value="",
-    ):
-        name = ray.util.accelerators.tpu.get_current_pod_name()
-    assert name is None
-
-
-def test_worker_count():
-    with patch(
-        "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "get_num_workers_in_current_tpu_pod",
-        return_value=4,
-    ):
-        worker_count = ray.util.accelerators.tpu.get_current_pod_worker_count()
-    assert worker_count == 4
+@pytest.mark.parametrize(
+    "accelerator_type, expected",
+    [
+        ("v2-8", True),
+        ("v3-32", True),
+        ("v4-8", True),
+        ("v5p-8", True),
+        ("v5litepod-8", True),
+        ("v6e-8", True),
+        ("tpu7x-16", True),
+        ("v7x-16", True),
+        ("v-8", False),
+        ("8", False),
+        ("tpu-8", False),
+        ("v2", False),
+        ("v2-", False),
+        ("random-string", False),
+    ],
+)
+def test_is_valid_tpu_accelerator_type(accelerator_type, expected):
+    assert (
+        TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type)
+        == expected
+    )
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

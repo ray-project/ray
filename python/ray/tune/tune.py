@@ -24,8 +24,8 @@ import ray
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train import CheckpointConfig, SyncConfig
 from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
+from ray.tune import CheckpointConfig, SyncConfig
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -429,7 +429,7 @@ def run(
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
         chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
-        sync_config: Configuration object for syncing. See train.SyncConfig.
+        sync_config: Configuration object for syncing. See tune.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
         max_failures: Try to recover a trial at least this many times.
@@ -439,8 +439,7 @@ def run(
         fail_fast: Whether to fail upon the first error.
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
-            can easily leak resources and should be used with caution (it
-            is best used with `ray.init(local_mode=True)`).
+            can easily leak resources and should be used with caution.
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         resume: One of [True, False, "AUTO"]. Can
@@ -591,7 +590,7 @@ def run(
             "persistent-storage.html#setting-the-local-staging-directory"
         )
 
-    ray._private.usage.usage_lib.record_library_usage("tune")
+    ray._common.usage.usage_lib.record_library_usage("tune")
 
     # Tracking environment variable usage here will also catch:
     # 1.) Tuner.fit() usage
@@ -781,32 +780,25 @@ def run(
     if isinstance(search_alg, str):
         search_alg = create_searcher(search_alg)
 
-    # if local_mode=True is set during ray.init().
-    is_local_mode = ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-
-    if is_local_mode:
-        max_concurrent_trials = 1
-
     if not search_alg:
         search_alg = BasicVariantGenerator(max_concurrent=max_concurrent_trials or 0)
-    elif max_concurrent_trials or is_local_mode:
+    elif max_concurrent_trials:
         if isinstance(search_alg, ConcurrencyLimiter):
-            if not is_local_mode:
-                if search_alg.max_concurrent != max_concurrent_trials:
-                    raise ValueError(
-                        "You have specified `max_concurrent_trials="
-                        f"{max_concurrent_trials}`, but the `search_alg` is "
-                        "already a `ConcurrencyLimiter` with `max_concurrent="
-                        f"{search_alg.max_concurrent}. FIX THIS by setting "
-                        "`max_concurrent_trials=None`."
-                    )
-                else:
-                    logger.warning(
-                        "You have specified `max_concurrent_trials="
-                        f"{max_concurrent_trials}`, but the `search_alg` is "
-                        "already a `ConcurrencyLimiter`. "
-                        "`max_concurrent_trials` will be ignored."
-                    )
+            if search_alg.max_concurrent != max_concurrent_trials:
+                raise ValueError(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter` with `max_concurrent="
+                    f"{search_alg.max_concurrent}. FIX THIS by setting "
+                    "`max_concurrent_trials=None`."
+                )
+            else:
+                logger.warning(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter`. "
+                    "`max_concurrent_trials` will be ignored."
+                )
         else:
             if max_concurrent_trials < 1:
                 raise ValueError(
@@ -817,7 +809,7 @@ def run(
                 search_alg = ConcurrencyLimiter(
                     search_alg, max_concurrent=max_concurrent_trials
                 )
-            elif not is_local_mode:
+            else:
                 logger.warning(
                     "You have passed a `SearchGenerator` instance as the "
                     "`search_alg`, but `max_concurrent_trials` requires a "

@@ -1,4 +1,6 @@
 import abc
+from collections import defaultdict
+from queue import Queue
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
@@ -6,14 +8,14 @@ from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import TargetNetworkAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
 )
@@ -29,11 +31,20 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
-        self._learner_thread_in_queue = CircularBuffer(
-            num_batches=self.config.circular_buffer_num_batches,
-            iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
-        )
+        self._last_update_ts_by_mid = defaultdict(int)
 
+        # Use a CircularBuffer as learner-in-queue if configured to do so.
+        if self.config.use_circular_buffer:
+            self._learner_thread_in_queue = CircularBuffer(
+                num_batches=self.config.circular_buffer_num_batches,
+                iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
+            )
+        # Otherwise, use a simple Queue.
+        else:
+            # For APPO use a large queue.
+            self._learner_thread_in_queue = Queue(maxsize=self.config.simple_queue_size)
+
+        # Now build the super class. Otherwise the learner-queue would overriden.
         super().build()
 
         # Make target networks.
@@ -86,30 +97,20 @@ class APPOLearner(IMPALALearner):
         """Updates the target Q Networks."""
         super().after_gradient_based_update(timesteps=timesteps)
 
-        timestep = timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
-
         # TODO (sven): Maybe we should have a `after_gradient_based_update`
         #  method per module?
+        curr_timestep = timesteps.get(NUM_ENV_STEPS_TRAINED_LIFETIME, 0)
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
 
-            # TODO (avnish) Using steps trained here instead of sampled ... I'm not sure
-            #  why the other implementation uses sampled.
-            #  The difference in steps sampled/trained is pretty
-            #  much always going to be larger than self.config.num_epochs *
-            #  self.config.minibatch_buffer_size unless the number of steps collected
-            #  is really small. The thing is that the default rollout fragment length
-            #  is 50, so the minibatch buffer size * num_epochs is going to be
-            #  have to be 50 to even meet the threshold of having delayed target
-            #  updates.
-            #  We should instead have the target / kl threshold update be based off
-            #  of the train_batch_size * some target update frequency * num_epochs.
-
-            last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
-            if timestep - self.metrics.peek(
-                last_update_ts_key, default=0
-            ) >= config.target_network_update_freq and isinstance(
-                module.unwrapped(), TargetNetworkAPI
+            if isinstance(module.unwrapped(), TargetNetworkAPI) and (
+                curr_timestep - self._last_update_ts_by_mid[module_id]
+                >= (
+                    config.target_network_update_freq
+                    * config.circular_buffer_num_batches
+                    * config.circular_buffer_iterations_per_batch
+                    * config.train_batch_size_per_learner
+                )
             ):
                 for (
                     main_net,
@@ -121,9 +122,15 @@ class APPOLearner(IMPALALearner):
                         tau=config.tau,
                     )
                 # Increase lifetime target network update counter by one.
-                self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+                self.metrics.log_value(
+                    (module_id, NUM_TARGET_UPDATES), 1, reduce="lifetime_sum"
+                )
+
                 # Update the (single-value -> window=1) last updated timestep metric.
-                self.metrics.log_value(last_update_ts_key, timestep, window=1)
+                self._last_update_ts_by_mid[module_id] = curr_timestep
+                self.metrics.log_value(
+                    (module_id, LAST_TARGET_UPDATE_TS), curr_timestep, reduce="max"
+                )
 
             if (
                 config.use_kl_loss
@@ -131,6 +138,13 @@ class APPOLearner(IMPALALearner):
                 > 0
             ):
                 self._update_module_kl_coeff(module_id=module_id, config=config)
+
+    @classmethod
+    @override(Learner)
+    def rl_module_required_apis(cls) -> list[type]:
+        # In order for a PPOLearner to update an RLModule, it must implement the
+        # following APIs:
+        return [TargetNetworkAPI, ValueFunctionAPI]
 
     @abc.abstractmethod
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:

@@ -1,5 +1,9 @@
 """Example of using fractional GPUs (< 1.0) per Learner worker.
 
+The number of GPUs required, just for learning (excluding those maybe needed on your
+EnvRunners, if applicable) can be computed by:
+`num_gpus = config.num_learners * config.num_gpus_per_learner`
+
 This example:
   - shows how to set up an Algorithm that uses one or more Learner workers ...
   - ... and how to assign a fractional (< 1.0) number of GPUs to each of these Learners.
@@ -7,8 +11,8 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-learner-workers=
-[number of Learner workers, e.g. 1] --num-gpus-per-learner [some fraction <1.0]`
+`python [script file name].py --num-learners=
+[number of Learners, e.g. 1] --num-gpus-per-learner [some fraction <1.0]`
 
 The following command line combinations been tested on a 4 NVIDIA T4 GPUs (16 vCPU)
 machine.
@@ -17,7 +21,8 @@ learning rates in the `base_config` below:
 1) --num-learners=1 --num-gpus-per-learner=0.5 (2.0 GPUs used).
 2) --num-learners=1 --num-gpus-per-learner=0.3 (1.2 GPUs used).
 3) --num-learners=1 --num-gpus-per-learner=0.25 (1.0 GPU used).
-4) non-sensical setting: --num-learners=2 --num-gpus-per-learner=0.5 (expect an
+4) --num-learners=2 --num-gpus-per-learner=1 (8 GPUs used).
+5) non-sensical setting: --num-learners=2 --num-gpus-per-learner=0.5 (expect an
 NCCL-related error due to the fact that torch will try to perform DDP sharding,
 but notices that the shards sit on the same GPU).
 
@@ -68,7 +73,7 @@ The final output should look something like this:
 +----------------+----------------------+----------------------+----------------------+
 """
 from ray import tune
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
@@ -78,7 +83,6 @@ parser = add_rllib_example_script_args(
     default_iters=50, default_reward=180, default_timesteps=100000
 )
 parser.set_defaults(
-    enable_new_api_stack=True,
     num_env_runners=2,
 )
 

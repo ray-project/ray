@@ -1,9 +1,9 @@
-from typing import List
-import pytest
 import os
 import shutil
 import sys
 import tempfile
+
+import pytest
 
 # Required for bazel
 file_parent = os.path.dirname(__file__)
@@ -11,7 +11,7 @@ sys.path.append(os.path.join(file_parent, "../"))
 
 import bazel_sharding  # noqa: E402
 
-WORKSPACE_KEY = "workspace"
+WORKSPACE_KEY = "work"
 
 
 def _prefix_rules(rules):
@@ -30,23 +30,28 @@ all_rules = size_rules + timeout_rules + manual_rules + size_and_timeout_rules
 @pytest.fixture
 def mock_build_dir():
     """Create a mock bazel workspace"""
-    tmpdir = tempfile.mkdtemp()
-    with open(os.path.join(tmpdir, "WORKSPACE"), "w") as f:
-        f.write(
-            """
-workspace(name = "fake_workspace")
-            """
+    with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as tmphome:
+        with open(os.path.join(tmpdir, "WORKSPACE"), "w") as f:
+            f.write('workspace(name = "fake_workspace")\n')
+        with open(os.path.join(tmpdir, ".bazelversion"), "w") as f:
+            f.write("6.5.0\n")
+
+        os.makedirs(os.path.join(tmpdir, WORKSPACE_KEY), exist_ok=True)
+
+        shutil.copyfile(
+            os.path.join(file_parent, "mock_BUILD"),
+            os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"),
         )
-    os.makedirs(os.path.join(tmpdir, WORKSPACE_KEY), exist_ok=True)
-    shutil.copyfile(
-        os.path.join(file_parent, "mock_BUILD"),
-        os.path.join(tmpdir, WORKSPACE_KEY, "BUILD"),
-    )
-    cwd = os.getcwd()
-    os.chdir(os.path.join(tmpdir, WORKSPACE_KEY))
-    yield
-    os.chdir(cwd)
-    shutil.rmtree(tmpdir, ignore_errors=True)
+        cwd = os.getcwd()
+        os.chdir(os.path.join(tmpdir, WORKSPACE_KEY))
+        original_home = os.environ.get("HOME")
+        os.environ["HOME"] = tmphome
+        yield
+        if original_home is None:
+            del os.environ["HOME"]
+        else:
+            os.environ["HOME"] = original_home
+        os.chdir(cwd)
 
 
 def test_actual_timeouts(mock_build_dir):
@@ -75,42 +80,66 @@ def test_actual_timeouts(mock_build_dir):
     assert (rule.actual_timeout_s == expected_timeouts[rule.name] for rule in rules)
 
 
-def test_add_rule_to_best_shard():
-    """Test that the best shard in optimal strategy is chosen correctly."""
+def test_allocate_slots_to_shards():
+    """Test that slot allocation uses least-loaded strategy correctly."""
+    # If we start with empty shards, distribute evenly
+    rules = [bazel_sharding.BazelRule(f"test_{i}", "medium") for i in range(4)]
+    rules_grouped_by_time = [(300, rules)]
+    shard_slots = bazel_sharding.allocate_slots_to_shards(
+        rules_grouped_by_time, count=4
+    )
+    for i in range(4):
+        assert shard_slots[i][300] == 1
 
-    # If we start with an empty list, then add to first shard
-    shards: List[List[bazel_sharding.BazelRule]] = [list() for _ in range(4)]
-    optimum = 600
+    # Add to least-loaded shard (not first shard)
+    eternal_rules = [
+        bazel_sharding.BazelRule(f"eternal_{i}", "enormous") for i in range(8)
+    ]
+    small_rules = [bazel_sharding.BazelRule(f"small_{i}", "small") for i in range(16)]
+    rules_grouped_by_time = [(3600, eternal_rules), (60, small_rules)]
+    shard_slots = bazel_sharding.allocate_slots_to_shards(
+        rules_grouped_by_time, count=24
+    )
+    for i in range(8):
+        assert shard_slots[i][3600] == 1
+        assert shard_slots[i][60] == 0
+    for i in range(8, 24):
+        assert shard_slots[i][3600] == 0
+        assert shard_slots[i][60] == 1
 
-    rule = bazel_sharding.BazelRule("mock", "medium")
-    bazel_sharding.add_rule_to_best_shard(rule, shards, optimum)
-    assert shards[0][0] == rule
-    assert all(not shard for shard in shards[1:])
+    # More shards than needed, still distributes evenly
+    eternal_rules = [
+        bazel_sharding.BazelRule(f"eternal_{i}", "enormous") for i in range(4)
+    ]
+    rules_grouped_by_time = [(3600, eternal_rules)]
+    shard_slots = bazel_sharding.allocate_slots_to_shards(
+        rules_grouped_by_time, count=2
+    )
+    assert shard_slots[0][3600] == 2
+    assert shard_slots[1][3600] == 2
 
-    # Add to first shard below optimum
-    old_rule = bazel_sharding.BazelRule("mock", "medium")
-    shards: List[List[bazel_sharding.BazelRule]] = [[old_rule] for _ in range(4)]
-    shards[3] = []
-    optimum = old_rule.actual_timeout_s
 
-    rule = bazel_sharding.BazelRule("mock", "small")
-    bazel_sharding.add_rule_to_best_shard(rule, shards, optimum)
-    assert shards[3][0] == rule
-    assert all(shard[-1] == old_rule for shard in shards[0:3])
+def test_get_rules_for_shard_optimal_no_empty_shards():
+    """Test that get_rules_for_shard_optimal avoids empty shards."""
+    enormous_rules = [bazel_sharding.BazelRule("enormous_0", "enormous")]
+    small_rules = [bazel_sharding.BazelRule(f"small_{i}", "small") for i in range(10)]
+    rules_grouped_by_time = [(3600, enormous_rules), (60, small_rules)]
 
-    # If all shards are above or equal optimum, add to the one with the smallest
-    # difference
-    old_rule = bazel_sharding.BazelRule("mock", "large")
-    shards: List[List[bazel_sharding.BazelRule]] = [[old_rule] for _ in range(4)]
-    optimum = old_rule.actual_timeout_s
-    old_rule_medium = bazel_sharding.BazelRule("mock", "medium")
-    shards[3][0] = old_rule_medium
+    all_shards = []
+    for shard_index in range(6):
+        shard_rules = bazel_sharding.get_rules_for_shard_optimal(
+            rules_grouped_by_time, shard_index, count=6
+        )
+        all_shards.append(shard_rules)
 
-    rule = bazel_sharding.BazelRule("mock", "small")
-    bazel_sharding.add_rule_to_best_shard(rule, shards, optimum)
-    assert shards[3][0] == old_rule_medium
-    assert shards[3][-1] == rule
-    assert all(shard[-1] == old_rule for shard in shards[0:3])
+    for i, shard in enumerate(all_shards):
+        assert len(shard) > 0, f"Shard {i} is empty"
+
+    all_tests = set()
+    for shard in all_shards:
+        all_tests.update(shard)
+    expected_tests = {"enormous_0"} | {f"small_{i}" for i in range(10)}
+    assert all_tests == expected_tests
 
 
 def test_bazel_sharding_end_to_end(mock_build_dir):
@@ -178,18 +207,18 @@ def test_bazel_sharding_two_shards(mock_build_dir):
 
     # We should be deterministic, therefore we can hardcode this
     assert output_1_list == [
-        f"//{WORKSPACE_KEY}:test_eternal",
+        f"//{WORKSPACE_KEY}:test_both_size_and_timeout",
+        f"//{WORKSPACE_KEY}:test_enormous",
         f"//{WORKSPACE_KEY}:test_large",
-        f"//{WORKSPACE_KEY}:test_long",
-        f"//{WORKSPACE_KEY}:test_small",
+        f"//{WORKSPACE_KEY}:test_short",
     ]
     assert output_2_list == [
-        f"//{WORKSPACE_KEY}:test_both_size_and_timeout",
         f"//{WORKSPACE_KEY}:test_default",
-        f"//{WORKSPACE_KEY}:test_enormous",
+        f"//{WORKSPACE_KEY}:test_eternal",
+        f"//{WORKSPACE_KEY}:test_long",
         f"//{WORKSPACE_KEY}:test_medium",
         f"//{WORKSPACE_KEY}:test_moderate",
-        f"//{WORKSPACE_KEY}:test_short",
+        f"//{WORKSPACE_KEY}:test_small",
     ]
 
     output_1_naive_list = bazel_sharding.main(

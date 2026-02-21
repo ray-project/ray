@@ -1,4 +1,4 @@
-text: Below are examples for using Ray Data for batch inference workloads with a variety of frameworks and use cases.
+text: Below are examples for using Ray Data for batch inference workloads or large-scale data processing with a variety of frameworks and use cases.
 columns_to_show:
   - frameworks
 groupby: skill_level
@@ -28,4 +28,46 @@ examples:
     skill_level: beginner
     frameworks:
       - xgboost
-    link: ../train/examples/xgboost/xgboost_example
+    link: ../train/examples/xgboost/distributed-xgboost-lightgbm
+  - title: LLM Batch Inference
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: examples/llm_batch_inference_text/content/README
+  - title: Batch Inference with Structural Output
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: ../llm/examples/batch/vllm-with-structural-output
+  - title: Batch Inference with LoRA Adapter
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+    link: ../llm/examples/batch/vllm-with-lora
+  - title: Multimodal LLM Batch Inference
+    skill_level: beginner
+    frameworks:
+      - vLLM
+    use_cases:
+      - large language models
+      - generative ai
+      - computer vision
+    link: examples/llm_batch_inference_vision/content/README
+  - title: Unstructured Data Ingestion and Processing
+    skill_level: intermediate
+    frameworks:
+      - Transformers
+      - Unstructured
+    use_cases:
+      - document processing
+      - data ingestion
+    link: examples/unstructured_data_ingestion/content/unstructured_data_ingestion

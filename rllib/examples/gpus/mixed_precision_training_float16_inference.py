@@ -20,7 +20,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack
+`python [script file name].py
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -54,51 +54,41 @@ In the console output, you should see something like this:
 |         281.3231 |                 455.81 |                   1426 |
 +------------------+------------------------+------------------------+
 """
-from typing import Optional
-
 import gymnasium as gym
 import numpy as np
 import torch
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
 
 parser = add_rllib_example_script_args(
     default_iters=200, default_reward=450.0, default_timesteps=200000
 )
 parser.set_defaults(
     algo="PPO",
-    enable_new_api_stack=True,
 )
 
 
-class MakeEnvRunnerRLModulesFloat16(DefaultCallbacks):
+def on_algorithm_init(
+    algorithm: Algorithm,
+    **kwargs,
+) -> None:
     """Callback making sure that all RLModules in the algo are `half()`'ed."""
 
-    def on_algorithm_init(
-        self,
-        *,
-        algorithm: Algorithm,
-        metrics_logger: Optional[MetricsLogger] = None,
-        **kwargs,
-    ) -> None:
-        # Switch all EnvRunner RLModules (assuming single RLModules) to float16.
-        algorithm.env_runner_group.foreach_worker(
+    # Switch all EnvRunner RLModules (assuming single RLModules) to float16.
+    algorithm.env_runner_group.foreach_env_runner(
+        lambda env_runner: env_runner.module.half()
+    )
+    if algorithm.eval_env_runner_group:
+        algorithm.eval_env_runner_group.foreach_env_runner(
             lambda env_runner: env_runner.module.half()
         )
-        if algorithm.eval_env_runner_group:
-            algorithm.eval_env_runner_group.foreach_worker(
-                lambda env_runner: env_runner.module.half()
-            )
 
 
 class Float16Connector(ConnectorV2):
@@ -143,17 +133,16 @@ class PPOTorchMixedPrecisionLearner(PPOTorchLearner):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
     assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (
         (PPOConfig().environment("CartPole-v1"))
-        .env_runners(env_to_module_connector=lambda env: Float16Connector())
+        .env_runners(
+            env_to_module_connector=lambda env, spaces, device: Float16Connector()
+        )
         # Plug in our custom callback (on_algorithm_init) to make EnvRunner RLModules
         # float16 models.
-        .callbacks(MakeEnvRunnerRLModulesFloat16)
+        .callbacks(on_algorithm_init=on_algorithm_init)
         # Plug in the torch built-int loss scaler class to stabilize gradient
         # computations (by scaling the loss, then unscaling the gradients before
         # applying them). This is using the built-in, experimental feature of

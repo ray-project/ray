@@ -22,8 +22,18 @@
 #include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
+#include "ray/common/id.h"
+#include "ray/util/network_util.h"
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
+
+/// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
+/// value to support an empty Redis username.
+ABSL_FLAG(std::string,
+          ray_redis_username,
+          "absl::flags dummy default value",
+          "Prevents external clients without the username from connecting to Redis "
+          "if provided.");
 
 /// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
 /// value to support empty redis password.
@@ -67,10 +77,10 @@ ABSL_FLAG(std::string,
           "command. It takes effect only if Ray head is started by a driver. Run `ray "
           "start --help` for details.");
 
-ABSL_FLAG(int64_t,
-          startup_token,
-          -1,
-          "The startup token assigned to this worker process by the raylet.");
+ABSL_FLAG(std::string,
+          ray_worker_id,
+          "",
+          "The worker ID assigned to this worker process by the raylet (hex string).");
 
 ABSL_FLAG(std::string,
           ray_default_actor_lifetime,
@@ -119,6 +129,9 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.code_search_path.empty()) {
     code_search_path = config.code_search_path;
   }
+  if (config.redis_username_) {
+    redis_username = *config.redis_username_;
+  }
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
@@ -145,6 +158,11 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     }
     if (!FLAGS_ray_address.CurrentValue().empty()) {
       SetBootstrapAddress(FLAGS_ray_address.CurrentValue());
+    }
+    // Don't rewrite `ray_redis_username` when it is not set in the command line.
+    if (FLAGS_ray_redis_username.CurrentValue() !=
+        FLAGS_ray_redis_username.DefaultValue()) {
+      redis_username = FLAGS_ray_redis_username.CurrentValue();
     }
     // Don't rewrite `ray_redis_password` when it is not set in the command line.
     if (FLAGS_ray_redis_password.CurrentValue() !=
@@ -175,7 +193,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
           absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
       head_args.insert(head_args.end(), args.begin(), args.end());
     }
-    startup_token = absl::GetFlag<int64_t>(FLAGS_startup_token);
+    worker_id = absl::GetFlag<std::string>(FLAGS_ray_worker_id);
     if (!FLAGS_ray_default_actor_lifetime.CurrentValue().empty()) {
       default_actor_lifetime =
           ParseDefaultActorLifetimeType(FLAGS_ray_default_actor_lifetime.CurrentValue());
@@ -218,7 +236,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       ray_namespace = FLAGS_ray_job_namespace.CurrentValue();
     }
     if (ray_namespace.empty()) {
-      ray_namespace = GenerateUUIDV4();
+      ray_namespace = UniqueID::FromRandom().Hex();
     }
   }
 
@@ -232,12 +250,14 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
 };
 
-void ConfigInternal::SetBootstrapAddress(std::string_view address) {
-  auto pos = address.find(':');
-  RAY_CHECK(pos != std::string::npos);
-  bootstrap_ip = address.substr(0, pos);
-  auto ret = std::from_chars(
-      address.data() + pos + 1, address.data() + address.size(), bootstrap_port);
+void ConfigInternal::SetBootstrapAddress(std::string_view bootstrap_address) {
+  auto ip_and_port = ParseAddress(std::string(bootstrap_address));
+  RAY_CHECK(ip_and_port.has_value());
+
+  bootstrap_ip = (*ip_and_port)[0];
+  auto ret = std::from_chars((*ip_and_port)[1].data(),
+                             (*ip_and_port)[1].data() + (*ip_and_port)[1].size(),
+                             bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
 }
 

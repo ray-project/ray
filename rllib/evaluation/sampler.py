@@ -11,6 +11,7 @@ from typing import (
     Union,
 )
 
+from ray._common.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
@@ -19,13 +20,12 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import OldAPIStack, override
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import SampleBatchType
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.callbacks import DefaultCallbacks
+    from ray.rllib.callbacks.callbacks import RLlibCallback
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
@@ -116,7 +116,7 @@ class SyncSampler(SamplerInput):
         clip_rewards: Union[bool, float],
         rollout_fragment_length: int,
         count_steps_by: str = "env_steps",
-        callbacks: "DefaultCallbacks",
+        callbacks: "RLlibCallback",
         multiple_episodes_in_batch: bool = False,
         normalize_actions: bool = True,
         clip_actions: bool = False,
@@ -150,7 +150,7 @@ class SyncSampler(SamplerInput):
                 a single env_step contains one or more agent_steps, depending
                 on how many agents are present at any given time in the
                 ongoing episode.
-            callbacks: The Callbacks object to use when episode
+            callbacks: The RLlibCallback object to use when episode
                 events happen during rollout.
             multiple_episodes_in_batch: Whether to pack multiple
                 episodes into each batch. This guarantees batches will be

@@ -7,22 +7,22 @@ have access to the ray_release package.
 """
 
 import argparse
-import time
-import os
-from pathlib import Path
-import subprocess
-import multiprocessing
 import json
-import sys
 import logging
+import multiprocessing
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
-from typing import Optional, List, Tuple
 
+AZURE_STORAGE_ACCOUNT = "rayreleasetests"
 OUTPUT_JSON_FILENAME = "output.json"
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
-installed_pips = []
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stderr)
@@ -53,13 +53,6 @@ def exponential_backoff_retry(
             retry_delay_s *= 2
 
 
-def install_pip(pip: str):
-    if pip in installed_pips:
-        return
-    subprocess.run(["pip", "install", "-q", pip], check=True)
-    installed_pips.append(pip)
-
-
 def run_storage_cp(source: str, target: str):
     if not source or not target:
         return False
@@ -69,6 +62,8 @@ def run_storage_cp(source: str, target: str):
         return False
 
     storage_service = urlparse(target).scheme
+    if target.startswith(f"https://{AZURE_STORAGE_ACCOUNT}.dfs.core.windows.net"):
+        storage_service = "azure_blob"
     cp_cmd_args = []
     if storage_service == "s3":
         cp_cmd_args = [
@@ -85,6 +80,14 @@ def run_storage_cp(source: str, target: str):
             "gcloud",
             "storage",
             "cp",
+            source,
+            target,
+        ]
+    elif storage_service == "azure_blob":
+        subprocess.run(["azcopy", "login", "--identity"], check=True)
+        cp_cmd_args = [
+            "azcopy",
+            "copy",
             source,
             target,
         ]

@@ -2,13 +2,14 @@ from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import create_dataset_tag
+from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data import Dataset
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data.dataset import Dataset
 
 
 class DataIteratorImpl(DataIterator):
@@ -23,11 +24,18 @@ class DataIteratorImpl(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
-        ds = self._base_dataset
-        ref_bundles_iterator, stats, executor = ds._plan.execute_to_iterator()
-        ds._current_executor = executor
-        return ref_bundles_iterator, stats, False
+    ) -> Tuple[
+        Iterator[RefBundle],
+        Optional[DatasetStats],
+        bool,
+        Optional["StreamingExecutor"],
+    ]:
+        (
+            ref_bundles_iterator,
+            stats,
+            executor,
+        ) = self._base_dataset._execute_to_iterator()
+        return ref_bundles_iterator, stats, False, executor
 
     def stats(self) -> str:
         return self._base_dataset.stats()
@@ -35,7 +43,8 @@ class DataIteratorImpl(DataIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return self._base_dataset.schema()
 
+    def get_context(self) -> DataContext:
+        return self._base_dataset.context
+
     def _get_dataset_tag(self):
-        return create_dataset_tag(
-            self._base_dataset._plan._dataset_name, self._base_dataset._uuid
-        )
+        return self._base_dataset.get_dataset_id()

@@ -1,6 +1,8 @@
-import ray
-import numpy as np
 import argparse
+
+import numpy as np
+
+import ray
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")

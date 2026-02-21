@@ -1,12 +1,20 @@
+import logging
 import math
 from contextlib import contextmanager
-from typing import Any, Callable, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, List, Optional
 
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
+
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
+
+
+logger = logging.getLogger(__name__)
 
 
 def _cursor_to_block(cursor) -> Block:
@@ -71,43 +79,85 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
-class SQLDatasource(Datasource):
+def _execute(cursor: Cursor, sql: str, params: Optional[Any]) -> None:
+    if params is None:
+        cursor.execute(sql)
+    else:
+        cursor.execute(sql, params)
 
-    NUM_SAMPLE_ROWS = 100
+
+class SQLDatasource(Datasource):
     MIN_ROWS_PER_READ_TASK = 50
 
-    def __init__(self, sql: str, connection_factory: Callable[[], Connection]):
+    def __init__(
+        self,
+        sql: str,
+        connection_factory: Callable[[], Connection],
+        shard_hash_fn: str,
+        shard_keys: Optional[List[str]] = None,
+        sql_params: Optional[Any] = None,
+    ):
         self.sql = sql
+        if shard_keys and len(shard_keys) > 1:
+            self.shard_keys = f"CONCAT({','.join(shard_keys)})"
+        elif shard_keys and len(shard_keys) == 1:
+            self.shard_keys = f"{shard_keys[0]}"
+        else:
+            self.shard_keys = None
+        self.shard_hash_fn = shard_hash_fn
         self.connection_factory = connection_factory
+        self.sql_params = sql_params
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        pass
+        return None
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
-        def fallback_read_fn() -> Iterable[Block]:
-            with _connect(self.connection_factory) as cursor:
-                cursor.execute(self.sql)
-                block = _cursor_to_block(cursor)
-                return [block]
+    def supports_sharding(self, parallelism: int) -> bool:
+        """Check if database supports sharding with MOD/ABS/CONCAT operations.
 
-        # If `parallelism` is 1, directly fetch all rows. This avoids unnecessary
-        # queries to fetch a sample block and compute the total number of rows.
-        if parallelism == 1:
-            metadata = BlockMetadata(None, None, None, None, None)
-            return [ReadTask(fallback_read_fn, metadata)]
+        Returns:
+            bool: True if sharding is supported, False otherwise.
+        """
+        if parallelism <= 1 or self.shard_keys is None:
+            return False
 
-        # Databases like DB2, Oracle, and MS SQL Server don't support `LIMIT`.
+        # Test if database supports required operations (MOD, ABS, MD5, CONCAT)
+        # by executing a sample query
+        hash_fn = self.shard_hash_fn
+        query = (
+            f"SELECT COUNT(1) FROM ({self.sql}) as T"
+            f" WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = 0"
+        )
         try:
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(f"SELECT * FROM ({self.sql}) as T LIMIT 1 OFFSET 0")
-            is_limit_supported = True
-        except Exception:
-            is_limit_supported = False
+                _execute(cursor, query, self.sql_params)
+            return True
+        except Exception as e:
+            logger.info(f"Database does not support sharding: {str(e)}.")
+            return False
 
-        if not is_limit_supported:
-            metadata = BlockMetadata(None, None, None, None, None)
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
+        def fallback_read_fn() -> Iterable[Block]:
+            """Read all data in a single block when sharding is not supported."""
+            with _connect(self.connection_factory) as cursor:
+                _execute(cursor, self.sql, self.sql_params)
+                return [_cursor_to_block(cursor)]
+
+        # Check if sharding is supported by the database first
+        # If not, fall back to reading all data in a single task without counting rows
+        if not self.supports_sharding(parallelism):
+            logger.info(
+                "Sharding is not supported. "
+                "Falling back to reading all data in a single task."
+            )
+            metadata = BlockMetadata(None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
 
+        # Only perform the expensive COUNT(*) query if sharding is supported
         num_rows_total = self._get_num_rows()
 
         if num_rows_total == 0:
@@ -119,51 +169,39 @@ class SQLDatasource(Datasource):
         num_rows_per_block = num_rows_total // parallelism
         num_blocks_with_extra_row = num_rows_total % parallelism
 
-        sample_block_accessor = BlockAccessor.for_block(self._get_sample_block())
-        estimated_size_bytes_per_row = math.ceil(
-            sample_block_accessor.size_bytes() / sample_block_accessor.num_rows()
-        )
-        sample_block_schema = sample_block_accessor.schema()
-
         tasks = []
-        offset = 0
         for i in range(parallelism):
             num_rows = num_rows_per_block
             if i < num_blocks_with_extra_row:
                 num_rows += 1
-
-            read_fn = self._create_read_fn(num_rows, offset)
+            read_fn = self._create_parallel_read_fn(i, parallelism)
             metadata = BlockMetadata(
-                num_rows,
-                estimated_size_bytes_per_row * num_rows,
-                sample_block_schema,
-                None,
-                None,
+                num_rows=num_rows,
+                size_bytes=None,
+                input_files=None,
+                exec_stats=None,
             )
-            tasks.append(ReadTask(read_fn, metadata))
-
-            offset += num_rows
+            tasks.append(
+                ReadTask(read_fn, metadata, per_task_row_limit=per_task_row_limit)
+            )
 
         return tasks
 
     def _get_num_rows(self) -> int:
         with _connect(self.connection_factory) as cursor:
-            cursor.execute(f"SELECT COUNT(*) FROM ({self.sql}) as T")
+            _execute(cursor, f"SELECT COUNT(*) FROM ({self.sql}) as T", self.sql_params)
             return cursor.fetchone()[0]
 
-    def _get_sample_block(self) -> Block:
-        with _connect(self.connection_factory) as cursor:
-            cursor.execute(
-                f"SELECT * FROM ({self.sql}) as T LIMIT {self.NUM_SAMPLE_ROWS}"
-            )
-            return _cursor_to_block(cursor)
+    def _create_parallel_read_fn(self, task_id: int, parallelism: int):
+        hash_fn = self.shard_hash_fn
+        query = (
+            f"SELECT * FROM ({self.sql}) as T "
+            f"WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = {task_id}"
+        )
 
-    def _create_read_fn(self, num_rows: int, offset: int):
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
-                cursor.execute(
-                    f"SELECT * FROM ({self.sql}) as T LIMIT {num_rows} OFFSET {offset}"
-                )
+                _execute(cursor, query, self.sql_params)
                 block = _cursor_to_block(cursor)
                 return [block]
 

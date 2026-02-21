@@ -1,0 +1,7 @@
+pre-commit>=4.2.0
+pytest>=8.3.5
+ruff>=0.11.5
+nbconvert
+jupyter
+ipykernel
+ipywidgets

@@ -1,67 +1,55 @@
-from typing import List, Optional, Type
+from typing import Callable, List
 
+from .ruleset import Ruleset
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Optimizer,
     PhysicalPlan,
+    Plan,
     Rule,
 )
-from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
-from ray.data._internal.logical.rules.inherit_target_max_block_size import (
+from ray.data._internal.logical.rules import (
+    CombineShuffles,
+    ConfigureMapTaskMemoryUsingOutputSize,
+    FuseOperators,
+    InheritBatchFormatRule,
     InheritTargetMaxBlockSizeRule,
+    LimitPushdownRule,
+    PredicatePushdown,
+    ProjectionPushdown,
+    SetReadParallelismRule,
 )
-from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
-from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
-from ray.data._internal.logical.rules.set_read_parallelism import SetReadParallelismRule
-from ray.data._internal.logical.rules.zero_copy_map_fusion import (
-    EliminateBuildOutputBlocks,
-)
-from ray.data._internal.planner.planner import Planner
 from ray.util.annotations import DeveloperAPI
 
-_LOGICAL_RULES = [
-    ReorderRandomizeBlocksRule,
-    InheritBatchFormatRule,
-]
-
-_PHYSICAL_RULES = [
-    InheritTargetMaxBlockSizeRule,
-    SetReadParallelismRule,
-    OperatorFusionRule,
-    EliminateBuildOutputBlocks,
-]
+_LOGICAL_RULESET = Ruleset(
+    [
+        InheritBatchFormatRule,
+        LimitPushdownRule,
+        ProjectionPushdown,
+        PredicatePushdown,
+        CombineShuffles,
+    ]
+)
 
 
-@DeveloperAPI
-def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
-    if cls in _LOGICAL_RULES:
-        return
-
-    if insert_index is None:
-        _LOGICAL_RULES.append(cls)
-    else:
-        _LOGICAL_RULES.insert(insert_index, cls)
+_PHYSICAL_RULESET = Ruleset(
+    [
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        FuseOperators,
+        ConfigureMapTaskMemoryUsingOutputSize,
+    ]
+)
 
 
 @DeveloperAPI
-def get_logical_rules() -> List[Type[Rule]]:
-    return list(_LOGICAL_RULES)
+def get_logical_ruleset() -> Ruleset:
+    return _LOGICAL_RULESET
 
 
 @DeveloperAPI
-def register_physical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
-    if cls in _PHYSICAL_RULES:
-        return
-
-    if insert_index is None:
-        _PHYSICAL_RULES.append(cls)
-    else:
-        _PHYSICAL_RULES.insert(insert_index, cls)
-
-
-@DeveloperAPI
-def get_physical_rules() -> List[Type[Rule]]:
-    return list(_PHYSICAL_RULES)
+def get_physical_ruleset() -> Ruleset:
+    return _PHYSICAL_RULESET
 
 
 class LogicalOptimizer(Optimizer):
@@ -69,7 +57,7 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [rule_cls() for rule_cls in _LOGICAL_RULES]
+        return [rule_cls() for rule_cls in get_logical_ruleset()]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -77,7 +65,28 @@ class PhysicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [rule_cls() for rule_cls in _PHYSICAL_RULES]
+        return [rule_cls() for rule_cls in get_physical_ruleset()]
+
+
+def get_plan_conversion_fns() -> List[Callable[[Plan], Plan]]:
+    """Get the list of transformation functions to convert a logical plan
+    to an optimized physical plan.
+
+    This returns the 3 transformation steps:
+    1. Logical optimization
+    2. Planning (logical -> physical operators)
+    3. Physical optimization
+
+    Returns:
+        A list of transformation functions, each taking a Plan and returning a Plan.
+    """
+    from ray.data._internal.planner import create_planner
+
+    return [
+        LogicalOptimizer().optimize,  # Logical optimization
+        create_planner().plan,  # Planning
+        PhysicalOptimizer().optimize,  # Physical optimization
+    ]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
@@ -88,7 +97,18 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+
+    # 1. Get planning functions
+    optimize_logical, plan, optimize_physical = get_plan_conversion_fns()
+
+    # 2. Logical -> Logical (Optimized)
+    optimized_logical_plan = optimize_logical(logical_plan)
+
+    # 3. Rewire Logical -> Logical (Optimized)
     logical_plan._dag = optimized_logical_plan.dag
-    physical_plan = Planner().plan(optimized_logical_plan)
-    return PhysicalOptimizer().optimize(physical_plan)
+
+    # 4. Logical (Optimized) -> Physical
+    physical_plan = plan(optimized_logical_plan)
+
+    # 5. Physical (Optimized) -> Physical
+    return optimize_physical(physical_plan)

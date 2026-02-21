@@ -481,7 +481,13 @@ def train_loop_per_worker():
             }
         )
 
-    train.report(final_train_report_metrics)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+        checkpoint = Checkpoint.from_directory(tmpdir)
+        train.report(
+            final_train_report_metrics,
+            checkpoint=checkpoint,
+        )
 
 
 # The input files URLs per training worker.
@@ -768,6 +774,6 @@ if __name__ == "__main__":
     else:
         case_name = "cache-none"
 
-    benchmark = Benchmark(benchmark_name)
+    benchmark = Benchmark()
     benchmark.run_fn(case_name, benchmark_code, args=args)
-    benchmark.write_result("/tmp/multi_node_train_benchmark.json")
+    benchmark.write_result()

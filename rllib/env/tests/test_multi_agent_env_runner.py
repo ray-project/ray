@@ -1,10 +1,13 @@
 import unittest
 
 import ray
-
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    EPISODE_AGENT_RETURN_MEAN,
+    EPISODE_MODULE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import check
 
 
@@ -91,26 +94,76 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         for eps in episodes:
             check(eps.env_t_started, 0)
 
-    def _build_config(self):
+    def test_counting_by_agent_steps(self):
+        """Tests whether counting by agent_steps works."""
+        # Build a multi agent config.
+        config = self._build_config(num_agents=4, num_policies=1)
+        config.multi_agent(count_steps_by="agent_steps")
+        config.env_runners(
+            rollout_fragment_length=20,
+            num_envs_per_env_runner=4,
+        )
+
+        # Create a `MultiAgentEnvRunner` instance.
+        env_runner = MultiAgentEnvRunner(config=config)
+        episodes = env_runner.sample()
+        assert len(episodes) == 4
+        assert all(e.agent_steps() == 20 for e in episodes)
+
+    def _build_config(self, num_agents=2, num_policies=2):
         # Build the configuration and use `PPO`.
+        assert num_policies == 1 or num_agents == num_policies
+
         config = (
-            PPOConfig().environment(
+            PPOConfig()
+            .environment(
                 MultiAgentCartPole,
-                env_config={"num_agents": 2},
+                env_config={"num_agents": num_agents},
             )
-            # TODO (sven, simon): Setup is still for `Policy`, change as soon
-            #  as we have switched fully to the new stack.
             .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=lambda aid, *args, **kwargs: f"p{aid}",
+                policies={f"p{i}" for i in range(num_policies)},
+                policy_mapping_fn=(
+                    lambda aid, *args, **kwargs: (
+                        f"p{aid}" if num_agents == num_policies else "p0"
+                    )
+                ),
             )
         )
 
         return config
 
+    def test_module_metrics_returns_equal_sum_of_agent_returns(self):
+        """Check if module metrics returns equals sum of returns of agents assigned to that module.
+
+        Related to https://github.com/ray-project/ray/issues/59860
+        """
+        # Build a multi agent config.
+        config = self._build_config(num_agents=4, num_policies=1)
+        # Create a `MultiAgentEnvRunner` instance.
+        env_runner = MultiAgentEnvRunner(config=config)
+        # Now run one episode
+        env_runner.sample(num_episodes=1)
+        # Collect metrics from that episode
+        metrics = env_runner.get_metrics()
+        # Expected singular policy name when setting num_agents != num_policies and num_policies = 1
+        assert "p0" in metrics[EPISODE_MODULE_RETURN_MEAN].keys()
+        # Collect episode return, module return, and sum of agent returns
+        episode_return_mean = metrics["episode_return_mean"].reduce()
+        module_episode_returns_mean = metrics[EPISODE_MODULE_RETURN_MEAN]["p0"].reduce()
+        sum_agent_episode_returns_mean = sum(
+            value.reduce() for value in metrics[EPISODE_AGENT_RETURN_MEAN].values()
+        )
+        # Expect episode_return_mean == module_return_mean == sum_agent_returns_mean
+        assert (
+            episode_return_mean
+            == module_episode_returns_mean
+            == sum_agent_episode_returns_mean
+        )
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

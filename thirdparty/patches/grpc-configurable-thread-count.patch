@@ -1,0 +1,31 @@
+diff --git src/core/lib/gpr/linux/cpu.cc b/src/core/lib/gpr/linux/cpu.cc
+index 670ca6551c..043021dc4a 100644
+--- src/core/lib/gpr/linux/cpu.cc
++++ src/core/lib/gpr/linux/cpu.cc
+@@ -24,6 +24,7 @@
+ 
+ #ifdef GPR_CPU_LINUX
+ 
++#include <charconv>
+ #include <errno.h>
+ #include <sched.h>
+ #include <string.h>
+@@ -49,7 +50,17 @@ static void init_num_cpus() {
+ #endif
+   // This must be signed. sysconf returns -1 when the number cannot be
+   // determined
+-  ncpus = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
++  static constexpr const char* grpc_pooling_env_var_name = "RAY_num_grpc_internal_threads";
++  const char* env_var_value = std::getenv(grpc_pooling_env_var_name);
++  if (env_var_value != nullptr) {
++    const char* end = env_var_value + std::strlen(env_var_value);
++    auto const out = std::from_chars(env_var_value, end, ncpus);
++    if(out.ec != std::errc()) {
++      ncpus = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
++    }
++  } else {
++      ncpus = static_cast<int>(sysconf(_SC_NPROCESSORS_CONF));
++  }
+   if (ncpus < 1) {
+     gpr_log(GPR_ERROR, "Cannot determine number of CPUs: assuming 1");
+     ncpus = 1;

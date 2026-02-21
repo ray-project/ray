@@ -1,18 +1,18 @@
-import gymnasium as gym
-from typing import Type
 import unittest
+from typing import Type
+
+import gymnasium as gym
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModule
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.utils.test_utils import check
 
 
@@ -37,24 +37,6 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(algo.config.train_batch_size == 3000)
         algo.train()
         algo.stop()
-
-    def test_update_from_dict_works_for_multi_callbacks(self):
-        """Test to make sure callbacks config dict works."""
-        config_dict = {"callbacks": make_multi_callbacks([])}
-        config = AlgorithmConfig()
-        # This should work.
-        config.update_from_dict(config_dict)
-
-        serialized = config.serialize()
-
-        # For now, we don't support serializing make_multi_callbacks.
-        # It'll turn into a classpath that's not really usable b/c the class
-        # was created on-the-fly.
-        self.assertEqual(
-            serialized["callbacks"],
-            "ray.rllib.algorithms.callbacks.make_multi_callbacks.<locals>."
-            "_MultiCallbacks",
-        )
 
     def test_freezing_of_algo_config(self):
         """Tests, whether freezing an AlgorithmConfig actually works as expected."""
@@ -306,7 +288,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
     def test_get_multi_rl_module_spec(self):
         """Tests whether the get_multi_rl_module_spec() method works properly."""
-        from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
+        from ray.rllib.examples.rl_modules.classes.vpg_torch_rlm import VPGTorchRLModule
 
         class CustomRLModule1(VPGTorchRLModule):
             pass
@@ -449,9 +431,34 @@ class TestAlgorithmConfig(unittest.TestCase):
             lambda: config.rl_module_spec,
         )
 
+    def test_rollout_fragment_length_with_small_batch_and_multiple_learners(self):
+        """Test that get_rollout_fragment_length doesn't return 0 when train_batch_size=1 and num_learners > 1."""
+        for num_env_runners in [1, 2, 3, 4]:
+            config = (
+                AlgorithmConfig()
+                .env_runners(
+                    rollout_fragment_length="auto",
+                    num_env_runners=num_env_runners,
+                )
+                .learners(
+                    num_learners=2
+                )  # Multiple learners with train_batch_size=1 causes the issue
+                .training(
+                    train_batch_size=1
+                )  # Small batch size with multiple learners causes integer division to 0
+            )
+
+            # This should not return 0
+            rollout_fragment_length = config.get_rollout_fragment_length(0)
+            self.assertEqual(
+                rollout_fragment_length,
+                1,
+            )
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

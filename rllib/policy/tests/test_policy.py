@@ -19,7 +19,14 @@ class TestPolicy(unittest.TestCase):
         ray.shutdown()
 
     def test_policy_get_and_set_state(self):
-        config = PPOConfig().environment("CartPole-v1")
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+        )
         algo = config.build()
         policy = algo.get_policy()
         state1 = policy.get_state()
@@ -49,7 +56,8 @@ class TestPolicy(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

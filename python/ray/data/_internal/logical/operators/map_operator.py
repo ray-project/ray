@@ -1,13 +1,30 @@
+import functools
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Optional
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.interfaces import (
+    LogicalOperator,
+    LogicalOperatorSupportsPredicatePassThrough,
+    PredicatePassThroughBehavior,
+)
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
-from ray.data.context import DEFAULT_BATCH_SIZE
+from ray.data.expressions import Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
+
+__all__ = [
+    "AbstractMap",
+    "AbstractUDFMap",
+    "Filter",
+    "FlatMap",
+    "MapBatches",
+    "MapRows",
+    "Project",
+    "StreamingRepartition",
+]
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,34 +36,55 @@ class AbstractMap(AbstractOneToOne):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str] = None,
         input_op: Optional[LogicalOperator] = None,
         num_outputs: Optional[int] = None,
         *,
+        can_modify_num_rows: bool,
         min_rows_per_bundled_input: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        compute: Optional[ComputeStrategy] = None,
     ):
-        """
+        """Initialize an ``AbstractMap`` logical operator that will later
+        be converted into a physical ``MapOperator``.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
-            input_op: The operator preceding this operator in the plan DAG. The outputs
-                of `input_op` will be the inputs to this operator.
-            min_rows_per_bundled_input: The target number of rows to pass to
-                ``MapOperator._add_bundled_input()``.
-            ray_remote_args: Args to provide to ray.remote.
-            ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict will
-                always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
+            input_op: The operator preceding this operator in the plan DAG. The
+                outputs of ``input_op`` will be the inputs to this operator.
+            num_outputs: Number of outputs for this operator.
+            can_modify_num_rows: Whether the operator can change the row count. False if
+                # of input rows = # of output rows. True otherwise.
+            min_rows_per_bundled_input: Minimum number of rows a single bundle of
+                blocks passed on to the task must possess.
+            ray_remote_args: Args to provide to :func:`ray.remote`.
+            ray_remote_args_fn: A function that returns a dictionary of remote
+                args passed to each map worker. The purpose of this argument is
+                to generate dynamic arguments for each actor/task, and it will
+                be called each time prior to initializing the worker. Args
+                returned from this dict always override the args in
+                ``ray_remote_args``. Note: this is an advanced, experimental
+                feature.
+            compute: The compute strategy, either ``TaskPoolStrategy`` (default)
+                to use Ray tasks, or ``ActorPoolStrategy`` to use an
+                autoscaling actor pool.
         """
-        super().__init__(name, input_op, num_outputs)
-        self._min_rows_per_bundled_input = min_rows_per_bundled_input
-        self._ray_remote_args = ray_remote_args or {}
-        self._ray_remote_args_fn = ray_remote_args_fn
+        super().__init__(
+            input_op=input_op,
+            can_modify_num_rows=can_modify_num_rows,
+            num_outputs=num_outputs,
+            name=name,
+        )
+        self.min_rows_per_bundled_input = min_rows_per_bundled_input
+        self.ray_remote_args = ray_remote_args or {}
+        self.ray_remote_args_fn = ray_remote_args_fn
+        self.compute = compute or TaskPoolStrategy()
+        self.per_block_limit = None
+
+    def set_per_block_limit(self, per_block_limit: int):
+        self.per_block_limit = per_block_limit
 
 
 class AbstractUDFMap(AbstractMap):
@@ -59,22 +97,27 @@ class AbstractUDFMap(AbstractMap):
         name: str,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        *,
+        can_modify_num_rows: bool,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        """
+        """Initialize AbstractUDFMap.
+
         Args:
             name: Name for this operator. This is the name that will appear when
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             fn: User-defined function to be called.
+            can_modify_num_rows: Whether the UDF can change the row count. False if
+                # of input rows = # of output rows. True otherwise.
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
             fn_constructor_args: Arguments to provide to the initializor of `fn` if
@@ -83,30 +126,31 @@ class AbstractUDFMap(AbstractMap):
                 `fn` if `fn` is a callable class.
             min_rows_per_bundled_input: The target number of rows to pass to
                 ``MapOperator._add_bundled_input()``.
-            compute: The compute strategy, either ``"tasks"`` (default) to use Ray
-                tasks, or ``"actors"`` to use an autoscaling actor pool.
+            compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
+                Ray tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Args to provide to ray.remote.
+            ray_remote_args: Args to provide to :func:`ray.remote`.
         """
         name = self._get_operator_name(name, fn)
         super().__init__(
             name,
             input_op,
+            can_modify_num_rows=can_modify_num_rows,
             min_rows_per_bundled_input=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
+            compute=compute,
         )
-        self._fn = fn
-        self._fn_args = fn_args
-        self._fn_kwargs = fn_kwargs
-        self._fn_constructor_args = fn_constructor_args
-        self._fn_constructor_kwargs = fn_constructor_kwargs
-        self._compute = compute or TaskPoolStrategy()
-        self._ray_remote_args_fn = ray_remote_args_fn
+        self.fn = fn
+        self.fn_args = fn_args
+        self.fn_kwargs = fn_kwargs
+        self.fn_constructor_args = fn_constructor_args
+        self.fn_constructor_kwargs = fn_constructor_kwargs
+        self.ray_remote_args_fn = ray_remote_args_fn
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""
@@ -127,6 +171,9 @@ class AbstractUDFMap(AbstractMap):
             elif inspect.isfunction(fn):
                 # normal function or lambda function.
                 return f"{op_name}({fn.__name__})"
+            elif isinstance(fn, functools.partial):
+                # functools.partial
+                return f"{op_name}({fn.func.__name__})"
             else:
                 # callable object.
                 return f"{op_name}({fn.__class__.__name__})"
@@ -142,22 +189,24 @@ class MapBatches(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
-        batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-        batch_format: str = "default",
-        zero_copy_batch: bool = False,
+        can_modify_num_rows: bool = False,
+        batch_size: Optional[int] = None,
+        batch_format: Optional[str] = "default",
+        zero_copy_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         min_rows_per_bundled_input: Optional[int] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "MapBatches",
+            self.__class__.__name__,
             input_op,
             fn,
+            can_modify_num_rows=can_modify_num_rows,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -167,13 +216,9 @@ class MapBatches(AbstractUDFMap):
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        self._batch_size = batch_size
-        self._batch_format = batch_format
-        self._zero_copy_batch = zero_copy_batch
-
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
+        self.batch_size = batch_size
+        self.batch_format = batch_format
+        self.zero_copy_batch = zero_copy_batch
 
 
 class MapRows(AbstractUDFMap):
@@ -187,7 +232,7 @@ class MapRows(AbstractUDFMap):
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -195,6 +240,7 @@ class MapRows(AbstractUDFMap):
             "Map",
             input_op,
             fn,
+            can_modify_num_rows=False,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -204,10 +250,6 @@ class MapRows(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
-
 
 class Filter(AbstractUDFMap):
     """Logical operator for filter."""
@@ -215,49 +257,144 @@ class Filter(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: UserDefinedFunction,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        predicate_expr: Optional[Expr] = None,
+        fn: Optional[UserDefinedFunction] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        # Ensure exactly one of fn, or predicate_expr is provided
+        provided_params = sum([fn is not None, predicate_expr is not None])
+        if provided_params != 1:
+            raise ValueError(
+                f"Exactly one of 'fn', or 'predicate_expr' must be provided (received fn={fn}, predicate_expr={predicate_expr})"
+            )
+
+        self.predicate_expr = predicate_expr
+
         super().__init__(
-            "Filter",
+            self.__class__.__name__,
             input_op,
-            fn,
+            can_modify_num_rows=True,
+            fn=fn,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return True
+    def is_expression_based(self) -> bool:
+        return self.predicate_expr is not None
+
+    def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
+        if self.is_expression_based():
+            # Get a concise inline string representation of the expression
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                _InlineExprReprVisitor,
+            )
+
+            expr_str = _InlineExprReprVisitor().visit(self.predicate_expr)
+
+            # Truncate only the final result if too long
+            max_length = 60
+            if len(expr_str) > max_length:
+                expr_str = expr_str[: max_length - 3] + "..."
+
+            return f"{op_name}({expr_str})"
+        return super()._get_operator_name(op_name, fn)
 
 
-class Project(AbstractMap):
-    """Logical operator for select_columns."""
+class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
+    """Logical operator for all Projection Operations."""
 
     def __init__(
         self,
         input_op: LogicalOperator,
-        cols: List[str],
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        exprs: list["Expr"],
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__("Project", input_op=input_op, ray_remote_args=ray_remote_args)
-        self._compute = compute
-        self._batch_size = DEFAULT_BATCH_SIZE
-        self._cols = cols
-        self._batch_format = "pyarrow"
-        self._zero_copy_batch = True
+        # Auto-select compute strategy based on whether expressions contain callable class UDFs
+        if compute is None:
+            compute = self._detect_and_get_compute_strategy(exprs)
 
-    @property
-    def cols(self) -> List[str]:
-        return self._cols
+        super().__init__(
+            input_op=input_op,
+            can_modify_num_rows=False,
+            ray_remote_args=ray_remote_args,
+            compute=compute,
+        )
+        self.batch_size = None
+        self.exprs = exprs
+        self.batch_format = "pyarrow"
+        self.zero_copy_batch = True
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
+        for expr in self.exprs:
+            if expr.name is None and not isinstance(expr, StarExpr):
+                raise TypeError(
+                    "All Project expressions must be named (use .alias(name) or col(name)), "
+                    "or be a star() expression."
+                )
+
+    def _detect_and_get_compute_strategy(self, exprs: list["Expr"]) -> ComputeStrategy:
+        """Detect if expressions contain callable class UDFs and return appropriate compute strategy.
+
+        If any expression contains a callable class UDF, returns ActorPoolStrategy.
+        Otherwise returns TaskPoolStrategy.
+        """
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            _CallableClassUDFCollector,
+        )
+
+        # Check all expressions for callable class UDFs
+        for expr in exprs:
+            collector = _CallableClassUDFCollector()
+            collector.visit(expr)
+            if collector.get_callable_class_udfs():
+                # Found at least one callable class UDF - use actor semantics
+                from ray.data._internal.compute import ActorPoolStrategy
+
+                return ActorPoolStrategy(min_size=1, max_size=None)
+
+        # No callable class UDFs found - use task-based execution
+        from ray.data._internal.compute import TaskPoolStrategy
+
+        return TaskPoolStrategy()
+
+    def has_star_expr(self) -> bool:
+        return self.get_star_expr() is not None
+
+    def get_star_expr(self) -> Optional[StarExpr]:
+        """Check if this projection contains a star() expression."""
+        for expr in self.exprs:
+            if isinstance(expr, StarExpr):
+                return expr
+
+        return None
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
+
+    def get_column_substitutions(self) -> Optional[Dict[str, str]]:
+        """Returns the column renames from this projection.
+
+        Maps source_column_name -> output_column_name. This is what we need
+        to rebind predicates when pushing through.
+        """
+        # Reuse the existing logic from projection pushdown
+        from ray.data._internal.logical.rules.projection_pushdown import (
+            _extract_input_columns_renaming_mapping,
+        )
+
+        rename_map = _extract_input_columns_renaming_mapping(self.exprs)
+        return rename_map if rename_map else None
 
 
 class FlatMap(AbstractUDFMap):
@@ -271,14 +408,15 @@ class FlatMap(AbstractUDFMap):
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        compute: Optional[Union[str, ComputeStrategy]] = None,
+        compute: Optional[ComputeStrategy] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "FlatMap",
+            self.__class__.__name__,
             input_op,
             fn,
+            can_modify_num_rows=True,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -288,6 +426,22 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return True
+
+class StreamingRepartition(AbstractMap):
+    """Logical operator for streaming repartition operation.
+    Args:
+        target_num_rows_per_block: The target number of rows per block granularity for
+           streaming repartition.
+    """
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        target_num_rows_per_block: int,
+    ):
+        super().__init__(
+            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
+            input_op=input_op,
+            can_modify_num_rows=False,
+        )
+        self.target_num_rows_per_block = target_num_rows_per_block

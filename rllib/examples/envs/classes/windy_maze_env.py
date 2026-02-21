@@ -1,7 +1,8 @@
-import gymnasium as gym
-from gymnasium.spaces import Box, Discrete, Tuple
 import logging
 import random
+
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Tuple
 
 from ray.rllib.env import MultiAgentEnv
 

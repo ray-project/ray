@@ -1,4 +1,7 @@
+import sys
+
 import pytest
+
 from ray._private.ray_logging import LogDeduplicator
 
 
@@ -184,6 +187,4 @@ def test_dedup_logs_allow_and_skip_regexes():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-sv", __file__]))

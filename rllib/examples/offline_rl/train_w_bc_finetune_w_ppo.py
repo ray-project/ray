@@ -19,7 +19,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack`
+`python [script file name].py`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -74,8 +74,8 @@ from torch import nn
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import (
-    COMPONENT_LEARNER_GROUP,
     COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.columns import Columns
@@ -84,23 +84,24 @@ from ray.rllib.core.models.configs import MLPEncoderConfig, MLPHeadConfig
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.debug.deterministic import update_global_seed_if_necessary
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
 )
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
-)
 
 parser = add_rllib_example_script_args()
 parser.set_defaults(
-    enable_new_api_stack=True,
     env="CartPole-v1",
     checkpoint_freq=1,
 )
+parser.add_argument("--seed", type=int, default=42)
 
 
 class MyBCModel(TorchRLModule):
@@ -144,7 +145,7 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
     """Subclass of our simple BC model, but implementing the ValueFunctionAPI.
 
     Implementing the `compute_values` method makes this RLModule usable by algos
-    like PPO, which require this.
+    like PPO.
     """
 
     @override(MyBCModel)
@@ -187,22 +188,20 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    update_global_seed_if_necessary(framework="torch", seed=args.seed)
+
     assert args.env == "CartPole-v1", "This example works only with --env=CartPole-v1!"
 
     # Define the data paths for our CartPole large dataset.
     base_path = Path(__file__).parents[2]
     assert base_path.is_dir(), base_path
-    data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+    data_path = base_path / "offline/tests/data/cartpole/cartpole-v1_large"
     assert data_path.is_dir(), data_path
     print(f"data_path={data_path}")
 
     # Define the BC config.
     base_config = (
         BCConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # Note, the `input_` argument is the major argument for the
         # new offline API. Via the `input_read_method_kwargs` the
         # arguments for the `ray.data.Dataset` read method can be
@@ -228,7 +227,7 @@ if __name__ == "__main__":
             # The number of iterations to be run per learner when in multi-learner
             # mode in a single RLlib training iteration. Leave this to `None` to
             # run an entire epoch on the dataset during a single RLlib training
-            # iteration. For single-learner mode 1 is the only option.
+            # iteration. For single-learner mode, 1 is the only option.
             dataset_num_iters_per_learner=1 if not args.num_learners else None,
         )
         .training(
@@ -237,6 +236,7 @@ if __name__ == "__main__":
             # increase the learning rate correspondingly.
             lr=0.0008 * (args.num_learners or 1) ** 0.5,
         )
+        .debugging(seed=args.seed)
         # Plug in our simple custom BC model from above.
         .rl_module(rl_module_spec=RLModuleSpec(module_class=MyBCModel))
         # Run evaluation to observe how good our BC policy already is.
@@ -245,6 +245,7 @@ if __name__ == "__main__":
             evaluation_num_env_runners=1,
             evaluation_duration=5,
             evaluation_parallel_to_training=True,
+            evaluation_config=BCConfig.overrides(explore=False),
         )
     )
 
@@ -260,19 +261,20 @@ if __name__ == "__main__":
         / COMPONENT_LEARNER_GROUP
         / COMPONENT_LEARNER
         / COMPONENT_RL_MODULE
-        / "default_policy"
     )
 
     # Create a new PPO config.
     base_config = (
         PPOConfig()
         .environment(args.env)
+        .env_runners(create_env_on_local_worker=True)
         .training(
             # Keep lr relatively low at the beginning to avoid catastrophic forgetting.
             lr=0.00002,
             num_epochs=6,
             vf_loss_coeff=0.01,
         )
+        .debugging(seed=args.seed)
         # Plug in our simple custom PPO model from above. Note that the checkpoint
         # for the BC model is loadable into the PPO model, b/c the BC model is a subset
         # of the PPO model (all weights/biases in the BC model are also found in the PPO
@@ -283,23 +285,39 @@ if __name__ == "__main__":
                 load_state_path=rl_module_checkpoint,
             )
         )
+        .evaluation(
+            evaluation_interval=1,
+            evaluation_num_env_runners=1,
+            evaluation_duration=5,
+            evaluation_parallel_to_training=True,
+            evaluation_config=PPOConfig.overrides(explore=False),
+        )
     )
 
     # Quick test, whether initial performance in the loaded (now PPO) model is ok.
     ppo = base_config.build()
+    ppo.restore_from_path(
+        rl_module_checkpoint,
+        component=(
+            f"{COMPONENT_LEARNER_GROUP}"
+            f"/{COMPONENT_LEARNER}"
+            f"/{COMPONENT_RL_MODULE}"
+        ),
+    )
     eval_results = ppo.evaluate()
     R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 200.0, f"Initial PPO performance bad! R={R} (expected 200.0+)."
     print(f"PPO return after initialization: {R}")
     # Check, whether training 2 times causes catastrophic forgetting.
-    ppo.train()
-    train_results = ppo.train()
-    R = train_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+    for _ in range(5):
+        ppo.train()
+    eval_results = ppo.evaluate()
+    R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 250.0, f"PPO performance (training) bad! R={R} (expected 250.0+)."
-    print(f"PPO return after 2x training: {R}")
+    print(f"PPO return after 5x training: {R}")
 
     # Perform actual PPO training run (this time until 450.0 return).
     stop = {
-        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
     }
     run_rllib_example_script_experiment(base_config, args, stop=stop)

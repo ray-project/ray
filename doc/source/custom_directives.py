@@ -40,6 +40,7 @@ __all__ = [
     "update_context",
     "LinkcheckSummarizer",
     "setup_context",
+    "collect_example_orphans",
 ]
 
 # Taken from https://github.com/edx/edx-documentation
@@ -452,6 +453,12 @@ class UseCase(ExampleEnum):
     GENERATIVE_AI = "Generative AI"
     COMPUTER_VISION = "Computer Vision"
     NATURAL_LANGUAGE_PROCESSING = "Natural Language Processing"
+    TIME_SERIES_FORECASTING = "Time Series Forecasting"
+    RECOMMENDATION_SYSTEMS = "Recommendation Systems"
+    ETL = "ETL"
+    DATA_INGESTION = "Data Ingestion"
+    DATA_WAREHOUSING = "Data Warehousing"
+    DOCUMENT_PROCESSING = "Document Processing"
 
     @classmethod
     def formatted_name(cls):
@@ -481,7 +488,10 @@ class SkillLevel(ExampleEnum):
 class Framework(ExampleEnum):
     """Framework type for example metadata."""
 
+    AWSNEURON = "AWS Neuron"
     PYTORCH = "PyTorch"
+    JAX = "JAX"
+    FLAX = "Flax"
     LIGHTNING = "Lightning"
     TRANSFORMERS = "Transformers"
     ACCELERATE = "Accelerate"
@@ -490,7 +500,11 @@ class Framework(ExampleEnum):
     HOROVOD = "Horovod"
     XGBOOST = "XGBoost"
     HUGGINGFACE = "Hugging Face"
+    DATAJUICER = "Data-Juicer"
+    VLLM = "vLLM"
+    PANDAS = "Pandas"
     ANY = "Any"
+    UNSTRUCTURED = "Unstructured"
 
     @classmethod
     def formatted_name(cls):
@@ -503,8 +517,10 @@ class Framework(ExampleEnum):
 
 class RelatedTechnology(ExampleEnum):
     ML_APPLICATIONS = "ML Applications"
+    LLM_APPLICATIONS = "LLM Applications"
     INTEGRATIONS = "Integrations"
     AI_ACCELERATORS = "AI Accelerators"
+    DEPLOYMENT_PATTERNS = "Deployment Patterns"
 
     @classmethod
     def formatted_name(cls):
@@ -560,7 +576,7 @@ class Library(ExampleEnum):
 
 
 class Example:
-    """Class containing metadata about an example to be shown in the exmaple gallery."""
+    """Class containing metadata about an example to be shown in the example gallery."""
 
     def __init__(
         self, config: Dict[str, str], library: Library, config_dir: pathlib.Path
@@ -1222,6 +1238,51 @@ def render_example_gallery_dropdown(cls: type) -> bs4.BeautifulSoup:
     return soup
 
 
+def collect_example_orphans(
+    confdir: os.PathLike,
+    srcdir: os.PathLike,
+    example_configs: Optional[List[str]] = None,
+) -> set:
+    """Collect document paths from examples.yml files to mark as orphans.
+
+    This function parses example configuration files and returns a set of
+    document paths that should be marked as orphan documents during the build.
+
+    Parameters
+    ----------
+    confdir : os.PathLike
+        Path to the Sphinx configuration directory (app.confdir)
+    srcdir : os.PathLike
+        Path to the Sphinx source directory (app.srcdir)
+    example_configs : Optional[List[str]]
+        Configuration files to parse. Defaults to EXAMPLE_GALLERY_CONFIGS.
+
+    Returns
+    -------
+    set
+        Set of document paths (without file extensions) to mark as orphans
+    """
+    if example_configs is None:
+        example_configs = EXAMPLE_GALLERY_CONFIGS
+
+    example_orphan_documents = set()
+
+    for config in example_configs:
+        config_path = pathlib.Path(confdir) / pathlib.Path(config).relative_to(
+            "source"
+        )
+
+        example_config = ExampleConfig(config_path, srcdir)
+        for example in example_config:
+            if not example.link.startswith("http"):
+                # Normalize path and remove file extension to get docname
+                normalized = pathlib.PurePath(os.path.normpath(example.link))
+                docname = str(normalized.with_suffix(''))
+                example_orphan_documents.add(docname)
+
+    return example_orphan_documents
+
+
 def pregenerate_example_rsts(
     app: sphinx.application.Sphinx, *example_configs: Optional[List[str]]
 ):
@@ -1297,7 +1358,7 @@ def generate_versions_json():
     for version in git_versions:
         version_json_data.append(
             {
-                "version": f"releases/{version}",
+                "version": f"releases-{version}",
                 "url": generate_version_url(f"releases-{version}"),
             }
         )

@@ -1,17 +1,18 @@
-import inspect
 import logging
+import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
+    RequestRouterConfig,
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, GangSchedulingConfig
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
@@ -82,9 +83,9 @@ class Deployment:
             def __call__(self, request):
                 return "Hello world!"
 
-            app = MyDeployment.bind()
-            # Run via `serve.run` or the `serve run` CLI command.
-            serve.run(app)
+        app = MyDeployment.bind()
+        # Run via `serve.run` or the `serve run` CLI command.
+        serve.run(app)
 
     """
 
@@ -101,24 +102,25 @@ class Deployment:
                 "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead."
             )
-        if not isinstance(name, str):
-            raise TypeError("name must be a string.")
+        self._validate_name(name)
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
-        docs_path = None
-        if (
-            inspect.isclass(replica_config.deployment_def)
-            and hasattr(replica_config.deployment_def, "__module__")
-            and replica_config.deployment_def.__module__ == "ray.serve.api"
-            and hasattr(replica_config.deployment_def, "__fastapi_docs_path__")
-        ):
-            docs_path = replica_config.deployment_def.__fastapi_docs_path__
 
         self._name = name
         self._version = version
         self._deployment_config = deployment_config
         self._replica_config = replica_config
-        self._docs_path = docs_path
+
+    def _validate_name(self, name: str):
+        if not isinstance(name, str):
+            raise TypeError("name must be a string.")
+
+        # name does not contain #
+        if "#" in name:
+            warnings.warn(
+                f"Deployment names should not contain the '#' character, this will raise an error starting in Ray 2.46.0. "
+                f"Current name: {name}."
+            )
 
     @property
     def name(self) -> str:
@@ -213,6 +215,9 @@ class Deployment:
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
+        placement_group_bundle_label_selector: Default[
+            List[Dict[str, str]]
+        ] = DEFAULT.VALUE,
         max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -225,9 +230,16 @@ class Deployment:
         health_check_period_s: Default[float] = DEFAULT.VALUE,
         health_check_timeout_s: Default[float] = DEFAULT.VALUE,
         logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+        request_router_config: Default[
+            Union[Dict, RequestRouterConfig, None]
+        ] = DEFAULT.VALUE,
         _init_args: Default[Tuple[Any]] = DEFAULT.VALUE,
         _init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         _internal: bool = False,
+        max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+        gang_scheduling_config: Default[
+            Union[Dict, GangSchedulingConfig, None]
+        ] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -246,8 +258,8 @@ class Deployment:
         # `num_replicas="auto"`
         if max_ongoing_requests is None:
             raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+
         if num_replicas == "auto":
-            num_replicas = None
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
             )
@@ -294,7 +306,7 @@ class Deployment:
                 "future!"
             )
 
-        elif num_replicas not in [DEFAULT.VALUE, None]:
+        elif num_replicas not in [DEFAULT.VALUE, None, "auto"]:
             new_deployment_config.num_replicas = num_replicas
 
         if user_config is not DEFAULT.VALUE:
@@ -305,6 +317,11 @@ class Deployment:
 
         if max_queued_requests is not DEFAULT.VALUE:
             new_deployment_config.max_queued_requests = max_queued_requests
+
+        if max_constructor_retry_count is not DEFAULT.VALUE:
+            new_deployment_config.max_constructor_retry_count = (
+                max_constructor_retry_count
+            )
 
         if func_or_class is None:
             func_or_class = self._replica_config.deployment_def
@@ -330,11 +347,25 @@ class Deployment:
         if placement_group_strategy is DEFAULT.VALUE:
             placement_group_strategy = self._replica_config.placement_group_strategy
 
+        if placement_group_bundle_label_selector is DEFAULT.VALUE:
+            placement_group_bundle_label_selector = (
+                self._replica_config.placement_group_bundle_label_selector
+            )
+
+        # TODO(ryanaoleary@): Add conditional check once fallback_strategy is
+        # added to placement group options.
+        placement_group_fallback_strategy = (
+            self._replica_config.placement_group_fallback_strategy
+        )
+
         if max_replicas_per_node is DEFAULT.VALUE:
             max_replicas_per_node = self._replica_config.max_replicas_per_node
 
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
+
+        if request_router_config is not DEFAULT.VALUE:
+            new_deployment_config.request_router_config = request_router_config
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
@@ -357,6 +388,23 @@ class Deployment:
                 logging_config = logging_config.dict()
             new_deployment_config.logging_config = logging_config
 
+        if gang_scheduling_config is not DEFAULT.VALUE:
+            new_deployment_config.gang_scheduling_config = gang_scheduling_config
+
+        gc = new_deployment_config.gang_scheduling_config
+        if gc is not None and num_replicas == "auto":
+            raise ValueError(
+                'num_replicas="auto" is not allowed when '
+                "gang_scheduling_config is provided. Set "
+                "num_replicas to a fixed multiple of gang_size."
+            )
+        if gc is not None and isinstance(new_deployment_config.num_replicas, int):
+            if new_deployment_config.num_replicas % gc.gang_size != 0:
+                raise ValueError(
+                    f"num_replicas ({new_deployment_config.num_replicas}) must "
+                    f"be a multiple of gang_size ({gc.gang_size})."
+                )
+
         new_replica_config = ReplicaConfig.create(
             func_or_class,
             init_args=_init_args,
@@ -364,6 +412,8 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
+            placement_group_bundle_label_selector=placement_group_bundle_label_selector,
+            placement_group_fallback_strategy=placement_group_fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
         )
 
@@ -384,7 +434,7 @@ class Deployment:
                 self._replica_config.init_args == other._replica_config.init_args,
                 self._replica_config.init_kwargs == other._replica_config.init_kwargs,
                 self._replica_config.ray_actor_options
-                == self._replica_config.ray_actor_options,
+                == other._replica_config.ray_actor_options,
             ]
         )
 
@@ -425,6 +475,8 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
+        "request_router_config": d._deployment_config.request_router_config,
+        "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -485,6 +537,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
         logging_config=s.logging_config,
+        request_router_config=s.request_router_config,
+        gang_scheduling_config=s.gang_scheduling_config,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

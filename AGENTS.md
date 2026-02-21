@@ -11,15 +11,18 @@
 
 1. [Repository Overview](#1-repository-overview)
 2. [Build System Architecture](#2-build-system-architecture)
-3. [EUGO Change Annotation Convention](#3-eugo-change-annotation-convention)
-4. [Upstream Sync Process](#4-upstream-sync-process)
-5. [Files and Ownership Rules](#5-files-and-ownership-rules)
-6. [Common Sync Scenarios](#6-common-sync-scenarios)
-7. [Build and Validation](#7-build-and-validation)
-8. [Dependency Management](#8-dependency-management)
-9. [Key Gotchas and Pitfalls](#9-key-gotchas-and-pitfalls)
-10. [Directory Reference](#10-directory-reference)
-11. [Rules for AI Coding Agents](#11-rules-for-ai-coding-agents)
+3. [Bazel-to-Meson Translation Guide](#3-bazel-to-meson-translation-guide)
+4. [eugo_sync.py — Source File Tracker](#4-eugo_syncpy--source-file-tracker)
+5. [EUGO Change Annotation Convention](#5-eugo-change-annotation-convention)
+6. [Upstream Sync Process](#6-upstream-sync-process)
+7. [Files and Ownership Rules](#7-files-and-ownership-rules)
+8. [Common Sync Scenarios](#8-common-sync-scenarios)
+9. [Build and Validation](#9-build-and-validation)
+10. [Dependency Management](#10-dependency-management)
+11. [Key Gotchas and Pitfalls](#11-key-gotchas-and-pitfalls)
+12. [Directory Reference](#12-directory-reference)
+13. [Rules for AI Coding Agents](#13-rules-for-ai-coding-agents)
+14. [Step 2: Shared Library Consolidation](#14-step-2-shared-library-consolidation)
 
 ---
 
@@ -61,42 +64,212 @@ meson.build (root)
 ├── src/                          # C++ source → ~30 static libraries
 │   ├── proto/                    # .proto and .fbs source files
 │   └── ray/                     # Careful subdir ordering to handle circular deps
-│       ├── protobuf/ → thirdparty/ → util/ → stats/ → raylet/format/ → common/ → rpc/
+│       ├── protobuf/ → thirdparty/ → util/ → stats/ → flatbuffers/ → common/ → ray_syncer/ → rpc/
 │       ├── Then: stats_cpp_lib (inline, breaks circular dep)
-│       ├── Then: object_manager/ → pubsub/ → raylet_client/ → gcs/
+│       ├── Then: object_manager/ → pubsub/ → raylet_ipc_client/ → raylet_rpc_client/ → gcs/
+│       ├── Then: gcs_rpc_client/ → raylet/scheduling/ → gcs/gcs_server/ → observability/
+│       ├── Then: core_worker_rpc_client/ → core_worker/
 │       ├── Then: object_manager_cpp_lib (inline, breaks circular dep)
-│       └── Then: raylet/ → core_worker/ → internal/
+│       └── Then: raylet/ → internal/
 └── python/                       # Python package
     ├── ray/meson.build           # _version.py generation (git SHA injection)
     ├── meson.build               # _raylet Cython extension + pure Python install + dashboard
     └── ray/dashboard/client/     # npm ci + npm run build
 ```
 
-### C++ Library Pattern
+### Meson Target Patterns
 
-Every C++ component in `src/ray/` follows this consistent pattern:
+Every Bazel `ray_cc_library()` target maps to one of the Meson patterns below. The pattern depends on whether the target has source files (`.cc`), only headers (`.h`), or involves code generation. **The goal is a 1:1 mapping from Bazel targets to Meson targets** — see §3 for the two-stage translation approach.
+
+#### Naming Convention
+
+| Target Type | Bazel Name | Meson Variables |
+|---|---|---|
+| Static library | `status` | `status_cpp_lib_dependencies`, `status_cpp_lib`, `status_cpp_lib_dep` |
+| Header-only library | `macros` | `macros_cpp_lib_dep` (+ optional `_dependencies`) |
+| FlatBuffers codegen | `plasma_fbs` | `plasma_cpp_fbs` (custom_target), `plasma_cpp_fbs_lib_dep` |
+| C++ Protobuf | `X_cc_proto` | `X_proto_cpp` (custom_target), `X_proto_cpp_dep`, `X_proto_cpp_lib`, `X_proto_cpp_lib_dep` |
+| C++ gRPC | `X_cc_grpc` | `X_proto_cpp_grpc` (custom_target), `X_proto_cpp_grpc_dep`, `X_proto_cpp_grpc_lib`, `X_proto_cpp_grpc_lib_dep` |
+| Python Protobuf | `X_py_proto` | `X_proto_py` (custom_target) |
+
+#### Pattern 1: Static Library
+
+For Bazel targets with `srcs` (`.cc` files). Uses three variables because **static libraries do not transitively export their dependencies to consumers** — the `declare_dependency()` wrapper bundles the library with all its dependencies so downstream targets inherit them automatically.
 
 ```meson
-# 1. Dependencies list
 foo_cpp_lib_dependencies = [
-    bar_cpp_lib_dep,      # Package-managed (sibling project libs)
-    absl_time, protobuf,  # Eugo-managed (from eugo/dependencies/)
-    threads               # System-managed
+    # Package-managed
+    bar_cpp_lib_dep,
+    baz_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_time,
+    protobuf,
+    threads,
 ]
 
-# 2. Static library
 foo_cpp_lib = static_library('foo_cpp_lib',
     ['file1.cc', 'file2.cc'],
     install: false,
     dependencies: foo_cpp_lib_dependencies
 )
 
-# 3. Dependency declaration for downstream consumers
 foo_cpp_lib_dep = declare_dependency(
     link_with: [foo_cpp_lib],
     dependencies: foo_cpp_lib_dependencies
 )
 ```
+
+**Why the `_dep` wrapper?** A `static_library()` on its own does not re-export its dependencies. Without the wrapper, consumers get undefined symbols at link time. The `declare_dependency()` ensures that any target listing `foo_cpp_lib_dep` automatically inherits both the library linkage (`link_with`) and all transitive dependencies. This avoids both undefined symbols (from missing deps) and duplicate symbols (from merging object files across multiple static libraries in the final `_raylet` shared library).
+
+**Example:** `status_cpp_lib` in `src/ray/common/meson.build`
+
+#### Pattern 2: Header-Only Library
+
+For Bazel targets with only `hdrs` and no `srcs`. **Do NOT create a `static_library()`** — header-only targets have no object code to compile, and doing so causes duplicate symbol errors or compiles code unnecessarily.
+
+Every header-only target MUST:
+1. Have a `# Header-only` comment immediately after the `@begin` marker.
+2. Extract dependencies into a separate `_dependencies` variable (never inline them in the `declare_dependency()` call).
+3. Use section comments (`# Package-managed`, `# Eugo-managed`) in the `_dependencies` list, same as Pattern 1.
+
+```meson
+# === @begin: noop_cgroup_manager_cpp_lib (@original: noop_cgroup_manager) ===
+# Header-only
+noop_cgroup_manager_cpp_lib_dependencies = [
+    # Package-managed
+    cgroup_driver_interface_cpp_lib_dep,
+    cgroup_manager_interface_cpp_lib_dep,
+    status_cpp_lib_dep,
+    status_or_cpp_lib_dep,
+]
+
+noop_cgroup_manager_cpp_lib_dep = declare_dependency(
+    sources: ['noop_cgroup_manager.h'],
+    dependencies: noop_cgroup_manager_cpp_lib_dependencies
+)
+# === @end: noop_cgroup_manager_cpp_lib ===
+```
+
+If a header-only target has zero dependencies, the `_dependencies` variable and section comments may be omitted:
+
+```meson
+# === @begin: constants_cpp_lib (@original: constants) ===
+# Header-only
+constants_cpp_lib_dep = declare_dependency(
+    sources: ['constants.h']
+)
+# === @end: constants_cpp_lib ===
+```
+
+**Example:** `noop_cgroup_manager_cpp_lib_dep` in `src/ray/common/cgroup2/meson.build`
+
+#### Pattern 3: FlatBuffers Codegen (Header-Only)
+
+For Bazel `flatbuffer_cc_library()` targets (suffix `_fbs`). Uses `custom_target` with `cpp_fbs_default_kwargs` from `eugo/utils/meson.build`. Always include `flatbuffers` in the dependency so downstream targets can resolve FlatBuffers symbols.
+
+```meson
+# === @begin: plasma_cpp_fbs_lib (@original: plasma_fbs) ===
+plasma_cpp_fbs = custom_target(
+    input: ['plasma.fbs'],
+    kwargs: cpp_fbs_default_kwargs
+)
+
+# header-only
+plasma_cpp_fbs_lib_dep = declare_dependency(
+    sources: [plasma_cpp_fbs],
+    dependencies: [flatbuffers]
+)
+# === @end: plasma_cpp_fbs_lib (@original: plasma_fbs) ===
+```
+
+**Example:** `plasma_cpp_fbs_lib_dep` in `src/ray/flatbuffers/meson.build`
+
+#### Pattern 4: C++ Protobuf
+
+For Bazel `cc_proto_library()` targets. Produces: `custom_target` (codegen) → virtual `declare_dependency` (with proto `import` deps as its dependencies) → `static_library` → consumer `declare_dependency`. The virtual wrapper is needed because the generated header files must be visible to downstream targets.
+
+```meson
+# @begin: proto_cpp (@original: node_manager_cc_proto)
+node_manager_proto_cpp = custom_target(
+    input: node_manager_proto,
+    kwargs: proto_cpp_default_kwargs
+)
+
+node_manager_proto_cpp_dep = declare_dependency(
+    sources: node_manager_proto_cpp,
+    dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, autoscaler_proto_cpp_dep]
+)
+
+node_manager_proto_cpp_lib_dependencies = [
+    node_manager_proto_cpp_dep,
+    protobuf
+]
+
+node_manager_proto_cpp_lib = static_library(
+    'node_manager_proto_cpp_lib',
+    dependencies: node_manager_proto_cpp_lib_dependencies,
+    install: false
+)
+
+node_manager_proto_cpp_lib_dep = declare_dependency(
+    link_with: [node_manager_proto_cpp_lib],
+    dependencies: node_manager_proto_cpp_lib_dependencies
+)
+# @end: proto_cpp (@original: node_manager_cc_proto)
+```
+
+**Example:** `node_manager_proto_cpp_lib_dep` in `src/ray/protobuf/meson.build`
+
+#### Pattern 5: C++ gRPC Protobuf
+
+For Bazel `cc_grpc_library()` targets. Always requires the corresponding C++ Protobuf target (Pattern 4) as a dependency:
+
+```meson
+# @begin: proto_cpp_grpc (@original: node_manager_cc_grpc)
+node_manager_proto_cpp_grpc = custom_target(
+    input: node_manager_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+node_manager_proto_cpp_grpc_dep = declare_dependency(
+    sources: node_manager_proto_cpp_grpc
+)
+
+node_manager_proto_cpp_grpc_lib_dependencies = [
+    node_manager_proto_cpp_grpc_dep,
+    node_manager_proto_cpp_lib_dep,  # Always depends on Pattern 4
+    protobuf,
+    grpc
+]
+
+node_manager_proto_cpp_grpc_lib = static_library(
+    'node_manager_proto_cpp_grpc_lib',
+    dependencies: node_manager_proto_cpp_grpc_lib_dependencies,
+    install: false
+)
+
+node_manager_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [node_manager_proto_cpp_grpc_lib],
+    dependencies: node_manager_proto_cpp_grpc_lib_dependencies
+)
+# @end: proto_cpp_grpc (@original: node_manager_cc_grpc)
+```
+
+#### Pattern 6: Python Protobuf + gRPC
+
+Always produces both Protobuf and gRPC Python files. No dependency on C++ Protobuf targets. Installation path is handled by `proto_py_default_kwargs`.
+
+```meson
+# @begin: proto_py (@original: node_manager_py_proto)
+node_manager_proto_py = custom_target(
+    input: node_manager_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: node_manager_py_proto)
+```
+
+> **Note:** Not all `.proto` files need all target types. Check the upstream `BUILD.bazel` to determine which targets to produce for each `.proto`.
 
 ### Build Scripts
 
@@ -110,7 +283,227 @@ foo_cpp_lib_dep = declare_dependency(
 
 ---
 
-## 3. EUGO Change Annotation Convention
+## 3. Bazel-to-Meson Translation Guide
+
+The upstream Bazel `BUILD.bazel` files are the **source of truth** for which `.cc` files belong to which logical libraries. Understanding how Bazel targets map to Meson `static_library()` calls is critical for validating correctness during syncs.
+
+### Two-Stage Translation Approach
+
+When translating Bazel to Meson during upstream syncs, follow a strict two-stage process:
+
+**Stage 1: Replicate Bazel 1:1** — Create one Meson target for every `ray_cc_library()` in `BUILD.bazel`, using the appropriate pattern from §2. This ensures correctness and makes debugging straightforward — if a linker error occurs, you know exactly which target is misconfigured.
+
+**Stage 2: Consolidate (optional, separate commit)** — After Stage 1 builds clean, adjacent targets within the same directory *may* be merged into fewer Meson libraries. This is purely an optimization and requires understanding the dependency graph.
+
+> **Critical:** Do NOT skip Stage 1. Consolidating during initial translation makes it much harder to debug linker errors, verify correctness, and identify missing dependencies or source files. Every skipped Bazel target is a potential source of hard-to-trace build failures.
+
+### Target Ordering Rule
+
+**The order of `# === @begin` blocks in a `meson.build` MUST match the order of `ray_cc_library()` targets in the corresponding `BUILD.bazel`**, with one exception: when a target depends on another target defined in the *same* `meson.build` file, Meson's define-before-use semantics require the dependency to appear first — only deviate from Bazel order in that case.
+
+This 1:1 ordering makes manual cross-referencing fast and ensures no targets are accidentally skipped during the initial translation and subsequent consolidation into a shared library.
+
+**Example:** Given this `BUILD.bazel`:
+
+```bazel
+ray_cc_library(
+    name = "noop_cgroup_manager",
+    hdrs = ["noop_cgroup_manager.h"],
+    deps = [
+        ":cgroup_driver_interface",
+        ":cgroup_manager_interface",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+
+ray_cc_library(
+    name = "cgroup_driver_interface",
+    hdrs = ["cgroup_driver_interface.h"],
+    deps = [
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
+    ],
+)
+```
+
+The `meson.build` should preserve the same top-to-bottom ordering:
+
+```meson
+# === @begin: noop_cgroup_manager_cpp_lib (@original: noop_cgroup_manager) ===
+noop_cgroup_manager_cpp_lib_dependencies = [
+    cgroup_driver_interface_cpp_lib_dep,
+    cgroup_manager_interface_cpp_lib_dep,
+    status_cpp_lib_dep,
+    status_or_cpp_lib_dep,
+]
+
+noop_cgroup_manager_cpp_lib_dep = declare_dependency(
+    sources: ['noop_cgroup_manager.h'],
+    dependencies: noop_cgroup_manager_cpp_lib_dependencies
+)
+# === @end: noop_cgroup_manager_cpp_lib ===
+
+
+# === @begin: cgroup_driver_interface_cpp_lib (@original: cgroup_driver_interface) ===
+cgroup_driver_interface_cpp_lib_dependencies = [
+    status_cpp_lib_dep,
+    status_or_cpp_lib_dep
+]
+
+cgroup_driver_interface_cpp_lib_dep = declare_dependency(
+    sources: ['cgroup_driver_interface.h'],
+    dependencies: cgroup_driver_interface_cpp_lib_dependencies
+)
+# === @end: cgroup_driver_interface_cpp_lib ===
+```
+
+This works because `cgroup_driver_interface_cpp_lib_dep` is defined elsewhere (processed earlier via `subdir()`). If it were defined only in this same file, it would have to move before `noop_cgroup_manager` — that is the one allowable ordering deviation, and it must be documented with a comment explaining why Bazel order cannot be followed.
+
+### Translating Each Bazel Target
+
+For each `ray_cc_library()` in a `BUILD.bazel`:
+
+1. **Check `srcs` vs `hdrs`**: Has `.cc` files → Pattern 1 (static library). Only `.h` files → Pattern 2 (header-only).
+2. **Map ALL `deps`** — every Bazel dependency must have a Meson equivalent:
+   - `:local_target` → the corresponding `*_cpp_lib_dep` in the same `meson.build`
+   - `//src/ray/foo:bar` → `bar_cpp_lib_dep` from `src/ray/foo/meson.build`
+   - `@external//...` → variable from `eugo/dependencies/meson.build` (see §10 mapping table)
+3. **Handle `select()`**: Bazel platform conditionals become `if host_machine.system() == 'linux'` in Meson.
+4. **Handle visibility**: Bazel visibility has no Meson equivalent — all Meson targets are accessible within the project. Ignore visibility settings.
+
+### Validation Procedure
+
+To verify a `meson.build` matches its Bazel counterpart, follow ALL steps:
+
+#### Step 1: Target Count Audit (MANDATORY)
+
+Before writing any Meson code, count the production (non-test) `ray_cc_library()` targets in the `BUILD.bazel`. The `meson.build` MUST define exactly one Meson target per Bazel target. If the counts don't match, the translation is incomplete.
+
+```bash
+# Count production Bazel targets (exclude test targets)
+grep 'name = "' src/ray/<component>/BUILD.bazel | grep -v test
+
+# Count Meson targets (each @begin/@end block = 1 target)
+grep '@begin:' src/ray/<component>/meson.build
+
+# These counts MUST match (modulo intentional exclusions documented in the file header)
+```
+
+#### Step 2: Target-by-Target Checklist (MANDATORY)
+
+For EACH Bazel target, verify:
+
+1. **Existence**: A corresponding Meson target exists with the correct naming (`<name>_cpp_lib_dep`).
+2. **Source files**: Every `.cc` file in Bazel `srcs` appears in the Meson `static_library()`. Every `.h` file in Bazel `hdrs` is listed in `declare_dependency(sources: ...)` for header-only targets.
+3. **Header-only check**: If Bazel target has no `srcs` → Meson uses Pattern 2 (NO `static_library()`). If Bazel target has `srcs` → Meson uses Pattern 1 (static library).
+4. **Dependencies**: Every entry in the Bazel `deps` list has a corresponding Meson dep. Use the mapping table in §10 for external deps.
+5. **No consolidation**: Multiple Bazel targets are NOT merged into one Meson target. Each must be separate.
+
+#### Step 3: Dependency Existence Check
+
+For each dependency referenced in the Meson file, verify it actually exists (is defined in another `meson.build` that is processed BEFORE this one):
+
+```bash
+# For each dep like foo_cpp_lib_dep used in the file:
+grep -rn 'foo_cpp_lib_dep =' src/ray/**/meson.build
+# Must find exactly one definition, and it must be in a meson.build processed earlier
+```
+
+#### Step 4: Downstream Consumer Check
+
+Verify that any existing consumers of old consolidated targets still work:
+
+```bash
+# If you're breaking consolidated_cpp_lib_dep into individual targets:
+grep -rn 'consolidated_cpp_lib_dep' src/ray/**/meson.build
+# Each consumer must be updated to use the correct individual target, OR
+# an umbrella alias must be provided for backward compatibility
+```
+
+#### Step 5: Source File Sync
+
+```bash
+python3 eugo_sync.py
+# Must report only expected test/thirdparty files
+```
+
+### Files That Are Intentionally Excluded From Meson
+
+Some files in `src/ray/` appear in Bazel builds but are **intentionally not** in Meson:
+
+| Category | Examples | Reason |
+|----------|----------|--------|
+| **Test files** | `*_test.cc`, `test_utils.cc`, `*_test_fixture.cc` | Not building tests in Meson |
+| **Test utilities** | `cgroup_test_utils.cc`, `memory_monitor_test_fixture.cc` | Test support code |
+| **Vendored thirdparty** | `src/ray/thirdparty/setproctitle/*.c` | We use pip `setproctitle` package instead |
+| **Java JNI** | `src/ray/jni/**` | Not building Java bindings |
+
+---
+
+## 4. eugo_sync.py — Source File Tracker
+
+### Purpose
+
+`eugo_sync.py` is the primary tool for detecting C/C++ source files that exist on disk but are not referenced in any `meson.build` file. Run it after every upstream sync to catch newly added source files.
+
+### How It Works
+
+```
+1. Scan src/ recursively for all .cc and .c files
+2. Scan the entire repo for all meson.build files
+3. Filter out files matching exclude patterns (test files, java/)
+4. For each remaining source file, check if its FILENAME appears
+   in ANY meson.build file (substring match)
+5. Report files whose filename doesn't appear anywhere
+```
+
+### Key Implementation Details
+
+- **Matching is by filename only** (e.g., `id.cc`), not by full path. The function `does_file_contains_string()` searches for the filename as a substring in each `meson.build` file's content.
+- **Exclude patterns** filter out:
+  - Files in directories named `java/` or `test/` (case-insensitive)
+  - Files ending in `test.cc`
+  - Files ending in `test_util.cc`
+- **Exit status:** Reports "No raptors found! Great job." when all non-excluded source files are tracked.
+
+### Limitations and Gotchas
+
+| Limitation | Impact | Mitigation |
+|-----------|--------|------------|
+| **Filename-only matching** can produce false negatives | If two files with the same name exist in different directories (e.g., `common.cc` in both `object_manager/` and `rpc/`), one could mask the other | Manually verify files with common names appear in the *correct* `meson.build` |
+| **Comment references count as "tracked"** | A commented-out `# 'id.cc'` still satisfies the match | Review delete comments carefully — the file may appear tracked but not actually compiled |
+| **No path validation** | A file could appear in the *wrong* `meson.build` and still pass | Cross-reference against `BUILD.bazel` for correctness |
+| **Test file exclusion is heuristic** | Files like `test_utils.cc` or `memory_monitor_test_fixture.cc` that don't match the patterns slip through | These show up as false-positive "untracked" — they're expected |
+
+### Expected "Untracked" Files
+
+After a clean sync, `eugo_sync.py` may report these files that are **intentionally not in any `meson.build`**:
+
+- `src/ray/thirdparty/setproctitle/*.c` — replaced by pip package
+- `src/ray/common/test_utils.cc` — test utility
+- `src/ray/common/memory_monitor_test_fixture.cc` — test fixture
+- `src/ray/common/cgroup2/cgroup_test_utils.cc` — test utility
+- `src/ray/rpc/authentication/tests/grpc_auth_token_tests.cc` — test file
+
+### Usage
+
+```bash
+# Standard run
+python3 eugo_sync.py
+
+# Expected clean output:
+# "No raptors found! Great job."
+
+# If files are reported, for each one:
+# 1. Check if it's a test file → ignore
+# 2. Check if it's intentionally excluded (thirdparty vendor) → ignore
+# 3. Otherwise → find the right BUILD.bazel target → add to correct meson.build
+```
+
+---
+
+## 5. EUGO Change Annotation Convention
 
 All code modifications to upstream Ray files **must** be annotated with `@EUGO_CHANGE` markers. This is critical for traceability during upstream syncs.
 
@@ -169,7 +562,7 @@ reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
 
 ---
 
-## 4. Upstream Sync Process
+## 6. Upstream Sync Process
 
 We track `ray-project/ray` `master` (nightly). Syncing is a combination of automated scripts and manual cherry-pick/merge.
 
@@ -178,12 +571,12 @@ We track `ray-project/ray` `master` (nightly). Syncing is a combination of autom
 ```
 1. Fetch upstream master
 2. Identify changed files (automated diff)
-3. Classify files by ownership (see §5)
+3. Classify files by ownership (see §7)
 4. Apply upstream changes to UPSTREAM-owned files
 5. For SHARED files, manually merge — preserve @EUGO_CHANGE blocks
 6. Run eugo_sync.py to detect new untracked source files
 7. Update meson.build files for any new/removed source files
-8. Build and validate (see §7)
+8. Build and validate (see §9)
 9. Compare output wheel against upstream wheel
 ```
 
@@ -200,7 +593,7 @@ We track `ray-project/ray` `master` (nightly). Syncing is a combination of autom
 
 ---
 
-## 5. Files and Ownership Rules
+## 7. Files and Ownership Rules
 
 ### EUGO-OWNED (never overwrite from upstream)
 
@@ -267,18 +660,18 @@ These files exist upstream but contain `@EUGO_CHANGE` blocks that must be preser
 
 ---
 
-## 6. Common Sync Scenarios
+## 8. Common Sync Scenarios
 
-### 6.1. New C++ Source Files Added Upstream
+### 8.1. New C++ Source Files Added Upstream
 
 **Symptom:** `eugo_sync.py` reports files that aren't tracked in any `meson.build`.
 
 **Resolution:**
-1. Identify which library the file belongs to (check the upstream `BUILD.bazel` for the target).
+1. Identify which library the file belongs to (check the upstream `BUILD.bazel` for the target — see §3 for the Bazel-to-Meson translation guide).
 2. Add the file to the appropriate `static_library()` call in `src/ray/<component>/meson.build`.
 3. If it's a new component entirely, create a new `meson.build` following the standard library pattern (§2) and add a `subdir()` call in the parent `meson.build` at the correct position in the dependency ordering.
 
-### 6.2. C++ Source Files Removed Upstream
+### 8.2. C++ Source Files Removed Upstream
 
 **Symptom:** Meson build fails with "file not found".
 
@@ -286,7 +679,7 @@ These files exist upstream but contain `@EUGO_CHANGE` blocks that must be preser
 1. Remove the file reference from the relevant `meson.build`.
 2. Remove the file itself.
 
-### 6.3. New External Dependency Added Upstream
+### 8.3. New External Dependency Added Upstream
 
 **Symptom:** Meson build fails with undefined symbols or missing headers.
 
@@ -294,7 +687,7 @@ These files exist upstream but contain `@EUGO_CHANGE` blocks that must be preser
 1. Add the dependency in `eugo/dependencies/meson.build` using `dependency()` with the appropriate method (`cmake`, `pkg-config`, etc.).
 2. Add the dependency variable to the relevant library's `_dependencies` list.
 
-### 6.4. Protobuf Schema Changes
+### 8.4. Protobuf Schema Changes
 
 **Symptom:** Build fails during codegen or downstream compilation.
 
@@ -304,14 +697,14 @@ These files exist upstream but contain `@EUGO_CHANGE` blocks that must be preser
 3. If deleted `.proto` files: remove the corresponding `custom_target()` entries.
 4. Check `eugo/utils/patching_protoc_py.sh` if Python import paths changed.
 
-### 6.5. FlatBuffers Schema Changes
+### 8.5. FlatBuffers Schema Changes
 
 **Symptom:** Missing `*_generated.h` files.
 
 **Resolution:**
 Add/remove `custom_target()` entries in `src/ray/raylet/format/meson.build` using `cpp_fbs_default_kwargs`.
 
-### 6.6. New Python Dependencies
+### 8.6. New Python Dependencies
 
 **Symptom:** Import errors at runtime or missing packages.
 
@@ -320,7 +713,7 @@ Add/remove `custom_target()` entries in `src/ray/raylet/format/meson.build` usin
 2. Add them to `pyproject.toml` — under `[project.dependencies]` for core deps or `[project.optional-dependencies]` for optional groups.
 3. The `@EUGO_CHANGE` annotation in `pyproject.toml` reminds you to keep these in sync.
 
-### 6.7. Cython Changes (`_raylet.pyx`)
+### 8.7. Cython Changes (`_raylet.pyx`)
 
 **Symptom:** Compilation errors in the `_raylet` extension module.
 
@@ -328,7 +721,7 @@ Add/remove `custom_target()` entries in `src/ray/raylet/format/meson.build` usin
 1. Accept the upstream `.pyx` / `.pxd` changes.
 2. If new C++ libraries are referenced from Cython, add them to the `dependencies:` list in `python/meson.build`'s `py.extension_module('_raylet', ...)` call.
 
-### 6.8. Upstream Modifies a File Containing `@EUGO_CHANGE`
+### 8.8. Upstream Modifies a File Containing `@EUGO_CHANGE`
 
 **Resolution:**
 1. **Do not blindly overwrite.** This is a SHARED file.
@@ -338,16 +731,47 @@ Add/remove `custom_target()` entries in `src/ray/raylet/format/meson.build` usin
    - If the upstream change conflicts → adapt the EUGO change and update the annotation reason.
    - If the upstream change is orthogonal → merge normally, keep annotation intact.
 
-### 6.9. Dashboard (JavaScript) Changes
+### 8.9. Dashboard (JavaScript) Changes
 
 **Symptom:** Dashboard build fails or shows stale UI.
 
 **Resolution:**
 The Meson build runs `npm ci && npm run build` in `python/ray/dashboard/client/`. Upstream changes to `package.json` / `package-lock.json` should be accepted. The `meson.build` in that directory should not need changes unless the build command or output directory changes.
 
+### 8.10. Empty Directory with Only a `meson.build` File
+
+**Symptom:** A directory under `src/ray/` contains only a `meson.build` file and no source files (`.cc`, `.h`, `.proto`, etc.).
+
+**Assessment procedure:**
+
+1. **Check if source files still exist.** Do the source files referenced in the `meson.build` (in `static_library()` calls or `declare_dependency(sources: ...)`) still exist on disk? Search the entire tree — they may have been moved to a different directory during an upstream restructure.
+2. **Check for duplicate dep definitions.** For every `*_dep` variable defined in this `meson.build`, search all other `meson.build` files to see if the same variable is already defined elsewhere in the active build graph.
+3. **Check if the file is in the build graph.** Is this `meson.build` referenced by any `subdir()` call in a parent? If no `subdir()` points to it, it's unreachable dead code.
+
+**Resolution decision tree:**
+
+```
+Directory has only meson.build, no source files?
+├── All dep variables already defined elsewhere AND not subdir()'d?
+│   └── DELETE the meson.build and the empty directory. Pure dead code.
+├── Some dep variables NOT defined elsewhere?
+│   ├── Can targets move to the logical parent meson.build (same subdir() position)?
+│   │   └── MOVE targets to parent, adjust source paths, delete empty dir.
+│   ├── Targets depend on things defined AFTER the parent in build ordering?
+│   │   └── INLINE targets into src/ray/meson.build at the correct position
+│   │       (like stats_cpp_lib and object_manager_cpp_lib). Delete empty dir.
+│   └── Ordering allows it in parent?
+│       └── MOVE to parent meson.build. Delete empty dir.
+└── File is subdir()'d but references sources via ../ paths?
+    └── Same as above — either INLINE into src/ray/meson.build at the
+        correct ordering position, or MOVE to parent. Delete empty dir.
+```
+
+**Key principle:** Empty directories with only a `meson.build` should not exist. Either the targets are dead code (delete) or they belong in another file (move/inline).
+
 ---
 
-## 7. Build and Validation
+## 9. Build and Validation
 
 ### Development Build
 
@@ -387,9 +811,49 @@ After building, compare the EUGO wheel contents against the upstream Ray wheel:
 3. Expected differences: build metadata, `_version.py`, compiled extension paths.
 4. Unexpected differences indicate missing files or incorrect `install_subdir()` exclusions in `python/meson.build`.
 
+### Expected Build Artifacts
+
+The Meson build must produce exactly these compiled outputs. Use this as the acceptance criterion when validating a build.
+
+#### Executables
+
+| Artifact | Install path in wheel | Description |
+|---|---|---|
+| `gcs_server` | `ray/core/src/ray/gcs/gcs_server` | GCS (Global Control Store) server process |
+| `raylet` | `ray/core/src/ray/raylet/raylet` | Per-node scheduler/worker manager process |
+
+#### Shared Libraries / Extensions
+
+| Artifact | Install path in wheel | Description |
+|---|---|---|
+| `_raylet.so` | `ray/_raylet.so` | Cython extension — the main Python↔C++ bridge |
+
+#### Intentionally Excluded from Our Wheel
+
+The following artifacts appear in the upstream official wheel (`ray-*.whl`) but are **intentionally absent** from the Eugo wheel:
+
+| Artifact | Reason | How we handle it |
+|---|---|---|
+| `ray/core/libjemalloc.so` | We do not vendor jemalloc | Link against system jemalloc or omit |
+| `ray/thirdparty_files/psutil/_psutil_linux.abi3.so` | Installed globally as a pip package | Listed in `pyproject.toml` dependencies |
+| `ray/_private/runtime_env/agent/thirdparty_files/aiohttp/*.so` | Installed globally as a pip package | Listed in `pyproject.toml` dependencies |
+| `ray/_private/runtime_env/agent/thirdparty_files/propcache/*.so` | Installed globally as a pip package | Listed in `pyproject.toml` dependencies |
+| `ray/_private/runtime_env/agent/thirdparty_files/frozenlist/*.so` | Installed globally as a pip package | Listed in `pyproject.toml` dependencies |
+| `ray/_private/runtime_env/agent/thirdparty_files/multidict/*.so` | Installed globally as a pip package | Listed in `pyproject.toml` dependencies |
+| `ray/_private/runtime_env/agent/thirdparty_files/yarl/*.so` | Installed globally as a pip package | Listed in `pyproject.toml` dependencies |
+
+> **Verification command** (run inside the unpacked wheel directory):
+> ```bash
+> find . -type f -executable -exec file {} \; | grep -E 'ELF|Mach-O'
+> # Expected output (Linux aarch64 example):
+> # ./ray/core/src/ray/gcs/gcs_server: ELF 64-bit LSB pie executable ...
+> # ./ray/core/src/ray/raylet/raylet: ELF 64-bit LSB pie executable ...
+> # ./ray/_raylet.so: ELF 64-bit LSB shared object ...
+> ```
+
 ---
 
-## 8. Dependency Management
+## 10. Dependency Management
 
 ### External C++ Dependencies
 
@@ -412,6 +876,131 @@ After building, compare the EUGO wheel contents against the upstream Ray wheel:
 | **threads** | system |
 | **npm / git** | found via `find_program()` |
 
+### Bazel → Meson Dependency Mapping
+
+Complete mapping of Bazel external dependency labels to Meson variable names. All variables are defined in `eugo/dependencies/meson.build`.
+
+#### Abseil (absl)
+
+| Bazel Label | Meson Variable |
+|---|---|
+| `@com_google_absl//absl/base:core_headers` | `absl_base_core_headers` |
+| `@com_google_absl//absl/time` | `absl_time` |
+| `@com_google_absl//absl/types:optional` | `absl_types_optional` |
+| `@com_google_absl//absl/container:flat_hash_map` | `absl_container_flat_hash_map` |
+| `@com_google_absl//absl/container:flat_hash_set` | `absl_container_flat_hash_set` |
+| `@com_google_absl//absl/container:node_hash_map` | `absl_container_node_hash_map` |
+| `@com_google_absl//absl/container:btree` | `absl_container_btree` |
+| `@com_google_absl//absl/container:inlined_vector` | `absl_container_flat_hash_map` *(needs dedicated var — TODO)* |
+| `@com_google_absl//absl/random` | `absl_random_random` |
+| `@com_google_absl//absl/random:bit_gen_ref` | `absl_random_bit_gen_ref` |
+| `@com_google_absl//absl/synchronization` | `absl_synchronization` |
+| `@com_google_absl//absl/cleanup` | `absl_cleanup` |
+| `@com_google_absl//absl/debugging:failure_signal_handler` | `absl_debugging_failure_signal_handler` |
+| `@com_google_absl//absl/debugging:stacktrace` | `absl_debugging_stacktrace` |
+| `@com_google_absl//absl/debugging:symbolize` | `absl_debugging_symbolize` |
+| `@com_google_absl//absl/algorithm` | `absl_algorithm` |
+| `@com_google_absl//absl/strings` | `absl_strings` |
+| `@com_google_absl//absl/strings:str_format` | `absl_strings` *(str_format is part of strings)* |
+| `@com_google_absl//absl/memory` | `absl_memory` |
+
+#### Boost
+
+All Boost modules resolve to the same underlying `boost` dependency (due to a Meson limitation — see `eugo/dependencies/meson.build`). Use the aliased names for clarity:
+
+| Bazel Label | Meson Variable |
+|---|---|
+| `@boost//:asio` | `boost_asio` |
+| `@boost//:system` | `boost_system` |
+| `@boost//:thread` | `boost_thread` |
+| `@boost//:fiber` | `boost_fiber` |
+| `@boost//:beast` | `boost_beast` |
+| `@boost//:any` | `boost_any` |
+| `@boost//:bimap` | `boost_bimap` |
+| `@boost//:circular_buffer` | `boost_circular_buffer` |
+| `@boost//:algorithm` | `boost_algorithm` |
+| `@boost//:bind` | `boost_bind` |
+| `@boost//:functional` | `boost_functional` |
+| `@boost//:iostreams` | `boost_iostreams` |
+| `@boost//:optional` | `boost_optional` |
+| `@boost//:process` | `boost_process` |
+| `@boost//:range` | `boost_range` |
+
+#### Other Libraries
+
+| Bazel Label | Meson Variable |
+|---|---|
+| `@com_github_spdlog//:spdlog` | `spdlog` |
+| `@msgpack` | `msgpack_cxx` |
+| `@com_github_google_flatbuffers//:flatbuffers` | `flatbuffers` |
+| `@com_google_protobuf//:protobuf` | `protobuf` |
+| `@com_github_grpc_grpc//:grpc++` | `grpc` |
+| `@com_github_grpc_grpc//:grpc_opencensus_plugin` | `grpc` *(included in meta-dep)* |
+| `@nlohmann_json` | `nlohmann_json` |
+| `@com_github_gflags_gflags//:gflags` | `gflags` |
+| `@com_github_redis_hiredis//:hiredis` | `hiredis` |
+| `@com_github_redis_hiredis//:hiredis_ssl` | `hiredis_ssl` |
+| `@com_github_jupp0r_prometheus_cpp//pull` | `prometheus_cpp_pull` |
+| `@io_opencensus_cpp//opencensus/stats` | `opencensus_cpp_stats` |
+| `@io_opencensus_cpp//opencensus/tags` | `opencensus_cpp_tags` |
+| `@io_opencensus_cpp//opencensus/exporters/stats/prometheus` | `opencensus_cpp_prometheus_exporter` |
+| `@io_opencensus_cpp//opencensus/exporters/stats/stdout` | `opencensus_cpp_stdout_exporter` |
+
+#### Special Cases
+
+| Bazel Label | Meson Handling |
+|---|---|
+| `@com_google_googletest//:gtest` | See [GTest in Production Code](#gtest-in-production-code) below |
+| `@com_google_googletest//:gtest_prod` | Handled by vendored stub — see below |
+| `@platforms//os:linux` (in `select()`) | `if host_machine.system() == 'linux'` |
+
+#### GTest in Production Code
+
+Upstream Ray's Bazel build brings GTest into **production** (non-test) code via two mechanisms. Neither requires linking the real GTest library — we handle both with vendored stubs in `eugo/include/gtest/`.
+
+**Mechanism 1: `gtest_prod` (FRIEND_TEST macro)**
+
+~34 production headers include `<gtest/gtest_prod.h>` to use the `FRIEND_TEST` macro, which declares test classes as friends of production classes for white-box testing. This is completely benign in production — the macro just expands to a `friend class` declaration.
+
+Our vendored `eugo/include/gtest/gtest_prod.h` is a copy of the real header. It defines only the `FRIEND_TEST` macro. No action needed — **do NOT add gtest as a Meson dependency** for targets that only use `gtest_prod`. The vendored header is found automatically via the `-I` include path in root `meson.build`.
+
+Files using `FRIEND_TEST` (representative, not exhaustive):
+- `src/ray/raylet/scheduling/cluster_resource_manager.h` (~30 FRIEND_TEST declarations)
+- `src/ray/raylet/scheduling/local_resource_manager.h`
+- `src/ray/raylet/scheduling/cluster_resource_scheduler.h`
+- `src/ray/raylet/scheduling/policy/hybrid_scheduling_policy.h`
+- `src/ray/core_worker/core_worker.h`
+- `src/ray/gcs/gcs_placement_group_manager.h`
+- `src/ray/pubsub/publisher.h`, `subscriber.h`
+- Many others (run `grep -rn '#include.*gtest/gtest_prod' src/ray/ --include='*.h' | grep -v /test` to see all)
+
+**Mechanism 2: `gtest` / `gtest_main` (assertions in non-test code)**
+
+Occasionally, a Bazel target that is NOT a test file declares a dependency on `@com_google_googletest//:gtest` or `:gtest_main`. When you encounter this:
+
+1. **Examine the source files** to determine what GTest features are actually used.
+2. If the code uses `ASSERT_TRUE`, `ASSERT_FALSE`, `ASSERT_EQ`, `EXPECT_*`, etc.:
+   - Replace with standard C++ `assert()` equivalents.
+   - Example: `ASSERT_FALSE(x)` → `assert(x == false)` or `RAY_CHECK(!x)`.
+   - Mark the change with `@EUGO_CHANGE` annotation.
+3. If only `FRIEND_TEST` is used → it's actually a `gtest_prod` case (Mechanism 1 above). No changes needed.
+4. Our vendored `eugo/include/gtest/gtest.h` is an **empty stub** — any accidental `#include <gtest/gtest.h>` will compile but GTest macros like `ASSERT_*` will be undefined, causing a compile error that forces you to address the usage.
+
+**Decision tree for Bazel targets with gtest deps:**
+
+```
+Bazel dep includes gtest or gtest_prod?
+├── gtest_prod only → No action. Vendored stub handles FRIEND_TEST.
+├── gtest or gtest_main →
+│   ├── Source only uses FRIEND_TEST? → Actually gtest_prod. No action.
+│   ├── Source uses ASSERT_*/EXPECT_*? →
+│   │   ├── Replace with assert() or RAY_CHECK(). Add @EUGO_CHANGE.
+│   │   └── Do NOT add gtest as a Meson dependency.
+│   └── Source uses other gtest features? →
+│       └── Evaluate case-by-case. Prefer eliminating the dependency.
+└── In all cases: Do NOT list gtest in the Meson _dependencies array.
+```
+
 ### Python Dependencies
 
 Declared in `pyproject.toml`:
@@ -423,7 +1012,7 @@ Declared in `pyproject.toml`:
 
 ---
 
-## 9. Key Gotchas and Pitfalls
+## 11. Key Gotchas and Pitfalls
 
 ### New Source Files Not in `meson.build`
 
@@ -441,6 +1030,18 @@ Upstream may add a new C++ dependency via Bazel that has no Meson equivalent con
 
 The `subdir()` order in `src/ray/meson.build` is **critical** — it resolves circular dependencies between Ray's C++ libraries. Two libraries (`stats_cpp_lib` and `object_manager_cpp_lib`) are defined inline in this file specifically to break dependency cycles. Adding new subdirectories requires understanding where they fit in this ordering.
 
+### The Largest Files
+As of this writing, the following have the largest number of lines and are most likely to have merge conflicts during syncs. Pay special attention to these:
+- `@/src/ray/core_worker`
+- `@/src/ray`
+- `@/src/ray/protobuf`
+- `@/src/ray/object_manager/plasma`
+- `@/src/ray/raylet`
+- `@/src/raylet/scheduling`
+- `@/src/ray/util`
+
+These are also the most critical for functionality, so careful merging is essential.
+
 ### Cython Extension Linkage
 
 The `_raylet` extension module in `python/meson.build` is linked against all major C++ static libraries. If upstream adds a new top-level library that Cython code references, it must be added to the `dependencies:` list there.
@@ -457,9 +1058,48 @@ Many `meson.build` files use `# === @begin: SectionName ===` / `# === @end: Sect
 
 The `_raylet` extension uses a linker version script (`ray_version_script.lds`) to control symbol visibility. If upstream changes exported symbols, this file may need updating.
 
+### BUILD.bazel ↔ meson.build Correspondence
+
+**Every directory under `src/ray/` that contains a `BUILD.bazel` with production (non-test) targets MUST have a corresponding `meson.build` file.** This is a strict invariant.
+
+When files from a subdirectory are "inlined" into a parent `meson.build` (e.g., `'scheduling/fixed_point.cc'` listed in the parent's `static_library()`), this is **incorrect** — it should instead use `subdir('scheduling/')` to delegate to a child `meson.build` that defines its own targets matching the subdirectory's `BUILD.bazel` 1:1.
+
+**Excluded directories** (no meson.build needed):
+- `*/tests/` and `*/integration_tests/` — test-only directories
+- `src/ray/thirdparty/setproctitle/` — replaced by pip package
+- `src/ray/core_worker/lib/java/` — Java JNI, not built in Meson
+
+**To audit for missing meson.build files:**
+```bash
+find src/ray -name BUILD.bazel -exec dirname {} \; | sort | while read d; do
+  [ -f "$d/meson.build" ] || echo "MISSING: $d"
+done
+# Then filter out test directories and intentionally excluded paths.
+```
+
+**Known production directories still needing 1:1 meson.build breakout:**
+- `src/ray/protobuf/public/` — proto targets, may be inlined in `protobuf/meson.build`
+
+### Directory Count Invariant
+
+**The number of `meson.build` files under `src/ray/` MUST be greater than or equal to the number of `BUILD.bazel` files** (excluding test directories and intentionally excluded paths). If there are fewer `meson.build` files than `BUILD.bazel` files, some directories are missing their Meson build definitions.
+
+```bash
+# Count BUILD.bazel directories (excluding tests/excluded)
+bazel_count=$(find src/ray -name BUILD.bazel -exec dirname {} \; | grep -v -E '(tests|integration_tests|thirdparty/setproctitle|lib/java)' | wc -l)
+
+# Count meson.build directories
+meson_count=$(find src/ray -name meson.build -exec dirname {} \; | wc -l)
+
+echo "BUILD.bazel dirs: $bazel_count, meson.build dirs: $meson_count"
+# meson_count >= bazel_count (after removing excluded dirs) is the invariant
+```
+
+Use `eugo_audit_targets.py` for a comprehensive per-target audit that includes this check and reports exactly which targets are missing.
+
 ---
 
-## 10. Directory Reference
+## 12. Directory Reference
 
 | Directory | Ownership | Description |
 |-----------|-----------|-------------|
@@ -480,19 +1120,19 @@ The `_raylet` extension uses a linker version script (`ray_version_script.lds`) 
 
 ---
 
-## 11. Rules for AI Coding Agents
+## 13. Rules for AI Coding Agents
 
 ### General Rules
 
 1. **Read this file first** before making any changes to the repository.
-2. **Understand ownership** (§5) before modifying any file — never overwrite EUGO-owned files with upstream content.
+2. **Understand ownership** (§7) before modifying any file — never overwrite EUGO-owned files with upstream content.
 3. **Never remove or modify `@EUGO_CHANGE` annotations** unless explicitly told to do so.
-4. **Always annotate** new modifications to upstream files with `@EUGO_CHANGE` markers following the convention in §3.
+4. **Always annotate** new modifications to upstream files with `@EUGO_CHANGE` markers following the convention in §5.
 5. **Run `python3 eugo_sync.py`** after any change that adds or removes C/C++ source files.
 
 ### When Helping With Upstream Syncs
 
-1. **Identify file ownership first.** Use §5 and `grep -rl "@EUGO_CHANGE"` to classify every changed file.
+1. **Identify file ownership first.** Use §7 and `grep -rl "@EUGO_CHANGE"` to classify every changed file.
 2. **For UPSTREAM files:** Apply changes directly.
 3. **For SHARED files:** Show the diff between upstream and local, highlighting `@EUGO_CHANGE` blocks. Propose a merge that preserves all annotations.
 4. **For EUGO-OWNED files:** Do not overwrite. If upstream structural changes require updates (e.g., new source files), propose additions to the relevant `meson.build`.
@@ -500,11 +1140,38 @@ The `_raylet` extension uses a linker version script (`ray_version_script.lds`) 
 
 ### When Modifying Build Files
 
-1. **Follow the library pattern** in §2 for new C++ components.
-2. **Respect `subdir()` ordering** in `src/ray/meson.build` — it encodes the dependency graph.
-3. **Add new external deps** to `eugo/dependencies/meson.build`, not inline in component build files.
-4. **Use the codegen kwargs** from `eugo/utils/meson.build` for new proto/flatbuffers targets.
-5. **Test with `eugo_meson_compile.sh`** after build file changes.
+1. **Replicate Bazel 1:1 first** — create one Meson target per `ray_cc_library()` in `BUILD.bazel` (see §3). Do NOT consolidate multiple Bazel targets into one Meson library during initial translation.
+2. **Use the correct pattern** from §2 for each target type (static library, header-only, FlatBuffers, Protobuf, gRPC).
+3. **Header-only targets must NOT use `static_library()`** — use `declare_dependency()` only (Pattern 2 in §2). Creating a `static_library()` for header-only targets causes duplicate symbols.
+4. **Map ALL dependencies** — every Bazel `deps` entry must have a Meson equivalent. Use the mapping table in §10. Missing deps cause linker errors that are hard to trace.
+5. **Map ALL source files** — every `.cc` file in Bazel `srcs` must appear in the Meson `static_library()`. Missing files mean missing functionality.
+6. **Validate source lists and deps** against upstream `BUILD.bazel` using the procedure in §3.
+7. **Respect `subdir()` ordering** in `src/ray/meson.build` — it encodes the dependency graph.
+8. **Add new external deps** to `eugo/dependencies/meson.build`, not inline in component build files.
+9. **Use the codegen kwargs** from `eugo/utils/meson.build` for new proto/flatbuffers targets.
+10. **Run `python3 eugo_sync.py`** after adding/removing source files (see §4 for what the output means).
+11. **Test with `eugo_meson_compile.sh`** after build file changes.
+12. **Every `BUILD.bazel` directory needs a `meson.build`** — if you find files from a subdirectory inlined in a parent `meson.build`, break them out into their own `meson.build` in the correct subdirectory using `subdir()`. See §11 for the full rule and exceptions.
+13. **Handle gtest deps correctly** — follow the decision tree in §10 "GTest in Production Code". Never add gtest as a Meson dependency. For `gtest_prod` (FRIEND_TEST), our vendored stub handles it. For `gtest`/`gtest_main`, examine sources and replace assertions with `assert()` or `RAY_CHECK()`.
+14. **Clean up empty directories with orphaned `meson.build` files** — if a directory contains only a `meson.build` and no source files, follow the assessment procedure in §8.10 to determine whether to delete, move, or inline the targets.
+15. **Mandatory target-count audit** — before considering a `meson.build` complete, count the production `ray_cc_library()` targets in the corresponding `BUILD.bazel` and compare against the `# === @begin` blocks in the `meson.build`. They MUST match 1:1. If the `meson.build` has fewer targets, it is INCOMPLETE — identify the missing Bazel targets and create Meson equivalents. This is the #1 source of breakout errors: consolidating multiple Bazel targets into one Meson library. Use the full validation procedure in §3.
+16. **Verify all deps exist** — for every `*_cpp_lib_dep` referenced in a `_dependencies` list, verify it is actually defined in a `meson.build` that is processed BEFORE this one. A reference to a nonexistent dep is a build error. Use `grep -rn 'foo_cpp_lib_dep =' src/ray/**/meson.build` to verify.
+17. **Circular dep documentation** — when a Bazel dep cannot be added because the target is defined in a `meson.build` processed later (ordering constraint), add a comment explaining: (1) what the missing dep is, (2) why it can't be added (which file defines it, processing order), and (3) why it still works (e.g., headers found via `-I`, symbols resolved at final link time).
+18. **Directory count invariant** — the number of `meson.build` files under `src/ray/` MUST be greater than or equal to the number of `BUILD.bazel` files (excluding test directories and intentionally excluded paths). If there are fewer `meson.build` files than `BUILD.bazel` files, some directories are missing their Meson build definitions. See §11 for the full invariant and the audit command. Use `python3 eugo_audit_targets.py` for a comprehensive automated check.
+19. **Maintain Bazel target ordering** — `# === @begin` blocks in a `meson.build` MUST appear in the same top-to-bottom order as the corresponding `ray_cc_library()` targets in `BUILD.bazel`. The only permitted deviation is when a target's dependency is also defined in the same file and must therefore be placed before its consumer (Meson define-before-use). Document any such deviation with a comment. See §3 "Target Ordering Rule" for the full explanation and example.
+20. **Group dependencies with section comments** — every `_dependencies` list must separate package-managed deps (other Meson library targets) from Eugo-managed deps (external dependencies from `eugo/dependencies/meson.build`) using `# Package-managed` and `# Eugo-managed` section comments, with a blank line between groups. This makes it immediately clear which deps are internal project libraries vs. external third-party libraries. Example:
+    ```meson
+    foo_cpp_lib_dependencies = [
+        # Package-managed
+        bar_cpp_lib_dep,
+        baz_cpp_lib_dep,
+
+        # Eugo-managed
+        absl_time,
+        protobuf,
+    ]
+    ```
+21. **List dependencies in Bazel order** — within each group (`# Package-managed` and `# Eugo-managed`), dependencies MUST appear in the same order as they appear in the corresponding Bazel `deps` list. This 1:1 ordering makes manual cross-referencing fast and ensures no deps are accidentally skipped during translation and validation.
 
 ### When Modifying C++ Code
 
@@ -526,3 +1193,242 @@ The `_raylet` extension uses a linker version script (`ray_version_script.lds`) 
 3. **Proto/codegen errors** → check `eugo/utils/meson.build` for codegen kwargs and `eugo/utils/patching_protoc_py.sh` for Python import patching.
 4. **Circular dependency build errors** → the ordering in `src/ray/meson.build` likely needs adjustment. Read the comments there carefully.
 5. **Wheel content mismatch** → check `install_subdir()` exclusions in `python/meson.build`.
+
+---
+
+## 14. Step 2: Shared Library Consolidation
+
+> **Prerequisite:** Step 1 (1:1 Bazel-to-Meson translation with individual static libraries) MUST be complete and tested before starting Step 2. Do NOT begin this work until the build compiles, the wheel builds, and `eugo_sync.py` is clean.
+
+### Goal
+
+Replace the all (~30+) individual `static_library()` targets under `src/ray/` with a **single `shared_library()`** that compiles all production C++ source files together. This enables:
+
+- **Link-Time Optimization (LTO)** across the entire C++ codebase (not just within individual static libraries)
+- **Reduced build complexity** — eliminates the intricate `subdir()` ordering, circular dependency workarounds, and hundreds of `_dependencies` / `_dep` / `_lib` variable declarations
+- **Faster linking** — one link step instead of many archive + final link steps
+- **Better dead code elimination** — the linker can see all symbols at once
+
+### Architecture After Step 2
+
+```
+meson.build (root)
+├── eugo/
+│   ├── dependencies/meson.build  # External C++ deps (unchanged)
+│   ├── utils/meson.build         # Codegen helpers (unchanged)
+│   └── include/                  # Vendored headers (unchanged)
+├── src/
+│   ├── proto/                    # .proto and .fbs source files (unchanged)
+│   └── ray/
+│       ├── protobuf/meson.build  # Proto/FBS codegen custom_targets (kept, but NO static_library)
+│       └── meson.build           # Single shared_library('ray_cpp', ...) with ALL .cc files
+└── python/
+    └── meson.build               # _raylet links against ray_cpp shared lib instead of static libs
+```
+
+### Pre-Consolidation Audit
+
+Before consolidating, two invariants must be verified:
+
+#### 14.1. Duplicate Filename Audit (MANDATORY)
+
+Meson's `shared_library()` with source files from multiple subdirectories compiles all `.cc` files into a single build directory. If two source files have the same `basename.extension` (e.g., `src/ray/gcs/common.cc` and `src/ray/object_manager/common.cc`), their object files will collide and one will silently overwrite the other, causing missing symbols.
+
+**Similarly for headers:** while header name collisions don't cause object file overwrites, they create ambiguity with `#include` directives and make the build fragile. Two headers with the same `basename.extension` in different directories could shadow each other depending on include path order.
+
+**Rules:**
+
+1. **No two production source files (`.cc`, `.c`) may share the same `basename.extension`** across the entire `src/ray/` tree.
+2. **No two production header files (`.h`) may share the same `basename.extension`** across the entire `src/ray/` tree.
+3. **Test-only files are excluded** from this check — files that are not compiled by Meson (test files, test utilities, Java JNI) do not participate in the shared library and cannot collide.
+4. **Different extensions are fine** — `raptors.cc` and `raptors.h` is OK (they produce different output artifacts). The collision is only between files of the same extension: `src/ray/foo/raptors.h` vs `src/ray/bar/raptors.h` is NOT OK.
+5. **Generated files (proto/fbs)** must also be checked — the generated `.pb.cc` / `.grpc.pb.cc` / `_generated.h` files must not collide with hand-written source files or with each other.
+
+**Audit procedure:**
+
+```bash
+# Find duplicate .cc/.c filenames among production sources
+find src/ray -name '*.cc' -o -name '*.c' | \
+    grep -v -E '(test|java/|thirdparty/setproctitle)' | \
+    xargs -I{} basename {} | \
+    sort | uniq -d
+
+# Find duplicate .h filenames among production headers
+find src/ray -name '*.h' | \
+    grep -v -E '(test|java/|thirdparty/setproctitle)' | \
+    xargs -I{} basename {} | \
+    sort | uniq -d
+
+# For each duplicate found, show full paths:
+find src/ray -name '<duplicate_filename>' | grep -v test
+```
+
+**If duplicates are found**, resolve by renaming one of the files. Annotate the rename with `@EUGO_CHANGE` and update all `#include` directives that reference the renamed file.
+
+#### 14.2. Include Directory Inventory (MANDATORY)
+
+The single shared library needs an explicit `include_directories()` list — unlike the current approach where each `static_library()` implicitly uses its own directory. Every directory under `src/ray/` that contains headers used by production code must be enumerated.
+
+**Rules:**
+
+1. **Only directories containing headers that production `.cc` files `#include`** need to be listed. Test-only directories can be omitted.
+2. **The list must be comprehensive** — a missing directory means `#include` failures at compile time. Err on the side of including too many directories rather than too few.
+3. **Generated file output directories** (protobuf, flatbuffers) must also be included — these are typically in the build directory, not the source tree.
+
+**Audit procedure:**
+
+```bash
+# List all directories containing .h files used in production
+find src/ray -name '*.h' -not -path '*/test*' -not -path '*/java/*' \
+    -not -path '*/thirdparty/setproctitle/*' | \
+    xargs -I{} dirname {} | \
+    sort -u
+
+# Cross-reference: find all #include paths used in production .cc files
+grep -rh '#include' src/ray --include='*.cc' --include='*.h' | \
+    grep -v test | \
+    sed 's/.*#include [<"]\(.*\)[>"]/\1/' | \
+    sort -u
+```
+
+### Meson Pattern: Single Shared Library
+
+After the audit passes, the consolidation replaces all `static_library()` + `declare_dependency()` patterns with one `shared_library()`:
+
+```meson
+# src/ray/meson.build (Step 2)
+
+# --- Codegen (kept from Step 1, but produces custom_targets only, no static libs) ---
+subdir('protobuf/')    # Defines *_proto_cpp, *_proto_cpp_grpc custom_targets
+subdir('flatbuffers/') # Defines *_cpp_fbs custom_targets
+
+# --- All production source files ---
+ray_cpp_sources = files(
+    'common/status.cc',
+    'common/task_spec.cc',
+    'common/memory_monitor.cc',
+    # ... every production .cc file from all subdirectories ...
+    'util/event.cc',
+    'util/logging.cc',
+    'gcs/gcs_server.cc',
+    'raylet/main.cc',
+    'core_worker/core_worker.cc',
+    # ... etc ...
+)
+
+# --- Include directories for all production headers ---
+ray_cpp_include_dirs = include_directories(
+    '.',           # src/ray/ itself
+    'common/',
+    'common/cgroup2/',
+    'gcs/',
+    'gcs/actor/',
+    'object_manager/',
+    'object_manager/plasma/',
+    'pubsub/',
+    'raylet/',
+    'raylet/scheduling/',
+    'rpc/',
+    'util/',
+    # ... every directory containing production headers ...
+)
+
+# --- All external + codegen dependencies ---
+ray_cpp_dependencies = [
+    # Codegen outputs (custom_target results, not static libs)
+    common_proto_cpp_dep,
+    gcs_proto_cpp_dep,
+    gcs_service_proto_cpp_grpc_dep,
+    # ... all proto/fbs codegen declare_dependency() targets ...
+
+    # External deps (from eugo/dependencies/)
+    absl_base_core_headers,
+    absl_time,
+    absl_container_flat_hash_map,
+    absl_container_flat_hash_set,
+    absl_synchronization,
+    boost_asio,
+    boost_fiber,
+    boost_thread,
+    flatbuffers,
+    grpc,
+    hiredis,
+    hiredis_ssl,
+    msgpack_cxx,
+    nlohmann_json,
+    opencensus_cpp_stats,
+    opencensus_cpp_tags,
+    opencensus_cpp_prometheus_exporter,
+    opencensus_cpp_stdout_exporter,
+    prometheus_cpp_pull,
+    protobuf,
+    spdlog,
+    threads,
+    # ... all needed external deps ...
+]
+
+# --- Single shared library ---
+ray_cpp_lib = shared_library(
+    'ray_cpp',
+    ray_cpp_sources,
+    include_directories: ray_cpp_include_dirs,
+    dependencies: ray_cpp_dependencies,
+    install: true,
+    gnu_symbol_visibility: 'hidden',  # Control exported symbols explicitly # @TODO: unsure about symbols visibility
+)
+
+ray_cpp_lib_dep = declare_dependency(
+    link_with: [ray_cpp_lib],
+    include_directories: ray_cpp_include_dirs,
+    dependencies: ray_cpp_dependencies,
+)
+```
+
+### Changes to _raylet Extension Module
+
+The `_raylet` extension in `python/meson.build` simplifies from many dependencies to one:
+
+```meson
+# python/meson.build (Step 2)
+py.extension_module(
+    '_raylet',
+    ['ray/_raylet.pyx'],
+    install: true,
+    subdir: 'ray/',
+    dependencies: [ray_cpp_lib_dep],  # Single dep replaces ~10+ static lib deps
+    link_args: ['-Wl,--version-script=' + meson.project_source_root() / 'src/ray/ray_version_script.lds'],
+    override_options: ['cython_language=cpp']
+)
+```
+
+### Changes to Codegen Targets
+
+Proto and FlatBuffers code generation stays the same (custom_targets producing `.pb.cc`, `.grpc.pb.cc`, `_generated.h`), but the downstream pattern changes:
+
+**Step 1 (current):** codegen → `declare_dependency` (virtual) → `static_library` → `declare_dependency` (consumer)
+
+**Step 2 (new):** codegen → `declare_dependency` (virtual, kept for generated header visibility) → feeds directly into `ray_cpp_dependencies`
+
+The `static_library()` wrappers around proto codegen outputs are removed. The generated `.pb.cc` and `.grpc.pb.cc` files become additional sources in the shared library, or their `declare_dependency` wrappers (which carry the generated headers) are listed as dependencies so the compiler can find the generated headers.
+
+### Validation Procedure for Step 2
+
+1. **Duplicate filename audit** — run the commands from §14.1. Zero duplicates among production files.
+2. **Include directory completeness** — compile with the new `include_directories()` list. Any missing directory produces an immediate `#include` error.
+3. **Symbol completeness** — link the shared library. Any missing source file produces undefined symbol errors.
+4. **eugo_sync.py** — must still report "No raptors found!" (all `.cc` files referenced in the single `shared_library()` sources list).
+5. **Wheel comparison** — the output wheel must produce identical runtime behavior to the Step 1 wheel.
+6. **LTO verification** — build with `-Db_lto=true` and verify the shared library is smaller than the sum of all static libraries.
+
+### Rules for AI Coding Agents (Step 2 Specific)
+
+1. **Do NOT start Step 2 until Step 1 is complete and tested.** Step 1 is the prerequisite — the 1:1 Bazel mapping must build and pass validation first.
+2. **Run the duplicate filename audit (§14.1) before writing any consolidation code.** If duplicates exist, resolve them first in a separate commit.
+3. **Run the include directory inventory (§14.2) before writing the `include_directories()` list.** Do not guess — enumerate from the actual source tree.
+4. **Keep all codegen `custom_target()` definitions** — proto/fbs generation does not change in Step 2, only the downstream consumption pattern changes.
+5. **Do NOT delete the Step 1 `meson.build` files until the shared library builds clean.** Work in a new branch and keep Step 1 as a fallback.
+6. **Every `.cc` file currently in any `static_library()` must appear in `ray_cpp_sources`.** Missing a file means missing symbols. Cross-reference against `eugo_sync.py` output.
+7. **Test-only files, Java JNI files, and `thirdparty/setproctitle/` remain excluded** — same exclusion rules as Step 1.
+8. **The `_raylet` version script (`ray_version_script.lds`) still applies** — symbol visibility control is even more important with a shared library.
+
+---

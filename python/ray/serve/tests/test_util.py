@@ -9,8 +9,9 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.serve._private.utils import (
+    Semaphore,
     calculate_remaining_timeout,
     get_all_live_placement_group_names,
     get_current_actor_id,
@@ -477,6 +478,136 @@ def test_get_current_actor_id(ray_instance):
     assert actor_id != "DRIVER"
 
     assert get_current_actor_id() == "DRIVER"
+
+
+@pytest.mark.asyncio
+async def test_semaphore():
+    """Test core Semaphore functionality."""
+    max_value = 2
+    sema = Semaphore(get_value_fn=lambda: max_value)
+
+    # Test get_max_value functionality
+    assert sema.get_max_value() == max_value
+
+    # Initially, semaphore should not be locked and should allow acquisitions
+    assert not sema.locked()
+
+    # Acquire one
+    await sema.acquire()
+    assert not sema.locked()
+    assert sema._value == 1
+
+    # Acquire one
+    await sema.acquire()
+    assert sema.locked()  # Should now be locked (2 out of 2)
+    assert sema._value == 2
+
+    # Release one
+    sema.release()
+    assert not sema.locked()  # Should not be locked anymore (1 out of 2)
+    assert sema._value == 1
+
+    # Acquire one
+    await sema.acquire()
+    assert sema.locked()
+    assert sema._value == 2
+
+
+@pytest.mark.asyncio
+async def test_semaphore_waiters_and_single_release():
+    """Test that release() wakes up exactly one waiter."""
+    max_value = 1
+    sema = Semaphore(get_value_fn=lambda: max_value)
+
+    # Fill the semaphore to capacity
+    await sema.acquire()
+    assert sema.locked()
+    assert sema._value == 1
+
+    # Create multiple waiters
+    waiters_completed = []
+
+    async def waiter(waiter_id):
+        await sema.acquire()
+        waiters_completed.append(waiter_id)
+
+    # Start 2 waiters that will all block
+    waiter_tasks = [
+        asyncio.create_task(waiter(1)),
+        asyncio.create_task(waiter(2)),
+    ]
+
+    # Yield the event loop
+    await asyncio.sleep(0.01)
+
+    # Verify they are all waiting
+    assert len(waiters_completed) == 0
+    assert sema.locked()
+    assert len(sema._waiters) == 2
+
+    # Release once - this should wake up exactly ONE waiter
+    sema.release()
+    await asyncio.sleep(0.01)
+
+    # Verify exactly one waiter was woken up and completed
+    assert len(waiters_completed) == 1
+    assert sema._value == 1
+    assert sema.locked()
+    assert len(sema._waiters) == 1
+
+    # Release again - should wake up exactly one more waiter
+    sema.release()
+    await asyncio.sleep(0.01)
+
+    # Verify exactly one more waiter was woken up
+    assert len(waiters_completed) == 2
+    assert sema._value == 1
+    assert sema.locked()
+    assert len(sema._waiters) == 0
+
+    assert len(await asyncio.gather(*waiter_tasks)) == 2
+
+
+@pytest.mark.asyncio
+async def test_semaphore_dynamic_max_value():
+    """Test that Semaphore respects dynamic changes to max_value."""
+    current_max = 2
+
+    def get_dynamic_max():
+        return current_max
+
+    sema = Semaphore(get_value_fn=get_dynamic_max)
+
+    # Initially max is 2
+    assert sema.get_max_value() == 2
+
+    # Acquire up to the limit
+    await sema.acquire()
+    await sema.acquire()
+    assert sema.locked()
+
+    # Increase the max value dynamically
+    current_max = 3
+    assert sema.get_max_value() == 3
+    assert not sema.locked()
+
+    # Should be able to acquire one more
+    await sema.acquire()
+    assert sema.locked()
+    assert sema._value == 3
+
+    # Decrease the max value
+    current_max = 1
+    assert sema.get_max_value() == 1
+    assert sema.locked()
+
+    # Release to get back within limits
+    sema.release()
+    sema.release()
+    assert sema.locked()
+    sema.release()
+    assert not sema.locked()
+    assert sema._value == 0
 
 
 if __name__ == "__main__":

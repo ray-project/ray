@@ -70,6 +70,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.delete
    serve.status
    serve.shutdown
+   serve.shutdown_async
 ```
 
 ### Configurations
@@ -83,6 +84,14 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
+   serve.config.AutoscalingPolicy
+   serve.config.AutoscalingContext
+   serve.autoscaling_policy.replica_queue_length_autoscaling_policy
+   serve.config.AggregationFunction
+   serve.config.RequestRouterConfig
+   serve.config.GangSchedulingConfig
+   serve.config.GangPlacementStrategy
+   serve.config.GangRuntimeFailurePolicy
 ```
 
 ### Schemas
@@ -99,6 +108,27 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ServeStatus
    serve.schema.DeploymentStatusOverview
    serve.schema.EncodingType
+   serve.schema.AutoscalingMetricsHealth
+   serve.schema.AutoscalingStatus
+   serve.schema.ScalingDecision
+   serve.schema.DeploymentAutoscalingDetail
+   serve.schema.ReplicaRank
+```
+
+### Request Router
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.request_router.ReplicaID
+   serve.request_router.PendingRequest
+   serve.request_router.RunningReplica
+   serve.request_router.FIFOMixin
+   serve.request_router.LocalityMixin
+   serve.request_router.MultiplexMixin
+   serve.request_router.RequestRouter
 ```
 
 #### Advanced APIs
@@ -110,14 +140,19 @@ See the [model composition guide](serve-model-composition) for how to update cod
 
    serve.get_replica_context
    serve.context.ReplicaContext
+   serve.context.GangContext
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
    serve.grpc_util.RayServegRPCContext
+   serve.grpc_util.gRPCInputStream
    serve.exceptions.BackPressureError
    serve.exceptions.RayServeException
    serve.exceptions.RequestCancelledError
+   serve.exceptions.gRPCStatusError
+   serve.exceptions.DeploymentUnavailableError
 ```
+
 
 (serve-cli)=
 
@@ -210,7 +245,8 @@ Content-Type: application/json
     },
     "grpc_options": {
         "port": 9000,
-        "grpc_servicer_functions": []
+        "grpc_servicer_functions": [],
+        "request_timeout_s": null
     },
     "proxies": {
         "cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec": {
@@ -363,6 +399,11 @@ Content-Type: application/json
    schema.ServeApplicationSchema
    schema.DeploymentSchema
    schema.RayActorOptionsSchema
+   schema.CeleryAdapterConfig
+   schema.TaskProcessorConfig
+   schema.TaskResult
+   schema.ScaleDeploymentRequest
+   schema.TaskProcessorAdapter
 ```
 
 (serve-rest-api-response-schema)=
@@ -380,6 +421,11 @@ Content-Type: application/json
    schema.DeploymentDetails
    schema.ReplicaDetails
    schema.ProxyStatus
+   schema.TargetGroup
+   schema.Target
+   schema.DeploymentNode
+   schema.DeploymentTopology
+
 ```
 
 ## Observability
@@ -393,4 +439,54 @@ Content-Type: application/json
    metrics.Histogram
    metrics.Gauge
    schema.LoggingConfig
+```
+
+(serve-llm-api)=
+
+## LLM API
+
+```{eval-rst}
+.. currentmodule:: ray
+``` 
+
+
+### Builders
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.build_llm_deployment
+   serve.llm.build_openai_app
+```
+
+### Configs
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
+   serve.llm.LLMConfig
+   serve.llm.LLMServingArgs
+   serve.llm.ModelLoadingConfig
+   serve.llm.CloudMirrorConfig
+   serve.llm.LoraConfig
+```
+
+
+### Deployments
+
+```{eval-rst}
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   serve.llm.LLMServer
+   serve.llm.LLMRouter
 ```

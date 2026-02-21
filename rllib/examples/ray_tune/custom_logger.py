@@ -50,7 +50,7 @@ Closing
 
 """
 
-from ray import air, tune
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import (
@@ -58,7 +58,7 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     LEARNER_RESULTS,
 )
-from ray.tune.logger import Logger, LegacyLoggerCallback
+from ray.tune.logger import LegacyLoggerCallback, Logger
 
 
 class MyPrintLogger(Logger):
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=tune.RunConfig(
             stop=stop,
             verbose=2,
             # Plugin our own logger.

@@ -1,0 +1,30 @@
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "scheduling_policy_test",
+    size = "small",
+    srcs = [
+        "scheduling_policy_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/raylet/scheduling:composite_scheduling_policy",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "hybrid_scheduling_policy_test",
+    size = "small",
+    srcs = [
+        "hybrid_scheduling_policy_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/raylet/scheduling:composite_scheduling_policy",
+        "//src/ray/raylet/scheduling:hybrid_scheduling_policy",
+        "@com_google_absl//absl/random:mock_distributions",
+        "@com_google_absl//absl/random:mocking_bit_gen",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

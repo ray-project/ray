@@ -21,11 +21,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Type["Learner"]:
-        if self.framework_str == "tf2":
-            from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
-
-            return BCTfLearner
-        elif self.framework_str == "torch":
+        if self.framework_str == "torch":
             from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 
             return BCTorchLearner
@@ -34,11 +30,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> "RLModuleSpecType":
-        if self.framework_str == "tf2":
-            from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-
-            cls = DiscreteBCTFModule
-        elif self.framework_str == "torch":
+        if self.framework_str == "torch":
             from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 
             cls = DiscreteBCTorchModule
@@ -50,7 +42,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
             model_config={"fcnet_hiddens": [32]},
         )
 
-        if self.is_multi_agent():
+        if self.is_multi_agent:
             # TODO (Kourosh): Make this more multi-agent for example with policy ids
             #  "1" and "2".
             return MultiRLModuleSpec(

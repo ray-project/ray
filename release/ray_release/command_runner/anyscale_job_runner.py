@@ -1,38 +1,60 @@
 import json
 import os
 import re
-import tempfile
 import shlex
-from typing import TYPE_CHECKING, Any, Dict, Optional, List
+import shutil
+import tempfile
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from ray_release.cloud_util import (
+    convert_abfss_uri_to_https,
+    generate_tmp_cloud_storage_path,
+    upload_working_dir_to_azure,
+)
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.command_runner.job_runner import JobRunner
+from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.exception import (
-    TestCommandTimeout,
-    TestCommandError,
+    FetchResultError,
+    JobBrokenError,
+    JobNoLogsError,
     JobOutOfRetriesError,
+    LogsError,
     PrepareCommandError,
     PrepareCommandTimeout,
-    JobBrokenError,
-    FetchResultError,
-    JobTerminatedBeforeStartError,
-    JobNoLogsError,
-    JobTerminatedError,
+    TestCommandError,
+    TestCommandTimeout,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.job_manager import AnyscaleJobManager
+from ray_release.job_manager.anyscale_job_manager import (
+    JOB_FAILED,
+    JOB_STATE_UNKNOWN,
+    AnyscaleJobManager,
+)
 from ray_release.logger import logger
+from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 from ray_release.util import (
-    join_cloud_storage_paths,
-    generate_tmp_cloud_storage_path,
-    get_anyscale_sdk,
+    AZURE_CLOUD_STORAGE,
+    AZURE_STORAGE_CONTAINER,
     S3_CLOUD_STORAGE,
+    get_anyscale_sdk,
 )
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
 
 TIMEOUT_RETURN_CODE = 124
+
+
+def _join_cloud_storage_paths(*paths: str):
+    paths = list(paths)
+    if len(paths) > 1:
+        for i in range(1, len(paths)):
+            while paths[i][0] == "/":
+                paths[i] = paths[i][1:]
+    joined_path = os.path.join(*paths)
+    while joined_path[-1] == "/":
+        joined_path = joined_path[:-1]
+    return joined_path
 
 
 def _get_env_str(env: Dict[str, str]) -> str:
@@ -43,7 +65,25 @@ def _get_env_str(env: Dict[str, str]) -> str:
     return env_str
 
 
-class AnyscaleJobRunner(JobRunner):
+class AnyscaleJobRunner(CommandRunner):
+    # the directory for runners to dump files to (on buildkite runner instances).
+    # Write to this directory. run_release_tests.sh will ensure that the content
+    # shows up under buildkite job's "Artifacts" UI tab.
+    _DEFAULT_ARTIFACTS_DIR = DEFAULT_ARTIFACTS_DIR
+
+    # the artifact file name put under s3 bucket root.
+    # AnyscalejobWrapper will upload user generated artifact to this path
+    # and AnyscaleJobRunner will then download from there.
+    _USER_GENERATED_ARTIFACT = "user_generated_artifact"
+
+    # the path where result json will be written to on both head node
+    # as well as the relative path where result json will be uploaded to on s3.
+    _RESULT_OUTPUT_JSON = "/tmp/release_test_out.json"
+
+    # the path where output json will be written to on both head node
+    # as well as the relative path where metrics json will be uploaded to on s3.
+    _METRICS_OUTPUT_JSON = "/tmp/metrics_test_out.json"
+
     def __init__(
         self,
         cluster_manager: ClusterManager,
@@ -54,14 +94,14 @@ class AnyscaleJobRunner(JobRunner):
     ):
         super().__init__(
             cluster_manager=cluster_manager,
-            file_manager=file_manager,
             working_dir=working_dir,
         )
+        self.file_manager = file_manager
         self.sdk = sdk or get_anyscale_sdk()
         self.job_manager = AnyscaleJobManager(cluster_manager)
 
         self.last_command_scd_id = None
-        self.path_in_bucket = join_cloud_storage_paths(
+        self.path_in_bucket = _join_cloud_storage_paths(
             "working_dirs",
             self.cluster_manager.test.get_name().replace(" ", "_"),
             generate_tmp_cloud_storage_path(),
@@ -72,10 +112,19 @@ class AnyscaleJobRunner(JobRunner):
             "ANYSCALE_CLOUD_STORAGE_PROVIDER",
             S3_CLOUD_STORAGE,
         )
-        self.upload_path = join_cloud_storage_paths(
-            f"{cloud_storage_provider}://{self.file_manager.bucket}",
-            self.path_in_bucket,
-        )
+
+        if cloud_storage_provider == AZURE_CLOUD_STORAGE:
+            # Azure ABFSS involves container and account name in the path
+            # and in a specific format/order.
+            self.upload_path = _join_cloud_storage_paths(
+                f"{AZURE_CLOUD_STORAGE}://{AZURE_STORAGE_CONTAINER}@{self.file_manager.bucket}.dfs.core.windows.net",
+                self.path_in_bucket,
+            )
+        else:
+            self.upload_path = _join_cloud_storage_paths(
+                f"{cloud_storage_provider}://{self.file_manager.bucket}",
+                self.path_in_bucket,
+            )
         self.output_json = "/tmp/output.json"
         self.prepare_commands = []
         self._wait_for_nodes_timeout = 0
@@ -88,9 +137,14 @@ class AnyscaleJobRunner(JobRunner):
         self._artifact_path = artifact_path
         self._artifact_uploaded = artifact_path is not None
 
+    def _copy_script_to_working_dir(self, script_name):
+        script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
+        shutil.copy(script, script_name)
+
     def prepare_remote_env(self):
         self._copy_script_to_working_dir("anyscale_job_wrapper.py")
-        super().prepare_remote_env()
+        self._copy_script_to_working_dir("wait_cluster.py")
+        self._copy_script_to_working_dir("prometheus_metrics.py")
 
     def run_prepare_command(
         self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
@@ -100,32 +154,23 @@ class AnyscaleJobRunner(JobRunner):
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         self._wait_for_nodes_timeout = timeout
         self.job_manager.cluster_startup_timeout += timeout
-        super().wait_for_nodes(num_nodes, timeout)
 
-    def save_metrics(self, start_time: float, timeout: float = 900):
-        # Handled in run_command
-        return
+        # Give 30 seconds more to account for communication
+        self.run_prepare_command(
+            f"python wait_cluster.py {num_nodes} {timeout}", timeout=timeout + 30
+        )
 
     def _handle_command_output(
-        self, job_status_code: int, error: str, raise_on_timeout: bool = True
+        self, job_return_code: int, raise_on_timeout: bool = True
     ):
-        if job_status_code == -2:
-            raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
-
-        if job_status_code == -3:
-            raise JobTerminatedError(
-                "Job entered 'TERMINATED' state (it was terminated "
-                "manually or Ray was stopped):"
-                f"\n{error}\n"
+        if job_return_code == JOB_FAILED:
+            raise JobOutOfRetriesError(
+                "Job returned non-success state: 'FAILED' "
+                "(command has not been ran or no logs could have been obtained)."
             )
 
-        if job_status_code == -4:
-            raise JobTerminatedBeforeStartError(
-                "Job entered 'TERMINATED' state before it started "
-                "(most likely due to inability to provision required nodes; "
-                "otherwise it was terminated manually or Ray was stopped):"
-                f"\n{error}\n"
-            )
+        if job_return_code == JOB_STATE_UNKNOWN:
+            raise JobBrokenError("Job state is 'UNKNOWN'.")
 
         # First try to obtain the output.json from S3.
         # If that fails, try logs.
@@ -162,8 +207,7 @@ class AnyscaleJobRunner(JobRunner):
                     )
                 raise PrepareCommandError(
                     f"Prepare command '{self.prepare_commands[-1]}' returned "
-                    f"non-success status: {prepare_return_codes[-1]} with error:"
-                    f"\n{error}\n"
+                    f"non-success status: {prepare_return_codes[-1]}."
                 )
         else:
             raise JobNoLogsError("Could not obtain logs for the job.")
@@ -179,38 +223,34 @@ class AnyscaleJobRunner(JobRunner):
 
         if workload_status_code is not None and workload_status_code != 0:
             raise TestCommandError(
-                f"Command returned non-success status: {workload_status_code} with "
-                f"error:\n{error}\n"
+                f"Command returned non-success status: {workload_status_code}."
             )
 
-        if job_status_code == -1:
-            raise JobOutOfRetriesError(
-                "Job returned non-success state: 'OUT_OF_RETRIES' "
-                "(command has not been ran or no logs could have been obtained) "
-                f"with error:\n{error}\n"
-            )
-
-    @property
-    def command_env(self):
-        env = super().command_env
-        # Make sure we don't buffer stdout so we don't lose any logs.
-        env["PYTHONUNBUFFERED"] = "1"
-        return env
+    def _get_full_command_env(self, env: Optional[Dict[str, str]] = None):
+        full_env = {
+            "TEST_OUTPUT_JSON": self._RESULT_OUTPUT_JSON,
+            "METRICS_OUTPUT_JSON": self._METRICS_OUTPUT_JSON,
+            "USER_GENERATED_ARTIFACT": self._USER_GENERATED_ARTIFACT,
+            "BUILDKITE_BRANCH": os.environ.get("BUILDKITE_BRANCH", ""),
+            "PYTHONUNBUFFERED": "1",
+        }
+        if env:
+            full_env.update(env)
+        return full_env
 
     def run_command(
         self,
         command: str,
-        env: Optional[Dict] = None,
+        env: Optional[Dict[str, str]] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
-        pip: Optional[List[str]] = None,
     ) -> float:
         prepare_command_strs = []
         prepare_command_timeouts = []
         # Convert the prepare commands, envs and timeouts into shell-compliant
         # strings that can be passed to the wrapper script
         for prepare_command, prepare_env, prepare_timeout in self.prepare_commands:
-            prepare_env = self.get_full_command_env(prepare_env)
+            prepare_env = self._get_full_command_env(prepare_env)
             env_str = _get_env_str(prepare_env)
             prepare_command_strs.append(f"{env_str} {prepare_command}")
             prepare_command_timeouts.append(prepare_timeout)
@@ -222,22 +262,49 @@ class AnyscaleJobRunner(JobRunner):
             shlex.quote(str(x)) for x in prepare_command_timeouts
         )
 
-        full_env = self.get_full_command_env(env)
+        full_env = self._get_full_command_env(env)
 
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
         )
+        results_cloud_storage_uri = _join_cloud_storage_paths(
+            self.upload_path, self._RESULT_OUTPUT_JSON
+        )
+        metrics_cloud_storage_uri = _join_cloud_storage_paths(
+            self.upload_path, self._METRICS_OUTPUT_JSON
+        )
+        output_cloud_storage_uri = _join_cloud_storage_paths(
+            self.upload_path, self.output_json
+        )
+        upload_cloud_storage_uri = self.upload_path
+        # Convert ABFSS URI to HTTPS URI for Azure
+        # since azcopy doesn't support ABFSS.
+        # azcopy is used to fetch these artifacts on Buildkite
+        # after job is done.
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            results_cloud_storage_uri = convert_abfss_uri_to_https(
+                results_cloud_storage_uri
+            )
+            metrics_cloud_storage_uri = convert_abfss_uri_to_https(
+                metrics_cloud_storage_uri
+            )
+            output_cloud_storage_uri = convert_abfss_uri_to_https(
+                output_cloud_storage_uri
+            )
+            upload_cloud_storage_uri = convert_abfss_uri_to_https(
+                upload_cloud_storage_uri
+            )
         full_command = (
             f"python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
+            f"'{results_cloud_storage_uri}' "
             "--metrics-cloud-storage-uri "
             f"'"
-            f"{join_cloud_storage_paths(self.upload_path, self._METRICS_OUTPUT_JSON)}' "
+            f"{metrics_cloud_storage_uri}' "
             "--output-cloud-storage-uri "
-            f"'{join_cloud_storage_paths(self.upload_path, self.output_json)}' "
-            f"--upload-cloud-storage-uri '{self.upload_path}' "
+            f"'{output_cloud_storage_uri}' "
+            f"--upload-cloud-storage-uri '{upload_cloud_storage_uri}' "
             f"--prepare-commands {prepare_commands_shell} "
             f"--prepare-commands-timeouts {prepare_commands_timeouts_shell} "
         )
@@ -256,25 +323,31 @@ class AnyscaleJobRunner(JobRunner):
             - self._wait_for_nodes_timeout
             + 900,
         )
+        working_dir = "."
+        # If running on Azure, upload working dir to Azure blob storage first
+        if self.upload_path.startswith(AZURE_CLOUD_STORAGE):
+            azure_file_path = upload_working_dir_to_azure(
+                working_dir=os.getcwd(), azure_directory_uri=self.upload_path
+            )
+            working_dir = azure_file_path
+            logger.info(f"Working dir uploaded to {working_dir}")
 
-        job_status_code, time_taken = self.job_manager.run_and_wait(
+        job_return_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
-            working_dir=".",
+            working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
-            pip=pip,
         )
-        try:
-            error = self.job_manager.last_job_result.state.error
-        except AttributeError:
-            error = None
-
-        self._handle_command_output(
-            job_status_code, error, raise_on_timeout=raise_on_timeout
-        )
+        self._handle_command_output(job_return_code, raise_on_timeout=raise_on_timeout)
 
         return time_taken
+
+    def get_last_logs_ex(self) -> Optional[str]:
+        try:
+            return self.job_manager.get_last_logs()
+        except Exception as e:
+            raise LogsError(f"Could not get last logs: {e}") from e
 
     def _fetch_json(self, path: str) -> Dict[str, Any]:
         try:
@@ -285,7 +358,13 @@ class AnyscaleJobRunner(JobRunner):
             )
 
             with open(tmpfile, "rt") as f:
-                data = json.load(f)
+                content = f.read()
+
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError as e:
+                logger.info(f"Result content = {content}")
+                raise e
 
             os.unlink(tmpfile)
             return data
@@ -298,7 +377,7 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch results from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_cloud_storage_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
+            _join_cloud_storage_paths(self.path_in_bucket, self._RESULT_OUTPUT_JSON)
         )
 
     def fetch_metrics(self) -> Dict[str, Any]:
@@ -307,10 +386,10 @@ class AnyscaleJobRunner(JobRunner):
                 "Could not fetch metrics from session as they were not uploaded."
             )
         return self._fetch_json(
-            join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
+            _join_cloud_storage_paths(self.path_in_bucket, self._METRICS_OUTPUT_JSON)
         )
 
-    def fetch_artifact(self):
+    def fetch_artifact(self) -> None:
         """Fetch artifact (file) from `self._artifact_path` on Anyscale cluster
         head node.
 
@@ -337,7 +416,7 @@ class AnyscaleJobRunner(JobRunner):
         # and put it under `self._DEFAULT_ARTIFACTS_DIR`.
         artifact_file_name = os.path.basename(self._artifact_path)
         self.file_manager.download_from_cloud(
-            join_cloud_storage_paths(
+            _join_cloud_storage_paths(
                 self.path_in_bucket, self._USER_GENERATED_ARTIFACT
             ),
             os.path.join(self._DEFAULT_ARTIFACTS_DIR, artifact_file_name),
@@ -345,11 +424,11 @@ class AnyscaleJobRunner(JobRunner):
 
     def fetch_output(self) -> Dict[str, Any]:
         return self._fetch_json(
-            join_cloud_storage_paths(self.path_in_bucket, self.output_json),
+            _join_cloud_storage_paths(self.path_in_bucket, self.output_json),
         )
 
-    def cleanup(self):
-        # We piggy back on s3 retention policy for clean up instead of doing this
-        # ourselves. We find many cases where users want the data to be available
-        # for a short-while for debugging purpose.
-        pass
+    def job_url(self) -> Optional[str]:
+        return self.job_manager.job_url()
+
+    def job_id(self) -> Optional[str]:
+        return self.job_manager.job_id()

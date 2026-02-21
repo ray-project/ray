@@ -1,9 +1,10 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import numpy as np
 
-from ray.data._internal.util import _check_import, call_with_retry
+from ray._common.retry import call_with_retry
+from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -28,6 +29,7 @@ class LanceDatasource(Datasource):
     def __init__(
         self,
         uri: str,
+        version: Optional[Union[int, str]] = None,
         columns: Optional[List[str]] = None,
         filter: Optional[str] = None,
         storage_options: Optional[Dict[str, str]] = None,
@@ -44,7 +46,9 @@ class LanceDatasource(Datasource):
         if filter is not None:
             self.scanner_options["filter"] = filter
         self.storage_options = storage_options
-        self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
+        self.lance_ds = lance.dataset(
+            uri=uri, version=version, storage_options=storage_options
+        )
 
         match = []
         match.extend(self.READ_FRAGMENTS_ERRORS_TO_RETRY)
@@ -56,9 +60,18 @@ class LanceDatasource(Datasource):
             "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
         }
 
-    def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
+    ) -> List[ReadTask]:
         read_tasks = []
-        for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
+        ds_fragments = self.scanner_options.get("fragments")
+        if ds_fragments is None:
+            ds_fragments = self.lance_ds.get_fragments()
+
+        for fragments in np.array_split(ds_fragments, parallelism):
             if len(fragments) <= 0:
                 continue
 
@@ -71,9 +84,8 @@ class LanceDatasource(Datasource):
             # TODO(chengsu): Take column projection into consideration for schema.
             metadata = BlockMetadata(
                 num_rows=num_rows,
-                schema=fragments[0].schema,
-                input_files=input_files,
                 size_bytes=None,
+                input_files=input_files,
                 exec_stats=None,
             )
             scanner_options = self.scanner_options
@@ -88,9 +100,10 @@ class LanceDatasource(Datasource):
                     retry_params,
                 ),
                 metadata,
+                schema=fragments[0].schema,
+                per_task_row_limit=per_task_row_limit,
             )
             read_tasks.append(read_task)
-
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:

@@ -14,23 +14,34 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace ray {
 namespace rpc {
 namespace testing {
 
-enum class RpcFailure {
+enum class RpcFailure : uint8_t {
   None,
   // Failure before server receives the request
   Request,
   // Failure after server sends the response
   Response,
+  // Failure after server receives the request but before the response is sent
+  InFlight,
 };
 
-RpcFailure get_rpc_failure(const std::string &name);
+/*
+ * Get the random rpc failure to be injected
+ * for the given rpc method.
+ */
+RpcFailure GetRpcFailure(const std::string &name);
 
-void init();
+/*
+ * Initialize the rpc chaos framework (i.e. RpcFailureManager).
+ * Should be called once before any rpc calls.
+ */
+void Init();
 
 }  // namespace testing
 }  // namespace rpc

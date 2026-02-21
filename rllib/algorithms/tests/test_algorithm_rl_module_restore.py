@@ -1,9 +1,10 @@
-import gymnasium as gym
-import numpy as np
 import shutil
 import tempfile
-import tree
 import unittest
+
+import gymnasium as gym
+import numpy as np
+import tree
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -11,15 +12,14 @@ from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import (
-    MultiRLModuleSpec,
     MultiRLModule,
+    MultiRLModuleSpec,
 )
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.numpy import convert_to_numpy
-
+from ray.rllib.utils.test_utils import check
 
 NUM_AGENTS = 2
 
@@ -84,9 +84,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             rl_module_specs=module_specs,
             load_state_path=marl_checkpoint_path,
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -147,9 +145,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             rl_module_specs=module_specs,
             load_state_path=marl_checkpoint_path,
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config = config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -210,9 +206,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             load_state_path=module_ckpt_path,
         )
 
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=module_to_load_spec,
-        )
+        config.rl_module(rl_module_spec=module_to_load_spec)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -286,9 +280,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 "policy_0",
             },
         )
-        config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
-            rl_module_spec=multi_rl_module_spec_from_checkpoint,
-        )
+        config.rl_module(rl_module_spec=multi_rl_module_spec_from_checkpoint)
 
         # create the algorithm with multiple nodes and check if the weights
         # are the same as the original MultiRLModule
@@ -337,7 +329,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

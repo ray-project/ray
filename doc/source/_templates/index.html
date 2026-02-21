@@ -84,9 +84,8 @@
 
   # Use 2 parallel actors for inference. Each actor predicts on a
   # different partition of data.
-  scale = ray.data.ActorPoolStrategy(size=2)
   # Step 3: Map the Predictor over the Dataset to get predictions.
-  predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
+  predictions = ds.map_batches(HuggingFacePredictor, compute=ray.data.ActorPoolStrategy(size=2))
   # Step 4: Show one prediction output.
   predictions.show(limit=1)
             ''') }}
@@ -129,27 +128,35 @@
           <div class="tab-pane fade no-copybutton" id="v-pills-tuning">
           {{ pygments_highlight_python('''
   from ray import tune
-  from ray.train import ScalingConfig
-  from ray.train.lightgbm import LightGBMTrainer
 
-  train_dataset, eval_dataset = ...
+  # Step 1: Define an objective function to optimize.
+  def objective(config):
+      # Train model with config hyperparameters
+      model = train_model(
+          lr=config["lr"],
+          batch_size=config["batch_size"],
+          num_layers=config["num_layers"],
+      )
+      accuracy = evaluate_model(model)
+      # Report metrics back to Tune
+      tune.report(accuracy=accuracy)
 
-  # Step 1: Set up Ray\'s LightGBM Trainer to train on 64 CPUs.
-  trainer = LightGBMTrainer(
-      ...
-      scaling_config=ScalingConfig(num_workers=64),
-      datasets={"train": train_dataset, "eval": eval_dataset},
-  )
+  # Step 2: Define hyperparameter search space.
+  search_space = {
+      "lr": tune.loguniform(1e-4, 1e-1),
+      "batch_size": tune.choice([32, 64, 128]),
+      "num_layers": tune.randint(1, 10),
+  }
 
-  # Step 2: Set up Ray Tuner to run 1000 trials.
+  # Step 3: Configure and run 1000 trials with Ray Tune.
   tuner = tune.Tuner(
-      trainer=trainer,
-      param_space=hyper_param_space,
+      objective,
+      param_space=search_space,
       tune_config=tune.TuneConfig(num_samples=1000),
   )
 
-  # Step 3: Run distributed HPO with 1000 trials; each trial runs on 64 CPUs.
   result_grid = tuner.fit()
+  best_result = result_grid.get_best_result(metric="accuracy", mode="max")
           ''') }}
             <div class="tab-pane-links">
               <a href="{{ pathto('tune/index') }}" target="_blank">Learn more about Ray Tune</a>
@@ -222,7 +229,7 @@
           ''') }}
             <div class="tab-pane-links">
               <a href="{{ pathto('serve/index') }}" target="_blank">Learn more about Ray Serve</a>
-              <a href="https://console.anyscale.com/register/ha?utm_source=ray_docs&utm_medium=docs&utm_campaign=scale_with_ray&redirectTo=/v2/template-preview/serve-stable-diffusion-v2" target="_blank">Quickstart</a>
+              <a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=scale_with_ray&redirectTo=/v2/template-preview/serve-stable-diffusion-v2" target="_blank">Quickstart</a>
             </div>
           </div>
           <!-- prettier-ignore -->
@@ -418,8 +425,8 @@
         </div>
         <div class="card-text-area">
           <p>
-            Deploy a Ray cluster on AWS, GCP, Azure, or Kubernetes 
-            to seamlessly scale workloads for production.
+            Deploy a Ray cluster on AWS, GCP, Azure, or Kubernetes to seamlessly
+            scale workloads for production.
           </p>
           <a href="{{ pathto('cluster/getting-started') }}" target="_blank">
             Learn more
@@ -445,7 +452,7 @@
       </a>
       <a
         class="community-box"
-        href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform"
+        href="https://www.ray.io/join-slack?utm_source=ray_docs&utm_medium=docs"
         target="_blank"
       >
         <i class="ri-slack-line"></i>
@@ -483,7 +490,7 @@
 
       <a
         class="community-box"
-        href="https://twitter.com/raydistributed"
+        href="https://x.com/raydistributed"
         target="_blank"
       >
         <i class="ri-twitter-line"></i>

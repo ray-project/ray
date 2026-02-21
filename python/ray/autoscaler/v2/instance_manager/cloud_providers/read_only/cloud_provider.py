@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from ray._private.utils import binary_to_hex
+from ray._common.utils import binary_to_hex
 from ray._raylet import GcsClient
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.instance_manager.node_provider import (

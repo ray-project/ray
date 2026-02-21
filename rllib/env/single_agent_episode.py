@@ -1,13 +1,16 @@
+import copy
 import functools
-from collections import defaultdict
-import numpy as np
 import time
 import uuid
-
-import gymnasium as gym
-from gymnasium.core import ActType, ObsType
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, SupportsFloat, Union
 
+import gymnasium as gym
+import numpy as np
+import tree
+from gymnasium.core import ActType, ObsType
+
+from ray._common.deprecation import Deprecated
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -85,7 +88,7 @@ class SingleAgentEpisode:
 
         # Get the most recent action (single item, not batched).
         # This works regardless of the action space or whether the episode has
-        # been finalized or not (see below).
+        # been numpy'ized or not (see below).
         episode.get_actions(-1)  # same as episode.actions[-1]
 
         # Looking back from ts=1, get the previous 4 rewards AND fill with 0.0
@@ -163,10 +166,12 @@ class SingleAgentEpisode:
         "t",
         "t_started",
         "_action_space",
+        "_last_added_observation",
+        "_last_added_infos",
         "_last_step_time",
         "_observation_space",
         "_start_time",
-        "_temporary_timestep_data",
+        "_custom_data",
     )
 
     def __init__(
@@ -201,8 +206,8 @@ class SingleAgentEpisode:
                 with observation data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             observation_space: An optional gym.Space, which all individual observations
-                should abide to. If not None and this SingleAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this SingleAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             infos: Either a list of individual info dicts from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
@@ -213,8 +218,8 @@ class SingleAgentEpisode:
                 with info dict] data in it). If a list, will construct the buffer
                 automatically (given the data and the `len_lookback_buffer` argument).
             action_space: An optional gym.Space, which all individual actions
-                should abide to. If not None and this SingleAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                should abide to. If not None and this SingleAgentEpisode is numpy'ized
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: Either a list of individual rewards from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
@@ -230,16 +235,16 @@ class SingleAgentEpisode:
             truncated: A boolean indicating, if the episode has been truncated.
             t_started: Optional. The starting timestep of the episode. The default
                 is zero. If data is provided, the starting point is from the last
-                observation onwards (i.e. `t_started = len(observations) - 1). If
+                observation onwards (i.e. `t_started = len(observations) - 1`). If
                 this parameter is provided the episode starts at the provided value.
             len_lookback_buffer: The size of the (optional) lookback buffers to keep in
                 front of this Episode for each type of data (observations, actions,
-                etc..). If larger 0, will interpret the first `len_lookback_buffer`
-                items in each type of data as NOT part of this actual
+                etc..). If larger than 0, the first `len_lookback_buffer`
+                items of each type of data are interpreted as NOT part of this actual
                 episode chunk, but instead serve as "historical" record that may be
                 viewed and used to derive new data from. For example, it might be
                 necessary to have a lookback buffer of four if you would like to do
-                observation frame stacking and your episode has been cut and you are now
+                observation frame stacking and your episode has been cut and you're now
                 operating on a new chunk (continuing from the cut one). Then, for the
                 first 3 items, you would have to be able to look back into the old
                 chunk's data.
@@ -279,6 +284,7 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         self.observation_space = observation_space
+
         # Infos: t0 (initial info) to T.
         if isinstance(infos, InfiniteLookbackBuffer):
             self.infos = infos
@@ -287,6 +293,7 @@ class SingleAgentEpisode:
                 data=infos,
                 lookback=len_lookback_buffer,
             )
+
         # Actions: t1 to T.
         self._action_space = None
         if isinstance(actions, InfiniteLookbackBuffer):
@@ -297,6 +304,7 @@ class SingleAgentEpisode:
                 lookback=len_lookback_buffer,
             )
         self.action_space = action_space
+
         # Rewards: t1 to T.
         if isinstance(rewards, InfiniteLookbackBuffer):
             self.rewards = rewards
@@ -314,12 +322,7 @@ class SingleAgentEpisode:
         self.is_truncated = truncated
 
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
-        self.extra_model_outputs = defaultdict(
-            functools.partial(
-                InfiniteLookbackBuffer,
-                lookback=len_lookback_buffer,
-            ),
-        )
+        self.extra_model_outputs = {}
         for k, v in (extra_model_outputs or {}).items():
             if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
@@ -338,13 +341,16 @@ class SingleAgentEpisode:
         # The current (global) timestep in the episode (possibly an episode chunk).
         self.t = len(self.rewards) + self.t_started
 
-        # Caches for temporary per-timestep data. May be used to store custom metrics
-        # from within a callback for the ongoing episode (e.g. render images).
-        self._temporary_timestep_data = defaultdict(list)
+        # Cache for custom data. May be used to store custom metrics from within a
+        # callback for the ongoing episode (e.g. render images).
+        self._custom_data = {}
 
         # Keep timer stats on deltas between steps.
         self._start_time = None
         self._last_step_time = None
+
+        self._last_added_observation = None
+        self._last_added_infos = None
 
         # Validate the episode data thus far.
         self.validate()
@@ -371,14 +377,11 @@ class SingleAgentEpisode:
 
         infos = infos or {}
 
-        if self.observation_space is not None:
-            assert self.observation_space.contains(observation), (
-                f"`observation` {observation} does NOT fit SingleAgentEpisode's "
-                f"observation_space: {self.observation_space}!"
-            )
-
         self.observations.append(observation)
         self.infos.append(infos)
+
+        self._last_added_observation = observation
+        self._last_added_infos = infos
 
         # Validate our data.
         self.validate()
@@ -430,19 +433,23 @@ class SingleAgentEpisode:
         self.t += 1
         if extra_model_outputs is not None:
             for k, v in extra_model_outputs.items():
-                self.extra_model_outputs[k].append(v)
+                if k not in self.extra_model_outputs:
+                    self.extra_model_outputs[k] = InfiniteLookbackBuffer([v])
+                else:
+                    self.extra_model_outputs[k].append(v)
         self.is_terminated = terminated
         self.is_truncated = truncated
 
-        # Only check spaces if finalized AND every n timesteps.
-        if self.is_finalized and self.t % 50:
+        self._last_added_observation = observation
+        self._last_added_infos = infos
+
+        # Only check spaces if numpy'ized AND every n timesteps.
+        if self.is_numpy and self.t % 100:
             if self.observation_space is not None:
                 assert self.observation_space.contains(observation), (
                     f"`observation` {observation} does NOT fit SingleAgentEpisode's "
                     f"observation_space: {self.observation_space}!"
                 )
-            # TODO: This check will fail unless we add action clipping to
-            #  default module-to-env connector piece.
             if self.action_space is not None:
                 assert self.action_space.contains(action), (
                     f"`action` {action} does NOT fit SingleAgentEpisode's "
@@ -487,12 +494,16 @@ class SingleAgentEpisode:
                 assert len(v) == len(self.observations) - 1
 
     @property
+    def custom_data(self):
+        return self._custom_data
+
+    @property
     def is_reset(self) -> bool:
         """Returns True if `self.add_env_reset()` has already been called."""
         return len(self.observations) > 0
 
     @property
-    def is_finalized(self) -> bool:
+    def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
         # If rewards are still a list, return False.
         # Otherwise, rewards should already be a (1D) numpy array.
@@ -508,7 +519,7 @@ class SingleAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def finalize(self) -> "SingleAgentEpisode":
+    def to_numpy(self) -> "SingleAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
         This means in particular that this episodes' lists of (possibly complex)
@@ -516,10 +527,10 @@ class SingleAgentEpisode:
         structs, whose leafs are now numpy arrays. Each of these leaf numpy arrays will
         have the same length (batch dimension) as the length of the original lists.
 
-        Note that Columns.INFOS are NEVER numpy'ized and will remain a list
-        (normally, a list of the original, env-returned dicts). This is due to the
-        herterogenous nature of INFOS returned by envs, which would make it unwieldy to
-        convert this information to numpy arrays.
+        Note that the data under the Columns.INFOS are NEVER numpy'ized and will remain
+        a list (normally, a list of the original, env-returned dicts). This is due to
+        the herterogenous nature of INFOS returned by envs, which would make it unwieldy
+        to convert this information to numpy arrays.
 
         After calling this method, no further data may be added to this episode via
         the `self.add_env_step()` method.
@@ -537,12 +548,12 @@ class SingleAgentEpisode:
                 actions=[1, 2, 3],
                 rewards=[1, 2, 3],
                 # Note: terminated/truncated have nothing to do with an episode
-                # being `finalized` or not (via the `self.finalize()` method)!
+                # being numpy'ized or not (via the `self.to_numpy()` method)!
                 terminated=False,
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
-            # Episode has not been finalized (numpy'ized) yet.
-            assert not episode.is_finalized
+            # Episode has not been numpy'ized yet.
+            assert not episode.is_numpy
             # We are still operating on lists.
             assert episode.get_observations([1]) == [1]
             assert episode.get_observations(slice(None, 2)) == [0, 1]
@@ -553,12 +564,12 @@ class SingleAgentEpisode:
                 reward=4,
                 terminated=True,
             )
-            # Still NOT finalized.
-            assert not episode.is_finalized
+            # Still NOT numpy'ized.
+            assert not episode.is_numpy
 
-            # Let's finalize the episode.
-            episode.finalize()
-            assert episode.is_finalized
+            # Numpy'ized the episode.
+            episode.to_numpy()
+            assert episode.is_numpy
 
             # We cannot add data anymore. The following would crash.
             # episode.add_env_step(observation=5, action=5, reward=5)
@@ -580,17 +591,14 @@ class SingleAgentEpisode:
             for k, v in self.extra_model_outputs.items():
                 self.extra_model_outputs[k].finalize()
 
-        # Erase all temporary timestep data caches.
-        self._temporary_timestep_data.clear()
-
         return self
 
     def concat_episode(self, other: "SingleAgentEpisode") -> None:
-        """Adds the given `other` SingleAgentEpisode to the right side of self.
+        """Adds the given `other` SingleAgentEpisode to the right side of `self`.
 
         In order for this to work, both chunks (`self` and `other`) must fit
         together. This is checked by the IDs (must be identical), the time step counters
-        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        (`self.env_t` must be the same as `other.env_t_started`), as well as the
         observations/infos at the concatenation boundaries. Also, `self.is_done` must
         not be True, meaning `self.is_terminated` and `self.is_truncated` are both
         False.
@@ -598,7 +606,8 @@ class SingleAgentEpisode:
         Args:
             other: The other `SingleAgentEpisode` to be concatenated to this one.
 
-        Returns: A `SingleAgentEpisode` instance containing the concatenated data
+        Returns:
+            A `SingleAgentEpisode` instance containing the concatenated data
             from both episodes (`self` and `other`).
         """
         assert other.id_ == self.id_
@@ -606,18 +615,28 @@ class SingleAgentEpisode:
         # able to concatenate.
         assert not self.is_done
         # Make sure the timesteps match.
-        assert self.t == other.t_started
+        assert self.t == other.t_started, f"{self.t=}, {other.t_started=}"
         # Validate `other`.
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.
-        assert np.all(other.observations[0] == self.observations[-1])
+        tree.assert_same_structure(other.observations[0], self.observations[-1])
+        # Use tree.map_structure with np.array_equal to check every leaf node are equivalent
+        #   then np.all on flatten to validate all are tree
+        assert np.all(
+            tree.flatten(
+                tree.map_structure(
+                    np.array_equal, other.observations[0], self.observations[-1]
+                )
+            )
+        )
+
         # Pop out our last observations and infos (as these are identical
         # to the first obs and infos in the next episode).
         self.observations.pop()
         self.infos.pop()
 
-        # Extend ourselves. In case, episode_chunk is already terminated (and finalized)
+        # Extend ourselves. In case, episode_chunk is already terminated and numpy'ized
         # we need to convert to lists (as we are ourselves still filling up lists).
         self.observations.extend(other.get_observations())
         self.actions.extend(other.get_actions())
@@ -630,10 +649,14 @@ class SingleAgentEpisode:
         elif other.is_truncated:
             self.is_truncated = True
 
-        for model_out_key in other.extra_model_outputs.keys():
-            self.extra_model_outputs[model_out_key].extend(
-                other.get_extra_model_outputs(model_out_key)
-            )
+        for key in other.extra_model_outputs.keys():
+            assert key in self.extra_model_outputs
+            self.extra_model_outputs[key].extend(other.get_extra_model_outputs(key))
+
+        # Merge with `other`'s custom_data, but give `other` priority b/c we assume
+        # that as a follow-up chunk of `self` other has a more complete version of
+        # `custom_data`.
+        self.custom_data.update(other.custom_data)
 
         # Validate.
         self.validate()
@@ -684,7 +707,7 @@ class SingleAgentEpisode:
             else slice(None, 0)
         )
 
-        return SingleAgentEpisode(
+        sa_episode = SingleAgentEpisode(
             # Same ID.
             id_=self.id_,
             observations=self.get_observations(indices=indices_obs_and_infos),
@@ -702,6 +725,10 @@ class SingleAgentEpisode:
             # Use the length of the provided data as lookback buffer.
             len_lookback_buffer="auto",
         )
+        # Deepcopy all custom data in `self` to be continued in the cut episode.
+        sa_episode._custom_data = copy.deepcopy(self.custom_data)
+
+        return sa_episode
 
     # TODO (sven): Distinguish between:
     #  - global index: This is the absolute, global timestep whose values always
@@ -1171,8 +1198,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new observation data to overwrite existing data with.
                 This may be a list of individual observation(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be (possibly complex) struct matching the
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
                 observation space and with a batch size of its leafs exactly the size
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1226,8 +1253,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new action data to overwrite existing data with.
                 This may be a list of individual action(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be (possibly complex) struct matching the
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be (possibly complex) struct matching the
                 action space and with a batch size of its leafs exactly the size
                 of the to-be-overwritten slice or segment (provided by `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1281,8 +1308,8 @@ class SingleAgentEpisode:
         Args:
             new_data: The new reward data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be a np.ndarray with a length exactly
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
                 the size of the to-be-overwritten slice or segment (provided by
                 `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1341,8 +1368,8 @@ class SingleAgentEpisode:
                 to insert as a new key into `self.extra_model_outputs`.
             new_data: The new data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
-                is still not finalized yet. In case this episode has already been
-                finalized, this should be a np.ndarray with a length exactly
+                is still not numpy'ized yet. In case this episode has already been
+                numpy'ized, this should be a np.ndarray with a length exactly
                 the size of the to-be-overwritten slice or segment (provided by
                 `at_indices`).
             at_indices: A single int is interpreted as one index, which to overwrite
@@ -1371,62 +1398,12 @@ class SingleAgentEpisode:
                 `new_data`.
         """
         # Record already exists -> Set existing record's data to new values.
-        if key in self.extra_model_outputs:
-            self.extra_model_outputs[key].set(
-                new_data=new_data,
-                at_indices=at_indices,
-                neg_index_as_lookback=neg_index_as_lookback,
-            )
-        # Users wants to add a new record -> Create new buffer.
-        else:
-            if at_indices is not None:
-                raise AttributeError(
-                    f"Cannot set non-existing extra_model_outputs[{key}] using the "
-                    "`at_indices` arg! Try leaving `at_indices` None."
-                )
-            self.extra_model_outputs[key] = InfiniteLookbackBuffer(data=new_data)
-
-    def add_temporary_timestep_data(self, key: str, data: Any) -> None:
-        """Temporarily adds (until `finalized()` called) per-timestep data to self.
-
-        The given `data` is appended to a list (`self._temporary_timestep_data`), which
-        is cleared upon calling `self.finalize()`. To get the thus-far accumulated
-        temporary timestep data for a certain key, use the `get_temporary_timestep_data`
-        API.
-        Note that the size of the per timestep list is NOT checked or validated against
-        the other, non-temporary data in this episode (like observations).
-
-        Args:
-            key: The key under which to find the list to append `data` to. If `data` is
-                the first data to be added for this key, start a new list.
-            data: The data item (representing a single timestep) to be stored.
-        """
-        if self.is_finalized:
-            raise ValueError(
-                "Cannot use the `add_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}!"
-            )
-        self._temporary_timestep_data[key].append(data)
-
-    def get_temporary_timestep_data(self, key: str) -> List[Any]:
-        """Returns all temporarily stored data items (list) under the given key.
-
-        Note that all temporary timestep data is erased/cleared when calling
-        `self.finalize()`.
-
-        Returns:
-            The current list storing temporary timestep data under `key`.
-        """
-        if self.is_finalized:
-            raise ValueError(
-                "Cannot use the `get_temporary_timestep_data` API on an already "
-                f"finalized {type(self).__name__}! All temporary data has been erased "
-                f"upon `{type(self).__name__}.finalize()`."
-            )
-        try:
-            return self._temporary_timestep_data[key]
-        except KeyError:
-            raise KeyError(f"Key {key} not found in temporary timestep data!")
+        assert key in self.extra_model_outputs
+        self.extra_model_outputs[key].set(
+            new_data=new_data,
+            at_indices=at_indices,
+            neg_index_as_lookback=neg_index_as_lookback,
+        )
 
     def slice(
         self,
@@ -1618,7 +1595,7 @@ class SingleAgentEpisode:
         truncateds = [False] * (len(self) - 1) + [self.is_truncated]
         eps_id = [self.id_] * len(self)
 
-        if self.is_finalized:
+        if self.is_numpy:
             t = np.array(t)
             terminateds = np.array(terminateds)
             truncateds = np.array(truncateds)
@@ -1737,9 +1714,7 @@ class SingleAgentEpisode:
             else None,
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
-            "_temporary_timestep_data": dict(self._temporary_timestep_data)
-            if len(self._temporary_timestep_data) > 0
-            else None,
+            "custom_data": self.custom_data,
         }
 
     @staticmethod
@@ -1797,9 +1772,7 @@ class SingleAgentEpisode:
         )
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
-        episode._temporary_timestep_data = defaultdict(
-            list, state["_temporary_timestep_data"] or {}
-        )
+        episode._custom_data = state.get("custom_data", {})
         # Validate the episode.
         episode.validate()
 
@@ -1853,3 +1826,11 @@ class SingleAgentEpisode:
                 f"SingleAgentEpisode does not support getting item '{item}'! "
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
+
+    @Deprecated(new="SingleAgentEpisode.custom_data[some-key] = ...", error=True)
+    def add_temporary_timestep_data(self):
+        pass
+
+    @Deprecated(new="SingleAgentEpisode.custom_data[some-key]", error=True)
+    def get_temporary_timestep_data(self):
+        pass

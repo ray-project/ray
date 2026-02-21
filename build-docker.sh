@@ -5,9 +5,9 @@
 
 GPU=""
 BASE_IMAGE="ubuntu:22.04"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
-CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
-PYTHON_VERSION="3.9"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+PYTHON_VERSION="3.10"
 
 BUILD_ARGS=()
 
@@ -15,12 +15,17 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --gpu)
             GPU="-gpu"
-            BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
+            BASE_IMAGE="nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04"
         ;;
         --base-image)
             # Override for the base image.
             shift
             BASE_IMAGE="$1"
+        ;;
+        --progress-plain)
+            # Use plain progress output instead of fancy output.
+            # This is useful for CI systems that don't support fancy output.
+            BUILD_ARGS+=("--progress=plain")
         ;;
         --no-cache-build)
             BUILD_ARGS+=("--no-cache")
@@ -33,14 +38,14 @@ while [[ $# -gt 0 ]]; do
             BUILD_ARGS+=("-q")
         ;;
         --python-version)
-            # Python version to install. e.g. 3.9
+            # Python version to install. e.g. 3.10
             # Changing python versions may require a different wheel.
-            # If not provided defaults to 3.9
+            # If not provided defaults to 3.10
             shift
             PYTHON_VERSION="$1"
         ;;
         *)
-            echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --python-version ]"
+            echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --progress-plain] [ --python-version ]"
             exit 1
     esac
     shift
@@ -54,11 +59,23 @@ if [[ "$OUTPUT_SHA" != "YES" ]]; then
     echo "=== Building base-deps image ===" >/dev/stderr
 fi
 
+RAY_DEPS_BUILD_DIR="$(mktemp -d)"
+
+cp docker/base-deps/Dockerfile "${RAY_DEPS_BUILD_DIR}/."
+mkdir -p "${RAY_DEPS_BUILD_DIR}/python"
+cp python/requirements_compiled.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled.txt"
+cp python/requirements_compiled_py${PYTHON_VERSION}.txt "${RAY_DEPS_BUILD_DIR}/python/requirements_compiled_py${PYTHON_VERSION}.txt"
+PYTHON_DEPSET_FILE_NAME="ray_base_deps_py${PYTHON_VERSION}.lock"
+REQUIREMENTS_FILE_BASE_DEPS="python/deplocks/base_deps/${PYTHON_DEPSET_FILE_NAME}"
+
+cp "${REQUIREMENTS_FILE_BASE_DEPS}" "${RAY_DEPS_BUILD_DIR}/."
+
 BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
-    --build-arg BASE_IMAG="$BASE_IMAGE"
+    --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
-    -t "rayproject/base-deps:dev$GPU" "docker/base-deps"
+    --build-arg PYTHON_DEPSET="${PYTHON_DEPSET_FILE_NAME}"
+    -t "rayproject/base-deps:dev$GPU" "${RAY_DEPS_BUILD_DIR}"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
@@ -78,7 +95,6 @@ RAY_BUILD_DIR="$(mktemp -d)"
 mkdir -p "$RAY_BUILD_DIR/.whl"
 wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
 wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
-cp python/requirements_compiled.txt "$RAY_BUILD_DIR"
 cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
 
 WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
@@ -87,7 +103,7 @@ BUILD_CMD=(
     docker build "${BUILD_ARGS[@]}"
     --build-arg FULL_BASE_IMAGE="rayproject/base-deps:dev$GPU"
     --build-arg WHEEL_PATH=".whl/${WHEEL}"
-    -t "rayproject/ray:dev$GPU" "$RAY_BUILD_DIR"
+    -t "rayproject/ray:dev$GPU" "${RAY_BUILD_DIR}"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then

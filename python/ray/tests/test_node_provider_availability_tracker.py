@@ -1,17 +1,16 @@
-import datetime
 import dataclasses
-import os
+import datetime
 import sys
+
 import pytest
 
-from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeProviderAvailabilityTracker,
-    NodeAvailabilitySummary,
     NodeAvailabilityRecord,
+    NodeAvailabilitySummary,
+    NodeProviderAvailabilityTracker,
     UnavailableNodeInformation,
 )
-
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 cur_time = float(0)
 
@@ -211,7 +210,4 @@ def test_summary_from_dict():
 
 
 if __name__ == "__main__":
-    if os.environ.get("PARALLEL_CI"):
-        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
-    else:
-        sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))
