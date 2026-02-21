@@ -149,8 +149,8 @@ def _plan_hash_shuffle_aggregate(
     return HashAggregateOperator(
         data_context,
         input_physical_op,
-        key_columns=tuple(normalized_key_columns),  # type: ignore
-        aggregation_fns=tuple(logical_op.aggs),  # type: ignore
+        key_columns=tuple(normalized_key_columns),  # type: ignore[arg-type]
+        aggregation_fns=tuple(logical_op.aggs),  # type: ignore[arg-type]
         num_partitions=logical_op.num_partitions,
     )
 
@@ -270,7 +270,7 @@ def plan_all_to_all_op(
         fn = generate_aggregate_fn(
             op.key,
             op.aggs,
-            op.batch_format,  # type: ignore
+            op.batch_format,  # type: ignore[arg-type]
             data_context,
             debug_limit_shuffle_execution_to_num_blocks,
         )
