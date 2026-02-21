@@ -2141,6 +2141,23 @@ class Replica(ReplicaBase):
 
         return healthy, message
 
+    def get_grpc_tracing_context(self, context: grpc._cython.cygrpc._ServicerContext):
+        """Populate tracing context for gRPC requests.
+
+        This method extracts the "traceparent" metadata from the request headers and
+        sets the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        tracing_ctx = {}
+        for key, value in context.invocation_metadata():
+            if key in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key] = value
+
+        return tracing_ctx
+
     async def _direct_ingress_unary_unary(
         self,
         service_method: str,
@@ -2182,7 +2199,7 @@ class Replica(ReplicaBase):
             # TODO(edoakes): populate this.
             multiplexed_model_id="",
             route=self._deployment_id.app_name,
-            tracing_context=None,
+            tracing_context=self.get_grpc_tracing_context(context),
             is_streaming=False,
             is_direct_ingress=True,
         )
@@ -2286,6 +2303,24 @@ class Replica(ReplicaBase):
             raise ValueError(f"Unsupported streaming type: {streaming_type}")
 
         return handler
+
+    def get_asgi_tracing_context(self, headers: List[Tuple[bytes, bytes]]):
+        """Extract tracing context from ASGI request headers.
+
+        This method extracts both "traceparent" and "tracestate" headers from the
+        request headers to maintain proper trace context propagation.
+        """
+        if not is_tracing_enabled():
+            return None
+
+        tracing_ctx = None
+        for key, value in headers:
+            key_str = key.decode()
+            if key_str in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key_str] = value.decode()
+
+        return tracing_ctx
 
     def _determine_http_route(self, scope: Scope) -> str:
         # Default to route prefix for consistency with non-DI mode
@@ -2403,7 +2438,7 @@ class Replica(ReplicaBase):
             multiplexed_model_id="",
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
-            tracing_context=None,
+            tracing_context=self.get_asgi_tracing_context(scope["headers"]),
             _http_method=scope.get("method", "WS"),
             is_direct_ingress=True,
         )
