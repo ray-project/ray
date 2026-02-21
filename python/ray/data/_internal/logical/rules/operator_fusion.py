@@ -521,7 +521,9 @@ class FuseOperators(Rule):
             target_max_block_size_override=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_bundled_input if ref_bundler is None else None,
+            min_rows_per_bundle=min_rows_per_bundled_input
+            if ref_bundler is None
+            else None,
             ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
