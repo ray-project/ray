@@ -515,7 +515,7 @@ RAY_SERVE_FORCE_LOCAL_TESTING_MODE = get_env_bool(
 )
 
 # Run sync methods defined in the replica in a thread pool by default.
-RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0")
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1")
 
 RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
     "Calling sync method '{method_name}' directly on the "
