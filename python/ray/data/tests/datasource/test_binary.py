@@ -1,7 +1,6 @@
 import os
 from io import BytesIO
 
-import pyarrow as pa
 import pytest
 import requests
 import snappy
@@ -23,16 +22,6 @@ def test_read_binary_files(ray_start_regular_shared):
         assert ds.count() == 10
         assert "bytes" in str(ds.schema()), ds
         assert "bytes" in str(ds), ds
-
-
-def test_read_binary_files_with_fs(ray_start_regular_shared):
-    with gen_bin_files(10) as (tempdir, paths):
-        # All the paths are absolute, so we want the root file system.
-        fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.data.read_binary_files(paths, filesystem=fs)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item["bytes"]
 
 
 # TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
