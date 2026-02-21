@@ -248,6 +248,9 @@ class TestResourceManager:
                 obj_store_mem_internal_inqueue=mock_internal_inqueue[op],
                 obj_store_mem_pending_task_inputs=mock_pending_task_inputs[op],
             )
+            op._metrics.obj_store_mem_internal_inqueue_for_input = MagicMock(
+                return_value=mock_internal_inqueue[op],
+            )
             ref_bundle = MagicMock(
                 size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op])
             )
