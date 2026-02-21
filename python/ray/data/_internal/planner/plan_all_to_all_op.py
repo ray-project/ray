@@ -120,7 +120,6 @@ def _plan_hash_shuffle_repartition(
     from ray.data._internal.execution.operators.hash_shuffle import (
         HashShuffleOperator,
     )
-    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
 
@@ -144,7 +143,6 @@ def _plan_hash_shuffle_aggregate(
     from ray.data._internal.execution.operators.hash_aggregate import (
         HashAggregateOperator,
     )
-    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.key).get_columns()
 
