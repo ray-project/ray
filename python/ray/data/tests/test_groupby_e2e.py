@@ -1449,8 +1449,6 @@ def test_local_aggregation_global_agg(
 
 def test_estimate_input_size_bytes(ray_start_regular_shared_2_cpus):
     """Test the _estimate_input_size_bytes function."""
-    import pyarrow as pa
-
     from ray.data._internal.execution.interfaces import RefBundle
     from ray.data._internal.planner.plan_all_to_all_op import (
         _estimate_input_size_bytes,
