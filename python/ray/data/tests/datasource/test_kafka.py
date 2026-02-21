@@ -795,6 +795,86 @@ def test_kafka_datasink_extract_key_uses_serializer():
     assert key == b"raw-bytes"
 
 
+def test_flush_futures_all_success():
+    """Test _flush_futures returns (0, None) when all futures succeed."""
+    from unittest.mock import MagicMock
+
+    sink = KafkaDatasink(topic="test", bootstrap_servers="localhost:9092")
+    mock_producer = MagicMock()
+
+    futures = [MagicMock() for _ in range(5)]
+    for f in futures:
+        f.get.return_value = MagicMock()  # Simulate successful metadata
+
+    failed, first_exc = sink._flush_futures(futures, mock_producer)
+
+    assert failed == 0
+    assert first_exc is None
+    mock_producer.flush.assert_called_once_with(timeout=30.0)
+    for f in futures:
+        f.get.assert_called_once_with(timeout=0)
+
+
+def test_flush_futures_preserves_first_exception():
+    """Test _flush_futures captures the first exception, not the last."""
+    from unittest.mock import MagicMock
+
+    sink = KafkaDatasink(topic="test", bootstrap_servers="localhost:9092")
+    mock_producer = MagicMock()
+
+    error_a = Exception("Error A")
+    error_b = Exception("Error B")
+
+    futures = [MagicMock(), MagicMock(), MagicMock()]
+    futures[0].get.side_effect = error_a
+    futures[1].get.side_effect = error_b
+    futures[2].get.return_value = MagicMock()  # Success
+
+    failed, first_exc = sink._flush_futures(futures, mock_producer)
+
+    assert failed == 2
+    assert first_exc is error_a  # First exception, not error_b
+
+
+def test_write_raises_with_chained_exception():
+    """Test write() chains the first Kafka error into the RuntimeError."""
+    from unittest.mock import MagicMock, patch
+
+    sink = KafkaDatasink(topic="test-topic", bootstrap_servers="localhost:9092")
+
+    # Create a mock future whose .get() raises
+    kafka_error = Exception("TopicAuthorizationFailedError")
+    mock_future = MagicMock()
+    mock_future.get.side_effect = kafka_error
+
+    # Mock KafkaProducer so write() doesn't need a real broker
+    mock_producer = MagicMock()
+    mock_producer.send.return_value = mock_future
+
+    # Build a minimal block that yields one row
+    mock_block = MagicMock()
+    mock_accessor = MagicMock()
+    mock_accessor.iter_rows.return_value = [{"id": 1}]
+
+    with (
+        patch(
+            "ray.data._internal.datasource.kafka_datasink.KafkaProducer",
+            return_value=mock_producer,
+        ),
+        patch(
+            "ray.data._internal.datasource.kafka_datasink.BlockAccessor.for_block",
+            return_value=mock_accessor,
+        ),
+    ):
+        with pytest.raises(
+            RuntimeError, match="Failed to write 1 out of 1"
+        ) as exc_info:
+            sink.write([mock_block], ctx=MagicMock())
+
+        # Verify exception chaining: __cause__ should be the original Kafka error
+        assert exc_info.value.__cause__ is kafka_error
+
+
 # Kafka Datasink Integration Tests (require Kafka container)
 
 

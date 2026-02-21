@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    pass
+    from kafka import KafkaProducer
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
@@ -126,16 +126,30 @@ class KafkaDatasink(Datasink):
                 key = self._serialize_key(key_value)
         return key
 
-    def _flush_futures(self, futures, producer):
-        """Flush producer and check futures for failures. Returns failure count."""
+    def _flush_futures(
+        self, futures: list, producer: KafkaProducer
+    ) -> tuple[int, Optional[Exception]]:
+        """Flush producer and check futures for failures.
+
+        Args:
+            futures: List of send futures to check.
+            producer: KafkaProducer instance to flush.
+
+        Returns:
+            Tuple of (failure_count, first_exception). first_exception is None
+            if all futures succeeded.
+        """
         failed = 0
+        first_exception = None
         producer.flush(timeout=30.0)
         for future in futures:
             try:
                 future.get(timeout=0)
-            except Exception:
+            except Exception as e:
                 failed += 1
-        return failed
+                if first_exception is None:
+                    first_exception = e
+        return failed, first_exception
 
     def write(
         self,
@@ -162,6 +176,7 @@ class KafkaDatasink(Datasink):
         )
         total_records = 0
         failed_messages = 0
+        first_exception = None
         futures = []
 
         try:
@@ -200,11 +215,17 @@ class KafkaDatasink(Datasink):
 
                     # Periodically flush to avoid unbounded memory usage
                     if len(futures) >= _FLUSH_INTERVAL:
-                        failed_messages += self._flush_futures(futures, producer)
+                        batch_failed, batch_exc = self._flush_futures(futures, producer)
+                        failed_messages += batch_failed
+                        if first_exception is None:
+                            first_exception = batch_exc
                         futures.clear()
 
             # Final flush to ensure all remaining messages are sent
-            failed_messages += self._flush_futures(futures, producer)
+            batch_failed, batch_exc = self._flush_futures(futures, producer)
+            failed_messages += batch_failed
+            if first_exception is None:
+                first_exception = batch_exc
 
         except KafkaTimeoutError as e:
             raise RuntimeError(f"Failed to write to Kafka: {e}") from e
@@ -225,6 +246,6 @@ class KafkaDatasink(Datasink):
             raise RuntimeError(
                 f"Failed to write {failed_messages} out of {total_records} "
                 f"messages to Kafka topic '{self.topic}'."
-            )
+            ) from first_exception
 
         return {"total_records": total_records, "failed_messages": failed_messages}
