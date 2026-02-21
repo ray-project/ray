@@ -232,7 +232,7 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     )
     with pytest.raises(WorkerGroupError, match="error") as exc_info:
         trainer.fit()
-    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 def test_report_validation_without_validation_fn():
@@ -249,7 +249,7 @@ def test_report_validation_without_validation_fn():
         match="`validation_config` was not set on the trainer, but a validation was requested.",
     ) as exc_info:
         trainer.fit()
-    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 def test_report_validation_without_checkpoint():
@@ -264,7 +264,7 @@ def test_report_validation_without_checkpoint():
         WorkerGroupError, match="Validation requires a checkpoint to be provided."
     ) as exc_info:
         trainer.fit()
-    assert isinstance(exc_info.value.worker_failures[0]._base_exc, ValueError)
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 def test_report_validation_fn_keeps_correct_checkpoints(tmp_path):

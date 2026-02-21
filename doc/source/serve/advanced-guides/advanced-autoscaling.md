@@ -703,6 +703,37 @@ In your policy, access custom metrics via:
 * **`ctx.aggregated_metrics[metric_name]`** — A time-weighted average computed from the raw metric values for each replica.
 
 
+### Class-based policies
+
+When your policy needs long-running setup — such as polling an external metrics service, maintaining a persistent connection, or running background computation — you can define it as a **class** instead of a plain function. Pass the class reference through `policy_function` and supply constructor arguments through `policy_kwargs`.
+
+Ray Serve instantiates the class once on the controller when the deployment starts. `__init__` runs one-time setup, and `__call__` runs on every autoscaling tick with the current [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst).
+
+The following example shows a policy that reads a target replica count from a JSON file in a background loop. In production you could replace the file read with an HTTP call, a message-queue consumer, or any other async IO operation:
+
+`class_based_autoscaling_policy.py` file:
+```{literalinclude} ../doc_code/class_based_autoscaling_policy.py
+:language: python
+:start-after: __begin_class_based_autoscaling_policy__
+:end-before: __end_class_based_autoscaling_policy__
+```
+
+`main.py` file:
+```{literalinclude} ../doc_code/class_based_autoscaling.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+
+:::{note}
+The instance lives only on the Serve controller and is never serialized after creation, so it's safe to hold non-picklable state such as `asyncio.Task` objects, open connections, or thread pools. `policy_kwargs` values must be JSON-serializable because they travel through the deployment config.
+:::
+
+:::{tip}
+If you're using `@task_consumer` deployments for asynchronous inference, Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that scales based on message queue length. See [Asynchronous Inference: Autoscaling](serve-async-inference-autoscaling) for setup and configuration.
+:::
+
+
 ### Application level autoscaling
 
 By default, each deployment in Ray Serve autoscales independently. When you have multiple deployments that need to scale in a coordinated way—such as deployments that share backend resources, have dependencies on each other, or need load-aware routing—you can define an **application-level autoscaling policy**. This policy makes scaling decisions for all deployments within an application simultaneously.
