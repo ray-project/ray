@@ -66,6 +66,7 @@ g[Rr][Pp][Cc]
 GGUF
 GKE
 GPT
+gpt-oss
 GPTQ
 GPU(s)?
 hostfile
