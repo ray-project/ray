@@ -75,6 +75,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
@@ -2728,6 +2729,7 @@ class UserCallableWrapper:
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
         self._warned_about_sync_method_change = False
+        self._warned_about_sync_method_threadpool = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
         # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
@@ -2916,6 +2918,16 @@ class UserCallableWrapper:
         )
 
         if is_sync_method and run_sync_in_threadpool:
+            if (
+                not self._warned_about_sync_method_threadpool
+                and run_sync_methods_in_threadpool_override is None
+            ):
+                self._warned_about_sync_method_threadpool = True
+                warnings.warn(
+                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING.format(
+                        method_name=callable.__name__,
+                    )
+                )
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True

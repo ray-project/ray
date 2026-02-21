@@ -526,6 +526,12 @@ RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
 )
 
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING = (
+    "Sync method '{method_name}' is running in a threadpool. Ensure your "
+    "handler and shared state are thread-safe, or convert to `async def` for "
+    "event-loop execution."
+)
+
 # Feature flag to turn off GC optimizations in the proxy (in case there is a
 # memory leak or negative performance impact).
 RAY_SERVE_ENABLE_PROXY_GC_OPTIMIZATIONS = get_env_bool(
