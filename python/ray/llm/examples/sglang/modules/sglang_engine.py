@@ -238,65 +238,41 @@ class SGLangServer:
     async def embeddings(
         self, request: EmbeddingRequest, raw_request: Optional[Any] = None
     ) -> AsyncGenerator[EmbeddingResponse, None]:
-
-        # EmbeddingRequest is Union[EmbeddingCompletionRequest, EmbeddingChatRequest]
+        # Input handling follows SGLang's OpenAIServingEmbedding pattern:
+        # https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/openai/serving_embedding.py
         if isinstance(request, EmbeddingCompletionRequest):
-            input_data = request.input
-            if isinstance(input_data, str):
-                texts = [input_data]
-            elif isinstance(input_data, list):
-                if not input_data:
-                    texts = []
-                elif isinstance(input_data[0], str):
-                    texts = list(input_data)
-                else:
-                    tokenizer = self.engine.get_tokenizer()
-                    if isinstance(input_data[0], list):
-                        # Batched token IDs - decode each list
-                        texts = [tokenizer.decode(ids) for ids in input_data]
-                    else:
-                        # Single list of token IDs
-                        texts = [tokenizer.decode(input_data)]
-            else:
-                texts = [str(input_data)]
+            prompt = request.input
         else:
             # Chat embedding request - convert messages to prompt
-            texts = [format_messages_to_prompt(request.messages)]
+            prompt = format_messages_to_prompt(request.messages)
 
+        # async_encode handles both single strings and lists of strings
+        results = await self.engine.async_encode(prompt)
+        if not isinstance(results, list):
+            results = [results]
+
+        if not results:
+            raise RuntimeError(
+                "SGLang engine returned an empty response for embedding request."
+            )
+
+        # Build response following SGLang's _build_embedding_response pattern
         data = []
         total_prompt_tokens = 0
 
-        if texts:
-            results = await self.engine.async_encode(texts)
-            if not isinstance(results, list):
-                results = [results]
-
-            if not results:
-                raise RuntimeError(
-                    "SGLang engine returned an empty response for embedding request."
-                )
-
-            if len(results) != len(texts):
-                raise RuntimeError(
-                    f"SGLang engine returned {len(results)} results "
-                    f"for {len(texts)} inputs."
-                )
-
-            for i, result in enumerate(results):
-                embedding = result.get("embedding", [])
-                meta = result.get("meta_info", {}) or {}
-                prompt_tokens = int(meta.get("prompt_tokens", 0))
-                total_prompt_tokens += prompt_tokens
-
-                data.append(
-                    {
-                        "index": i,
-                        "object": "embedding",
-                        "embedding": embedding,
-                    }
-                )
+        for idx, ret_item in enumerate(results):
+            data.append(
+                {
+                    "index": idx,
+                    "object": "embedding",
+                    "embedding": ret_item.get("embedding", []),
+                }
+            )
+            meta = ret_item.get("meta_info", {}) or {}
+            total_prompt_tokens += int(meta.get("prompt_tokens", 0))
 
         resp = EmbeddingResponse(
+            object="list",
             model=request.model or "",
             data=data,
             usage={
