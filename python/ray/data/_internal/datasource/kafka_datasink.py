@@ -127,7 +127,7 @@ class KafkaDatasink(Datasink):
         return key
 
     def _flush_futures(
-        self, futures: list, producer: KafkaProducer
+        self, futures: list, producer: "KafkaProducer"
     ) -> tuple[int, Optional[Exception]]:
         """Flush producer and check futures for failures.
 
