@@ -34,6 +34,7 @@ from ray.data.context import DataContext, ShuffleStrategy
 
 
 def _estimate_input_size_bytes(refs: List[RefBundle]) -> int:
+    """Estimate the total size in bytes of the input ref bundles."""
     return sum(bundle.size_bytes() for bundle in refs)
 
 
@@ -42,6 +43,7 @@ def _generate_local_aggregate_fn(
     aggs: Tuple[AggregateFn, ...],
     batch_format: str,
 ):
+    """Generate a local aggregation function for small datasets."""
     from ray.data._internal.planner.exchange.aggregate_task_spec import (
         SortAggregateTaskSpec,
     )
@@ -125,7 +127,7 @@ def _plan_hash_shuffle_repartition(
     return HashShuffleOperator(
         input_physical_op,
         data_context,
-        key_columns=tuple(normalized_key_columns),  # noqa: type
+        key_columns=tuple(normalized_key_columns),  # type: ignore[arg-type]
         # NOTE: In case number of partitions is not specified, we fall back to
         #       default min parallelism configured
         num_partitions=logical_op.num_outputs,
