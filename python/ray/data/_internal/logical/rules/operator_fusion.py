@@ -503,6 +503,15 @@ class FuseOperators(Rule):
         else:
             on_start = up_on_start or down_on_start
 
+        # Preserve StreamingRepartitionRefBundler if either operator has one.
+        # This is critical for strict-mode streaming repartition to maintain
+        # exact block size guarantees during further fusion.
+        ref_bundler = None
+        if isinstance(up_op._block_ref_bundler, StreamingRepartitionRefBundler):
+            ref_bundler = up_op._block_ref_bundler
+        elif isinstance(down_op._block_ref_bundler, StreamingRepartitionRefBundler):
+            ref_bundler = down_op._block_ref_bundler
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -512,7 +521,8 @@ class FuseOperators(Rule):
             target_max_block_size_override=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_bundled_input,
+            min_rows_per_bundle=min_rows_per_bundled_input if ref_bundler is None else None,
+            ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
