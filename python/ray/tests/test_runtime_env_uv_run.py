@@ -498,17 +498,28 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
-def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [{"cmd": "ray start --head --num-cpus=1 --ray-client-server-port=50052"}],
+    indirect=True,
+)
+def test_uv_run_ray_client_mode(call_ray_start, tmp_working_dir):
     """Test that UV environment works with Ray Client mode.
 
     This verifies the fix for: https://github.com/ray-project/ray/issues/57991
 
     The test verifies that when connecting via Ray Client, the client-side UV
     hook correctly detects the UV environment and propagates the configuration
-    (py_executable, working_dir) to the cluster workers. This test is expected
-    to be run under 'uv run' like the other tests in this file.
+    (py_executable, working_dir) to the cluster workers.
+
+    Architecture:
+    - Ray cluster runs in separate subprocess (started by call_ray_start fixture)
+    - Ray Client server is built-in (via --ray-client-server-port flag)
+    - This test process runs under 'uv run' and connects as a client
+    - UV hook detects UV environment in client process and propagates config
+
+    This is a cleaner approach than running cluster and client in the same process.
     """
-    from ray._common.network_utils import find_free_port
     from ray._private.runtime_env.uv_runtime_env_hook import _get_uv_run_cmdline
     from ray.job_config import JobConfig
 
@@ -519,29 +530,20 @@ def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
 
     tmp_dir = tmp_working_dir
 
-    # Start Ray cluster
-    ray.init(num_cpus=1)
-
-    # Start Ray Client server on a dynamic port to avoid conflicts
-    import ray.util.client.server.server as ray_client_server
-
-    port = find_free_port()
-    server_handle = ray_client_server.serve("localhost", port)
+    # Connect as Ray Client from UV environment
+    # The UV hook will detect the 'uv run' process and set py_executable
+    ray.init(
+        "ray://localhost:50052",  # Connect to the client server started by fixture
+        job_config=JobConfig(
+            runtime_env={
+                "working_dir": tmp_dir,
+                # Use system environment to find Ray installation
+                "env_vars": {"PYTHONPATH": ":".join(sys.path)},
+            }
+        ),
+    )
 
     try:
-        # Connect via Ray Client. The UV hook will detect the 'uv run'
-        # process in the parent chain and set py_executable automatically.
-        ray.util.connect(
-            f"localhost:{port}",
-            job_config=JobConfig(
-                runtime_env={
-                    "working_dir": tmp_dir,
-                    # Use system environment to find Ray installation
-                    "env_vars": {"PYTHONPATH": ":".join(sys.path)},
-                }
-            ),
-        )
-
         # Verify UV config was applied to runtime_env
         context = ray.get_context()
         conn_info = context.client_worker.connection_info()
@@ -563,9 +565,7 @@ def test_uv_run_ray_client_mode(shutdown_only, tmp_working_dir):
             result == "Ray rocks 👍"
         ), "UV should have installed emoji package on workers"
 
-        ray.util.disconnect()
     finally:
-        server_handle.stop(0)
         ray.shutdown()
 
 
