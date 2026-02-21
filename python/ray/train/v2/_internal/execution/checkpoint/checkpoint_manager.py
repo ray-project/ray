@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray._common.pydantic_compat import BaseModel
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 GET_ALL_REPORTED_CHECKPOINTS_PERIODIC_WARNING = """
-`get_all_reported_checkpoints` has been waiting for checkpoint {current_report_index} to be uploaded to persistent storage by all workers and processed by Ray Train for {time_elapsed_s:.2f} s.
+`get_all_reported_checkpoints` has been waiting for all checkpoints to get to the {consistency_mode} state for {time_elapsed_s:.2f} s.
 You can set the {warn_interval_env_var} environment variable to change the frequency of this warning (current value: {warn_interval_s} s).
 """
 
@@ -472,19 +472,15 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     # --------------------------------
 
     def _generate_get_all_reported_checkpoints_periodic_warning(
-        self, current_report_index: int, start_time: float
-    ) -> Callable[[], str]:
+        self, start_time: float, consistency_mode: CheckpointConsistencyMode
+    ) -> str:
         """Generates the warning message for the get_all_reported_checkpoints periodic warning."""
-
-        def inner() -> str:
-            return GET_ALL_REPORTED_CHECKPOINTS_PERIODIC_WARNING.format(
-                current_report_index=current_report_index,
-                time_elapsed_s=asyncio.get_event_loop().time() - start_time,
-                warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
-                warn_interval_s=self._collective_warn_interval_s,
-            )
-
-        return inner
+        return GET_ALL_REPORTED_CHECKPOINTS_PERIODIC_WARNING.format(
+            consistency_mode=consistency_mode,
+            time_elapsed_s=asyncio.get_event_loop().time() - start_time,
+            warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            warn_interval_s=self._collective_warn_interval_s,
+        )
 
     async def get_all_reported_checkpoints(
         self,
@@ -524,8 +520,8 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             await wait_with_logging(
                 self._condition,
                 predicate=predicate,
-                generate_warning_message=self._generate_get_all_reported_checkpoints_periodic_warning(
-                    current_report_index, start_time
+                generate_warning_message=lambda: self._generate_get_all_reported_checkpoints_periodic_warning(
+                    start_time, consistency_mode
                 ),
                 warn_interval_s=self._collective_warn_interval_s,
                 timeout_s=-1,  # wait forever

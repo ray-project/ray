@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import contextmanager
-from typing import Callable, List, Optional, TypeVar
+from typing import List, Optional, TypeVar
 
 import ray
 from ray.train.v2._internal.constants import (
@@ -117,22 +117,17 @@ class SynchronizationActor:
         """Returns the ranks that have not entered the synchronization barrier."""
         return [i for i, t in enumerate(self._sync_start_times) if t is None]
 
-    def _generate_broadcast_periodic_warning(
-        self, caller_method_name: str
-    ) -> Callable[[], str]:
+    def _generate_broadcast_periodic_warning(self, caller_method_name: str) -> str:
         """Generates the warning message for the broadcast periodic warning."""
 
-        def inner() -> str:
-            return BROADCAST_PERIODIC_WARNING.format(
-                caller_method_name=caller_method_name,
-                world_size=self._world_size,
-                max_time_elapsed_s=self._get_time_elapsed(),
-                missing_ranks=self._get_missing_ranks(),
-                warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
-                warn_interval_s=self._warn_interval_s,
-            )
-
-        return inner
+        return BROADCAST_PERIODIC_WARNING.format(
+            caller_method_name=caller_method_name,
+            world_size=self._world_size,
+            max_time_elapsed_s=self._get_time_elapsed(),
+            missing_ranks=self._get_missing_ranks(),
+            warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            warn_interval_s=self._warn_interval_s,
+        )
 
     async def broadcast_from_rank_zero(
         self,
@@ -180,7 +175,7 @@ class SynchronizationActor:
                     await wait_with_logging(
                         self._condition,
                         predicate=None,
-                        generate_warning_message=self._generate_broadcast_periodic_warning(
+                        generate_warning_message=lambda: self._generate_broadcast_periodic_warning(
                             caller_method_name
                         )
                         if world_rank == 0
