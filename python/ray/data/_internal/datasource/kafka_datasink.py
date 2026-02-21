@@ -7,16 +7,22 @@ Requires:
 """
 
 import json
+import logging
 from collections.abc import Callable, Iterable, Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from kafka import KafkaProducer
-    from kafka.errors import KafkaError, KafkaTimeoutError
+    pass
 
-from ray.data import Datasink
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
+from ray.data.datasource.datasink import Datasink
+
+logger = logging.getLogger(__name__)
+
+# Number of futures to accumulate before flushing to avoid memory exhaustion
+_FLUSH_INTERVAL = 10000
 
 
 class KafkaDatasink(Datasink):
@@ -31,11 +37,11 @@ class KafkaDatasink(Datasink):
         self,
         topic: str,
         bootstrap_servers: str,
-        key_field: str | None = None,
+        key_field: Optional[str] = None,
         key_serializer: str = "string",
         value_serializer: str = "json",
-        producer_config: dict[str, Any] | None = None,
-        delivery_callback: Callable | None = None,
+        producer_config: Optional[dict[str, Any]] = None,
+        delivery_callback: Optional[Callable] = None,
     ):
         """
         Initialize Kafka sink.
@@ -49,6 +55,8 @@ class KafkaDatasink(Datasink):
             producer_config: Additional Kafka producer configuration (kafka-python format)
             delivery_callback: Optional callback for delivery reports (called with metadata or exception)
         """
+        _check_import(self, module="kafka", package="kafka-python")
+
         VALID_SERIALIZERS = {"json", "string", "bytes"}
         if key_serializer not in VALID_SERIALIZERS:
             raise ValueError(
@@ -93,9 +101,6 @@ class KafkaDatasink(Datasink):
 
     def _serialize_value(self, value: Any) -> bytes:
         """Serialize value based on configured format."""
-        # Convert ArrowRow to dict first
-        value = self._row_to_dict(value)
-
         if self.value_serializer == "json":
             return json.dumps(value).encode("utf-8")
         elif self.value_serializer == "string":
@@ -112,17 +117,25 @@ class KafkaDatasink(Datasink):
         else:  # bytes
             return key if isinstance(key, bytes) else str(key).encode("utf-8")
 
-    def _extract_key(self, row: Any) -> bytes | None:
-        """Extract and encode message key from row."""
-        # Convert ArrowRow to dict first
-        row_dict = self._row_to_dict(row)
-
+    def _extract_key(self, row_dict: Any) -> Optional[bytes]:
+        """Extract and encode message key from row dict."""
         key = None
         if self.key_field and isinstance(row_dict, dict):
             key_value = row_dict.get(self.key_field)
             if key_value is not None:
                 key = self._serialize_key(key_value)
         return key
+
+    def _flush_futures(self, futures, producer):
+        """Flush producer and check futures for failures. Returns failure count."""
+        failed = 0
+        producer.flush(timeout=30.0)
+        for future in futures:
+            try:
+                future.get(timeout=0)
+            except Exception:
+                failed += 1
+        return failed
 
     def write(
         self,
@@ -139,6 +152,9 @@ class KafkaDatasink(Datasink):
         Returns:
             Write statistics (total records written)
         """
+        from kafka import KafkaProducer
+        from kafka.errors import KafkaError, KafkaTimeoutError
+
         # Create producer with config
         producer = KafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
@@ -154,11 +170,14 @@ class KafkaDatasink(Datasink):
 
                 # Iterate through rows in block
                 for row in block_accessor.iter_rows(public_row_format=False):
+                    # Convert row to dict once
+                    row_dict = self._row_to_dict(row)
+
                     # Extract key if specified
-                    key = self._extract_key(row)
+                    key = self._extract_key(row_dict)
 
                     # Serialize value
-                    value = self._serialize_value(row)
+                    value = self._serialize_value(row_dict)
 
                     # Produce to Kafka
                     try:
@@ -179,15 +198,13 @@ class KafkaDatasink(Datasink):
                     futures.append(future)
                     total_records += 1
 
-            # Final flush to ensure all messages are sent
-            producer.flush(timeout=30.0)
+                    # Periodically flush to avoid unbounded memory usage
+                    if len(futures) >= _FLUSH_INTERVAL:
+                        failed_messages += self._flush_futures(futures, producer)
+                        futures.clear()
 
-            # Check for any failed futures
-            for future in futures:
-                try:
-                    future.get(timeout=0)  # Non-blocking check since we already flushed
-                except Exception:
-                    failed_messages += 1
+            # Final flush to ensure all remaining messages are sent
+            failed_messages += self._flush_futures(futures, producer)
 
         except KafkaTimeoutError as e:
             raise RuntimeError(f"Failed to write to Kafka: {e}") from e
@@ -196,5 +213,18 @@ class KafkaDatasink(Datasink):
         finally:
             # Close the producer
             producer.close(timeout=5.0)
+
+        logger.info(
+            "Wrote %d records to Kafka topic '%s', %d failed.",
+            total_records,
+            self.topic,
+            failed_messages,
+        )
+
+        if failed_messages > 0:
+            raise RuntimeError(
+                f"Failed to write {failed_messages} out of {total_records} "
+                f"messages to Kafka topic '{self.topic}'."
+            )
 
         return {"total_records": total_records, "failed_messages": failed_messages}

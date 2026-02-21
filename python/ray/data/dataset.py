@@ -5483,16 +5483,19 @@ class Dataset:
         self,
         topic: str,
         bootstrap_servers: str,
-        key_field: str | None = None,
+        key_field: Optional[str] = None,
         key_serializer: str = "string",
         value_serializer: str = "json",
-        producer_config: dict[str, Any] | None = None,
-        delivery_callback: Callable | None = None,
+        producer_config: Optional[Dict[str, Any]] = None,
+        delivery_callback: Optional[Callable] = None,
+        *,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
     ) -> None:
         """
         Convenience method to write Ray Dataset to Kafka.
 
-        Example:
+        Examples:
             >>> ds = ray.data.range(100)
             >>> ds.write_kafka("my-topic", "localhost:9092")
 
@@ -5504,6 +5507,11 @@ class Dataset:
             value_serializer: Value serialization format ('json', 'string', or 'bytes')
             producer_config: Additional Kafka producer configuration (kafka-python format)
             delivery_callback: Optional callback for delivery reports
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
         """
         sink = KafkaDatasink(
             topic=topic,
@@ -5514,7 +5522,11 @@ class Dataset:
             producer_config=producer_config,
             delivery_callback=delivery_callback,
         )
-        return self.write_datasink(sink)
+        self.write_datasink(
+            sink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
 
     @ConsumptionAPI(pattern="Time complexity:")
     def write_datasink(
