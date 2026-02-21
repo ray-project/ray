@@ -155,7 +155,7 @@ class BlockingCPU:
 @serve.deployment(max_ongoing_requests=100)
 class CPUWithThreadpool:
     def __call__(self, request):
-        # With RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1, each call runs in a thread.
+        # With RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1 (default), each call runs in a thread.
         import time
         time.sleep(1)
         return "ok"
