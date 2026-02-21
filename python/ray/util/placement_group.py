@@ -78,44 +78,36 @@ class PlacementGroup:
     def bundle_specs(self) -> List[Dict]:
         """List[Dict]: Return bundles belonging to this placement group.
 
-        This returns the currently active bundles. If the placement group is
-        using a fallback strategy, this returns the fallback bundles.
+        This returns the currently active bundles if scheduled. If the placement
+        group is pending, this returns the primary scheduling option.
         """
-        self._fill_bundle_cache_if_needed()
-        return self.bundle_cache or []
+        if not self.bundle_cache:
+            # If empty, fetch from GCS until the active bundles have been assigned.
+            self._fill_bundle_cache()
+
+        if self.bundle_cache:
+            return self.bundle_cache
+
+        options = self._scheduling_options_bundles
+        return options[0] if options else []
 
     @property
     def bundle_count(self) -> int:
-        self._fill_bundle_cache_if_needed()
-        if self.bundle_cache:
-            return len(self.bundle_cache)
-        # If PG is pending, return the primary strategy's length for validation.
-        return (
-            len(self._scheduling_options_bundles[0])
-            if self._scheduling_options_bundles
-            else 0
-        )
+        """Returns the number of bundles in this placement group."""
+        return len(self.bundle_specs)
 
     @property
     def _scheduling_options_bundles(self) -> List[List[Dict]]:
-        """Return all possible bundles as a nested list of strategies.
-
-        This includes the primary and fallback options.
-        This is used for validation to ensure we don't reject tasks that
-        are valid under a fallback strategy configuration.
+        """Return all possible bundles across primary and fallback options
+        as a nested list of strategies.
         """
-        self._fill_bundle_cache_if_needed()
+        # If we haven't fetched the static scheduling options yet, fetch them once.
+        if self._scheduling_options_cache is None:
+            self._fill_bundle_cache()
+        return self._scheduling_options_cache or []
 
-        return self._scheduling_options_cache or (
-            [self.bundle_specs] if self.bundle_specs else []
-        )
-
-    def _fill_bundle_cache_if_needed(self) -> None:
-        if self.bundle_cache:
-            return
-
+    def _fill_bundle_cache(self) -> None:
         cache_data = _get_bundle_cache(self.id)
-
         self.bundle_cache = cache_data["active"]
         self._scheduling_options_cache = cache_data["all"]
 
@@ -364,12 +356,23 @@ def check_placement_group_index(
                 "If placement group is not set, "
                 "the value of bundle index must be -1."
             )
-    elif bundle_index >= placement_group.bundle_count or bundle_index < -1:
-        raise ValueError(
-            f"placement group bundle index {bundle_index} "
-            f"is invalid. Valid placement group indexes: "
-            f"0-{placement_group.bundle_count}"
-        )
+    else:
+        # Fetch the updated scheduling options first.
+        strategies = placement_group._scheduling_options_bundles
+
+        # If scheduled, validate strictly against the active bundles
+        if placement_group.bundle_cache:
+            valid_count = len(placement_group.bundle_cache)
+        else:
+            # Otherwise, check if the index would fit in any possible option.
+            valid_count = max((len(strategy) for strategy in strategies), default=0)
+
+        if bundle_index >= valid_count or bundle_index < -1:
+            raise ValueError(
+                f"placement group bundle index {bundle_index} "
+                f"is invalid. Valid placement group indexes: "
+                f"0-{valid_count} across all scheduling options."
+            )
 
 
 def validate_placement_group(
