@@ -175,8 +175,10 @@ class SynchronizationActor:
                     await wait_with_logging(
                         self._condition,
                         predicate=None,
-                        generate_warning_message=lambda: self._generate_broadcast_periodic_warning(
-                            caller_method_name
+                        generate_warning_message=(
+                            lambda: self._generate_broadcast_periodic_warning(
+                                caller_method_name
+                            )
                         )
                         if world_rank == 0
                         else None,
