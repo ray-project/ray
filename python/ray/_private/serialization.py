@@ -12,10 +12,7 @@ import google.protobuf.message
 import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
-from ray._private import (
-    ray_constants,
-    tensor_serialization_utils,
-)
+from ray._private import ray_constants, tensor_serialization_utils
 from ray._raylet import (
     DynamicObjectRefGenerator,
     MessagePackSerializedObject,
@@ -698,6 +695,7 @@ class SerializationContext:
             from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
             TorchTensorType().register_custom_serializer()
+            TorchTensorType().register_custom_serializer_for_mesh()
             self._torch_custom_serializer_registered = True
 
         serialized_val, tensors = self._serialize_and_retrieve_tensors(value)

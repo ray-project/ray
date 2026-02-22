@@ -1,11 +1,30 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from ray.experimental.util.types import Device
 
 if TYPE_CHECKING:
     import numpy as np
     import torch
+    from torch.distributed.device_mesh import DeviceMesh
+
+
+class SerializedMesh(NamedTuple):
+    device_type: str
+    mesh: Any  # np.ndarray
+    mesh_dim_names: Tuple[str, ...]
+    dim_group_names: Optional[List[str]]
+    world_size: List[int]
 
 
 _TORCH_WARNING_FILTER_ACTIVATE = True
@@ -90,6 +109,35 @@ class _SerializationContext:
         self._out_of_band_tensors = tensors
         self._deserialized_tensor_placeholders = set()
         return prev_tensors, deserialized_tensor_placeholders
+
+    def serialize_mesh(self, dm: "DeviceMesh") -> "SerializedMesh":
+        import torch.distributed as dist
+
+        mesh_np = dm.mesh.contiguous().numpy()
+        dim_group_names = (
+            dm._dim_group_names if hasattr(dm, "_dim_group_names") else None
+        )
+        dim_groups = dm.get_all_groups()
+        world_size = [dist.get_world_size(group=group) for group in dim_groups]
+        return SerializedMesh(
+            device_type=dm.device_type,
+            mesh=mesh_np,
+            mesh_dim_names=dm.mesh_dim_names,
+            dim_group_names=dim_group_names,
+            world_size=world_size,
+        )
+
+    def deserialize_mesh(self, val: "SerializedMesh") -> "DeviceMesh":
+        from torch.distributed.device_mesh import DeviceMesh
+
+        dm = DeviceMesh(
+            val.device_type,
+            val.mesh,
+            mesh_dim_names=val.mesh_dim_names,
+            _init_backend=False,
+        )
+        dm._dim_group_names = val.dim_group_names
+        return dm
 
     def serialize_tensor(
         self, tensor: "torch.Tensor"
