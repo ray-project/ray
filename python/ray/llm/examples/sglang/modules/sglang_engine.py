@@ -54,12 +54,14 @@ class SGLangServer:
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
         sampling_params: dict[str, Any] = {}
-        fields_set = set(getattr(request, "model_fields_set", set()))
+        model_fields_set = getattr(request, "model_fields_set", None)
+        has_model_fields_set = model_fields_set is not None
+        fields_set = set(model_fields_set) if has_model_fields_set else set()
 
         def was_explicitly_set(field_name: str) -> bool:
             # Use model_fields_set when available to avoid injecting defaults for
             # fields omitted by the caller.
-            if fields_set:
+            if has_model_fields_set:
                 return field_name in fields_set
             return getattr(request, field_name, None) is not None
 
@@ -184,9 +186,10 @@ class SGLangServer:
         sampling_params = self._build_sampling_params(request)
         generate_kwargs = {
             "prompt": prompt,
-            "sampling_params": sampling_params,
             "stream": False,
         }
+        if sampling_params:
+            generate_kwargs["sampling_params"] = sampling_params
         return await self.engine.async_generate(**generate_kwargs)
 
     @staticmethod
