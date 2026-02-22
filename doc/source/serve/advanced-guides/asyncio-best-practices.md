@@ -273,7 +273,7 @@ When this flag is `1` (default):
 - Serve runs synchronous methods in a threadpool.
 - The event loop is free to keep serving other requests while sync methods run.
 
-Ensure your handlers and shared state are thread-safe. The following example is **not** thread-safe: concurrent requests can race on shared mutable state:
+Ensure your handlers and shared state are thread-safe. The following example is **not** thread-safe. Concurrent requests can race on shared mutable state.
 
 ```{literalinclude} ../doc_code/asyncio_best_practices.py
 :start-after: __non_thread_safe_begin__
@@ -289,7 +289,7 @@ Use a lock to protect shared state:
 :language: python
 ```
 
-If you opt out of the threadpool by setting:
+You can opt out of the threadpool by setting:
 
 ```bash
 export RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0
