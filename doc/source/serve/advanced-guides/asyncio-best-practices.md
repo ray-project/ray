@@ -90,8 +90,7 @@ When you use FastAPI ingress, FastAPI controls how endpoints run:
 
 Important differences:
 
-- FastAPI always dispatches `def` endpoints to a threadpool.
-- In pure Serve, `def` methods run in a threadpool by default; set `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0` to run on the event loop instead.
+Both FastAPI and Serve dispatch `def` methods to threadpool.
 
 ## Threadpool sizing and overrides
 
@@ -443,5 +442,5 @@ This pattern:
 
 - Use `async def` for I/O-bound and streaming work so the event loop can stay responsive.
 - Use `max_ongoing_requests` to bound concurrency per replica, but remember that blocking `def` handlers can still serialize work if they run on the event loop.
-- Ensure sync handlers are thread-safe when `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`(default).
+- Ensure sync handlers are thread-safe.
 - For CPU-heavy workloads, scale replicas or GIL-releasing native code for real parallelism.
