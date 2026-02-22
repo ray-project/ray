@@ -134,7 +134,11 @@ class TorchTensorType(ChannelOutputType):
         )
 
     def register_custom_serializer_for_mesh(self) -> None:
-        from torch.distributed.device_mesh import DeviceMesh
+        try:
+            from torch.distributed.device_mesh import DeviceMesh
+        except ImportError:
+            # DeviceMesh is not available in older PyTorch versions (< 2.0).
+            return
 
         def serialize(t):
             ctx = ChannelContext.get_current()
