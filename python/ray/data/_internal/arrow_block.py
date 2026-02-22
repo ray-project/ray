@@ -163,14 +163,14 @@ class ArrowBlockBuilder(TableBlockBuilder):
         super().__init__((pyarrow.Table, bytes))
         self._schema = schema
 
-    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
-        table = pyarrow_table_from_pydict(
+    @staticmethod
+    def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
+        return pyarrow_table_from_pydict(
             {
                 column_name: convert_to_pyarrow_array(column_values, column_name)
                 for column_name, column_values in columns.items()
             }
         )
-        return self._apply_schema_hint(table)
 
     def _apply_schema_hint(self, table: "pyarrow.Table") -> "pyarrow.Table":
         if self._schema is None:
