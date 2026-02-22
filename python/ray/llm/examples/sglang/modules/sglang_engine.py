@@ -1,4 +1,5 @@
 import copy
+import json
 import signal
 import time
 from enum import Enum
@@ -7,6 +8,7 @@ from typing import (
     AsyncGenerator,
     List,
     Optional,
+    Union,
 )
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -79,13 +81,8 @@ class SGLangServer:
         finally:
             signal.signal = original_signal_func
 
-    async def _generate_and_extract_metadata(
-        self, request: Any, prompt_string: str
-    ) -> dict[str, Any]:
-        """
-        Handles parameter extraction, calls the SGLang engine, and processes the
-        raw response to extract common metadata and generated text.
-        """
+    def _build_sampling_params(self, request: Any) -> dict[str, Any]:
+        """Extract sampling parameters from a request."""
         temp = getattr(request, "temperature", None)
         if temp is None:
             temp = 0.7
@@ -100,12 +97,28 @@ class SGLangServer:
 
         stop_sequences = getattr(request, "stop", None)
 
-        sampling_params = {
+        return {
             "temperature": temp,
             "max_new_tokens": max_tokens,
             "stop": stop_sequences,
             "top_p": top_p,
         }
+
+    @staticmethod
+    def _parse_finish_reason(finish_reason_info: Any) -> str:
+        """Parse finish_reason from SGLang metadata."""
+        if isinstance(finish_reason_info, dict):
+            return finish_reason_info.get("type", "length")
+        return str(finish_reason_info)
+
+    async def _generate_and_extract_metadata(
+        self, request: Any, prompt_string: str
+    ) -> dict[str, Any]:
+        """
+        Calls the SGLang engine in non-streaming mode and extracts
+        common metadata and generated text from the response.
+        """
+        sampling_params = self._build_sampling_params(request)
 
         raw = await self.engine.async_generate(
             prompt=prompt_string,
@@ -123,11 +136,7 @@ class SGLangServer:
         text: str = raw.get("text", "")
         meta: dict[str, Any] = raw.get("meta_info", {}) or {}
         finish_reason_info = meta.get("finish_reason", {}) or {}
-
-        if isinstance(finish_reason_info, dict):
-            finish_reason = finish_reason_info.get("type", "length")
-        else:
-            finish_reason = str(finish_reason_info)
+        finish_reason = self._parse_finish_reason(finish_reason_info)
 
         prompt_tokens = int(meta.get("prompt_tokens", 0))
         completion_tokens = int(meta.get("completion_tokens", 0))
@@ -143,11 +152,68 @@ class SGLangServer:
             "total_tokens": total_tokens,
         }
 
+    async def _stream_generate(
+        self, request: Any, prompt_string: str
+    ) -> AsyncGenerator[tuple[str, Optional[str]], None]:
+        """Stream from SGLang engine, yielding (delta_text, finish_reason) tuples.
+
+        SGLang returns cumulative text in each chunk, so this method
+        tracks the previous text and yields only the incremental delta.
+        """
+        sampling_params = self._build_sampling_params(request)
+
+        stream = await self.engine.async_generate(
+            prompt=prompt_string,
+            sampling_params=sampling_params,
+            stream=True,
+        )
+
+        previous_text = ""
+        async for chunk in stream:
+            text = chunk.get("text", "")
+            meta = chunk.get("meta_info", {}) or {}
+
+            delta_text = text[len(previous_text):]
+            previous_text = text
+
+            finish_reason_info = meta.get("finish_reason", None)
+            finish_reason = (
+                self._parse_finish_reason(finish_reason_info)
+                if finish_reason_info is not None
+                else None
+            )
+            yield delta_text, finish_reason
+
     async def chat(
         self, request: ChatCompletionRequest, raw_request: Optional[Any] = None
-    ) -> AsyncGenerator[ChatCompletionResponse, None]:
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
 
         prompt_string = format_messages_to_prompt(request.messages)
+
+        if request.stream:
+            gen_id = f"sglang-gen-{int(time.time())}"
+            created = int(time.time())
+            async for delta_text, finish_reason in self._stream_generate(
+                request, prompt_string
+            ):
+                chunk_data = {
+                    "id": gen_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": request.model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "role": ChatRole.assistant.value,
+                                "content": delta_text,
+                            },
+                            "finish_reason": finish_reason,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+            return
 
         metadata = await self._generate_and_extract_metadata(request, prompt_string)
 
@@ -176,32 +242,51 @@ class SGLangServer:
 
     async def completions(
         self, request: CompletionRequest, raw_request: Optional[Any] = None
-    ) -> AsyncGenerator[CompletionResponse, None]:
+    ) -> AsyncGenerator[Union[str, CompletionResponse], None]:
 
         prompt_input = request.prompt
 
-        prompts_to_process: List[str] = []
+        # Normalize prompt input.
         if isinstance(prompt_input, list):
-            # Check for empty list
             if not prompt_input:
                 raise ValueError(
                     "The 'prompt' list cannot be empty for completion requests."
                 )
-            # Batched prompts: process all of them
             prompts_to_process = prompt_input
         else:
-            # Single string prompt: wrap it in a list for iteration
             prompts_to_process = [prompt_input]
+
+        if request.stream:
+            gen_id = f"sglang-gen-{int(time.time())}"
+            created = int(time.time())
+            async for delta_text, finish_reason in self._stream_generate(
+                request, prompts_to_process[0]
+            ):
+                chunk_data = {
+                    "id": gen_id,
+                    "object": "text_completion",
+                    "created": created,
+                    "model": request.model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "text": delta_text,
+                            "logprobs": None,
+                            "finish_reason": finish_reason,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+            return
 
         all_choices = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
         last_metadata = {}
 
-        # 2. Loop through all prompts in the batch
         for index, prompt_string in enumerate(prompts_to_process):
             metadata = await self._generate_and_extract_metadata(request, prompt_string)
-            last_metadata = metadata  # Keep track of the metadata from the last run
+            last_metadata = metadata
 
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
@@ -220,7 +305,6 @@ class SGLangServer:
             "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
 
-        # Use metadata from the last generation for shared fields (id, created)
         resp = CompletionResponse(
             id=last_metadata.get("id", f"sglang-batch-gen-{int(time.time())}"),
             object="text_completion",
