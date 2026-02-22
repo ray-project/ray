@@ -174,7 +174,7 @@ class SGLangServer:
             text = chunk.get("text", "")
             meta = chunk.get("meta_info", {}) or {}
 
-            delta_text = text[len(previous_text):]
+            delta_text = text[len(previous_text) :]
             previous_text = text
 
             finish_reason_info = meta.get("finish_reason", None)
