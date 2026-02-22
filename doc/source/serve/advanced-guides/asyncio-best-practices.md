@@ -88,8 +88,6 @@ When you use FastAPI ingress, FastAPI controls how endpoints run:
 :language: python
 ```
 
-Important differences:
-
 Both FastAPI and Serve dispatch `def` methods to threadpool.
 
 ## Threadpool sizing and overrides
@@ -280,8 +278,6 @@ Ensure your handlers and shared state are thread-safe. If you opt out by setting
 ```bash
 export RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0
 ```
-
-Serve will run sync methods directly on the asyncio loop, which blocks async operations. To avoid blocking, either keep the default (`1`) or convert handlers to `async def`.
 
 ### `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD`
 
