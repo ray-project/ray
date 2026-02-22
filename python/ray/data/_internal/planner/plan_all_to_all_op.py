@@ -90,6 +90,9 @@ def _generate_local_aggregate_fn(
             aggregated_blocks, target_block_type=target_block_type
         )
 
+        if not normalized_blocks:
+            return ([], {})
+
         final_block, _ = BlockAccessor.for_block(
             normalized_blocks[0]
         )._combine_aggregated_blocks(
