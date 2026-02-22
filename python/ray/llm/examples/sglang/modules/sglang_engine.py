@@ -2,6 +2,7 @@ import copy
 import json
 import signal
 import time
+import uuid
 from enum import Enum
 from typing import (
     Any,
@@ -191,7 +192,7 @@ class SGLangServer:
         prompt_string = format_messages_to_prompt(request.messages)
 
         if request.stream:
-            gen_id = f"sglang-gen-{int(time.time())}"
+            gen_id = f"sglang-gen-{uuid.uuid4().hex}"
             created = int(time.time())
             async for delta_text, finish_reason in self._stream_generate(
                 request, prompt_string
@@ -257,26 +258,27 @@ class SGLangServer:
             prompts_to_process = [prompt_input]
 
         if request.stream:
-            gen_id = f"sglang-gen-{int(time.time())}"
+            gen_id = f"sglang-gen-{uuid.uuid4().hex}"
             created = int(time.time())
-            async for delta_text, finish_reason in self._stream_generate(
-                request, prompts_to_process[0]
-            ):
-                chunk_data = {
-                    "id": gen_id,
-                    "object": "text_completion",
-                    "created": created,
-                    "model": request.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "text": delta_text,
-                            "logprobs": None,
-                            "finish_reason": finish_reason,
-                        }
-                    ],
-                }
-                yield f"data: {json.dumps(chunk_data)}\n\n"
+            for i, prompt_string in enumerate(prompts_to_process):
+                async for delta_text, finish_reason in self._stream_generate(
+                    request, prompt_string
+                ):
+                    chunk_data = {
+                        "id": gen_id,
+                        "object": "text_completion",
+                        "created": created,
+                        "model": request.model,
+                        "choices": [
+                            {
+                                "index": i,
+                                "text": delta_text,
+                                "logprobs": None,
+                                "finish_reason": finish_reason,
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
             return
 
         all_choices = []
