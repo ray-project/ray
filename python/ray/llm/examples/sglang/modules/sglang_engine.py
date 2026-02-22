@@ -195,10 +195,21 @@ class SGLangServer:
             prompts_to_process = [prompt_input]
 
         tasks = [
-            self._generate_and_extract_metadata(request, prompt)
+            asyncio.ensure_future(self._generate_and_extract_metadata(request, prompt))
             for prompt in prompts_to_process
         ]
-        results = await asyncio.gather(*tasks)
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # If any task failed, cancel remaining in-flight tasks and re-raise
+        first_error = next(
+            (r for r in raw_results if isinstance(r, BaseException)), None
+        )
+        if first_error is not None:
+            for task in tasks:
+                task.cancel()
+            raise first_error
+
+        results = raw_results
 
         all_choices = []
         total_prompt_tokens = 0
