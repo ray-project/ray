@@ -16,6 +16,7 @@
 
 # === @begin: tag_defs_cpp_lib (@original: tag_defs) ===
 tag_defs_cpp_lib_dependencies = [
+    # Package-managed
     metric_interface_cpp_lib_dep,
 ]
 

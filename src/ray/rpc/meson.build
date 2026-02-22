@@ -19,28 +19,39 @@ rpc_common_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: rpc_callback_types_cpp_lib (@original: rpc_callback_types) ===
+# Header-only
+rpc_callback_types_cpp_lib_dependencies = [
+    # Package-managed
+    status_cpp_lib_dep,
+]
+
 rpc_callback_types_cpp_lib_dep = declare_dependency(
     sources: ['rpc_callback_types.h'],
-    dependencies: [
-        status_cpp_lib_dep,
-    ]
+    dependencies: rpc_callback_types_cpp_lib_dependencies
 )
 # === @end: rpc_callback_types_cpp_lib ===
 
 
 # === @begin: rpc_metrics_cpp_lib (@original: metrics) ===
+# Header-only
+rpc_metrics_cpp_lib_dependencies = [
+    # Package-managed
+    stats_metric_cpp_lib_dep,
+]
+
 rpc_metrics_cpp_lib_dep = declare_dependency(
     sources: ['metrics.h'],
-    dependencies: [
-        stats_metric_cpp_lib_dep,
-    ]
+    dependencies: rpc_metrics_cpp_lib_dependencies
 )
 # === @end: rpc_metrics_cpp_lib ===
 
 
 # === @begin: rpc_chaos_cpp_lib (@original: rpc_chaos) ===
 rpc_chaos_cpp_lib_dependencies = [
+    # Package-managed
     ray_config_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_synchronization,
     nlohmann_json,
@@ -61,23 +72,30 @@ rpc_chaos_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: client_call_cpp_lib (@original: client_call) ===
+# Header-only
+client_call_cpp_lib_dependencies = [
+    # Package-managed
+    rpc_metrics_cpp_lib_dep,
+    rpc_callback_types_cpp_lib_dep,
+    asio_cpp_lib_dep,
+    grpc_util_cpp_lib_dep,
+    id_cpp_lib_dep,
+    status_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_synchronization,
+]
+
 client_call_cpp_lib_dep = declare_dependency(
     sources: ['client_call.h'],
-    dependencies: [
-        rpc_metrics_cpp_lib_dep,
-        rpc_callback_types_cpp_lib_dep,
-        asio_cpp_lib_dep,
-        grpc_util_cpp_lib_dep,
-        id_cpp_lib_dep,
-        status_cpp_lib_dep,
-        absl_synchronization,
-    ]
+    dependencies: client_call_cpp_lib_dependencies
 )
 # === @end: client_call_cpp_lib ===
 
 
 # === @begin: grpc_client_cpp_lib (@original: grpc_client) ===
 grpc_client_cpp_lib_dependencies = [
+    # Package-managed
     client_call_cpp_lib_dep,
     rpc_common_cpp_lib_dep,
     rpc_chaos_cpp_lib_dep,
@@ -106,8 +124,11 @@ grpc_client_cpp_lib_dep = declare_dependency(
 
 # === @begin: retryable_grpc_client_cpp_lib (@original: retryable_grpc_client) ===
 retryable_grpc_client_cpp_lib_dependencies = [
+    # Package-managed
     grpc_client_cpp_lib_dep,
     exponential_backoff_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_btree,
     absl_strings,
     absl_time,
@@ -129,6 +150,7 @@ retryable_grpc_client_cpp_lib_dep = declare_dependency(
 
 # === @begin: server_call_cpp_lib (@original: server_call) ===
 server_call_cpp_lib_dependencies = [
+    # Package-managed
     rpc_metrics_cpp_lib_dep,
     rpc_callback_types_cpp_lib_dep,
     asio_cpp_lib_dep,
@@ -141,6 +163,8 @@ server_call_cpp_lib_dependencies = [
     authentication_token_loader_cpp_lib_dep,
     authentication_token_validator_cpp_lib_dep,
     stats_metric_cpp_lib_dep,
+
+    # Eugo-managed
     grpc,
 ]
 
@@ -160,6 +184,7 @@ server_call_cpp_lib_dep = declare_dependency(
 
 # === @begin: grpc_server_cpp_lib (@original: grpc_server) ===
 grpc_server_cpp_lib_dependencies = [
+    # Package-managed
     rpc_common_cpp_lib_dep,
     server_call_cpp_lib_dep,
     asio_cpp_lib_dep,
@@ -168,6 +193,8 @@ grpc_server_cpp_lib_dependencies = [
     authentication_token_loader_cpp_lib_dep,
     network_util_cpp_lib_dep,
     thread_utils_cpp_lib_dep,
+
+    # Eugo-managed
     grpc,
 ]
 
@@ -186,12 +213,18 @@ grpc_server_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: rpc_utils_cpp_lib (@original: utils) ===
+# Header-only
+rpc_utils_cpp_lib_dependencies = [
+    # Package-managed
+    common_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+]
+
 rpc_utils_cpp_lib_dep = declare_dependency(
     sources: ['utils.h'],
-    dependencies: [
-        common_proto_cpp_lib_dep,
-        protobuf,
-    ]
+    dependencies: rpc_utils_cpp_lib_dependencies
 )
 # === @end: rpc_utils_cpp_lib ===
 
@@ -219,33 +252,45 @@ subdir('node_manager/')
 
 
 # === @begin: node_manager_server_cpp_lib (@original: node_manager_server) ===
+# Header-only
 # NOTE: header lives at node_manager/node_manager_server.h but the Bazel target
 # is in rpc/BUILD.bazel. Defined here after node_manager/ subdir for include path.
+node_manager_server_cpp_lib_dependencies = [
+    # Package-managed
+    grpc_server_cpp_lib_dep,
+    node_manager_proto_cpp_grpc_lib_dep,
+    authentication_token_cpp_lib_dep,
+
+    # Eugo-managed
+    grpc,
+]
+
 node_manager_server_cpp_lib_dep = declare_dependency(
     sources: ['node_manager/node_manager_server.h'],
-    dependencies: [
-        grpc_server_cpp_lib_dep,
-        node_manager_proto_cpp_grpc_lib_dep,
-        authentication_token_cpp_lib_dep,
-        grpc,
-    ]
+    dependencies: node_manager_server_cpp_lib_dependencies
 )
 # === @end: node_manager_server_cpp_lib ===
 
 
 # === @begin: object_manager_server_cpp_lib (@original: object_manager_server) ===
+# Header-only
 # NOTE: Bazel deps include object_manager:object_manager_grpc_client_manager which is
 # processed after rpc/ — omitted here, handled through transitive include paths.
+object_manager_server_cpp_lib_dependencies = [
+    # Package-managed
+    asio_cpp_lib_dep,
+    object_manager_proto_cpp_grpc_lib_dep,
+    grpc_server_cpp_lib_dep,
+    authentication_token_cpp_lib_dep,
+
+    # Eugo-managed
+    boost_asio,
+    grpc,
+]
+
 object_manager_server_cpp_lib_dep = declare_dependency(
     sources: ['object_manager_server.h'],
-    dependencies: [
-        asio_cpp_lib_dep,
-        object_manager_proto_cpp_grpc_lib_dep,
-        grpc_server_cpp_lib_dep,
-        authentication_token_cpp_lib_dep,
-        boost_asio,
-        grpc,
-    ]
+    dependencies: object_manager_server_cpp_lib_dependencies
 )
 # backward compat alias
 object_manager_rpc_cpp_lib_dep = object_manager_server_cpp_lib_dep
@@ -254,11 +299,14 @@ object_manager_rpc_cpp_lib_dep = object_manager_server_cpp_lib_dep
 
 # === @begin: metrics_agent_client_cpp_lib (@original: metrics_agent_client) ===
 metrics_agent_client_cpp_lib_dependencies = [
+    # Package-managed
     grpc_client_cpp_lib_dep,
     reporter_proto_cpp_grpc_lib_dep,
     reporter_proto_cpp_lib_dep,
     logging_cpp_lib_dep,
     network_util_cpp_lib_dep,
+
+    # Eugo-managed
     grpc,
 ]
 
@@ -279,14 +327,20 @@ reporter_rpc_cpp_lib_dep = metrics_agent_client_cpp_lib_dep
 
 
 # === @begin: event_aggregator_client_cpp_lib (@original: event_aggregator_client) ===
+# Header-only
+event_aggregator_client_cpp_lib_dependencies = [
+    # Package-managed
+    grpc_client_cpp_lib_dep,
+    events_event_aggregator_service_proto_cpp_grpc_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    grpc,
+]
+
 event_aggregator_client_cpp_lib_dep = declare_dependency(
     sources: ['event_aggregator_client.h'],
-    dependencies: [
-        grpc_client_cpp_lib_dep,
-        events_event_aggregator_service_proto_cpp_grpc_lib_dep,
-        logging_cpp_lib_dep,
-        grpc,
-    ]
+    dependencies: event_aggregator_client_cpp_lib_dependencies
 )
 # === @end: event_aggregator_client_cpp_lib ===
 
@@ -294,12 +348,14 @@ event_aggregator_client_cpp_lib_dep = declare_dependency(
 # === @begin: gcs_service_rpc_cpp_lib (@original: convenience aggregate) ===
 # NOTE: Not a direct 1:1 Bazel target — convenience aggregation for gcs service RPC deps
 gcs_service_rpc_cpp_lib_dependencies = [
+    # Package-managed
     autoscaler_proto_cpp_grpc_lib_dep,
     gcs_service_proto_cpp_grpc_lib_dep,
     grpc_common_cpp_lib_dep,
     pubsub_proto_cpp_lib_dep,
     ray_common_cpp_lib_dep,
 
+    # Eugo-managed
     boost_asio,
     grpc,
     absl_container_btree,

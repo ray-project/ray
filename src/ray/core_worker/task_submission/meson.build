@@ -28,6 +28,7 @@ ts_dependency_resolver_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: ts_actor_submit_queue_cpp_lib (@original: actor_submit_queue) ===
+# Header-only
 ts_actor_submit_queue_cpp_lib_dependencies = [
         # Package-managed
         id_cpp_lib_dep,
@@ -96,9 +97,10 @@ ts_sequential_actor_submit_queue_cpp_lib_dep = declare_dependency(
 # === @begin: ts_task_submission_util_cpp_lib (@original: task_submission_util) ===
 # Header-only
 ts_task_submission_util_cpp_lib_dependencies = [
-        asio_cpp_lib_dep,
-        id_cpp_lib_dep,
-        gcs_client_cpp_lib_dep,
+    # Package-managed
+    asio_cpp_lib_dep,
+    id_cpp_lib_dep,
+    gcs_client_cpp_lib_dep,
 ]
 
 ts_task_submission_util_cpp_lib_dep = declare_dependency(

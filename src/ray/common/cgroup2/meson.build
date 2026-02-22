@@ -32,7 +32,9 @@ cgroup_manager_factory_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: cgroup_manager_interface_cpp_lib (@original: cgroup_manager_interface) ===
+# Header-only
 cgroup_manager_interface_cpp_lib_dependencies = [
+    # Package-managed
     cgroup_driver_interface_cpp_lib_dep,
     status_cpp_lib_dep,
     status_or_cpp_lib_dep,
@@ -47,6 +49,7 @@ cgroup_manager_interface_cpp_lib_dep = declare_dependency(
 
 # === @begin: cgroup_manager_cpp_lib (@original: cgroup_manager) ===
 cgroup_manager_cpp_lib_dependencies = [
+    # Package-managed
     cgroup_driver_interface_cpp_lib_dep,
     cgroup_manager_interface_cpp_lib_dep,
     status_cpp_lib_dep,
@@ -103,6 +106,7 @@ cgroup_manager_cpp_lib_dep = declare_dependency(
 # )
 
 noop_cgroup_manager_cpp_lib_dependencies = [
+    # Package-managed
     cgroup_driver_interface_cpp_lib_dep,
     cgroup_manager_interface_cpp_lib_dep,
     status_cpp_lib_dep,
@@ -117,9 +121,11 @@ noop_cgroup_manager_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: cgroup_driver_interface_cpp_lib (@original: cgroup_driver_interface) ===
+# Header-only
 cgroup_driver_interface_cpp_lib_dependencies = [
+    # Package-managed
     status_cpp_lib_dep,
-    status_or_cpp_lib_dep
+    status_or_cpp_lib_dep,
 ]
 
 cgroup_driver_interface_cpp_lib_dep = declare_dependency(
@@ -131,10 +137,13 @@ cgroup_driver_interface_cpp_lib_dep = declare_dependency(
 
 # === @begin: sysfs_cgroup_driver_cpp_lib (@original: sysfs_cgroup_driver) ===
 sysfs_cgroup_driver_cpp_lib_dependencies = [
+    # Package-managed
     cgroup_driver_interface_cpp_lib_dep,
     status_cpp_lib_dep,
     status_or_cpp_lib_dep,
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     absl_strings,
 ]
 
@@ -154,7 +163,9 @@ sysfs_cgroup_driver_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: fake_cgroup_driver_cpp_lib (@original: fake_cgroup_driver) ===
+# Header-only
 fake_cgroup_driver_cpp_lib_dependencies = [
+    # Package-managed
     cgroup_driver_interface_cpp_lib_dep,
     status_cpp_lib_dep,
 ]

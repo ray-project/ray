@@ -1,17 +1,26 @@
 # === @begin: task_exec_fiber_cpp_lib (@original: fiber) ===
+# Header-only
+task_exec_fiber_cpp_lib_dependencies = [
+    # Package-managed
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    boost_fiber,
+]
+
 task_exec_fiber_cpp_lib_dep = declare_dependency(
     sources: ['fiber.h'],
-    dependencies: [
-        logging_cpp_lib_dep,
-        boost_fiber,
-    ]
+    dependencies: task_exec_fiber_cpp_lib_dependencies
 )
 # === @end: task_exec_fiber_cpp_lib ===
 
 
 # === @begin: task_exec_thread_pool_cpp_lib (@original: thread_pool) ===
 task_exec_thread_pool_cpp_lib_dependencies = [
+    # Package-managed
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     boost_asio,
     boost_thread,
 ]
@@ -32,6 +41,7 @@ task_exec_thread_pool_cpp_lib_dep = declare_dependency(
 
 # === @begin: task_exec_concurrency_group_manager_cpp_lib (@original: concurrency_group_manager) ===
 task_exec_concurrency_group_manager_cpp_lib_dependencies = [
+    # Package-managed
     task_exec_fiber_cpp_lib_dep,
     task_exec_thread_pool_cpp_lib_dep,
     task_common_cpp_lib_dep,
@@ -53,6 +63,7 @@ task_exec_concurrency_group_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: task_exec_common_cpp_lib (@original: task_execution:common) ===
 task_exec_common_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     ray_object_cpp_lib_dep,
     task_common_cpp_lib_dep,
@@ -75,23 +86,30 @@ task_exec_common_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: task_exec_actor_queue_interface_cpp_lib (@original: actor_task_execution_queue_interface) ===
+# Header-only
+task_exec_actor_queue_interface_cpp_lib_dependencies = [
+    # Package-managed
+    task_exec_common_cpp_lib_dep,
+    task_common_cpp_lib_dep,
+    rpc_callback_types_cpp_lib_dep,
+]
+
 task_exec_actor_queue_interface_cpp_lib_dep = declare_dependency(
     sources: ['actor_task_execution_queue_interface.h'],
-    dependencies: [
-        task_exec_common_cpp_lib_dep,
-        task_common_cpp_lib_dep,
-        rpc_callback_types_cpp_lib_dep,
-    ]
+    dependencies: task_exec_actor_queue_interface_cpp_lib_dependencies
 )
 # === @end: task_exec_actor_queue_interface_cpp_lib ===
 
 
 # === @begin: task_exec_normal_queue_cpp_lib (@original: normal_task_execution_queue) ===
 task_exec_normal_queue_cpp_lib_dependencies = [
+    # Package-managed
     task_exec_common_cpp_lib_dep,
     id_cpp_lib_dep,
     task_common_cpp_lib_dep,
     rpc_callback_types_cpp_lib_dep,
+
+    # Eugo-managed
     absl_synchronization,
 ]
 
@@ -111,6 +129,7 @@ task_exec_normal_queue_cpp_lib_dep = declare_dependency(
 
 # === @begin: task_exec_ordered_actor_queue_cpp_lib (@original: ordered_actor_task_execution_queue) ===
 task_exec_ordered_actor_queue_cpp_lib_dependencies = [
+    # Package-managed
     task_exec_actor_queue_interface_cpp_lib_dep,
     task_exec_common_cpp_lib_dep,
     task_exec_concurrency_group_manager_cpp_lib_dep,
@@ -118,9 +137,11 @@ task_exec_ordered_actor_queue_cpp_lib_dependencies = [
     task_exec_thread_pool_cpp_lib_dep,
     id_cpp_lib_dep,
     task_common_cpp_lib_dep,
-    cw_task_event_buffer_cpp_lib_dep,       # from parent core_worker/meson.build
+    cw_task_event_buffer_cpp_lib_dep,       # from parent core_worker/meson.build,
     common_proto_cpp_lib_dep,
     rpc_callback_types_cpp_lib_dep,
+
+    # Eugo-managed
     absl_base_core_headers,
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
@@ -143,6 +164,7 @@ task_exec_ordered_actor_queue_cpp_lib_dep = declare_dependency(
 
 # === @begin: task_exec_unordered_actor_queue_cpp_lib (@original: unordered_actor_task_execution_queue) ===
 task_exec_unordered_actor_queue_cpp_lib_dependencies = [
+    # Package-managed
     task_exec_actor_queue_interface_cpp_lib_dep,
     task_exec_common_cpp_lib_dep,
     task_exec_concurrency_group_manager_cpp_lib_dep,
@@ -150,9 +172,11 @@ task_exec_unordered_actor_queue_cpp_lib_dependencies = [
     task_exec_thread_pool_cpp_lib_dep,
     id_cpp_lib_dep,
     task_common_cpp_lib_dep,
-    cw_task_event_buffer_cpp_lib_dep,       # from parent core_worker/meson.build
+    cw_task_event_buffer_cpp_lib_dep,       # from parent core_worker/meson.build,
     common_proto_cpp_lib_dep,
     rpc_callback_types_cpp_lib_dep,
+
+    # Eugo-managed
     absl_base_core_headers,
     absl_container_flat_hash_map,
     absl_synchronization,
@@ -174,6 +198,7 @@ task_exec_unordered_actor_queue_cpp_lib_dep = declare_dependency(
 
 # === @begin: task_exec_task_receiver_cpp_lib (@original: task_receiver) ===
 task_exec_task_receiver_cpp_lib_dependencies = [
+    # Package-managed
     task_exec_common_cpp_lib_dep,
     task_exec_concurrency_group_manager_cpp_lib_dep,
     task_exec_fiber_cpp_lib_dep,
@@ -185,10 +210,12 @@ task_exec_task_receiver_cpp_lib_dependencies = [
     id_cpp_lib_dep,
     ray_object_cpp_lib_dep,
     task_common_cpp_lib_dep,
-    cw_common_cpp_lib_dep,                  # from parent core_worker:common
-    cw_task_event_buffer_cpp_lib_dep,       # from parent core_worker/meson.build
+    cw_common_cpp_lib_dep,                  # from parent core_worker:common,
+    cw_task_event_buffer_cpp_lib_dep,       # from parent core_worker/meson.build,
     core_worker_proto_cpp_lib_dep,
     raylet_client_interface_cpp_lib_dep,
+
+    # Eugo-managed
     absl_base_core_headers,
     absl_container_flat_hash_map,
 ]

@@ -1,19 +1,26 @@
 # === @begin: raylet_ipc_client_interface_cpp_lib (@original: raylet_ipc_client_interface) ===
+# Header-only
+raylet_ipc_client_interface_cpp_lib_dependencies = [
+    # Package-managed
+    ray_common_cpp_lib_dep,  # buffer, id, status, flatbuf_utils (consolidated),
+    node_manager_cpp_fbs_lib_dep,
+    common_proto_cpp_lib_dep,
+    process_interface_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_set,
+]
+
 raylet_ipc_client_interface_cpp_lib_dep = declare_dependency(
     sources: ['raylet_ipc_client_interface.h'],
-    dependencies: [
-        ray_common_cpp_lib_dep,  # buffer, id, status, flatbuf_utils (consolidated)
-        node_manager_cpp_fbs_lib_dep,
-        common_proto_cpp_lib_dep,
-        process_interface_cpp_lib_dep,
-        absl_container_flat_hash_set,
-    ]
+    dependencies: raylet_ipc_client_interface_cpp_lib_dependencies
 )
 # === @end: raylet_ipc_client_interface_cpp_lib ===
 
 
 # === @begin: client_connection_cpp_lib (@original: client_connection) ===
 client_connection_cpp_lib_dependencies = [
+    # Package-managed
     asio_cpp_lib_dep,
     event_stats_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -40,14 +47,17 @@ client_connection_cpp_lib_dep = declare_dependency(
 
 # === @begin: raylet_ipc_client_target_cpp_lib (@original: raylet_ipc_client) ===
 raylet_ipc_client_target_cpp_lib_dependencies = [
+    # Package-managed
     client_connection_cpp_lib_dep,
     asio_cpp_lib_dep,
-    ray_common_cpp_lib_dep,  # buffer, flatbuf_utils, id, status (consolidated)
+    ray_common_cpp_lib_dep,  # buffer, flatbuf_utils, id, status (consolidated),
     node_manager_cpp_fbs_lib_dep,
     common_proto_cpp_lib_dep,
     raylet_ipc_client_interface_cpp_lib_dep,
     logging_cpp_lib_dep,
     process_utils_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_set,
 ]
 

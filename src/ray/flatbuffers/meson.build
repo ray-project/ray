@@ -4,7 +4,7 @@ node_manager_cpp_fbs = custom_target(
     kwargs: cpp_fbs_default_kwargs
 )
 
-# header-only
+# Header-only
 node_manager_cpp_fbs_lib_dep = declare_dependency(
     sources: [node_manager_cpp_fbs],
     dependencies: [flatbuffers]

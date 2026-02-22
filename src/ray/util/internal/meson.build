@@ -1,5 +1,6 @@
 # === @begin: stream_redirection_handle_cpp_lib (@original: stream_redirection_handle) ===
 stream_redirection_handle_cpp_lib_dependencies = [
+    # Package-managed
     compat_cpp_lib_dep,
     pipe_logger_cpp_lib_dep,
     scoped_dup2_wrapper_cpp_lib_dep,

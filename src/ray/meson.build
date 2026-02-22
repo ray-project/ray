@@ -3,12 +3,18 @@ subdir('thirdparty/')
 subdir('util/')
 
 # === @begin: metric_interface_cpp_lib (@original: metric_interface from observability/) ===
+# Header-only
 # Defined early (before stats/) because stats/tag_defs depends on it.
 # The canonical Bazel target is //src/ray/observability:metric_interface,
 # but it's header-only with only an external dep, so it can safely live here.
+metric_interface_cpp_lib_dependencies = [
+    # Eugo-managed
+    opencensus_cpp_stats,
+]
+
 metric_interface_cpp_lib_dep = declare_dependency(
     sources: ['observability/metric_interface.h'],
-    dependencies: [opencensus_cpp_stats]
+    dependencies: metric_interface_cpp_lib_dependencies
 )
 # === @end: metric_interface_cpp_lib ===
 
@@ -122,21 +128,28 @@ subdir('gcs/actor/')
 
 
 # === @begin: gcs/grpc_service_interfaces_cpp_lib (@original: grpc_service_interfaces) ===
+# Header-only
+gcs_grpc_service_interfaces_cpp_lib_dependencies = [
+    # Package-managed
+    status_cpp_lib_dep,
+    autoscaler_proto_cpp_grpc_lib_dep,
+    gcs_service_proto_cpp_grpc_lib_dep,
+    rpc_callback_types_cpp_lib_dep,
+]
+
 gcs_grpc_service_interfaces_cpp_lib_dep = declare_dependency(
     sources: ['gcs/grpc_service_interfaces.h'],
-    dependencies: [
-        status_cpp_lib_dep,
-        autoscaler_proto_cpp_grpc_lib_dep,
-        gcs_service_proto_cpp_grpc_lib_dep,
-        rpc_callback_types_cpp_lib_dep,
-    ]
+    dependencies: gcs_grpc_service_interfaces_cpp_lib_dependencies
 )
 # === @end: gcs/grpc_service_interfaces_cpp_lib ===
 
 
 # === @begin: gcs/gcs_state_util_cpp_lib (@original: gcs_state_util) ===
 gcs_state_util_cpp_lib_dependencies = [
+    # Package-managed
     gcs_proto_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -155,18 +168,23 @@ gcs_state_util_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs/gcs_metrics_cpp_lib (@original: gcs:metrics) ===
+# Header-only
+gcs_metrics_cpp_lib_dependencies = [
+    # Package-managed
+    observability_metrics_cpp_lib_dep,
+    stats_cpp_lib_dep,
+]
+
 gcs_metrics_cpp_lib_dep = declare_dependency(
     sources: ['gcs/metrics.h'],
-    dependencies: [
-        observability_metrics_cpp_lib_dep,
-        stats_cpp_lib_dep,
-    ]
+    dependencies: gcs_metrics_cpp_lib_dependencies
 )
 # === @end: gcs/gcs_metrics_cpp_lib ===
 
 
 # === @begin: gcs/gcs_kv_manager_cpp_lib (@original: gcs_kv_manager) ===
 gcs_kv_manager_cpp_lib_dependencies = [
+    # Package-managed
     asio_cpp_lib_dep,
     status_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
@@ -189,21 +207,28 @@ gcs_kv_manager_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs/gcs_function_manager_cpp_lib (@original: gcs_function_manager) ===
+# Header-only
+gcs_function_manager_cpp_lib_dependencies = [
+    # Package-managed
+    gcs_kv_manager_cpp_lib_dep,
+    asio_cpp_lib_dep,
+    constants_cpp_lib_dep,
+    id_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
 gcs_function_manager_cpp_lib_dep = declare_dependency(
     sources: ['gcs/gcs_function_manager.h'],
-    dependencies: [
-        gcs_kv_manager_cpp_lib_dep,
-        asio_cpp_lib_dep,
-        constants_cpp_lib_dep,
-        id_cpp_lib_dep,
-        absl_container_flat_hash_map,
-    ]
+    dependencies: gcs_function_manager_cpp_lib_dependencies
 )
 # === @end: gcs/gcs_function_manager_cpp_lib ===
 
 
 # === @begin: gcs/gcs_usage_stats_client_cpp_lib (@original: gcs_usage_stats_client) ===
 gcs_usage_stats_client_cpp_lib_dependencies = [
+    # Package-managed
     gcs_kv_manager_cpp_lib_dep,
     asio_cpp_lib_dep,
     usage_proto_cpp_lib_dep,
@@ -225,6 +250,7 @@ gcs_usage_stats_client_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_store_client_kv_cpp_lib (@original: gcs_store_client_kv) ===
 gcs_store_client_kv_cpp_lib_dependencies = [
+    # Package-managed
     gcs_kv_manager_cpp_lib_dep,
     postable_cpp_lib_dep,
     store_client_cpp_lib_dep,
@@ -246,11 +272,14 @@ gcs_store_client_kv_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_init_data_cpp_lib (@original: gcs_init_data) ===
 gcs_init_data_cpp_lib_dependencies = [
+    # Package-managed
     gcs_table_storage_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
     postable_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -270,12 +299,13 @@ gcs_init_data_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_node_manager_cpp_lib (@original: gcs_node_manager) ===
 gcs_node_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_init_data_cpp_lib_dep,
     gcs_table_storage_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated)
+    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated),
     ray_config_cpp_lib_dep,
     ray_event_recorder_interface_cpp_lib_dep,
     ray_node_definition_event_cpp_lib_dep,
@@ -289,6 +319,8 @@ gcs_node_manager_cpp_lib_dependencies = [
     event_cpp_lib_dep,
     logging_cpp_lib_dep,
     time_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
 ]
@@ -309,6 +341,7 @@ gcs_node_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_resource_manager_cpp_lib (@original: gcs_resource_manager) ===
 gcs_resource_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_init_data_cpp_lib_dep,
     gcs_node_manager_cpp_lib_dep,
     gcs_state_util_cpp_lib_dep,
@@ -321,6 +354,8 @@ gcs_resource_manager_cpp_lib_dependencies = [
     ray_syncer_cpp_lib_dep,
     cluster_resource_manager_cpp_lib_dep,
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -340,11 +375,14 @@ gcs_resource_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_pubsub_handler_cpp_lib (@original: gcs_pubsub_handler) ===
 gcs_pubsub_handler_cpp_lib_dependencies = [
+    # Package-managed
     asio_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
     postable_cpp_lib_dep,
     gcs_service_proto_cpp_lib_dep,
     gcs_publisher_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
 ]
@@ -365,11 +403,14 @@ gcs_pubsub_handler_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_runtime_env_handler_cpp_lib (@original: gcs_runtime_env_handler) ===
 gcs_runtime_env_handler_cpp_lib_dependencies = [
+    # Package-managed
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     runtime_env_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
     thread_checker_cpp_lib_dep,
+
+    # Eugo-managed
     boost_asio,
 ]
 
@@ -389,6 +430,7 @@ gcs_runtime_env_handler_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_worker_manager_cpp_lib (@original: gcs_worker_manager) ===
 gcs_worker_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_kv_manager_cpp_lib_dep,
     gcs_table_storage_cpp_lib_dep,
     gcs_usage_stats_client_cpp_lib_dep,
@@ -413,12 +455,15 @@ gcs_worker_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_health_check_manager_cpp_lib (@original: gcs_health_check_manager) ===
 gcs_health_check_manager_cpp_lib_dependencies = [
+    # Package-managed
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     stats_metric_cpp_lib_dep,
     thread_checker_cpp_lib_dep,
-    grpc,       # includes grpc health check proto
+    grpc,       # includes grpc health check proto,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -438,6 +483,7 @@ gcs_health_check_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_ray_event_converter_cpp_lib (@original: gcs_ray_event_converter) ===
 gcs_ray_event_converter_cpp_lib_dependencies = [
+    # Package-managed
     function_descriptor_cpp_lib_dep,
     grpc_util_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -462,18 +508,21 @@ gcs_ray_event_converter_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_task_manager_cpp_lib (@original: gcs_task_manager) ===
 gcs_task_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_ray_event_converter_cpp_lib_dep,
     gcs_usage_stats_client_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated)
+    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated),
     ray_config_cpp_lib_dep,
     status_cpp_lib_dep,
     events_event_aggregator_service_proto_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
     stats_metric_cpp_lib_dep,
     counter_map_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
     absl_strings,
@@ -495,27 +544,32 @@ gcs_task_manager_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs/gcs_server_io_context_policy_cpp_lib (@original: gcs_server_io_context_policy) ===
+# Header-only
+gcs_server_io_context_policy_cpp_lib_dependencies = [
+    # Package-managed
+    gcs_task_manager_cpp_lib_dep,
+    ray_event_recorder_cpp_lib_dep,
+    gcs_publisher_cpp_lib_dep,
+    ray_syncer_cpp_lib_dep,
+    array_cpp_lib_dep,
+    type_traits_cpp_lib_dep,
+]
+
 gcs_server_io_context_policy_cpp_lib_dep = declare_dependency(
     sources: ['gcs/gcs_server_io_context_policy.h'],
-    dependencies: [
-        gcs_task_manager_cpp_lib_dep,
-        ray_event_recorder_cpp_lib_dep,
-        gcs_publisher_cpp_lib_dep,
-        ray_syncer_cpp_lib_dep,
-        array_cpp_lib_dep,
-        type_traits_cpp_lib_dep,
-    ]
+    dependencies: gcs_server_io_context_policy_cpp_lib_dependencies
 )
 # === @end: gcs/gcs_server_io_context_policy_cpp_lib ===
 
 
 # === @begin: gcs/gcs_job_manager_cpp_lib (@original: gcs_job_manager) ===
 gcs_job_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_function_manager_cpp_lib_dep,
     gcs_init_data_cpp_lib_dep,
     gcs_table_storage_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils, runtime_env (consolidated)
+    ray_common_cpp_lib_dep,     # protobuf_utils, runtime_env (consolidated),
     core_worker_client_pool_cpp_lib_dep,
     metric_interface_cpp_lib_dep,
     ray_driver_job_definition_event_cpp_lib_dep,
@@ -525,6 +579,8 @@ gcs_job_manager_cpp_lib_dependencies = [
     stats_metric_cpp_lib_dep,
     event_cpp_lib_dep,
     thread_checker_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -544,7 +600,8 @@ gcs_job_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_placement_group_cpp_lib (@original: gcs_placement_group) ===
 gcs_placement_group_cpp_lib_dependencies = [
-    ray_common_cpp_lib_dep,     # bundle_spec, metrics (consolidated)
+    # Package-managed
+    ray_common_cpp_lib_dep,     # bundle_spec, metrics (consolidated),
     id_cpp_lib_dep,
     gcs_service_proto_cpp_lib_dep,
     stats_cpp_lib_dep,
@@ -568,6 +625,7 @@ gcs_placement_group_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_placement_group_scheduler_cpp_lib (@original: gcs_placement_group_scheduler) ===
 gcs_placement_group_scheduler_cpp_lib_dependencies = [
+    # Package-managed
     gcs_node_manager_cpp_lib_dep,
     gcs_placement_group_cpp_lib_dep,
     gcs_table_storage_cpp_lib_dep,
@@ -576,6 +634,8 @@ gcs_placement_group_scheduler_cpp_lib_dependencies = [
     cluster_resource_scheduler_cpp_lib_dep,
     scheduling_context_cpp_lib_dep,
     raylet_client_interface_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
 ]
@@ -596,6 +656,7 @@ gcs_placement_group_scheduler_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_placement_group_manager_cpp_lib (@original: gcs_placement_group_manager) ===
 gcs_placement_group_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_init_data_cpp_lib_dep,
     gcs_placement_group_cpp_lib_dep,
     gcs_placement_group_scheduler_cpp_lib_dep,
@@ -604,13 +665,15 @@ gcs_placement_group_manager_cpp_lib_dependencies = [
     gcs_usage_stats_client_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # bundle_spec (consolidated)
+    ray_common_cpp_lib_dep,     # bundle_spec (consolidated),
     id_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
     stats_cpp_lib_dep,
     counter_map_cpp_lib_dep,
     exponential_backoff_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -632,6 +695,7 @@ gcs_placement_group_manager_cpp_lib_dep = declare_dependency(
 # NOTE: Bazel dep on gtest — per AGENTS.md §10, gtest is NOT added.
 # Vendored empty gtest.h stub handles accidental includes.
 gcs_autoscaler_state_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_init_data_cpp_lib_dep,
     gcs_kv_manager_cpp_lib_dep,
     gcs_node_manager_cpp_lib_dep,
@@ -640,7 +704,7 @@ gcs_autoscaler_state_manager_cpp_lib_dependencies = [
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated)
+    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated),
     ray_config_cpp_lib_dep,
     gcs_actor_manager_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
@@ -649,6 +713,8 @@ gcs_autoscaler_state_manager_cpp_lib_dependencies = [
     string_utils_cpp_lib_dep,
     thread_checker_cpp_lib_dep,
     time_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -668,6 +734,7 @@ gcs_autoscaler_state_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/grpc_services_cpp_lib (@original: grpc_services) ===
 gcs_grpc_services_cpp_lib_dependencies = [
+    # Package-managed
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -676,6 +743,8 @@ gcs_grpc_services_cpp_lib_dependencies = [
     grpc_server_cpp_lib_dep,
     rpc_callback_types_cpp_lib_dep,
     authentication_token_cpp_lib_dep,
+
+    # Eugo-managed
     grpc,
 ]
 
@@ -796,12 +865,15 @@ subdir('core_worker/')
 
 # === @begin: object_manager/ownership_object_directory_cpp_lib (@original: ownership_object_directory) ===
 ownership_object_directory_cpp_lib_dependencies = [
+    # Package-managed
     object_directory_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
     core_worker_client_pool_cpp_lib_dep,
     gcs_client_cpp_lib_dep,
     subscriber_interface_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -821,6 +893,7 @@ ownership_object_directory_cpp_lib_dep = declare_dependency(
 
 # === @begin: object_manager/pull_manager_cpp_lib (@original: pull_manager) ===
 pull_manager_cpp_lib_dependencies = [
+    # Package-managed
     object_manager_metrics_cpp_lib_dep,
     object_manager_common_cpp_lib_dep,
     ownership_object_directory_cpp_lib_dep,
@@ -831,6 +904,8 @@ pull_manager_cpp_lib_dependencies = [
     stats_metric_cpp_lib_dep,
     container_util_cpp_lib_dep,
     counter_map_cpp_lib_dep,
+
+    # Eugo-managed
     boost_asio,
     boost_bind,
     absl_container_flat_hash_map,

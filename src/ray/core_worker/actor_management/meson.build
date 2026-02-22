@@ -32,6 +32,7 @@ am_actor_handle_cpp_lib_dep = declare_dependency(
 
 # === @begin: am_actor_creator_cpp_lib (@original: actor_creator) ===
 am_actor_creator_cpp_lib_dependencies = [
+    # Package-managed
     gcs_client_cpp_lib_dep,
     thread_utils_cpp_lib_dep,
 ]
@@ -51,9 +52,15 @@ am_actor_creator_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: am_fake_actor_creator_cpp_lib (@original: fake_actor_creator) ===
+# Header-only
 # Header-only, just re-exports am_actor_creator_cpp_lib
+am_fake_actor_creator_cpp_lib_dependencies = [
+    # Package-managed
+    am_actor_creator_cpp_lib_dep,
+]
+
 am_fake_actor_creator_cpp_lib_dep = declare_dependency(
     sources: ['fake_actor_creator.h'],
-    dependencies: [am_actor_creator_cpp_lib_dep]
+    dependencies: am_fake_actor_creator_cpp_lib_dependencies
 )
 # === @end: am_fake_actor_creator_cpp_lib ===

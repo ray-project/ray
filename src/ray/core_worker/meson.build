@@ -16,7 +16,8 @@
 # === @begin: cw_metrics_cpp_lib (@original: metrics) ===
 # Header-only
 cw_metrics_cpp_lib_dependencies = [
-    stats_metric_cpp_lib_dep
+    # Package-managed
+    stats_metric_cpp_lib_dep,
 ]
 
 cw_metrics_cpp_lib_dep = declare_dependency(
@@ -28,6 +29,7 @@ cw_metrics_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_common_cpp_lib (@original: core_worker:common) ===
 cw_common_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     ray_object_cpp_lib_dep,
     task_common_cpp_lib_dep,
@@ -51,6 +53,7 @@ cw_common_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_grpc_service_cpp_lib (@original: grpc_service) ===
 cw_grpc_service_cpp_lib_dependencies = [
+    # Package-managed
     asio_cpp_lib_dep,
     core_worker_proto_cpp_grpc_lib_dep,
     core_worker_proto_cpp_lib_dep,
@@ -75,7 +78,8 @@ cw_grpc_service_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_shutdown_coordinator_cpp_lib (@original: shutdown_coordinator) ===
 cw_shutdown_coordinator_cpp_lib_dependencies = [
-    buffer_cpp_lib_dep,     # buffer (consolidated)
+    # Package-managed
+    buffer_cpp_lib_dep,     # buffer (consolidated),
     common_proto_cpp_lib_dep,
 ]
 
@@ -95,9 +99,12 @@ cw_shutdown_coordinator_cpp_lib_dep = declare_dependency(
 
 # === @begin: core_worker_context_cpp_lib (@original: core_worker_context) ===
 core_worker_context_cpp_lib_dependencies = [
+    # Package-managed
     cw_common_cpp_lib_dep,
     runtime_env_cpp_lib_dep,
     task_common_cpp_lib_dep,
+
+    # Eugo-managed
     boost_thread,
     absl_base_core_headers,
     absl_synchronization,
@@ -120,8 +127,11 @@ core_worker_context_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_lease_policy_cpp_lib (@original: lease_policy) ===
 cw_lease_policy_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     lease_cpp_lib_dep,
+
+    # Eugo-managed
     absl_base_core_headers,
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
@@ -144,12 +154,13 @@ cw_lease_policy_cpp_lib_dep = declare_dependency(
 # === @begin: cw_options_cpp_lib (@original: core_worker_options) ===
 # Header-only
 cw_options_cpp_lib_dependencies = [
-        cw_common_cpp_lib_dep,
-        id_cpp_lib_dep,
-        ray_object_cpp_lib_dep,
-        status_cpp_lib_dep,
-        gcs_client_cpp_lib_dep,
-        process_cpp_lib_dep,
+    # Package-managed
+    cw_common_cpp_lib_dep,
+    id_cpp_lib_dep,
+    ray_object_cpp_lib_dep,
+    status_cpp_lib_dep,
+    gcs_client_cpp_lib_dep,
+    process_cpp_lib_dep,
 ]
 cw_options_cpp_lib_dep = declare_dependency(
     sources: ['core_worker_options.h'],
@@ -161,13 +172,16 @@ cw_options_cpp_lib_dep = declare_dependency(
 # === @begin: cw_reference_counter_interface_cpp_lib (@original: reference_counter_interface) ===
 # Header-only
 cw_reference_counter_interface_cpp_lib_dependencies = [
-        id_cpp_lib_dep,
-        cw_lease_policy_cpp_lib_dep,
-        publisher_interface_cpp_lib_dep,
-        subscriber_interface_cpp_lib_dep,
-        rpc_utils_cpp_lib_dep,
-        absl_base_core_headers,
-        absl_synchronization,
+    # Package-managed
+    id_cpp_lib_dep,
+    cw_lease_policy_cpp_lib_dep,
+    publisher_interface_cpp_lib_dep,
+    subscriber_interface_cpp_lib_dep,
+    rpc_utils_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_base_core_headers,
+    absl_synchronization,
 ]
 
 cw_reference_counter_interface_cpp_lib_dep = declare_dependency(
@@ -232,6 +246,7 @@ cw_exp_mutable_object_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_task_event_buffer_cpp_lib (@original: task_event_buffer) ===
 cw_task_event_buffer_cpp_lib_dependencies = [
+    # Package-managed
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
     protobuf_utils_cpp_lib_dep,
@@ -243,6 +258,8 @@ cw_task_event_buffer_cpp_lib_dependencies = [
     counter_map_cpp_lib_dep,
     event_cpp_lib_dep,
     graceful_shutdown_cpp_lib_dep,
+
+    # Eugo-managed
     boost_circular_buffer,
     absl_base_core_headers,
     absl_synchronization,
@@ -265,6 +282,7 @@ cw_task_event_buffer_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_memory_store_cpp_lib (@original: memory_store) ===
 cw_memory_store_cpp_lib_dependencies = [
+    # Package-managed
     core_worker_context_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -274,6 +292,8 @@ cw_memory_store_cpp_lib_dependencies = [
     raylet_ipc_client_interface_cpp_lib_dep,
     rpc_utils_cpp_lib_dep,
     stats_metric_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
     absl_synchronization,
@@ -295,6 +315,7 @@ cw_memory_store_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_exp_mutable_object_provider_cpp_lib (@original: experimental_mutable_object_provider) ===
 cw_exp_mutable_object_provider_cpp_lib_dependencies = [
+    # Package-managed
     cw_exp_mutable_object_manager_cpp_lib_dep,
     asio_cpp_lib_dep,
     raylet_client_interface_cpp_lib_dep,
@@ -374,6 +395,7 @@ cw_plasma_store_provider_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_reference_counter_cpp_lib (@original: reference_counter) ===
 cw_reference_counter_cpp_lib_dependencies = [
+    # Package-managed
     cw_metrics_cpp_lib_dep,
     cw_reference_counter_interface_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -384,6 +406,8 @@ cw_reference_counter_cpp_lib_dependencies = [
     rpc_utils_cpp_lib_dep,
     logging_cpp_lib_dep,
     network_util_cpp_lib_dep,
+
+    # Eugo-managed
     absl_base_core_headers,
     absl_synchronization,
 ]
@@ -405,6 +429,7 @@ cw_reference_counter_cpp_lib_dep = declare_dependency(
 # === @begin: cw_task_manager_interface_cpp_lib (@original: task_manager_interface) ===
 # Header-only
 cw_task_manager_interface_cpp_lib_dependencies = [
+    # Package-managed
     cw_reference_counter_interface_cpp_lib_dep,
     id_cpp_lib_dep,
     status_cpp_lib_dep,
@@ -422,6 +447,7 @@ cw_task_manager_interface_cpp_lib_dep = declare_dependency(
 
 # === @begin: cw_future_resolver_cpp_lib (@original: future_resolver) ===
 cw_future_resolver_cpp_lib_dependencies = [
+    # Package-managed
     cw_memory_store_cpp_lib_dep,
     cw_reference_counter_interface_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -465,6 +491,7 @@ subdir('task_submission/')
 # physical file where it's defined: `cw_` = core_worker/, `am_` = actor_management/,
 # `ts_` = task_submission/, `task_exec_` = task_execution/.
 am_actor_manager_cpp_lib_dependencies = [
+    # Package-managed
     am_actor_creator_cpp_lib_dep,
     am_actor_handle_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -476,6 +503,8 @@ am_actor_manager_cpp_lib_dependencies = [
     ts_actor_task_submitter_cpp_lib_dep,
     gcs_client_cpp_lib_dep,
     core_worker_proto_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 

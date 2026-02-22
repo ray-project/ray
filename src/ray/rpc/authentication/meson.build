@@ -1,6 +1,9 @@
 # === @begin: authentication_mode_cpp_lib (@original: authentication_mode) ===
 authentication_mode_cpp_lib_dependencies = [
+    # Package-managed
     ray_config_cpp_lib_dep,
+
+    # Eugo-managed
     absl_strings,
 ]
 
@@ -19,8 +22,12 @@ authentication_mode_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: authentication_token_cpp_lib (@original: authentication_token) ===
+# Header-only
 authentication_token_cpp_lib_dependencies = [
+    # Package-managed
     constants_cpp_lib_dep,
+
+    # Eugo-managed
     grpc,
 ]
 
@@ -40,9 +47,12 @@ k8s_constants_cpp_lib_dep = declare_dependency(
 
 # === @begin: k8s_util_cpp_lib (@original: k8s_util) ===
 k8s_util_cpp_lib_dependencies = [
+    # Package-managed
     authentication_token_cpp_lib_dep,
     k8s_constants_cpp_lib_dep,
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     boost_asio_ssl,
     boost_beast,
     nlohmann_json,
@@ -64,10 +74,13 @@ k8s_util_cpp_lib_dep = declare_dependency(
 
 # === @begin: authentication_token_loader_cpp_lib (@original: authentication_token_loader) ===
 authentication_token_loader_cpp_lib_dependencies = [
+    # Package-managed
     authentication_mode_cpp_lib_dep,
     authentication_token_cpp_lib_dep,
     k8s_constants_cpp_lib_dep,
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     absl_strings,
     nlohmann_json,
 ]
@@ -88,9 +101,12 @@ authentication_token_loader_cpp_lib_dep = declare_dependency(
 
 # === @begin: token_auth_client_interceptor_cpp_lib (@original: token_auth_client_interceptor) ===
 token_auth_client_interceptor_cpp_lib_dependencies = [
+    # Package-managed
     authentication_token_cpp_lib_dep,
     authentication_token_loader_cpp_lib_dep,
     constants_cpp_lib_dep,
+
+    # Eugo-managed
     grpc,
 ]
 
@@ -110,6 +126,7 @@ token_auth_client_interceptor_cpp_lib_dep = declare_dependency(
 
 # === @begin: authentication_token_validator_cpp_lib (@original: authentication_token_validator) ===
 authentication_token_validator_cpp_lib_dependencies = [
+    # Package-managed
     authentication_mode_cpp_lib_dep,
     authentication_token_cpp_lib_dep,
     k8s_util_cpp_lib_dep,

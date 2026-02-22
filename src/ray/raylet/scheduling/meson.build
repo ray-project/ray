@@ -24,63 +24,78 @@
 
 
 # === @begin: scheduling_context_cpp_lib (@original: scheduling_context) ===
-# header-only
+# Header-only
+scheduling_context_cpp_lib_dependencies = [
+    # Package-managed
+    id_cpp_lib_dep,
+    task_common_cpp_lib_dep,     # covers //src/ray/common:placement_group,
+]
+
 scheduling_context_cpp_lib_dep = declare_dependency(
     sources: ['policy/scheduling_context.h'],
-    dependencies: [
-        id_cpp_lib_dep,
-        task_common_cpp_lib_dep,     # covers //src/ray/common:placement_group
-    ]
+    dependencies: scheduling_context_cpp_lib_dependencies
 )
 # === @end: scheduling_context_cpp_lib (@original: scheduling_context) ===
 
 
 # === @begin: scheduler_internal_cpp_lib (@original: scheduler_internal) ===
-# header-only
+# Header-only
+scheduler_internal_cpp_lib_dependencies = [
+    # Package-managed
+    task_common_cpp_lib_dep,     # covers //src/ray/common:lease,
+    cluster_resource_data_cpp_lib_dep,
+    node_manager_proto_cpp_lib_dep,
+    grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types,
+]
+
 scheduler_internal_cpp_lib_dep = declare_dependency(
     sources: ['internal.h'],
-    dependencies: [
-        task_common_cpp_lib_dep,     # covers //src/ray/common:lease
-        cluster_resource_data_cpp_lib_dep,
-        node_manager_proto_cpp_lib_dep,
-        grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types
-    ]
+    dependencies: scheduler_internal_cpp_lib_dependencies
 )
 # === @end: scheduler_internal_cpp_lib (@original: scheduler_internal) ===
 
 
 # === @begin: cluster_lease_manager_interface_cpp_lib (@original: cluster_lease_manager_interface) ===
-# header-only
+# Header-only
+cluster_lease_manager_interface_cpp_lib_dependencies = [
+    # Package-managed
+    node_manager_proto_cpp_lib_dep,
+    grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types,
+]
+
 cluster_lease_manager_interface_cpp_lib_dep = declare_dependency(
     sources: ['cluster_lease_manager_interface.h'],
-    dependencies: [
-        node_manager_proto_cpp_lib_dep,
-        grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types
-    ]
+    dependencies: cluster_lease_manager_interface_cpp_lib_dependencies
 )
 # === @end: cluster_lease_manager_interface_cpp_lib (@original: cluster_lease_manager_interface) ===
 
 
 # === @begin: scheduling_options_cpp_lib (@original: scheduling_options) ===
-# header-only
+# Header-only
+scheduling_options_cpp_lib_dependencies = [
+    # Package-managed
+    scheduling_context_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+]
+
 scheduling_options_cpp_lib_dep = declare_dependency(
     sources: ['policy/scheduling_options.h'],
-    dependencies: [
-        scheduling_context_cpp_lib_dep,
-        ray_config_cpp_lib_dep,
-    ]
+    dependencies: scheduling_options_cpp_lib_dependencies
 )
 # === @end: scheduling_options_cpp_lib (@original: scheduling_options) ===
 
 
 # === @begin: scheduling_policy_cpp_lib (@original: scheduling_policy) ===
-# header-only
+# Header-only
+scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
+    scheduling_options_cpp_lib_dep,
+    cluster_resource_data_cpp_lib_dep,
+]
+
 scheduling_policy_cpp_lib_dep = declare_dependency(
     sources: ['policy/scheduling_policy.h'],
-    dependencies: [
-        scheduling_options_cpp_lib_dep,
-        cluster_resource_data_cpp_lib_dep,
-    ]
+    dependencies: scheduling_policy_cpp_lib_dependencies
 )
 # === @end: scheduling_policy_cpp_lib (@original: scheduling_policy) ===
 
@@ -119,15 +134,18 @@ local_resource_manager_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: local_lease_manager_interface_cpp_lib (@original: local_lease_manager_interface) ===
-# header-only
+# Header-only
+local_lease_manager_interface_cpp_lib_dependencies = [
+    # Package-managed
+    scheduler_internal_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
 local_lease_manager_interface_cpp_lib_dep = declare_dependency(
     sources: ['local_lease_manager_interface.h'],
-    dependencies: [
-        scheduler_internal_cpp_lib_dep,
-        # NOT AVAILABLE (processed after): //src/ray/observability:fake_metric
-        # NOT AVAILABLE (processed after): //src/ray/raylet:metrics
-        absl_container_flat_hash_map,
-    ]
+    dependencies: local_lease_manager_interface_cpp_lib_dependencies
 )
 # === @end: local_lease_manager_interface_cpp_lib (@original: local_lease_manager_interface) ===
 
@@ -192,6 +210,7 @@ scheduler_resource_reporter_cpp_lib_dep = declare_dependency(
 
 # === @begin: scorer_cpp_lib (@original: scorer) ===
 scorer_cpp_lib_dependencies = [
+    # Package-managed
     cluster_resource_data_cpp_lib_dep,
 ]
 
@@ -278,6 +297,7 @@ node_label_scheduling_policy_cpp_lib_dep = declare_dependency(
 
 # === @begin: random_scheduling_policy_cpp_lib (@original: random_scheduling_policy) ===
 random_scheduling_policy_cpp_lib_dependencies = [
+    # Package-managed
     scheduling_policy_cpp_lib_dep,
 ]
 
@@ -428,7 +448,7 @@ local_lease_manager_cpp_lib_dependencies = [
     ray_object_cpp_lib_dep,
     cluster_resource_data_cpp_lib_dep,
     placement_group_util_cpp_lib_dep,
-    object_manager_common_dep,
+    object_manager_common_cpp_lib_dep,
 
     # NOT AVAILABLE (processed after): //src/ray/raylet:lease_dependency_manager
     # NOT AVAILABLE (processed after): //src/ray/raylet:metrics

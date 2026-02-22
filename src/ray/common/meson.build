@@ -1,5 +1,5 @@
 # === @begin: constants_cpp_lib (@original: constants) ===
-# header-only
+# Header-only
 constants_cpp_lib_dep = declare_dependency(
     sources: ['constants.h']
 )
@@ -7,7 +7,7 @@ constants_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: macros_cpp_lib (@original: macros) ===
-# header-only
+# Header-only
 macros_cpp_lib_dep = declare_dependency(
     sources: ['macros.h']
 )
@@ -55,15 +55,20 @@ status_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: status_or_cpp_lib (@original: status_or) ===
-# header-only
+# Header-only
+status_or_cpp_lib_dependencies = [
+    # Package-managed
+    macros_cpp_lib_dep,
+    status_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_base_core_headers,
+]
+
 status_or_cpp_lib_dep = declare_dependency(
     sources: ['status_or.h'],
-    dependencies: [
-        macros_cpp_lib_dep,
-        status_cpp_lib_dep,
-        logging_cpp_lib_dep,
-        absl_base_core_headers,
-    ]
+    dependencies: status_or_cpp_lib_dependencies
 )
 # === @end: status_or_cpp_lib (@original: status_or) ===
 
@@ -98,11 +103,12 @@ id_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: buffer_cpp_lib (@original: buffer) ===
-# header-only
+# Header-only
 buffer_cpp_lib_dependencies = [
-        status_cpp_lib_dep,
-        aligned_alloc_cpp_lib_dep,
-        logging_cpp_lib_dep,
+    # Package-managed
+    status_cpp_lib_dep,
+    aligned_alloc_cpp_lib_dep,
+    logging_cpp_lib_dep,
 ]
 
 buffer_cpp_lib_dep = declare_dependency(
@@ -166,35 +172,42 @@ ray_config_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: grpc_util_cpp_lib (@original: grpc_util) ===
-# header-only
+# Header-only
+grpc_util_cpp_lib_dependencies = [
+    # Package-managed
+    ray_config_cpp_lib_dep,
+    status_cpp_lib_dep,
+    logging_cpp_lib_dep,
+    type_traits_cpp_lib_dep,
+
+    # Eugo-managed
+    grpc,
+    absl_container_flat_hash_map,
+]
+
 grpc_util_cpp_lib_dep = declare_dependency(
     sources: ['grpc_util.h'],
-    dependencies: [
-        # Package-managed
-        ray_config_cpp_lib_dep,
-        status_cpp_lib_dep,
-        logging_cpp_lib_dep,
-        type_traits_cpp_lib_dep,
-
-        # Eugo-managed
-        grpc,
-        absl_container_flat_hash_map,
-    ]
+    dependencies: grpc_util_cpp_lib_dependencies
 )
 # === @end: grpc_util_cpp_lib (@original: grpc_util) ===
 
 
 # === @begin: flatbuf_utils_cpp_lib (@original: flatbuf_utils) ===
-# header-only
+# Header-only
+flatbuf_utils_cpp_lib_dependencies = [
+    # Eugo-managed
+    flatbuffers,
+]
+
 flatbuf_utils_cpp_lib_dep = declare_dependency(
     sources: ['flatbuf_utils.h'],
-    dependencies: [flatbuffers]
+    dependencies: flatbuf_utils_cpp_lib_dependencies
 )
 # === @end: flatbuf_utils_cpp_lib (@original: flatbuf_utils) ===
 
 
 # === @begin: python_callbacks_cpp_lib (@original: python_callbacks) ===
-# header-only
+# Header-only
 python_callbacks_cpp_lib_dep = declare_dependency(
     sources: ['python_callbacks.h']
 )
@@ -202,10 +215,15 @@ python_callbacks_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: metrics_cpp_lib (@original: metrics) ===
-# header-only
+# Header-only
+metrics_cpp_lib_dependencies = [
+    # Package-managed
+    stats_metric_cpp_lib_dep,
+]
+
 metrics_cpp_lib_dep = declare_dependency(
     sources: ['metrics.h'],
-    dependencies: [stats_metric_cpp_lib_dep]
+    dependencies: metrics_cpp_lib_dependencies
 )
 # === @end: metrics_cpp_lib (@original: metrics) ===
 
@@ -267,13 +285,18 @@ asio_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: memory_monitor_interface_cpp_lib (@original: memory_monitor_interface) ===
-# header-only
+# Header-only
+memory_monitor_interface_cpp_lib_dependencies = [
+    # Package-managed
+    compat_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
 memory_monitor_interface_cpp_lib_dep = declare_dependency(
     sources: ['memory_monitor_interface.h'],
-    dependencies: [
-        compat_cpp_lib_dep,
-        absl_container_flat_hash_map,
-    ]
+    dependencies: memory_monitor_interface_cpp_lib_dependencies
 )
 # === @end: memory_monitor_interface_cpp_lib (@original: memory_monitor_interface) ===
 
@@ -335,10 +358,15 @@ threshold_memory_monitor_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: noop_memory_monitor_cpp_lib (@original: noop_memory_monitor) ===
-# header-only
+# Header-only
+noop_memory_monitor_cpp_lib_dependencies = [
+    # Package-managed
+    memory_monitor_interface_cpp_lib_dep,
+]
+
 noop_memory_monitor_cpp_lib_dep = declare_dependency(
     sources: ['noop_memory_monitor.h'],
-    dependencies: [memory_monitor_interface_cpp_lib_dep]
+    dependencies: noop_memory_monitor_cpp_lib_dependencies
 )
 # === @end: noop_memory_monitor_cpp_lib (@original: noop_memory_monitor) ===
 

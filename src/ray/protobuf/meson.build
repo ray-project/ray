@@ -652,8 +652,11 @@ events_task_profile_events_proto_py = custom_target(
 
 # @begin: events_driver_job_lifecycle_event_proto_cpp_lib
 events_driver_job_lifecycle_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_driver_job_lifecycle_event_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_driver_job_lifecycle_event_proto_cpp_lib = static_library(
     'events_driver_job_lifecycle_event_proto_cpp_lib',
@@ -668,8 +671,11 @@ events_driver_job_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_node_definition_event_proto_cpp_lib
 events_node_definition_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_node_definition_event_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_node_definition_event_proto_cpp_lib = static_library(
     'events_node_definition_event_proto_cpp_lib',
@@ -684,8 +690,11 @@ events_node_definition_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_node_lifecycle_event_proto_cpp_lib
 events_node_lifecycle_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_node_lifecycle_event_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_node_lifecycle_event_proto_cpp_lib = static_library(
     'events_node_lifecycle_event_proto_cpp_lib',
@@ -702,9 +711,12 @@ events_node_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_actor_definition_event_proto_cpp_lib
 events_actor_definition_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_actor_definition_event_proto_cpp_dep,
     common_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_actor_definition_event_proto_cpp_lib = static_library(
     'events_actor_definition_event_proto_cpp_lib',
@@ -719,9 +731,12 @@ events_actor_definition_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_actor_lifecycle_event_proto_cpp_lib
 events_actor_lifecycle_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_actor_lifecycle_event_proto_cpp_dep,
     common_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_actor_lifecycle_event_proto_cpp_lib = static_library(
     'events_actor_lifecycle_event_proto_cpp_lib',
@@ -736,9 +751,12 @@ events_actor_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_task_lifecycle_event_proto_cpp_lib
 events_task_lifecycle_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_task_lifecycle_event_proto_cpp_dep,
     common_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_task_lifecycle_event_proto_cpp_lib = static_library(
     'events_task_lifecycle_event_proto_cpp_lib',
@@ -755,10 +773,13 @@ events_task_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_actor_task_definition_event_proto_cpp_lib
 events_actor_task_definition_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_actor_task_definition_event_proto_cpp_dep,
     runtime_environment_proto_cpp_dep,
     common_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_actor_task_definition_event_proto_cpp_lib = static_library(
     'events_actor_task_definition_event_proto_cpp_lib',
@@ -773,10 +794,13 @@ events_actor_task_definition_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_task_definition_event_proto_cpp_lib
 events_task_definition_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_task_definition_event_proto_cpp_dep,
     runtime_environment_proto_cpp_dep,
     common_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_task_definition_event_proto_cpp_lib = static_library(
     'events_task_definition_event_proto_cpp_lib',
@@ -791,10 +815,13 @@ events_task_definition_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_driver_job_definition_event_proto_cpp_lib
 events_driver_job_definition_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_driver_job_definition_event_proto_cpp_dep,
     runtime_environment_proto_cpp_dep,
     common_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_driver_job_definition_event_proto_cpp_lib = static_library(
     'events_driver_job_definition_event_proto_cpp_lib',
@@ -811,6 +838,7 @@ events_driver_job_definition_event_proto_cpp_lib_dep = declare_dependency(
 
 # @begin: events_base_event_proto_cpp_lib
 events_base_event_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_base_event_proto_cpp_dep,
     events_actor_definition_event_proto_cpp_dep,
     events_actor_lifecycle_event_proto_cpp_dep,
@@ -823,7 +851,9 @@ events_base_event_proto_cpp_lib_dependencies = [
     events_task_lifecycle_event_proto_cpp_dep,
     events_task_profile_events_proto_cpp_dep,
     common_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 events_base_event_proto_cpp_lib = static_library(
     'events_base_event_proto_cpp_lib',
@@ -857,8 +887,11 @@ events_event_aggregator_service_proto_cpp_dep = declare_dependency(
 )
 
 events_event_aggregator_service_proto_cpp_lib_dependencies = [
+    # Package-managed
     events_event_aggregator_service_proto_cpp_dep,
-    protobuf
+
+    # Eugo-managed
+    protobuf,
 ]
 
 events_event_aggregator_service_proto_cpp_lib = static_library(
@@ -884,10 +917,13 @@ events_event_aggregator_service_proto_cpp_grpc_dep = declare_dependency(
 )
 
 events_event_aggregator_service_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
     events_event_aggregator_service_proto_cpp_grpc_dep,
     events_event_aggregator_service_proto_cpp_lib_dep,
+
+    # Eugo-managed
     protobuf,
-    grpc
+    grpc,
 ]
 
 events_event_aggregator_service_proto_cpp_grpc_lib = static_library(

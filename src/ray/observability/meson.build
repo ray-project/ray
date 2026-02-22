@@ -13,29 +13,42 @@ metric_constants_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: ray_event_interface_cpp_lib (@original: ray_event_interface) ===
+# Header-only
+ray_event_interface_cpp_lib_dependencies = [
+    # Package-managed
+    events_base_event_proto_cpp_lib_dep,
+]
+
 ray_event_interface_cpp_lib_dep = declare_dependency(
     sources: ['ray_event_interface.h'],
-    dependencies: [events_base_event_proto_cpp_lib_dep]
+    dependencies: ray_event_interface_cpp_lib_dependencies
 )
 # === @end: ray_event_interface_cpp_lib ===
 
 
 # === @begin: ray_event_cpp_lib (@original: ray_event) ===
+# Header-only
+ray_event_cpp_lib_dependencies = [
+    # Package-managed
+    ray_event_interface_cpp_lib_dep,
+    grpc_util_cpp_lib_dep,
+    id_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_time,
+]
+
 ray_event_cpp_lib_dep = declare_dependency(
     sources: ['ray_event.h'],
-    dependencies: [
-        ray_event_interface_cpp_lib_dep,
-        grpc_util_cpp_lib_dep,
-        id_cpp_lib_dep,
-        gcs_proto_cpp_lib_dep,
-        absl_time,
-    ]
+    dependencies: ray_event_cpp_lib_dependencies
 )
 # === @end: ray_event_cpp_lib ===
 
 
 # === @begin: ray_driver_job_definition_event_cpp_lib (@original: ray_driver_job_definition_event) ===
 ray_driver_job_definition_event_cpp_lib_dependencies = [
+    # Package-managed
     ray_event_cpp_lib_dep,
     events_driver_job_definition_event_proto_cpp_lib_dep,
 ]
@@ -56,6 +69,7 @@ ray_driver_job_definition_event_cpp_lib_dep = declare_dependency(
 
 # === @begin: ray_driver_job_lifecycle_event_cpp_lib (@original: ray_driver_job_lifecycle_event) ===
 ray_driver_job_lifecycle_event_cpp_lib_dependencies = [
+    # Package-managed
     ray_event_cpp_lib_dep,
     events_driver_job_lifecycle_event_proto_cpp_lib_dep,
 ]
@@ -76,6 +90,7 @@ ray_driver_job_lifecycle_event_cpp_lib_dep = declare_dependency(
 
 # === @begin: ray_actor_definition_event_cpp_lib (@original: ray_actor_definition_event) ===
 ray_actor_definition_event_cpp_lib_dependencies = [
+    # Package-managed
     ray_event_cpp_lib_dep,
     label_selector_cpp_lib_dep,
     events_actor_definition_event_proto_cpp_lib_dep,
@@ -97,6 +112,7 @@ ray_actor_definition_event_cpp_lib_dep = declare_dependency(
 
 # === @begin: ray_actor_lifecycle_event_cpp_lib (@original: ray_actor_lifecycle_event) ===
 ray_actor_lifecycle_event_cpp_lib_dependencies = [
+    # Package-managed
     ray_event_cpp_lib_dep,
     events_actor_lifecycle_event_proto_cpp_lib_dep,
 ]
@@ -117,6 +133,7 @@ ray_actor_lifecycle_event_cpp_lib_dep = declare_dependency(
 
 # === @begin: ray_node_definition_event_cpp_lib (@original: ray_node_definition_event) ===
 ray_node_definition_event_cpp_lib_dependencies = [
+    # Package-managed
     ray_event_cpp_lib_dep,
     events_node_definition_event_proto_cpp_lib_dep,
 ]
@@ -137,6 +154,7 @@ ray_node_definition_event_cpp_lib_dep = declare_dependency(
 
 # === @begin: ray_node_lifecycle_event_cpp_lib (@original: ray_node_lifecycle_event) ===
 ray_node_lifecycle_event_cpp_lib_dependencies = [
+    # Package-managed
     ray_event_cpp_lib_dep,
     events_node_lifecycle_event_proto_cpp_lib_dep,
 ]
@@ -156,15 +174,22 @@ ray_node_lifecycle_event_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: ray_event_recorder_interface_cpp_lib (@original: ray_event_recorder_interface) ===
+# Header-only
+ray_event_recorder_interface_cpp_lib_dependencies = [
+    # Package-managed
+    ray_event_cpp_lib_dep,
+]
+
 ray_event_recorder_interface_cpp_lib_dep = declare_dependency(
     sources: ['ray_event_recorder_interface.h'],
-    dependencies: [ray_event_cpp_lib_dep]
+    dependencies: ray_event_recorder_interface_cpp_lib_dependencies
 )
 # === @end: ray_event_recorder_interface_cpp_lib ===
 
 
 # === @begin: ray_event_recorder_cpp_lib (@original: ray_event_recorder) ===
 ray_event_recorder_cpp_lib_dependencies = [
+    # Package-managed
     metric_interface_cpp_lib_dep,
     ray_event_cpp_lib_dep,
     ray_event_recorder_interface_cpp_lib_dep,
@@ -174,6 +199,8 @@ ray_event_recorder_cpp_lib_dependencies = [
     event_aggregator_client_cpp_lib_dep,
     graceful_shutdown_cpp_lib_dep,
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     boost_circular_buffer,
 ]
 
@@ -195,12 +222,15 @@ ray_event_recorder_cpp_lib_dep = declare_dependency(
 # NOTE: OpenTelemetry C++ SDK deps (@io_opentelemetry_cpp) may need to be added
 # to eugo/dependencies/meson.build if not provided transitively.
 open_telemetry_metric_recorder_cpp_lib_dependencies = [
+    # Package-managed
     constants_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     rpc_common_cpp_lib_dep,
     authentication_mode_cpp_lib_dep,
     authentication_token_loader_cpp_lib_dep,
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -219,9 +249,15 @@ open_telemetry_metric_recorder_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: observability_metrics_cpp_lib (@original: metrics) ===
+# Header-only
+observability_metrics_cpp_lib_dependencies = [
+    # Package-managed
+    stats_cpp_lib_dep,
+]
+
 observability_metrics_cpp_lib_dep = declare_dependency(
     sources: ['metrics.h'],
-    dependencies: [stats_cpp_lib_dep]
+    dependencies: observability_metrics_cpp_lib_dependencies
 )
 # === @end: observability_metrics_cpp_lib ===
 

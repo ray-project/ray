@@ -60,23 +60,42 @@ stream_redirection_options_cpp_lib_dep = declare_dependency(
 # === @end: stream_redirection_options_cpp_lib (@original: stream_redirection_options) ===
 
 # === @begin: random_cpp_lib (@original: random) ===
+# Header-only
+random_cpp_lib_dependencies = [
+    # Eugo-managed
+    absl_random_random,
+]
+
 random_cpp_lib_dep = declare_dependency(
     sources: ['random.h'],
-    dependencies: [absl_random_random]
+    dependencies: random_cpp_lib_dependencies
 )
 # === @end: random_cpp_lib (@original: random) ===
 
 # === @begin: mutex_protected_cpp_lib (@original: mutex_protected) ===
+# Header-only
+mutex_protected_cpp_lib_dependencies = [
+    # Eugo-managed
+    absl_synchronization,
+]
+
 mutex_protected_cpp_lib_dep = declare_dependency(
     sources: ['mutex_protected.h'],
-    dependencies: [absl_synchronization]
+    dependencies: mutex_protected_cpp_lib_dependencies
 )
 # === @end: mutex_protected_cpp_lib (@original: mutex_protected) ===
 
 # === @begin: sequencer_cpp_lib (@original: sequencer) ===
+# Header-only
+sequencer_cpp_lib_dependencies = [
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    absl_synchronization,
+]
+
 sequencer_cpp_lib_dep = declare_dependency(
     sources: ['sequencer.h'],
-    dependencies: [absl_container_flat_hash_map, absl_synchronization]
+    dependencies: sequencer_cpp_lib_dependencies
 )
 # === @end: sequencer_cpp_lib (@original: sequencer) ===
 
@@ -119,16 +138,31 @@ thread_checker_cpp_lib_dep = declare_dependency(
 # ============================================================
 
 # === @begin: thread_utils_cpp_lib (@original: thread_utils) ===
+# Header-only
+thread_utils_cpp_lib_dependencies = [
+    # Package-managed
+    thread_checker_cpp_lib_dep,
+]
+
 thread_utils_cpp_lib_dep = declare_dependency(
     sources: ['thread_utils.h'],
-    dependencies: [thread_checker_cpp_lib_dep]
+    dependencies: thread_utils_cpp_lib_dependencies
 )
 # === @end: thread_utils_cpp_lib (@original: thread_utils) ===
 
 # === @begin: concurrent_flat_map_cpp_lib (@original: concurrent_flat_map) ===
+# Header-only
+concurrent_flat_map_cpp_lib_dependencies = [
+    # Package-managed
+    mutex_protected_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
 concurrent_flat_map_cpp_lib_dep = declare_dependency(
     sources: ['concurrent_flat_map.h'],
-    dependencies: [mutex_protected_cpp_lib_dep, absl_container_flat_hash_map]
+    dependencies: concurrent_flat_map_cpp_lib_dependencies
 )
 # === @end: concurrent_flat_map_cpp_lib (@original: concurrent_flat_map) ===
 
@@ -167,44 +201,71 @@ logging_cpp_lib_dep = declare_dependency(
 # --- Header-only targets depending on logging ---
 
 # === @begin: graceful_shutdown_cpp_lib (@original: graceful_shutdown) ===
+# Header-only
+graceful_shutdown_cpp_lib_dependencies = [
+    # Package-managed
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_time,
+]
+
 graceful_shutdown_cpp_lib_dep = declare_dependency(
     sources: ['graceful_shutdown.h'],
-    dependencies: [logging_cpp_lib_dep, absl_time]
+    dependencies: graceful_shutdown_cpp_lib_dependencies
 )
 # === @end: graceful_shutdown_cpp_lib (@original: graceful_shutdown) ===
 
 # === @begin: container_util_cpp_lib (@original: container_util) ===
+# Header-only
+container_util_cpp_lib_dependencies = [
+    # Package-managed
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    absl_container_flat_hash_set,
+    absl_container_flat_hash_map,  # TODO: should be absl_container_inlined_vector,
+]
+
 container_util_cpp_lib_dep = declare_dependency(
     sources: ['container_util.h'],
-    dependencies: [
-        logging_cpp_lib_dep,
-        absl_container_flat_hash_map,
-        absl_container_flat_hash_set,
-        absl_container_flat_hash_map,  # TODO: should be absl_container_inlined_vector
-    ]
+    dependencies: container_util_cpp_lib_dependencies
 )
 # === @end: container_util_cpp_lib (@original: container_util) ===
 
 # === @begin: counter_map_cpp_lib (@original: counter_map) ===
+# Header-only
+counter_map_cpp_lib_dependencies = [
+    # Package-managed
+    logging_cpp_lib_dep,
+    mutex_protected_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    absl_container_flat_hash_set,
+]
+
 counter_map_cpp_lib_dep = declare_dependency(
     sources: ['counter_map.h'],
-    dependencies: [
-        logging_cpp_lib_dep,
-        mutex_protected_cpp_lib_dep,
-        absl_container_flat_hash_map,
-        absl_container_flat_hash_set,
-    ]
+    dependencies: counter_map_cpp_lib_dependencies
 )
 # === @end: counter_map_cpp_lib (@original: counter_map) ===
 
 # === @begin: shared_lru_cpp_lib (@original: shared_lru) ===
+# Header-only
+shared_lru_cpp_lib_dependencies = [
+    # Package-managed
+    logging_cpp_lib_dep,
+    map_utils_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
 shared_lru_cpp_lib_dep = declare_dependency(
     sources: ['shared_lru.h'],
-    dependencies: [
-        logging_cpp_lib_dep,
-        map_utils_cpp_lib_dep,
-        absl_container_flat_hash_map,
-    ]
+    dependencies: shared_lru_cpp_lib_dependencies
 )
 # === @end: shared_lru_cpp_lib (@original: shared_lru) ===
 
@@ -212,7 +273,10 @@ shared_lru_cpp_lib_dep = declare_dependency(
 
 # === @begin: env_cpp_lib (@original: env) ===
 env_cpp_lib_dependencies = [
+    # Package-managed
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     absl_strings,
 ]
 
@@ -230,6 +294,7 @@ env_cpp_lib_dep = declare_dependency(
 
 # === @begin: exponential_backoff_cpp_lib (@original: exponential_backoff) ===
 exponential_backoff_cpp_lib_dependencies = [
+    # Package-managed
     logging_cpp_lib_dep,
 ]
 
@@ -247,6 +312,7 @@ exponential_backoff_cpp_lib_dep = declare_dependency(
 
 # === @begin: scoped_env_setter_cpp_lib (@original: scoped_env_setter) ===
 scoped_env_setter_cpp_lib_dependencies = [
+    # Package-managed
     env_cpp_lib_dep,
 ]
 
@@ -344,6 +410,7 @@ compat_cpp_lib_dep = declare_dependency(
 
 # === @begin: cmd_line_utils_cpp_lib (@original: cmd_line_utils) ===
 cmd_line_utils_cpp_lib_dependencies = [
+    # Package-managed
     logging_cpp_lib_dep,
     string_utils_cpp_lib_dep,
 ]
@@ -362,6 +429,7 @@ cmd_line_utils_cpp_lib_dep = declare_dependency(
 
 # === @begin: path_utils_cpp_lib (@original: path_utils) ===
 path_utils_cpp_lib_dependencies = [
+    # Eugo-managed
     absl_strings,
 ]
 
@@ -385,28 +453,51 @@ path_utils_cpp_lib_dep = declare_dependency(
 # --- Header-only targets depending on compat ---
 
 # === @begin: process_interface_cpp_lib (@original: process_interface) ===
+# Header-only
+process_interface_cpp_lib_dependencies = [
+    # Package-managed
+    compat_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
 process_interface_cpp_lib_dep = declare_dependency(
     sources: ['process_interface.h'],
-    dependencies: [compat_cpp_lib_dep, absl_container_flat_hash_map]
+    dependencies: process_interface_cpp_lib_dependencies
 )
 # === @end: process_interface_cpp_lib (@original: process_interface) ===
 
 # === @begin: spdlog_fd_sink_cpp_lib (@original: spdlog_fd_sink) ===
+# Header-only
 # Bazel deps: //src/ray/common:status
+spdlog_fd_sink_cpp_lib_dependencies = [
+    # Package-managed
+    compat_cpp_lib_dep,
+
+    # Eugo-managed
+    spdlog,
+]
+
 spdlog_fd_sink_cpp_lib_dep = declare_dependency(
     sources: ['spdlog_fd_sink.h'],
-    dependencies: [
-        compat_cpp_lib_dep,
-        # status_cpp_lib_dep,  # circular: common/ processed after util/
-        spdlog,
-    ]
+    dependencies: spdlog_fd_sink_cpp_lib_dependencies
 )
 # === @end: spdlog_fd_sink_cpp_lib (@original: spdlog_fd_sink) ===
 
 # === @begin: spdlog_newliner_sink_cpp_lib (@original: spdlog_newliner_sink) ===
+# Header-only
+spdlog_newliner_sink_cpp_lib_dependencies = [
+    # Package-managed
+    compat_cpp_lib_dep,
+
+    # Eugo-managed
+    spdlog,
+]
+
 spdlog_newliner_sink_cpp_lib_dep = declare_dependency(
     sources: ['spdlog_newliner_sink.h'],
-    dependencies: [compat_cpp_lib_dep, spdlog]
+    dependencies: spdlog_newliner_sink_cpp_lib_dependencies
 )
 # === @end: spdlog_newliner_sink_cpp_lib (@original: spdlog_newliner_sink) ===
 
@@ -414,6 +505,7 @@ spdlog_newliner_sink_cpp_lib_dep = declare_dependency(
 
 # === @begin: scoped_dup2_wrapper_cpp_lib (@original: scoped_dup2_wrapper) ===
 scoped_dup2_wrapper_cpp_lib_dependencies = [
+    # Package-managed
     compat_cpp_lib_dep,
     logging_cpp_lib_dep,
 ]
@@ -432,8 +524,11 @@ scoped_dup2_wrapper_cpp_lib_dep = declare_dependency(
 
 # === @begin: network_util_cpp_lib (@original: network_util) ===
 network_util_cpp_lib_dependencies = [
+    # Package-managed
     filesystem_cpp_lib_dep,
     string_utils_cpp_lib_dep,
+
+    # Eugo-managed
     boost_asio,
     gflags,
     absl_container_flat_hash_map,
@@ -455,8 +550,11 @@ network_util_cpp_lib_dep = declare_dependency(
 # === @begin: process_utils_cpp_lib (@original: process_utils) ===
 # Bazel deps: select linux: //src/ray/util:filesystem
 process_utils_cpp_lib_dependencies = [
+    # Package-managed
     compat_cpp_lib_dep,
     logging_cpp_lib_dep,
+
+    # Eugo-managed
     absl_strings,
 ]
 
@@ -522,9 +620,15 @@ temporary_directory_cpp_lib_dep = declare_dependency(
 # ============================================================
 
 # === @begin: fake_process_cpp_lib (@original: fake_process) ===
+# Header-only
+fake_process_cpp_lib_dependencies = [
+    # Package-managed
+    process_interface_cpp_lib_dep,
+]
+
 fake_process_cpp_lib_dep = declare_dependency(
     sources: ['fake_process.h'],
-    dependencies: [process_interface_cpp_lib_dep]
+    dependencies: fake_process_cpp_lib_dependencies
 )
 # === @end: fake_process_cpp_lib (@original: fake_process) ===
 
@@ -630,10 +734,13 @@ subdir('internal/')
 
 # === @begin: stream_redirection_cpp_lib (@original: stream_redirection) ===
 stream_redirection_cpp_lib_dependencies = [
+    # Package-managed
     pipe_logger_cpp_lib_dep,
     scoped_dup2_wrapper_cpp_lib_dep,
     stream_redirection_options_cpp_lib_dep,
     stream_redirection_handle_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 

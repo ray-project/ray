@@ -56,6 +56,7 @@ label_selector_cpp_lib_dep = declare_dependency(
 
 # === @begin: fixed_point_cpp_lib (@original: fixed_point) ===
 fixed_point_cpp_lib_dependencies = [
+    # Package-managed
     constants_cpp_lib_dep,
 ]
 

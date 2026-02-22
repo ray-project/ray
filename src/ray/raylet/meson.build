@@ -1,17 +1,22 @@
 # === @begin: raylet_metrics_cpp_lib (@original: metrics) ===
+# Header-only
 # Defined early because worker_pool depends on it
+raylet_metrics_cpp_lib_dependencies = [
+    # Package-managed
+    observability_metrics_cpp_lib_dep,
+    stats_cpp_lib_dep,
+]
+
 raylet_metrics_cpp_lib_dep = declare_dependency(
     sources: ['metrics.h'],
-    dependencies: [
-        observability_metrics_cpp_lib_dep,
-        stats_cpp_lib_dep,
-    ]
+    dependencies: raylet_metrics_cpp_lib_dependencies
 )
 # === @end: raylet_metrics_cpp_lib ===
 
 
 # === @begin: agent_manager_cpp_lib (@original: agent_manager) ===
 agent_manager_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
@@ -21,6 +26,8 @@ agent_manager_cpp_lib_dependencies = [
     process_interface_cpp_lib_dep,
     process_utils_cpp_lib_dep,
     thread_utils_cpp_lib_dep,
+
+    # Eugo-managed
     boost_asio,
 ]
 
@@ -40,6 +47,7 @@ agent_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: wait_manager_cpp_lib (@original: wait_manager) ===
 wait_manager_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     container_util_cpp_lib_dep,
 ]
@@ -60,9 +68,12 @@ wait_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: lease_dependency_manager_cpp_lib (@original: lease_dependency_manager) ===
 lease_dependency_manager_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     object_manager_cpp_lib_dep,
     counter_map_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
 ]
@@ -83,10 +94,13 @@ lease_dependency_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: placement_group_resource_manager_cpp_lib (@original: placement_group_resource_manager) ===
 placement_group_resource_manager_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     gcs_client_cpp_lib_dep,
     cluster_resource_scheduler_cpp_lib_dep,
     container_util_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
 ]
 
@@ -105,19 +119,26 @@ placement_group_resource_manager_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: worker_interface_cpp_lib (@original: worker_interface) ===
+# Header-only
+worker_interface_cpp_lib_dependencies = [
+    # Package-managed
+    id_cpp_lib_dep,
+    process_interface_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_time,
+]
+
 worker_interface_cpp_lib_dep = declare_dependency(
     sources: ['worker_interface.h'],
-    dependencies: [
-        id_cpp_lib_dep,
-        process_interface_cpp_lib_dep,
-        absl_time,
-    ]
+    dependencies: worker_interface_cpp_lib_dependencies
 )
 # === @end: worker_interface_cpp_lib ===
 
 
 # === @begin: runtime_env_agent_client_cpp_lib (@original: runtime_env_agent_client) ===
 runtime_env_agent_client_cpp_lib_dependencies = [
+    # Package-managed
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
     ray_config_cpp_lib_dep,
@@ -128,6 +149,8 @@ runtime_env_agent_client_cpp_lib_dependencies = [
     logging_cpp_lib_dep,
     process_utils_cpp_lib_dep,
     time_cpp_lib_dep,
+
+    # Eugo-managed
     boost_beast,
     absl_container_flat_hash_set,
     absl_strings,
@@ -149,9 +172,10 @@ runtime_env_agent_client_cpp_lib_dep = declare_dependency(
 
 # === @begin: worker_cpp_lib (@original: worker) ===
 worker_cpp_lib_dependencies = [
+    # Package-managed
     worker_interface_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # lease (consolidated)
+    ray_common_cpp_lib_dep,     # lease (consolidated),
     core_worker_client_cpp_lib_dep,
     node_manager_cpp_fbs_lib_dep,
     core_worker_proto_cpp_grpc_lib_dep,
@@ -160,6 +184,8 @@ worker_cpp_lib_dependencies = [
     client_connection_cpp_lib_dep,
     process_cpp_lib_dep,
     process_interface_cpp_lib_dep,
+
+    # Eugo-managed
     absl_time,
 ]
 
@@ -179,11 +205,12 @@ worker_cpp_lib_dep = declare_dependency(
 
 # === @begin: worker_pool_cpp_lib (@original: worker_pool) ===
 worker_pool_cpp_lib_dependencies = [
+    # Package-managed
     raylet_metrics_cpp_lib_dep,
     runtime_env_agent_client_cpp_lib_dep,
     worker_interface_cpp_lib_dep,
     constants_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # lease, protobuf_utils, runtime_env, status (consolidated)
+    ray_common_cpp_lib_dep,     # lease, protobuf_utils, runtime_env, status (consolidated),
     ray_config_cpp_lib_dep,
     core_worker_client_interface_cpp_lib_dep,
     gcs_client_cpp_lib_dep,
@@ -194,6 +221,8 @@ worker_pool_cpp_lib_dependencies = [
     process_cpp_lib_dep,
     process_utils_cpp_lib_dep,
     time_cpp_lib_dep,
+
+    # Eugo-managed
     boost_system,
     absl_container_flat_hash_map,
     absl_strings,
@@ -215,9 +244,12 @@ worker_pool_cpp_lib_dep = declare_dependency(
 
 # === @begin: worker_killing_policy_cpp_lib (@original: worker_killing_policy) ===
 worker_killing_policy_cpp_lib_dependencies = [
+    # Package-managed
     worker_interface_cpp_lib_dep,
     worker_pool_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # lease, memory_monitor_interface (consolidated)
+    ray_common_cpp_lib_dep,     # lease, memory_monitor_interface (consolidated),
+
+    # Eugo-managed
     absl_time,
 ]
 
@@ -239,27 +271,38 @@ worker_killing_policy_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: throttler_cpp_lib (@original: throttler) ===
+# Header-only
+throttler_cpp_lib_dependencies = [
+    # Eugo-managed
+    absl_time,
+]
+
 throttler_cpp_lib_dep = declare_dependency(
     sources: ['throttler.h'],
-    dependencies: [absl_time]
+    dependencies: throttler_cpp_lib_dependencies
 )
 # === @end: throttler_cpp_lib ===
 
 
 # === @begin: local_object_manager_interface_cpp_lib (@original: local_object_manager_interface) ===
+# Header-only
+local_object_manager_interface_cpp_lib_dependencies = [
+    # Package-managed
+    id_cpp_lib_dep,
+    ray_object_cpp_lib_dep,
+    node_manager_proto_cpp_lib_dep,
+]
+
 local_object_manager_interface_cpp_lib_dep = declare_dependency(
     sources: ['local_object_manager_interface.h'],
-    dependencies: [
-        id_cpp_lib_dep,
-        ray_object_cpp_lib_dep,
-        node_manager_proto_cpp_lib_dep,
-    ]
+    dependencies: local_object_manager_interface_cpp_lib_dependencies
 )
 # === @end: local_object_manager_interface_cpp_lib ===
 
 
 # === @begin: local_object_manager_cpp_lib (@original: local_object_manager) ===
 local_object_manager_cpp_lib_dependencies = [
+    # Package-managed
     local_object_manager_interface_cpp_lib_dep,
     worker_pool_cpp_lib_dep,
     asio_cpp_lib_dep,
@@ -270,6 +313,8 @@ local_object_manager_cpp_lib_dependencies = [
     node_manager_proto_cpp_lib_dep,
     subscriber_interface_cpp_lib_dep,
     time_cpp_lib_dep,
+
+    # Eugo-managed
     absl_strings,
 ]
 
@@ -289,6 +334,7 @@ local_object_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: raylet_cpp_lib (@original: raylet_lib) ===
 raylet_cpp_lib_dependencies = [
+    # Package-managed
     agent_manager_cpp_lib_dep,
     lease_dependency_manager_cpp_lib_dep,
     local_object_manager_interface_cpp_lib_dep,
@@ -299,7 +345,7 @@ raylet_cpp_lib_dependencies = [
     worker_cpp_lib_dep,
     worker_killing_policy_cpp_lib_dep,
     worker_pool_cpp_lib_dep,
-    ray_common_cpp_lib_dep,         # buffer, flatbuf_utils, lease, memory_monitor (consolidated)
+    ray_common_cpp_lib_dep,         # buffer, flatbuf_utils, lease, memory_monitor (consolidated),
     cgroup_manager_interface_cpp_lib_dep,
     core_worker_client_pool_cpp_lib_dep,
     node_manager_cpp_fbs_lib_dep,
@@ -321,6 +367,8 @@ raylet_cpp_lib_dependencies = [
     process_utils_cpp_lib_dep,
     time_cpp_lib_dep,
     util_cpp_lib_dep,
+
+    # Eugo-managed
     boost_system,
     absl_base_core_headers,
     absl_container_flat_hash_map,

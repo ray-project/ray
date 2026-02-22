@@ -1,5 +1,6 @@
 # === @begin: gcs_actor_cpp_lib (@original: gcs_actor) ===
 gcs_actor_cpp_lib_dependencies = [
+    # Package-managed
     id_cpp_lib_dep,
     lease_cpp_lib_dep,
     task_common_cpp_lib_dep,
@@ -34,6 +35,7 @@ gcs_actor_cpp_lib_dep = declare_dependency(
 # NOTE: Bazel dep on gtest — per AGENTS.md §10, gtest is NOT added.
 # Vendored empty gtest.h stub handles FRIEND_TEST.
 gcs_actor_scheduler_cpp_lib_dependencies = [
+    # Package-managed
     gcs_actor_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
@@ -45,6 +47,8 @@ gcs_actor_scheduler_cpp_lib_dependencies = [
     raylet_client_pool_cpp_lib_dep,
     logging_cpp_lib_dep,
     time_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
 ]
@@ -67,6 +71,7 @@ gcs_actor_scheduler_cpp_lib_dep = declare_dependency(
 # NOTE: Bazel dep on gtest — per AGENTS.md §10, gtest is NOT added.
 # Vendored empty gtest.h stub handles FRIEND_TEST.
 gcs_actor_manager_cpp_lib_dependencies = [
+    # Package-managed
     gcs_actor_cpp_lib_dep,
     gcs_actor_scheduler_cpp_lib_dep,
     asio_cpp_lib_dep,
@@ -90,6 +95,8 @@ gcs_actor_manager_cpp_lib_dependencies = [
     logging_cpp_lib_dep,
     thread_checker_cpp_lib_dep,
     time_cpp_lib_dep,
+
+    # Eugo-managed
     absl_container_flat_hash_map,
     absl_container_flat_hash_set,
 ]
