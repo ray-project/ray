@@ -63,6 +63,8 @@ class DelegatingBlockBuilder(BlockBuilder):
         if self._builder is None:
             if self._empty_block is not None:
                 self._builder = BlockAccessor.for_block(self._empty_block).builder()
+                if isinstance(self._builder, ArrowBlockBuilder) and self._schema_hint is not None:
+                    self._builder._schema = self._schema_hint
                 self._builder.add_block(self._empty_block)
             else:
                 self._builder = ArrowBlockBuilder(schema=self._schema_hint)
