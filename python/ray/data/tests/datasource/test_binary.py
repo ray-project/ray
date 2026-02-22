@@ -6,7 +6,6 @@ import snappy
 
 import ray
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.util import extract_values, gen_bin_files
 from ray.tests.conftest import *  # noqa
 
