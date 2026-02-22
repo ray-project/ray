@@ -1,4 +1,3 @@
-import functools
 import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
@@ -273,9 +272,7 @@ class Planner:
         self,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
         plan_fns = {
-            Read: functools.partial(
-                plan_read_op_with_checkpoint_filter,
-            ),
+            Read: plan_read_op_with_checkpoint_filter,
             Write: plan_write_op_with_checkpoint_writer,
         }
         return plan_fns
