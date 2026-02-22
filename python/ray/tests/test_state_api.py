@@ -2281,6 +2281,77 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
     await async_wait_for_condition(verify)
 
 
+@pytest.mark.asyncio
+async def test_get_all_node_info_with_filters(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    cluster.add_node(
+        num_cpus=0,  # no cpus to avoid scheduling failure. We are not running
+        # any workloads so this should be safe.
+        node_name="worker_node_1",
+        dashboard_agent_listen_port=find_free_port(),
+    )
+    cluster.add_node(
+        num_cpus=0,
+        node_name="worker_node_2",
+        dashboard_agent_listen_port=find_free_port(),
+    )
+
+    client = state_source_client(cluster.address)
+
+    # Get all nodes' info
+    result = {}
+
+    async def verify_all_nodes():
+        all_nodes_reply = await client.get_all_node_info()
+        assert len(all_nodes_reply.node_info_list) == 3
+        assert all_nodes_reply.total == 3
+        assert all_nodes_reply.num_filtered == 0
+        node_names = {node.node_name for node in all_nodes_reply.node_info_list}
+        assert node_names == {"head_node", "worker_node_1", "worker_node_2"}
+        result["all_nodes_reply"] = all_nodes_reply
+        return True
+
+    await async_wait_for_condition(
+        verify_all_nodes, timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS
+    )
+
+    node_name_to_id = {
+        node.node_name: node.node_id.hex()
+        for node in result["all_nodes_reply"].node_info_list
+    }
+
+    # Get a specific node using node_id filter
+    head_node_id = node_name_to_id["head_node"]
+
+    async def verify_single_node():
+        single_node_reply = await client.get_all_node_info(
+            filters=[("node_id", "=", head_node_id)]
+        )
+        assert len(single_node_reply.node_info_list) == 1
+        assert single_node_reply.node_info_list[0].node_name == "head_node"
+        assert single_node_reply.node_info_list[0].node_id.hex() == head_node_id
+        return True
+
+    await async_wait_for_condition(verify_single_node)
+
+    # Get multiple nodes using node_name filters
+    async def verify_multi_node():
+        multi_node_reply = await client.get_all_node_info(
+            filters=[
+                ("node_name", "=", "worker_node_1"),
+                ("node_name", "=", "worker_node_2"),
+            ]
+        )
+        assert len(multi_node_reply.node_info_list) == 2
+        returned_names = {node.node_name for node in multi_node_reply.node_info_list}
+        assert returned_names == {"worker_node_1", "worker_node_2"}
+        return True
+
+    await async_wait_for_condition(verify_multi_node)
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Failed on Windows",

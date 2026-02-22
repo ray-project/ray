@@ -298,6 +298,32 @@ void NodeInfoAccessor::AsyncGetAll(
       timeout_ms);
 }
 
+void NodeInfoAccessor::AsyncGetAllNodeInfoReply(
+    const rpc::OptionalItemCallback<rpc::GetAllNodeInfoReply> &callback,
+    int64_t timeout_ms,
+    const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
+    const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
+    const std::optional<int64_t> &limit) const {
+  rpc::GetAllNodeInfoRequest request;
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
+  }
+  for (const auto &node_selector : node_selectors) {
+    *request.add_node_selectors() = node_selector;
+  }
+  if (limit.has_value()) {
+    request.set_limit(limit.value());
+  }
+  client_impl_->GetGcsRpcClient().GetAllNodeInfo(
+      std::move(request),
+      [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
+        callback(status, std::move(reply));
+        RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
+                       << status;
+      },
+      timeout_ms);
+}
+
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
     std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
     rpc::StatusCallback done) {

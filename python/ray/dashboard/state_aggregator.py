@@ -190,9 +190,9 @@ class StateAPIManager:
 
         def transform(reply) -> ListApiResponse:
             result = []
-            for message in reply.node_info_list:
+            for node_info in reply.node_info_list:
                 data = protobuf_message_to_dict(
-                    message=message, fields_to_decode=["node_id"]
+                    message=node_info, fields_to_decode=["node_id"]
                 )
                 data["node_ip"] = data["node_manager_address"]
                 data["start_time_ms"] = int(data["start_time_ms"])

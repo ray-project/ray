@@ -24,6 +24,7 @@ from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
+    CGetAllNodeInfoReply,
     ConnectOnSingletonIoContext,
     MultiItemPyCallback,
     OptionalItemPyCallback,
@@ -393,6 +394,60 @@ cdef class InnerGcsClient:
                 c_node_ids)
         return asyncio.wrap_future(fut)
 
+    def async_get_all_node_info_reply(
+        self, timeout: Optional[int | float] = None,
+        node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
+        state_filter: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> Future:
+        """Async get all node info with optional filters.
+
+        Args:
+            timeout: Timeout in seconds
+            node_selectors: Optional list of GetAllNodeInfoRequest.NodeSelector
+                proto objects to filter nodes.
+            state_filter: Optional int representing the GcsNodeState enum value
+                to filter by node state.
+            limit: Maximum number of nodes to return
+
+        Returns:
+            Future that resolves to GetAllNodeInfoReply protobuf object
+        """
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            optional[CGcsNodeState] c_state_filter = nullopt
+            c_vector[CNodeSelector] c_node_selectors
+            CNodeSelector c_node_selector
+            optional[int64_t] c_limit = nullopt
+            fut = incremented_fut()
+
+        # Convert state_filter int to CGcsNodeState
+        if state_filter is not None:
+            c_state_filter.emplace(<CGcsNodeState>state_filter)
+
+        # Convert Python NodeSelector protos to C++ CNodeSelector
+        if node_selectors is not None:
+            for py_selector in node_selectors:
+                c_node_selector = CNodeSelector()
+                c_node_selector.ParseFromString(py_selector.SerializeToString())
+                c_node_selectors.push_back(c_node_selector)
+
+        # Set limit if provided
+        if limit is not None:
+            c_limit = <int64_t>limit
+
+        with nogil:
+            self.inner.get().Nodes().AsyncGetAllNodeInfoReply(
+                OptionalItemPyCallback[CGetAllNodeInfoReply](
+                    convert_get_all_node_info_reply,
+                    assign_and_decrement_fut,
+                    fut),
+                timeout_ms,
+                c_state_filter,
+                c_node_selectors,
+                c_limit)
+        return asyncio.wrap_future(fut)
+
     #############################################################
     # NodeResources methods
     #############################################################
@@ -735,6 +790,27 @@ cdef class InnerGcsClient:
 # Returns `Tuple[object, Optional[Exception]]` (we are all gophers now lol).
 # Must not raise exceptions, or it crashes the process.
 #############################################################
+
+cdef convert_get_all_node_info_reply(
+        CRayStatus status, optional[CGetAllNodeInfoReply] c_reply) with gil:
+    # -> GetAllNodeInfoReply protobuf object
+    cdef c_string serialized_reply
+    try:
+        check_status_timeout_as_rpc_error(status)
+        if not c_reply.has_value():
+            raise ValueError("Reply is empty")
+
+        # Serialize the entire reply
+        with nogil:
+            serialized_reply = c_reply.value().SerializeAsString()
+
+        # Deserialize into Python protobuf object
+        from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoReply
+        proto = GetAllNodeInfoReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
+    except Exception as e:
+        return None, e
 
 cdef convert_get_all_node_info(
         CRayStatus status, c_vector[CGcsNodeInfo] c_data) with gil:

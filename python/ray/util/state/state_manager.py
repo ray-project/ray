@@ -311,9 +311,22 @@ class StateDataSourceClient:
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllNodeInfoReply]:
-        # TODO(ryw): move this to GcsClient.async_get_all_node_info, i.e.
-        # InnerGcsClient.async_get_all_node_info
+        """Returns GetAllNodeInfoReply protobuf object.
 
+        Args:
+            timeout: Timeout in seconds
+            limit: Maximum number of nodes to return
+            filters: List of (key, predicate, value) tuples. Supported keys:
+                - "node_id": Filter by node ID (hex string)
+                - "state": Filter by node state (string, e.g., "ALIVE")
+                - "node_name": Filter by node name
+
+        Returns:
+            GetAllNodeInfoReply protobuf object with:
+                - node_info_list: List of GcsNodeInfo
+                - total: Total number of nodes (without limit applied)
+                - num_filtered: Number of nodes filtered out
+        """
         if filters is None:
             filters = []
 
@@ -341,10 +354,12 @@ class StateDataSourceClient:
             else:
                 continue
 
-        request = GetAllNodeInfoRequest(
-            limit=limit, node_selectors=node_selectors, state_filter=state_filter
+        reply = await self._gcs_client.async_get_all_node_info_reply(
+            timeout=timeout,
+            node_selectors=node_selectors,
+            state_filter=state_filter,
+            limit=limit,
         )
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors

@@ -167,6 +167,22 @@ class NodeInfoAccessor {
                            int64_t timeout_ms,
                            const std::vector<NodeID> &node_ids = {});
 
+  /**
+   * Asynchronously get information of all nodes that matches the given filters.
+   *
+   * @param callback Callback that will be called after lookup finishes.
+   * @param timeout_ms The timeout for this request.
+   * @param state_filter The state filter to apply to the nodes.
+   * @param node_selectors The node selectors to apply to the nodes.
+   * @param limit The limit on the number of nodes to return.
+   */
+  virtual void AsyncGetAllNodeInfoReply(
+      const rpc::OptionalItemCallback<rpc::GetAllNodeInfoReply> &callback,
+      int64_t timeout_ms,
+      const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
+      const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
+      const std::optional<int64_t> &limit) const;
+
   virtual void AsyncGetAllNodeAddressAndLiveness(
       const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
       int64_t timeout_ms,
