@@ -2,7 +2,6 @@ import os
 from io import BytesIO
 
 import pytest
-import requests
 import snappy
 
 import ray
@@ -22,18 +21,6 @@ def test_read_binary_files(ray_start_regular_shared):
         assert ds.count() == 10
         assert "bytes" in str(ds.schema()), ds
         assert "bytes" in str(ds), ds
-
-
-# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
-# credentials issue, unskip this test once that's fixed or once ported to moto.
-@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
-def test_read_binary_files_s3(ray_start_regular_shared):
-    ds = ray.data.read_binary_files(["s3://anyscale-data/small-files/0.dat"])
-    item = ds.take(1).pop()
-    expected = requests.get(
-        "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
-    ).content
-    assert item == expected
 
 
 def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
