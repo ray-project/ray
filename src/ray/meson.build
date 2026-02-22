@@ -4,8 +4,8 @@ subdir('util/')
 
 # === @begin: metric_interface_cpp_lib (@original: metric_interface from observability/) ===
 # Header-only
-# Defined early (before stats/) because stats/tag_defs depends on it.
-# The canonical Bazel target is //src/ray/observability:metric_interface,
+# # IMPORTANT - Defined early (before `stats/`) because `stats/tag_defs` depends on it.
+# The canonical Bazel target is `//src/ray/observability:metric_interface`,
 # but it's header-only with only an external dep, so it can safely live here.
 metric_interface_cpp_lib_dependencies = [
     # Eugo-managed
@@ -29,6 +29,41 @@ subdir('common/')
 subdir('ray_syncer/')
 
 subdir('rpc/')
+
+
+# @Important: defined inline here (after rpc/) because it depends on rpc/ targets
+# (rpc_common, authentication_mode, authentication_token_loader) but is needed by
+# stats_metric (defined in stats/ which is processed BEFORE rpc/).  For stats_metric
+# the dep is still circular — headers found via project-wide -I, symbols resolved at
+# final _raylet link time.
+# === @begin: observability/open_telemetry_metric_recorder_cpp_lib (@original: open_telemetry_metric_recorder) ===
+# NOTE: OpenTelemetry C++ SDK deps (@io_opentelemetry_cpp) may need to be added
+# to eugo/dependencies/meson.build if not provided transitively.
+open_telemetry_metric_recorder_cpp_lib_dependencies = [
+    # Package-managed
+    constants_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+    rpc_common_cpp_lib_dep,
+    authentication_mode_cpp_lib_dep,
+    authentication_token_loader_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+]
+
+open_telemetry_metric_recorder_cpp_lib = static_library(
+    'open_telemetry_metric_recorder_cpp_lib',
+    ['observability/open_telemetry_metric_recorder.cc'],
+    install: false,
+    dependencies: open_telemetry_metric_recorder_cpp_lib_dependencies
+)
+
+open_telemetry_metric_recorder_cpp_lib_dep = declare_dependency(
+    link_with: [open_telemetry_metric_recorder_cpp_lib],
+    dependencies: open_telemetry_metric_recorder_cpp_lib_dependencies
+)
+# === @end: observability/open_telemetry_metric_recorder_cpp_lib ===
 
 
 # @Important: due to circular dependency between `stats` and `rpc` folders, this guy should go here

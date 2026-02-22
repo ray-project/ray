@@ -219,32 +219,10 @@ ray_event_recorder_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: open_telemetry_metric_recorder_cpp_lib (@original: open_telemetry_metric_recorder) ===
-# NOTE: OpenTelemetry C++ SDK deps (@io_opentelemetry_cpp) may need to be added
-# to eugo/dependencies/meson.build if not provided transitively.
-open_telemetry_metric_recorder_cpp_lib_dependencies = [
-    # Package-managed
-    constants_cpp_lib_dep,
-    ray_config_cpp_lib_dep,
-    rpc_common_cpp_lib_dep,
-    authentication_mode_cpp_lib_dep,
-    authentication_token_loader_cpp_lib_dep,
-    logging_cpp_lib_dep,
-
-    # Eugo-managed
-    absl_container_flat_hash_map,
-]
-
-open_telemetry_metric_recorder_cpp_lib = static_library(
-    'open_telemetry_metric_recorder_cpp_lib',
-    ['open_telemetry_metric_recorder.cc'],
-    install: false,
-    dependencies: open_telemetry_metric_recorder_cpp_lib_dependencies
-)
-
-open_telemetry_metric_recorder_cpp_lib_dep = declare_dependency(
-    link_with: [open_telemetry_metric_recorder_cpp_lib],
-    dependencies: open_telemetry_metric_recorder_cpp_lib_dependencies
-)
+# MOVED INLINE to src/ray/meson.build (after subdir('rpc/')) so the variable is
+# available earlier.  It depends on rpc/ targets that are processed after stats/,
+# so it can't live in stats/ but must come after rpc/.  The dep is still usable
+# here (it's already defined by the time this file is processed).
 # === @end: open_telemetry_metric_recorder_cpp_lib ===
 
 

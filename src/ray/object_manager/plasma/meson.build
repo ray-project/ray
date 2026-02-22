@@ -1,3 +1,6 @@
+# IMPORTANT: ordering of targets in this file is dependent on the build graph.
+# You will also see things "out of order" from a BUILD.bazel perspective,
+
 # === @begin: plasma_cpp_fbs_lib (@original: plasma_fbs) ===
 # Header-only
 plasma_cpp_fbs = custom_target(
