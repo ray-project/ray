@@ -23,7 +23,7 @@ Getting started
 ===============
 
 .. tip::
-   RDT currently supports ``torch.Tensor`` objects created by Ray actor tasks. Other datatypes and Ray non-actor tasks may be supported in future releases.
+   RDT currently supports ``torch.Tensor`` and ``DTensor`` objects created by Ray actor tasks. Other datatypes and Ray non-actor tasks may be supported in future releases.
 
 This walkthrough will show how to create and use RDT with different *tensor transports*, i.e. the mechanism used to transfer the tensor between actors.
 Currently, RDT supports the following tensor transports:
@@ -251,6 +251,32 @@ You can also use NIXL to retrieve the result from references created by :func:`r
    :start-after: __nixl_put__and_get_start__
    :end-before: __nixl_put__and_get_end__
 
+Usage with DTensor (Distributed Tensor)
+----------------------------------------
+
+RDT also supports passing PyTorch `DTensor <https://pytorch.org/docs/stable/distributed.tensor.html>`__ objects between actors.
+A ``DTensor`` is a tensor that is distributed across multiple devices using a ``DeviceMesh``.
+RDT automatically handles serialization of the ``DeviceMesh`` metadata and transfers the underlying tensor data using the configured tensor transport.
+
+.. note::
+   DTensor support requires PyTorch 2.0 or later.
+
+Here is an example that creates a ``DTensor`` sharded across two actors and transfers it using Gloo:
+
+.. literalinclude:: doc_code/direct_transport_dtensor.py
+   :language: python
+   :start-after: __dtensor_gloo_example_start__
+   :end-before: __dtensor_gloo_example_end__
+
+The key steps are:
+
+1. Initialize PyTorch distributed (``dist.init_process_group``) on each actor with a matching backend (e.g., ``gloo`` for CPU, ``nccl`` for GPU).
+2. Create a ``DeviceMesh`` on each actor using ``init_device_mesh``.
+3. Create a ``DTensor`` using ``distribute_tensor`` with a sharding placement.
+4. Pass the ``DTensor`` between actors as usual. Ray serializes the ``DeviceMesh`` metadata automatically and uses the tensor transport (Gloo, NCCL, or NIXL) for the underlying tensor data.
+
+To use DTensor with NCCL on GPUs, replace ``gloo`` with ``nccl``, ``"cpu"`` with ``"cuda"``, and ensure each actor has a GPU. You will also need to call ``torch.cuda.set_device(0)`` in the actor's ``__init__`` to set the default CUDA device before initializing the ``DeviceMesh``.
+
 Summary
 -------
 
@@ -277,7 +303,7 @@ Limitations
 
 RDT is currently in alpha and currently has the following limitations, which may be addressed in future releases:
 
-* Support for ``torch.Tensor`` objects only.
+* Support for ``torch.Tensor`` and ``DTensor`` objects only.
 * Support for Ray actors only, not Ray tasks.
 * Not yet compatible with `asyncio <https://docs.python.org/3/library/asyncio.html>`__. Follow the `tracking issue <https://github.com/ray-project/ray/issues/56398>`__ for updates.
 * Support for the following transports: Gloo, NCCL, and NIXL.
