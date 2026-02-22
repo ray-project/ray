@@ -1,9 +1,9 @@
 import csv
 import os
 import random
-import shutil
 from typing import List, Union
 
+import numpy
 import pandas as pd
 import pyarrow
 import pyarrow as pa
@@ -13,6 +13,7 @@ from pyarrow.fs import FileSelector, LocalFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
+from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -663,7 +664,7 @@ def test_filter_rows_for_block():
     """Test BatchBasedCheckpointFilter.filter_rows_for_block."""
 
     # Common test setup
-    checkpoint_path = "/tmp/path"
+    checkpoint_path = "/mock/path"
 
     # Test with simple ID column
     config = CheckpointConfig(
@@ -685,11 +686,13 @@ def test_filter_rows_for_block():
     checkpointed_ids = pyarrow.concat_tables([chunk1, chunk2, chunk3])
     assert len(checkpointed_ids[ID_COL].chunks) == 3
 
-    # Write to checkpoint_path
-    os.makedirs(checkpoint_path, exist_ok=True)
-    pq.write_table(
-        checkpointed_ids, os.path.join(checkpoint_path, "checkpointed_ids.parquet")
-    )
+    checkpoint_ids_array = []
+    for ckpt_chunk in checkpointed_ids[ID_COL].chunks:
+        checkpoint_ids_array.append(
+            transform_pyarrow.to_numpy(ckpt_chunk, zero_copy_only=False)
+        )
+    checkpointed_ids_ndarray = numpy.concatenate(checkpoint_ids_array)
+    checkpointed_ids_ref = ray.put(checkpointed_ids_ndarray)
 
     expected_block = pyarrow.table(
         {
@@ -698,15 +701,12 @@ def test_filter_rows_for_block():
         }
     )
 
-    filter_instance = BatchBasedCheckpointFilter.remote(config)
-    filtered_block = ray.get(
-        filter_instance.filter_rows_for_block.remote(
-            block=block,
-        )
+    filter_instance = BatchBasedCheckpointFilter(config, checkpointed_ids_ref)
+    filtered_block = filter_instance.filter_rows_for_block(
+        block=block,
     )
 
     assert filtered_block.equals(expected_block)
-    shutil.rmtree(checkpoint_path)
 
 
 def test_checkpoint_restore_after_full_execution(
