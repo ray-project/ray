@@ -162,6 +162,37 @@ class CPUWithThreadpool:
 # __cpu_with_threadpool_end__
 
 
+# __non_thread_safe_begin__
+@serve.deployment
+class NonThreadSafeCounter:
+    def __init__(self):
+        self.count = 0  # Shared mutable state across concurrent requests
+
+    def __call__(self, request):
+        # Race condition: multiple threads can read-modify-write
+        # self.count concurrently, leading to lost updates.
+        self.count += 1
+        return self.count
+# __non_thread_safe_end__
+
+
+# __thread_safe_counter_begin__
+import threading
+
+@serve.deployment
+class ThreadSafeCounter:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.count = 0
+
+    def __call__(self, request):
+        # Lock protects shared state from concurrent access.
+        with self._lock:
+            self.count += 1
+            return self.count
+# __thread_safe_counter_end__
+
+
 # __batched_model_begin__
 
 @serve.deployment(max_ongoing_requests=64)
