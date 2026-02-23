@@ -471,7 +471,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     table, ARROW_MAX_CHUNK_SIZE_BYTES
                 )
             contains_native_tensor_columns = any(
-                _is_native_tensor_type(column.type) for column in table.itercolumns()
+                _is_native_tensor_type(column.type) for column in table.columns
             )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
 
@@ -524,7 +524,7 @@ def _iter_rows_from_batch_with_tensors(
     from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 
     col_values = []
-    for column in batch.itercolumns():
+    for column in batch.columns:
         if _is_native_tensor_type(column.type):
             col_values.append(column.to_numpy_ndarray())
         else:

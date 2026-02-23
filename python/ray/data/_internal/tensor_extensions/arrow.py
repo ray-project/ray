@@ -784,11 +784,6 @@ def create_arrow_fixed_shape_tensor_type(
             tensor_format = fallback
 
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
-        if FixedShapeTensorType is None:
-            raise ValueError(
-                f"Native tensor format requires PyArrow >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY}. "
-                "Please upgrade PyArrow or use V1/V2 format."
-            )
         return pa.fixed_shape_tensor(dtype, shape)
     elif tensor_format == FixedShapeTensorFormat.V2:
         return ArrowTensorTypeV2(shape, dtype)
