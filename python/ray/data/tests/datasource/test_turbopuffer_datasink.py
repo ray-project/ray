@@ -139,6 +139,37 @@ class TestConstructorValidation:
         with pytest.raises(ValueError, match="id_column and vector_column"):
             make_sink(id_column="doc_id", vector_column="doc_id")
 
+    def test_accepts_region_only(self):
+        """Constructor succeeds with region and no base_url."""
+        sink = make_sink(region="gcp-us-central1")
+        assert sink.region == "gcp-us-central1"
+        assert sink.base_url is None
+
+    def test_accepts_base_url_only(self):
+        """Constructor succeeds with base_url and no region."""
+        sink = make_sink(
+            region=None,
+            base_url="https://gcp-us-central1.turbopuffer.com",
+        )
+        assert sink.base_url == "https://gcp-us-central1.turbopuffer.com"
+        assert sink.region is None
+
+    def test_rejects_both_region_and_base_url(self):
+        """Cannot provide both region and base_url."""
+        with pytest.raises(ValueError, match="exactly one of 'region' or 'base_url'"):
+            make_sink(
+                region="gcp-us-central1",
+                base_url="https://gcp-us-central1.turbopuffer.com",
+            )
+
+    def test_rejects_neither_region_nor_base_url(self):
+        """Must provide at least one of region or base_url."""
+        with pytest.raises(ValueError, match="Either 'region' or 'base_url'"):
+            TurbopufferDatasink(
+                namespace="ns",
+                api_key="k",
+            )
+
 
 # =============================================================================
 # 2. Client initialization
@@ -168,6 +199,40 @@ class TestClientInitialization:
             api_key="test-api-key",
             region="custom-region",
         )
+
+    def test_uses_base_url(self, mock_turbopuffer_module):
+        """Client uses base_url when region is not provided."""
+        sink = make_sink(
+            region=None,
+            base_url="https://gcp-us-central1.turbopuffer.com",
+        )
+        sink._get_client()
+
+        mock_turbopuffer_module.Turbopuffer.assert_called_once_with(
+            api_key="test-api-key",
+            base_url="https://gcp-us-central1.turbopuffer.com",
+        )
+
+    def test_base_url_does_not_pass_region(self, mock_turbopuffer_module):
+        """When base_url is used, region is not passed to the client."""
+        sink = make_sink(
+            region=None,
+            base_url="https://custom.turbopuffer.com",
+        )
+        sink._get_client()
+
+        call_kwargs = mock_turbopuffer_module.Turbopuffer.call_args[1]
+        assert "region" not in call_kwargs
+        assert call_kwargs["base_url"] == "https://custom.turbopuffer.com"
+
+    def test_region_does_not_pass_base_url(self, mock_turbopuffer_module):
+        """When region is used, base_url is not passed to the client."""
+        sink = make_sink(region="gcp-us-central1")
+        sink._get_client()
+
+        call_kwargs = mock_turbopuffer_module.Turbopuffer.call_args[1]
+        assert "base_url" not in call_kwargs
+        assert call_kwargs["region"] == "gcp-us-central1"
 
 
 # =============================================================================
@@ -590,6 +655,7 @@ class TestSerialization:
         assert unpickled.namespace_column == sink.namespace_column
         assert unpickled.api_key == sink.api_key
         assert unpickled.region == sink.region
+        assert unpickled.base_url == sink.base_url
         assert unpickled.batch_size == sink.batch_size
         assert unpickled._client is None
 
@@ -607,6 +673,26 @@ class TestSerialization:
         assert unpickled.namespace is None
         assert unpickled.namespace_column == "tenant"
         assert unpickled._client is None
+
+    def test_preserves_base_url_configuration(self, mock_turbopuffer_module):
+        """base_url configuration survives pickle round-trip."""
+        sink = make_sink(
+            region=None,
+            base_url="https://gcp-us-central1.turbopuffer.com",
+        )
+        pickled = pickle.dumps(sink)
+        unpickled = pickle.loads(pickled)
+
+        assert unpickled.region is None
+        assert unpickled.base_url == "https://gcp-us-central1.turbopuffer.com"
+        assert unpickled._client is None
+
+        # Lazy initialization works and uses base_url
+        unpickled._get_client()
+        mock_turbopuffer_module.Turbopuffer.assert_called_once_with(
+            api_key="test-api-key",
+            base_url="https://gcp-us-central1.turbopuffer.com",
+        )
 
 
 if __name__ == "__main__":
