@@ -91,9 +91,10 @@ _default_transports_registered = False
 
 def _ensure_default_transports_registered():
     global _default_transports_registered
-    if _default_transports_registered:
-        return
-    _default_transports_registered = True
+    with transport_managers_lock:
+        if _default_transports_registered:
+            return
+        _default_transports_registered = True
     try:
         import torch
 
