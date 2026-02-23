@@ -197,6 +197,8 @@ include "includes/setproctitle.pxi"
 include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
 include "includes/rpc_token_authentication.pxi"
+# Ray Serve-only: Cython timeseries utilities for autoscaling metrics.
+include "includes/timeseries_utils.pxi"
 
 import ray
 from ray.exceptions import (
