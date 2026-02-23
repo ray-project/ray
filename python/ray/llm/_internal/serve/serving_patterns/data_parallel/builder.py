@@ -13,14 +13,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.serving_patterns.data_parallel.dp_rank_assigner import (
-    _DPRankAssigner,
-)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer,
-)
-from ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server import (
-    GangDPServer,
 )
 from ray.serve.deployment import Application
 
@@ -32,7 +26,6 @@ def build_dp_deployment(
     *,
     name_prefix: Optional[str] = None,
     override_serve_options: Optional[dict] = None,
-    enable_fault_tolerance: bool = False,
 ) -> Application:
     """Build a data parallel attention LLM deployment.
 
@@ -41,41 +34,13 @@ def build_dp_deployment(
         name_prefix: The prefix to add to the deployment name.
         override_serve_options: The optional serve options to override the
             default options.
-        enable_fault_tolerance: When True, uses Ray Serve's gang scheduling
-            for fault-tolerant DP.
 
     Returns:
         The Ray Serve Application for the data parallel attention LLM deployment.
     """
-    if enable_fault_tolerance:
-        return build_llm_deployment(
-            llm_config,
-            name_prefix=name_prefix,
-            override_serve_options=override_serve_options,
-            deployment_cls=GangDPServer,
-        )
-
-    dp_size = llm_config.engine_kwargs.get("data_parallel_size", 1)
-
-    # TODO(rui): figure out a better way to pass in dp_size_per_node.
-    # NOTE: we cannot use engine_kwargs.data_parallel_size_local to specify
-    # the number of ranks per node because that has special semantics in vLLM.
-    # When we make serve's rank asignment node affinity aware, then we won't
-    # need this hack to make the ranks orginally distributed across nodes.
-    dp_size_per_node = llm_config.experimental_configs.get("dp_size_per_node")
-    if dp_size_per_node is None:
-        raise ValueError(
-            "dp_size_per_node must be set in experimental_configs for DP deployment."
-        )
-
-    dp_rank_assigner = _DPRankAssigner.bind(
-        dp_size=dp_size, dp_size_per_node=dp_size_per_node
-    )
-
     return build_llm_deployment(
         llm_config,
         name_prefix=name_prefix,
-        bind_kwargs={"dp_rank_assigner": dp_rank_assigner},
         override_serve_options=override_serve_options,
         deployment_cls=DPServer,
     )
@@ -94,13 +59,6 @@ class DPOpenAiServingArgs(BaseModelExtended):
     ingress_deployment_config: Optional[dict] = Field(
         default_factory=dict,
         description="The Ray @server.deployment options for the ingress server.",
-    )
-    enable_fault_tolerance: bool = Field(
-        default=False,
-        description=(
-            "When True, use gang scheduling for fault-tolerant DP. "
-            "If any replica fails the entire gang is restarted atomically."
-        ),
     )
 
     @field_validator("llm_config")
@@ -138,10 +96,7 @@ def build_dp_openai_app(builder_config: dict) -> Application:
     builder_config = DPOpenAiServingArgs.model_validate(builder_config)
     llm_config = builder_config.llm_config
 
-    dp_deployment = build_dp_deployment(
-        llm_config,
-        enable_fault_tolerance=builder_config.enable_fault_tolerance,
-    )
+    dp_deployment = build_dp_deployment(llm_config)
 
     ingress_cls_config = builder_config.ingress_cls_config
     ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(

@@ -75,7 +75,7 @@ def test_llm_serve_gang_data_parallelism_correctness():
         runtime_env=runtime_env,
     )
     app = build_dp_openai_app(
-        {"llm_config": llm_config_gang, "enable_fault_tolerance": True}
+        {"llm_config": llm_config_gang}
     )
     gang_dp_result = _deploy_and_query(app, MODEL_ID, prompt)
 

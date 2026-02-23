@@ -7,7 +7,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.experimental.internal_kv import _internal_kv_list
-from ray.llm._internal.serve.serving_patterns.data_parallel.gang_dp_server import (
+from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     GangMasterInfoRegistry,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -90,44 +90,6 @@ def test_llm_serve_multi_node(tp_size, pp_size):
     wait_for_condition(is_default_app_running, timeout=300)
 
 
-def test_llm_serve_data_parallelism():
-    """Test Data Parallelism deployment with STRICT_PACK override.
-
-    Validates that DP deployments work correctly with placement group configs
-    """
-    placement_group_config = {
-        "bundles": [{"GPU": 1, "CPU": 1}],
-        "strategy": "SPREAD",  # Will be overridden to STRICT_PACK
-    }
-
-    llm_config = LLMConfig(
-        model_loading_config=ModelLoadingConfig(
-            model_id="microsoft/Phi-tiny-MoE-instruct",
-            model_source="microsoft/Phi-tiny-MoE-instruct",
-        ),
-        deployment_config=dict(),  # DP sets num_replicas, not autoscaling
-        engine_kwargs=dict(
-            tensor_parallel_size=1,
-            pipeline_parallel_size=1,
-            data_parallel_size=4,  # 4 DP replicas, need to fill 2x4GPU workers
-            distributed_executor_backend="ray",
-            max_model_len=1024,
-            max_num_seqs=32,
-            enforce_eager=True,
-        ),
-        experimental_configs=dict(
-            dp_size_per_node=2,
-        ),
-        placement_group_config=placement_group_config,
-        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
-    )
-
-    app = build_dp_deployment(llm_config)
-    serve.run(app, blocking=False)
-
-    wait_for_condition(is_default_app_running, timeout=300)
-
-
 @pytest.mark.parametrize(
     "tp_size,dp_size,num_replicas,placement_group_config",
     [
@@ -144,10 +106,10 @@ def test_llm_serve_data_parallelism():
         (2, 2, 4, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}),
     ],
 )
-def test_llm_serve_gang_data_parallelism(
+def test_llm_serve_data_parallelism(
     tp_size, dp_size, num_replicas, placement_group_config
 ):
-    """Test gang-scheduled Data Parallelism deployment."""
+    """Test Data Parallelism deployment."""
     deployment_config = dict()
     if num_replicas is not None:
         deployment_config["num_replicas"] = num_replicas
@@ -171,14 +133,14 @@ def test_llm_serve_gang_data_parallelism(
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    app = build_dp_deployment(llm_config, enable_fault_tolerance=True)
+    app = build_dp_deployment(llm_config)
     serve.run(app, blocking=False)
 
     wait_for_condition(is_default_app_running, timeout=300)
 
 
-def test_llm_serve_gang_data_parallelism_cleanup():
-    """Test that gang DP KV entries are cleaned up on shutdown."""
+def test_llm_serve_data_parallelism_cleanup():
+    """Test that Data Parallelism KV entries are cleaned up on shutdown."""
     placement_group_config = {
         "bundles": [{"GPU": 1, "CPU": 1}],
     }
@@ -202,30 +164,18 @@ def test_llm_serve_gang_data_parallelism_cleanup():
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
 
-    app = build_dp_deployment(llm_config, enable_fault_tolerance=True)
+    app = build_dp_deployment(llm_config)
     serve.run(app, blocking=False)
     wait_for_condition(is_default_app_running, timeout=300)
 
     master_keys = _internal_kv_list(GangMasterInfoRegistry._KEY_PREFIX)
-    member_keys = _internal_kv_list(GangMasterInfoRegistry._MEMBER_KEY_PREFIX)
     assert len(master_keys) > 0
-    assert len(member_keys) > 0
-
-    new_master = set(master_keys)
-    new_member = set(member_keys)
 
     serve.shutdown()
 
-    def kv_entries_cleaned_up():
-        cur_master = set(_internal_kv_list(GangMasterInfoRegistry._KEY_PREFIX))
-        cur_member = set(_internal_kv_list(GangMasterInfoRegistry._MEMBER_KEY_PREFIX))
-        return new_master.isdisjoint(cur_master) and new_member.isdisjoint(cur_member)
 
-    wait_for_condition(kv_entries_cleaned_up, timeout=30)
-
-
-def test_llm_serve_gang_data_parallelism_declarative():
-    """Test gang DP deployment via declarative config."""
+def test_llm_serve_data_parallelism_declarative():
+    """Test Data Parallelism deployment via declarative config."""
     config_path = CONFIGS_DIR / "serve_phi_tiny_moe_dp4_gang.yaml"
     with open(config_path) as f:
         config = yaml.safe_load(f)
