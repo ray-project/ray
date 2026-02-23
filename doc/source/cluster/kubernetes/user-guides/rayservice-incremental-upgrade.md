@@ -50,7 +50,7 @@ We use `v1.29.0` which is known to be compatible with recent Istio versions.
 
 2. Install istio
 
-Install the `istioctl` binary by following the [official guide](https://istio.io/latest/docs/setup/additional-setup/download-istio-release/). Make sure to install a version compatible with Kubernetes `v1.29`. The latest supported version is `1.27`. The full Istio release support matrix can be found [here](https://istio.io/latest/docs/releases/supported-releases/#support-status-of-istio-releases/).
+Install the `istioctl` binary by following the [official guide](https://istio.io/latest/docs/setup/additional-setup/download-istio-release/). Make sure to install a version compatible with Kubernetes `v1.29`. You can find compatible Istio versions in the [official release support matrix](https://istio.io/latest/docs/releases/supported-releases/#support-status-of-istio-releases).
 
 Once installed, run the following command:
 ```
