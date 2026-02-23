@@ -345,6 +345,44 @@ class JobSupervisor:
         driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
         driver_node_id = ray.get_runtime_context().get_node_id()
 
+        # Initialize ray event recorder if enabled, so lifecycle events
+        # (RUNNING, SUCCEEDED, STOPPED, FAILED) from this process are captured.
+        if ray_constants.RAY_ENABLE_RAY_EVENT:
+            try:
+                from ray._private.ray_constants import KV_NAMESPACE_DASHBOARD
+                from ray._raylet import EventRecorder
+                from ray.dashboard.consts import DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX
+
+                agent_info_raw = await self._job_info_client._gcs_client.async_internal_kv_get(
+                    f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{driver_node_id}".encode(),
+                    namespace=KV_NAMESPACE_DASHBOARD,
+                )
+                if agent_info_raw:
+                    _, _, grpc_port = json.loads(agent_info_raw)
+                    EventRecorder.initialize(
+                        aggregator_address=node.node_ip_address,
+                        aggregator_port=int(grpc_port),
+                        node_ip=node.node_ip_address,
+                        node_id_hex=driver_node_id,
+                        max_buffer_size=10000,
+                        metric_source="job_supervisor",
+                    )
+                    self._logger.info(
+                        "Initialized ray event recorder in JobSupervisor "
+                        f"(grpc_port={grpc_port})."
+                    )
+                else:
+                    self._logger.warning(
+                        "Dashboard agent info not found in KV store for "
+                        f"node {driver_node_id}. "
+                        "Event recorder will not be initialized."
+                    )
+            except Exception:
+                self._logger.warning(
+                    "Failed to initialize ray event recorder in JobSupervisor.",
+                    exc_info=True,
+                )
+
         await self._job_info_client.put_status(
             self._job_id,
             JobStatus.RUNNING,
@@ -475,6 +513,16 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            # Flush any remaining events before the actor exits.
+            if ray_constants.RAY_ENABLE_RAY_EVENT:
+                try:
+                    from ray._raylet import EventRecorder
+
+                    EventRecorder.shutdown()
+                except Exception:
+                    self._logger.debug(
+                        "Failed to shutdown event recorder.", exc_info=True
+                    )
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 

@@ -7,6 +7,7 @@ import aiohttp
 from aiohttp.web import Request, Response
 
 import ray
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
@@ -203,7 +204,24 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        pass
+        if ray_constants.RAY_ENABLE_RAY_EVENT:
+            try:
+                from ray._raylet import EventRecorder
+
+                EventRecorder.initialize(
+                    aggregator_address=self._dashboard_agent.ip,
+                    aggregator_port=self._dashboard_agent.grpc_port,
+                    node_ip=self._dashboard_agent.ip,
+                    node_id_hex=self._dashboard_agent.node_id,
+                    max_buffer_size=10000,
+                    metric_source="job_agent",
+                )
+                logger.info("Initialized ray event recorder in JobAgent.")
+            except Exception:
+                logger.warning(
+                    "Failed to initialize ray event recorder in JobAgent.",
+                    exc_info=True,
+                )
 
     @staticmethod
     def is_minimal_module():
