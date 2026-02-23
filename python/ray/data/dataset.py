@@ -1661,6 +1661,7 @@ class Dataset:
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
+        strict: bool = False,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
@@ -1710,6 +1711,13 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
+            strict: If ``True``, ``repartition`` guarantees that all output blocks,
+                except for the last one, will have exactly ``target_num_rows_per_block`` rows.
+                If ``False``, ``repartition`` uses best-effort bundling and may produce at most
+                one block smaller than ``target_num_rows_per_block`` per input block without
+                forcing exact sizes through block splitting.
+                This parameter is only used with ``target_num_rows_per_block``.
+                Defaults to ``False``.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1746,6 +1754,13 @@ class Dataset:
                 warnings.warn(
                     "`shuffle` is ignored when `target_num_rows_per_block` is set."
                 )
+        else:
+            if strict:
+                # strict is used in row-based repartition only
+                warnings.warn(
+                    "`strict` is ignored when `target_num_rows_per_block` is not set. "
+                    "Use `target_num_rows_per_block` instead of `num_blocks` to enable `strict` mode."
+                )
 
         if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
@@ -1767,6 +1782,7 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
+                strict=strict,
             )
         else:
             op = Repartition(
