@@ -49,13 +49,17 @@ kind create cluster --image=kindest/node:v1.29.0
 We use `v1.29.0` which is known to be compatible with recent Istio versions.
 
 2. Install istio
+
+Install the `istioctl` binary by following the [official guide](https://istio.io/latest/docs/setup/additional-setup/download-istio-release/). Make sure to install a version compatible with Kubernetes `v1.29`. The latest supported version is `1.27`. The full Istio release support matrix can be found [here](https://istio.io/latest/docs/releases/supported-releases/#support-status-of-istio-releases/).
+
+Once installed, run the following command:
 ```
 istioctl install --set profile=demo -y
 ```
 
 3. Install Gateway API CRDs
 ```bash
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
 ```
 
 4. Create a Gateway class with the following spec
@@ -396,7 +400,7 @@ This block is required *only* if `type` is set to `NewClusterWithIncrementalUpgr
 | Field | Type | Description | Required | Default |
 | :--- | :--- | :--- | :--- | :--- |
 | `maxSurgePercent` | `int32` | The percentage of *capacity* (Serve replicas) to add to the new cluster in each scaling step. For example, a value of `20` means the new cluster's `target_capacity` will increase in 20% increments (0% -> 20% -> 40%...). Must be between 0 and 100. | No | `100` |
-| `stepSizePercent` | `int32` | The percentage of *traffic* to shift from the old to the new cluster during each interval. Must be between 0 and 100. | **Yes** | N/A |
+| `stepSizePercent` | `int32` | The percentage of *traffic* to shift from the old to the new cluster during each interval. Must be between 0 and 100 and less than `maxSurgePercent`. | **Yes** | N/A |
 | `intervalSeconds` | `int32` | The time in seconds to wait between shifting traffic by `stepSizePercent`. | **Yes** | N/A |
 | `gatewayClassName` | `string` | The `metadata.name` of the `GatewayClass` resource KubeRay should use to create `Gateway` and `HTTPRoute` objects. | **Yes** | N/A |
 
