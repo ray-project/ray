@@ -384,16 +384,8 @@ The example below shows a minimal setup that enables gradient clipping and ZeRO 
 
 
 ```python
-# DeepSpeed configuration
-if torch.cuda.is_bf16_supported():
-    precision_config = {
-        "bf16": {"enabled": True},
-        "grad_accum_dtype": "bf16",
-    }
-else:
-    # T4-class GPUs don't support bf16; use fp16 for compatibility.
-    precision_config = {"fp16": {"enabled": True}}
-
+# DeepSpeed base configuration
+# Precision is selected in train_loop() via get_precision_config() on workers.
 ds_config = {
     "train_micro_batch_size_per_gpu": BATCH_SIZE,
     "zero_optimization": {
@@ -403,7 +395,6 @@ ds_config = {
     },
     "gradient_clipping": 1.0,
 }
-ds_config.update(precision_config)
 ```
 
 ## 6. Launch distributed training
