@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package ray.dashboard.events;
+
+option java_package = "io.ray.dashboard.events";
+
+message PlatformEvent {
+  enum Severity {
+    INFO = 0;
+    WARNING = 1;
+    ERROR = 2;
+  }
+
+  // The source of the event (e.g., "kubernetes", "slurm").
+  string source = 1;
+
+  // The severity level of the event.
+  Severity severity = 2;
+
+  // The raw event message (e.g., "Back-off pulling image...").
+  string message = 3;
+
+  // The time the event occurred (in milliseconds since epoch).
+  int64 timestamp_ms = 4;
+
+  // The Ray Node ID this event pertains to, if applicable.
+  string related_node_id = 5;
+}
