@@ -349,7 +349,7 @@ async def test_gpu_profile_no_params(
     gpu_profiler = GpuProfilingManager(tmp_path, ip_address=LOCALHOST)
     success, output = await gpu_profiler.gpu_profile(pid=123)
     assert not success
-    assert "Either num_iterations or duration_ms must be provided" in output
+    assert "Exactly one of num_iterations or duration_ms must be provided" in output
 
 
 @pytest.mark.asyncio
@@ -361,7 +361,7 @@ async def test_gpu_profile_both_params(
         pid=123, num_iterations=4, duration_ms=5000
     )
     assert not success
-    assert "Only one of num_iterations or duration_ms can be provided" in output
+    assert "Exactly one of num_iterations or duration_ms must be provided" in output
 
 
 @pytest.mark.asyncio

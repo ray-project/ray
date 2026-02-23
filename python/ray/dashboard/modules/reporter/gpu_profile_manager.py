@@ -35,6 +35,12 @@ class GpuProfilingManager:
     # Default timeout for the profiling operation.
     _DEFAULT_TIMEOUT_S = 5 * 60
 
+    # Validation limits for profiling parameters.
+    _MIN_ITERATIONS = 1
+    _MAX_ITERATIONS = 100
+    _MIN_DURATION_MS = 1
+    _MAX_DURATION_MS = 300_000  # 5 minutes
+
     _NO_PROCESSES_MATCHED_ERROR_MESSAGE_PREFIX = "No processes were matched"
 
     _DISABLED_ERROR_MESSAGE = (
@@ -195,25 +201,31 @@ class GpuProfilingManager:
                 or an error message.
         """
         # Validate that exactly one of num_iterations or duration_ms is provided
-        if num_iterations is None and duration_ms is None:
-            return False, "Either num_iterations or duration_ms must be provided."
-        if num_iterations is not None and duration_ms is not None:
-            return False, "Only one of num_iterations or duration_ms can be provided."
+        if (num_iterations is None) == (duration_ms is None):
+            return (
+                False,
+                "Exactly one of num_iterations or duration_ms must be provided.",
+            )
         if not self.enabled:
             return False, self._DISABLED_ERROR_MESSAGE.format(
                 ip_address=self._ip_address
             )
 
-        if num_iterations is not None and not (1 <= num_iterations <= 100):
+        if num_iterations is not None and not (
+            self._MIN_ITERATIONS <= num_iterations <= self._MAX_ITERATIONS
+        ):
             return False, (
                 f"Invalid num_iterations={num_iterations}. "
-                "Must be between 1 and 100."
+                f"Must be between {self._MIN_ITERATIONS} and {self._MAX_ITERATIONS}."
             )
 
-        if duration_ms is not None and not (1 <= duration_ms <= 300_000):
+        if duration_ms is not None and not (
+            self._MIN_DURATION_MS <= duration_ms <= self._MAX_DURATION_MS
+        ):
             return False, (
                 f"Invalid duration_ms={duration_ms}. "
-                "Must be between 1 and 300000 (5 minutes)."
+                f"Must be between {self._MIN_DURATION_MS} and {self._MAX_DURATION_MS} "
+                f"({self._MAX_DURATION_MS // 60_000} minutes)."
             )
 
         if not self._dynolog_daemon_process:

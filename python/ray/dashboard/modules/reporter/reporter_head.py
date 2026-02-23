@@ -590,6 +590,11 @@ class ReportHead(SubprocessModule):
         num_iterations_str = req.query.get("num_iterations")
         duration_ms_str = req.query.get("duration_ms")
 
+        if num_iterations_str and duration_ms_str:
+            return aiohttp.web.HTTPBadRequest(
+                text="Only one of num_iterations or duration_ms can be provided, not both."
+            )
+
         # Build the request based on which parameter is provided
         request_kwargs = {"pid": int(pid)}
         if duration_ms_str:

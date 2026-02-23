@@ -17,9 +17,18 @@ import { useParams } from "react-router-dom";
 import { GlobalContext } from "../../App";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 import TitleCard from "../../components/TitleCard";
+import {
+  axiosInstance,
+  formatUrl,
+} from "../../service/requestHandlers";
 import { getJmap, getJstack, getJstat } from "../../service/util";
 
 const PERFETTO_UI_URL = "https://ui.perfetto.dev/";
+
+const MIN_ITERATIONS = 1;
+const MAX_ITERATIONS = 100;
+const MIN_DURATION_SECONDS = 1;
+const MAX_DURATION_SECONDS = 300;
 
 const CMDResult = () => {
   const { cmd, ip, pid } = useParams() as {
@@ -63,23 +72,22 @@ const CMDResult = () => {
         "This may take a few minutes. Server timeout is 5 minutes.",
     );
     try {
-      const baseUrl = `/worker/gpu_profile?ip=${encodeURIComponent(
-        ip,
-      )}&pid=${encodeURIComponent(pid)}`;
-      const url =
-        profilingMode === "iterations"
-          ? `${baseUrl}&num_iterations=${numIterations}`
-          : `${baseUrl}&duration_ms=${durationSeconds * 1000}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Request failed: ${response.status} ${response.statusText}. ${errorText}`,
-        );
+      const params: Record<string, string> = { ip, pid };
+      if (profilingMode === "iterations") {
+        params.num_iterations = String(numIterations);
+      } else {
+        params.duration_ms = String(durationSeconds * 1000);
       }
 
-      const blob = await response.blob();
+      const response = await axiosInstance.get(
+        formatUrl("worker/gpu_profile"),
+        {
+          params,
+          responseType: "blob",
+        },
+      );
+
+      const blob = new Blob([response.data]);
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.style.display = "none";
@@ -88,7 +96,7 @@ const CMDResult = () => {
       const now = new Date();
       const dateStr = now.toISOString().replace(/[:.]/g, "-").slice(0, 19);
       let filename = `gputrace_${dateStr}.json`;
-      const contentDisposition = response.headers.get("content-disposition");
+      const contentDisposition = response.headers["content-disposition"];
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="(.+)"/);
         if (filenameMatch && filenameMatch.length === 2) {
@@ -239,10 +247,16 @@ const CMDResult = () => {
                     value={numIterations}
                     onChange={(e) =>
                       setNumIterations(
-                        Math.min(100, Math.max(1, parseInt(e.target.value) || 1)),
+                        Math.min(
+                          MAX_ITERATIONS,
+                          Math.max(
+                            MIN_ITERATIONS,
+                            parseInt(e.target.value) || MIN_ITERATIONS,
+                          ),
+                        ),
                       )
                     }
-                    inputProps={{ min: 1, max: 100 }}
+                    inputProps={{ min: MIN_ITERATIONS, max: MAX_ITERATIONS }}
                     helperText="Number of optimizer.step() calls to profile"
                   />
                 ) : (
@@ -253,10 +267,19 @@ const CMDResult = () => {
                     value={durationSeconds}
                     onChange={(e) =>
                       setDurationSeconds(
-                        Math.min(300, Math.max(1, parseInt(e.target.value) || 1)),
+                        Math.min(
+                          MAX_DURATION_SECONDS,
+                          Math.max(
+                            MIN_DURATION_SECONDS,
+                            parseInt(e.target.value) || MIN_DURATION_SECONDS,
+                          ),
+                        ),
                       )
                     }
-                    inputProps={{ min: 1, max: 300 }}
+                    inputProps={{
+                      min: MIN_DURATION_SECONDS,
+                      max: MAX_DURATION_SECONDS,
+                    }}
                     helperText="Time in seconds to profile (for data loaders)"
                   />
                 )}
