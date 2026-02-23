@@ -136,9 +136,6 @@ class StateDataSourceClient:
         self._gcs_pg_info_stub = gcs_service_pb2_grpc.PlacementGroupInfoGcsServiceStub(
             gcs_channel
         )
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
         self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
             gcs_channel
         )
@@ -304,7 +301,6 @@ class StateDataSourceClient:
         )
         return reply
 
-    @handle_grpc_network_errors
     async def get_all_node_info(
         self,
         timeout: int = None,

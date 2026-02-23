@@ -399,7 +399,7 @@ cdef class InnerGcsClient:
         node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
         limit: Optional[int] = None,
-    ) -> Future:
+    ) -> Future[GetAllNodeInfoReply]:
         """Async get all node info with optional filters.
 
         Args:
@@ -414,7 +414,7 @@ cdef class InnerGcsClient:
             Future that resolves to GetAllNodeInfoReply protobuf object
         """
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout >= 0 else -1
             optional[CGcsNodeState] c_state_filter = nullopt
             c_vector[CNodeSelector] c_node_selectors
             CNodeSelector c_node_selector

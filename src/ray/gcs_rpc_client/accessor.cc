@@ -317,9 +317,13 @@ void NodeInfoAccessor::AsyncGetAllNodeInfoReply(
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       std::move(request),
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
-        callback(status, std::move(reply));
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
                        << status;
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(status, std::move(reply));
       },
       timeout_ms);
 }
