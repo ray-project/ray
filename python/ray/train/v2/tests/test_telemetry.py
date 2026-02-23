@@ -7,6 +7,7 @@ import ray
 import ray._common.usage.usage_lib as ray_usage_lib
 from ray._common.test_utils import TelemetryCallsite, check_library_usage_telemetry
 from ray.train import Checkpoint
+from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.report_config import CheckpointUploadMode
 from ray.train.v2.api.validation_config import ValidationConfig
@@ -101,6 +102,11 @@ def test_tag_train_entrypoint(mock_record):
             mock_record[ray_usage_lib.TagKey.TRAIN_TRAINER]
             == trainer.__class__.__name__
         )
+
+
+def test_tag_train_elasticity(mock_record):
+    DataParallelTrainer(lambda: None, scaling_config=ScalingConfig(num_workers=(1, 2)))
+    assert mock_record[ray_usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED] == "1"
 
 
 if __name__ == "__main__":
