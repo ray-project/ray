@@ -123,5 +123,30 @@ class CgroupManagerInterface {
   // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
   inline static const Constraint<int64_t> memory_min_constraint_{
       "memory.min", "memory", {0, std::numeric_limits<int64_t>::max()}, 0};
+
+  // memory.low provides best effort memory protection. If the memory usage of a cgroup
+  // is within its effective low boundary, the cgroup's memory won't be reclaimed under
+  // any conditions.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  inline static const Constraint<int64_t> memory_low_constraint_{
+      "memory.low", "memory", {0, std::numeric_limits<int64_t>::max()}, 0};
+
+  // memory.high provides best effort memory protection. If the memory usage of a cgroup
+  // meet or exceeds its high boundary, the processes within the cgroup will be throttled.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  inline static const Constraint<int64_t> memory_high_constraint_{
+      "memory.high",
+      "memory",
+      {0, std::numeric_limits<int64_t>::max()},
+      std::numeric_limits<int64_t>::max()};
+
+  // memory.max provides hard memory protection. If the memory usage of a cgroup
+  // meet or exceeds its max boundary, the kernel OOM killer will be invoked.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  inline static const Constraint<int64_t> memory_max_constraint_{
+      "memory.max",
+      "memory",
+      {0, std::numeric_limits<int64_t>::max()},
+      std::numeric_limits<int64_t>::max()};
 };
 }  // namespace ray

@@ -144,6 +144,7 @@ def test_repartition_target_num_rows_per_block(
     # Each block is 8 ints
     ds = ray.data.range(total_rows, override_num_blocks=num_blocks).repartition(
         target_num_rows_per_block=target_num_rows_per_block,
+        strict=True,
     )
 
     num_blocks = 0
@@ -270,16 +271,16 @@ def test_streaming_repartition_write_with_operator_fusion(
     ds = ds.repartition(num_blocks=2, keys=[partition_col])
 
     # mess up with the block size
-    ds = ds.repartition(target_num_rows_per_block=30)
+    ds = ds.repartition(target_num_rows_per_block=30, strict=True)
 
     # Verify fusion of StreamingRepartition and MapBatches operators
     b_s = target_num_rows * n_target_num_rows
     if streaming_repartition_first:
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
         ds = ds.map_batches(fn, batch_size=b_s)
     else:
         ds = ds.map_batches(fn, batch_size=b_s)
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
     planner = create_planner()
     physical_plan = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -290,7 +291,7 @@ def test_streaming_repartition_write_with_operator_fusion(
     else:
         assert (
             physical_op.name
-            == f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+            == f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]"
         )
 
     # Write output to local Parquet files partitioned by key
@@ -341,18 +342,18 @@ def test_streaming_repartition_fusion_output_shape(
     ds = ds.repartition(num_blocks=2, keys=[partition_col])
 
     # mess up with the block size
-    ds = ds.repartition(target_num_rows_per_block=30)
+    ds = ds.repartition(target_num_rows_per_block=30, strict=True)
 
     # Verify fusion of StreamingRepartition and MapBatches operators
     ds = ds.map_batches(fn, batch_size=20)
-    ds = ds.repartition(target_num_rows_per_block=20)
+    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
     planner = create_planner()
     physical_plan = planner.plan(ds._logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
     assert (
         physical_op.name
-        == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20]"
+        == "MapBatches(fn)->StreamingRepartition[num_rows_per_block=20,strict=True]"
     )
 
     for block in ds.iter_batches(batch_size=None):
@@ -382,6 +383,7 @@ def test_repartition_guarantee_row_num_to_be_exact(
         ds = ray.data.range(num_rows, override_num_blocks=override_num_blocks)
         ds = ds.repartition(
             target_num_rows_per_block=target_num_rows_per_block,
+            strict=True,
         )
         ds = ds.materialize()
 
@@ -431,7 +433,7 @@ def test_streaming_repartition_with_partial_last_block(
     table = [{"id": n} for n in range(num_rows)]
     ds = ray.data.from_items(table)
 
-    ds = ds.repartition(target_num_rows_per_block=20)
+    ds = ds.repartition(target_num_rows_per_block=20, strict=True)
 
     ds = ds.materialize()
 
@@ -450,6 +452,97 @@ def test_streaming_repartition_with_partial_last_block(
     assert all(
         count == 20 for count in block_row_counts[:-1]
     ), f"Expected all blocks except last to have 20 rows, got {block_row_counts}"
+
+
+def test_streaming_repartition_non_strict_mode(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test non-strict mode streaming repartition behavior.
+
+    This test verifies:
+    1. Non-strict mode produces at most 1 block < target per input block
+    2. No stitching across input blocks
+    """
+    num_rows = 100
+    target = 20
+
+    # Create dataset with varying block sizes
+    ds = ray.data.range(num_rows, override_num_blocks=10)  # 10 blocks of 10 rows each
+
+    # Non-strict mode: should split each input block independently
+    ds_non_strict = ds.repartition(target_num_rows_per_block=target, strict=False)
+    ds_non_strict = ds_non_strict.materialize()
+
+    # Collect block row counts
+    block_row_counts = [
+        metadata.num_rows
+        for bundle in ds_non_strict.iter_internal_ref_bundles()
+        for metadata in bundle.metadata
+    ]
+
+    # Verify non-strict mode behavior: no stitching across input blocks
+    # For non-strict mode with input blocks of 10 rows and target of 20:
+    # Each input block (10 rows) should produce exactly 1 block of 10 rows
+    # (since 10 < 20, no splitting needed, and no stitching with other blocks)
+    assert sum(block_row_counts) == num_rows, f"Expected {num_rows} total rows"
+    assert (
+        len(block_row_counts) == 10
+    ), f"Expected 10 blocks, got {len(block_row_counts)}"
+    assert all(
+        count == 10 for count in block_row_counts
+    ), f"Expected all blocks to have 10 rows (no stitching), got {block_row_counts}"
+
+
+@pytest.mark.parametrize("batch_size", [30, 35, 45])
+def test_streaming_repartition_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+    batch_size,
+):
+    """Test that non-strict mode can fuse with any batch_size.
+
+    This test verifies:
+    1. MapBatches -> StreamingRepartition(strict=False) can fuse regardless of batch_size
+    """
+    num_rows = 100
+    target = 20
+
+    def fn(batch):
+        # Just pass through, but verify we got data
+        assert len(batch["id"]) > 0, "Batch should not be empty"
+        return batch
+
+    # Create dataset with 10 blocks (10 rows each) to ensure varied input block sizes
+    ds = ray.data.range(num_rows, override_num_blocks=10)
+
+    # Non-strict mode should fuse even when batch_size % target != 0
+    ds = ds.map_batches(fn, batch_size=batch_size)
+    ds = ds.repartition(target_num_rows_per_block=target, strict=False)
+
+    # Verify fusion happened
+    planner = create_planner()
+    physical_plan = planner.plan(ds._logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+
+    assert (
+        f"MapBatches(fn)->StreamingRepartition[num_rows_per_block={target},strict=False]"
+        in physical_op.name
+    ), (
+        f"Expected fusion for batch_size={batch_size}, target={target}, "
+        f"but got operator name: {physical_op.name}"
+    )
+
+    # Verify correctness: count total rows and verify output block sizes
+    assert ds.count() == num_rows, f"Expected {num_rows} rows"
+
+    # In non-strict mode, blocks are NOT guaranteed to be exactly target size
+    # because no stitching happens across input blocks from map_batches.
+    # Just verify that data is preserved correctly.
+    result = sorted([row["id"] for row in ds.take_all()])
+    expected = list(range(num_rows))
+    assert result == expected, "Data should be preserved correctly after fusion"
 
 
 @pytest.mark.timeout(60)
