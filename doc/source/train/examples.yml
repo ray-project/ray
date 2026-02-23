@@ -86,6 +86,14 @@ examples:
       - large language models
       - natural language processing
     link: examples/pytorch/tensor_parallel_autotp/README
+  - title: Get started with 2D Parallelism (Tensor + Data Parallelism) using FSDP2 and Ray Train
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/pytorch/tensor_parallel_dtensor/README
   - title: Fine-tune an LLM with Ray Train and DeepSpeed
     skill_level: intermediate
     frameworks:
