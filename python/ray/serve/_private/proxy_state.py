@@ -659,7 +659,7 @@ class ProxyStateManager:
     def get_grpc_config(self) -> gRPCOptions:
         return self._grpc_options
 
-    def get_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
+    def get_proxy_handles(self) -> Dict[str, ActorHandle]:
         handles = {
             node_id: state.actor_handle for node_id, state in self._proxy_states.items()
         }
@@ -668,7 +668,7 @@ class ProxyStateManager:
 
         return handles
 
-    def get_proxy_names(self) -> Dict[NodeId, str]:
+    def get_proxy_names(self) -> Dict[str, str]:
         names = {
             node_id: state.actor_name for node_id, state in self._proxy_states.items()
         }

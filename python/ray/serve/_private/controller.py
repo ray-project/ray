@@ -1384,16 +1384,6 @@ class ServeController:
                 )
         return target_groups
 
-    def _get_empty_target_group(self, protocol: RequestProtocol) -> TargetGroup:
-        """Get an empty target group."""
-        return TargetGroup(
-            targets=[],
-            route_prefix="/",
-            protocol=protocol,
-            app_name="",
-            fallback_target=self._get_fallback_proxy_target(protocol),
-        )
-
     def _get_fallback_proxy_target(self, protocol: RequestProtocol) -> Optional[Target]:
         """Get the fallback proxy target."""
         port = (
@@ -1411,6 +1401,16 @@ class ServeController:
             )
         
         return None
+
+    def _get_empty_target_group(self, protocol: RequestProtocol) -> TargetGroup:
+        """Get an empty target group."""
+        return TargetGroup(
+            targets=[],
+            route_prefix="/",
+            protocol=protocol,
+            app_name="",
+            fallback_target=self._get_fallback_proxy_target(protocol),
+        )
 
     def get_target_groups(
         self,
