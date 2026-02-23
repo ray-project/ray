@@ -399,7 +399,7 @@ cdef class InnerGcsClient:
         node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
         limit: Optional[int] = None,
-    ) -> Future[GetAllNodeInfoReply]:
+    ) -> Future[CGetAllNodeInfoReply]:
         """Async get all node info with optional filters.
 
         Args:
