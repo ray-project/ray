@@ -150,7 +150,10 @@ class TensorTransportManager(ABC):
 
     @abstractmethod
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+        self,
+        obj_id: str,
+        tensor_transport_meta: TensorTransportMetadata,
+        tensors: List["torch.Tensor"],
     ):
         """
         Garbage collect for the tensor transport after the GPU object is freed. This is only
@@ -160,6 +163,7 @@ class TensorTransportManager(ABC):
         Args:
             obj_id: The ID of the GPU object to garbage collect.
             tensor_transport_meta: The tensor transport metadata.
+            tensors: The tensors that are contained in the ObjectRef that is being freed.
         """
 
     @abstractmethod
