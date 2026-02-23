@@ -27,7 +27,12 @@ from ray.serve._private.constants import (
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
+from ray.serve.config import (
+    DeploymentMode,
+    GangSchedulingConfig,
+    HTTPOptions,
+    ProxyLocation,
+)
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.util.state import list_actors
@@ -823,6 +828,29 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def updating_message():
         deployment_status = (
             serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["f"]
+        )
+        message_substring = "more than 1s to be scheduled."
+        return (deployment_status.status == "UPDATING") and (
+            message_substring in deployment_status.message
+        )
+
+    wait_for_condition(updating_message, timeout=20)
+
+
+def test_gang_updating_status_message(lower_slow_startup_threshold_and_reset):
+    @serve.deployment(
+        num_replicas=4,
+        ray_actor_options={"num_cpus": 1},
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    def g(*args):
+        pass
+
+    serve._run(g.bind(), _blocking=False)
+
+    def updating_message():
+        deployment_status = (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["g"]
         )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (

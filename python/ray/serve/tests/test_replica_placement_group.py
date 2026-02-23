@@ -7,7 +7,10 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
+from ray.serve._private.common import GANG_PG_NAME_PREFIX
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import get_all_live_placement_group_names
+from ray.serve.config import GangSchedulingConfig
 from ray.serve.context import _get_global_client
 from ray.util.placement_group import PlacementGroup, get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -230,6 +233,106 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
 
     serve.delete("pg_test")
     assert len(get_all_live_placement_group_names()) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
+def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
+    """Verify that leaked gang PGs are removed while in-use gang PGs are kept.
+
+    Deploys two gang-scheduled apps (``survivor`` and ``victim``).  After
+    killing the controller and the victim's actors:
+
+    * The victim's gang PG has no alive actors → detected as leaked → removed.
+    * The survivor's gang PG still has alive actors → preserved.
+    * The survivor's actors continue to serve requests without interruption.
+    """
+
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 0.1},
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        health_check_period_s=1,
+    )
+    class Survivor:
+        def __call__(self):
+            return "survivor_ok"
+
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 0.1},
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        health_check_period_s=1,
+    )
+    class Victim:
+        def __call__(self):
+            return "victim_ok"
+
+    h_surv = serve.run(Survivor.bind(), name="survivor_app", route_prefix="/surv")
+    h_vict = serve.run(Victim.bind(), name="victim_app", route_prefix="/vict")
+
+    assert h_surv.remote().result() == "survivor_ok"
+    assert h_vict.remote().result() == "victim_ok"
+
+    # There should be exactly 2 gang PGs (one per app).
+    gang_pgs = [
+        n
+        for n in get_all_live_placement_group_names()
+        if n.startswith(GANG_PG_NAME_PREFIX)
+    ]
+    assert len(gang_pgs) == 2
+    survivor_pg = [n for n in gang_pgs if "survivor_app" in n]
+    victim_pg = [n for n in gang_pgs if "victim_app" in n]
+    assert len(survivor_pg) == 1
+    assert len(victim_pg) == 1
+    original_survivor_pg_name = survivor_pg[0]
+
+    # Kill the controller
+    ray.kill(_get_global_client()._controller, no_restart=False)
+
+    # Kill the victim actors directly while the controller is restarting.
+    victim_actors = [
+        a
+        for a in ray.util.list_named_actors(all_namespaces=True)
+        if a["namespace"] == SERVE_NAMESPACE and "victim_app" in a["name"]
+    ]
+    for actor_info in victim_actors:
+        try:
+            handle = ray.get_actor(actor_info["name"], namespace=SERVE_NAMESPACE)
+            ray.kill(handle, no_restart=True)
+        except Exception:
+            continue
+
+    def recovery_complete():
+        try:
+            # Survivor should still work.
+            result = h_surv.remote().result()
+            assert result == "survivor_ok"
+        except Exception:
+            return False
+
+        current_gang_pgs = [
+            n
+            for n in get_all_live_placement_group_names()
+            if n.startswith(GANG_PG_NAME_PREFIX)
+        ]
+
+        # The survivor's *original* PG must still exist (not removed).
+        survivor_pgs = [n for n in current_gang_pgs if "survivor_app" in n]
+        if original_survivor_pg_name not in survivor_pgs:
+            return False
+
+        # Victim should have recovered with a new PG (old one was removed).
+        victim_pgs = [n for n in current_gang_pgs if "victim_app" in n]
+        assert len(victim_pgs) >= 1
+        return True
+
+    wait_for_condition(recovery_complete, timeout=60)
+
+    # Verify victim app also recovers.
+    assert h_vict.remote().result() == "victim_ok"
+
+    serve.delete("survivor_app")
+    serve.delete("victim_app")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
