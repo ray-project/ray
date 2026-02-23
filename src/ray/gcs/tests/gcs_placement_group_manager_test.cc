@@ -870,11 +870,6 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
   ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
 
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  auto *primary_bundles =
-      placement_group->GetMutableSchedulingStrategy()->Mutable(0)->mutable_bundles();
-  primary_bundles->Mutable(0)->set_node_id(NodeID::FromRandom().Binary());
-  primary_bundles->Mutable(1)->set_node_id(NodeID::FromRandom().Binary());
-
   mock_placement_group_scheduler_->placement_groups_.pop_back();
   OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
