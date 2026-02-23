@@ -397,7 +397,6 @@ def test_ray_timeline(shutdown_only):
             ray.timeline(filename)
             with open(filename, "r") as timeline_file:
                 dumped = json.load(timeline_file)
-                dumped = json.load(f)
             # TODO(swang): Check actual content. It doesn't seem to match the
             # return value of chrome_tracing_dump in above tests?
             assert len(dumped) > 0
