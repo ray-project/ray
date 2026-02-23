@@ -1,6 +1,8 @@
-# NOTE: experimental/ subdir removed — instance_manager.proto moved to top level (see below)
-# NOTE: export_api/ subdir removed — export_*.proto files moved to top level (see below)
-
+# @IMPORTANT: 1. Ordering within this file respects the internal dependency graph.
+# You will also see things "out of order" from a BUILD.bazel perspective,
+# @IMPORTANT: `experimental/` subdir removed — `instance_manager.proto` moved to top level (see below)
+# @IMPORTANT: `export_api/` subdir removed — `export_*.proto` files moved to top level (see below)
+# @IMPORTANT: Bazel implicitly links @com_google_protobuf//:protobuf — it's a built-in rule that always pulls in the protobuf runtime without you having to list it. Meson has no such implicit behavior, so we must add protobuf explicitly to every *_proto_cpp_lib_dependencies list
 
 # === @begin: runtime_env_common.proto ===
 runtime_env_common_proto = ['runtime_env_common.proto']
@@ -35,12 +37,14 @@ runtime_env_common_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: runtime_env_common_cc_proto)
 
-# @begin: proto_py (original: runtime_env_common_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 runtime_env_common_proto_py = custom_target(
     input: runtime_env_common_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: runtime_env_common_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: runtime_env_common.proto ===
 
 
@@ -52,6 +56,7 @@ subdir('public/')
 
 
 # === @begin: common.proto ===
+# TODO+ @BEGIN: REMOVE ME DONE
 common_proto = ['common.proto']
 
 # @begin: proto_cpp (original: common_cc_proto)
@@ -85,14 +90,16 @@ common_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: common_cc_proto)
 
-# @begin: proto_py (original: common_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 common_proto_py = custom_target(
     input: common_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: common_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: common.proto ===
-
+# TODO+ @END: REMOVE ME DONE
 
 # === @begin: autoscaler.proto ===
 autoscaler_proto = ['autoscaler.proto']
@@ -160,12 +167,14 @@ autoscaler_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 # @end: proto_cpp_grpc (original: autoscaler_cc_grpc)
 
-# @begin: proto_py (original: autoscaler_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 autoscaler_proto_py = custom_target(
     input: autoscaler_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: autoscaler_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: autoscaler.proto ===
 
 
@@ -269,12 +278,14 @@ profile_events_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: profile_events_cc_proto)
 
-# @begin: proto_py (original: profile_events_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 profile_events_proto_py = custom_target(
     input: profile_events_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: profile_events_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: profile_events.proto ===
 
 
@@ -312,12 +323,14 @@ gcs_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: gcs_cc_proto)
 
-# @begin: proto_py (@originial: gcs_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 gcs_proto_py = custom_target(
     input: gcs_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@originial: gcs_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: gcs.proto ===
 
 
@@ -354,12 +367,14 @@ logging_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: logging_cc_proto)
 
-# @begin: proto_py (@originial: logging_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 logging_proto_py = custom_target(
     input: logging_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@originial: logging_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: logging.proto ===
 
 
@@ -429,12 +444,14 @@ node_manager_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 # @end: proto_cpp_grpc (@original: node_manager_cc_grpc)
 
-# @begin: proto_py (@originial: node_manager_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 node_manager_proto_py = custom_target(
     input: node_manager_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@originial: node_manager_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: node_manager.proto ===
 
 
@@ -508,12 +525,14 @@ reporter_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 # @end: proto_cpp_grpc (@original: reporter_cc_grpc)
 
-# @begin: proto_py (@original: reporter_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 reporter_proto_py = custom_target(
     input: reporter_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: reporter_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: reporter.proto ===
 
 
@@ -589,13 +608,15 @@ pubsub_proto_cpp_grpc_lib_dep = declare_dependency(
 # installs them together with some other protos which depend on them. In the same way, `metrics.proto` and `resource.proto`
 # from `opencensus-proto` aren't specified anywhere for installation but included there, so we decided to emulate that.
 # For details, find them in `@SOURCE_ROOT@/eugo/include/opencensus/`
-# @begin: proto_py (@original: ???)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 pubsub_proto_py = custom_target(
     input: pubsub_proto,
     kwargs: proto_py_default_kwargs
 )
 
-# @end: proto_py (@original: ???)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: pubsub.proto ===
 
 
@@ -633,22 +654,92 @@ events_task_profile_events_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: events_task_profile_events_cc_proto)
 
-# @begin: proto_py (original: events_task_profile_events_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 events_task_profile_events_proto_py = custom_target(
     input: events_task_profile_events_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: events_task_profile_events_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: events_task_profile_events.proto ===
 
 
 # ==========================================================================
-# public/events_* static libraries (codegen targets defined in public/meson.build)
-# Now that common_proto_cpp_dep and events_task_profile_events_proto_cpp_dep
-# are available, we can create the static libraries for the events protos.
+# `public/events_*` `_cpp_dep` and static libraries
+# Codegen custom_targets are in `public/meson.build`. The `_cpp_dep` declarations
+# are here (not in `public/`) because several events protos import `common.proto`
+# and/or `runtime_environment.proto`, which require `common_proto_cpp_dep` and
+# `runtime_environment_proto_cpp_dep` to be available. Listing import deps on
+# `_cpp_dep` (rather than on `_lib_dependencies`) is consistent with all
+# non-events proto targets in this file.
 # ==========================================================================
 
-# --- events with no common dep (timestamp only) ---
+# --- `_cpp_dep` declarations (matching Bazel proto_library deps from `public/BUILD.bazel`) ---
+
+# deps: timestamp only (no local proto deps)
+events_driver_job_lifecycle_event_proto_cpp_dep = declare_dependency(
+    sources: events_driver_job_lifecycle_event_proto_cpp
+)
+
+events_node_definition_event_proto_cpp_dep = declare_dependency(
+    sources: events_node_definition_event_proto_cpp
+)
+
+events_node_lifecycle_event_proto_cpp_dep = declare_dependency(
+    sources: events_node_lifecycle_event_proto_cpp
+)
+
+# deps: common
+events_actor_definition_event_proto_cpp_dep = declare_dependency(
+    sources: events_actor_definition_event_proto_cpp,
+    dependencies: [common_proto_cpp_dep]
+)
+
+events_actor_lifecycle_event_proto_cpp_dep = declare_dependency(
+    sources: events_actor_lifecycle_event_proto_cpp,
+    dependencies: [common_proto_cpp_dep]
+)
+
+events_task_lifecycle_event_proto_cpp_dep = declare_dependency(
+    sources: events_task_lifecycle_event_proto_cpp,
+    dependencies: [common_proto_cpp_dep]
+)
+
+# deps: runtime_environment + common
+events_actor_task_definition_event_proto_cpp_dep = declare_dependency(
+    sources: events_actor_task_definition_event_proto_cpp,
+    dependencies: [runtime_environment_proto_cpp_dep, common_proto_cpp_dep]
+)
+
+events_task_definition_event_proto_cpp_dep = declare_dependency(
+    sources: events_task_definition_event_proto_cpp,
+    dependencies: [runtime_environment_proto_cpp_dep, common_proto_cpp_dep]
+)
+
+events_driver_job_definition_event_proto_cpp_dep = declare_dependency(
+    sources: events_driver_job_definition_event_proto_cpp,
+    dependencies: [runtime_environment_proto_cpp_dep, common_proto_cpp_dep]
+)
+
+# deps: all events_* + events_task_profile_events (Bazel order)
+events_base_event_proto_cpp_dep = declare_dependency(
+    sources: events_base_event_proto_cpp,
+    dependencies: [
+        events_actor_definition_event_proto_cpp_dep,
+        events_actor_lifecycle_event_proto_cpp_dep,
+        events_actor_task_definition_event_proto_cpp_dep,
+        events_driver_job_definition_event_proto_cpp_dep,
+        events_driver_job_lifecycle_event_proto_cpp_dep,
+        events_node_definition_event_proto_cpp_dep,
+        events_node_lifecycle_event_proto_cpp_dep,
+        events_task_definition_event_proto_cpp_dep,
+        events_task_lifecycle_event_proto_cpp_dep,
+        events_task_profile_events_proto_cpp_dep,
+    ]
+)
+
+# --- static libraries ---
 
 # @begin: events_driver_job_lifecycle_event_proto_cpp_lib
 events_driver_job_lifecycle_event_proto_cpp_lib_dependencies = [
@@ -658,6 +749,7 @@ events_driver_job_lifecycle_event_proto_cpp_lib_dependencies = [
     # Eugo-managed
     protobuf,
 ]
+
 events_driver_job_lifecycle_event_proto_cpp_lib = static_library(
     'events_driver_job_lifecycle_event_proto_cpp_lib',
     dependencies: events_driver_job_lifecycle_event_proto_cpp_lib_dependencies,
@@ -677,6 +769,7 @@ events_node_definition_event_proto_cpp_lib_dependencies = [
     # Eugo-managed
     protobuf,
 ]
+
 events_node_definition_event_proto_cpp_lib = static_library(
     'events_node_definition_event_proto_cpp_lib',
     dependencies: events_node_definition_event_proto_cpp_lib_dependencies,
@@ -696,6 +789,7 @@ events_node_lifecycle_event_proto_cpp_lib_dependencies = [
     # Eugo-managed
     protobuf,
 ]
+
 events_node_lifecycle_event_proto_cpp_lib = static_library(
     'events_node_lifecycle_event_proto_cpp_lib',
     dependencies: events_node_lifecycle_event_proto_cpp_lib_dependencies,
@@ -707,13 +801,10 @@ events_node_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: events_node_lifecycle_event_proto_cpp_lib
 
-# --- events with common dep ---
-
 # @begin: events_actor_definition_event_proto_cpp_lib
 events_actor_definition_event_proto_cpp_lib_dependencies = [
     # Package-managed
     events_actor_definition_event_proto_cpp_dep,
-    common_proto_cpp_dep,
 
     # Eugo-managed
     protobuf,
@@ -733,7 +824,6 @@ events_actor_definition_event_proto_cpp_lib_dep = declare_dependency(
 events_actor_lifecycle_event_proto_cpp_lib_dependencies = [
     # Package-managed
     events_actor_lifecycle_event_proto_cpp_dep,
-    common_proto_cpp_dep,
 
     # Eugo-managed
     protobuf,
@@ -753,7 +843,6 @@ events_actor_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
 events_task_lifecycle_event_proto_cpp_lib_dependencies = [
     # Package-managed
     events_task_lifecycle_event_proto_cpp_dep,
-    common_proto_cpp_dep,
 
     # Eugo-managed
     protobuf,
@@ -769,14 +858,10 @@ events_task_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: events_task_lifecycle_event_proto_cpp_lib
 
-# --- events with runtime_environment + common dep ---
-
 # @begin: events_actor_task_definition_event_proto_cpp_lib
 events_actor_task_definition_event_proto_cpp_lib_dependencies = [
     # Package-managed
     events_actor_task_definition_event_proto_cpp_dep,
-    runtime_environment_proto_cpp_dep,
-    common_proto_cpp_dep,
 
     # Eugo-managed
     protobuf,
@@ -796,8 +881,6 @@ events_actor_task_definition_event_proto_cpp_lib_dep = declare_dependency(
 events_task_definition_event_proto_cpp_lib_dependencies = [
     # Package-managed
     events_task_definition_event_proto_cpp_dep,
-    runtime_environment_proto_cpp_dep,
-    common_proto_cpp_dep,
 
     # Eugo-managed
     protobuf,
@@ -817,8 +900,6 @@ events_task_definition_event_proto_cpp_lib_dep = declare_dependency(
 events_driver_job_definition_event_proto_cpp_lib_dependencies = [
     # Package-managed
     events_driver_job_definition_event_proto_cpp_dep,
-    runtime_environment_proto_cpp_dep,
-    common_proto_cpp_dep,
 
     # Eugo-managed
     protobuf,
@@ -834,23 +915,10 @@ events_driver_job_definition_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: events_driver_job_definition_event_proto_cpp_lib
 
-# --- events_base_event (depends on ALL events_* + events_task_profile_events from parent) ---
-
 # @begin: events_base_event_proto_cpp_lib
 events_base_event_proto_cpp_lib_dependencies = [
     # Package-managed
     events_base_event_proto_cpp_dep,
-    events_actor_definition_event_proto_cpp_dep,
-    events_actor_lifecycle_event_proto_cpp_dep,
-    events_actor_task_definition_event_proto_cpp_dep,
-    events_driver_job_definition_event_proto_cpp_dep,
-    events_driver_job_lifecycle_event_proto_cpp_dep,
-    events_node_definition_event_proto_cpp_dep,
-    events_node_lifecycle_event_proto_cpp_dep,
-    events_task_definition_event_proto_cpp_dep,
-    events_task_lifecycle_event_proto_cpp_dep,
-    events_task_profile_events_proto_cpp_dep,
-    common_proto_cpp_dep,
 
     # Eugo-managed
     protobuf,
@@ -938,12 +1006,14 @@ events_event_aggregator_service_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 # @end: proto_cpp_grpc (original: events_event_aggregator_service_cc_grpc)
 
-# @begin: proto_py (original: events_event_aggregator_service_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 events_event_aggregator_service_proto_py = custom_target(
     input: events_event_aggregator_service_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: events_event_aggregator_service_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: events_event_aggregator_service.proto ===
 
 
@@ -1013,12 +1083,14 @@ gcs_service_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: gcs_service_cc_proto)
 
-# @begin: proto_py (@original: gcs_service_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 gcs_service_proto_py = custom_target(
     input: gcs_service_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: gcs_service_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: gcs_service.proto ===
 
 
@@ -1087,14 +1159,16 @@ test_service_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 # @end: proto_cpp_grpc (@original: test_service_cc_grpc)
 
-# @begin: proto_py (@original: test_service_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 test_service_proto_py = custom_target(
     input: test_service_proto,
     kwargs: proto_py_default_kwargs + {
-        'install': false # @TODO+:why this is build et al if not installed?
+        'install': false # @TODO+:why this is build at all if not installed?
     }
 )
-# @end: proto_py (@original: test_service_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: test_service.proto ===
 
 
@@ -1232,12 +1306,14 @@ core_worker_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 # @end: proto_cpp_grpc (@original: worker_cc_grpc (yep, original version doesn't have `core_` prefix, likely, for historical reasons))
 
-# @begin: proto_py (@original: core_worker_py_proto (at the same time, py_proto and proto targets have the `core_` prefix, lol))
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 core_worker_proto_py = custom_target(
     input: core_worker_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: core_worker_py_proto (at the same time, py_proto and proto targets have the `core_` prefix, lol))
+# @end: proto_py (@original: core_py_proto)
 # === @end: core_worker.proto ===
 
 
@@ -1309,12 +1385,14 @@ event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: event_cc_proto)
 
-# @begin: proto_py (@original: event_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 event_proto_py = custom_target(
     input: event_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: event_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: event.proto ===
 
 
@@ -1355,12 +1433,14 @@ runtime_env_agent_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: runtime_env_agent_cc_proto)
 
-# @begin: proto_py (@original: runtime_env_agent_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 runtime_env_agent_proto_py = custom_target(
     input: runtime_env_agent_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: runtime_env_agent_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: runtime_env_agent.proto ===
 
 
@@ -1397,24 +1477,28 @@ usage_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: usage_cc_proto)
 
-# @begin: proto_py (@original: usage_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 usage_proto_py = custom_target(
     input: usage_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: usage_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: usage.proto ===
 
 
 # === @begin: dependency.proto ===
 dependency_proto = ['dependency.proto']
 
-# @begin: proto_py (@original: dependency_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 dependency_proto_py = custom_target(
     input: dependency_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: dependency_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: dependency.proto ===
 
 
@@ -1455,24 +1539,28 @@ instance_manager_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: instance_manager_cc_proto)
 
-# @begin: proto_py (original: instance_manager_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 instance_manager_proto_py = custom_target(
     input: instance_manager_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: instance_manager_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: instance_manager.proto ===
 
 
 # === @begin: ray_client.proto ===
 ray_client_proto = ['ray_client.proto']
 
-# @begin: proto_py (@original: ray_client_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 ray_client_proto_py = custom_target(
     input: ray_client_proto,
     kwargs: proto_py_default_kwargs,
 )
-# @end: proto_py (@original: ray_client_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: ray_client.proto ===
 
 
@@ -1480,6 +1568,8 @@ ray_client_proto_py = custom_target(
 serve_proto = ['serve.proto']
 
 # @begin: proto_py (@original: serve_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 serve_proto_py = custom_target(
     input: serve_proto,
     kwargs: proto_py_default_kwargs + {
@@ -1524,12 +1614,14 @@ export_runtime_env_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: export_runtime_env_cc_proto)
 
-# @begin: proto_py (@original: export_runtime_env_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_runtime_env_proto_py = custom_target(
     input: export_runtime_env_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: export_runtime_env_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_runtime_env.proto ===
 
 
@@ -1566,12 +1658,14 @@ export_train_state_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: export_train_state_cc_proto)
 
-# @begin: proto_py (original: export_train_state_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_train_state_proto_py = custom_target(
     input: export_train_state_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: export_train_state_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_train_state.proto ===
 
 
@@ -1608,12 +1702,14 @@ export_dataset_operator_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: export_dataset_operator_event_cc_proto)
 
-# @begin: proto_py (original: export_dataset_operator_event_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_dataset_operator_event_proto_py = custom_target(
     input: export_dataset_operator_event_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: export_dataset_operator_event_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_dataset_operator_event.proto ===
 
 
@@ -1650,12 +1746,14 @@ export_dataset_operator_schema_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: export_dataset_operator_schema_cc_proto)
 
-# @begin: proto_py (original: export_dataset_operator_schema_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_dataset_operator_schema_proto_py = custom_target(
     input: export_dataset_operator_schema_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: export_dataset_operator_schema_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_dataset_operator_schema.proto ===
 
 
@@ -1692,12 +1790,14 @@ export_dataset_metadata_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: export_dataset_metadata_cc_proto)
 
-# @begin: proto_py (original: export_dataset_metadata_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_dataset_metadata_proto_py = custom_target(
     input: export_dataset_metadata_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (original: export_dataset_metadata_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_dataset_metadata.proto ===
 
 
@@ -1736,12 +1836,14 @@ export_task_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: export_task_event_cc_proto)
 
-# @begin: proto_py (@original: export_task_event_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_task_event_proto_py = custom_target(
     input: export_task_event_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: export_task_event_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_task_event.proto ===
 
 
@@ -1779,12 +1881,14 @@ export_node_data_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: export_node_data_cc_proto)
 
-# @begin: proto_py (@original: export_node_data_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_node_data_proto_py = custom_target(
     input: export_node_data_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: export_node_data_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_node_data.proto ===
 
 
@@ -1823,12 +1927,14 @@ export_actor_data_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: export_actor_data_cc_proto)
 
-# @begin: proto_py (@original: export_actor_data_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_actor_data_proto_py = custom_target(
     input: export_actor_data_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: export_actor_data_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_actor_data.proto ===
 
 
@@ -1867,12 +1973,14 @@ export_driver_job_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: export_driver_job_event_cc_proto)
 
-# @begin: proto_py (@original: export_driver_job_event_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_driver_job_event_proto_py = custom_target(
     input: export_driver_job_event_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: export_driver_job_event_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_driver_job_event.proto ===
 
 
@@ -1910,12 +2018,14 @@ export_submission_job_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: export_submission_job_event_cpp_proto)
 
-# @begin: proto_py (@original: export_submission_job_event_py_proto)
+# @begin: proto_py (@original: N/A — no Bazel py target)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_submission_job_event_proto_py = custom_target(
     input: export_submission_job_event_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: export_submission_job_event_py_proto)
+# @end: proto_py (@original: N/A — no Bazel py target)
 # === @end: export_submission_job_event.proto ===
 
 
@@ -1964,10 +2074,12 @@ export_event_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: export_event_cpp_proto)
 
-# @begin: proto_py (@original: export_event_py_proto)
+# @begin: proto_py (@original: core_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
 export_event_proto_py = custom_target(
     input: export_event_proto,
     kwargs: proto_py_default_kwargs
 )
-# @end: proto_py (@original: export_event_py_proto)
+# @end: proto_py (@original: core_py_proto)
 # === @end: export_event.proto ===

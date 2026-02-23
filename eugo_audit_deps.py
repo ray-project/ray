@@ -37,7 +37,7 @@ BAZEL_TO_MESON = {
     "@com_google_absl//absl/container:flat_hash_set": "absl_container_flat_hash_set",
     "@com_google_absl//absl/container:node_hash_map": "absl_container_node_hash_map",
     "@com_google_absl//absl/container:btree": "absl_container_btree",
-    "@com_google_absl//absl/container:inlined_vector": "absl_container_flat_hash_map",  # TODO: needs dedicated var
+    "@com_google_absl//absl/container:inlined_vector": "absl_container_inlined_vector",
     "@com_google_absl//absl/random": "absl_random_random",
     "@com_google_absl//absl/random:bit_gen_ref": "absl_random_bit_gen_ref",
     "@com_google_absl//absl/synchronization": "absl_synchronization",
@@ -78,6 +78,7 @@ BAZEL_TO_MESON = {
     "@com_github_grpc_grpc//:grpc_opencensus_plugin": "grpc",
     "@com_github_grpc_grpc//:grpc++_reflection": "grpc",  # included in grpc meta-dep
     "@com_github_grpc_grpc//:grpcpp_admin": "grpc",  # included in grpc meta-dep
+    "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto": "grpc",  # auto-included with grpc
     "@nlohmann_json": "nlohmann_json",
     "@com_github_gflags_gflags//:gflags": "gflags",
     "@com_github_redis_hiredis//:hiredis": "hiredis",
@@ -87,6 +88,10 @@ BAZEL_TO_MESON = {
     "@io_opencensus_cpp//opencensus/tags": "opencensus_cpp_tags",
     "@io_opencensus_cpp//opencensus/exporters/stats/prometheus": "opencensus_cpp_prometheus_exporter",
     "@io_opencensus_cpp//opencensus/exporters/stats/stdout": "opencensus_cpp_stdout_exporter",
+    # --- OpenTelemetry C++ ---
+    "@io_opentelemetry_cpp//api": "opentelemetry_cpp_api",
+    "@io_opentelemetry_cpp//exporters/otlp:otlp_grpc_metric_exporter": "opentelemetry_cpp_otlp_grpc_metric_exporter",
+    "@io_opentelemetry_cpp//sdk/src/metrics": "opentelemetry_cpp_metrics",
     # --- absl extras ---
     "@com_google_absl//absl/base": "absl_base_core_headers",  # absl/base → core_headers
 }
@@ -100,12 +105,6 @@ INTENTIONALLY_SKIPPED = {
     "@platforms//os:windows": "handled by host_machine.system() conditional",
     "@platforms//os:osx": "handled by host_machine.system() conditional",
     "@platforms//os:macos": "handled by host_machine.system() conditional",
-    # gRPC health proto is auto-included with grpc dependency
-    "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto": "auto-included with grpc",
-    # OpenTelemetry — not yet integrated, tracked separately
-    "@io_opentelemetry_cpp//api": "OpenTelemetry not yet integrated",
-    "@io_opentelemetry_cpp//exporters/otlp:otlp_grpc_metric_exporter": "OpenTelemetry not yet integrated",
-    "@io_opentelemetry_cpp//sdk/src/metrics": "OpenTelemetry not yet integrated",
 }
 
 # Meson variables that are equivalent (since all boost aliases resolve to same dep)

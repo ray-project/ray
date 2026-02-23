@@ -22,7 +22,6 @@ py.extension_module(
         gcs_server_cpp_lib_dep,
         global_state_accessor_cpp_lib_dep,
         raylet_cpp_lib_dep,
-        redis_client_cpp_lib_dep,
         stats_cpp_lib_dep,
         serialization_proto_cpp_lib_dep,
         util_cpp_lib_dep
@@ -309,7 +308,7 @@ install_subdir(
     ],
 )
 
-# @Important:
+# @IMPORTANT:
 # **/thirdparty_files/**
 # **/thirdparty/**
 #

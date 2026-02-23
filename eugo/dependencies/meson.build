@@ -11,6 +11,7 @@ absl_container_flat_hash_map = dependency('absl', method: 'cmake', modules: ['ab
 absl_container_flat_hash_set = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_set'])
 absl_container_node_hash_map = dependency('absl', method: 'cmake', modules: ['absl::node_hash_map'])
 absl_container_btree = dependency('absl', method: 'cmake', modules: ['absl::btree'])
+absl_container_inlined_vector = dependency('absl', method: 'cmake', modules: ['absl::inlined_vector'])
 
 absl_random_random = dependency('absl', method: 'cmake', modules: ['absl::random_random'])
 absl_random_bit_gen_ref = dependency('absl', method: 'cmake', modules: ['absl::random_bit_gen_ref'])
@@ -76,6 +77,15 @@ opencensus_cpp_stdout_exporter = dependency('OpenCensus', method: 'cmake', modul
 opencensus_cpp_stats = dependency('OpenCensus', method: 'cmake', modules: ['opencensus-cpp::stats'])
 opencensus_cpp_tags = dependency('OpenCensus', method: 'cmake', modules: ['opencensus-cpp::tags'])
 # === @end: opencensus_cpp ===
+
+
+# === @begin: opentelemetry_cpp ===
+# OpenTelemetry C++ SDK — used by observability/open_telemetry_metric_recorder.
+# Upstream Bazel uses @io_opentelemetry_cpp v1.19.0.
+opentelemetry_cpp_api = dependency('opentelemetry-cpp', method: 'cmake', modules: ['opentelemetry-cpp::api'])
+opentelemetry_cpp_otlp_grpc_metric_exporter = dependency('opentelemetry-cpp', method: 'cmake', modules: ['opentelemetry-cpp::otlp_grpc_metric_exporter'])
+opentelemetry_cpp_metrics = dependency('opentelemetry-cpp', method: 'cmake', modules: ['opentelemetry-cpp::metrics'])
+# === @end: opentelemetry_cpp ===
 
 
 # === @begin: protobuf ===

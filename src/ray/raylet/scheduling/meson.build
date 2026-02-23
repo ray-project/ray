@@ -1,14 +1,11 @@
-# Refactored to 1:1 mapping with BUILD.bazel targets (Stage 1).
-# Each Bazel ray_cc_library() maps to one Meson target.
-#
-# NOTE: This subdir is processed via subdir('raylet/scheduling/') directly from
-# src/ray/meson.build, BEFORE raylet/ and observability/ are processed. Therefore:
+# @IMPORTANT: This subdir is processed via `subdir('raylet/scheduling/')` directly from
+# `src/ray/meson.build`, BEFORE `raylet/` and `observability/` are processed. Therefore:
 #   - //src/ray/raylet:metrics, :worker_interface, :worker_pool,
 #     :lease_dependency_manager are NOT available (documented as comments)
 #   - //src/ray/observability:metric_interface, :fake_metric are NOT available
-# These deps are resolved at final link time via _raylet shared library.
+# @IMPORTANT: These deps are resolved at final link time via `_raylet` shared library.
 #
-# Available from parent scope:
+# NOTE: Available from parent scope:
 #   From common/: task_common_cpp_lib_dep (consolidates lease, bundle_location_index,
 #     placement_group), ray_config_cpp_lib_dep, id_cpp_lib_dep, grpc_util_cpp_lib_dep,
 #     ray_object_cpp_lib_dep, ray_common_cpp_lib_dep
@@ -28,7 +25,7 @@
 scheduling_context_cpp_lib_dependencies = [
     # Package-managed
     id_cpp_lib_dep,
-    task_common_cpp_lib_dep,     # covers //src/ray/common:placement_group,
+    placement_group_cpp_lib_dep,
 ]
 
 scheduling_context_cpp_lib_dep = declare_dependency(
@@ -42,10 +39,10 @@ scheduling_context_cpp_lib_dep = declare_dependency(
 # Header-only
 scheduler_internal_cpp_lib_dependencies = [
     # Package-managed
-    task_common_cpp_lib_dep,     # covers //src/ray/common:lease,
+    lease_cpp_lib_dep,
     cluster_resource_data_cpp_lib_dep,
     node_manager_proto_cpp_lib_dep,
-    grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types,
+    rpc_callback_types_cpp_lib_dep,
 ]
 
 scheduler_internal_cpp_lib_dep = declare_dependency(
@@ -60,7 +57,7 @@ scheduler_internal_cpp_lib_dep = declare_dependency(
 cluster_lease_manager_interface_cpp_lib_dependencies = [
     # Package-managed
     node_manager_proto_cpp_lib_dep,
-    grpc_common_cpp_lib_dep,     # covers //src/ray/rpc:rpc_callback_types,
+    rpc_callback_types_cpp_lib_dep,
 ]
 
 cluster_lease_manager_interface_cpp_lib_dep = declare_dependency(
@@ -105,18 +102,16 @@ local_resource_manager_cpp_lib_dependencies = [
     # Package-managed
     cluster_resource_data_cpp_lib_dep,
     placement_group_util_cpp_lib_dep,
+    # `metric_interface_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/observability:metric_interface is resolved at final link time via _raylet shared library.
     gcs_proto_cpp_lib_dep,
     node_manager_proto_cpp_lib_dep,
     ray_syncer_cpp_lib_dep,
     stats_metric_cpp_lib_dep,
     logging_cpp_lib_dep,
 
-    # NOT AVAILABLE (processed after): //src/ray/observability:metric_interface
-    # Resolved at final link time via _raylet shared library.
-
     # Eugo-managed
     absl_container_flat_hash_map,
-    # gtest_prod: handled by vendored stub in eugo/include/gtest/gtest_prod.h (FRIEND_TEST only)
+    # "@com_google_googletest//:gtest_prod",
 ]
 
 local_resource_manager_cpp_lib = static_library(
@@ -138,6 +133,8 @@ local_resource_manager_cpp_lib_dep = declare_dependency(
 local_lease_manager_interface_cpp_lib_dependencies = [
     # Package-managed
     scheduler_internal_cpp_lib_dep,
+    # fake_metric_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/observability:fake_metric (intentionally omitted — test/fake helper, no Meson target)
+    # raylet_metrics_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/raylet:metrics
 
     # Eugo-managed
     absl_container_flat_hash_map,
@@ -154,19 +151,19 @@ local_lease_manager_interface_cpp_lib_dep = declare_dependency(
 cluster_resource_manager_cpp_lib_dependencies = [
     # Package-managed
     local_resource_manager_cpp_lib_dep,
-    task_common_cpp_lib_dep,         # covers :bundle_location_index, :lease
+    bundle_location_index_cpp_lib_dep,
     grpc_util_cpp_lib_dep,
+    lease_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     cluster_resource_data_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
+    # raylet_metrics_cpp_lib_dep is NOT AVAILABLE (processed after): `//src/ray/raylet:metrics`. Resolved at final link time via _raylet shared library.
     container_util_cpp_lib_dep,
     logging_cpp_lib_dep,
 
-    # NOT AVAILABLE (processed after): //src/ray/raylet:metrics
-
     # Eugo-managed
     absl_container_flat_hash_map,
-    # gtest_prod: handled by vendored stub (FRIEND_TEST only)
+    # "@com_google_googletest//:gtest_prod",
 ]
 
 cluster_resource_manager_cpp_lib = static_library(
@@ -236,7 +233,7 @@ hybrid_scheduling_policy_cpp_lib_dependencies = [
     # Eugo-managed
     absl_random_random,
     absl_random_bit_gen_ref,
-    # gtest_prod: handled by vendored stub (FRIEND_TEST only)
+    # "@com_google_googletest//:gtest_prod",
 ]
 
 hybrid_scheduling_policy_cpp_lib = static_library(
@@ -257,7 +254,7 @@ hybrid_scheduling_policy_cpp_lib_dep = declare_dependency(
 affinity_with_bundle_scheduling_policy_cpp_lib_dependencies = [
     # Package-managed
     scheduling_policy_cpp_lib_dep,
-    task_common_cpp_lib_dep,         # covers :bundle_location_index
+    bundle_location_index_cpp_lib_dep,
 ]
 
 affinity_with_bundle_scheduling_policy_cpp_lib = static_library(
@@ -414,10 +411,9 @@ cluster_resource_scheduler_cpp_lib_dependencies = [
     cluster_resource_manager_cpp_lib_dep,
     composite_scheduling_policy_cpp_lib_dep,
     scheduler_internal_cpp_lib_dep,
+    # metric_interface_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/observability:metric_interface
     gcs_proto_cpp_lib_dep,
     logging_cpp_lib_dep,
-
-    # NOT AVAILABLE (processed after): //src/ray/observability:metric_interface
 
     # Eugo-managed
     absl_container_flat_hash_map,
@@ -441,19 +437,18 @@ cluster_resource_scheduler_cpp_lib_dep = declare_dependency(
 # === @begin: local_lease_manager_cpp_lib (@original: local_lease_manager) ===
 local_lease_manager_cpp_lib_dependencies = [
     # Package-managed
-    cluster_resource_scheduler_cpp_lib_dep,
-    local_lease_manager_interface_cpp_lib_dep,
-    scheduler_internal_cpp_lib_dep,
-    task_common_cpp_lib_dep,         # covers :lease
+    lease_cpp_lib_dep,
     ray_object_cpp_lib_dep,
-    cluster_resource_data_cpp_lib_dep,
+    cluster_resource_scheduler_cpp_lib_dep,
     placement_group_util_cpp_lib_dep,
     object_manager_common_cpp_lib_dep,
-
-    # NOT AVAILABLE (processed after): //src/ray/raylet:lease_dependency_manager
-    # NOT AVAILABLE (processed after): //src/ray/raylet:metrics
-    # NOT AVAILABLE (processed after): //src/ray/raylet:worker_interface
-    # NOT AVAILABLE (processed after): //src/ray/raylet:worker_pool
+    # lease_dependency_manager_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/raylet:lease_dependency_manager
+    # raylet_metrics_cpp_lib_dep is NOT AVAILABLE (processed after):         # //src/ray/raylet:metrics
+    # worker_interface_cpp_lib_dep is NOT AVAILABLE (processed after):        # //src/ray/raylet:worker_interface
+    # worker_pool_cpp_lib_dep is NOT AVAILABLE (processed after):             # //src/ray/raylet:worker_pool
+    cluster_resource_data_cpp_lib_dep,
+    local_lease_manager_interface_cpp_lib_dep,
+    scheduler_internal_cpp_lib_dep,
 
     # Eugo-managed
     absl_container_flat_hash_map,
@@ -483,7 +478,7 @@ cluster_lease_manager_cpp_lib_dependencies = [
     local_lease_manager_interface_cpp_lib_dep,
     scheduler_internal_cpp_lib_dep,
     scheduler_resource_reporter_cpp_lib_dep,
-    task_common_cpp_lib_dep,         # covers :lease
+    lease_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     stats_cpp_lib_dep,
     logging_cpp_lib_dep,
@@ -529,7 +524,7 @@ scheduler_cpp_lib_dep = declare_dependency(
         spread_scheduling_policy_cpp_lib_dep,
 
         # System-managed
-        threads,
+        threads, # -lpthread
     ]
 )
 # === @end: scheduler_cpp_lib (@original: scheduler) ===

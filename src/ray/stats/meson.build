@@ -1,5 +1,5 @@
 # === @begin: stats_metric_cpp_lib (@original: stats_metric) ===
-# IMPORTANT: open_telemetry_metric_recorder_cpp_lib_dep: circular — defined in src/ray/meson.build
+# @IMPORTANT: open_telemetry_metric_recorder_cpp_lib_dep: circular — defined in src/ray/meson.build
 # after subdir('rpc/'), which is after subdir('stats/').
 # It is resolved at final link time.
 stats_metric_cpp_lib_dependencies = [
@@ -37,7 +37,7 @@ stats_metric_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: stats_cpp_lib (@original: stats_lib) ===
-# IMPORTANT: MOVED INLINE to src/ray/meson.build (after subdir('rpc/')) to break circular dep:
+# @IMPORTANT: MOVED INLINE to src/ray/meson.build (after subdir('rpc/')) to break circular dep:
 # `stats_lib` depends on `rpc:metrics_agent_client`, which is defined in rpc/ (after stats/).
 # === @end: stats_cpp_lib (@original: stats_lib) ===
 

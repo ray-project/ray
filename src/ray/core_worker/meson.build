@@ -1,16 +1,12 @@
-# =====================================================================
-# core_worker/
-#
-# IMPORTANT: 1. Ordering within this file respects the internal dependency graph.
+# @IMPORTANT: 1. Ordering within this file respects the internal dependency graph.
 # You will also see things "out of order" from a BUILD.bazel perspective,
 # but this is intentional: i.e. `cw_metrics_cpp_lib_dep` is defined at the top
 # of the file because it's a leaf node dependency used by many other targets,
 # not because it's defined first in BUILD.bazel (in bazel its definition is
 # after all the targets that depend on it).
-# IMPORTANT: 2. `actor_manager` is defined inline here (not in `actor_management/`)
+# @IMPORTANT: 2. `actor_manager` is defined inline here (not in `actor_management/`)
 # because it depends on `task_submission:actor_task_submitter`, which
 # in turn depends on `actor_management:actor_creator` — a circular dep.
-# =====================================================================
 
 
 # === @begin: cw_metrics_cpp_lib (@original: metrics) ===
@@ -457,7 +453,7 @@ subdir('task_submission/')
 
 
 # === @begin: am_actor_manager_cpp_lib (@original: actor_management:actor_manager) ===
-# IMPORTANT: Defined here (not in actor_management/) because it depends on
+# @IMPORTANT: Defined here (not in actor_management/) because it depends on
 # task_submission:actor_task_submitter, which depends on
 # actor_management:actor_creator — circular dep at subdir level.
 # NOTE: Named with the `am_` prefix (not `cw_`) because it logically belongs to the

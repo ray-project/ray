@@ -1,4 +1,4 @@
-# IMPORTANT: ordering of targets in this file is dependent on the build graph.
+# @IMPORTANT: ordering of targets in this file is dependent on the build graph.
 # You will also see things "out of order" from a BUILD.bazel perspective,
 
 # === @begin: function_traits_cpp_lib (@original: function_traits) ===

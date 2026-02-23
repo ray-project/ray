@@ -13,6 +13,8 @@ opencensus_resource_proto_cpp_dep = declare_dependency(
 # @end: proto_cpp
 
 # @begin: proto_py
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py into the wheel via opencensus_proto_py_default_kwargs (install: true).
 opencensus_resource_proto_py = custom_target(
     input: opencensus_resource_proto,
     kwargs: opencensus_proto_py_default_kwargs

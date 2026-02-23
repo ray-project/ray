@@ -175,7 +175,7 @@ worker_cpp_lib_dependencies = [
     # Package-managed
     worker_interface_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # lease (consolidated),
+    lease_cpp_lib_dep,
     core_worker_client_cpp_lib_dep,
     node_manager_cpp_fbs_lib_dep,
     core_worker_proto_cpp_grpc_lib_dep,
@@ -202,6 +202,7 @@ worker_cpp_lib_dep = declare_dependency(
 )
 # === @end: worker_cpp_lib ===
 
+# NOTE: @skip: fake_worker (@original: fake_worker) — test-only header (fake_worker.h); not compiled in production Meson build.
 
 # === @begin: worker_pool_cpp_lib (@original: worker_pool) ===
 worker_pool_cpp_lib_dependencies = [
@@ -210,8 +211,11 @@ worker_pool_cpp_lib_dependencies = [
     runtime_env_agent_client_cpp_lib_dep,
     worker_interface_cpp_lib_dep,
     constants_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # lease, protobuf_utils, runtime_env, status (consolidated),
+    lease_cpp_lib_dep,
+    protobuf_utils_cpp_lib_dep,
     ray_config_cpp_lib_dep,
+    runtime_env_cpp_lib_dep,
+    status_cpp_lib_dep,
     core_worker_client_interface_cpp_lib_dep,
     gcs_client_cpp_lib_dep,
     core_worker_proto_cpp_lib_dep,
@@ -247,7 +251,8 @@ worker_killing_policy_cpp_lib_dependencies = [
     # Package-managed
     worker_interface_cpp_lib_dep,
     worker_pool_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # lease, memory_monitor_interface (consolidated),
+    lease_cpp_lib_dep,
+    memory_monitor_interface_cpp_lib_dep,
 
     # Eugo-managed
     absl_time,
@@ -309,6 +314,7 @@ local_object_manager_cpp_lib_dependencies = [
     id_cpp_lib_dep,
     ray_object_cpp_lib_dep,
     core_worker_client_pool_cpp_lib_dep,
+    object_directory_cpp_lib_dep,
     metric_interface_cpp_lib_dep,
     node_manager_proto_cpp_lib_dep,
     subscriber_interface_cpp_lib_dep,
@@ -345,12 +351,19 @@ raylet_cpp_lib_dependencies = [
     worker_cpp_lib_dep,
     worker_killing_policy_cpp_lib_dep,
     worker_pool_cpp_lib_dep,
-    ray_common_cpp_lib_dep,         # buffer, flatbuf_utils, lease, memory_monitor (consolidated),
+    buffer_cpp_lib_dep,
+    flatbuf_utils_cpp_lib_dep,
+    lease_cpp_lib_dep,
+    memory_monitor_factory_cpp_lib_dep,
+    memory_monitor_interface_cpp_lib_dep,
+    memory_monitor_utils_cpp_lib_dep,
     cgroup_manager_interface_cpp_lib_dep,
+    experimental_mutable_object_provider_cpp_lib_dep,
     core_worker_client_pool_cpp_lib_dep,
     node_manager_cpp_fbs_lib_dep,
     gcs_client_cpp_lib_dep,
     object_manager_cpp_lib_dep,
+    ownership_object_directory_cpp_lib_dep,
     plasma_client_cpp_lib_dep,
     metric_interface_cpp_lib_dep,
     subscriber_cpp_lib_dep,
@@ -366,7 +379,6 @@ raylet_cpp_lib_dependencies = [
     process_cpp_lib_dep,
     process_utils_cpp_lib_dep,
     time_cpp_lib_dep,
-    util_cpp_lib_dep,
 
     # Eugo-managed
     boost_system,
@@ -376,7 +388,8 @@ raylet_cpp_lib_dependencies = [
     absl_memory,
     absl_strings,
     absl_time,
-    threads,
+    threads, # -lpthread
+    # "@com_google_googletest//:gtest_prod",
 ]
 
 raylet_cpp_lib = static_library(
@@ -404,13 +417,17 @@ raylet_executable = executable(
         raylet_metrics_cpp_lib_dep,
         raylet_cpp_lib_dep,
         asio_cpp_lib_dep,
-        ray_common_cpp_lib_dep,     # lease, metrics, ray_config, status (consolidated)
+        lease_cpp_lib_dep,
+        metrics_cpp_lib_dep,
+        ray_config_cpp_lib_dep,
+        status_cpp_lib_dep,
         cgroup_manager_factory_cpp_lib_dep,
-        core_worker_cpp_lib_dep,    # core_worker:metrics
+        cgroup_manager_interface_cpp_lib_dep,
+        cw_metrics_cpp_lib_dep,
         core_worker_client_cpp_lib_dep,
         core_worker_client_pool_cpp_lib_dep,
         gcs_client_cpp_lib_dep,
-        object_manager_cpp_lib_dep, # includes ownership_object_directory
+        ownership_object_directory_cpp_lib_dep,
         cluster_lease_manager_cpp_lib_dep,
         raylet_client_lib_cpp_lib_dep,
         raylet_client_pool_cpp_lib_dep,
@@ -423,7 +440,6 @@ raylet_executable = executable(
         stream_redirection_cpp_lib_dep,
         stream_redirection_options_cpp_lib_dep,
         time_cpp_lib_dep,
-        util_cpp_lib_dep,
 
         # Eugo managed
         gflags,

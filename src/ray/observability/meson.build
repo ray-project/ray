@@ -1,15 +1,29 @@
+# @IMPORTANT: Two targets from this directory's BUILD.bazel are defined in
+# `src/ray/meson.build` instead of here, due to dependency ordering constraints:
+#
+#   - `metric_interface` (`metric_interface_cpp_lib_dep`) is defined early in src/ray/meson.build (before subdir('stats/'))
+#     because `stats/tag_defs` depends on it. Pulling it here would be too late.
+#   - `open_telemetry_metric_recorder` is defined in src/ray/meson.build (after subdir('rpc/'))
+#     because it depends on `rpc/` targets (rpc_common, authentication_mode,
+#     authentication_token_loader) that are processed after observability/.
+#
+# All other targets in BUILD.bazel are defined here as normal, except:
+#   - `fake_metric` (fake_metric.h) — test/fake helper, intentionally omitted
+#   - `fake_ray_event_recorder` (fake_ray_event_recorder.h) — test/fake helper, intentionally omitted
+
+# === @begin: open_telemetry_metric_recorder_cpp_lib (@original: open_telemetry_metric_recorder) ===
+# @IMPORTANT: MOVED INLINE to src/ray/meson.build (after subdir('rpc/')) because it depends
+# on rpc/ targets (rpc_common, authentication_mode, authentication_token_loader) that are
+# processed after observability/. `open_telemetry_metric_recorder_cpp_lib_dep` is still
+# available here — it's already defined by the time this file is processed.
+# === @end: open_telemetry_metric_recorder_cpp_lib ===
+
+
 # === @begin: metric_interface_cpp_lib (@original: metric_interface) ===
-# NOTE: metric_interface_cpp_lib_dep is defined EARLY in src/ray/meson.build
+# @IMPORTANT: `metric_interface_cpp_lib_dep` is defined EARLY in src/ray/meson.build
 # (before subdir('stats/')) because stats/tag_defs depends on it.
 # Do NOT redefine it here — it would cause a duplicate variable error.
 # === @end: metric_interface_cpp_lib ===
-
-
-# === @begin: metric_constants_cpp_lib (@original: metric_constants) ===
-metric_constants_cpp_lib_dep = declare_dependency(
-    sources: ['metric_constants.h'],
-)
-# === @end: metric_constants_cpp_lib ===
 
 
 # === @begin: ray_event_interface_cpp_lib (@original: ray_event_interface) ===
@@ -218,14 +232,6 @@ ray_event_recorder_cpp_lib_dep = declare_dependency(
 # === @end: ray_event_recorder_cpp_lib ===
 
 
-# === @begin: open_telemetry_metric_recorder_cpp_lib (@original: open_telemetry_metric_recorder) ===
-# MOVED INLINE to src/ray/meson.build (after subdir('rpc/')) so the variable is
-# available earlier.  It depends on rpc/ targets that are processed after stats/,
-# so it can't live in stats/ but must come after rpc/.  The dep is still usable
-# here (it's already defined by the time this file is processed).
-# === @end: open_telemetry_metric_recorder_cpp_lib ===
-
-
 # === @begin: observability_metrics_cpp_lib (@original: metrics) ===
 # Header-only
 observability_metrics_cpp_lib_dependencies = [
@@ -238,6 +244,13 @@ observability_metrics_cpp_lib_dep = declare_dependency(
     dependencies: observability_metrics_cpp_lib_dependencies
 )
 # === @end: observability_metrics_cpp_lib ===
+
+
+# === @begin: metric_constants_cpp_lib (@original: metric_constants) ===
+metric_constants_cpp_lib_dep = declare_dependency(
+    sources: ['metric_constants.h'],
+)
+# === @end: metric_constants_cpp_lib ===
 
 
 # Umbrella dependency — backward compatible with consumers using the consolidated target

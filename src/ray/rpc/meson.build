@@ -1,6 +1,6 @@
 # === @begin: authentication/ ===
-# NOTE: authentication must come BEFORE rpc targets because grpc_client.cc,
-# server_call.cc, and grpc_server.cc all depend on authentication targets.
+# @IMPORTANT: authentication must come BEFORE rpc targets because `grpc_client.cc`,
+# `server_call.cc`, and `grpc_server.cc` all depend on authentication targets.
 subdir('authentication/')
 # === @end: authentication/ ===
 
@@ -195,7 +195,7 @@ grpc_server_cpp_lib_dependencies = [
     thread_utils_cpp_lib_dep,
 
     # Eugo-managed
-    grpc,
+    grpc,  # covers @com_github_grpc_grpc//:grpc++, :grpc++_reflection, :grpcpp_admin
 ]
 
 grpc_server_cpp_lib = static_library(
@@ -253,8 +253,8 @@ subdir('node_manager/')
 
 # === @begin: node_manager_server_cpp_lib (@original: node_manager_server) ===
 # Header-only
-# NOTE: header lives at node_manager/node_manager_server.h but the Bazel target
-# is in rpc/BUILD.bazel. Defined here after node_manager/ subdir for include path.
+# @IMPORTANT: the actual header lives at node_manager/node_manager_server.h but the Bazel target
+# is in `/src/ray/rpc/BUILD.bazel`. Defined here after node_manager/ subdir for include path.
 node_manager_server_cpp_lib_dependencies = [
     # Package-managed
     grpc_server_cpp_lib_dep,
@@ -274,11 +274,10 @@ node_manager_server_cpp_lib_dep = declare_dependency(
 
 # === @begin: object_manager_server_cpp_lib (@original: object_manager_server) ===
 # Header-only
-# NOTE: Bazel deps include object_manager:object_manager_grpc_client_manager which is
-# processed after rpc/ — omitted here, handled through transitive include paths.
 object_manager_server_cpp_lib_dependencies = [
     # Package-managed
     asio_cpp_lib_dep,
+    # `object_manager_grpc_client_manager_cpp_lib_dep` is NOT AVAILABLE (processed after): `//src/ray/object_manager:object_manager_grpc_client_manager`
     object_manager_proto_cpp_grpc_lib_dep,
     grpc_server_cpp_lib_dep,
     authentication_token_cpp_lib_dep,

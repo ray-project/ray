@@ -32,6 +32,8 @@ export_runtime_env_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (@original: export_runtime_env_cc_proto)
 
 # @begin: proto_py (@original: export_runtime_env_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 export_runtime_env_proto_py = custom_target(
     input: export_runtime_env_proto,
     kwargs: proto_py_default_kwargs
@@ -75,6 +77,8 @@ export_task_event_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (@original: export_task_event_cc_proto)
 
 # @begin: proto_py (@original: export_task_event_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 export_task_event_proto_py = custom_target(
     input: export_task_event_proto,
     kwargs: proto_py_default_kwargs
@@ -117,6 +121,8 @@ export_node_data_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (@original: export_node_data_cc_proto)
 
 # @begin: proto_py (@original: export_node_data_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 export_node_data_proto_py = custom_target(
     input: export_node_data_proto,
     kwargs: proto_py_default_kwargs
@@ -160,6 +166,8 @@ export_actor_data_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (@original: export_actor_data_cc_proto)
 
 # @begin: proto_py (@original: export_actor_data_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 export_actor_data_proto_py = custom_target(
     input: export_actor_data_proto,
     kwargs: proto_py_default_kwargs
@@ -203,6 +211,8 @@ export_driver_job_event_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (@original: export_driver_job_event_cc_proto)
 
 # @begin: proto_py (@original: export_driver_job_event_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 export_driver_job_event_proto_py = custom_target(
     input: export_driver_job_event_proto,
     kwargs: proto_py_default_kwargs
@@ -246,6 +256,8 @@ export_submission_job_event_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (@original: export_submission_job_event_cpp_proto)
 
 # @begin: proto_py (@original: export_submission_job_event_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 export_submission_job_event_proto_py = custom_target(
     input: export_submission_job_event_proto,
     kwargs: proto_py_default_kwargs
@@ -295,6 +307,8 @@ export_event_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (@original: export_event_cpp_proto)
 
 # @begin: proto_py (@original: export_event_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 export_event_proto_py = custom_target(
     input: export_event_proto,
     kwargs: proto_py_default_kwargs

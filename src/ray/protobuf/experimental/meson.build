@@ -32,6 +32,8 @@ instance_manager_proto_cpp_lib_dep = declare_dependency(
 # @end: proto_cpp (original: instance_manager_cc_proto)
 
 # @begin: proto_py (original: instance_manager_py_proto)
+# @IMPORTANT: Variable is unused — no meson.build references it. Kept because the custom_target
+# generates and installs *_pb2.py/*_pb2_grpc.py into the wheel via proto_py_default_kwargs (install: true).
 instance_manager_proto_py = custom_target(
     input: instance_manager_proto,
     kwargs: proto_py_default_kwargs

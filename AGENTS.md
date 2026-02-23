@@ -360,6 +360,20 @@ cgroup_driver_interface_cpp_lib_dep = declare_dependency(
 
 This works because `cgroup_driver_interface_cpp_lib_dep` is defined elsewhere (processed earlier via `subdir()`). If it were defined only in this same file, it would have to move before `noop_cgroup_manager` — that is the one allowable ordering deviation, and it must be documented with a comment explaining why Bazel order cannot be followed.
 
+**When ordering deviates from BUILD.bazel**, the `meson.build` file MUST have an `# IMPORTANT` comment block at the very top of the file (before any target definitions) explaining:
+1. That the ordering within this file respects the internal Meson dependency graph, NOT the BUILD.bazel order.
+2. Why deviations exist (e.g., define-before-use constraints, targets inlined from subdirectories, circular dependency resolution).
+
+Example header:
+```meson
+# IMPORTANT: Ordering within this file respects the internal dependency graph.
+# You will see things "out of order" from a BUILD.bazel perspective because
+# Meson requires define-before-use: if target A depends on target B and both
+# are in this file, B must appear first regardless of Bazel ordering.
+```
+
+This ensures anyone cross-referencing against BUILD.bazel immediately understands the ordering rationale instead of assuming targets were accidentally misordered.
+
 ### Translating Each Bazel Target
 
 For each `ray_cc_library()` in a `BUILD.bazel`:
@@ -891,7 +905,7 @@ Complete mapping of Bazel external dependency labels to Meson variable names. Al
 | `@com_google_absl//absl/container:flat_hash_set` | `absl_container_flat_hash_set` |
 | `@com_google_absl//absl/container:node_hash_map` | `absl_container_node_hash_map` |
 | `@com_google_absl//absl/container:btree` | `absl_container_btree` |
-| `@com_google_absl//absl/container:inlined_vector` | `absl_container_flat_hash_map` *(needs dedicated var — TODO)* |
+| `@com_google_absl//absl/container:inlined_vector` | `absl_container_inlined_vector` |
 | `@com_google_absl//absl/random` | `absl_random_random` |
 | `@com_google_absl//absl/random:bit_gen_ref` | `absl_random_bit_gen_ref` |
 | `@com_google_absl//absl/synchronization` | `absl_synchronization` |
@@ -945,6 +959,9 @@ All Boost modules resolve to the same underlying `boost` dependency (due to a Me
 | `@io_opencensus_cpp//opencensus/tags` | `opencensus_cpp_tags` |
 | `@io_opencensus_cpp//opencensus/exporters/stats/prometheus` | `opencensus_cpp_prometheus_exporter` |
 | `@io_opencensus_cpp//opencensus/exporters/stats/stdout` | `opencensus_cpp_stdout_exporter` |
+| `@io_opentelemetry_cpp//api` | `opentelemetry_cpp_api` |
+| `@io_opentelemetry_cpp//exporters/otlp:otlp_grpc_metric_exporter` | `opentelemetry_cpp_otlp_grpc_metric_exporter` |
+| `@io_opentelemetry_cpp//sdk/src/metrics` | `opentelemetry_cpp_metrics` |
 
 #### Special Cases
 
@@ -1156,9 +1173,18 @@ Use `eugo_audit_targets.py` for a comprehensive per-target audit that includes t
 14. **Clean up empty directories with orphaned `meson.build` files** — if a directory contains only a `meson.build` and no source files, follow the assessment procedure in §8.10 to determine whether to delete, move, or inline the targets.
 15. **Mandatory target-count audit** — before considering a `meson.build` complete, count the production `ray_cc_library()` targets in the corresponding `BUILD.bazel` and compare against the `# === @begin` blocks in the `meson.build`. They MUST match 1:1. If the `meson.build` has fewer targets, it is INCOMPLETE — identify the missing Bazel targets and create Meson equivalents. This is the #1 source of breakout errors: consolidating multiple Bazel targets into one Meson library. Use the full validation procedure in §3.
 16. **Verify all deps exist** — for every `*_cpp_lib_dep` referenced in a `_dependencies` list, verify it is actually defined in a `meson.build` that is processed BEFORE this one. A reference to a nonexistent dep is a build error. Use `grep -rn 'foo_cpp_lib_dep =' src/ray/**/meson.build` to verify.
-17. **Circular dep documentation** — when a Bazel dep cannot be added because the target is defined in a `meson.build` processed later (ordering constraint), add a comment explaining: (1) what the missing dep is, (2) why it can't be added (which file defines it, processing order), and (3) why it still works (e.g., headers found via `-I`, symbols resolved at final link time).
+17. **Unavailable / Circular dep documentation** — when a Bazel dep cannot be added because the target is defined in a `meson.build` processed later (ordering constraint), it MUST be represented as a **commented-out dependency inline** in the `_dependencies` list using the standard format:
+    ```meson
+    # <meson_variable_name> is NOT AVAILABLE (processed after): //<bazel_label>
+    ```
+    For example:
+    ```meson
+    # raylet_metrics_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/raylet:metrics
+    # object_manager_grpc_client_manager_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/object_manager:object_manager_grpc_client_manager and is resolved at final link time via `<>` library.
+    ```
+    The comment must be placed at the **exact position** where the dep would appear if it were available (i.e., matching the Bazel ordering). This ensures: (a) every Bazel dep is accounted for — nothing is silently dropped, (b) the Meson variable name is documented for future use if ordering changes, and (c) auditing against Bazel is trivial — every dep line maps 1:1. Do NOT use separate `IMPORTANT` or `NOTE` block comments outside the dependencies list — the inline commented-out entry IS the documentation. These deps are resolved at final link time via the `_raylet` shared library.
 18. **Directory count invariant** — the number of `meson.build` files under `src/ray/` MUST be greater than or equal to the number of `BUILD.bazel` files (excluding test directories and intentionally excluded paths). If there are fewer `meson.build` files than `BUILD.bazel` files, some directories are missing their Meson build definitions. See §11 for the full invariant and the audit command. Use `python3 eugo_audit_targets.py` for a comprehensive automated check.
-19. **Maintain Bazel target ordering** — `# === @begin` blocks in a `meson.build` MUST appear in the same top-to-bottom order as the corresponding `ray_cc_library()` targets in `BUILD.bazel`. The only permitted deviation is when a target's dependency is also defined in the same file and must therefore be placed before its consumer (Meson define-before-use). Document any such deviation with a comment. See §3 "Target Ordering Rule" for the full explanation and example.
+19. **Maintain Bazel target ordering** — `# === @begin` blocks in a `meson.build` MUST appear in the same top-to-bottom order as the corresponding `ray_cc_library()` targets in `BUILD.bazel`. The only permitted deviation is when a target's dependency is also defined in the same file and must therefore be placed before its consumer (Meson define-before-use). Document any such deviation with a comment. **When ANY deviation from BUILD.bazel order exists**, the `meson.build` file MUST have an `# IMPORTANT` comment block at the top explaining that ordering respects the internal dependency graph (see §3 "Target Ordering Rule" for the full explanation, example, and required header format).
 20. **Group dependencies with section comments** — every `_dependencies` list must separate package-managed deps (other Meson library targets) from Eugo-managed deps (external dependencies from `eugo/dependencies/meson.build`) using `# Package-managed` and `# Eugo-managed` section comments, with a blank line between groups. This makes it immediately clear which deps are internal project libraries vs. external third-party libraries. Example:
     ```meson
     foo_cpp_lib_dependencies = [

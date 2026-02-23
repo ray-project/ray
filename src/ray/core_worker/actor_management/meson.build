@@ -1,4 +1,4 @@
-# IMPORTANT: `actor_manager` is defined in the parent core_worker/meson.build
+# @IMPORTANT: `actor_manager` is defined in the parent core_worker/meson.build
 # because it depends on `task_submission:actor_task_submitter`, which in turn
 # depends on `actor_management:actor_creator`. This breaks the circular dep.
 

@@ -1,3 +1,15 @@
+# @IMPORTANT: Three targets from this directory's BUILD.bazel are defined in
+# `src/ray/meson.build` instead of here, due to dependency ordering constraints:
+#
+#   - `ownership_object_directory` depends on `//src/ray/gcs_rpc_client:gcs_client`
+#     and `//src/ray/pubsub:subscriber_interface`, which are processed after this subdir().
+#   - `pull_manager` depends on `ownership_object_directory` (same constraint).
+#   - `object_manager` (the top-level target) depends on `pull_manager`,
+#     `//src/ray/object_manager_rpc_client:object_manager_client_interface`,
+#     and `//src/ray/rpc:object_manager_server` — all processed after this subdir().
+#
+# All other targets in BUILD.bazel are defined here as normal.
+
 # === @begin: object_manager_common_cpp_lib (@original: object_manager_common) ===
 object_manager_common_cpp_lib_dependencies = [
     # Package-managed
@@ -74,8 +86,8 @@ object_manager_grpc_client_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: object_directory_cpp_lib (@original: object_directory) ===
 # Header-only
-# NOTE: object_directory deps include gcs_client (from gcs_rpc_client/) which is
-# processed after object_manager/. The header-only declare_dependency omits that
+# @IMPORTANT: `object_directory` deps include `gcs_client` (`from gcs_rpc_client/`) which is
+# processed after `object_manager/`. The header-only declare_dependency omits that
 # dep — it's resolved at final link time via _raylet shared library.
 object_directory_cpp_lib_dependencies = [
     # Package-managed
@@ -83,6 +95,7 @@ object_directory_cpp_lib_dependencies = [
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
     status_cpp_lib_dep,
+    # gcs_client_cpp_lib_dep,  # See note above. "//src/ray/gcs_rpc_client:gcs_client" — omitted: subdir('gcs_rpc_client/') is processed after object_manager/; resolved at final link time
 ]
 
 object_directory_cpp_lib_dep = declare_dependency(
@@ -147,6 +160,7 @@ spilled_object_reader_cpp_lib_dependencies = [
 
     # Eugo-managed
     absl_types_optional,
+    # "@com_google_googletest//:gtest_prod",
 ]
 
 spilled_object_reader_cpp_lib = static_library(

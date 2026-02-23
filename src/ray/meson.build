@@ -1,10 +1,12 @@
+# @IMPORTANT: This file exists despite no corresponding BUILD.bazel because it contains shared variable definitions (e.g. `metric_interface_cpp_lib_dep`) and shared targets (e.g. `stats_cpp_lib`) that are used across multiple subdirectories, and it's cleaner to define them in one place rather than duplicate them in multiple meson.build files across stats/, observability/, gcs/, etc.
+
 subdir('protobuf/')
 subdir('thirdparty/')
 subdir('util/')
 
 # === @begin: metric_interface_cpp_lib (@original: metric_interface from observability/) ===
 # Header-only
-# # IMPORTANT - Defined early (before `stats/`) because `stats/tag_defs` depends on it.
+# # @IMPORTANT - Defined early (before `stats/`) because `stats/tag_defs` depends on it.
 # The canonical Bazel target is `//src/ray/observability:metric_interface`,
 # but it's header-only with only an external dep, so it can safely live here.
 metric_interface_cpp_lib_dependencies = [
@@ -31,14 +33,12 @@ subdir('ray_syncer/')
 subdir('rpc/')
 
 
-# @Important: defined inline here (after rpc/) because it depends on rpc/ targets
-# (rpc_common, authentication_mode, authentication_token_loader) but is needed by
-# stats_metric (defined in stats/ which is processed BEFORE rpc/).  For stats_metric
+# @IMPORTANT: defined inline here (after rpc/) because it depends on `rpc/` targets
+# (`rpc_common`, `authentication_mode`, `authentication_token_loader`) but is needed by
+# `stats_metric` (defined in `stats/` which is processed BEFORE `rpc/`).  For `stats_metric`
 # the dep is still circular — headers found via project-wide -I, symbols resolved at
 # final _raylet link time.
 # === @begin: observability/open_telemetry_metric_recorder_cpp_lib (@original: open_telemetry_metric_recorder) ===
-# NOTE: OpenTelemetry C++ SDK deps (@io_opentelemetry_cpp) may need to be added
-# to eugo/dependencies/meson.build if not provided transitively.
 open_telemetry_metric_recorder_cpp_lib_dependencies = [
     # Package-managed
     constants_cpp_lib_dep,
@@ -50,12 +50,16 @@ open_telemetry_metric_recorder_cpp_lib_dependencies = [
 
     # Eugo-managed
     absl_container_flat_hash_map,
+    opentelemetry_cpp_api,
+    opentelemetry_cpp_otlp_grpc_metric_exporter,
+    opentelemetry_cpp_metrics,
 ]
 
 open_telemetry_metric_recorder_cpp_lib = static_library(
     'open_telemetry_metric_recorder_cpp_lib',
     ['observability/open_telemetry_metric_recorder.cc'],
     install: false,
+    cpp_args: ['-DENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW'],  # @IMPORTANT: mTLS support, must match opentelemetry-cpp build
     dependencies: open_telemetry_metric_recorder_cpp_lib_dependencies
 )
 
@@ -81,7 +85,7 @@ stats_cpp_lib_dependencies = [
     grpc,                           # includes grpc_opencensus_plugin
 
     # System-managed
-    threads,
+    threads, # `"-lpthread"` for Linux
 ]
 
 stats_cpp_lib = static_library(
@@ -118,28 +122,28 @@ subdir('gcs_rpc_client/')
 # We can't traverse the entire `raylet` tree, as it includes parts which depend on targets from `gcs`.
 subdir('raylet/scheduling/')
 
-# observability must come before gcs_server because gcs targets use observability types
+
+# @IMPORTANT: `observability` must come before `gcs_server` because gcs targets use observability types
 subdir('observability/')
 
-# core_worker_rpc_client must come before gcs_server (gcs_server depends on worker_rpc_cpp_lib_dep)
-# and before gcs/actor (gcs_actor depends on core_worker_client_pool)
+# @IMPORTANT: `core_worker_rpc_client` must come before `gcs_server` (gcs_server depends on worker_rpc_cpp_lib_dep)
+# and before `gcs/actor` (gcs_actor depends on core_worker_client_pool)
 subdir('core_worker_rpc_client/')
 
-# @Important: gcs_server targets are inline here (not in gcs/meson.build) because they depend on
-# targets from gcs_rpc_client/, raylet/scheduling/, and others that are processed after gcs/.
+# @IMPORTANT: `gcs_server` targets are inline here (not in `gcs/meson.build`) because they depend on
+# targets from `gcs_rpc_client/`, `raylet/scheduling/`, and others that are processed after `gcs/`.
 # === @begin: gcs/gcs_table_storage_cpp_lib (original: gcs_table_storage_lib) ===
 gcs_table_storage_cpp_lib_dependencies = [
     # Package-managed
-    gcs_cpp_lib_dep,
-    gcs_in_memory_store_client_cpp_lib_dep,
-    observable_store_client_cpp_lib_dep,
-    pubsub_cpp_lib_dep,
-    ray_common_cpp_lib_dep,
-    redis_store_client_cpp_lib_dep,
+    asio_cpp_lib_dep,
+    id_cpp_lib_dep,
+    status_cpp_lib_dep,
+    store_client_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
 
     # Eugo-managed
-    absl_container_flat_hash_map,   # @com_google_absl//absl/container:flat_hash_map
-    absl_container_flat_hash_set,   # @com_google_absl//absl/container:flat_hash_set
+    absl_container_flat_hash_map,
+    absl_container_flat_hash_set,
 ]
 
 gcs_table_storage_cpp_lib = static_library(
@@ -156,9 +160,9 @@ gcs_table_storage_cpp_lib_dep = declare_dependency(
 # === @end: gcs/gcs_table_storage_cpp_lib (original: gcs_table_storage_lib) ===
 
 
-# gcs/actor must be after gcs_table_storage (gcs_actor_scheduler needs it) and
-# after core_worker_rpc_client (gcs_actor_manager needs worker_rpc_cpp_lib_dep),
-# but BEFORE gcs_server (gcs_server depends on gcs_actor_cpp_lib_dep).
+# @IMPORTANT: `gcs/actor` must be after `gcs_table_storage` (gcs_actor_scheduler needs it) and
+# after `core_worker_rpc_client` (gcs_actor_manager needs worker_rpc_cpp_lib_dep),
+# but BEFORE `gcs_server` (gcs_server depends on gcs_actor_cpp_lib_dep).
 subdir('gcs/actor/')
 
 
@@ -340,7 +344,7 @@ gcs_node_manager_cpp_lib_dependencies = [
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated),
+    protobuf_utils_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     ray_event_recorder_interface_cpp_lib_dep,
     ray_node_definition_event_cpp_lib_dep,
@@ -496,9 +500,9 @@ gcs_health_check_manager_cpp_lib_dependencies = [
     ray_config_cpp_lib_dep,
     stats_metric_cpp_lib_dep,
     thread_checker_cpp_lib_dep,
-    grpc,       # includes grpc health check proto,
 
     # Eugo-managed
+    grpc,                           # covers grpc++ and health_proto (bundled in grpc meta-dep)
     absl_container_flat_hash_map,
 ]
 
@@ -549,7 +553,7 @@ gcs_task_manager_cpp_lib_dependencies = [
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated),
+    protobuf_utils_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     status_cpp_lib_dep,
     events_event_aggregator_service_proto_cpp_lib_dep,
@@ -604,7 +608,8 @@ gcs_job_manager_cpp_lib_dependencies = [
     gcs_init_data_cpp_lib_dep,
     gcs_table_storage_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils, runtime_env (consolidated),
+    protobuf_utils_cpp_lib_dep,
+    runtime_env_cpp_lib_dep,
     core_worker_client_pool_cpp_lib_dep,
     metric_interface_cpp_lib_dep,
     ray_driver_job_definition_event_cpp_lib_dep,
@@ -636,8 +641,9 @@ gcs_job_manager_cpp_lib_dep = declare_dependency(
 # === @begin: gcs/gcs_placement_group_cpp_lib (@original: gcs_placement_group) ===
 gcs_placement_group_cpp_lib_dependencies = [
     # Package-managed
-    ray_common_cpp_lib_dep,     # bundle_spec, metrics (consolidated),
+    bundle_spec_cpp_lib_dep,
     id_cpp_lib_dep,
+    metrics_cpp_lib_dep,
     gcs_service_proto_cpp_lib_dep,
     stats_cpp_lib_dep,
     counter_map_cpp_lib_dep,
@@ -700,7 +706,7 @@ gcs_placement_group_manager_cpp_lib_dependencies = [
     gcs_usage_stats_client_cpp_lib_dep,
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # bundle_spec (consolidated),
+    bundle_spec_cpp_lib_dep,
     id_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
@@ -739,7 +745,7 @@ gcs_autoscaler_state_manager_cpp_lib_dependencies = [
     gcs_grpc_service_interfaces_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # protobuf_utils (consolidated),
+    protobuf_utils_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     gcs_actor_manager_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
@@ -751,6 +757,7 @@ gcs_autoscaler_state_manager_cpp_lib_dependencies = [
 
     # Eugo-managed
     absl_container_flat_hash_map,
+    # "@com_google_googletest//:gtest",
 ]
 
 gcs_autoscaler_state_manager_cpp_lib = static_library(
@@ -799,16 +806,16 @@ gcs_grpc_services_cpp_lib_dep = declare_dependency(
 
 # === @begin: gcs/gcs_server_cpp_lib (@original: gcs_server_lib) ===
 gcs_server_cpp_lib_dependencies = [
-    # All individual gcs targets
+    # Package-managed
+    gcs_actor_cpp_lib_dep,                          # //src/ray/gcs/actor:gcs_actor
+    gcs_actor_manager_cpp_lib_dep,                  # //src/ray/gcs/actor:gcs_actor_manager
+    gcs_actor_scheduler_cpp_lib_dep,                # //src/ray/gcs/actor:gcs_actor_scheduler
     gcs_autoscaler_state_manager_cpp_lib_dep,
     gcs_function_manager_cpp_lib_dep,
-    gcs_grpc_service_interfaces_cpp_lib_dep,
-    gcs_grpc_services_cpp_lib_dep,
     gcs_health_check_manager_cpp_lib_dep,
     gcs_init_data_cpp_lib_dep,
     gcs_job_manager_cpp_lib_dep,
     gcs_kv_manager_cpp_lib_dep,
-    gcs_metrics_cpp_lib_dep,
     gcs_node_manager_cpp_lib_dep,
     gcs_placement_group_cpp_lib_dep,
     gcs_placement_group_manager_cpp_lib_dep,
@@ -823,11 +830,9 @@ gcs_server_cpp_lib_dependencies = [
     gcs_task_manager_cpp_lib_dep,
     gcs_usage_stats_client_cpp_lib_dep,
     gcs_worker_manager_cpp_lib_dep,
-    # gcs/actor targets
-    gcs_actor_cpp_lib_dep,
-    gcs_actor_scheduler_cpp_lib_dep,
-    gcs_actor_manager_cpp_lib_dep,
-    # External deps
+    gcs_grpc_service_interfaces_cpp_lib_dep,        # :grpc_service_interfaces
+    gcs_grpc_services_cpp_lib_dep,                  # :grpc_services
+    gcs_metrics_cpp_lib_dep,                        # :metrics
     core_worker_client_cpp_lib_dep,
     core_worker_client_pool_cpp_lib_dep,
     store_client_cpp_lib_dep,
@@ -851,6 +856,8 @@ gcs_server_cpp_lib_dependencies = [
     thread_checker_cpp_lib_dep,
     time_cpp_lib_dep,
     type_traits_cpp_lib_dep,
+
+    # Eugo-managed
     boost_bimap,
     absl_container_btree,
 ]
@@ -870,22 +877,33 @@ gcs_server_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs/gcs_server ===
+
+gcs_server_cpp_lib_dependencies = [
+    # Package-managed
+    gcs_server_cpp_lib_dep,
+    metrics_cpp_lib_dep,                    # //src/ray/common:metrics
+    observability_metrics_cpp_lib_dep,      # //src/ray/observability:metrics
+    # @IMPORTANT: Cannot add raylet_metrics_cpp_lib_dep here (//src/ray/raylet:metrics) — it maps to
+    # //src/ray/raylet:metrics but `subdir('raylet/')` is processed AFTER this
+    # executable. `gcs_server_main.cc` includes "ray/raylet/metrics.h", which
+    # is found via the project-wide `-I` path. The concrete deps of that header-only
+    # target (`observability_metrics_cpp_lib_dep`, `stats_cpp_lib_dep`) are present
+    # in this list, so link resolution is complete.
+    stats_cpp_lib_dep,              # //src/ray/stats:stats_lib
+    event_cpp_lib_dep,
+    port_persistence_cpp_lib_dep,
+    raii_cpp_lib_dep,
+    stream_redirection_cpp_lib_dep,
+    stream_redirection_options_cpp_lib_dep,
+
+    # Eugo-managed
+    gflags,
+]
+
 gcs_server = executable(
     'gcs_server',
     ['gcs/gcs_server_main.cc'],
-    dependencies: [
-        gcs_server_cpp_lib_dep,
-        gcs_metrics_cpp_lib_dep,
-        ray_common_cpp_lib_dep,     # metrics (consolidated)
-        observability_metrics_cpp_lib_dep,
-        stats_cpp_lib_dep,
-        event_cpp_lib_dep,
-        port_persistence_cpp_lib_dep,
-        raii_cpp_lib_dep,
-        stream_redirection_cpp_lib_dep,
-        stream_redirection_options_cpp_lib_dep,
-        gflags,
-    ],
+    dependencies: gcs_server_cpp_lib_dependencies,
     install: true,
     install_dir: py.get_install_dir() / 'ray/core/src/ray/gcs/'
 )
@@ -964,7 +982,7 @@ pull_manager_cpp_lib_dep = declare_dependency(
 
 # === @begin: object_manager/object_manager_cpp_lib (@original: object_manager) ===
 object_manager_cpp_lib_dependencies = [
-    # From object_manager/meson.build breakout targets
+    # Package-managed
     chunk_object_reader_cpp_lib_dep,
     object_manager_metrics_cpp_lib_dep,
     object_buffer_pool_cpp_lib_dep,
@@ -973,19 +991,15 @@ object_manager_cpp_lib_dependencies = [
     pull_manager_cpp_lib_dep,
     push_manager_cpp_lib_dep,
     spilled_object_reader_cpp_lib_dep,
-    plasma_store_server_cpp_lib_dep,
-
-    # Late deps (from object_manager_rpc_client/) — not yet available as proper dep
-    # Resolved at final link time.
-
-    # Common deps
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     status_cpp_lib_dep,
+    plasma_store_server_cpp_lib_dep,
+    object_manager_client_interface_cpp_lib_dep,
     common_proto_cpp_lib_dep,
     node_manager_proto_cpp_lib_dep,
-    object_manager_rpc_cpp_lib_dep,
+    object_manager_rpc_cpp_lib_dep, # Alias for `object_manager_server_cpp_lib_dep`
 
     # Eugo-managed
     absl_container_flat_hash_map,
