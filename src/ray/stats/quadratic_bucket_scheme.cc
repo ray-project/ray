@@ -12,28 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/stats/percentile_tracker.h"
+#include "ray/stats/quadratic_bucket_scheme.h"
 
-#include <memory>
+#include <algorithm>
+#include <cmath>
 
 namespace ray {
 namespace stats {
 
-// PercentileTracker
-
-/**
-  Flush the current histogram and return the old histogram.
-
-  In order to keep this light, this amounts to a pointer swap. A pointer
-  to the old histogram is returned and a new histogram is constructed and
-  saved on this instance.
-
-  @return The old histogram containing accumulated data.
- */
-std::unique_ptr<BucketHistogram> PercentileTracker::GetAndFlushHistogram() {
-  std::unique_ptr<BucketHistogram> old_histogram = std::move(histogram_);
-  histogram_ = std::make_unique<BucketHistogram>(bucket_scheme_.get());
-  return old_histogram;
+int QuadraticBucketScheme::ToBucket(double value) const {
+  if (value <= 0.0) {
+    return 0;
+  } else if (value >= max_value_) {
+    return num_buckets_ - 1;
+  } else {
+    double scaled = value / scale_;
+    // Solve quadratic: b * (b + 1) / 2 = scaled
+    int bucket = static_cast<int>(-0.5 + std::sqrt(2.0 * scaled + 0.25));
+    // Clamp to guard against returning a value greater than num_buckets_ - 1
+    return std::min(bucket, num_buckets_ - 1);
+  }
 }
 
 }  // namespace stats

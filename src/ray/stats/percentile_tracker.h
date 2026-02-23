@@ -18,166 +18,15 @@
 
 #pragma once
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <memory>
-#include <vector>
 
+#include "ray/stats/bucket_histogram.h"
+#include "ray/stats/quadratic_bucket_scheme.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace stats {
-
-/**
-  @class QuadraticBucketScheme
-
-  Bucketing scheme where bucket boundaries grow quadratically, providing finer
-  resolution for smaller values. This is useful for latency distributions
-  where most values are small but occasional spikes can be large.
-
-  Bucket boundaries follow the formula: boundary = scale * b * (b + 1) / 2
-  Bucket widths grow linearly: 1x, 2x, 3x, 4x...
-
-  This provides fine granularity where most data is (low latencies) and coarse
-  granularity for rare outliers (high latencies).
- */
-class QuadraticBucketScheme {
- public:
-  /**
-    Create a quadratic bucket scheme.
-
-    @param num_buckets Number of buckets to create. Must be >= 2.
-    @param max_value Maximum expected value for bucketing. Must be positive.
-   */
-  QuadraticBucketScheme(int num_buckets, double max_value)
-      : num_buckets_(num_buckets),
-        max_value_(max_value),
-        scale_(max_value / (num_buckets * (num_buckets - 1) / 2.0)) {
-    RAY_CHECK(num_buckets >= 2) << "num_buckets must be >= 2, got " << num_buckets;
-    RAY_CHECK(max_value > 0.0) << "max_value must be positive, got " << max_value;
-  }
-
-  /**
-    Get the total number of buckets.
-
-    @return Number of buckets.
-   */
-  int NumBuckets() const { return num_buckets_; }
-
-  /**
-    Map a value to its corresponding bucket index.
-
-    @param value The value to map to a bucket.
-    @return The bucket index for this value, clamped to [0, num_buckets - 1].
-   */
-  int ToBucket(double value) const {
-    if (value <= 0.0) {
-      return 0;
-    } else if (value >= max_value_) {
-      return num_buckets_ - 1;
-    } else {
-      double scaled = value / scale_;
-      // Solve quadratic: b * (b + 1) / 2 = scaled
-      int bucket = static_cast<int>(-0.5 + std::sqrt(2.0 * scaled + 0.25));
-      // Clamp to guard against returning a value greater than num_buckets_ - 1
-      return std::min(bucket, num_buckets_ - 1);
-    }
-  }
-
-  /**
-    Get the representative value for a bucket index.
-
-    For buckets 0 through num_buckets-2 this returns the midpoint of the
-    bucket, i.e. the average of its lower and upper boundaries. Using the
-    midpoint gives an unbiased estimate (assuming uniform distribution within
-    each bucket) and maintains strict monotonicity across all buckets.
-    For the last bucket (overflow bucket) this returns max_value.
-
-    @param bucket The bucket index.
-    @return The representative value for this bucket.
-   */
-  double FromBucket(int bucket) const;
-
- private:
-  int num_buckets_;
-  double max_value_;
-  double scale_;
-};
-
-/**
-  @class BucketHistogram
-
-  Lightweight histogram for percentile tracking using bucket-based approximation.
- */
-class BucketHistogram {
- public:
-  /**
-    Create a histogram with the specified bucketing scheme.
-
-    @param bucket_scheme The bucketing scheme to use. Must outlive this histogram.
-   */
-  explicit BucketHistogram(const QuadraticBucketScheme *bucket_scheme)
-      : bucket_scheme_(bucket_scheme),
-        counts_(bucket_scheme->NumBuckets(), 0.0f),
-        count_(0) {}
-
-  /**
-    Record a value in the histogram.
-
-    @param value The value to record.
-   */
-  void Record(double value) {
-    int bucket = bucket_scheme_->ToBucket(value);
-    counts_[bucket] += 1.0f;
-    count_ += 1;
-  }
-
-  /**
-    Clear all recorded values.
-   */
-  void Clear() {
-    std::fill(counts_.begin(), counts_.end(), 0.0f);
-    count_ = 0;
-  }
-
-  /**
-    Get the total number of values recorded.
-
-    @return The count of recorded values.
-   */
-  int64_t GetCount() const { return count_; }
-
-  /**
-    Calculate a percentile from the histogram.
-
-    @param quantile The desired quantile (0.0 to 1.0). For example, 0.95 for P95.
-    @return The approximate percentile value, or NaN if no data has been recorded.
-   */
-  double GetPercentile(double quantile) const;
-
-  /**
-    Get the maximum value observed (approximated by highest non-empty bucket).
-
-    @return The approximate maximum value, or NaN if no data has been recorded.
-   */
-  double GetMax() const;
-
-  /**
-    Get the mean value (approximated using bucket representative values).
-
-    Values that exceeded max_value at record time are counted at max_value,
-    so the mean is a lower bound when overflow values are present.
-
-    @return The approximate mean value, or NaN if no data has been recorded.
-   */
-  double GetMean() const;
-
- private:
-  const QuadraticBucketScheme *bucket_scheme_;
-  std::vector<float> counts_;
-  int64_t count_;
-};
 
 /**
   @class PercentileTracker
@@ -217,8 +66,6 @@ class PercentileTracker {
   PercentileTracker(const PercentileTracker &) = delete;
   PercentileTracker &operator=(const PercentileTracker &) = delete;
 
-  // Moveable: bucket_scheme_ is a unique_ptr so its address is stable across
-  // moves, keeping histogram_'s raw pointer to *bucket_scheme_ valid after the move.
   PercentileTracker(PercentileTracker &&) = default;
   PercentileTracker &operator=(PercentileTracker &&) = default;
 
@@ -247,11 +94,6 @@ class PercentileTracker {
    */
   int64_t GetCount() const { return histogram_->GetCount(); }
 
-  /**
-    Flush the current histogram and return the old histogram.
-
-    @return The old histogram containing accumulated data.
-   */
   std::unique_ptr<BucketHistogram> GetAndFlushHistogram();
 
  private:

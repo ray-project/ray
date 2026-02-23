@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -58,8 +57,8 @@ namespace stats {
 
   Why is that?  Well, consider the below example:
 
-  - Node A: 1000 requests, ranging 1-10ms → P95 = 10ms
-  - Node B: 10 requests, ranging 1000-2000ms → P95 = 1900ms
+  - Node A: 1000 requests, ranging 1-10ms -> P95 = 10ms
+  - Node B: 10 requests, ranging 1000-2000ms -> P95 = 1900ms
   - Average of P95s: (10 + 1900) / 2 = 955ms
 
   But the true P95 of all 1010 requests combined is ~10ms (because 950 requests are still
@@ -96,10 +95,6 @@ class PercentileMetric : public ray::observability::MetricInterface {
         max_gauge_(name + "_max", description + " (Max)", unit),
         mean_gauge_(name + "_mean", description + " (Mean)", unit) {}
 
-  // --- MetricInterface implementation ---
-  // Tags are intentionally ignored: percentile tracking is per-process/node and
-  // should never be aggregated across tag dimensions.
-
   /**
     Record a latency value.
 
@@ -108,17 +103,12 @@ class PercentileMetric : public ray::observability::MetricInterface {
 
     @param value The latency value to record.
    */
-  void Record(double value) override {
-    absl::MutexLock lock(&mutex_);
-    tracker_.Record(value);
-  }
+  void Record(double value) override;
 
-  void Record(double value, stats::TagsType /*tags*/) override { Record(value); }
+  void Record(double value, stats::TagsType /*tags*/) override;
 
   void Record(double value,
-              std::vector<std::pair<std::string_view, std::string>> /*tags*/) override {
-    Record(value);
-  }
+              std::vector<std::pair<std::string_view, std::string>> /*tags*/) override;
 
   /**
     Calculate current percentiles and update gauge metrics.
@@ -130,48 +120,12 @@ class PercentileMetric : public ray::observability::MetricInterface {
 
     This method is thread-safe.
    */
-  void Flush() override {
-    // Atomically swap out the histogram (under lock).
-    std::unique_ptr<BucketHistogram> old_histogram;
-    {
-      absl::MutexLock lock(&mutex_);
-      old_histogram = tracker_.GetAndFlushHistogram();
-    }
-
-    if (old_histogram->GetCount() == 0) {
-      return;
-    }
-
-    double p50 = old_histogram->GetPercentile(0.50);
-    double p95 = old_histogram->GetPercentile(0.95);
-    double p99 = old_histogram->GetPercentile(0.99);
-    double max_val = old_histogram->GetMax();
-    double mean = old_histogram->GetMean();
-
-    if (!std::isnan(p50)) {
-      p50_gauge_.Record(p50);
-    }
-    if (!std::isnan(p95)) {
-      p95_gauge_.Record(p95);
-    }
-    if (!std::isnan(p99)) {
-      p99_gauge_.Record(p99);
-    }
-    if (!std::isnan(max_val)) {
-      max_gauge_.Record(max_val);
-    }
-    if (!std::isnan(mean)) {
-      mean_gauge_.Record(mean);
-    }
-  }
+  void Flush() override;
 
   /**
     Clear all recorded values.
    */
-  void Clear() {
-    absl::MutexLock lock(&mutex_);
-    tracker_.Clear();
-  }
+  void Clear();
 
  private:
   absl::Mutex mutex_;
