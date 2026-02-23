@@ -33,8 +33,6 @@ namespace ray {
 
 namespace raylet {
 
-GroupByOwnerIdWorkerKillingPolicy::GroupByOwnerIdWorkerKillingPolicy() {}
-
 std::pair<std::shared_ptr<WorkerInterface>, bool>
 GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
