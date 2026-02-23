@@ -25,4 +25,4 @@ esac
 
 RAYMAKE_URL="https://github.com/ray-project/rayci/releases/download/v${RAYCI_VERSION}/raymake-${RAYCI_VERSION}-py3-none-${WHEEL_PLATFORM}.whl"
 
-exec uv run --with "$RAYMAKE_URL" "$RAY_ROOT/ci/build/build_wheel.py" "$@"
+PYTHONPATH="$RAY_ROOT${PYTHONPATH:+:$PYTHONPATH}" exec uv run --with "$RAYMAKE_URL" "$RAY_ROOT/ci/build/build_wheel.py" "$@"
