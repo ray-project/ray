@@ -52,7 +52,7 @@ Run the cell below only if your environment still needs these packages installed
 ```bash
 %%bash
 pip install torch torchvision
-pip install transformers datasets==3.6.0 trl==0.23.1
+pip install transformers==4.36.2 datasets==3.6.0
 pip install deepspeed ray[train]
 ```
 
@@ -358,15 +358,22 @@ def load_checkpoint(ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, ckpt: r
 
 Before launching distributed training, you need to define a DeepSpeed configuration dictionary (`ds_config`) that controls data type settings, batch sizes, optimizations including ZeRO (model state partitioning strategies), etc. This configuration determines how DeepSpeed manages memory, communication, and performance across GPUs.
 
-The example below shows a minimal setup that enables bfloat16 precision, gradient clipping, and ZeRO optimization. You can further customize this configuration based on your model size, hardware, and performance goals. See [Advanced Configurations](#advanced-configurations) for more details.
+The example below shows a minimal setup that enables gradient clipping and ZeRO optimization, while automatically selecting mixed precision based on hardware capabilities. It uses BF16 when available and falls back to FP16 on GPUs such as T4. You can further customize this configuration based on your model size, hardware, and performance goals. See [Advanced Configurations](#advanced-configurations) for more details.
 
 
 ```python
 # DeepSpeed configuration
+if torch.cuda.is_bf16_supported():
+    precision_config = {
+        "bf16": {"enabled": True},
+        "grad_accum_dtype": "bf16",
+    }
+else:
+    # T4-class GPUs don't support bf16; use fp16 for compatibility.
+    precision_config = {"fp16": {"enabled": True}}
+
 ds_config = {
     "train_micro_batch_size_per_gpu": BATCH_SIZE,
-    "bf16": {"enabled": True},
-    "grad_accum_dtype": "bf16",
     "zero_optimization": {
         "stage": ZERO_STAGE,
         "overlap_comm": True,
@@ -374,6 +381,7 @@ ds_config = {
     },
     "gradient_clipping": 1.0,
 }
+ds_config.update(precision_config)
 ```
 
 ## 6. Launch distributed training

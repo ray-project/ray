@@ -1,4 +1,5 @@
 import argparse
+import importlib.metadata
 import logging
 import os
 import tempfile
@@ -84,7 +85,20 @@ def setup_dataloader(
 def setup_model_and_optimizer(
     model_name: str, learning_rate: float, ds_config: Dict[str, Any]
 ) -> deepspeed.runtime.engine.DeepSpeedEngine:
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+    except TypeError as e:
+        if "'NoneType' object is not callable" in str(e):
+            transformers_version = importlib.metadata.version("transformers")
+            torch_version = torch.__version__
+            raise RuntimeError(
+                "Failed to initialize model due to an incompatible "
+                f"transformers/torch combination: transformers={transformers_version}, "
+                f"torch={torch_version}. "
+                "This can happen when transformers>=5 is installed with torch<2.4. "
+                "Pin transformers to a 4.x version compatible with the runtime."
+            ) from e
+        raise
     log_rank0(
         f"Model loaded: {model_name} (#parameters: {sum(p.numel() for p in model.parameters())})"
     )
@@ -228,10 +242,19 @@ def main():
         num_workers=args.num_workers, use_gpu=not args.cpu_only
     )
 
+    if args.cpu_only:
+        precision_config: Dict[str, Any] = {}
+    elif torch.cuda.is_bf16_supported():
+        precision_config = {
+            "bf16": {"enabled": True},
+            "grad_accum_dtype": "bf16",
+        }
+    else:
+        # T4-class GPUs don't support bf16; use fp16 for compatibility.
+        precision_config = {"fp16": {"enabled": True}}
+
     ds_config = {
         "train_micro_batch_size_per_gpu": args.batch_size,
-        "bf16": {"enabled": True},
-        "grad_accum_dtype": "bf16",
         "zero_optimization": {
             "stage": args.zero_stage,
             "overlap_comm": True,
@@ -239,6 +262,7 @@ def main():
         },
         "gradient_clipping": 1.0,
     }
+    ds_config.update(precision_config)
 
     train_loop_config = {
         "epochs": args.num_epochs,
