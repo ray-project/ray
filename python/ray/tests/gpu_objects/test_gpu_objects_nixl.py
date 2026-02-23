@@ -5,6 +5,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.experimental.gpu_object_manager.util import get_tensor_transport_manager
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -45,9 +46,6 @@ class GPUTestActor:
         return sum
 
     def gc(self):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
 
         tensor = torch.tensor([1, 2, 3]).to("cuda")
         ref = ray.put(tensor, _tensor_transport="nixl")
@@ -59,7 +57,7 @@ class GPUTestActor:
         assert gpu_manager.is_managed_object(obj_id)
         assert obj_id in nixl_transport._managed_meta_nixl
         # Tensor-level metadata counting: the tensor should have metadata_count=1
-        key = tensor.data_ptr()
+        key = tensor.untyped_storage().data_ptr()
         assert key in nixl_transport._tensor_desc_cache
         assert nixl_transport._tensor_desc_cache[key].metadata_count == 1
 
@@ -88,9 +86,6 @@ class GPUTestActor:
         return gpu_object_manager.gpu_object_store.get_num_objects()
 
     def get_num_managed_meta_nixl(self):
-        from ray.experimental.gpu_object_manager.util import (
-            get_tensor_transport_manager,
-        )
 
         return get_tensor_transport_manager("NIXL")._get_num_managed_meta_nixl()
 
@@ -313,6 +308,175 @@ def test_shared_tensor_deduplication(ray_start_regular):
     """
     actor = GPUTestActor.remote()
     ray.get(actor.put_shared_tensor_lists.remote())
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_agent_reuse(ray_start_regular):
+    """
+    We reuse nixl remote agent by default. The receiver should successfully receive
+    all tensors while the sender may trigger GC in between.
+    """
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 6
+
+    # Trigger another transfer. The receiver successfully gets
+    # the latest tensor (nixl agent is reused internally).
+    ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref2, "cuda")) == 15
+
+    del ref1, ref2
+
+    # Wait for GC to free the tensors on the sender.
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    # Transfer after GC. The receiver successfully gets
+    # the latest tensor (nixl agent is reset internally).
+    ref3 = src_actor.echo.remote(torch.tensor([7, 8, 9]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref3, "cuda")) == 24
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_agent_reuse_with_partial_tensors(ray_start_regular):
+    """
+    We reuse nixl remote agent by default. The receiver should successfully choose
+    and receive part of the tensors.
+    """
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3, 4, 5, 6]).to("cuda"), "cuda")
+    assert ray.get(dst_actor.sum.remote(ref1, "cuda")) == 21
+
+    del ref1
+
+    # Wait for GC to free the tensors on the sender.
+    wait_for_condition(
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
+        timeout=10,
+        retry_interval_ms=100,
+    )
+
+    # Create the second tensor at the sender. The memory address of
+    # this tensor may overlap with the first tensor (de-registered).
+    ref2 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to("cuda"), "cuda")
+
+    # Create the third tensor at the sender. The memory address of
+    # this tensor may overlap with the first tensor (de-registered).
+    ref3 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to("cuda"), "cuda")
+    # Trigger the transfer. The receiver successfully gets
+    # the third tensor (nixl agent is reset internally).
+    assert ray.get(dst_actor.sum.remote(ref3, "cuda")) == 15
+
+    del ref2, ref3
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_storage_level_overlapping_views_reference_count(ray_start_regular):
+    """Test that two overlapping tensors sharing the same underlying storage produce a
+    single NIXL registration. When each tensor's ref goes out of scope via
+    garbage_collect, the metadata_count decrements. After both are freed,
+    the registration is removed."""
+    from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+
+    tensor = torch.tensor([[1, 1], [2, 2], [3, 3]], dtype=torch.float32).to("cuda")
+    view0 = tensor[0:2]
+    view1 = tensor[1:3]
+    storage_key = tensor.untyped_storage().data_ptr()
+
+    assert view0.untyped_storage().data_ptr() == storage_key
+    assert view1.untyped_storage().data_ptr() == storage_key
+    assert view0.data_ptr() != view1.data_ptr()
+
+    # Simulate ray.put(view0)
+    obj_id1 = "test_obj_id_1"
+    meta1 = transport.extract_tensor_transport_metadata(obj_id1, [view0])
+    assert len(transport._tensor_desc_cache) == 1
+    assert transport._tensor_desc_cache[storage_key].metadata_count == 1
+
+    # Simulate ray.put(view1) and check that the a new entry is not created in the tensor desc cache
+    # since they share the same storage key and the metadata_count is incremented by 1
+    obj_id2 = "test_obj_id_2"
+    meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view1])
+    assert len(transport._tensor_desc_cache) == 1
+    assert transport._tensor_desc_cache[storage_key].metadata_count == 2
+
+    # Simulate the obj ref for view0 going out of scope and check that the nixl memory registration is
+    # not cleared since the object ref for view1 is still in scope
+    transport.garbage_collect(obj_id1, meta1, [view0])
+    assert storage_key in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[storage_key].metadata_count == 1
+
+    # Simulate the obj ref for view1 going out of scope and check that the nixl memory registration is cleared
+    transport.garbage_collect(obj_id2, meta2, [view1])
+    assert storage_key not in transport._tensor_desc_cache
+
+
+@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+class OverlappingViewProducer:
+    def produce_overlapping_views(self):
+        tensor = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32).to("cuda")
+        slices = [tensor[0:2], tensor[1:3], tensor[2:4]]
+        refs = []
+        for s in slices:
+            refs.append(ray.put(s, _tensor_transport="nixl"))
+        return refs
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_storage_level_overlapping_views(ray_start_regular):
+    """Test that overlapping views of the same storage tensor are properly transferred."""
+
+    actors = [OverlappingViewProducer.remote(), GPUTestActor.remote()]
+    src_actor, dst_actor = actors[0], actors[1]
+
+    refs = ray.get(src_actor.produce_overlapping_views.remote())
+    result = ray.get(dst_actor.consume_with_nixl.remote(refs))
+    assert result == 15
+
+
+@ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+class WaitTensorFreedActor:
+    def test_wait_tensor_freed_views(self):
+        from ray.experimental import wait_tensor_freed
+
+        tensor = torch.tensor([1, 2, 3, 4, 5], dtype=torch.float32).to("cuda")
+        slices = [tensor[0:3], tensor[1:4], tensor[2:5]]
+        ref1 = ray.put(slices[0], _tensor_transport="nixl")
+        ref2 = ray.put(slices[1], _tensor_transport="nixl")
+        ref3 = ray.put(slices[2], _tensor_transport="nixl")
+        del ref1
+        wait_tensor_freed(slices[0], timeout=10)
+        with pytest.raises(TimeoutError):
+            wait_tensor_freed(slices[1], timeout=1)
+        with pytest.raises(TimeoutError):
+            wait_tensor_freed(slices[2], timeout=1)
+        del ref2
+        with pytest.raises(TimeoutError):
+            wait_tensor_freed(slices[2], timeout=1)
+        wait_tensor_freed(slices[1], timeout=10)
+        del ref3
+        wait_tensor_freed(slices[2], timeout=10)
+        return "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_wait_tensor_freed_views(ray_start_regular):
+    """Test that wait_tensor_freed tracks each view independently,
+    not the shared underlying storage."""
+    actor = WaitTensorFreedActor.remote()
+    result = ray.get(actor.test_wait_tensor_freed_views.remote())
+    assert result == "Success"
 
 
 if __name__ == "__main__":

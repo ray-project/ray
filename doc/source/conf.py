@@ -139,6 +139,8 @@ nitpick_ignore_regex = [
     # UnknownPreprocessorError is an internal exception not exported in public API
     ("py:exc", "UnknownPreprocessorError"),
     ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
+    # TypeVar for gRPCInputStream generic type
+    ("py:obj", "ray\\.serve\\.grpc_util\\.T"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -247,8 +249,6 @@ exclude_patterns = [
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
-    "serve/tutorials/deployment-serve-llm/README.*",
-    "serve/tutorials/deployment-serve-llm/**.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
