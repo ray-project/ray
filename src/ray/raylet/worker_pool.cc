@@ -1724,9 +1724,11 @@ void WorkerPool::WarnAboutSize() {
           << " worker processes have been started on node: " << node_id_
           << " with address: " << node_address_ << ". "
           << "This could be a result of using "
-          << "a large number of actors, or due to tasks blocked in ray.get() calls "
-          << "(see https://github.com/ray-project/ray/issues/3644 for "
-          << "some discussion of workarounds).";
+          << "a large number of actors, tasks blocked in ray.get() calls, "
+          << "or tasks with fractional CPU requests (e.g., num_cpus=0.1) allowing "
+          << "high concurrency. "
+          << "See https://github.com/ray-project/ray/issues/3644 for "
+          << "some discussion of workarounds.";
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
 
