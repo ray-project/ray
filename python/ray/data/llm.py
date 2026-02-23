@@ -24,7 +24,7 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ProcessorConfig(_ProcessorConfig):
     """The processor configuration.
 
@@ -50,7 +50,7 @@ class ProcessorConfig(_ProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
     """The configuration for the HTTP request processor.
 
@@ -102,7 +102,7 @@ class HttpRequestProcessorConfig(_HttpRequestProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     """The configuration for the vLLM engine processor.
 
@@ -211,7 +211,7 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
     """The configuration for the SGLang engine processor.
 
@@ -296,7 +296,7 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     """The configuration for the serve deployment processor.
 
@@ -402,7 +402,7 @@ class ServeDeploymentProcessorConfig(_ServeDeploymentProcessorConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     """The configuration for the chat template stage.
 
@@ -431,7 +431,7 @@ class ChatTemplateStageConfig(_ChatTemplateStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DetokenizeStageConfig(_DetokenizeStageConfig):
     """The configuration for the detokenize stage.
 
@@ -456,7 +456,7 @@ class DetokenizeStageConfig(_DetokenizeStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     """The configuration for the prepare multimodal stage.
 
@@ -488,7 +488,7 @@ class PrepareMultimodalStageConfig(_PrepareMultimodalStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TokenizerStageConfig(_TokenizerStageConfig):
     """The configuration for the tokenizer stage.
 
@@ -513,7 +513,7 @@ class TokenizerStageConfig(_TokenizerStageConfig):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HttpRequestStageConfig(_HttpRequestStageConfig):
     """The configuration for the http request stage.
 
@@ -581,7 +581,7 @@ def build_llm_processor(
     )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def build_processor(
     config: ProcessorConfig,
     preprocess: Optional[UserDefinedFunction] = None,
