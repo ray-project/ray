@@ -1518,9 +1518,9 @@ def unify_tensor_types(
 @DeveloperAPI(stability="alpha")
 def unify_tensor_arrays(
     arrs: List[
-        Union[ArrowTensorArray, ArrowVariableShapedTensorArray, FixedShapeTensorArray]
-    ]
-) -> List[Union[ArrowTensorArray, ArrowVariableShapedTensorArray]]:
+        ArrowTensorArray | ArrowVariableShapedTensorArray | FixedShapeTensorArray
+    ],
+) -> List[ArrowTensorArray | ArrowVariableShapedTensorArray | FixedShapeTensorArray]:
     supported_tensor_types = get_arrow_extension_tensor_types()
 
     # Derive number of distinct tensor types
