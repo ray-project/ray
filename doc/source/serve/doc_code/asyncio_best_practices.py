@@ -409,6 +409,21 @@ if __name__ == "__main__":
     result = batched_model_offload_handle.remote(1).result()
     print(f"BatchedModelOffload result: {result}")
     assert result == "result_1"
+
+    print("\nTesting NonThreadSafeCounter deployment...")
+    # Test NonThreadSafeCounter
+    non_thread_safe_handle = serve.run(NonThreadSafeCounter.bind())
+    result = non_thread_safe_handle.remote(None).result()
+    print(f"NonThreadSafeCounter result: {result}")
+    assert result == 1
+
+    print("\nTesting ThreadSafeCounter deployment...")
+    # Test ThreadSafeCounter
+    thread_safe_handle = serve.run(ThreadSafeCounter.bind())
+    for i in range(3):
+        result = thread_safe_handle.remote(None).result()
+        print(f"ThreadSafeCounter call {i + 1} result: {result}")
+        assert result == i + 1
     
     # Test HTTP-related deployments with try-except
     print("\n--- Testing HTTP-related deployments (may fail due to network) ---")
