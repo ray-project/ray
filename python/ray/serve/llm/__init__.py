@@ -375,7 +375,6 @@ def build_dp_deployment(
     *,
     name_prefix: Optional[str] = None,
     override_serve_options: Optional[dict] = None,
-    enable_fault_tolerance: bool = False,
 ) -> "Application":
     """Build a data parallel attention LLM deployment.
 
@@ -384,8 +383,6 @@ def build_dp_deployment(
         name_prefix: The prefix to add to the deployment name.
         override_serve_options: The optional serve options to override the
             default options.
-        enable_fault_tolerance: When True, uses Ray Serve's gang scheduling
-            for fault-tolerant DP.
 
     Returns:
         The Ray Serve Application for the data parallel attention LLM deployment.
@@ -398,7 +395,6 @@ def build_dp_deployment(
         llm_config=llm_config,
         name_prefix=name_prefix,
         override_serve_options=override_serve_options,
-        enable_fault_tolerance=enable_fault_tolerance,
     )
 
 
