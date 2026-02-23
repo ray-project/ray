@@ -334,8 +334,8 @@ def test_slice_ref_bundle_with_none_slices():
     ]
 
 
-def test_ref_bundle_str():
-    """Test the __str__ method returns a readable representation."""
+def test_ref_bundle_repr():
+    """Test __repr__ returns a readable representation (used in interactive sessions)."""
     block_ref_one = ObjectRef(b"1" * 28)
     block_ref_two = ObjectRef(b"2" * 28)
     block_ref_three = ObjectRef(b"3" * 28)
@@ -358,22 +358,95 @@ def test_ref_bundle_str():
             (block_ref_three, meta_three),
         ],
         owns_blocks=True,
-        schema="test_schema",
+        schema=None,
         slices=[None, None, slice_three],
     )
 
     expected = """RefBundle(3 blocks,
   18 rows,
-  schema=test_schema,
+  schema=None,
   owns_blocks=True,
   blocks=(
-    0: 10 rows, 100 bytes, slice=None (full block)
-    1: 5 rows, 50 bytes, slice=None (full block)
-    2: 3 rows, 30 bytes, slice=BlockSlice(start_offset=0, end_offset=3)
+    0: 10 rows, 100.0B, slice=None (full block)
+    1: 5 rows, 50.0B, slice=None (full block)
+    2: 3 rows, 30.0B, slice=BlockSlice(start_offset=0, end_offset=3)
   )
 )"""
 
-    assert str(bundle) == expected
+    assert repr(bundle) == expected
+
+
+def test_ref_bundle_repr_with_pyarrow_schema():
+    """Test __repr__ with PyArrow schema."""
+    import pyarrow as pa
+
+    block_ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=1, size_bytes=4, exec_stats=None, input_files=None)
+    schema = pa.schema([("id", pa.int64()), ("name", pa.string())])
+
+    bundle = RefBundle(
+        blocks=[(block_ref, meta)],
+        owns_blocks=False,
+        schema=schema,
+    )
+
+    expected = """RefBundle(1 blocks,
+  1 rows,
+  schema={id: int64, name: string},
+  owns_blocks=False,
+  blocks=(
+    0: 1 rows, 4.0B, slice=None (full block)
+  )
+)"""
+    assert repr(bundle) == expected
+
+
+def test_ref_bundle_repr_with_none_schema():
+    """Test __repr__ with None schema."""
+    block_ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=1, size_bytes=4, exec_stats=None, input_files=None)
+
+    bundle = RefBundle(
+        blocks=[(block_ref, meta)],
+        owns_blocks=True,
+        schema=None,
+    )
+
+    expected = """RefBundle(1 blocks,
+  1 rows,
+  schema=None,
+  owns_blocks=True,
+  blocks=(
+    0: 1 rows, 4.0B, slice=None (full block)
+  )
+)"""
+
+    assert repr(bundle) == expected
+
+
+def test_ref_bundle_repr_with_pandas_schema():
+    """Test __repr__ with PandasBlockSchema."""
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    block_ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=1, size_bytes=4, exec_stats=None, input_files=None)
+    schema = PandasBlockSchema(names=["col1", "col2"], types=[int, str])
+
+    bundle = RefBundle(
+        blocks=[(block_ref, meta)],
+        owns_blocks=True,
+        schema=schema,
+    )
+
+    expected = """RefBundle(1 blocks,
+  1 rows,
+  schema={col1: int64, col2: string},
+  owns_blocks=True,
+  blocks=(
+    0: 1 rows, 4.0B, slice=None (full block)
+  )
+)"""
+    assert repr(bundle) == expected
 
 
 def test_merge_ref_bundles():
