@@ -18,7 +18,6 @@ namespace ray {
 namespace observability {
 
 inline constexpr std::string_view kMetricSourceGCS = "gcs";
-inline constexpr std::string_view kMetricSourcePython = "python";
 
 }  // namespace observability
 }  // namespace ray

@@ -15,6 +15,7 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.string cimport string as c_string
 
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,8 @@ cdef class RayEvent:
 
 # module-level Singleton instance, lazily created by EventRecorder.initialize().
 _event_recorder_instance = None
+# Guards singleton lifecycle and emission against concurrent shutdown/initialize.
+_event_recorder_lock = threading.RLock()
 
 
 cdef class EventRecorder:
@@ -126,21 +129,23 @@ cdef class EventRecorder:
                 (default "python").
         """
         global _event_recorder_instance
-        if _event_recorder_instance is not None:
-            return
+        cdef EventRecorder rec
+        with _event_recorder_lock:
+            if _event_recorder_instance is not None:
+                return
 
-        cdef EventRecorder rec = EventRecorder()
-        rec._recorder.reset(
-            new CPythonEventRecorder(
-                aggregator_address.encode("utf-8"),
-                aggregator_port,
-                node_ip.encode("utf-8"),
-                node_id_hex.encode("utf-8"),
-                max_buffer_size,
-                metric_source.encode("utf-8"),
+            rec = EventRecorder()
+            rec._recorder.reset(
+                new CPythonEventRecorder(
+                    aggregator_address.encode("utf-8"),
+                    aggregator_port,
+                    node_ip.encode("utf-8"),
+                    node_id_hex.encode("utf-8"),
+                    max_buffer_size,
+                    metric_source.encode("utf-8"),
+                )
             )
-        )
-        _event_recorder_instance = rec
+            _event_recorder_instance = rec
 
     @staticmethod
     def instance():
@@ -149,7 +154,8 @@ cdef class EventRecorder:
         Returns:
             The EventRecorder instance if initialized, None otherwise.
         """
-        return _event_recorder_instance
+        with _event_recorder_lock:
+            return _event_recorder_instance
 
     @staticmethod
     def shutdown():
@@ -160,14 +166,16 @@ cdef class EventRecorder:
         no-ops until initialize() is called again.
         """
         global _event_recorder_instance
-        if _event_recorder_instance is None:
-            return
+        cdef EventRecorder rec
+        with _event_recorder_lock:
+            if _event_recorder_instance is None:
+                return
 
-        cdef EventRecorder rec = <EventRecorder>_event_recorder_instance
-        if rec._recorder.get() != NULL:
-            rec._recorder.get().Shutdown()
-        rec._recorder.reset()
-        _event_recorder_instance = None
+            rec = <EventRecorder>_event_recorder_instance
+            if rec._recorder.get() != NULL:
+                rec._recorder.get().Shutdown()
+            rec._recorder.reset()
+            _event_recorder_instance = None
 
     @staticmethod
     def emit(RayEvent event):
@@ -191,24 +199,27 @@ cdef class EventRecorder:
         Returns:
             True if events were successfully queued, False otherwise.
         """
-        if not events:
-            return True
-
-        if _event_recorder_instance is None:
-            logger.debug(
-                "Event recorder not initialized, dropping %d events",
-                len(events),
-            )
-            return False
-
-        cdef EventRecorder rec = <EventRecorder>_event_recorder_instance
+        cdef EventRecorder rec
         cdef c_vector[unique_ptr[CRayEventInterface]] cpp_events
         cdef RayEvent ev
+
+        if not events:
+            return True
 
         for ev in events:
             cpp_events.push_back(move(ev.to_cpp_event()))
 
-        with nogil:
-            rec._recorder.get().AddEvents(move(cpp_events))
+        with _event_recorder_lock:
+            if _event_recorder_instance is None:
+                logger.debug(
+                    "Event recorder not initialized, dropping %d events",
+                    len(events),
+                )
+                return False
 
-        return True
+            rec = <EventRecorder>_event_recorder_instance
+
+            with nogil:
+                rec._recorder.get().AddEvents(move(cpp_events))
+
+            return True
