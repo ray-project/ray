@@ -217,7 +217,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void RecordMetrics();
 
   /// Report worker OOM kill stats
-  void ReportWorkerOOMKillStats();
+  void ReportWorkerOomKillStats();
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
@@ -757,16 +757,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
   void TriggerLocalOrGlobalGCIfNeeded();
 
-  /// Creates the callback used in the memory monitor.
+  /**
+   * @brief Creates the callback used by the memory monitor
+   * to select workers to kill via the set killing policy and kill them.
+   */
   KillWorkersCallback CreateKillWorkersCallback();
 
   /**
-   * \param workers_to_kill The workers to print the kill details for.
-   * \param node_id The ID of the node.
-   * \param system_memory_snapshot The snapshot of the system memory.
-   * \param process_memory_snapshot The snapshot of the process memory.
-   * \param usage_threshold The memory limit.
-   * \return The detail message for the workers that are killed due to memory running low.
+   * @param workers_to_kill The workers to print the kill details for.
+   * @param node_id The ID of the node.
+   * @param system_memory_snapshot The snapshot of the system memory.
+   * @param process_memory_snapshot The snapshot of the process memory.
+   * @param usage_threshold The memory limit.
+   * @return The detail message for the workers that are killed due to memory running low.
    */
   std::string CreateOomKillMessageDetails(
       const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
@@ -777,8 +780,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       float usage_threshold) const;
 
   /**
-   * \param workers_to_kill The workers to print the kill suggestions for.
-   * \return The suggestion message for the workers that are killed due to memory running
+   * @param workers_to_kill The workers to print the kill suggestions for.
+   * @return The suggestion message for the workers that are killed due to memory running
    * low.
    */
   std::string CreateOomKillMessageSuggestions(

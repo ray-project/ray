@@ -79,10 +79,10 @@ struct Group {
 
 /**
  * @brief Groups leases by its owner id. Non-retriable leases (whether it be task or
- * actor) forms its own group. Prioritizes killing groups that are retriable first, else
+ * actor) forms its own group. Prioritizes selecting groups that are retriable first, else
  * it picks the largest group, else it picks the newest group. The "age" of a group is
  * based on the time of its earliest granted leases. When a group is selected for killing
- * it selects the last submitted task.
+ * it selects the last submitted worker.
  *
  * When selecting a worker / task to be killed, it will set the task to-be-killed to be
  * non-retriable if it is the last member of the group, and is retriable otherwise.
@@ -97,9 +97,10 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  private:
   /**
    * Executes the worker killing selection policy.
-   * Here we prioritize killing groups that are retriable first.
-   * Else we prioritize killing the group with the largest number of workers.
-   * Else we prioritize killing the newest group.
+   * Here we prioritize killing workers from the group that are retriable first.
+   * Else we prioritize killing workers from the group with the largest number of workers.
+   * Else we prioritize killing workers from the newest group.
+   * Once a group is selected, we select the last submitted worker from the group.
    *
    * \param workers the list of workers to select and kill from.
    * \param system_memory snapshot of memory usage. Used to print the memory usage of the

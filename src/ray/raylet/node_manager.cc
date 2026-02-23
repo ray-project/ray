@@ -438,7 +438,7 @@ void NodeManager::RegisterGcs() {
           std::stringstream debug_msg;
           debug_msg << DebugString() << "\n\n";
           RAY_LOG(INFO) << PrependToEachLine(debug_msg.str(), "[state-dump] ");
-          ReportWorkerOOMKillStats();
+          ReportWorkerOomKillStats();
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
@@ -3029,10 +3029,10 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   return std::make_optional(std::move(msg));
 }
 
-// Picks the worker with the latest submitted task and kills the process
-// if the memory usage is above the threshold. Allows one in-flight
-// process kill at a time as killing a process could sometimes take
-// seconds.
+// Picks the workers selected by the worker killing policy and kills
+// the processes if the memory usage is above the threshold. Allows
+// one in-flight call at a time as killing processes could
+// sometimes take seconds.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
   return [this](const SystemMemorySnapshot &system_memory_snapshot) {
     io_service_.post(
@@ -3081,7 +3081,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               oom_kill_suggestions);
 
           std::string worker_exit_message = absl::StrFormat(
-              "Task was killed due to the node running low on memory. %s, %s",
+              "%d worker(s) were killed due to the node running low on memory. %s, %s",
+              workers_to_kill_and_should_retry.size(),
               oom_kill_details,
               oom_kill_suggestions);
 
@@ -3198,10 +3199,6 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
   bool has_non_retriable_actor = false;
 
   for (const auto &[worker, should_retry] : workers_to_kill) {
-    RAY_CHECK(worker)
-        << "Selected worker to be OOM killed is nullptr. Worker pool may contain bad "
-           "workers "
-        << "or killing policy may have incorrectly selected a worker to be OOM killed.";
     if (!worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
       if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
         has_non_retriable_task = true;
@@ -3264,7 +3261,7 @@ void NodeManager::GCWorkerFailureReason() {
   }
 }
 
-void NodeManager::ReportWorkerOOMKillStats() {
+void NodeManager::ReportWorkerOomKillStats() {
   if (number_workers_killed_by_oom_ > 0) {
     RAY_LOG(ERROR) << number_workers_killed_by_oom_
                    << " Workers (tasks / actors) killed due to memory pressure (OOM), "

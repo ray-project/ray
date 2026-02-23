@@ -96,7 +96,7 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
     sorted.push_back(it->second);
   }
 
-  /// Prioritizes killing groups that are retriable, else it picks the largest group,
+  /// Prioritizes selecting groups that are retriable, else it picks the largest group,
   /// else it picks the newest group.
   std::sort(
       sorted.begin(), sorted.end(), [](const Group &left, const Group &right) -> bool {
