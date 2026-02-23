@@ -112,12 +112,7 @@ def get_transport_data_type(tensor_transport: str) -> type:
     if tensor_transport not in transport_manager_info:
         raise ValueError(f"Unsupported tensor transport protocol: {tensor_transport}")
 
-    data_type = transport_manager_info[tensor_transport].data_type
-    if data_type is None:
-        import torch
-
-        return torch.Tensor
-    return data_type
+    return transport_manager_info[tensor_transport].data_type
 
 
 def get_tensor_transport_manager(

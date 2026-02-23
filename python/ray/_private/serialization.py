@@ -152,7 +152,7 @@ class SerializationContext:
         self.worker = worker
         self._thread_local = threading.local()
 
-        # These flags are to mark whether the custom serializer for an rdt type
+        # These flags are to mark whether the custom serializer for a rdt type
         # (e.g. torch.Tensor or jax.Array) has been registered.
         # If the method is decorated with `@ray.method(tensor_transport="xxx")`,
         # it will use external transport to move this type between actors,
