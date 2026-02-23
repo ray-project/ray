@@ -113,8 +113,11 @@ os.environ["RAY_TRAIN_V2_ENABLED"] = "1"  # Ensure Ray Train v2 APIs
 import ray
 
 def train_loop(config: Dict[str, Any]) -> None:
+    ds_config = dict(config["ds_config"])
+    ds_config.update(get_precision_config())
+
     # (1) Initialize model and optimizer with DeepSpeed
-    ds_engine = setup_model_and_optimizer(config["model_name"], config["learning_rate"], config["ds_config"])
+    ds_engine = setup_model_and_optimizer(config["model_name"], config["learning_rate"], ds_config)
 
     # (2) Load checkpoint if it exists
     ckpt = ray.train.get_checkpoint()
@@ -260,7 +263,15 @@ import deepspeed
 
 def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: Dict[str, Any]) -> deepspeed.runtime.engine.DeepSpeedEngine:
     # (1) Load pretrained model
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    try:
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+    except TypeError as e:
+        if "'NoneType' object is not callable" in str(e):
+            raise RuntimeError(
+                "Failed to initialize model during setup. "
+                "Please verify the runtime dependencies and model configuration."
+            ) from e
+        raise
 
     # (2) Define optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
@@ -268,6 +279,17 @@ def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: 
     # (3) Initialize with DeepSpeed (distributed and memory optimizations)
     ds_engine, _, _, _ = deepspeed.initialize(model=model, optimizer=optimizer, config=ds_config)
     return ds_engine
+
+
+def get_precision_config() -> Dict[str, Any]:
+    """Select mixed precision based on the current worker device."""
+    if torch.cuda.is_bf16_supported():
+        return {
+            "bf16": {"enabled": True},
+            "grad_accum_dtype": "bf16",
+        }
+    # T4-class GPUs don't support bf16; use fp16 for compatibility.
+    return {"fp16": {"enabled": True}}
 
 ```
 
