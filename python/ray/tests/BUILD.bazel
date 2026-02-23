@@ -961,6 +961,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_ray_stop_by_address",
+    size = "large",
+    srcs = ["test_ray_stop_by_address.py"],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test_module_list(
     size = "large",
     files = [

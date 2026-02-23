@@ -13,6 +13,7 @@ Example:
 import os
 import shutil
 import subprocess
+import sys
 import uuid
 from typing import Dict, List, Optional, Tuple
 
@@ -24,6 +25,212 @@ from ray._common.test_utils import wait_for_condition
 from ray.autoscaler._private.constants import RAY_PROCESSES
 
 import psutil
+
+
+class TestExtractGcsAddressFromCmdline:
+    """Unit tests for _extract_gcs_address_from_cmdline."""
+
+    # Strategy 1: --gcs-address=ip:port (most Ray processes)
+    @pytest.mark.parametrize(
+        "cmdline,expected",
+        [
+            (
+                ["raylet", "--gcs-address=127.0.0.1:6379"],
+                "127.0.0.1:6379",
+            ),
+            (
+                ["raylet", "--gcs-address=10.0.0.1:6380", "--other-flag=val"],
+                "10.0.0.1:6380",
+            ),
+            (
+                [
+                    "python",
+                    "-u",
+                    "log_monitor.py",
+                    "--gcs-address=192.168.1.1:6379",
+                ],
+                "192.168.1.1:6379",
+            ),
+        ],
+    )
+    def test_gcs_address_flag(self, cmdline, expected):
+        assert scripts._extract_gcs_address_from_cmdline(cmdline) == expected
+
+    # Strategy 2: --address=ip:port (ray.util.client.server)
+    @pytest.mark.parametrize(
+        "cmdline,expected",
+        [
+            (
+                [
+                    "python",
+                    "-m",
+                    "ray.util.client.server",
+                    "--address=127.0.0.1:6379",
+                ],
+                "127.0.0.1:6379",
+            ),
+            (
+                [
+                    "setup_worker.py",
+                    "-m",
+                    "ray.util.client.server",
+                    "--address=10.0.0.1:6380",
+                    "--host=0.0.0.0",
+                ],
+                "10.0.0.1:6380",
+            ),
+        ],
+    )
+    def test_address_flag_client_server(self, cmdline, expected):
+        assert scripts._extract_gcs_address_from_cmdline(cmdline) == expected
+
+    # Strategy 3: gcs_server (--node-ip-address + --gcs_server_port)
+    @pytest.mark.parametrize(
+        "cmdline,expected",
+        [
+            (
+                [
+                    "gcs_server",
+                    "--node-ip-address=10.0.0.1",
+                    "--gcs_server_port=6379",
+                ],
+                "10.0.0.1:6379",
+            ),
+            # underscore variant: --node_ip_address
+            (
+                [
+                    "gcs_server",
+                    "--node_ip_address=10.0.0.1",
+                    "--gcs_server_port=6379",
+                ],
+                "10.0.0.1:6379",
+            ),
+            # only ip, no port -> None
+            (["gcs_server", "--node-ip-address=10.0.0.1"], None),
+            # only port, no ip -> None
+            (["gcs_server", "--gcs_server_port=6379"], None),
+        ],
+    )
+    def test_gcs_server_flags(self, cmdline, expected):
+        assert scripts._extract_gcs_address_from_cmdline(cmdline) == expected
+
+    # Strategy 4: setproctitle concatenated args
+    @pytest.mark.parametrize(
+        "cmdline,expected",
+        [
+            (
+                ["ray::DashboardAgent --gcs-address=127.0.0.1:6379"],
+                "127.0.0.1:6379",
+            ),
+            (
+                ["ray::WorkerProcess --gcs-address=10.0.0.1:6380 --other-flag"],
+                "10.0.0.1:6380",
+            ),
+            (
+                ["ray::ClientServer --address=10.0.0.1:6380 --host=0.0.0.0"],
+                "10.0.0.1:6380",
+            ),
+            (
+                ["ray::GCS --node-ip-address=10.0.0.1 --gcs_server_port=6379"],
+                "10.0.0.1:6379",
+            ),
+        ],
+    )
+    def test_setproctitle_concatenated(self, cmdline, expected):
+        assert scripts._extract_gcs_address_from_cmdline(cmdline) == expected
+
+    # Edge cases
+    @pytest.mark.parametrize(
+        "cmdline",
+        [
+            [],
+            ["python"],
+            ["python", "some_script.py", "--verbose"],
+        ],
+    )
+    def test_returns_none_when_no_address(self, cmdline):
+        assert scripts._extract_gcs_address_from_cmdline(cmdline) is None
+
+    def test_gcs_address_takes_priority_over_address(self):
+        """--gcs-address should be found before --address (Strategy 1 before 2)."""
+        cmdline = [
+            "raylet",
+            "--gcs-address=10.0.0.1:6379",
+            "--address=10.0.0.2:6380",
+        ]
+        assert scripts._extract_gcs_address_from_cmdline(cmdline) == "10.0.0.1:6379"
+
+
+class TestNormalizeGcsAddress:
+    """Unit tests for _normalize_gcs_address."""
+
+    def test_basic_ipv4(self):
+        ip, port = scripts._normalize_gcs_address("127.0.0.1:6379")
+        assert port == 6379
+        assert isinstance(ip, str)
+
+    def test_localhost_resolves_same_as_127(self):
+        assert scripts._normalize_gcs_address(
+            "localhost:6379"
+        ) == scripts._normalize_gcs_address("127.0.0.1:6379")
+
+    def test_different_ports_differ(self):
+        assert scripts._normalize_gcs_address(
+            "127.0.0.1:6379"
+        ) != scripts._normalize_gcs_address("127.0.0.1:6380")
+
+    @pytest.mark.parametrize(
+        "invalid",
+        [
+            "no_port",
+            "not_ip_port",
+        ],
+    )
+    def test_invalid_format_raises(self, invalid):
+        with pytest.raises(Exception):
+            scripts._normalize_gcs_address(invalid)
+
+
+class TestCmdlineMatchesGcsAddress:
+    """Unit tests for _cmdline_matches_gcs_address."""
+
+    def test_matching_address(self):
+        cmdline = ["raylet", "--gcs-address=127.0.0.1:6379"]
+        assert scripts._cmdline_matches_gcs_address(cmdline, "127.0.0.1:6379") is True
+
+    def test_non_matching_port(self):
+        cmdline = ["raylet", "--gcs-address=127.0.0.1:6379"]
+        assert scripts._cmdline_matches_gcs_address(cmdline, "127.0.0.1:6380") is False
+
+    def test_localhost_matches_127(self):
+        cmdline = ["raylet", "--gcs-address=127.0.0.1:6379"]
+        assert scripts._cmdline_matches_gcs_address(cmdline, "localhost:6379") is True
+
+    def test_no_address_in_cmdline(self):
+        cmdline = ["python", "some_script.py"]
+        assert scripts._cmdline_matches_gcs_address(cmdline, "127.0.0.1:6379") is False
+
+    def test_empty_cmdline(self):
+        assert scripts._cmdline_matches_gcs_address([], "127.0.0.1:6379") is False
+
+    def test_invalid_target_address_returns_false(self):
+        cmdline = ["raylet", "--gcs-address=127.0.0.1:6379"]
+        assert scripts._cmdline_matches_gcs_address(cmdline, "invalid") is False
+
+    def test_gcs_server_cmdline(self):
+        """gcs_server uses --node-ip-address + --gcs_server_port."""
+        cmdline = [
+            "gcs_server",
+            "--node-ip-address=127.0.0.1",
+            "--gcs_server_port=6379",
+        ]
+        assert scripts._cmdline_matches_gcs_address(cmdline, "127.0.0.1:6379") is True
+        assert scripts._cmdline_matches_gcs_address(cmdline, "127.0.0.1:6380") is False
+
+
+# ---------------------------------------------------------------------------
+# Integration test helpers
+# ---------------------------------------------------------------------------
 
 
 def _get_process_info(proc: psutil.Process) -> Optional[Tuple[int, str, List[str]]]:
@@ -177,6 +384,10 @@ def cleanup_ray():
         pass
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="ray start not supported on Windows.",
+)
 class TestAddressIsolation:
     """Multiple clusters (different GCS addresses) and selective stop."""
 
@@ -225,7 +436,7 @@ class TestAddressIsolation:
     def test_stop_nonexistent_address_shows_warning_and_existing_addresses(
         self, cleanup_ray
     ):
-        """Nonexistent address: warning + list existing addresses; no processes killed."""
+        """Nonexistent address: warning + list existing; no kill."""
         runner = cleanup_ray
         address, cluster_procs = _start_cluster(runner, 6380)
 
@@ -261,3 +472,44 @@ class TestAddressIsolation:
 
         runner.invoke(scripts.stop, [f"--address={address}"])
         wait_for_condition(lambda: _all_pids_stopped(cluster_procs), timeout=30)
+
+    def test_stop_force_with_address(self, cleanup_ray):
+        """--force + --address should SIGKILL only matching processes."""
+        runner = cleanup_ray
+        address, cluster_procs = _start_cluster(runner, 6380)
+
+        result = runner.invoke(scripts.stop, ["--force", f"--address={address}"])
+        _die_on_error(result)
+        wait_for_condition(lambda: _all_pids_stopped(cluster_procs), timeout=15)
+        assert len(_get_pids_by_address(address)) == 0
+
+    def test_stop_address_no_ray_running(self, cleanup_ray):
+        """No Ray running + --address -> graceful message, exit 0."""
+        runner = cleanup_ray
+        # cleanup_ray already ran ray stop --force, so no Ray processes should exist
+        result = runner.invoke(scripts.stop, ["--address=127.0.0.1:6379"])
+        assert result.exit_code == 0
+        out_lower = result.output.lower()
+        assert "no ray processes" in out_lower or "did not find" in out_lower
+
+    def test_plain_stop_kills_all_clusters(self, cleanup_ray):
+        """Plain 'ray stop' (no --address) should kill everything — regression."""
+        runner = cleanup_ray
+        cluster2_base = f"/tmp/ray_c2_{uuid.uuid4().hex[:8]}"
+        os.makedirs(cluster2_base, exist_ok=True)
+        try:
+            _, procs_1 = _start_cluster(runner, 6380)
+            _, procs_2 = _start_cluster(runner, 6381, base_dir=cluster2_base)
+
+            result = runner.invoke(scripts.stop, ["--force"])
+            _die_on_error(result)
+            wait_for_condition(
+                lambda: _all_pids_stopped(procs_1) and _all_pids_stopped(procs_2),
+                timeout=30,
+            )
+        finally:
+            shutil.rmtree(cluster2_base, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

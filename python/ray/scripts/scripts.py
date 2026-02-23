@@ -1227,26 +1227,25 @@ def start(
 
 
 def _normalize_gcs_address(address: str) -> Tuple[str, int]:
-    """
-    Normalize GCS address string to (ip, port) tuple for consistent comparison.
+    """Normalize a GCS address string to (ip, port) for consistent comparison.
+
     Uses the same resolution as Ray (resolve_ip_for_localhost) so that
     e.g. 127.0.0.1:6380 matches processes started with the node's primary IP.
 
     Args:
-        address: GCS address string (e.g., "127.0.0.1:6379" or "localhost:6379")
+        address: GCS address string (e.g., "127.0.0.1:6379" or "localhost:6379").
 
     Returns:
-        Tuple of (normalized_ip, port_as_int)
+        Tuple of (normalized_ip, port_as_int).
     """
     ip, port = parse_address(address)
-    # Use Ray's resolution so 127.0.0.1/localhost matches the node IP used in processes
+    # Use Ray's resolution so 127.0.0.1/localhost matches the node IP used in processes.
     ip = services.resolve_ip_for_localhost(ip or "127.0.0.1")
     return (ip, int(port))
 
 
 def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
-    """
-    Extract GCS address from process command line arguments.
+    """Extract GCS address from a process's command line arguments.
 
     Handles multiple cases:
     1. Most processes: --gcs-address=ip:port
@@ -1255,7 +1254,7 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
     4. setproctitle case: args concatenated in first string
 
     Args:
-        cmdline: List of command line arguments from psutil.Process.cmdline()
+        cmdline: List of command line arguments from psutil.Process.cmdline().
 
     Returns:
         GCS address string (ip:port) if found, None otherwise.
@@ -1263,28 +1262,28 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
     if not cmdline:
         return None
 
-    # Strategy 1: Look for --gcs-address=ip:port pattern
+    # Strategy 1: Look for --gcs-address=ip:port pattern.
     for arg in cmdline:
         if arg.startswith("--gcs-address="):
             return arg.split("=", 1)[1]
         elif "--gcs-address=" in arg:
-            # Handle setproctitle case where args might be concatenated
-            # e.g., "ray::DashboardAgent --gcs-address=127.0.0.1:6379"
+            # Handle setproctitle case where args might be concatenated,
+            # e.g., "ray::DashboardAgent --gcs-address=127.0.0.1:6379".
             idx = arg.find("--gcs-address=")
             if idx >= 0:
                 addr_part = arg[idx + len("--gcs-address=") :]
-                # Remove any trailing quotes, spaces, or other args
+                # Remove any trailing quotes, spaces, or other args.
                 addr_part = addr_part.rstrip("\"'").split()[0]
                 if addr_part:
                     return addr_part
 
-    # Strategy 2: Look for --address=ip:port (for ray.util.client.server)
-    # This is equivalent to GCS address for client server
+    # Strategy 2: Look for --address=ip:port (for ray.util.client.server).
+    # This is equivalent to GCS address for client server.
     for arg in cmdline:
         if arg.startswith("--address="):
             return arg.split("=", 1)[1]
         elif "--address=" in arg:
-            # Handle setproctitle case
+            # Handle setproctitle case.
             idx = arg.find("--address=")
             if idx >= 0:
                 addr_part = arg[idx + len("--address=") :]
@@ -1293,36 +1292,42 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
                     return addr_part
 
     # Strategy 3: For gcs_server, extract from --node-ip-address/--node_ip_address
-    # and --gcs_server_port (C++ gflags may show underscore in argv)
+    # and --gcs_server_port (C++ gflags may show underscore in argv).
+    # Use independent checks (not elif) so that both ip and port can be
+    # extracted from a single concatenated setproctitle string.
     node_ip = None
     gcs_port = None
     for arg in cmdline:
-        if arg.startswith("--node-ip-address="):
-            node_ip = arg.split("=", 1)[1]
-        elif arg.startswith("--node_ip_address="):
-            node_ip = arg.split("=", 1)[1]
-        elif arg.startswith("--gcs_server_port="):
-            gcs_port = arg.split("=", 1)[1]
-        elif "--node-ip-address=" in arg:
-            # Handle setproctitle case
-            idx = arg.find("--node-ip-address=")
-            if idx >= 0:
-                node_ip = (
-                    arg[idx + len("--node-ip-address=") :].rstrip("\"'").split()[0]
-                )
-        elif "--node_ip_address=" in arg:
-            idx = arg.find("--node_ip_address=")
-            if idx >= 0:
-                node_ip = (
-                    arg[idx + len("--node_ip_address=") :].rstrip("\"'").split()[0]
-                )
-        elif "--gcs_server_port=" in arg:
-            # Handle setproctitle case
-            idx = arg.find("--gcs_server_port=")
-            if idx >= 0:
-                gcs_port = (
-                    arg[idx + len("--gcs_server_port=") :].rstrip("\"'").split()[0]
-                )
+        # Extract node IP.
+        if node_ip is None:
+            if arg.startswith("--node-ip-address="):
+                node_ip = arg.split("=", 1)[1]
+            elif arg.startswith("--node_ip_address="):
+                node_ip = arg.split("=", 1)[1]
+            elif "--node-ip-address=" in arg:
+                # Handle setproctitle case.
+                idx = arg.find("--node-ip-address=")
+                if idx >= 0:
+                    node_ip = (
+                        arg[idx + len("--node-ip-address=") :].rstrip("\"'").split()[0]
+                    )
+            elif "--node_ip_address=" in arg:
+                idx = arg.find("--node_ip_address=")
+                if idx >= 0:
+                    node_ip = (
+                        arg[idx + len("--node_ip_address=") :].rstrip("\"'").split()[0]
+                    )
+        # Extract GCS port (independent of node IP check).
+        if gcs_port is None:
+            if arg.startswith("--gcs_server_port="):
+                gcs_port = arg.split("=", 1)[1]
+            elif "--gcs_server_port=" in arg:
+                # Handle setproctitle case.
+                idx = arg.find("--gcs_server_port=")
+                if idx >= 0:
+                    gcs_port = (
+                        arg[idx + len("--gcs_server_port=") :].rstrip("\"'").split()[0]
+                    )
 
     if node_ip and gcs_port:
         return f"{node_ip}:{gcs_port}"
@@ -1331,8 +1336,7 @@ def _extract_gcs_address_from_cmdline(cmdline: List[str]) -> Optional[str]:
 
 
 def _cmdline_matches_gcs_address(cmdline: List[str], target_address: str) -> bool:
-    """
-    Check if a process's command line matches the target GCS address.
+    """Check if a process's command line matches the target GCS address.
 
     Args:
         cmdline: List of command line arguments.
@@ -1350,7 +1354,7 @@ def _cmdline_matches_gcs_address(cmdline: List[str], target_address: str) -> boo
         normalized_extracted = _normalize_gcs_address(extracted_address)
         return normalized_target == normalized_extracted
     except Exception:
-        # If address parsing fails, don't match
+        # If address parsing fails, don't match.
         return False
 
 
@@ -1377,10 +1381,11 @@ def _cmdline_matches_gcs_address(cmdline: List[str], target_address: str) -> boo
     default=None,
     type=str,
     help=(
-        "If set, only stop Ray processes that belong to the cluster with this GCS address. "
-        "This is useful when multiple Ray clusters run on the same node with "
-        "different GCS addresses (ports). The address should be in the format 'ip:port', "
-        "e.g., '127.0.0.1:6379'."
+        "If set, only stop Ray processes that belong to "
+        "the cluster with this GCS address. This is useful "
+        "when multiple Ray clusters run on the same node "
+        "with different GCS addresses (ports). "
+        "Format: 'ip:port', e.g., '127.0.0.1:6379'."
     ),
 )
 @add_click_logging_options
@@ -1393,16 +1398,20 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
     procs_not_gracefully_killed = []
 
     if stop_address is not None:
-        # Validate address format
+        # Validate address format.
         try:
             _normalize_gcs_address(stop_address)
         except Exception as e:
             cli_logger.error(
-                "Invalid address format: {}. Expected format: 'ip:port' (e.g., '127.0.0.1:6379')",
+                "Invalid address format: {}. "
+                "Expected 'ip:port' (e.g., '127.0.0.1:6379').",
                 stop_address,
             )
             raise click.ClickException(f"Invalid address format: {e}")
-        cli_logger.print(f"Stopping only Ray processes with GCS address={stop_address}")
+        cli_logger.print(
+            "Stopping only Ray processes with GCS address={}.",
+            cf.bold(stop_address),
+        )
 
     def kill_procs(
         force: bool, grace_period: int, processes_to_kill: List[str]
@@ -1446,7 +1455,7 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
                 )
                 if keyword in corpus:
                     # If stop_address is set, only include processes whose
-                    # command line matches the target GCS address
+                    # command line matches the target GCS address.
                     if stop_address is not None:
                         try:
                             if not _cmdline_matches_gcs_address(
@@ -1454,7 +1463,7 @@ def stop(force: bool, grace_period: int, stop_address: Optional[str]):
                             ):
                                 continue
                         except Exception:
-                            # If address matching fails, skip this process
+                            # If address matching fails, skip this process.
                             continue
                     found.append(candidate)
             for proc, proc_cmd, proc_args in found:
