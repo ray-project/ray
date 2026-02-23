@@ -79,6 +79,7 @@ kubectl
 Kubernetes
 Kueue
 lakehouse(s)?
+Langfuse
 LGBM
 LLMServer
 LMs
@@ -99,6 +100,7 @@ NVLink
 NVMe
 OOM
 open-source
+Palo
 [Pp][Aa][Cc][Kk]
 pipelining
 PIL
@@ -112,11 +114,13 @@ Quantizing
 Quickstarts
 Qwen
 Reimplement
+REST
 retrigger
 RISECamp
 RLHF
 rollouts
 SageMaker
+SDKs
 serverless
 SFT
 ShareGPT
@@ -127,6 +131,7 @@ streamable
 Softmax
 streamable
 subprocess
+superset
 teardown
 tiktoken
 TPU(s)?
