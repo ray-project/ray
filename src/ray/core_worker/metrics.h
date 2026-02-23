@@ -75,7 +75,8 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
   };
 }
 
-inline std::unique_ptr<ray::stats::PercentileMetric> GetSchedulerPlacementTimeMsMetric() {
+inline std::unique_ptr<ray::stats::PercentileMetric>
+GetSchedulerPlacementTimePercentileMsMetric() {
   return std::make_unique<ray::stats::PercentileMetric>(
       /*name=*/"scheduler_placement_time_ms",
       /*description=*/
