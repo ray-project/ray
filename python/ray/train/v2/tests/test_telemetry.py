@@ -15,6 +15,7 @@ from ray.train.v2.api.validation_config import ValidationConfig
 
 @pytest.fixture
 def mock_record(monkeypatch):
+    import ray._common.usage.usage_lib
     import ray.air._internal.usage
 
     recorded = {}
@@ -24,6 +25,11 @@ def mock_record(monkeypatch):
 
     monkeypatch.setattr(
         ray.air._internal.usage,
+        "record_extra_usage_tag",
+        mock_record_extra_usage_tag,
+    )
+    monkeypatch.setattr(
+        ray._common.usage.usage_lib,
         "record_extra_usage_tag",
         mock_record_extra_usage_tag,
     )
@@ -104,9 +110,19 @@ def test_tag_train_entrypoint(mock_record):
         )
 
 
-def test_tag_train_elasticity(mock_record):
-    DataParallelTrainer(lambda: None, scaling_config=ScalingConfig(num_workers=(1, 2)))
-    assert mock_record[ray_usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED] == "1"
+@pytest.mark.parametrize(
+    "scaling_config, elasticity_enabled",
+    [
+        (ScalingConfig(num_workers=(1, 2)), True),
+        (ScalingConfig(num_workers=2), False),
+    ],
+)
+def test_tag_train_elasticity(mock_record, scaling_config, elasticity_enabled):
+    DataParallelTrainer(lambda: None, scaling_config=scaling_config)
+    if elasticity_enabled:
+        assert mock_record[ray_usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED] == "1"
+    else:
+        assert ray_usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED not in mock_record
 
 
 if __name__ == "__main__":
