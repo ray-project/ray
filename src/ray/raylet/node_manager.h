@@ -776,6 +776,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
           &workers_to_kill,
       const NodeID &node_id,
       const SystemMemorySnapshot &system_memory_snapshot,
+      const std::string &object_store_memory_usage,
       const ProcessesMemorySnapshot &process_memory_snapshot,
       float usage_threshold) const;
 

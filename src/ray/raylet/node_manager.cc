@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -3029,9 +3030,8 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   return std::make_optional(std::move(msg));
 }
 
-// Picks the workers selected by the worker killing policy and kills
-// the processes if the memory usage is above the threshold. Allows
-// one in-flight call at a time as killing processes could
+// Picks the workers selected by the worker killing policy and destroys them.
+// Allows one in-flight call at a time as killing the underlying processes could
 // sometimes take seconds.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
   return [this](const SystemMemorySnapshot &system_memory_snapshot) {
@@ -3065,12 +3065,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               static_cast<float>(computed_threshold_bytes) /
               static_cast<float>(total_memory_bytes);
 
-          std::string oom_kill_details =
-              CreateOomKillMessageDetails(workers_to_kill_and_should_retry,
-                                          self_node_id_,
-                                          system_memory,
-                                          process_memory_snapshot,
-                                          computed_threshold_fraction);
+          std::string oom_kill_details = CreateOomKillMessageDetails(
+              workers_to_kill_and_should_retry,
+              self_node_id_,
+              system_memory,
+              store_client_->GetMemoryUsage().value_or("Not available"),
+              process_memory_snapshot,
+              computed_threshold_fraction);
           std::string oom_kill_suggestions =
               CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
@@ -3131,6 +3132,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
     const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill,
     const NodeID &node_id,
     const SystemMemorySnapshot &system_memory_snapshot,
+    const std::string &object_store_memory_usage,
     const ProcessesMemorySnapshot &process_memory_snapshot,
     float usage_threshold) const {
   if (workers_to_kill.empty()) {
@@ -3162,22 +3164,37 @@ std::string NodeManager::CreateOomKillMessageDetails(
     std::string process_used_bytes_gb =
         absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
-    worker_details.push_back(absl::StrFormat(
-        "(lease=%s, task name=%s, pid=%d, memory used=%sGB, worker ID=%s)",
-        worker->GetLeaseIdAsDebugString(),
+    std::stringstream worker_details_ss;
+    if (worker->GetActorId().IsNil()) {
+      worker_details_ss << "(Task: ";
+    } else {
+      worker_details_ss << "(Actor(" << worker->GetActorId().Hex() << "): , ";
+    }
+    worker_details_ss << absl::StrFormat(
+        "job ID=%s, lease ID=%s, task name=%s, pid=%d, required resources=%s, actual "
+        "memory used=%sGB, worker ID=%s)",
+        worker->GetGrantedLease().GetLeaseSpecification().JobId().Hex(),
+        worker->GetGrantedLeaseId().Hex(),
         worker->GetGrantedLease().GetLeaseSpecification().GetTaskName(),
         pid,
+        worker->GetGrantedLease()
+            .GetLeaseSpecification()
+            .GetRequiredResources()
+            .DebugString(),
         process_used_bytes_gb,
-        worker->WorkerId().Hex()));
+        worker->WorkerId().Hex());
+
+    worker_details.push_back(worker_details_ss.str());
   }
 
   return absl::StrFormat(
       "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f), "
-      "which exceeds the memory usage threshold of %f. "
+      "which exceeds the memory usage threshold of %f; "
+      "Object store memory usage: [%s]; "
       "Ray killed %d worker(s) because they were the most recently scheduled tasks: "
-      "[%s]. "
+      "[%s]; "
       "To see more information about memory usage on this node, "
-      "use `ray logs raylet.out -ip %s`. "
+      "use `ray logs raylet.out -ip %s`; "
       "Top 10 memory users: %s",
       node_ip,
       node_id.Hex(),
@@ -3185,8 +3202,9 @@ std::string NodeManager::CreateOomKillMessageDetails(
       total_bytes_gb,
       usage_fraction,
       usage_threshold,
+      absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
       workers_to_kill.size(),
-      absl::StrJoin(worker_details, ", "),
+      absl::StrJoin(worker_details, "; "),
       node_ip,
       MemoryMonitorUtils::TopNMemoryDebugString(10, process_memory_snapshot));
 }
