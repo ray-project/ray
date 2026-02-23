@@ -1,3 +1,4 @@
+import logging
 from typing import Any, List, Optional, Union
 
 import gymnasium as gym
@@ -5,6 +6,8 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -101,39 +104,85 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
 
 
 @DeveloperAPI
-def get_base_struct_from_space(space):
-    """Returns a Tuple/Dict Space as native (equally structured) py tuple/dict.
+class _GetBaseStructFromSpace:
+    """Callable singleton that converts a gym Space to a native py tuple/dict struct.
 
-    Args:
-        space: The Space to get the python struct for.
+    Results are cached by space hash. If the cache exceeds 1000 entries a warning is
+    logged and caching is disabled for the remainder of the process lifetime.
 
-    Returns:
-        Union[dict,tuple,gym.Space]: The struct equivalent to the given Space.
-            Note that the returned struct still contains all original
-            "primitive" Spaces (e.g. Box, Discrete).
+    This is useful because without caching, the function adds latency to our sampling loops.
+    However, if the cache blows up for some reason, we don't want to build up memory usage.
 
-    .. testcode::
-        :skipif: True
-
-        get_base_struct_from_space(Dict({
-            "a": Box(),
-            "b": Tuple([Discrete(2), Discrete(3)])
-        }))
-
-    .. testoutput::
-
-        dict(a=Box(), b=tuple(Discrete(2), Discrete(3)))
+    We cache by object id of the top-level space object to speed up lookups.
+    The limitation of this is that we assume that the space object is not modified
+    in a relevant way after we first process it.
     """
 
-    def _helper_struct(space_):
-        if isinstance(space_, gym.spaces.Tuple):
-            return tuple(_helper_struct(s) for s in space_)
-        elif isinstance(space_, gym.spaces.Dict):
-            return {k: _helper_struct(space_[k]) for k in space_.spaces}
-        else:
-            return space_
+    _CACHE_MAX_SIZE = 1000
 
-    return _helper_struct(space)
+    def __init__(self):
+        self._cache = {}
+        self._caching_enabled = True
+
+    def __call__(self, space):
+        """Returns a Tuple/Dict Space as native (equally structured) py tuple/dict.
+
+        Args:
+            space: The Space to get the python struct for.
+
+        Returns:
+            Union[dict,tuple,gym.Space]: The struct equivalent to the given Space.
+                Note that the returned struct still contains all original
+                "primitive" Spaces (e.g. Box, Discrete).
+
+        .. testcode::
+            :skipif: True
+
+            get_base_struct_from_space(Dict({
+                "a": Box(),
+                "b": Tuple([Discrete(2), Discrete(3)])
+            }))
+
+        .. testoutput::
+
+            dict(a=Box(), b=tuple(Discrete(2), Discrete(3)))
+        """
+        if self._caching_enabled:
+            key = id(space)
+
+            if key in self._cache:
+                return self._cache[key]
+
+            result = self._compute(space)
+            self._cache[key] = result
+
+            if len(self._cache) > self._CACHE_MAX_SIZE:
+                logger.warning(
+                    "get_base_struct_from_space cache exceeded %d entries. "
+                    "Disabling caching.",
+                    self._CACHE_MAX_SIZE,
+                )
+                self._caching_enabled = False
+                self._cache.clear()
+
+            return result
+
+        return self._compute(space)
+
+    @staticmethod
+    def _compute(space):
+        def _helper_struct(space_):
+            if isinstance(space_, gym.spaces.Tuple):
+                return tuple(_helper_struct(s) for s in space_)
+            elif isinstance(space_, gym.spaces.Dict):
+                return {k: _helper_struct(space_[k]) for k in space_.spaces}
+            else:
+                return space_
+
+        return _helper_struct(space)
+
+
+get_base_struct_from_space = _GetBaseStructFromSpace()
 
 
 @DeveloperAPI
