@@ -351,12 +351,33 @@ class AggregationFunction(str, Enum):
 class AutoscalingPolicy(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
+    # Cached deserialized policy to avoid repeated cloudpickle.loads() calls.
+    _cached_policy: Optional[Callable] = PrivateAttr(default=None)
 
     policy_function: Union[str, Callable] = Field(
         default=DEFAULT_AUTOSCALING_POLICY_NAME,
         description="Policy function can be a string import path or a function callable. "
         "If it's a string import path, it must be of the form `path.to.module:function_name`. ",
     )
+    policy_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments passed to the policy class constructor when "
+            "policy_function refers to a class. Ignored when policy_function "
+            "is a plain function. Values must be JSON-serializable."
+        ),
+    )
+
+    @validator("policy_kwargs", always=True)
+    def policy_kwargs_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"policy_kwargs is not JSON-serializable: {str(e)}.")
+        return v
 
     def __init__(self, **kwargs):
         serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
@@ -368,6 +389,7 @@ class AutoscalingPolicy(BaseModel):
 
     def set_serialized_policy_def(self, serialized_policy_def: bytes) -> None:
         self._serialized_policy_def = serialized_policy_def
+        self._cached_policy = None
 
     @classmethod
     def from_serialized_policy_def(
@@ -403,9 +425,15 @@ class AutoscalingPolicy(BaseModel):
         return self.policy_function == DEFAULT_AUTOSCALING_POLICY_NAME
 
     def get_policy(self) -> Callable:
-        """Deserialize policy from cloudpickled bytes."""
+        """Deserialize policy from cloudpickled bytes.
+
+        The result is cached to avoid repeated cloudpickle deserialization on
+        every call (e.g. on every autoscaling tick).
+        """
+        if self._cached_policy is not None:
+            return self._cached_policy
         try:
-            return cloudpickle.loads(self._serialized_policy_def)
+            policy = cloudpickle.loads(self._serialized_policy_def)
         except (ModuleNotFoundError, ImportError) as e:
             raise ImportError(
                 f"Failed to deserialize custom autoscaling policy: {e}\n\n"
@@ -417,6 +445,8 @@ class AutoscalingPolicy(BaseModel):
                 "For more details, see: https://docs.ray.io/en/latest/serve/advanced-guides/"
                 "advanced-autoscaling.html#gotchas-and-limitations"
             ) from e
+        self._cached_policy = policy
+        return policy
 
 
 @PublicAPI(stability="stable")
@@ -777,3 +807,67 @@ class gRPCOptions(BaseModel):
                 raise ModuleNotFoundError(message) from e
 
         return callables
+
+
+@PublicAPI(stability="alpha")
+class GangPlacementStrategy(str, Enum):
+    """Placement strategy for replicas within a gang."""
+
+    PACK = "PACK"
+    """Pack replicas on as few nodes as possible (best effort)."""
+
+    SPREAD = "SPREAD"
+    """Spread replicas across distinct nodes as evenly as possible (best effort)."""
+
+
+@PublicAPI(stability="alpha")
+class GangRuntimeFailurePolicy(str, Enum):
+    """Policy for handling runtime failures of replicas in a gang."""
+
+    RESTART_GANG = "RESTART_GANG"
+    """Tear down and restart entire gang atomically when any replica fails."""
+
+    RESTART_REPLICA = "RESTART_REPLICA"
+    """
+    Tear down and restart individual replica when it fails.
+    Other replicas in the gang will continue running.
+    """
+
+
+@PublicAPI(stability="alpha")
+class GangSchedulingConfig(BaseModel):
+    """Configuration for gang scheduling of deployment replicas."""
+
+    # Please keep these options in sync with those in `src/ray/protobuf/serve.proto`.
+
+    gang_size: int = Field(
+        description=(
+            "Number of replicas per gang. "
+            "num_replicas must be a multiple of gang_size."
+        ),
+        ge=1,
+    )
+
+    gang_placement_strategy: GangPlacementStrategy = Field(
+        default=GangPlacementStrategy.PACK,
+        description=(
+            "Placement strategy for replicas within a gang. "
+            "Options: PACK (pack with best effort, default), "
+            "SPREAD (maximize availability)."
+        ),
+    )
+
+    runtime_failure_policy: GangRuntimeFailurePolicy = Field(
+        default=GangRuntimeFailurePolicy.RESTART_GANG,
+        description=(
+            "What to do when a replica fails after gang is running. "
+            "RESTART_GANG: kill and restart entire gang atomically. "
+            "RESTART_REPLICA: kill and restart individual replica."
+        ),
+    )
+
+    @validator("runtime_failure_policy", always=True)
+    def _validate_runtime_failure_policy(cls, v):
+        if v == GangRuntimeFailurePolicy.RESTART_REPLICA:
+            raise NotImplementedError("RESTART_REPLICA policy is not yet implemented.")
+        return v

@@ -18,6 +18,7 @@ class TestMLPEncoders(unittest.TestCase):
         list_of_hidden_layer_dims = [[], [1], [64, 64], [256, 256, 256]]
         hidden_layer_activations = [None, "linear", "relu", "tanh", "swish"]
         hidden_layer_use_layernorms = [False, True]
+        output_layer_use_layernorms = [False, True]
         output_dims = [1, 48]
         output_activations = hidden_layer_activations
         hidden_use_biases = [False, True]
@@ -28,6 +29,7 @@ class TestMLPEncoders(unittest.TestCase):
             list_of_hidden_layer_dims,
             hidden_layer_activations,
             hidden_layer_use_layernorms,
+            output_layer_use_layernorms,
             output_activations,
             output_dims,
             hidden_use_biases,
@@ -38,6 +40,7 @@ class TestMLPEncoders(unittest.TestCase):
                 hidden_layer_dims,
                 hidden_layer_activation,
                 hidden_layer_use_layernorm,
+                output_layer_use_layernorm,
                 output_activation,
                 output_dim,
                 hidden_use_bias,
@@ -50,6 +53,7 @@ class TestMLPEncoders(unittest.TestCase):
                 f"hidden_layer_dims: {hidden_layer_dims}\n"
                 f"hidden_layer_activation: {hidden_layer_activation}\n"
                 f"hidden_layer_use_layernorm: {hidden_layer_use_layernorm}\n"
+                f"output_layer_use_layernorm: {output_layer_use_layernorm}\n"
                 f"output_activation: {output_activation}\n"
                 f"output_dim: {output_dim}\n"
                 f"hidden_use_bias: {hidden_use_bias}\n"
@@ -61,6 +65,7 @@ class TestMLPEncoders(unittest.TestCase):
                 hidden_layer_dims=hidden_layer_dims,
                 hidden_layer_activation=hidden_layer_activation,
                 hidden_layer_use_layernorm=hidden_layer_use_layernorm,
+                output_layer_use_layernorm=output_layer_use_layernorm,
                 hidden_layer_use_bias=hidden_use_bias,
                 output_layer_dim=output_dim,
                 output_layer_activation=output_activation,

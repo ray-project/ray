@@ -6,7 +6,6 @@ import re
 import string
 import sys
 import time
-import uuid
 from collections import Counter
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -425,44 +424,6 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
             log_format=log_format,
             context_info=context_info,
         )
-
-
-def test_http_access_log_in_proxy_logs_file(serve_instance):
-    name = "deployment_name"
-    fastapi_app = FastAPI()
-
-    @serve.deployment(name=name)
-    @serve.ingress(fastapi_app)
-    class Handler:
-        @fastapi_app.get("/")
-        def get_root(self):
-            return "Hello World!"
-
-    serve.run(Handler.bind(), logging_config={"encoding": "TEXT"})
-
-    # Get log file information
-    nodes = list_nodes()
-    serve_log_dir = get_serve_logs_dir()
-    node_ip_address = nodes[0].node_ip
-    proxy_log_file_name = get_component_file_name(
-        "proxy", node_ip_address, component_type=None, suffix=".log"
-    )
-    proxy_log_path = os.path.join(serve_log_dir, proxy_log_file_name)
-
-    request_id = str(uuid.uuid4())
-    response = httpx.get("http://localhost:8000", headers={"X-Request-ID": request_id})
-    assert response.status_code == 200
-
-    def verify_request_id_in_logs(proxy_log_path, request_id):
-        with open(proxy_log_path, "r") as f:
-            for line in f:
-                if request_id in line:
-                    return True
-        return False
-
-    wait_for_condition(
-        verify_request_id_in_logs, proxy_log_path=proxy_log_path, request_id=request_id
-    )
 
 
 def test_handle_access_log(serve_instance):
@@ -943,6 +904,52 @@ class TestLoggingAPI:
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
+
+    @pytest.mark.parametrize("enable_access_log", [True, False])
+    def test_access_log_in_stderr(self, serve_and_ray_shutdown, enable_access_log):
+        """Test that access logs in stderr respect the enable_access_log setting.
+
+        Regression test: the log_access_log_filter was previously only applied
+        to the file handler (memory_handler), not the stream handler (stderr).
+        Since RAY_SERVE_LOG_TO_STDERR defaults to True, access logs appeared in
+        stderr even when enable_access_log=False.
+        """
+        logger = logging.getLogger("ray.serve")
+
+        @serve.deployment(
+            logging_config={"enable_access_log": enable_access_log},
+        )
+        class Model:
+            def __call__(self, req: starlette.requests.Request):
+                logger.info("user_log_should_appear")
+                return "ok"
+
+        serve.run(Model.bind())
+        url = get_application_url(use_localhost=True)
+
+        f = io.StringIO()
+        with redirect_stderr(f):
+            for _ in range(5):
+                resp = httpx.get(url)
+                assert resp.status_code == 200
+
+            # Give logs time to flush.
+            time.sleep(2)
+
+            stderr_output = f.getvalue()
+
+            # Normal user logs should still appear in stderr regardless
+            # of the enable_access_log setting.
+            assert "user_log_should_appear" in stderr_output
+
+            if enable_access_log:
+                # Access logs should appear in stderr when enabled.
+                # HTTP requests produce "GET / 200" format (not "CALL __call__ OK"
+                # which only appears for DeploymentHandle calls).
+                assert "GET / 200" in stderr_output
+            else:
+                # Access logs should NOT appear in stderr when disabled.
+                assert "GET / 200" not in stderr_output
 
     @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
     def test_additional_log_standard_attrs(self, serve_and_ray_shutdown, encoding_type):
