@@ -217,6 +217,63 @@ def test_input_data_buffer_does_not_free_inputs():
     assert len(gc.get_referrers(block_ref)) > 0
 
 
+def test_apply_transform_dag_consistency():
+    """Test that _apply_transform maintains bidirectional DAG consistency.
+
+    When only some input dependencies are transformed, unchanged operators
+    should have their output_dependencies updated to point to the new parent
+    copy, not the original.
+
+    Regression test for https://github.com/ray-project/ray/issues/57825
+    """
+    from ray.data._internal.logical.interfaces.operator import Operator
+
+    a = Operator("A", [])
+    b = Operator("B", [])
+    c = Operator("C", [a, b])
+
+    def transform_b(op: Operator) -> Operator:
+        """Transform only operator B, leaving A unchanged."""
+        if op.name == "B":
+            return Operator("Transformed B", op.input_dependencies)
+        return op
+
+    c_transformed = c._apply_transform(transform_b)
+
+    # Verify the transformed DAG structure
+    assert c_transformed.name == "C"
+    assert len(c_transformed.input_dependencies) == 2
+
+    # A should be unchanged
+    assert c_transformed.input_dependencies[0] is a
+    assert c_transformed.input_dependencies[0].name == "A"
+
+    # B should be transformed
+    assert c_transformed.input_dependencies[1].name == "Transformed B"
+
+    # Critical: A's output_dependencies should point to the new C copy,
+    # not the original C object
+    assert c_transformed is c_transformed.input_dependencies[0].output_dependencies[0]
+
+    # The transformed B should also point back to the new C
+    assert c_transformed is c_transformed.input_dependencies[1].output_dependencies[0]
+
+
+def test_apply_transform_no_change():
+    """Test that _apply_transform returns the same object when no changes occur."""
+    from ray.data._internal.logical.interfaces.operator import Operator
+
+    a = Operator("A", [])
+    b = Operator("B", [a])
+
+    def identity(op: Operator) -> Operator:
+        return op
+
+    b_transformed = b._apply_transform(identity)
+    assert b_transformed is b
+    assert b_transformed.input_dependencies[0] is a
+
+
 if __name__ == "__main__":
     import sys
 

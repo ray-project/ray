@@ -56,18 +56,30 @@ class Operator:
         """
 
         transformed_input_ops = []
-        has_changes = False
+        input_changed = False
 
         for input_op in self.input_dependencies:
             transformed_input_op = input_op._apply_transform(transform)
             transformed_input_ops.append(transformed_input_op)
+            # Keep track of whether any input ops changed
             if transformed_input_op is not input_op:
-                has_changes = True
+                input_changed = True
 
-        if has_changes:
+        if input_changed:
             # Make a shallow copy to avoid modifying operators in-place
             target = copy.copy(self)
+            # Create a fresh output_dependencies list for the copy to avoid
+            # sharing the same list object as the original operator
+            target._output_dependencies = []
 
+            # Remove stale references: unchanged input ops still point to
+            # the original operator in their output_dependencies
+            for input_op in self.input_dependencies:
+                if self in input_op._output_dependencies:
+                    input_op._output_dependencies.remove(self)
+
+            # Wire all transformed input ops to the new target
+            target._wire_output_deps(transformed_input_ops)
             target._input_dependencies = transformed_input_ops
         else:
             target = self
