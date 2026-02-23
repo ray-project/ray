@@ -82,7 +82,7 @@ extensions = [
 # -- sphinx-collections: pull external template files at build time -----------
 
 _ANYSCALE_HOST = os.environ.get(
-    "ANYSCALE_HOST", "https://console.anyscale-staging.com"
+    "ANYSCALE_HOST", "https://console.anyscale.com"
 )
 _TEMPLATE_README_API = (
     _ANYSCALE_HOST + "/api/v2/experimental_workspaces/template/readme/{name}"
