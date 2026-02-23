@@ -142,6 +142,11 @@ collections_clean = True
 # Clean up collected files after build so they don't get committed.
 collections_final_clean = True
 
+# The collections config contains a function reference (for the "function" driver)
+# which Sphinx cannot pickle for caching. This is harmless — suppress the warning
+# so it doesn't cause a build failure under -W (warnings-as-errors).
+suppress_warnings = ["config.cache"]
+
 # Configuration for algolia
 # Note: This API key grants read access to our indexes and is intended to be public.
 # See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
