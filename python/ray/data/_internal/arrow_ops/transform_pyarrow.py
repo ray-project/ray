@@ -432,7 +432,11 @@ def _backfill_missing_fields(
     import pyarrow as pa
 
     from ray.data._internal.tensor_extensions.arrow import (
+        ArrowVariableShapedTensorArray,
         ArrowVariableShapedTensorType,
+    )
+    from ray.data._internal.utils.transform_pyarrow import (
+        _is_native_tensor_type,
     )
 
     # Flatten chunked arrays into a single array if necessary
@@ -477,9 +481,14 @@ def _backfill_missing_fields(
                 current_array.type, get_arrow_extension_fixed_shape_tensor_types()
             ):
                 # Convert to variable-shaped if needed
-                current_array = current_array.to_var_shaped_tensor_array(
-                    ndim=field_type.ndim
-                )
+                if _is_native_tensor_type(current_array.type):
+                    current_array = ArrowVariableShapedTensorArray.from_numpy(
+                        current_array.to_numpy_ndarray()
+                    )
+                else:
+                    current_array = current_array.to_var_shaped_tensor_array(
+                        ndim=field_type.ndim
+                    )
 
             # Handle type mismatches for primitive types
             # The schema should already be unified by unify_schemas, but
