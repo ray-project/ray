@@ -154,7 +154,7 @@ xgb_params = {
     "eta": 0.3,
     "max_depth": 8,
     "nthread": CPUS_PER_WORKER,  
-    "device": "cpu" # use CPU for training
+    "device": "cpu",  # use CPU for training
 }
 
 trainer = XGBoostTrainer(
