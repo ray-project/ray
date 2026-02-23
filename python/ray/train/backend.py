@@ -42,10 +42,6 @@ class Backend(metaclass=Singleton):
 
     share_cuda_visible_devices: bool = False
 
-    def on_controller_start(self, backend_config: BackendConfig):
-        """Logic for setting up the backend when the controller starts. Only in Ray Train v2."""
-        pass
-
     def on_start(self, worker_group: BaseWorkerGroup, backend_config: BackendConfig):
         """Logic for starting this backend."""
         pass

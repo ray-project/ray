@@ -14,6 +14,7 @@ from ray.train.torch.config import (
     _TorchBackend,
 )
 from ray.train.v2._internal.constants import TORCHFT_LIGHTHOUSE_ENV_VAR
+from ray.train.v2.backend import ControllerLifecycleMixin
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ class LighthouseServerActor:
         return self.lighthouse.address()
 
 
-class _TorchftBackend(_TorchBackend):
+class _TorchftBackend(_TorchBackend, ControllerLifecycleMixin):
     """Backend for torchft-based fault-tolerant training with replica groups.
 
     Creates a separate TCPStore and process group per replica group,
