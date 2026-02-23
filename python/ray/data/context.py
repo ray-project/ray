@@ -1,3 +1,4 @@
+import contextlib
 import copy
 import enum
 import logging
@@ -795,19 +796,33 @@ class DataContext:
             return _default_context
 
     @staticmethod
-    def _set_current(context: "DataContext") -> None:
+    @contextlib.contextmanager
+    def current(context: "DataContext"):
+        prev: Optional[DataContext] = DataContext._set_current(context)
+        try:
+            yield
+        finally:
+            DataContext._set_current(prev)
+
+    @staticmethod
+    def _set_current(context: Optional["DataContext"]) -> Optional["DataContext"]:
         """Set the current context in a remote worker.
 
         This is used internally by Dataset to propagate the driver context to
         remote workers used for parallelization.
         """
         global _default_context
-        if (
+        if context and (
             not _default_context
             or _default_context.dataset_logger_id != context.dataset_logger_id
         ):
             update_dataset_logger_for_worker(context.dataset_logger_id)
+
+        prev = _default_context
+        # Update current context
         _default_context = context
+
+        return prev
 
     @property
     def shuffle_strategy(self) -> ShuffleStrategy:

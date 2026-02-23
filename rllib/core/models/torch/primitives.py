@@ -38,6 +38,7 @@ class TorchMLP(nn.Module):
         hidden_layer_bias_initializer_config: Optional[Dict] = None,
         output_dim: Optional[int] = None,
         output_use_bias: bool = True,
+        output_layer_use_layernorm: bool = False,
         output_activation: Union[str, Callable] = "linear",
         output_weights_initializer: Optional[Union[str, Callable]] = None,
         output_weights_initializer_config: Optional[Dict] = None,
@@ -75,6 +76,9 @@ class TorchMLP(nn.Module):
                 size=`hidden_layer_dims[-1]`.
             output_use_bias: Whether to use bias on the separate output layer,
                 if any.
+            output_layer_use_layernorm: Whether to insert a LayerNorm after the
+                output layer (before its activation). Only applies when
+                `output_dim` is set.
             output_activation: The activation function to use for the output layer
                 (if any). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
@@ -166,6 +170,10 @@ class TorchMLP(nn.Module):
                 # Add the activation function.
                 if hidden_activation is not None:
                     layers.append(hidden_activation())
+            else:
+                # Output layer: optionally add layernorm before activation.
+                if output_layer_use_layernorm:
+                    layers.append(nn.LayerNorm(dims[i + 1], eps=0.001))
 
         # Add output layer's (if any) activation.
         output_activation = get_activation_fn(output_activation, framework="torch")
