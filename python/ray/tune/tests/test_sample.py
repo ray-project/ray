@@ -473,7 +473,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(choices_1, choices_2)
 
     def testConvertAx(self):
-        from ax.service.ax_client import AxClient
+        from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
 
@@ -505,13 +505,15 @@ class SearchSpaceTest(unittest.TestCase):
 
         client1 = AxClient(random_seed=1234)
         client1.create_experiment(
-            parameters=converted_config, objective_name="a", minimize=False
+            parameters=converted_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
         client2 = AxClient(random_seed=1234)
         client2.create_experiment(
-            parameters=ax_config, objective_name="a", minimize=False
+            parameters=ax_config,
+            objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher2 = AxSearch(ax_client=client2)
 
@@ -752,7 +754,11 @@ class SearchSpaceTest(unittest.TestCase):
 
         ignore = [
             "func",
-            "qloguniform",  # There seems to be an issue here
+            "quniform",  # BOHB drops quantization
+            "qloguniform",  # BOHB drops quantization
+            "qrandint",  # BOHB drops quantization
+            "qrandint_q3",  # BOHB drops quantization
+            "qlograndint",  # BOHB drops quantization
             "randn",  # ConfigSpace 1.2+ doesn't support unbounded normals
             "qrandn",  # ConfigSpace 1.2+ doesn't support unbounded normals
         ]
