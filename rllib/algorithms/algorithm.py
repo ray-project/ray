@@ -492,8 +492,11 @@ class Algorithm(Checkpointable, Trainable):
             root=True, stats_cls_lookup=config.stats_cls_lookup
         )
 
-        # Create a default logger creator if no logger_creator is specified
-        if logger_creator is None:
+        # Create a default logger creator if no logger_creator is specified.
+        # Skip when running under Tune (storage in kwargs): Trainable will pass
+        # logdir from storage and _create_logger will use NoopLogger, so creating
+        # a temp dir here would leak an unused directory in ~/ray_results/.
+        if logger_creator is None and not kwargs.get("storage"):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")

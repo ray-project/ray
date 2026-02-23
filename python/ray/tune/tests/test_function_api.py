@@ -17,14 +17,8 @@ from ray.tune.trainable import with_parameters, wrap_function
 
 
 class FunctionCheckpointingTest(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.TemporaryDirectory()
-
     def create_trainable(self, train_fn):
         return wrap_function(train_fn)(storage=mock_storage_context())
-
-    def tearDown(self):
-        self.tmpdir.cleanup()
 
     def testCheckpointReuse(self):
         """Test that repeated save/restore never reuses same checkpoint dir."""
