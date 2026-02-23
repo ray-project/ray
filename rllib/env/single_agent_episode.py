@@ -13,10 +13,35 @@ from gymnasium.core import ActType, ObsType
 from ray._common.deprecation import Deprecated
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
+from ray.rllib.env.utils.lookback_buffer_base import BaseLookbackBuffer
+from ray.rllib.env.utils.pre_allocated_lookback_buffer import (
+    PreAllocatedLookbackBuffer,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
+
+ILB_REWARD_SPACE = gym.spaces.Box(float("-inf"), float("inf"), (), np.float32)
+
+
+def _make_lookback_buffer(data, lookback, space):
+    """Return a PreAllocatedLookbackBuffer when space is known, else InfiniteLookbackBuffer."""
+    if space is not None:
+        return PreAllocatedLookbackBuffer(data=data, lookback=lookback, space=space)
+    return InfiniteLookbackBuffer(data=data, lookback=lookback)
+
+
+def _buffer_from_state(state):
+    """Restore a lookback buffer from its pickled state dict.
+
+    Handles both :class:`InfiniteLookbackBuffer` (``"finalized"`` key present) and
+    :class:`PreAllocatedLookbackBuffer` (``"_length"`` key present) state formats so
+    that episodes serialized under either implementation deserialize correctly.
+    """
+    if "_length" in state:
+        return PreAllocatedLookbackBuffer.from_state(state)
+    return InfiniteLookbackBuffer.from_state(state)
 
 
 @PublicAPI(stability="alpha")
@@ -276,17 +301,18 @@ class SingleAgentEpisode:
 
         # Observations: t0 (initial obs) to T.
         self._observation_space = None
-        if isinstance(observations, InfiniteLookbackBuffer):
+        if isinstance(observations, BaseLookbackBuffer):
             self.observations = observations
         else:
-            self.observations = InfiniteLookbackBuffer(
+            self.observations = _make_lookback_buffer(
                 data=observations,
                 lookback=len_lookback_buffer,
+                space=observation_space,
             )
         self.observation_space = observation_space
 
         # Infos: t0 (initial info) to T.
-        if isinstance(infos, InfiniteLookbackBuffer):
+        if isinstance(infos, BaseLookbackBuffer):
             self.infos = infos
         else:
             self.infos = InfiniteLookbackBuffer(
@@ -296,23 +322,24 @@ class SingleAgentEpisode:
 
         # Actions: t1 to T.
         self._action_space = None
-        if isinstance(actions, InfiniteLookbackBuffer):
+        if isinstance(actions, BaseLookbackBuffer):
             self.actions = actions
         else:
-            self.actions = InfiniteLookbackBuffer(
+            self.actions = _make_lookback_buffer(
                 data=actions,
                 lookback=len_lookback_buffer,
+                space=action_space,
             )
         self.action_space = action_space
 
         # Rewards: t1 to T.
-        if isinstance(rewards, InfiniteLookbackBuffer):
+        if isinstance(rewards, BaseLookbackBuffer):
             self.rewards = rewards
         else:
-            self.rewards = InfiniteLookbackBuffer(
+            self.rewards = PreAllocatedLookbackBuffer(
                 data=rewards,
                 lookback=len_lookback_buffer,
-                space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
+                space=ILB_REWARD_SPACE,
             )
 
         # obs[-1] is the final observation in the episode.
@@ -324,7 +351,7 @@ class SingleAgentEpisode:
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
         self.extra_model_outputs = {}
         for k, v in (extra_model_outputs or {}).items():
-            if isinstance(v, InfiniteLookbackBuffer):
+            if isinstance(v, BaseLookbackBuffer):
                 self.extra_model_outputs[k] = v
             else:
                 # We cannot use the defaultdict's own constructor here as this would
@@ -1158,8 +1185,8 @@ class SingleAgentEpisode:
             As single item (B=0 -> no additional 0-axis) if `indices` is a single int.
         """
         value = self.extra_model_outputs[key]
-        # The expected case is: `value` is a `InfiniteLookbackBuffer`.
-        if isinstance(value, InfiniteLookbackBuffer):
+        # The expected case is: `value` is a lookback buffer.
+        if isinstance(value, BaseLookbackBuffer):
             return value.get(
                 indices=indices,
                 neg_index_as_lookback=neg_index_as_lookback,
@@ -1496,7 +1523,7 @@ class SingleAgentEpisode:
             and self.observations.lookback < (_lb - start)
         ):
             _lb = self.observations.lookback + start
-        observations = InfiniteLookbackBuffer(
+        observations = _make_lookback_buffer(
             data=self.get_observations(
                 slice(start - _lb, stop + 1, step),
                 neg_index_as_lookback=True,
@@ -1527,7 +1554,7 @@ class SingleAgentEpisode:
         )
         if start >= 0 and start - _lb < 0 and self.actions.lookback < (_lb - start):
             _lb = self.actions.lookback + start
-        actions = InfiniteLookbackBuffer(
+        actions = _make_lookback_buffer(
             data=self.get_actions(
                 slice(start - _lb, stop, step),
                 neg_index_as_lookback=True,
@@ -1543,12 +1570,13 @@ class SingleAgentEpisode:
         )
         if start >= 0 and start - _lb < 0 and self.rewards.lookback < (_lb - start):
             _lb = self.rewards.lookback + start
-        rewards = InfiniteLookbackBuffer(
+        rewards = PreAllocatedLookbackBuffer(
             data=self.get_rewards(
                 slice(start - _lb, stop, step),
                 neg_index_as_lookback=True,
             ),
             lookback=_lb,
+            space=ILB_REWARD_SPACE,
         )
 
         extra_model_outputs = {}
@@ -1733,10 +1761,10 @@ class SingleAgentEpisode:
         episode.agent_id = state["agent_id"]
         episode.module_id = state["module_id"]
         episode.multi_agent_episode_id = state["multi_agent_episode_id"]
-        # Convert data back to `InfiniteLookbackBuffer`s.
-        episode.observations = InfiniteLookbackBuffer.from_state(state["observations"])
-        episode.actions = InfiniteLookbackBuffer.from_state(state["actions"])
-        episode.rewards = InfiniteLookbackBuffer.from_state(state["rewards"])
+        # Restore buffers — handle both ILB and PALB state formats.
+        episode.observations = _buffer_from_state(state["observations"])
+        episode.actions = _buffer_from_state(state["actions"])
+        episode.rewards = _buffer_from_state(state["rewards"])
         episode.infos = InfiniteLookbackBuffer.from_state(state["infos"])
         episode.extra_model_outputs = (
             defaultdict(
