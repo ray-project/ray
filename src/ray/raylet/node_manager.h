@@ -51,7 +51,7 @@
 #include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet/throttler.h"
 #include "ray/raylet/wait_manager.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_interface.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
@@ -953,7 +953,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int64_t gc_command_sync_version_ = 0;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
-  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
+  std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitorInterface> memory_monitor_;
