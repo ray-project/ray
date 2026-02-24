@@ -339,6 +339,34 @@ class TestDatabricksUCDatasourceIntegration:
 class TestDatabricksUCDatasourceCredentials:
     """Tests for credential provider handling."""
 
+    def test_schema_method_not_overridden_by_schema_name(self, requests_mocker):
+        """Test that Datasource.schema() remains callable."""
+        requests_mocker["post"].return_value = mock.Mock(
+            status_code=200,
+            raise_for_status=lambda: None,
+            json=lambda: {"statement_id": "test_stmt", "status": {"state": "PENDING"}},
+        )
+        requests_mocker["get"].return_value = mock.Mock(
+            status_code=200,
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "status": {"state": "SUCCEEDED"},
+                "manifest": {"truncated": False, "chunks": []},
+            },
+        )
+
+        provider = StaticCredentialProvider(token="my_provider_token", host="test_host")
+        datasource = DatabricksUCDatasource(
+            warehouse_id="test_warehouse",
+            catalog="test_catalog",
+            schema="test_schema",
+            query="SELECT 1",
+            credential_provider=provider,
+        )
+
+        assert callable(datasource.schema)
+        datasource.schema()
+
     def test_with_credential_provider(self, requests_mocker):
         """Test DatabricksUCDatasource with credential_provider parameter."""
         requests_mocker["post"].return_value = mock.Mock(
