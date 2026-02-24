@@ -395,26 +395,30 @@ def _get_execution_callback_classes() -> List[Type["ExecutionCallback"]]:
 
     This function constructs the list of callback classes that should be
     instantiated by the StreamingExecutor. It includes:
-    1. Built-in callbacks (ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback, LoadCheckpointCallback)
+    1. Built-in callbacks that can self-configure (ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback)
     2. Custom callbacks registered via RAY_DATA_EXECUTION_CALLBACKS environment variable
+
+    Note: LoadCheckpointCallback is NOT included here because it requires a mandatory
+    CheckpointConfig argument and cannot self-configure. It will be conditionally added
+    by the Planner in PR 3 when checkpoint_config is available.
 
     Returns:
         List of ExecutionCallback class types (not instances).
     """
     classes = []
 
+    # Import and register built-in callbacks that can self-configure
     from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
         ExecutionIdxUpdateCallback,
     )
     from ray.data._internal.execution.callbacks.insert_issue_detectors import (
         IssueDetectionExecutionCallback,
     )
-    from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 
     classes.append(ExecutionIdxUpdateCallback)
     classes.append(IssueDetectionExecutionCallback)
-    classes.append(LoadCheckpointCallback)
 
+    # Parse environment variable for custom callbacks
     env_callbacks = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
 
     if env_callbacks:
