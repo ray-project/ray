@@ -31,8 +31,9 @@ jsonpatch==1.32
 kubernetes==24.2.0
 llvmlite==0.42.0
 lxml>=6.0.2
-moto[s3,server]==4.2.12
+moto[s3,server]==5.1.18
 mypy==1.7.0
+pyright==1.1.408
 numba==0.59.1
 openpyxl==3.0.10
 opentelemetry-api

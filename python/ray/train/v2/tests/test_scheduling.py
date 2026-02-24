@@ -68,7 +68,7 @@ def test_infeasible_placement_strategy(
 
     @ray.remote(num_cpus=0)
     def run():
-        monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.25")
+        monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "2")
         scaling_config = ScalingConfig(
             num_workers=8,
             resources_per_worker={"CPU": 1},

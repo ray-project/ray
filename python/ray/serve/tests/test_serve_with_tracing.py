@@ -60,9 +60,7 @@ def get_span_list():
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1",
-    reason="Tracing context propagation not yet supported in gRPC mode. "
-    "See https://github.com/ray-project/ray/issues/60223",
+    sys.platform == "win32", reason="Temp directory cleanup fails on Windows"
 )
 def test_deployment_remote_calls_with_tracing(ray_serve_with_tracing):
     serve.start()

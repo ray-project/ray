@@ -36,6 +36,8 @@ if PYDANTIC_INSTALLED:
         processesPids: Optional[
             List[ProcessGPUInfo]
         ] = None  # converted to list in _compose_stats_payload
+        powerMw: Optional[int] = None  # current power draw in milliwatts
+        temperatureC: Optional[int] = None  # temperature in Celsius
 
     class TpuUtilizationInfo(BaseModel):
         """
