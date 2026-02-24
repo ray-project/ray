@@ -47,6 +47,8 @@ apt-get install -y docker-ce-cli
 
 echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
 
+curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+
 EOF
 
 ENV CC=clang
