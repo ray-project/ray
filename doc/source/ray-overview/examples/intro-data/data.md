@@ -4,7 +4,6 @@ This template provides a comprehensive introduction to **Ray Data** — a scalab
 
 In the first half, we'll walk through the core Ray Data workflow — loading, transforming, and persisting data — with concepts explained along the way. The second half covers advanced topics you can explore as your workloads grow.
 
-
 **Core:**
 - **Part 1:** When to Use Ray Data
 - **Part 2:** Loading Data
@@ -25,9 +24,14 @@ In the first half, we'll walk through the core Ray Data workflow — loading, tr
 ## Imports
 
 ```python
+!pip install -q "torch==2.10.0" "torchvision==0.25.0"
+```
+
+```python
 import numpy as np
 import torch
 from torchvision.transforms import Compose, ToTensor, Normalize
+from matplotlib import pyplot as plt
 
 import ray
 ```
@@ -35,8 +39,6 @@ import ray
 ### Note on Storage
 
 Throughout this tutorial, we use `/mnt/cluster_storage` to represent a shared storage location. In a multi-node cluster, Ray workers on different nodes cannot access the head node's local file system. Use a [shared storage solution](https://docs.anyscale.com/configuration/storage#shared) accessible from every node.
-
----
 
 ## Part 1: When to Use Ray Data
 
@@ -63,8 +65,6 @@ To understand why this matters, consider the difference between traditional batc
 
 This is critical for GPU-heavy workloads: while the GPU runs inference on one batch, the CPU can preprocess the next batch.
 
----
-
 ## Part 2: Loading Data
 
 Ray Data provides built-in connectors for common formats — Parquet, CSV, JSON, images, text — as well as sources such as HuggingFace Datasets, Delta Lake, Iceberg, and in-memory objects (NumPy, Pandas, PyTorch). See the full list in the [Input/Output docs](https://docs.ray.io/en/latest/data/api/input_output.html) and the [data loading guide](https://docs.ray.io/en/latest/data/loading-data.html).
@@ -88,8 +88,6 @@ A **Dataset** is a distributed collection of **blocks** — contiguous subsets o
 
 Since a Dataset is a list of Ray object references, it can be freely passed between Ray tasks, actors, and libraries.
 
----
-
 ## Part 3: Lazy Execution
 
 In Ray Data, most transformations are **lazy** — they build an execution plan rather than running immediately. The plan executes only when you call a method that *consumes* or *materializes* the dataset.
@@ -106,8 +104,6 @@ In Ray Data, most transformations are **lazy** — they build an execution plan 
 To materialize a small subset for inspection, use `take`:
 
 ```python
-from matplotlib import pyplot as plt
-
 sample = ds.take(5)
 
 fig, axes = plt.subplots(1, 5, figsize=(12, 3))
@@ -120,11 +116,9 @@ plt.tight_layout()
 plt.show()
 ```
 
-This lazy execution model lets Ray Data optimize the full pipeline before running it. When you chain transformations (e.g., `ds.map_batches(f1).map_batches(f2).write_parquet(...)`), Ray Data builds a **logical plan** of your declared operations, then produces an optimized **physical plan**. A key optimization is **operator fusion** — adjacent compatible operators are merged into a single task, reducing data movement between stages. You can use `ds.explain()` to inspect the execution plan (we'll do this in Part 5 once we've built a more interesting pipeline).
+This lazy execution model lets Ray Data optimize the full pipeline before running it. When you chain transformations (e.g., `ds.map_batches(f1).map_batches(f2).write_parquet(...)`), Ray Data builds a **logical plan** of your declared operations, then produces an optimized **physical plan**. A key optimization is **operator fusion** — adjacent compatible operators are merged into a single task, reducing data movement between stages. You can use `ds.explain()` to inspect the execution plan.
 
 For a deeper dive into Ray Data internals, see the [Data Internals guide](https://docs.ray.io/en/latest/data/data-internals.html) and the [Key Concepts page](https://docs.ray.io/en/latest/data/key-concepts.html).
-
----
 
 ## Part 4: Transforming Data with `map_batches`
 
@@ -141,7 +135,7 @@ def normalize(batch: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
 ```
 
 ```python
-ds_normalized = ds.map_batches(normalize) # Lazy — not executed yet
+ds_normalized = ds.map_batches(normalize)  # Lazy — not executed yet
 ```
 
 Let's verify the transformation works on a small batch:
@@ -172,8 +166,6 @@ print(f"Max value: {normalized_batch['image'][0].max():.4f}")
 | `compute` | Execution strategy — `TaskPoolStrategy` for functions, `ActorPoolStrategy` for classes |
 
 **When to use `map` vs `map_batches`:** Use `map_batches` when the underlying computation is vectorized — for example, NumPy array operations, PyArrow transforms, or GPU inference. If your logic is row-by-row standard Python (such as string parsing or feature extraction), use `map` instead, which applies a function to each row individually and avoids the overhead of batch formatting.
-
----
 
 ## Part 5: Stateful Transformations and Batch Inference
 
@@ -210,6 +202,7 @@ Download the model to shared storage, then apply the classifier:
 ds_preds = ds_normalized.map_batches(
     MNISTClassifier,
     fn_constructor_kwargs={"model_path": "/mnt/cluster_storage/model.pt"},
+    num_cpus=1,
     batch_size=100,
     compute=ray.data.ActorPoolStrategy(size=1),
 )
@@ -228,15 +221,45 @@ for p in preds:
 
 **Scaling up:** Increase the pool size to use more workers. For example, `compute=ray.data.ActorPoolStrategy(size=4)` creates a fixed pool of 4 actors, or `compute=ray.data.ActorPoolStrategy(min_size=1, max_size=4)` creates an autoscaling pool.
 
+## Part 6: Materializing and Persisting Data
+
 Now that we've built a multi-step pipeline (read → normalize → inference), let's inspect the execution plan Ray Data created:
 
 ```python
 ds_preds.explain()
 ```
 
----
+By default, Ray Data streams data lazily. This is the right point to **materialize** `ds_preds` — execute the pipeline fully and cache the results in the Ray object store (distributed across the cluster, spilling to disk if needed).
 
-## Part 6: Data Operations
+Materializing here also releases the `ActorPoolStrategy` worker: as long as `ds_preds` is an unexecuted lazy plan, the GPU actor stays alive. Once materialized, the actor is freed and the GPU node can scale down.
+
+**When to materialize:**
+- When you need to reuse the same dataset multiple times (avoids re-computation)
+- When downstream operations require the full dataset (e.g., `groupby`, `random_shuffle`)
+- When using `ActorPoolStrategy` — to release the actor pool after execution
+
+**When NOT to materialize:**
+- For streaming pipelines where data flows through once (training ingest, write-to-sink)
+- When the dataset is too large to fit in the object store
+
+```python
+ds_preds = ds_preds.materialize()
+```
+
+```python
+# Check materialized dataset stats
+print(ds_preds.stats())
+```
+
+### Persisting to storage
+
+Write processed data to persistent storage using any of Ray Data's write functions. Ray Data supports writing to Parquet, CSV, JSON, TFRecords, and more. See the [Input/Output docs](https://docs.ray.io/en/latest/data/api/input_output.html) for the full list.
+
+```python
+ds_preds.write_parquet("/mnt/cluster_storage/mnist_preds")
+```
+
+## Part 7: Data Operations
 
 ### Adding Labels
 
@@ -291,9 +314,7 @@ print(f"Mean accuracy across all digits: {mean_accuracy:.4f}")
 
 **Key takeaway:** `groupby` + `map_groups` lets you apply per-group logic, while built-in aggregation functions cover common statistical operations.
 
----
-
-## Part 7: Observability
+## Part 8: Observability
 
 Ray Data provides several tools for understanding what your pipeline is doing:
 
@@ -312,51 +333,13 @@ The **Ray Workloads** view shows each operator in your pipeline, its status, row
 
 <img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/intro-ai-libraries/ray-data-workloads.png" width="900" alt="Ray Data Workloads view showing per-operator status and throughput">
 
-The **Ray Dashboard Metrics** tab gives you time-series charts for bytes and blocks generated per second, rows processed per second, and object store memory usage — useful for spotting throughput drops or memory pressure over time:
+The **Ray Dashboard Metrics** tab gives you time-series charts for bytes and blocks generated per second, rows processed per second, object store memory usage and more — useful for spotting throughput drops or memory pressure over time:
 
 <img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/intro-ai-libraries/ray-data-dashboard.png" width="900" alt="Ray Dashboard Metrics showing throughput and object store memory">
 
 For detailed guidance, see the [Anyscale monitoring and debugging guide](https://docs.anyscale.com/monitoring).
 
----
-
-## Part 8: Materializing and Persisting Data
-
-By default, Ray Data streams data lazily. You can **materialize** a dataset to eagerly execute the full pipeline and store results in the Ray object store (distributed across the cluster, spilling to disk if needed).
-
-```python
-ds_materialized = ds_preds.materialize()
-ds_materialized
-```
-
-After materializing, you can inspect detailed execution statistics:
-
-```python
-# Check materialized dataset stats
-print(ds_materialized.stats())
-```
-
-**When to materialize:**
-- When you need to reuse the same dataset multiple times (avoids re-computation)
-- When downstream operations require the full dataset (e.g., `groupby`, `random_shuffle`)
-
-**When NOT to materialize:**
-- For streaming pipelines where data flows through once (training ingest, write-to-sink)
-- When the dataset is too large to fit in the object store
-
-### Persisting to storage
-
-Write processed data to persistent storage using any of Ray Data's write functions. Ray Data supports writing to Parquet, CSV, JSON, TFRecords, and more. See the [Input/Output docs](https://docs.ray.io/en/latest/data/api/input_output.html) for the full list.
-
-```python
-ds_preds.write_parquet("/mnt/cluster_storage/mnist_preds")
-```
-
----
-
 You've built a complete Ray Data pipeline — from loading through persistence. The following sections cover advanced topics organized by theme, and can be read in any order.
-
----
 
 ## Additional APIs
 
@@ -396,8 +379,6 @@ ds_example.show()
 ```
 
 Expressions also support arithmetic (`col("a") + col("b")`), comparisons (`col("score") > 0.5`), and custom UDFs through the `@udf` decorator. See the full [Expressions API reference](https://docs.ray.io/en/latest/data/api/expressions.html) for the complete list of available operations.
-
----
 
 ## Scaling and Performance
 
@@ -477,8 +458,6 @@ ctx.use_polars_sort = True  # Requires: pip install polars
 
 See the [execution configurations docs](https://docs.ray.io/en/latest/data/execution-configurations.html) and [performance tips](https://docs.ray.io/en/latest/data/performance-tips.html) for more tuning guidance.
 
----
-
 ## Reliability
 
 *For production pipelines that need to handle failures.*
@@ -519,8 +498,6 @@ ctx.checkpoint_config = CheckpointConfig(
     delete_checkpoint_on_success=True,
 )
 ```
-
----
 
 ## Summary and Next Steps
 
