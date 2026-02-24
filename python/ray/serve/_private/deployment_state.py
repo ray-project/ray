@@ -4022,11 +4022,7 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.check_and_update_replicas()
 
-        # STEP 2: Check current status
-        for deployment_state in self._deployment_states.values():
-            deployment_state.check_curr_status()
-
-        # STEP 3: Drain nodes
+        # STEP 2: Drain nodes
         draining_nodes = self._cluster_node_info_cache.get_draining_nodes()
         allow_new_compaction = len(draining_nodes) == 0 and all(
             ds.curr_status_info.status == DeploymentStatus.HEALTHY
@@ -4053,7 +4049,7 @@ class DeploymentStateManager:
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
 
-        # STEP 4: Scale replicas
+        # STEP 3: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
             upscale, downscale = deployment_state.scale_deployment_replicas()
 
@@ -4062,7 +4058,7 @@ class DeploymentStateManager:
             if downscale:
                 downscales[deployment_id] = downscale
 
-        # STEP 5: Update status
+        # STEP 4: Update status
         for deployment_id, deployment_state in self._deployment_states.items():
             deleted, any_replicas_recovering = deployment_state.check_curr_status()
 
@@ -4070,7 +4066,7 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
+        # STEP 5: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
         )
@@ -4079,7 +4075,7 @@ class DeploymentStateManager:
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
-        # STEP 7: Broadcast long poll information
+        # STEP 6: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.broadcast_running_replicas_if_changed()
             deployment_state.broadcast_deployment_config_if_changed()
@@ -4089,7 +4085,7 @@ class DeploymentStateManager:
                     running_replicas=deployment_state.get_running_replica_ids(),
                 )
 
-        # STEP 8: Record deployment status metrics
+        # STEP 7: Record deployment status metrics
         for deployment_id, deployment_state in self._deployment_states.items():
             status = deployment_state.curr_status_info.status
             self._deployment_status_gauge.set(
@@ -4100,7 +4096,7 @@ class DeploymentStateManager:
                 },
             )
 
-        # STEP 9: Cleanup
+        # STEP 8: Cleanup
         for deployment_id in deleted_ids:
             self._deployment_scheduler.on_deployment_deleted(deployment_id)
             self._autoscaling_state_manager.deregister_deployment(deployment_id)
