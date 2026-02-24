@@ -79,6 +79,8 @@ build:iwyu --output_groups=report
 
 # Print relative paths when possible
 build:windows --attempt_to_print_relative_paths
+# Use compiler param file to avoid command line length limits on Windows
+build:windows --features=compiler_param_file
 # Save disk space by hardlinking cache hits instead of copying
 build:windows --experimental_repository_cache_hardlinks
 # For colored output (seems necessary on Windows)
