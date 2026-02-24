@@ -42,6 +42,8 @@ def allocate_resources(
     if throughput == 0:
         return {op: ExecutionResources.zero() for op in rates}
 
+    # NOTE: This implementation computes fractional bundle counts. In practice, you
+    # can't schedule a fractional task or actor, so the allocations might be infeasible.
     bundle_counts = {op: throughput / rate for op, rate in rates.items()}
     return {op: resource_requirements[op].scale(bundle_counts[op]) for op in rates}
 
