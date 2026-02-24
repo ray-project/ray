@@ -664,7 +664,9 @@ class ProxyStateManager:
             node_id: state.actor_handle for node_id, state in self._proxy_states.items()
         }
         if self._fallback_proxy_state:
-            handles[f"fallback-{self._head_node_id}"] = self._fallback_proxy_state.actor_handle
+            handles[
+                f"fallback-{self._head_node_id}"
+            ] = self._fallback_proxy_state.actor_handle
 
         return handles
 
@@ -673,7 +675,9 @@ class ProxyStateManager:
             node_id: state.actor_name for node_id, state in self._proxy_states.items()
         }
         if self._fallback_proxy_state:
-            names[f"fallback-{self._head_node_id}"] = self._fallback_proxy_state.actor_name
+            names[
+                f"fallback-{self._head_node_id}"
+            ] = self._fallback_proxy_state.actor_name
 
         return names
 
@@ -833,7 +837,9 @@ class ProxyStateManager:
             proxy_actor_class=proxy_actor_class or self._proxy_actor_class,
         )
 
-    def _start_fallback_proxy_if_needed(self, node_id: str, node_ip_address: str, node_instance_id: str) -> None:
+    def _start_fallback_proxy_if_needed(
+        self, node_id: str, node_ip_address: str, node_instance_id: str
+    ) -> None:
         """Start a Serve proxy on the head node if it doesn't already exist."""
         if (
             node_id == self._head_node_id
@@ -872,7 +878,9 @@ class ProxyStateManager:
         """Start a proxy on every node if it doesn't already exist."""
 
         for node_id, node_ip_address, node_instance_id in target_nodes:
-            self._start_fallback_proxy_if_needed(node_id, node_ip_address, node_instance_id)
+            self._start_fallback_proxy_if_needed(
+                node_id, node_ip_address, node_instance_id
+            )
 
             if node_id in self._proxy_states:
                 continue
@@ -901,7 +909,9 @@ class ProxyStateManager:
 
         stop_proxy = False
         if self._head_node_id not in alive_node_ids:
-            logger.info(f"Stopping fallback proxy on removed head node '{self._head_node_id}'.")
+            logger.info(
+                f"Stopping fallback proxy on removed head node '{self._head_node_id}'."
+            )
             stop_proxy = True
         elif self._fallback_proxy_state.status == ProxyStatus.UNHEALTHY:
             logger.info(
@@ -910,7 +920,9 @@ class ProxyStateManager:
             )
             stop_proxy = True
         elif self._fallback_proxy_state.status == ProxyStatus.DRAINED:
-            logger.info(f"Removing drained fallback proxy on head node '{self._head_node_id}'.")
+            logger.info(
+                f"Removing drained fallback proxy on head node '{self._head_node_id}'."
+            )
             stop_proxy = True
 
         if stop_proxy:
@@ -945,6 +957,7 @@ class ProxyStateManager:
             proxy_state.shutdown()
 
         self._stop_fallback_proxy_if_needed(alive_node_ids)
+
 
 def _try_set_exception(fut: asyncio.Future, e: Exception):
     if not fut.done():

@@ -99,7 +99,9 @@ class FakeProxyStateManager:
             actor_name=actor_name,
         )
 
-    def add_fallback_proxy_details(self, node_id, node_instance_id, node_ip, actor_name):
+    def add_fallback_proxy_details(
+        self, node_id, node_instance_id, node_ip, actor_name
+    ):
         self.fallback_proxy_details = FakeProxyState(
             node_id=node_id,
             node_instance_id=node_instance_id,
@@ -296,16 +298,24 @@ def test_direct_ingress_is_disabled(
             protocol=RequestProtocol.HTTP,
             route_prefix="/",
             targets=[
-                Target(ip="10.0.0.1", port=8000, instance_id="instance1", name="proxy1"),
-                Target(ip="10.0.0.2", port=8000, instance_id="instance2", name="proxy2"),
+                Target(
+                    ip="10.0.0.1", port=8000, instance_id="instance1", name="proxy1"
+                ),
+                Target(
+                    ip="10.0.0.2", port=8000, instance_id="instance2", name="proxy2"
+                ),
             ],
         ),
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/",
             targets=[
-                Target(ip="10.0.0.1", port=9000, instance_id="instance1", name="proxy1"),
-                Target(ip="10.0.0.2", port=9000, instance_id="instance2", name="proxy2"),
+                Target(
+                    ip="10.0.0.1", port=9000, instance_id="instance1", name="proxy1"
+                ),
+                Target(
+                    ip="10.0.0.2", port=9000, instance_id="instance2", name="proxy2"
+                ),
             ],
         ),
     ]
@@ -333,16 +343,24 @@ def test_get_target_groups_empty_when_no_apps(
             protocol=RequestProtocol.HTTP,
             route_prefix="/",
             targets=[
-                Target(ip="10.0.0.1", port=8000, instance_id="instance1", name="proxy1"),
-                Target(ip="10.0.0.2", port=8000, instance_id="instance2", name="proxy2"),
+                Target(
+                    ip="10.0.0.1", port=8000, instance_id="instance1", name="proxy1"
+                ),
+                Target(
+                    ip="10.0.0.2", port=8000, instance_id="instance2", name="proxy2"
+                ),
             ],
         ),
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/",
             targets=[
-                Target(ip="10.0.0.1", port=9000, instance_id="instance1", name="proxy1"),
-                Target(ip="10.0.0.2", port=9000, instance_id="instance2", name="proxy2"),
+                Target(
+                    ip="10.0.0.1", port=9000, instance_id="instance1", name="proxy1"
+                ),
+                Target(
+                    ip="10.0.0.2", port=9000, instance_id="instance2", name="proxy2"
+                ),
             ],
         ),
     ]
@@ -841,8 +859,12 @@ def test_get_target_groups_app_with_no_running_replicas(
             route_prefix="/app2",
             app_name="app2",
             targets=[
-                Target(ip="10.0.0.1", port=8000, instance_id="instance1", name="proxy1"),
-                Target(ip="10.0.0.2", port=8000, instance_id="instance2", name="proxy2"),
+                Target(
+                    ip="10.0.0.1", port=8000, instance_id="instance1", name="proxy1"
+                ),
+                Target(
+                    ip="10.0.0.2", port=8000, instance_id="instance2", name="proxy2"
+                ),
             ],
         ),
         TargetGroup(
@@ -850,8 +872,12 @@ def test_get_target_groups_app_with_no_running_replicas(
             route_prefix="/app2",
             app_name="app2",
             targets=[
-                Target(ip="10.0.0.1", port=9000, instance_id="instance1", name="proxy1"),
-                Target(ip="10.0.0.2", port=9000, instance_id="instance2", name="proxy2"),
+                Target(
+                    ip="10.0.0.1", port=9000, instance_id="instance1", name="proxy1"
+                ),
+                Target(
+                    ip="10.0.0.2", port=9000, instance_id="instance2", name="proxy2"
+                ),
             ],
         ),
     ]

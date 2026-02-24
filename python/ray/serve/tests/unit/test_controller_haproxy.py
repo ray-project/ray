@@ -328,5 +328,6 @@ def test_get_target_groups_app_with_no_running_replicas(
         ),
     ]
 
+
 if __name__ == "__main__":
     pytest.main()
