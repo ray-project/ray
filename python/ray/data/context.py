@@ -1,12 +1,13 @@
 import contextlib
 import copy
 import enum
+import importlib
 import logging
 import os
 import threading
 import warnings
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.logging import update_dataset_logger_for_worker
@@ -15,6 +16,7 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
     from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
@@ -255,6 +257,9 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
     "RAY_DATA_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S", 30
 )
 
+# Environment variable for custom execution callbacks
+EXECUTION_CALLBACKS_ENV_VAR = "RAY_DATA_EXECUTION_CALLBACKS"
+
 
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
     "RAY_DATA_DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD",
@@ -383,6 +388,51 @@ def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
     )
 
     return IssueDetectorsConfiguration()
+
+
+def _get_execution_callback_classes() -> List[Type["ExecutionCallback"]]:
+    """Factory function to get the default execution callback classes.
+
+    This function constructs the list of callback classes that should be
+    instantiated by the StreamingExecutor. It includes:
+    1. Built-in callbacks (ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback, LoadCheckpointCallback)
+    2. Custom callbacks registered via RAY_DATA_EXECUTION_CALLBACKS environment variable
+
+    Returns:
+        List of ExecutionCallback class types (not instances).
+    """
+    classes = []
+
+    from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
+        ExecutionIdxUpdateCallback,
+    )
+    from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+        IssueDetectionExecutionCallback,
+    )
+    from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
+
+    classes.append(ExecutionIdxUpdateCallback)
+    classes.append(IssueDetectionExecutionCallback)
+    classes.append(LoadCheckpointCallback)
+
+    env_callbacks = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
+
+    if env_callbacks:
+        for callback_path in env_callbacks.split(","):
+            callback_path = callback_path.strip()
+            if not callback_path:
+                continue
+            try:
+                module_path, class_name = callback_path.rsplit(".", 1)
+                module = importlib.import_module(module_path)
+                callback_cls = getattr(module, class_name)
+                classes.append(callback_cls)
+            except (ImportError, AttributeError, ValueError) as e:
+                raise ValueError(
+                    f"Failed to import callback from '{callback_path}': {e}"
+                )
+
+    return classes
 
 
 @DeveloperAPI
@@ -694,6 +744,10 @@ class DataContext:
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
     _checkpoint_config: Optional[CheckpointConfig] = None
+
+    execution_callback_classes: List[Type["ExecutionCallback"]] = field(
+        default_factory=_get_execution_callback_classes
+    )
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
