@@ -1399,7 +1399,7 @@ class ServeController:
                 instance_id=fallback_proxy_details.node_instance_id,
                 name=fallback_proxy_details.actor_name,
             )
-        
+
         return None
 
     def _get_empty_target_group(self, fallback_proxy_target: Optional[Target]) -> TargetGroup:
