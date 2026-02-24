@@ -1259,7 +1259,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
       std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
 
   // Populate 'bundles' field for test so it can be mutated.
-  placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
+  const auto &option = placement_group->GetSchedulingStrategy().Get(0);
+  placement_group->UpdateActiveBundles(0, option);
 
   placement_group->GetMutableBundle(0)->set_node_id(node0->node_id());
   placement_group->GetMutableBundle(1)->set_node_id(node1->node_id());
@@ -1379,7 +1380,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource) {
   auto placement_group =
       std::make_shared<GcsPlacementGroup>(create_placement_group_request, "", counter_);
   // PG has been scheduled and has active bundles set.
-  placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
+  const auto &option = placement_group->GetSchedulingStrategy().Get(0);
+  placement_group->UpdateActiveBundles(0, option);
   int wildcard_resource_count = 0;
   for (const auto &bundle_spec : placement_group->GetBundles()) {
     for (const auto &resource_entry : bundle_spec->GetFormattedResources()) {
@@ -1683,6 +1685,74 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGResetFallbackToPrimaryBundles) {
                 .Get(scheduling::ResourceID("CustomResource"))
                 .Double(),
             1.0);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestPartialRescheduleSkipsFallback) {
+  auto node0 = GenNodeInfo(0);
+  (*node0->mutable_resources_total())["CPU"] = 2;
+  AddNode(node0);
+
+  auto node1 = GenNodeInfo(1);
+  (*node1->mutable_resources_total())["CPU"] = 1;
+  AddNode(node1);
+
+  auto request =
+      GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::STRICT_SPREAD, 2, 1);
+
+  auto *fallback_option = request.mutable_placement_group_spec()->add_fallback_strategy();
+  auto *fallback_bundle = fallback_option->add_bundles();
+  (*fallback_bundle->mutable_unit_resources())["CPU"] = 2.0;
+  fallback_bundle->mutable_bundle_id()->set_bundle_index(0);
+  fallback_bundle->mutable_bundle_id()->set_placement_group_id(
+      request.placement_group_spec().placement_group_id());
+
+  auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
+
+  auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> pg, bool) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    failure_placement_groups_.emplace_back(std::move(pg));
+  };
+  auto success_handler = [this](std::shared_ptr<GcsPlacementGroup> pg) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.emplace_back(std::move(pg));
+  };
+
+  // Schedule successfully with primary scheduling option.
+  // Bundle 0 goes to node 0, Bundle 1 goes to node 1.
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group, failure_handler, success_handler});
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Verify primary strategy was selected.
+  ASSERT_EQ(placement_group->GetActiveStrategyIndex(), 0);
+
+  // Simulate preemption by killing node 1, bundle 1 is now unplaced.
+  RemoveNode(node1);
+  placement_group->GetMutableBundle(1)->clear_node_id();
+
+  // Clear success list for the next scheduling attempt.
+  {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.clear();
+  }
+
+  // Attempt to reschedule the unplaced bundle.
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{placement_group, failure_handler, success_handler});
+
+  // Validate PG reschedule fails because we're only rescheduling 1 bundle of the PG, so a
+  // fallback is not selected.
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  // Verify it did not change its shape to the fallback.
+  ASSERT_EQ(placement_group->GetActiveStrategyIndex(), 0);
+  ASSERT_EQ(placement_group->GetBundles().size(), 2);
 }
 
 }  // namespace gcs

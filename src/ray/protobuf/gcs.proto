@@ -691,6 +691,8 @@ message PlacementGroupTableData {
   // Index 0: The original, primary request.
   // Index 1..N: The options defined in each fallback strategy.
   repeated PlacementGroupSchedulingOption scheduling_options = 17;
+  // The index of the chosen scheduling option.
+  int32 active_scheduling_strategy_index = 18;
 }
 
 message JobTableData {

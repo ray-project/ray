@@ -85,6 +85,9 @@ class GcsPlacementGroup {
     placement_group_table_data_.mutable_scheduling_options()->MergeFrom(
         placement_group_spec.fallback_strategy());
 
+    // Initialize to active strategy -1 to indicate that no strategy has been scheduled.
+    placement_group_table_data_.set_active_scheduling_strategy_index(-1);
+
     SetupStates();
   }
 
@@ -169,7 +172,10 @@ class GcsPlacementGroup {
   google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
       *GetMutableSchedulingStrategy();
 
-  void UpdateActiveBundles(const rpc::PlacementGroupSchedulingOption &selected_option);
+  int GetActiveStrategyIndex() const;
+
+  void UpdateActiveBundles(int strategy_index,
+                           const rpc::PlacementGroupSchedulingOption &selected_option);
 
  private:
   // XXX.

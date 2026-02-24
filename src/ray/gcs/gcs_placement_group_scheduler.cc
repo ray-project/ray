@@ -72,33 +72,43 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
-  auto bundles = placement_group->GetUnplacedBundles();
-  RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
-                 << ", id: " << placement_group->GetPlacementGroupID()
-                 << ", bundles size = " << bundles.size();
-
   const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
 
-  bool is_scheduling_all_bundles =
-      (bundles.size() == placement_group->GetBundles().size());
-
   std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule;
+  bool is_scheduling_all_bundles = false;
+
+  if (placement_group->GetActiveStrategyIndex() != -1) {
+    // A strategy has already been selected and is active. Schedule unplaced bundles.
+    bundles_to_schedule = placement_group->GetUnplacedBundles();
+    is_scheduling_all_bundles =
+        (bundles_to_schedule.size() == placement_group->GetBundles().size());
+  } else {
+    is_scheduling_all_bundles = true;
+  }
+
   if (is_scheduling_all_bundles && !scheduling_strategies.empty()) {
+    // If we are scheduling all bundles (either brand new PG, or all bundles are
+    // rescheduling), start from the primary strategy (index 0).
+    bundles_to_schedule.clear();
     for (const auto &bundle_proto : scheduling_strategies.Get(0).bundles()) {
       bundles_to_schedule.push_back(
           std::make_shared<const BundleSpecification>(bundle_proto));
     }
-  } else {
-    bundles_to_schedule = bundles;
   }
+
+  RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
+                 << ", id: " << placement_group->GetPlacementGroupID()
+                 << ", bundles size = " << bundles_to_schedule.size();
+  auto bundles = bundles_to_schedule;
 
   auto scheduling_result =
       TrySchedule(placement_group, bundles_to_schedule, placement_group->GetStrategy());
   bool any_strategy_feasible = !scheduling_result.status.IsInfeasible();
-  int selected_strategy_index = 0;
+  int selected_strategy_index =
+      is_scheduling_all_bundles ? 0 : placement_group->GetActiveStrategyIndex();
 
-  if (!scheduling_result.status.IsSuccess() && scheduling_strategies.size() > 1 &&
-      is_scheduling_all_bundles) {
+  if (is_scheduling_all_bundles && !scheduling_result.status.IsSuccess() &&
+      scheduling_strategies.size() > 1) {
     RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
                    << placement_group->GetPlacementGroupID() << ". Attempting "
                    << (scheduling_strategies.size() - 1) << " fallback options.";
@@ -148,7 +158,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   if (!scheduling_strategies.empty() && is_scheduling_all_bundles) {
     // Only update active bundles after full scheduling option succeeds.
     placement_group->UpdateActiveBundles(
-        scheduling_strategies.Get(selected_strategy_index));
+        selected_strategy_index, scheduling_strategies.Get(selected_strategy_index));
   }
   bundles = bundles_to_schedule;
 

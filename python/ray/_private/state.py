@@ -363,6 +363,13 @@ class GlobalState:
             }
             scheduling_options.append(strategy_dict)
 
+        # In GCS, bundles now strictly represents the actively placed bundles, meaning it is
+        # empty for pending PGs. If bundles is empty, we fall back to the primary requested
+        # shape for the pending PG so there is no user-facing change.
+        bundles_source = placement_group_info.bundles
+        if not bundles_source and len(placement_group_info.scheduling_options) > 0:
+            bundles_source = placement_group_info.scheduling_options[0].bundles
+
         return {
             "placement_group_id": binary_to_hex(
                 placement_group_info.placement_group_id
@@ -372,11 +379,11 @@ class GlobalState:
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
                 bundle.bundle_id.bundle_index: message_to_dict(bundle)["unitResources"]
-                for bundle in placement_group_info.bundles
+                for bundle in bundles_source
             },
             "bundles_to_node_id": {
                 bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
-                for bundle in placement_group_info.bundles
+                for bundle in bundles_source
             },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
