@@ -159,7 +159,7 @@ class _GetBaseStructFromSpace:
             if len(self._cache) > self._CACHE_MAX_SIZE:
                 logger.warning(
                     "get_base_struct_from_space cache exceeded %d entries. "
-                    "Disabling caching.",
+                    "Disabling caching. This likely means that we re-create the same space object in a loop.",
                     self._CACHE_MAX_SIZE,
                 )
                 self._caching_enabled = False
