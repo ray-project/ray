@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import numpy as np
 import torch
@@ -124,7 +124,7 @@ class TorchGLOOGroup(BaseGroup):
 
     def allreduce(
         self,
-        tensor: torch.Tensor | np.ndarray,
+        tensor: Union[torch.Tensor, np.ndarray],
         allreduce_options: Optional[AllReduceOptions] = None,
     ) -> None:
         if allreduce_options is None:
@@ -138,7 +138,7 @@ class TorchGLOOGroup(BaseGroup):
 
     def reduce(
         self,
-        tensor: torch.Tensor | np.ndarray,
+        tensor: Union[torch.Tensor, np.ndarray],
         reduce_options: Optional[ReduceOptions] = None,
     ) -> None:
         if reduce_options is None:
@@ -158,8 +158,8 @@ class TorchGLOOGroup(BaseGroup):
 
     def allgather(
         self,
-        tensor_list: List[torch.Tensor | np.ndarray],
-        tensor: torch.Tensor | np.ndarray,
+        tensor_list: List[Union[torch.Tensor, np.ndarray]],
+        tensor: Union[torch.Tensor, np.ndarray],
         allgather_options: Optional[AllGatherOptions] = None,
     ) -> None:
         if allgather_options is None:
@@ -172,7 +172,7 @@ class TorchGLOOGroup(BaseGroup):
 
     def broadcast(
         self,
-        tensor: torch.Tensor | np.ndarray,
+        tensor: Union[torch.Tensor, np.ndarray],
         broadcast_options: BroadcastOptions = BroadcastOptions(),
     ) -> None:
         tensor = self._to_torch_tensor(tensor)
@@ -180,8 +180,8 @@ class TorchGLOOGroup(BaseGroup):
 
     def reducescatter(
         self,
-        output_tensor: torch.Tensor | np.ndarray,
-        tensor_list: List[torch.Tensor | np.ndarray],
+        output_tensor: Union[torch.Tensor, np.ndarray],
+        tensor_list: List[Union[torch.Tensor, np.ndarray]],
         reducescatter_options: Optional[ReduceScatterOptions] = None,
     ) -> None:
         if reducescatter_options is None:
@@ -203,13 +203,13 @@ class TorchGLOOGroup(BaseGroup):
             output_tensor.copy_(tensor_list[self._rank])
 
     def send(
-        self, tensor: torch.Tensor | np.ndarray, send_options: SendOptions
+        self, tensor: Union[torch.Tensor, np.ndarray], send_options: SendOptions
     ) -> None:
         tensor = self._to_torch_tensor(tensor)
         dist.send(tensor, dst=send_options.dst_rank)
 
     def recv(
-        self, tensor: torch.Tensor | np.ndarray, recv_options: RecvOptions
+        self, tensor: Union[torch.Tensor, np.ndarray], recv_options: RecvOptions
     ) -> None:
         tensor = self._to_torch_tensor(tensor)
         dist.recv(tensor, src=recv_options.src_rank)

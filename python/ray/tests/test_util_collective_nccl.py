@@ -453,7 +453,7 @@ def test_broadcast_different_array_size(array_size, src_rank, defer_cleanup):
     results = ray.get([a.do_broadcast.remote(src_rank=src_rank) for a in actors])
     for i in range(world_size):
         assert (
-            results[i] == cp.ones((array_size,), dtype=cp.float32) * (src_rank + 2)
+            results[i] == cp.ones(array_size, dtype=cp.float32) * (src_rank + 2)
         ).all()
 
 
@@ -494,7 +494,7 @@ def test_broadcast_invalid_rank(defer_cleanup, src_rank=3):
 def test_reduce_different_name(group_name, dst_rank, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(num_workers=world_size, group_name=group_name)
-    defer_cleanup(actors)
+    defer_cleanup(actors, group_name)
     results = ray.get([a.do_reduce.remote(group_name, dst_rank) for a in actors])
     for i in range(world_size):
         if i == dst_rank:

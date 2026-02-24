@@ -699,9 +699,6 @@ autodoc_mock_imports = [
     "ray._raylet",
     "ray.core.generated",
     "ray.serve.generated",
-    # Problematic autosummary targets (experimental/optional)
-    "ray.experimental.collective",
-    "ray.util.collective.collective",
 ]
 
 for mock_target in autodoc_mock_imports:

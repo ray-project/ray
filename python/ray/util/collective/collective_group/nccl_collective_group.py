@@ -1,7 +1,7 @@
 import datetime
 import logging
 import time
-from typing import Any, List
+from typing import Any, List, Union
 
 import cupy
 import torch
@@ -169,7 +169,7 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def allreduce(
         self,
-        tensors: List[cupy.ndarray | torch.Tensor],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
         allreduce_options: AllReduceOptions = AllReduceOptions(),
     ) -> None:
         """AllReduce tensors across the collective group following options.
@@ -217,7 +217,7 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def reduce(
         self,
-        tensors: List[cupy.ndarray | torch.Tensor],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
         reduce_options: ReduceOptions = ReduceOptions(),
     ) -> None:
         """Reduce tensors to a destination gpu following options.
@@ -247,7 +247,7 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def broadcast(
         self,
-        tensors: List[cupy.ndarray | torch.Tensor],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
         broadcast_options: BroadcastOptions = BroadcastOptions(),
     ) -> None:
         """Broadcast tensors to all other gpus following options.
@@ -277,8 +277,8 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def allgather(
         self,
-        tensor_lists: List[List[cupy.ndarray | torch.Tensor]],
-        tensors: List[cupy.ndarray | torch.Tensor],
+        tensor_lists: List[List[Union[cupy.ndarray, torch.Tensor]]],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
         allgather_options: AllGatherOptions = AllGatherOptions(),
     ) -> None:
         """Allgather tensors across gpus into a list of tensors.
@@ -320,8 +320,8 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def reducescatter(
         self,
-        tensors: List[cupy.ndarray | torch.Tensor],
-        tensor_lists: List[List[cupy.ndarray | torch.Tensor]],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        tensor_lists: List[List[Union[cupy.ndarray, torch.Tensor]]],
         reducescatter_options: ReduceScatterOptions = ReduceScatterOptions(),
     ) -> None:
         """Reduce then scatter a list of tensors across the group.
@@ -363,7 +363,7 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def send(
         self,
-        tensors: List[cupy.ndarray | torch.Tensor],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
         send_options: SendOptions = SendOptions(),
     ) -> None:
         """Send a tensor to a destination gpu in the group.
@@ -393,7 +393,7 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def recv(
         self,
-        tensors: List[cupy.ndarray | torch.Tensor],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
         recv_options: RecvOptions = RecvOptions(),
     ) -> None:
         """Receive a tensor from a source gpu in the group.
@@ -608,8 +608,8 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def _collective(
         self,
-        input_tensors: List[cupy.ndarray | torch.Tensor],
-        output_tensors: List[cupy.ndarray | torch.Tensor],
+        input_tensors: List[Union[cupy.ndarray, torch.Tensor]],
+        output_tensors: List[Union[cupy.ndarray, torch.Tensor]],
         collective_fn: Any,
         preprocess_fn: Any = None,
         postprocess_fn: Any = None,
@@ -658,7 +658,7 @@ class MultiGPUNCCLGroup(BaseGroup):
 
     def _point2point(
         self,
-        tensors: List[cupy.ndarray | torch.Tensor],
+        tensors: List[Union[cupy.ndarray, torch.Tensor]],
         p2p_fn: Any,
         peer_rank: int,
         peer_gpu_idx: int,
@@ -707,8 +707,8 @@ class MultiGPUNCCLGroup(BaseGroup):
 
 
 def _flatten_for_scatter_gather(
-    tensor_list: List[cupy.ndarray | torch.Tensor], copy: bool = False
-) -> cupy.ndarray | torch.Tensor:
+    tensor_list: List[Union[cupy.ndarray, torch.Tensor]], copy: bool = False
+) -> Union[cupy.ndarray, torch.Tensor]:
     """Flatten the tensor for gather/scatter operations.
 
     Args:
@@ -946,7 +946,7 @@ class NCCLGroup(BaseGroup):
 
     def allreduce(
         self,
-        tensor: cupy.ndarray | torch.Tensor,
+        tensor: Union[cupy.ndarray, torch.Tensor],
         allreduce_options: AllReduceOptions = AllReduceOptions(),
     ) -> None:
         """AllReduce a single tensor across the collective group following options."""
@@ -971,7 +971,7 @@ class NCCLGroup(BaseGroup):
 
     def reduce(
         self,
-        tensor: cupy.ndarray | torch.Tensor,
+        tensor: Union[cupy.ndarray, torch.Tensor],
         reduce_options: ReduceOptions = ReduceOptions(),
     ) -> None:
         """Reduce a single tensor to a destination rank following options."""
@@ -992,7 +992,7 @@ class NCCLGroup(BaseGroup):
 
     def broadcast(
         self,
-        tensor: cupy.ndarray | torch.Tensor,
+        tensor: Union[cupy.ndarray, torch.Tensor],
         broadcast_options: BroadcastOptions = BroadcastOptions(),
     ) -> None:
         """Broadcast a single tensor to all ranks following options."""
@@ -1012,8 +1012,8 @@ class NCCLGroup(BaseGroup):
 
     def allgather(
         self,
-        output_tensor_list: List[cupy.ndarray | torch.Tensor],
-        tensor: cupy.ndarray | torch.Tensor,
+        output_tensor_list: List[Union[cupy.ndarray, torch.Tensor]],
+        tensor: Union[cupy.ndarray, torch.Tensor],
         allgather_options: AllGatherOptions = AllGatherOptions(),
     ) -> None:
         """Allgather a single tensor across ranks into output list (single device per rank)."""
@@ -1041,8 +1041,8 @@ class NCCLGroup(BaseGroup):
 
     def reducescatter(
         self,
-        tensor: cupy.ndarray | torch.Tensor,
-        input_tensor_list: List[cupy.ndarray | torch.Tensor],
+        tensor: Union[cupy.ndarray, torch.Tensor],
+        input_tensor_list: List[Union[cupy.ndarray, torch.Tensor]],
         reducescatter_options: ReduceScatterOptions = ReduceScatterOptions(),
     ) -> None:
         """Reduce then scatter a list into a single output tensor for this rank."""
@@ -1069,7 +1069,7 @@ class NCCLGroup(BaseGroup):
 
     def send(
         self,
-        tensor: cupy.ndarray | torch.Tensor,
+        tensor: Union[cupy.ndarray, torch.Tensor],
         send_options: SendOptions = SendOptions(),
     ) -> None:
         """Send a single tensor to a destination rank in the group."""
@@ -1095,7 +1095,7 @@ class NCCLGroup(BaseGroup):
 
     def recv(
         self,
-        tensor: cupy.ndarray | torch.Tensor,
+        tensor: Union[cupy.ndarray, torch.Tensor],
         recv_options: RecvOptions = RecvOptions(),
     ) -> None:
         """Receive a single tensor from a source rank in the group."""
@@ -1172,7 +1172,7 @@ class NCCLGroup(BaseGroup):
         return group_uid
 
     def _check_gpu_tensor_on_current_device(
-        self, tensor: cupy.ndarray | torch.Tensor
+        self, tensor: Union[cupy.ndarray, torch.Tensor]
     ) -> None:
         """Check the tensor is on GPU and on the current device."""
         tensor_device = nccl_util.get_tensor_device(tensor)
@@ -1186,8 +1186,8 @@ class NCCLGroup(BaseGroup):
 
     def _collective(
         self,
-        input_tensor: cupy.ndarray | torch.Tensor,
-        output_tensor: cupy.ndarray | torch.Tensor,
+        input_tensor: Union[cupy.ndarray, torch.Tensor],
+        output_tensor: Union[cupy.ndarray, torch.Tensor],
         collective_fn: Any,
         preprocess_fn: Any = None,
         postprocess_fn: Any = None,
@@ -1210,7 +1210,7 @@ class NCCLGroup(BaseGroup):
             postprocess_fn()
 
     def _point2point(
-        self, tensor: cupy.ndarray | torch.Tensor, p2p_fn: Any, peer_rank: int
+        self, tensor: Union[cupy.ndarray, torch.Tensor], p2p_fn: Any, peer_rank: int
     ) -> None:
         """Encapsulate a single-tensor peer-to-peer call (send/recv)."""
         self._check_gpu_tensor_on_current_device(tensor)
