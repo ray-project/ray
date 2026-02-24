@@ -9,13 +9,13 @@ import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import SourceOperator
-from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators import Read
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import BlockMetadataWithSchema, _take_first_non_empty_schema
+from ray.data.block import _take_first_non_empty_schema
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
 from ray.util.debug import log_once
@@ -42,8 +42,8 @@ class ExecutionPlan:
     plan optimizations, such as operator fusion, in order to reduce Ray task
     overhead and data copies.
 
-    Internally, the execution plan holds a snapshot of a computed list of
-    blocks and their associated metadata under ``self._snapshot_bundle``,
+    Internally, the execution plan holds a cache of a computed list of
+    blocks and their associated metadata under ``self._cache``,
     where this snapshot is the cached output of executing the operator chain."""
 
     def __init__(
@@ -58,25 +58,12 @@ class ExecutionPlan:
             data_context: :class:`~ray.data.context.DataContext`
                 object to use for execution.
         """
-        self._in_stats = stats
-        # A computed snapshot of some prefix of operators and their corresponding
-        # output blocks and stats.
-        self._snapshot_operator: Optional[LogicalOperator] = None
-        self._snapshot_stats = None
-        self._snapshot_bundle = None
-        # Snapshot of only metadata corresponding to the final operator's
-        # output bundles, used as the source of truth for the Dataset's schema
-        # and count. This is calculated and cached when the plan is executed as an
-        # iterator (`execute_to_iterator()`), and avoids caching
-        # all of the output blocks in memory like in `self.snapshot_bundle`.
-        # TODO(scottjlee): To keep the caching logic consistent, update `execute()`
-        # to also store the metadata in `_snapshot_metadata` instead of
-        # `_snapshot_bundle`. For example, we could store the blocks in
-        # `self._snapshot_blocks` and the metadata in `self._snapshot_metadata`.
-        self._snapshot_metadata_schema: Optional["BlockMetadataWithSchema"] = None
+        from ray.data.dataset import _ExecutionCache
 
-        # Cached schema.
-        self._schema = None
+        self._in_stats = stats
+        # Cache for holding data from previous execution or iteration.
+        self._cache = _ExecutionCache()
+
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
         # Index of the current execution.
@@ -108,7 +95,7 @@ class ExecutionPlan:
         return (
             f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
-            f"snapshot_operator={self._snapshot_operator}"
+            f"snapshot_operator={self._cache._operator}"
             f")"
         )
 
@@ -189,48 +176,40 @@ class ExecutionPlan:
         # cheap.
         plan_str = ""
         plan_max_depth = 0
+
         if not self.has_computed_output():
-            # using dataset as source here, so don't generate source operator in generate_plan_string
+            # using dataset as source here, so don't generate
+            # source operator in generate_plan_string
             plan_str, plan_max_depth = self.generate_plan_string(
                 self._logical_plan.dag, including_source=False
             )
 
-            if self._snapshot_bundle is not None:
-                # This plan has executed some but not all operators.
-                schema = self._snapshot_bundle.schema
-                count = self._snapshot_bundle.num_rows()
-            elif self._snapshot_metadata_schema is not None:
-                schema = self._snapshot_metadata_schema.schema
-                count = self._snapshot_metadata_schema.metadata.num_rows
-            else:
-                # This plan hasn't executed any operators.
-                has_n_ary_operator = False
-                dag = self._logical_plan.dag
+        schema = self.schema(fetch_if_missing=False)
+        count = self._cache.get_num_rows(self._logical_plan.dag)
 
-                while not isinstance(dag, SourceOperator):
-                    if len(dag.input_dependencies) > 1:
-                        has_n_ary_operator = True
-                        break
+        if schema is None or count is None:
+            has_n_ary_operator = False
+            dag = self._logical_plan.dag
 
-                    dag = dag.input_dependencies[0]
+            while not isinstance(dag, SourceOperator):
+                if len(dag.input_dependencies) > 1:
+                    has_n_ary_operator = True
+                    break
 
-                # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
-                if has_n_ary_operator:
-                    schema = None
-                    count = None
-                else:
-                    assert isinstance(dag, SourceOperator), dag
-                    plan = ExecutionPlan(
-                        DatasetStats(metadata={}, parent=None),
-                        self._context,
-                    )
-                    plan.link_logical_plan(LogicalPlan(dag, plan._context))
+                dag = dag.input_dependencies[0]
+
+            # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
+            if not has_n_ary_operator:
+                assert isinstance(dag, SourceOperator), dag
+                plan = ExecutionPlan(
+                    DatasetStats(metadata={}, parent=None),
+                    self._context,
+                )
+                plan.link_logical_plan(LogicalPlan(dag, plan._context))
+                if schema is None:
                     schema = plan.schema()
+                if count is None:
                     count = plan.meta_count()
-        else:
-            # Get schema of output blocks.
-            schema = self.schema(fetch_if_missing=False)
-            count = self._snapshot_bundle.num_rows()
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -343,8 +322,9 @@ class ExecutionPlan:
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
 
-        This copy can be executed without mutating the original, but clearing the copy
-        will also clear the original.
+        This copy can be executed/cleared without mutating the original,
+        but the copied cache data initially shares references with the
+        original.
 
         Returns:
             A shallow copy of this execution plan.
@@ -353,18 +333,12 @@ class ExecutionPlan:
             self._in_stats,
             data_context=self._context,
         )
-        if self._snapshot_bundle is not None:
-            # Copy over the existing snapshot.
-            plan_copy._snapshot_bundle = self._snapshot_bundle
-            plan_copy._snapshot_operator = self._snapshot_operator
-            plan_copy._snapshot_stats = self._snapshot_stats
+        plan_copy._cache = self._cache.copy()
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
     def deep_copy(self) -> "ExecutionPlan":
         """Create a deep copy of this execution plan.
-
-        This copy can be executed AND cleared without mutating the original.
 
         Returns:
             A deep copy of this execution plan.
@@ -373,11 +347,7 @@ class ExecutionPlan:
             copy.copy(self._in_stats),
             data_context=self._context.copy(),
         )
-        if self._snapshot_bundle:
-            # Copy over the existing snapshot.
-            plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)
-            plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
-            plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
+        plan_copy._cache = self._cache.deep_copy()
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
@@ -400,28 +370,31 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
-        if self._schema is not None:
-            return self._schema
-        schema = None
-        if self.has_computed_output():
-            schema = self._snapshot_bundle.schema
-        else:
-            schema = self._logical_plan.dag.infer_schema()
-            if schema is None and fetch_if_missing:
-                # For consistency with the previous implementation, we fetch the schema if
-                # the plan is read-only even if `fetch_if_missing` is False.
 
-                iter_ref_bundles, _, executor = self.execute_to_iterator()
+        def _build_limited_plan(plan: "ExecutionPlan") -> "ExecutionPlan":
+            limited_dag = Limit(plan._logical_plan.dag, limit=1)
+            limited_plan = plan.copy()
+            limited_plan.link_logical_plan(LogicalPlan(limited_dag, plan._context))
+            return limited_plan
+
+        schema = self._cache.get_schema(self._logical_plan.dag)
+        if schema is None:
+            schema = self._logical_plan.dag.infer_schema()
+        if schema is None and fetch_if_missing:
+            # Lazily execute only the first block to minimize computation.
+            # We achieve this by appending a Limit[1] operation to a copy of
+            # this plan, which we then execute to get its schema.
+            limited_plan = _build_limited_plan(self)
+            iter_ref_bundles, _, executor = limited_plan.execute_to_iterator()
+            if executor is not None:
                 # Make sure executor is fully shutdown upon exiting
                 with executor:
                     schema = _take_first_non_empty_schema(
                         bundle.schema for bundle in iter_ref_bundles
                     )
-        self.cache_schema(schema)
-        return self._schema
-
-    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
-        self._schema = schema
+        if schema is not None:
+            self._cache.set_schema(self._logical_plan.dag, schema)
+        return schema
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
@@ -436,12 +409,9 @@ class ExecutionPlan:
             The number of records of the result Dataset, or None.
         """
         dag = self._logical_plan.dag
-        if self.has_computed_output():
-            num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
-        elif dag.infer_metadata().num_rows is not None:
+        num_rows = self._cache.get_num_rows(dag)
+        if num_rows is None:
             num_rows = dag.infer_metadata().num_rows
-        else:
-            num_rows = None
         return num_rows
 
     @omit_traceback_stdout
@@ -462,16 +432,16 @@ class ExecutionPlan:
         """
         self._has_started_execution = True
 
-        if self.has_computed_output():
-            bundle = self.execute()
-            return iter([bundle]), self._snapshot_stats, None
+        cached_bundle = self._cache.get_bundle(self._logical_plan.dag)
+        if cached_bundle is not None:
+            return iter([cached_bundle]), self._cache.get_stats(), None
 
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_bundle_iterator,
         )
 
         executor = self.create_executor()
-        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self, self._context)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
         gen = iter(bundle_iter)
@@ -479,8 +449,8 @@ class ExecutionPlan:
             bundle_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
-        self._snapshot_stats = executor.get_stats()
-        return bundle_iter, self._snapshot_stats, executor
+        self._cache.set_stats(executor.get_stats())
+        return bundle_iter, self._cache.get_stats(), executor
 
     @omit_traceback_stdout
     def execute(
@@ -509,7 +479,7 @@ class ExecutionPlan:
                     "for more details: "
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
-        if not self.has_computed_output():
+        if self._cache.get_bundle(self._logical_plan.dag) is None:
             from ray.data._internal.execution.legacy_compat import (
                 _get_initial_stats_from_plan,
                 execute_to_ref_bundle,
@@ -549,6 +519,7 @@ class ExecutionPlan:
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
+                        data_context=self._context,
                     )
 
                 stats = executor.get_stats()
@@ -589,32 +560,31 @@ class ExecutionPlan:
             collect_stats(stats)
 
             # Set the snapshot to the output of the final operator.
-            self._snapshot_bundle = bundle
-            self._snapshot_operator = self._logical_plan.dag
-            self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
+            stats.dataset_uuid = self._dataset_uuid
+            self._cache.set_bundle(self._logical_plan.dag, bundle)
+            self._cache.set_stats(stats)
 
-        return self._snapshot_bundle
+        bundle = self._cache.get_bundle(self._logical_plan.dag)
+        assert bundle is not None
+        return bundle
 
     @property
     def has_started_execution(self) -> bool:
         """Return ``True`` if this plan has been partially or fully executed."""
         return self._has_started_execution
 
-    def clear_snapshot(self) -> None:
-        """Clear the snapshot kept in the plan to the beginning state."""
-        self._snapshot_bundle = None
-        self._snapshot_operator = None
-        self._snapshot_stats = None
+    def clear_cache(self) -> None:
+        """Clear the cache kept in the plan to the beginning state."""
+        self._cache.clear()
 
     def stats(self) -> DatasetStats:
         """Return stats for this plan.
 
         If the plan isn't executed, an empty stats object will be returned.
         """
-        if not self._snapshot_stats:
+        if not self._cache.get_stats():
             return DatasetStats(metadata={}, parent=None)
-        return self._snapshot_stats
+        return self._cache.get_stats()
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
@@ -624,10 +594,7 @@ class ExecutionPlan:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
         the output of this plan.
         """
-        return (
-            self._snapshot_bundle is not None
-            and self._snapshot_operator == self._logical_plan.dag
-        )
+        return self._cache.get_bundle(self._logical_plan.dag) is not None
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
