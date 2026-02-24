@@ -41,6 +41,8 @@ from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
+METRICS_TIMEOUT = 5
+
 
 def extract_tags(line: str) -> Dict[str, str]:
     """Extracts any tags from the metrics line."""
@@ -72,7 +74,9 @@ def check_sum_metric_eq(
         timeseries = PrometheusTimeseries()
 
     metrics = fetch_prometheus_metric_timeseries(
-        [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=METRICS_TIMEOUT,
     )
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
