@@ -108,8 +108,8 @@ def set_target_for_ref(ref: ObjectRef, target: List["torch.Tensor"]):
 
     Before receiving, Ray validates that the provided target buffers match the metadata
     of the tensors in the object (e.g., shape, dtype, device). If validation fails,
-    a `ValueError` is raised. Note that the order must match the order in which
-    of the tensors from the sender side.
+    a `ValueError` is raised. Note that the order must match the order of the tensors
+    from the sender side.
 
     Note that this only applies for the first `ray.get` call on the ref.
     Subsequent `ray.get` calls on the same ref will not use the target buffers unless
