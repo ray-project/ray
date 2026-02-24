@@ -957,6 +957,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         if task_info.num_outputs == 0:
             self.num_tasks_have_outputs += 1
 
+        # Check if first task's outputs;
+        # Checkpoint time to first block
+        is_first_block: bool = task_info.num_outputs == 0
+        time_to_first_output_s = (
+            time.perf_counter() - task_info.start_time
+            if is_first_block else None
+        )
+
         task_info.num_outputs += num_outputs
         task_info.bytes_outputs += output_bytes
         task_info.num_rows_produced += num_rows_produced
@@ -985,6 +993,18 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                     self._cum_max_uss_bytes = exec_stats.max_uss_bytes
                 else:
                     self._cum_max_uss_bytes += exec_stats.max_uss_bytes
+
+        # Task's scheduling time is calculated as:
+        #
+        #   Time to first block (driver) - Time to generate & ser first block (worker)
+        #
+        # NOTE: We're only tracking task scheduling time when `TaskExecStats`
+        #       are reported (ie when task completes successfully)
+        if is_first_block:
+            self.task_scheduling_time_s += time_to_first_output_s - (
+                task_info.cum_block_gen_time_s +
+                task_info.cum_block_ser_time_s
+            )
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
@@ -1019,19 +1039,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         #       until this callback is invoked
         task_wall_time_s = time.perf_counter() - task_info.start_time
 
-        # Task's scheduling time is calculated as:
-        #
-        #   Driver's task-wall-time - Workers's task-wall-time
-        #
-        # NOTE: We're only tracking task scheduling time when `TaskExecStats`
-        #       are reported (ie when task completes successfully)
-        task_scheduling_time_s = (
-            task_wall_time_s - task_exec_stats.task_wall_time_s
-            if task_exec_stats
-            else 0
-        )
-
-        self.task_scheduling_time_s += task_scheduling_time_s
         self.task_completion_time_s += task_wall_time_s
 
         self.task_completion_time.observe(task_wall_time_s)

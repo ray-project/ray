@@ -737,6 +737,8 @@ def _map_task(
     """
     task_start_s = time.perf_counter()
 
+    blk_exec_stats_builder = BlockExecStats.builder()
+
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -751,8 +753,6 @@ def _map_task(
         )
 
         blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
-
-        blk_exec_stats_builder = BlockExecStats.builder()
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in map_transformer.apply_transform(blocks_iter, ctx):
