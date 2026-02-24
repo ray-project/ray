@@ -348,12 +348,9 @@ class SerializationContext:
         Returns:
             Any: The deserialized object.
         """
-        from ray.experimental.channel import ChannelContext
-
-        ctx = ChannelContext.get_current().serialization_context
         enable_gpu_objects = out_of_band_tensors is not None
         if enable_gpu_objects:
-            ctx.reset_out_of_band_tensors(out_of_band_tensors)
+            self._thread_local.rdt_tensors = out_of_band_tensors
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -366,7 +363,7 @@ class SerializationContext:
             raise DeserializationError()
         finally:
             if enable_gpu_objects:
-                ctx.reset_out_of_band_tensors([])
+                self._thread_local.rdt_tensors = []
         return obj
 
     def _deserialize_msgpack_data(
@@ -687,19 +684,36 @@ class SerializationContext:
         Returns:
             Serialized value.
         """
-        from ray.experimental.channel import ChannelContext
         from ray.experimental.gpu_object_manager.util import get_transport_data_type
-        from ray.experimental.util.types import Device
 
         def serialize(tensor):
-            ctx = ChannelContext.get_current()
-            return ctx.serialization_context.serialize_tensor(tensor, is_rdt=True)
+            ctx = ray._private.worker.global_worker.get_serialization_context()
+            if getattr(ctx._thread_local, "use_external_transport", False):
+                # Store the tensor in the thread-local array for RDT and store the index
+                # in the serialized object.
+                ctx._thread_local.rdt_tensors.append(tensor)
+                return len(ctx._thread_local.rdt_tensors) - 1
 
-        def deserialize(placeholder):
-            ctx = ChannelContext.get_current()
-            return ctx.serialization_context.deserialize_tensor(
-                placeholder, Device.DEFAULT, is_rdt=True
-            )
+            # If the custom rdt serializer is already registered for this type
+            # but this method is not an rdt method, we'll try to serialize with
+            # the default pickle serializer to avoid registering and deregistering
+            # serializers per function call.
+            import pickle
+
+            return pickle.dumps(tensor)
+
+        def deserialize(val):
+            ctx = ray._private.worker.global_worker.get_serialization_context()
+            if isinstance(val, int):
+                # Index into the thread-local array based on the index stored
+                # during serialization.
+                assert val < len(ctx._thread_local.rdt_tensors)
+                return ctx._thread_local.rdt_tensors[val]
+
+            import pickle
+
+            assert isinstance(val, bytes)
+            return pickle.loads(val)
 
         data_type = get_transport_data_type(tensor_transport)
 
@@ -716,15 +730,16 @@ class SerializationContext:
 
             self._rdt_custom_serializer_registered[data_type] = True
 
-        ctx = ChannelContext.get_current().serialization_context
-        prev_use_external_transport = ctx.use_external_transport
-        ctx.set_use_external_transport(True)
+        # Pull the tensors out during serialization and store the array indices in the serialized object.
+        # Then resets to the original state for future method calls.
+        self._thread_local.use_external_transport = True
+        self._thread_local.rdt_tensors = []
         try:
             serialized_val = self._serialize_to_msgpack(value)
+            tensors = self._thread_local.rdt_tensors
         finally:
-            ctx.set_use_external_transport(prev_use_external_transport)
-
-        tensors, _ = ctx.reset_out_of_band_tensors([])
+            self._thread_local.use_external_transport = False
+            self._thread_local.rdt_tensors = []
 
         return serialized_val, tensors
 
