@@ -692,6 +692,7 @@ message PlacementGroupTableData {
   // Index 1..N: The options defined in each fallback strategy.
   repeated PlacementGroupSchedulingOption scheduling_options = 17;
   // The index of the chosen scheduling option.
+  // Default to -1 meaning the placement group hasn't been scheduled yet.
   int32 active_scheduling_strategy_index = 18;
 }
 
