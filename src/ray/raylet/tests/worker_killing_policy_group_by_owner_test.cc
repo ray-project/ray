@@ -40,48 +40,6 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
   int32_t no_retry_ = 0;
   int32_t has_retry_ = 1;
   GroupByOwnerIdWorkerKillingPolicy worker_killing_policy_;
-
-  std::shared_ptr<WorkerInterface> CreateActorCreationWorker(TaskID owner_id,
-                                                             int32_t max_restarts) {
-    rpc::LeaseSpec message;
-    message.set_lease_id(LeaseID::FromRandom().Binary());
-    message.set_parent_task_id(owner_id.Binary());
-    message.set_type(ray::rpc::TaskType::ACTOR_CREATION_TASK);
-    message.set_max_actor_restarts(max_restarts);
-    LeaseSpecification lease_spec(message);
-    RayLease lease(lease_spec);
-    auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->GrantLease(lease);
-    worker->GrantLeaseId(lease.GetLeaseSpecification().LeaseId());
-    return worker;
-  }
-
-  std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
-                                                    int32_t max_retries) {
-    rpc::LeaseSpec message;
-    message.set_lease_id(LeaseID::FromRandom().Binary());
-    message.set_parent_task_id(owner_id.Binary());
-    message.set_type(ray::rpc::TaskType::NORMAL_TASK);
-    message.set_max_retries(max_retries);
-    LeaseSpecification lease_spec(message);
-    RayLease lease(lease_spec);
-    auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port_);
-    worker->GrantLease(lease);
-    worker->GrantLeaseId(lease.GetLeaseSpecification().LeaseId());
-    return worker;
-  }
-
-  /**
-   * @note This function assumes that the worker is mocked
-   * and SetProcess can be called more than once.
-   *
-   * @param worker The worker whose process should be killed.
-   */
-  void KillWorkerProcess(std::shared_ptr<WorkerInterface> worker) {
-    std::unique_ptr<FakeProcess> fake_process = std::make_unique<FakeProcess>();
-    fake_process->SetAlive(false);
-    worker->SetProcess(std::move(fake_process));
-  }
 };
 
 TEST_F(WorkerKillingGroupByOwnerTest, TestEmptyWorkerPoolSelectsNullWorker) {
@@ -96,9 +54,9 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
 
   auto owner_id = TaskID::ForDriverTask(job_id_);
   auto first_submitted =
-      WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, has_retry_);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
   auto second_submitted =
-      WorkerKillingGroupByOwnerTest::CreateTaskWorker(owner_id, has_retry_);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
 
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
@@ -128,9 +86,9 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroupAndLIF
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   auto first_submitted =
-      WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(owner_id, no_retry_);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
   auto second_submitted =
-      WorkerKillingGroupByOwnerTest::CreateTaskWorker(owner_id, no_retry_);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK);
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
 
@@ -153,18 +111,18 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
   auto second_group_owner_id = TaskID::FromRandom(job_id_);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
-      first_group_owner_id, has_retry_);
-  auto second_submitted =
-      WorkerKillingGroupByOwnerTest::CreateTaskWorker(second_group_owner_id, has_retry_);
-  auto third_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
-      second_group_owner_id, has_retry_);
-  auto fourth_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
-      second_group_owner_id, has_retry_);
-  auto fifth_submitted =
-      WorkerKillingGroupByOwnerTest::CreateTaskWorker(first_group_owner_id, has_retry_);
-  auto sixth_submitted =
-      WorkerKillingGroupByOwnerTest::CreateTaskWorker(first_group_owner_id, has_retry_);
+  auto first_submitted = CreateTaskWorker(
+      first_group_owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+  auto second_submitted = CreateTaskWorker(
+      second_group_owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+  auto third_submitted = CreateTaskWorker(
+      second_group_owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+  auto fourth_submitted = CreateTaskWorker(
+      second_group_owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+  auto fifth_submitted = CreateTaskWorker(
+      first_group_owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+  auto sixth_submitted = CreateTaskWorker(
+      first_group_owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
   workers.push_back(third_submitted);
@@ -198,12 +156,12 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
 
 TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
-      TaskID::FromRandom(job_id_), has_retry_);
-  auto second_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
-      TaskID::FromRandom(job_id_), has_retry_);
-  auto third_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
-      TaskID::FromRandom(job_id_), no_retry_);
+  auto first_submitted = CreateTaskWorker(
+      TaskID::FromRandom(job_id_), has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+  auto second_submitted = CreateTaskWorker(
+      TaskID::FromRandom(job_id_), has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+  auto third_submitted = CreateTaskWorker(
+      TaskID::FromRandom(job_id_), no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
   workers.push_back(third_submitted);
@@ -232,10 +190,10 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
 TEST_F(WorkerKillingGroupByOwnerTest,
        TestMultipleNonRetriableTaskSameGroupAndNotRetried) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto first_submitted = WorkerKillingGroupByOwnerTest::CreateActorCreationWorker(
-      TaskID::FromRandom(job_id_), no_retry_);
-  auto second_submitted = WorkerKillingGroupByOwnerTest::CreateTaskWorker(
-      TaskID::FromRandom(job_id_), no_retry_);
+  auto first_submitted = CreateTaskWorker(
+      TaskID::FromRandom(job_id_), no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+  auto second_submitted = CreateTaskWorker(
+      TaskID::FromRandom(job_id_), no_retry_, port_, rpc::TaskType::NORMAL_TASK);
   workers.push_back(first_submitted);
   workers.push_back(second_submitted);
 
