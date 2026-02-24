@@ -753,8 +753,8 @@ def _map_task(
                 exec_stats.task_idx = ctx.task_idx
                 exec_stats.max_uss_bytes = profiler.estimate_max_uss()
 
-                yield BlockMetadataWithSchema(
-                    metadata=replace(block_meta, exec_stats=exec_stats),
+                yield BlockMetadataWithSchema.from_metadata(
+                    replace(block_meta, exec_stats=exec_stats),
                     schema=block_schema,
                 )
 
