@@ -1,6 +1,7 @@
 import functools
 import importlib
 import logging
+import math
 import os
 import pathlib
 import platform
@@ -47,6 +48,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 if TYPE_CHECKING:
     import pandas
+    import scipy.stats
 
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
@@ -1806,3 +1808,114 @@ def get_max_task_capacity(
 
     capacity = allocated_resources.floordiv(min_scheduling_resources)
     return min(capacity.cpu, capacity.gpu, capacity.memory)
+
+
+class OnlineLogNormalEstimator:
+    """Online log-normal estimator for positive, right-skewed values.
+
+    Fits a ``scipy.stats.lognorm`` from exponentially weighted running
+    statistics. Suitable for any quantity that is positive and right-skewed
+    (e.g. file sizes, request latencies, message sizes).
+
+    Each :meth:`update` decays old observations and folds in the new one,
+    working like a sliding-window average without storing old samples.
+    The fitted distribution is available via :attr:`distribution` for
+    quantile queries, mean/median/std, etc.
+
+    Args:
+        decay: Exponential decay factor applied to prior sufficient
+            statistics on each new observation. Values closer to 1.0
+            give more weight to older observations (slower adaptation);
+            values closer to 0.0 react faster to distribution shifts.
+    """
+
+    # Minimum σ to avoid a degenerate lognorm(s=0) which yields NaN.
+    _SIGMA_FLOOR = 1e-8
+
+    def __init__(self, *, decay: float = 0.95):
+        self._decay = decay
+
+        # Exponentially weighted sufficient statistics in log-space.
+        self._weighted_log_sum: float = 0.0
+        self._weighted_log_sq_sum: float = 0.0
+        self._effective_sample_size: float = 0.0
+        self._total_observations: int = 0
+
+    def update(self, value: float) -> None:
+        """Incorporate a single positive observation.
+
+        Works like a sliding-window average but without storing old samples.
+        Each update shrinks old observations by ``decay`` (e.g. 0.95) and
+        adds the new one at full weight, so recent values matter more than
+        distant ones. We track sums in log-space because that's what the
+        log-normal needs — its two parameters are just the mean and
+        standard deviation of log(value).
+        """
+        if value <= 0:
+            return
+
+        log_x = math.log(value)
+
+        # Shrink old observations so recent values carry more weight.
+        self._weighted_log_sum *= self._decay
+        self._weighted_log_sq_sum *= self._decay
+        self._effective_sample_size *= self._decay
+
+        # Fold in the new observation at full weight.
+        self._weighted_log_sum += log_x
+        self._weighted_log_sq_sum += log_x * log_x
+        self._effective_sample_size += 1.0
+        self._total_observations += 1
+
+    def update_batch(self, values: List[Optional[float]]) -> None:
+        """Incorporate a batch of observations, skipping None and non-positive
+        values.
+
+        Applies standard per-observation EWMA decay: each observation decays
+        the prior by ``decay``, so a batch of N values decays old history by
+        ``decay^N``. This is the standard EWMA formulation — the effective
+        memory window is ``1 / (1 - decay)`` observations regardless of how
+        they are batched.
+        """
+        for v in values:
+            if v is not None:
+                self.update(v)
+
+    @property
+    def _mean(self) -> float:
+        """Weighted maximum-likelihood estimate of mean, the mean of log(value)."""
+        if self._effective_sample_size == 0:
+            return 0.0
+        return self._weighted_log_sum / self._effective_sample_size
+
+    @property
+    def _stddev(self) -> float:
+        """Weighted maximum-likelihood estimate of stddev, the std dev of log(value)."""
+        if self._effective_sample_size < 2:
+            # Fewer than 2 effective observations — assume moderate spread.
+            return 1.0
+        mu = self._mean
+        variance = max(
+            0.0, self._weighted_log_sq_sum / self._effective_sample_size - mu * mu
+        )  # same as sum((x - mean)**2)/N
+        return max(math.sqrt(variance), self._SIGMA_FLOOR)
+
+    @property
+    def distribution(self) -> "scipy.stats.rv_continuous_frozen":
+        """Return a frozen ``scipy.stats.lognorm`` with current parameters.
+
+        ``scipy.stats.lognorm`` is parameterized as:
+            s     = sigma    (shape — std dev in log-space)
+            scale = e^mean  (scale — median in original space)
+
+        Raises:
+            ImportError: If scipy is not installed.
+        """
+        _check_import(self, module="scipy", package="scipy")
+        from scipy.stats import lognorm
+
+        return lognorm(s=self._stddev, scale=math.exp(self._mean))
+
+    @property
+    def has_observations(self) -> bool:
+        return self._total_observations > 0

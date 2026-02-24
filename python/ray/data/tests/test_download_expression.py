@@ -1,4 +1,5 @@
 import io
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pyarrow as pa
@@ -6,7 +7,11 @@ import pytest
 from PIL import Image
 
 import ray
+from ray.data._internal.planner.plan_download_op import PartitionActor
+from ray.data._internal.util import KiB, MiB
 from ray.data.expressions import DownloadExpr, col, download
+
+_TARGET = 128 * MiB
 
 
 class TestDownloadExpressionStructure:
@@ -422,6 +427,144 @@ class TestDownloadExpressionIntegration:
         assert len(results) == 1
         assert results[0]["decoded_text"] == "Hello, World!"
         assert results[0]["raw_bytes"] == test_content
+
+
+def _make_partition_actor(uri_columns=None):
+    """Helper to create a PartitionActor with a mock DataContext."""
+    ctx = MagicMock()
+    ctx.target_max_block_size = _TARGET
+    ctx.retried_io_errors = ()
+    return PartitionActor(uri_columns or ["uri"], ctx)
+
+
+# Simulated block row count used when calling _estimate_nrows directly
+# (no real block involved). Large enough that it's never the binding
+# constraint — the estimator decides.
+_BLOCK_ROWS = 10_000
+
+
+def _feed_sizes(actor, sizes):
+    """Feed file-size observations directly into the actor's estimator."""
+    actor._estimator.update_batch(sizes)
+    actor._blocks_seen = max(actor._blocks_seen, 1)
+
+
+class TestPartitionActorUnevenDistributions:
+    """Test that PartitionActor produces safe partition sizes under
+    various uneven file-size distributions.
+    """
+
+    @pytest.mark.parametrize(
+        "description, sizes, max_expected_nrows",
+        [
+            # All large files → very few rows per partition.
+            (
+                "uniform-large-50MB",
+                [50 * MiB] * 30,
+                3,
+            ),
+            # All small files → many rows per partition (up to block size).
+            (
+                "uniform-small-1KiB",
+                [1 * KiB] * 30,
+                _BLOCK_ROWS,
+            ),
+            # Small files first, then large → should adapt to large files.
+            (
+                "shift-small-to-large",
+                [1 * KiB] * 20 + [50 * MiB] * 20,
+                10,
+            ),
+            # Large files first, then small → should loosen to more rows.
+            (
+                "shift-large-to-small",
+                [50 * MiB] * 20 + [1 * KiB] * 20,
+                _BLOCK_ROWS,
+            ),
+            # Bimodal: mix of 1KB and 100MB → conservative (few rows).
+            (
+                "bimodal-1KB-and-100MB",
+                [1 * KiB] * 15 + [100 * MiB] * 15,
+                20,
+            ),
+            # Long tail: mostly small, a few very large outliers.
+            (
+                "long-tail-mostly-small",
+                [10 * KiB] * 25 + [500 * MiB] * 5,
+                50,
+            ),
+        ],
+        ids=lambda x: x if isinstance(x, str) else "",
+    )
+    def test_nrows_bounded(self, description, sizes, max_expected_nrows):
+        """Partition size stays within a safe upper bound for the
+        given distribution.
+        """
+        actor = _make_partition_actor()
+        _feed_sizes(actor, sizes)
+        nrows = actor._estimate_nrows(_BLOCK_ROWS)
+
+        assert PartitionActor._MIN_ROWS <= nrows <= max_expected_nrows, (
+            f"[{description}] nrows={nrows}, "
+            f"expected [{PartitionActor._MIN_ROWS}, {max_expected_nrows}]"
+        )
+
+    def test_no_observations_returns_block_size(self):
+        """Before any file sizes are observed, use the block's row count."""
+        actor = _make_partition_actor()
+        assert actor._estimate_nrows(500) == 500
+        assert actor._estimate_nrows(10_000) == 10_000
+
+    @pytest.mark.parametrize(
+        "description, phase1, phase2",
+        [
+            (
+                "small-to-large",
+                [1 * KiB] * 25,
+                [50 * MiB] * 25,
+            ),
+            (
+                "large-to-small",
+                [50 * MiB] * 25,
+                [1 * KiB] * 25,
+            ),
+        ],
+        ids=["small-to-large", "large-to-small"],
+    )
+    def test_adapts_across_phases(self, description, phase1, phase2):
+        """Partition size changes direction after a distribution shift."""
+        actor = _make_partition_actor()
+
+        _feed_sizes(actor, phase1)
+        nrows_phase1 = actor._estimate_nrows(_BLOCK_ROWS)
+
+        _feed_sizes(actor, phase2)
+        nrows_phase2 = actor._estimate_nrows(_BLOCK_ROWS)
+
+        if phase1[0] < phase2[0]:
+            # Shifted to larger files → partitions should shrink.
+            assert (
+                nrows_phase2 < nrows_phase1
+            ), f"[{description}] Expected shrink: {nrows_phase1} -> {nrows_phase2}"
+        else:
+            # Shifted to smaller files → partitions should grow.
+            assert (
+                nrows_phase2 > nrows_phase1
+            ), f"[{description}] Expected growth: {nrows_phase1} -> {nrows_phase2}"
+
+    def test_sample_and_update_with_mock(self):
+        """_sample_and_update feeds sampled sizes into the estimator."""
+        actor = _make_partition_actor()
+        block = pa.table({"uri": [f"file_{i}.bin" for i in range(20)]})
+
+        mock_sizes = [10 * MiB] * 20
+        with patch.object(actor, "_sample_sizes", return_value=mock_sizes):
+            actor._sample_and_update(block)
+
+        assert actor._estimator.has_observations
+        nrows = actor._estimate_nrows(_BLOCK_ROWS)
+        # 128MB target / ~10MB per file → ~12 rows
+        assert 5 <= nrows <= 20, f"Expected ~12 rows, got {nrows}"
 
 
 if __name__ == "__main__":
