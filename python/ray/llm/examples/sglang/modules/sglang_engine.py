@@ -1,6 +1,5 @@
 import copy
 import inspect
-import logging
 import signal
 import time
 from typing import (
@@ -18,8 +17,6 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
-
-logger = logging.getLogger(__name__)
 
 
 class SGLangServer:
@@ -127,27 +124,19 @@ class SGLangServer:
         request: ChatCompletionRequest,
         messages: List[dict[str, Any]],
     ) -> str:
-        tokenizer = getattr(
-            getattr(self.engine, "tokenizer_manager", None), "tokenizer", None
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        # SGLang supports --skip-tokenizer-init, where tokenizer is intentionally
+        # None and text prompt rendering is not available.
+        if tokenizer is None:
+            return self._render_fallback_prompt(messages)
+
+        template_kwargs = self._build_chat_template_kwargs(request)
+        return tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            **template_kwargs,
         )
-
-        if tokenizer is not None and hasattr(tokenizer, "apply_chat_template"):
-            template_kwargs = self._build_chat_template_kwargs(request)
-            try:
-                return tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=True,
-                    **template_kwargs,
-                )
-            except Exception as template_error:
-                logger.warning(
-                    "SGLang chat template rendering failed; falling back to "
-                    "simple role/content prompt. error=%s",
-                    template_error,
-                )
-
-        return self._render_fallback_prompt(messages)
 
     @staticmethod
     def _render_fallback_prompt(messages: List[dict[str, Any]]) -> str:
