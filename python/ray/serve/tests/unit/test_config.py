@@ -815,19 +815,23 @@ class TestGangSchedulingConfig:
                 return "test"
 
     def test_gang_scheduling_config_auto_num_replicas(self):
-        """Test that num_replicas='auto' is rejected with gang_scheduling_config."""
+        """Test that num_replicas='auto' is allowed with gang_scheduling_config."""
 
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+        @serve.deployment(
+            num_replicas="auto",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+        )
+        def f():
+            return "test"
 
-            @serve.deployment(
-                num_replicas="auto",
-                gang_scheduling_config=GangSchedulingConfig(gang_size=4),
-            )
-            def f():
-                return "test"
+        assert f._deployment_config.autoscaling_config is not None
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
+        assert f._deployment_config.autoscaling_config.min_replicas == 4
+        assert f._deployment_config.autoscaling_config.max_replicas == 8
 
     def test_gang_scheduling_config_auto_num_replicas_via_options(self):
-        """Test that num_replicas='auto' is rejected via .options() with gang config."""
+        """Test that num_replicas='auto' works via .options() with gang config."""
 
         @serve.deployment(
             num_replicas=4,
@@ -836,8 +840,14 @@ class TestGangSchedulingConfig:
         def f():
             return "test"
 
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
-            f.options(num_replicas="auto")
+        f2 = f.options(
+            num_replicas="auto",
+            autoscaling_config={"min_replicas": 4, "max_replicas": 8},
+        )
+        assert f2._deployment_config.autoscaling_config is not None
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
+        assert f2._deployment_config.autoscaling_config.min_replicas == 4
+        assert f2._deployment_config.autoscaling_config.max_replicas == 8
 
     def test_gang_scheduling_config_proto_roundtrip(self):
         """Test roundtrip serialization of GangSchedulingConfig through protobuf."""

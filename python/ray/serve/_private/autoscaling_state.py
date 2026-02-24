@@ -80,6 +80,7 @@ class DeploymentAutoscalingState:
 
         self._deployment_info = None
         self._config = None
+        self._gang_size: Optional[int] = None
         self._policy: Optional[
             Callable[
                 [AutoscalingContext], Tuple[Union[int, float], Optional[Dict[str, Any]]]
@@ -144,6 +145,9 @@ class DeploymentAutoscalingState:
 
         self._deployment_info = info
         self._config = config
+        self._gang_size = getattr(
+            info.deployment_config.gang_scheduling_config, "gang_size", None
+        )
         # Apply default autoscaling config to the policy
         self._policy = _apply_autoscaling_config(
             _resolve_policy_callable(self._config.policy)
@@ -213,15 +217,26 @@ class DeploymentAutoscalingState:
         )
 
     def apply_bounds(self, num_replicas: int) -> int:
-        """Clips a replica count with current autoscaling bounds.
+        """Clips a replica count with current autoscaling bounds."""
 
-        This takes into account target capacity.
-        """
-
-        return max(
+        result = max(
             self.get_num_replicas_lower_bound(),
             min(self.get_num_replicas_upper_bound(), num_replicas),
         )
+
+        # Align to the nearest gang_size multiple
+        if self._gang_size is not None and self._gang_size > 1 and result > 0:
+            current = len(self._running_replicas)
+            if result >= current:
+                # Scaling up: round up so we have enough capacity
+                result = math.ceil(result / self._gang_size) * self._gang_size
+                result = min(result, self.get_num_replicas_upper_bound())
+            else:
+                # Scaling down: round down to release the partial gang
+                result = (result // self._gang_size) * self._gang_size
+                result = max(result, self.get_num_replicas_lower_bound())
+
+        return result
 
     def record_request_metrics_for_replica(
         self, replica_metric_report: ReplicaMetricReport
