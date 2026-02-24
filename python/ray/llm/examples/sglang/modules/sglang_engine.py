@@ -1,5 +1,4 @@
 import copy
-import inspect
 import signal
 import time
 from typing import (
@@ -157,14 +156,10 @@ class SGLangServer:
         return
 
     async def check_health(self) -> None:
-        if not hasattr(self, "engine") or self.engine is None:
-            raise RuntimeError("SGLang engine is not initialized.")
-
-        engine_check_health = getattr(self.engine, "check_health", None)
-        if callable(engine_check_health):
-            maybe_awaitable = engine_check_health()
-            if inspect.isawaitable(maybe_awaitable):
-                await maybe_awaitable
+        # SGLang's in-process Engine API does not expose a health-check method.
+        # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
+        # this integration does not run. Keep the protocol hook as a no-op.
+        return
 
     async def _generate_raw(
         self,
