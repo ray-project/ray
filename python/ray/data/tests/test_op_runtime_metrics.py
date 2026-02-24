@@ -148,8 +148,9 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
     """Test that average_task_completion_time_excl_backpressure_s correctly
     subtracts output backpressure from the driver's wall-clock task time.
 
-    This metric is critical for productivity calculation in resource allocators
-    as it represents the actual work time excluding output backpressure delays.
+    Scheduling time is estimated as the time from task submission to the first
+    output arriving on the driver, minus the worker-side time to generate and
+    serialize that first block.
     """
     op = MagicMock()
     op.data_context.enable_get_object_locations_for_metrics = False
@@ -157,18 +158,32 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
     metrics = OpRuntimeMetrics(op)
 
     test_cases = [
-        # (driver_wall_time_s, worker_wall_time_s, backpressure_time_s, gen_time_s, ser_time_s, num_outputs)
-        (2.0, 1.8, 0.5, 0.5, 0.1, 2),  # Task 0
-        (1.5, 1.3, 0.2, 0.3, 0.05, 1),  # Task 1
-        (3.0, 2.8, 1.0, 0.8, 0.2, 3),  # Task 2
+        # (driver_wall_time_s, scheduling_time_s, backpressure_time_s, gen_time_s, ser_time_s, num_outputs)
+        (2.0, 0.2, 0.5, 0.25, 0.05, 2),  # Task 0
+        (1.5, 0.2, 0.2, 0.3, 0.05, 1),  # Task 1
+        (3.0, 0.2, 1.0, 0.3, 0.05, 3),  # Task 2
     ]
+
+    def create_output_bundle(gen_time_s, ser_time_s):
+        block = ray.put(pa.Table.from_pydict({}))
+        stats = BlockExecStats()
+        stats.wall_time_s = gen_time_s
+        stats.block_ser_time_s = ser_time_s
+        stats.max_uss_bytes = 0
+        metadata = BlockMetadata(
+            num_rows=1,
+            size_bytes=0,
+            input_files=None,
+            exec_stats=stats,
+        )
+        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
 
     total_gen_ser = 0
     clock = 0.0
     for i, tc in enumerate(test_cases):
         (
             driver_wall_time_s,
-            worker_wall_time_s,
+            scheduling_time_s,
             output_bp_time_s,
             gen_time_s,
             ser_time_s,
@@ -178,33 +193,44 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
         # Freeze time at task submission
+        submit_time = clock
         mock_perf_counter.return_value = clock
         metrics.on_task_submitted(i, input_bundle)
 
-        metrics._running_tasks[i].num_outputs = num_outputs
-        metrics._running_tasks[i].cum_block_gen_time_s = gen_time_s
-        metrics._running_tasks[i].cum_block_ser_time_s = ser_time_s
+        # Advance clock to first output arrival on driver:
+        #   time_to_first_block = scheduling + gen + ser
+        clock = submit_time + scheduling_time_s + gen_time_s + ser_time_s
+        mock_perf_counter.return_value = clock
+        metrics.on_task_output_generated(
+            i, create_output_bundle(gen_time_s, ser_time_s)
+        )
 
-        # Advance clock by driver_wall_time_s before finishing
-        clock += driver_wall_time_s
+        # Generate remaining outputs (won't affect scheduling time)
+        for _ in range(num_outputs - 1):
+            clock += gen_time_s + ser_time_s
+            mock_perf_counter.return_value = clock
+            metrics.on_task_output_generated(
+                i, create_output_bundle(gen_time_s, ser_time_s)
+            )
+
+        total_gen_ser += num_outputs * (gen_time_s + ser_time_s)
+
+        # Advance clock to task finish
+        clock = submit_time + driver_wall_time_s
         mock_perf_counter.return_value = clock
 
         metrics.on_task_finished(
             i,
             None,
-            TaskExecStats(task_wall_time_s=worker_wall_time_s),
+            TaskExecStats(task_wall_time_s=driver_wall_time_s - scheduling_time_s),
             TaskExecDriverStats(task_output_backpressure_s=output_bp_time_s),
         )
-
-        total_gen_ser += gen_time_s + ser_time_s
 
     num_tasks = len(test_cases)
 
     total_driver_wall_time_s = sum(t[0] for t in test_cases)
-    total_worker_wall_time_s = sum(t[1] for t in test_cases)
+    total_scheduling_time_s = sum(t[1] for t in test_cases)
     total_output_bp_time_s = sum(t[2] for t in test_cases)
-
-    total_scheduling_time_s = total_driver_wall_time_s - total_worker_wall_time_s
 
     # Raw counters
     assert metrics.task_block_gen_and_ser_time_s == pytest.approx(total_gen_ser)
