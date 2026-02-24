@@ -278,16 +278,24 @@ class FuseOperators(Rule):
 
         # only allow fusion of MapBatches -> StreamingRepartition
         if isinstance(down_logical_op, StreamingRepartition):
-            return (
+            if not (
                 isinstance(up_logical_op, MapBatches)
-                and up_logical_op.batch_size is not None
                 and down_logical_op.target_num_rows_per_block is not None
                 and down_logical_op.target_num_rows_per_block > 0
-                # When the batch_size is a multiple of target_num_rows_per_block, fusing would still produce exactly identical sequence of blocks.
-                # See `_fuse_streaming_repartition_operators_in_dag` docstring for details.
-                # TODO: when the StreamingRepartition supports none_strict_mode, we can fuse
-                # `MapBatches -> StreamingRepartition` no matter what the `batch_size` and `target_num_rows` are.
-                # https://anyscale1.atlassian.net/browse/DATA-1731
+            ):
+                return False
+
+            # Non-strict mode: can always fuse, no matter what batch_size is.
+            # This allows fusion without cross-task buffering by using default bundler.
+            if not down_logical_op._strict:
+                return True
+
+            # Strict mode: only fuse when batch_size is a multiple of target_num_rows_per_block.
+            # When batch_size % target == 0, each batch can be perfectly sliced into chunks
+            # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
+            # docstring for details.
+            return (
+                up_logical_op.batch_size is not None
                 and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
                 == 0
             )
@@ -312,8 +320,23 @@ class FuseOperators(Rule):
         up_logical_op = self._op_map.pop(up_op)
         assert isinstance(up_logical_op, MapBatches)
         assert isinstance(down_logical_op, StreamingRepartition)
-        assert up_logical_op.batch_size % down_logical_op.target_num_rows_per_block == 0
+
         batch_size = up_logical_op.batch_size
+
+        # Choose ref_bundler and fusion behavior based on strict mode
+        if down_logical_op._strict:
+            # Strict mode: use StreamingRepartitionRefBundler for stitching.
+            # Only works when batch_size % target == 0 (verified in _can_fuse).
+            assert batch_size % down_logical_op.target_num_rows_per_block == 0, (
+                f"Strict mode fusion requires batch_size ({batch_size}) to be "
+                f"a multiple of target_num_rows_per_block "
+                f"({down_logical_op.target_num_rows_per_block})"
+            )
+            ref_bundler = StreamingRepartitionRefBundler(batch_size)
+        else:
+            # Non-strict mode: use default pass-through bundler.
+            # Works with any batch_size without cross-task buffering.
+            ref_bundler = None
 
         compute = self._fuse_compute_strategy(
             up_logical_op.compute, down_logical_op.compute
@@ -331,19 +354,23 @@ class FuseOperators(Rule):
         input_op = input_deps[0]
 
         assert up_op.data_context is down_op.data_context
+
+        # In non-strict mode, use min_rows_per_bundle to ensure creating batches with batch_size.
+        # In strict mode, ref_bundler handles bundling, so do not set min_rows_per_bundle.
+        min_rows = None if down_logical_op._strict else batch_size
+
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            ref_bundler=StreamingRepartitionRefBundler(batch_size),
+            min_rows_per_bundle=min_rows,
+            ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
-            # For now, we don't want to over-fuse StreamingRepartition with other map operators,
-            # so the result operator does not support further fusion.
-            supports_fusion=False,
+            supports_fusion=True,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -476,6 +503,15 @@ class FuseOperators(Rule):
         else:
             on_start = up_on_start or down_on_start
 
+        # Preserve StreamingRepartitionRefBundler if either operator has one.
+        # This is critical for strict-mode streaming repartition to maintain
+        # exact block size guarantees during further fusion.
+        ref_bundler = None
+        if isinstance(up_op._block_ref_bundler, StreamingRepartitionRefBundler):
+            ref_bundler = up_op._block_ref_bundler
+        elif isinstance(down_op._block_ref_bundler, StreamingRepartitionRefBundler):
+            ref_bundler = down_op._block_ref_bundler
+
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
@@ -485,7 +521,10 @@ class FuseOperators(Rule):
             target_max_block_size_override=target_max_block_size,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows_per_bundled_input,
+            min_rows_per_bundle=min_rows_per_bundled_input
+            if ref_bundler is None
+            else None,
+            ref_bundler=ref_bundler,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
@@ -662,8 +701,14 @@ class FuseOperators(Rule):
         #
         if (
             upstream_op.can_modify_num_rows
-            and downstream_op.min_rows_per_bundled_input is not None
-        ):
+            # For historical consistency, we allow fusing `MapBatches` even if it
+            # can modify the number of rows. Before #60448, `MapBatches` was
+            # incorrectly marked as not modifying row counts, so it was always
+            # fused. We preserve that behavior here to avoid regressions.
+            #
+            # For the full history, see https://github.com/ray-project/ray/pull/60756.
+            and not isinstance(upstream_op, MapBatches)
+        ) and downstream_op.min_rows_per_bundled_input is not None:
             logger.debug(
                 f"Upstream operator '{upstream_op}' could be modifying # of input "
                 f"rows, while downstream operator '{downstream_op}' expects at least "

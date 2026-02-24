@@ -153,9 +153,6 @@ class SplitCoordinator:
         self._data_context = dataset.context.copy()
         ray.data.DataContext._set_current(self._data_context)
 
-        if self._data_context.execution_options.locality_with_output is True:
-            self._data_context.execution_options.locality_with_output = locality_hints
-            logger.info(f"Auto configuring locality_with_output={locality_hints}")
         self._base_dataset = dataset
         self._n = n
         self._locality_hints = locality_hints
@@ -177,8 +174,15 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 self._executor = self._base_dataset._plan.create_executor()
+                # NOTE: We pass dataset.context (the original, uncopied context) rather
+                # than self._data_context (the deep copy used for process isolation)
+                # because the planner adds callbacks (e.g. checkpoint) to the original
+                # context during _get_execution_dag. Using self._data_context would cause
+                # those callbacks to be silently missed.
+                # TODO: Fix this by having Planner.plan() return callbacks explicitly
+                # rather than writing them into the context.
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor, dataset._plan
+                    self._executor, dataset._plan, dataset.context
                 )
                 yield output_iterator
 
