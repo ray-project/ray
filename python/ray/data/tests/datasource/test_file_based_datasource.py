@@ -10,7 +10,10 @@ import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+    FileBasedDatasource,
+)
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -444,10 +447,7 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 
 def test_read_many_files_basic(ray_start_regular_shared, tmp_path):
 
-    from ray.data.datasource.file_based_datasource import (
-        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-    )
-
+    # Use 4x the threshold to trigger parallel file size fetching
     num_files = 4 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
 
     for i in range(num_files):
@@ -468,15 +468,12 @@ def test_read_many_files_basic(ray_start_regular_shared, tmp_path):
 
 def test_read_many_files_diff_dirs(ray_start_regular_shared, tmp_path):
 
-    from ray.data.datasource.file_based_datasource import (
-        FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
-    )
-
     dir1 = tmp_path / "dir1"
     dir2 = tmp_path / "dir2"
     dir1.mkdir()
     dir2.mkdir()
 
+    # Use 2x per directory (2 directories = 4x total) to trigger parallel file size fetching
     num_files_per_dir = 2 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
     total_files = 0
 
