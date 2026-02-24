@@ -217,6 +217,7 @@ def test_input_data_buffer_does_not_free_inputs():
     # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
 
+
 def test_apply_transform_dag_consistency():
     a = Operator("A", [])
     b = Operator("B", [])
