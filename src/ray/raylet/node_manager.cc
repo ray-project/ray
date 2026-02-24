@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -52,7 +53,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/throttler.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_killing_policy_group_by_owner.h"
+#include "ray/raylet/worker_killing_policy_factory.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -237,7 +238,7 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
-      worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
+      worker_killing_policy_(WorkerKillingPolicyFactory::Create()),
       memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback())),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
@@ -438,7 +439,7 @@ void NodeManager::RegisterGcs() {
           std::stringstream debug_msg;
           debug_msg << DebugString() << "\n\n";
           RAY_LOG(INFO) << PrependToEachLine(debug_msg.str(), "[state-dump] ");
-          ReportWorkerOOMKillStats();
+          ReportWorkerOomKillStats();
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
@@ -3029,36 +3030,13 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   return std::make_optional(std::move(msg));
 }
 
-// Picks the worker with the latest submitted task and kills the process
-// if the memory usage is above the threshold. Allows one in-flight
-// process kill at a time as killing a process could sometimes take
-// seconds.
+// Picks the workers selected by the worker killing policy and destroys them.
+// Allows one in-flight call at a time as killing the underlying processes could
+// sometimes take seconds.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
   return [this](const SystemMemorySnapshot &system_memory_snapshot) {
     io_service_.post(
         [this, system_memory = system_memory_snapshot]() {
-          if (worker_being_killed_ != nullptr) {
-            // If the worker previously being killed has not died yet, wait until it is
-            // killed before selecting a new worker to prevent double killing.
-            if (worker_being_killed_->GetProcess().IsAlive()) {
-              RAY_LOG_EVERY_MS(INFO, 1000)
-                      .WithField(worker_being_killed_->GetGrantedLeaseId())
-                      .WithField(worker_being_killed_->WorkerId())
-                  << "Memory usage above threshold. "
-                  << "Still waiting for worker eviction to free up memory. "
-                  << "worker pid: " << worker_being_killed_->GetProcess().GetId();
-              memory_monitor_->Enable();
-              return;
-            } else {
-              RAY_LOG(INFO)
-                      .WithField(worker_being_killed_->WorkerId())
-                      .WithField(worker_being_killed_->GetGrantedLeaseId())
-                  << "Worker evicted and process killed to reclaim memory. "
-                  << "worker pid: " << worker_being_killed_->GetProcess().GetId();
-              worker_being_killed_ = nullptr;
-            }
-          }
-
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           std::vector<std::shared_ptr<WorkerInterface>> workers =
@@ -3072,52 +3050,48 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             memory_monitor_->Enable();
             return;
           }
-          std::pair<std::shared_ptr<WorkerInterface>, bool>
-              worker_to_kill_and_should_retry =
-                  worker_killing_policy_->SelectWorkerToKill(workers,
-                                                             process_memory_snapshot);
-          std::shared_ptr<WorkerInterface> worker_to_kill =
-              worker_to_kill_and_should_retry.first;
-          bool should_retry = worker_to_kill_and_should_retry.second;
-          if (worker_to_kill == nullptr) {
-            RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
-                                               "kill even though memory usage is high.";
-          } else {
-            // Compute the memory usage threshold
-            int64_t total_memory_bytes = system_memory.total_bytes;
-            int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-                total_memory_bytes,
-                RayConfig::instance().memory_usage_threshold(),
-                RayConfig::instance().min_memory_free_bytes());
-            float computed_threshold_fraction =
-                static_cast<float>(computed_threshold_bytes) /
-                static_cast<float>(total_memory_bytes);
+          std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+              workers_to_kill_and_should_retry =
+                  worker_killing_policy_->SelectWorkersToKill(
+                      workers, process_memory_snapshot, system_memory);
 
-            worker_being_killed_ = worker_to_kill;
+          // Compute the memory usage threshold
+          int64_t total_memory_bytes = system_memory.total_bytes;
+          int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+              total_memory_bytes,
+              RayConfig::instance().memory_usage_threshold(),
+              RayConfig::instance().min_memory_free_bytes());
+          float computed_threshold_fraction =
+              static_cast<float>(computed_threshold_bytes) /
+              static_cast<float>(total_memory_bytes);
 
-            std::string oom_kill_details =
-                CreateOomKillMessageDetails(worker_to_kill,
-                                            self_node_id_,
-                                            system_memory,
-                                            process_memory_snapshot,
-                                            computed_threshold_fraction);
-            std::string oom_kill_suggestions =
-                CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
+          std::string oom_kill_details = CreateOomKillMessageDetails(
+              workers_to_kill_and_should_retry,
+              self_node_id_,
+              system_memory,
+              store_client_->GetMemoryUsage().value_or("Not available"),
+              process_memory_snapshot,
+              computed_threshold_fraction);
+          std::string oom_kill_suggestions =
+              CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
-            RAY_LOG(INFO) << absl::StrFormat(
-                "Killing worker with task %s, kill details: %s, suggestions: %s",
-                worker_to_kill->GetGrantedLease().GetLeaseSpecification().DebugString(),
-                oom_kill_details,
-                oom_kill_suggestions);
+          RAY_LOG(INFO) << absl::StrFormat(
+              "Killing %d worker(s), kill details: %s, suggestions: %s",
+              workers_to_kill_and_should_retry.size(),
+              oom_kill_details,
+              oom_kill_suggestions);
 
-            std::string worker_exit_message = absl::StrFormat(
-                "Task was killed due to the node running low on memory. %s, %s",
-                oom_kill_details,
-                oom_kill_suggestions);
+          std::string worker_exit_message = absl::StrFormat(
+              "%d worker(s) were killed due to the node running low on memory. %s, %s",
+              workers_to_kill_and_should_retry.size(),
+              oom_kill_details,
+              oom_kill_suggestions);
 
-            // Report the event to the dashboard.
-            RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
+          // Report the event to the dashboard.
+          RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
 
+          for (const auto &[worker_to_kill, should_retry] :
+               workers_to_kill_and_should_retry) {
             // Mark the worker as failure and raise an exception from a caller.
             rpc::RayErrorInfo worker_failure_reason;
             worker_failure_reason.set_error_message(worker_exit_message);
@@ -3125,9 +3099,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             SetWorkerFailureReason(
                 worker_to_kill->GetGrantedLeaseId(), worker_failure_reason, should_retry);
 
-            /// since we print the process memory in the message. Destroy should be
-            /// called as soon as possible to free up memory.
-            DestroyWorker(worker_being_killed_,
+            DestroyWorker(worker_to_kill,
                           rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
                           worker_exit_message,
                           true /* force */);
@@ -3157,11 +3129,16 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
 }
 
 std::string NodeManager::CreateOomKillMessageDetails(
-    const std::shared_ptr<WorkerInterface> &worker,
+    const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill,
     const NodeID &node_id,
     const SystemMemorySnapshot &system_memory_snapshot,
+    const std::string &object_store_memory_usage,
     const ProcessesMemorySnapshot &process_memory_snapshot,
     float usage_threshold) const {
+  if (workers_to_kill.empty()) {
+    return "";
+  }
+
   float usage_fraction = static_cast<float>(system_memory_snapshot.used_bytes) /
                          system_memory_snapshot.total_bytes;
   std::string used_bytes_gb = absl::StrFormat(
@@ -3170,57 +3147,95 @@ std::string NodeManager::CreateOomKillMessageDetails(
       "%.2f",
       static_cast<float>(system_memory_snapshot.total_bytes) / 1024 / 1024 / 1024);
 
-  auto pid = worker->GetProcess().GetId();
-  int64_t used_bytes = 0;
-  const auto pid_entry = process_memory_snapshot.find(pid);
-  if (pid_entry != process_memory_snapshot.end()) {
-    used_bytes = pid_entry->second;
-  } else {
-    return "";
-    RAY_LOG_EVERY_MS(INFO, 60000)
-        << "Can't find memory usage for PID, reporting zero. PID: " << pid;
+  const auto &first_worker = workers_to_kill.front().first;
+  std::string node_ip = first_worker->IpAddress();
+
+  std::vector<std::string> worker_details;
+  for (const auto &[worker, should_retry] : workers_to_kill) {
+    auto pid = worker->GetProcess().GetId();
+    int64_t used_bytes = 0;
+    const auto pid_entry = process_memory_snapshot.find(pid);
+    if (pid_entry != process_memory_snapshot.end()) {
+      used_bytes = pid_entry->second;
+    } else {
+      RAY_LOG_EVERY_MS(INFO, 60000)
+          << "Can't find memory usage for PID, reporting zero. PID: " << pid;
+    }
+    std::string process_used_bytes_gb =
+        absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
+
+    std::stringstream worker_details_ss;
+    if (worker->GetActorId().IsNil()) {
+      worker_details_ss << "(Task: ";
+    } else {
+      worker_details_ss << "(Actor(" << worker->GetActorId().Hex() << "): , ";
+    }
+    worker_details_ss << absl::StrFormat(
+        "job ID=%s, lease ID=%s, task name=%s, pid=%d, required resources=%s, actual "
+        "memory used=%sGB, worker ID=%s)",
+        worker->GetGrantedLease().GetLeaseSpecification().JobId().Hex(),
+        worker->GetGrantedLeaseId().Hex(),
+        worker->GetGrantedLease().GetLeaseSpecification().GetTaskName(),
+        pid,
+        worker->GetGrantedLease()
+            .GetLeaseSpecification()
+            .GetRequiredResources()
+            .DebugString(),
+        process_used_bytes_gb,
+        worker->WorkerId().Hex());
+
+    worker_details.push_back(worker_details_ss.str());
   }
-  std::string process_used_bytes_gb =
-      absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
   return absl::StrFormat(
-      "Memory on the node (IP: %s, ID: %s) "
-      "where the lease (%s, name=%s, pid=%d, memory used=%sGB) "
-      "was running was %sGB / %sGB (%f), "
-      "which exceeds the memory usage threshold of %f. "
-      "Ray killed this worker (ID: %s) because it was "
-      "the most recently scheduled task; "
-      "to see more information about memory usage on this node, "
-      "use `ray logs raylet.out -ip %s`. "
-      "To see the logs of the worker, use `ray logs worker-%s*out -ip %s`. "
+      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f), "
+      "which exceeds the memory usage threshold of %f; "
+      "Object store memory usage: [%s]; "
+      "Ray killed %d worker(s) because they were the most recently scheduled tasks: "
+      "[%s]; "
+      "To see more information about memory usage on this node, "
+      "use `ray logs raylet.out -ip %s`; "
       "Top 10 memory users: %s",
-      worker->IpAddress(),
+      node_ip,
       node_id.Hex(),
-      worker->GetLeaseIdAsDebugString(),
-      worker->GetGrantedLease().GetLeaseSpecification().GetTaskName(),
-      worker->GetProcess().GetId(),
-      process_used_bytes_gb,
       used_bytes_gb,
       total_bytes_gb,
       usage_fraction,
       usage_threshold,
-      worker->WorkerId().Hex(),
-      worker->IpAddress(),
-      worker->WorkerId().Hex(),
-      worker->IpAddress(),
+      absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
+      workers_to_kill.size(),
+      absl::StrJoin(worker_details, "; "),
+      node_ip,
       MemoryMonitorUtils::TopNMemoryDebugString(10, process_memory_snapshot));
 }
 
 std::string NodeManager::CreateOomKillMessageSuggestions(
-    const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
+    const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill)
+    const {
   std::stringstream not_retriable_recommendation_ss;
-  if (worker && !worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-    not_retriable_recommendation_ss << "Set ";
-    if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
-      not_retriable_recommendation_ss << "max_retries";
-    } else {
-      not_retriable_recommendation_ss << "max_restarts and max_task_retries";
+  bool has_non_retriable_task = false;
+  bool has_non_retriable_actor = false;
+
+  for (const auto &[worker, should_retry] : workers_to_kill) {
+    if (!worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+      if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
+        has_non_retriable_task = true;
+      } else {
+        has_non_retriable_actor = true;
+      }
     }
+  }
+
+  if (has_non_retriable_task || has_non_retriable_actor) {
+    not_retriable_recommendation_ss << "Set ";
+    std::vector<std::string> not_retriable_recommendations;
+    if (has_non_retriable_task) {
+      not_retriable_recommendations.push_back("max_retries");
+    }
+    if (has_non_retriable_actor) {
+      not_retriable_recommendations.push_back("max_restarts and max_task_retries");
+    }
+    not_retriable_recommendation_ss << absl::StrJoin(not_retriable_recommendations, ", ");
     not_retriable_recommendation_ss
         << " to enable retry when the task crashes due to OOM. ";
   }
@@ -3264,7 +3279,7 @@ void NodeManager::GCWorkerFailureReason() {
   }
 }
 
-void NodeManager::ReportWorkerOOMKillStats() {
+void NodeManager::ReportWorkerOomKillStats() {
   if (number_workers_killed_by_oom_ > 0) {
     RAY_LOG(ERROR) << number_workers_killed_by_oom_
                    << " Workers (tasks / actors) killed due to memory pressure (OOM), "

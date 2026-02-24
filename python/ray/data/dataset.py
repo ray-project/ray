@@ -1661,6 +1661,7 @@ class Dataset:
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
+        strict: bool = False,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
@@ -1710,6 +1711,13 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
+            strict: If ``True``, ``repartition`` guarantees that all output blocks,
+                except for the last one, will have exactly ``target_num_rows_per_block`` rows.
+                If ``False``, ``repartition`` uses best-effort bundling and may produce at most
+                one block smaller than ``target_num_rows_per_block`` per input block without
+                forcing exact sizes through block splitting.
+                This parameter is only used with ``target_num_rows_per_block``.
+                Defaults to ``False``.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1746,6 +1754,13 @@ class Dataset:
                 warnings.warn(
                     "`shuffle` is ignored when `target_num_rows_per_block` is set."
                 )
+        else:
+            if strict:
+                # strict is used in row-based repartition only
+                warnings.warn(
+                    "`strict` is ignored when `target_num_rows_per_block` is not set. "
+                    "Use `target_num_rows_per_block` instead of `num_blocks` to enable `strict` mode."
+                )
 
         if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
@@ -1767,6 +1782,7 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
+                strict=strict,
             )
         else:
             op = Repartition(
@@ -3870,23 +3886,10 @@ class Dataset:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-
-        context = self._plan._context
-
-        # First check if the schema is already known from materialized blocks.
-        base_schema = self._plan.schema(fetch_if_missing=False)
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
-            return Schema(base_schema, data_context=context)
-
-        # Lazily execute only the first block to minimize computation. We achieve this
-        # by appending a Limit[1] operation to a copy of this Dataset, which we then
-        # execute to get its schema.
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
-        if base_schema is not None:
-            self._plan.cache_schema(base_schema)
-            return Schema(base_schema, data_context=context)
-        else:
-            return None
+            return Schema(base_schema, data_context=self._plan._context)
+        return None
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -5309,7 +5312,8 @@ class Dataset:
         *,
         namespace: Optional[str] = None,
         namespace_column: Optional[str] = None,
-        region: str,
+        region: Optional[str] = None,
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         schema: Optional[Dict[str, Any]] = None,
         id_column: str = "id",
@@ -5377,7 +5381,13 @@ class Dataset:
                 namespace.  The column is removed from the data before
                 writing.  Mutually exclusive with ``namespace``.
             region: Turbopuffer region identifier (for example,
-                ``"gcp-us-central1"``).
+                ``"gcp-us-central1"``).  Mutually exclusive with
+                ``base_url``.  Exactly one of ``region`` or ``base_url``
+                must be supplied.
+            base_url: Base URL for the Turbopuffer API (for example,
+                ``"https://gcp-us-central1.turbopuffer.com"``).  Mutually
+                exclusive with ``region``.  Exactly one of ``region`` or
+                ``base_url`` must be supplied.
             api_key: Turbopuffer API key. If omitted, the value is read from
                 the ``TURBOPUFFER_API_KEY`` environment variable.
             schema: Optional Turbopuffer schema definition to pass along with
@@ -5406,6 +5416,7 @@ class Dataset:
             namespace=namespace,
             namespace_column=namespace_column,
             region=region,
+            base_url=base_url,
             api_key=api_key,
             schema=schema,
             id_column=id_column,
