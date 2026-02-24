@@ -136,7 +136,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
             "serve_num_http_requests",
             "serve_num_grpc_requests",
             "serve_router_num_queued_requests",
-            "serve_deployment_queued_queries",  # deprecated, remove in Ray 3.0
+            "serve_deployment_queued_queries",  # Deprecated: Will be removed in Ray 3.0.
             "serve_deployment_request_counter",
             "serve_deployment_replica_starts",
             # histogram
@@ -146,7 +146,7 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
             "serve_deployment_processing_latency_ms",
             # gauge
             "serve_replica_num_ongoing_requests",
-            "serve_replica_processing_queries",  # deprecated, remove in Ray 3.0
+            "serve_replica_processing_queries",  # Deprecated: Will be removed in Ray 3.0.
             "serve_deployment_replica_healthy",
             # handle
             "serve_handle_request_counter",

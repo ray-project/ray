@@ -48,7 +48,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private Histogram processingLatencyTracker;
 
-  private Gauge numProcessingItems;
+  private Gauge numOngoingRequests;
 
   private Gauge numProcessingItemsDeprecated;
 
@@ -142,7 +142,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
     RayServeMetrics.execute(
         () ->
-            numProcessingItems =
+            numOngoingRequests =
                 Metrics.gauge()
                     .name(RayServeMetrics.SERVE_REPLICA_NUM_ONGOING_REQUESTS.getName())
                     .description(
@@ -156,7 +156,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
                             replicaTag))
                     .register());
 
-    // Deprecated: Remove in Ray 3.0.
+    // Deprecated: Will be removed in Ray 3.0.
     RayServeMetrics.execute(
         () ->
             numProcessingItemsDeprecated =
@@ -186,7 +186,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
         "Replica {} received request {}", replicaTag, request.getMetadata().getRequestId());
 
     numOngoingRequests.incrementAndGet();
-    RayServeMetrics.execute(() -> numProcessingItems.update(numOngoingRequests.get()));
+    RayServeMetrics.execute(() -> numOngoingRequests.update(numOngoingRequests.get()));
     RayServeMetrics.execute(() -> numProcessingItemsDeprecated.update(numOngoingRequests.get()));
     Object result = invokeSingle(request);
     numOngoingRequests.decrementAndGet();

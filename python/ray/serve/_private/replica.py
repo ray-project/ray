@@ -376,7 +376,7 @@ class ReplicaMetricsManager:
             description="The current number of queries being processed.",
         )
 
-        # Deprecated: Remove in Ray 3.0.
+        # Deprecated: Will be removed in Ray 3.0.
         self._num_ongoing_requests_gauge_deprecated = metrics.Gauge(
             "serve_replica_processing_queries",
             description="(Deprecated, use serve_replica_num_ongoing_requests)",

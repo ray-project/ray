@@ -37,7 +37,7 @@ public enum RayServeMetrics {
   SERVE_REPLICA_NUM_ONGOING_REQUESTS(
       "serve_replica_num_ongoing_requests", "The current number of queries being processed."),
 
-  // Deprecated: Remove in Ray 3.0.
+  // Deprecated: Will be removed in Ray 3.0.
   SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED(
       "serve_replica_processing_queries",
       "(Deprecated, use serve_replica_num_ongoing_requests) The current number of queries being processed."),
