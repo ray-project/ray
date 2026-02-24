@@ -1219,9 +1219,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             logger.debug(
                 f"Total # of cpus in cluster is {total_available_cluster_resources.cpu}, "
                 f"but the requested # of cpus is {target_num_cpus}. "
-                f"To prevent rounding precision, we are setting the {self._DEFAULT_AGGREGATORS_MIN_CPUS} cpus per aggregator. "
+                f"To prevent rounding precision, we are setting {self._DEFAULT_AGGREGATORS_MIN_CPUS} cpus per aggregator. "
                 f"This can happen for a very large # of aggregators {num_aggregators} "
-                f" or a small dataset size {estimated_aggregator_memory_required}B"
+                f"or a small dataset size {estimated_aggregator_memory_required}B"
             )
             return self._DEFAULT_AGGREGATORS_MIN_CPUS
         return rounded_target_num_cpus
