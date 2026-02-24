@@ -655,6 +655,7 @@ message PlacementGroupTableData {
   // The currently active bundles for this Placement Group.
   // If a fallback strategy is applied, this field is updated to contain the bundles
   // from that strategy rather than the original request.
+  // The field will be empty by default when the Placement Group hadn't been scheduled.
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
