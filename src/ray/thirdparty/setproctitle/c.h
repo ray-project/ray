@@ -13,19 +13,9 @@
 #include "spt_config.h"
 
 #if !defined(__cplusplus) && (!defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L)
-/* Define bool, true, false for C before C23. C++ and C23+ have them built-in. */
-#ifndef bool
-typedef char bool;
+/* Use <stdbool.h> for C standards before C23. It's safe because it's a no-op when bool is already a keyword (including C2x compilers with placeholder __STDC_VERSION__). */
+#include <stdbool.h>
 #endif
-
-#ifndef true
-#define true	((bool) 1)
-#endif
-
-#ifndef false
-#define false	((bool) 0)
-#endif
-#endif   /* not C++ */
 
 #include <stddef.h>
 
