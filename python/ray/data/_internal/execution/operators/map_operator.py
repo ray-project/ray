@@ -71,7 +71,6 @@ from ray.data.block import (
     to_stats,
 )
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +204,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
-        self._ray_remote_args_factory_actor_locality = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
@@ -311,7 +309,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         while self._block_ref_bundler.has_bundle():
             (input_bundles, _) = self._block_ref_bundler.get_next_bundle()
             for input_bundle in input_bundles:
-                self._metrics.on_input_dequeued(input_bundle)
+                self._metrics.on_input_dequeued(input_bundle, input_index=0)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
@@ -448,30 +446,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         else:
             self._output_queue = FIFOBundleQueue()
 
-        if options.locality_with_output:
-            if isinstance(options.locality_with_output, list):
-                locs = options.locality_with_output
-            else:
-                locs = [ray.get_runtime_context().get_node_id()]
-
-            class RoundRobinAssign:
-                def __init__(self, locs):
-                    self.locs = locs
-                    self.i = 0
-
-                def __call__(self, args):
-                    args = copy.deepcopy(args)
-                    args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                        self.locs[self.i],
-                        soft=True,
-                        _spill_on_unavailable=True,
-                    )
-                    self.i += 1
-                    self.i %= len(self.locs)
-                    return args
-
-            self._ray_remote_args_factory_actor_locality = RoundRobinAssign(locs)
-
         map_transformer = self._map_transformer
         # Apply additional block split if needed.
         if self.get_additional_split_factor() > 1:
@@ -510,7 +484,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
-        self._metrics.on_input_queued(refs)
+        self._metrics.on_input_queued(refs, input_index=0)
 
         if self._block_ref_bundler.has_bundle():
             # The ref bundler combines one or more `RefBundle`s into a new
@@ -518,7 +492,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # original input bundles.
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=0)
 
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue
@@ -557,10 +531,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
-        # This should take precedence over previously set scheduling strategy, as it
-        # implements actor-based locality overrides.
-        if self._ray_remote_args_factory_actor_locality:
-            return self._ray_remote_args_factory_actor_locality(ray_remote_args)
         return ray_remote_args
 
     @abstractmethod
@@ -658,7 +628,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # original input bundles.
             (input_refs, bundled_input) = self._block_ref_bundler.get_next_bundle()
             for bundle in input_refs:
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=0)
 
             # NOTE: When `all_inputs_done` is invoked we can't guarantee that the
             #       task will be launched since all actors might be busy.
@@ -702,11 +672,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metadata_tasks.clear()
 
     @abstractmethod
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
@@ -753,10 +723,10 @@ def _map_task(
         ctx.op_name,
         ctx.task_idx,
     )
-    DataContext._set_current(data_context)
+
     ctx.kwargs.update(kwargs)
 
-    with TaskContext.current(ctx):
+    with (DataContext.current(data_context), TaskContext.current(ctx)):
         stats = BlockExecStats.builder()
         map_transformer.override_target_max_block_size(
             ctx.target_max_block_size_override

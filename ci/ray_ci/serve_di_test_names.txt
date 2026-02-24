@@ -31,7 +31,7 @@
 //python/ray/serve/tests:test_http_routes
 //python/ray/serve/tests:test_backpressure
 //python/ray/serve/tests:test_batching
-//python/ray/serve/tests:test_replica_sync_methods_with_run_sync_in_threadpool
+//python/ray/serve/tests:test_replica_sync_methods
 //python/ray/serve/tests:test_replica_request_context
 //python/ray/serve/tests:test_direct_ingress
 //python/ray/serve/tests:test_direct_ingress_standalone

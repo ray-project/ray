@@ -180,16 +180,13 @@ class ResourceManager:
         #
         # Outputs of this operator used downstream
         used_op_outputs_bytes = sum(
-            [
-                (
-                    # Blocks pending in the downstream (internal) input queue
-                    downstream_op.metrics.obj_store_mem_internal_inqueue
-                    +
-                    # Blocks used as inputs of downstream's active tasks
-                    downstream_op.metrics.obj_store_mem_pending_task_inputs
+            (
+                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
+                    downstream_op.input_dependencies.index(op)
                 )
-                for downstream_op in op.output_dependencies
-            ]
+                + downstream_op.metrics.obj_store_mem_pending_task_inputs
+            )
+            for downstream_op in op.output_dependencies
         )
 
         self._mem_op_internal[op] = mem_op_internal
@@ -214,9 +211,9 @@ class ResourceManager:
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
             op.update_resource_usage()
-            op_usage = op.current_processor_usage()
-            op_running_usage = op.running_processor_usage()
-            op_pending_usage = op.pending_processor_usage()
+            op_usage = op.current_logical_usage()
+            op_running_usage = op.running_logical_usage()
+            op_pending_usage = op.pending_logical_usage()
 
             assert not op_usage.object_store_memory
             assert not op_running_usage.object_store_memory

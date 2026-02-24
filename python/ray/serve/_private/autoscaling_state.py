@@ -1,3 +1,4 @@
+import inspect
 import logging
 import math
 import time
@@ -20,6 +21,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -38,6 +40,24 @@ from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
+    """Return a ready-to-call policy callable from an ``AutoscalingPolicy``.
+
+    If the deserialized policy is a class (rather than a plain function),
+    instantiate it once — forwarding any ``policy_kwargs`` — so that the
+    framework invokes ``instance.__call__(ctx)`` on every autoscaling tick
+    instead of ``Class(ctx)`` (which would create a new, stateless instance
+    each time).
+    """
+    raw = policy.get_policy()
+    if inspect.isclass(raw):
+        logger.info(
+            f"Instantiating class-callable autoscaling policy '{raw.__name__}' with kwargs: {policy.policy_kwargs}"
+        )
+        return raw(**policy.policy_kwargs)
+    return raw
 
 
 class DeploymentAutoscalingState:
@@ -125,7 +145,9 @@ class DeploymentAutoscalingState:
         self._deployment_info = info
         self._config = config
         # Apply default autoscaling config to the policy
-        self._policy = _apply_autoscaling_config(self._config.policy.get_policy())
+        self._policy = _apply_autoscaling_config(
+            _resolve_policy_callable(self._config.policy)
+        )
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -664,6 +686,18 @@ class DeploymentAutoscalingState:
                         ).get(replica_id)
         return total_requests
 
+    def _should_aggregate_metrics_at_controller(self) -> bool:
+        """
+        Determine if metrics should be aggregated at the controller.
+        If the Direct Ingress is enabled, then metrics should only be aggregated at the controller.
+
+        Returns:
+            True if metrics should be aggregated at the controller, False otherwise.
+        """
+        return (
+            RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
+        )
+
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -675,7 +709,7 @@ class DeploymentAutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             return self._calculate_total_requests_aggregate_mode()
         else:
             return self._calculate_total_requests_simple_mode()
@@ -764,7 +798,7 @@ class DeploymentAutoscalingState:
             Sum of queued requests at all handles. Uses aggregated values in simple mode,
             or aggregates timeseries data in aggregate mode.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             # Aggregate mode: collect and aggregate timeseries
             queued_timeseries = self._collect_handle_queued_requests()
             if not queued_timeseries:
@@ -864,7 +898,7 @@ class ApplicationAutoscalingState:
         """
         # Apply default autoscaling config to the policy
         self._policy = _apply_app_level_autoscaling_config(
-            autoscaling_policy.get_policy()
+            _resolve_policy_callable(autoscaling_policy)
         )
         self._policy_state = {}
 
