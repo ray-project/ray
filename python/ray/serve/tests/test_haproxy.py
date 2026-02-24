@@ -915,7 +915,9 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     serve.shutdown()
 
 
-def test_fallback_proxy_starts_with_native_proxy_on_head_node(shutdown_ray, call_ray_stop_only):
+def test_fallback_proxy_starts_with_native_proxy_on_head_node(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
     """When HAProxy is enabled, verify that two proxy actors run on the head
     node (the native proxy + the fallback Serve proxy) and only the native
     proxy runs on worker nodes."""
