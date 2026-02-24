@@ -50,6 +50,8 @@ class GPUObjectMeta(NamedTuple):
     sent_dest_actors: Set[str]
     # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
     sent_to_src_actor_and_others_warned: bool
+    # If the user set a buffer for the object, the object will be fetched directly into the buffer on a ray.get
+    target_buffers: Optional[List["torch.Tensor"]]
 
 
 # This is used to periodically check in on the RDT transfer through the refs from
@@ -93,6 +95,32 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
     """
     gpu_object_manager = ray.worker.global_worker.gpu_object_manager
     gpu_object_manager.gpu_object_store.wait_tensor_freed(tensor, timeout)
+
+
+@PublicAPI(stability="alpha")
+def set_target_for_ref(ref: ObjectRef, target: List["torch.Tensor"]):
+    """
+    Set target buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
+
+    This is only supported by some transports (e.g., NIXL). If the transport
+    does not support this feature, the target buffers are ignored, and a warning will be
+    logged.
+
+    Before receiving, Ray validates that the provided target buffers match the metadata
+    of the tensors in the object (e.g., shape, dtype, device). If validation fails,
+    a `ValueError` is raised. Note that the order must match the order in which
+    of the tensors from the sender side.
+
+    Note that this only applies for the first `ray.get` call on the ref.
+    Subsequent `ray.get` calls on the same ref will not use the target buffers unless
+    they are set again after the first `ray.get` call.
+
+    Args:
+        ref: The ObjectRef to set the target buffers for. The ref must be for an RDT object.
+        target: A list of tensors to be used as the target buffers to receive into.
+    """
+    gpu_object_manager = ray.worker.global_worker.gpu_object_manager
+    gpu_object_manager.set_target_buffers_for_ref(ref, target)
 
 
 class GPUObjectManager:
@@ -374,6 +402,7 @@ class GPUObjectManager:
                 tensor_transport_meta=tensor_transport_meta,  # None if not from ray.put
                 sent_dest_actors=set(),
                 sent_to_src_actor_and_others_warned=False,
+                target_buffers=None,
             ),
         )
 
@@ -407,6 +436,19 @@ class GPUObjectManager:
             for dst_actor in dst_actors:
                 # Trigger the transfer now that the metadata is available.
                 self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
+
+    def set_target_buffers_for_ref(
+        self, ref: ObjectRef, target_buffers: List["torch.Tensor"]
+    ):
+        with self._lock:
+            if ref.hex() not in self._managed_gpu_object_metadata:
+                raise ValueError(f"Ref {ref} is not an RDT object.")
+
+            self._managed_gpu_object_metadata[
+                ref.hex()
+            ] = self._managed_gpu_object_metadata[ref.hex()]._replace(
+                target_buffers=target_buffers
+            )
 
     def _fetch_object(
         self,
@@ -443,7 +485,22 @@ class GPUObjectManager:
         gpu_object_meta = self.get_gpu_object_metadata(obj_id)
         assert gpu_object_meta is not None
 
+        if gpu_object_meta.target_buffers:
+            # The buffers are only used for the first `ray.get` after the buffers are set. We clear
+            # them from the map here before receiving in case something below errors out.
+            with self._lock:
+                self._managed_gpu_object_metadata[
+                    obj_id
+                ] = self._managed_gpu_object_metadata[obj_id]._replace(
+                    target_buffers=None
+                )
+
         if use_object_store:
+            if gpu_object_meta.target_buffers:
+                logger.warning(
+                    "Target buffers are not supported for use_object_store=True. Ignoring the target buffers."
+                )
+
             src_actor = gpu_object_meta.src_actor
             tensors = ray.get(
                 src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
@@ -462,6 +519,7 @@ class GPUObjectManager:
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 None, None, tensor_transport
             )
+
             tensor_transport_meta = gpu_object_meta.tensor_transport_meta
             if tensor_transport_meta is None:
                 # We can't fetch the object until we know the creator has actually created the object.
@@ -480,6 +538,7 @@ class GPUObjectManager:
                 tensor_transport_meta,
                 communicator_meta,
                 tensor_transport,
+                gpu_object_meta.target_buffers,
             )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
