@@ -73,6 +73,7 @@ def compute_optimal_throughput(
     Returns:
         The optimal throughput for the pipeline in the same units as the rates.
     """
+    assert rates, "Rates must be non-empty"
     return min(
         _max_throughput_from_resources(rates, resource_requirements, resource_limits),
         _max_throughput_from_concurrency(rates, concurrency_limits),
@@ -86,6 +87,7 @@ def _max_throughput_from_resources(
 ) -> float:
     """For each resource type, compute the max throughput the resource budget allows."""
     assert rates, "Rates must be non-empty"
+    assert all(rate > 0 for rate in rates.values()), "Rates must be positive"
     assert (
         rates.keys() == resource_requirements.keys()
     ), "Rates and resource requirements must have the same keys"
