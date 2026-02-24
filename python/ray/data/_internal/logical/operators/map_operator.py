@@ -429,19 +429,33 @@ class FlatMap(AbstractUDFMap):
 
 class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
+
     Args:
+        input_op: The operator preceding this operator in the plan DAG.
         target_num_rows_per_block: The target number of rows per block granularity for
-           streaming repartition.
+            streaming repartition.
+        strict: If True, guarantees that all output blocks, except for the last one,
+            will have exactly target_num_rows_per_block rows. If False, uses best-effort
+            bundling and may produce at most one block smaller than target_num_rows_per_block
+            per input block without forcing exact sizes through block splitting.
+            Defaults to False.
     """
 
     def __init__(
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
+        strict: bool = False,
     ):
+        if target_num_rows_per_block <= 0:
+            raise ValueError(
+                "target_num_rows_per_block must be positive for streaming repartition, "
+                f"got {target_num_rows_per_block}"
+            )
         super().__init__(
-            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
-            input_op=input_op,
+            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block},strict={strict}]",
+            input_op,
             can_modify_num_rows=False,
         )
         self.target_num_rows_per_block = target_num_rows_per_block
+        self._strict = strict
