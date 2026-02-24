@@ -110,6 +110,18 @@ class Generator:
             }
         return {}
 
+    def get_nixl_transport_metrics(self):
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        transport = get_tensor_transport_manager("NIXL")
+        return {
+            "get_xfer_descs_times_s": transport.get_xfer_descs_cost,
+            "serialize_times_s": transport.ser_cost_map,
+            "deserialize_times_s": transport.deser_cost_map,
+        }
+
 
 @ray.remote(enable_tensor_transport=True)
 class Trainer:
@@ -200,6 +212,18 @@ class Trainer:
                 "peak_reserved_bytes": torch.cuda.max_memory_reserved(self._device),
             }
         return {}
+
+    def get_nixl_transport_metrics(self):
+        from ray.experimental.gpu_object_manager.util import (
+            get_tensor_transport_manager,
+        )
+
+        transport = get_tensor_transport_manager("NIXL")
+        return {
+            "get_xfer_descs_times_s": transport.get_xfer_descs_cost,
+            "serialize_times_s": transport.ser_cost_map,
+            "deserialize_times_s": transport.deser_cost_map,
+        }
 
 
 def _summarize_timings(timings_ms):
@@ -325,6 +349,8 @@ if __name__ == "__main__":
     generator_metrics = ray.get(generator.get_timing_metrics.remote())
     trainer_gpu_memory = ray.get(trainer.get_gpu_memory_metrics.remote())
     generator_gpu_memory = ray.get(generator.get_gpu_memory_metrics.remote())
+    trainer_nixl_metrics = ray.get(trainer.get_nixl_transport_metrics.remote())
+    generator_nixl_metrics = ray.get(generator.get_nixl_transport_metrics.remote())
 
     output = {
         "num_indices": num_indices,
@@ -339,6 +365,24 @@ if __name__ == "__main__":
         "total_run_time_ms": run_time_ms,
         "trainer_metrics": trainer_metrics,
         "generator_metrics": generator_metrics,
+        "trainer_nixl_metrics": {
+            **_summarize_timings(
+                {
+                    "get_xfer_descs_s": trainer_nixl_metrics["get_xfer_descs_times_s"],
+                    "serialize_s": trainer_nixl_metrics["serialize_times_s"],
+                }
+            ),
+            "get_xfer_descs_sum_s": sum(trainer_nixl_metrics["get_xfer_descs_times_s"]),
+            "serialize_sum_s": sum(trainer_nixl_metrics["serialize_times_s"]),
+        },
+        "generator_nixl_metrics": {
+            **_summarize_timings(
+                {
+                    "deserialize_s": generator_nixl_metrics["deserialize_times_s"],
+                }
+            ),
+            "deserialize_sum_s": sum(generator_nixl_metrics["deserialize_times_s"]),
+        },
         "trainer_gpu_memory": trainer_gpu_memory,
         "generator_gpu_memory": generator_gpu_memory,
     }
