@@ -1411,6 +1411,8 @@ class TargetGroup(BaseModel, frozen=True):
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
     app_name: str = Field("", description="Name of the application.")
+    # TODO(akyang): All target groups have the same fallback target. We should
+    # pull this field out of TargetGroup once the API is deprecated.
     fallback_target: Optional[Target] = Field(None, description="Fallback target when all targets are unavailable.")
 
 

@@ -1402,14 +1402,14 @@ class ServeController:
         
         return None
 
-    def _get_empty_target_group(self, protocol: RequestProtocol) -> TargetGroup:
+    def _get_empty_target_group(self, fallback_proxy_target: Optional[Target]) -> TargetGroup:
         """Get an empty target group."""
         return TargetGroup(
             targets=[],
             route_prefix="/",
-            protocol=protocol,
+            protocol=fallback_proxy_target.protocol,
             app_name="",
-            fallback_target=self._get_fallback_proxy_target(protocol),
+            fallback_target=fallback_proxy_target,
         )
 
     def get_target_groups(
@@ -1449,6 +1449,11 @@ class ServeController:
         ):
             return proxy_target_groups
 
+        # Compute these once. This can be implemented cleaner once the TargetGroup API
+        # is deprecated since the fallback proxy is the same for all target groups.
+        fallback_http_proxy = self._get_fallback_proxy_target(RequestProtocol.HTTP)
+        fallback_grpc_proxy = self._get_fallback_proxy_target(RequestProtocol.GRPC)
+
         # Get all applications and their metadata
         if app_name is None:
             apps = [
@@ -1471,11 +1476,11 @@ class ServeController:
             # only containing the fallback serve proxy.
             if self._ha_proxy_enabled and from_proxy_manager:
                 target_groups = [
-                    self._get_empty_target_group(RequestProtocol.HTTP),
+                    self._get_empty_target_group(fallback_proxy_target=fallback_http_proxy),
                 ]
                 if is_grpc_enabled(self.get_grpc_config()):
                     target_groups.append(
-                        self._get_empty_target_group(RequestProtocol.GRPC),
+                        self._get_empty_target_group(fallback_proxy_target=fallback_grpc_proxy),
                     )
 
                 return target_groups
@@ -1486,13 +1491,15 @@ class ServeController:
         target_groups = []
         for app_name in apps:
             route_prefix = self.application_state_manager.get_route_prefix(app_name)
-            app_target_groups = self._get_target_groups_for_app(app_name, route_prefix)
+            app_target_groups = self._get_target_groups_for_app(
+                app_name, route_prefix, fallback_http_proxy, fallback_grpc_proxy
+            )
             if app_target_groups:
                 target_groups.extend(app_target_groups)
             else:
                 target_groups.extend(
                     self._get_target_groups_for_app_with_no_running_replicas(
-                        route_prefix, app_name
+                        route_prefix, app_name, fallback_http_proxy, fallback_grpc_proxy
                     )
                 )
 
@@ -1523,7 +1530,7 @@ class ServeController:
         ]
 
     def _get_target_groups_for_app(
-        self, app_name: str, route_prefix: str
+        self, app_name: str, route_prefix: str, fallback_http_proxy: Optional[Target], fallback_grpc_proxy: Optional[Target]
     ) -> List[TargetGroup]:
         """
         Create HTTP and gRPC target groups for a specific application.
@@ -1552,7 +1559,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
-                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.HTTP),
+                    fallback_target=fallback_http_proxy,
                 )
             )
 
@@ -1568,14 +1575,14 @@ class ServeController:
                         route_prefix=route_prefix,
                         targets=grpc_targets,
                         app_name=app_name,
-                        fallback_target=self._get_fallback_proxy_target(RequestProtocol.GRPC),
+                        fallback_target=fallback_grpc_proxy,
                     )
                 )
 
         return target_groups
 
     def _get_target_groups_for_app_with_no_running_replicas(
-        self, route_prefix: str, app_name: str
+        self, route_prefix: str, app_name: str, fallback_http_proxy: Optional[Target], fallback_grpc_proxy: Optional[Target]
     ) -> List[TargetGroup]:
         """
         For applications that have no running replicas, we return target groups
@@ -1593,7 +1600,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=[] if self._ha_proxy_enabled else http_targets,
                     app_name=app_name,
-                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.HTTP),
+                    fallback_target=fallback_http_proxy,
                 )
             )
         if grpc_targets:
@@ -1603,7 +1610,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=[] if self._ha_proxy_enabled else grpc_targets,
                     app_name=app_name,
-                    fallback_target=self._get_fallback_proxy_target(RequestProtocol.GRPC),
+                    fallback_target=fallback_grpc_proxy,
                 )
             )
         return target_groups
