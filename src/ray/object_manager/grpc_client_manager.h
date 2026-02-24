@@ -54,18 +54,13 @@ class GrpcClientManagerImpl final : public GrpcClientManager<ServiceType> {
     grpc_clients_.reserve(conn_num);
     bool use_multiple_connections =
         ::RayConfig::instance().experimental_object_manager_enable_multiple_connections();
+    grpc::ChannelArguments args = CreateDefaultChannelArguments();
     if (use_multiple_connections) {
-      for (int idx = 0; idx < conn_num; ++idx) {
-        grpc::ChannelArguments args;
-        args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
-        grpc_clients_.emplace_back(std::make_unique<GrpcClient<ServiceType>>(
-            address, port, client_call_manager, std::move(args)));
-      }
-    } else {
-      for (int idx = 0; idx < conn_num; ++idx) {
-        grpc_clients_.emplace_back(std::make_unique<GrpcClient<ServiceType>>(
-            address, port, client_call_manager));
-      }
+      args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+    }
+    for (int idx = 0; idx < conn_num; ++idx) {
+      grpc_clients_.emplace_back(std::make_unique<GrpcClient<ServiceType>>(
+          address, port, client_call_manager, args));
     }
     RAY_LOG(INFO) << "Starting gRPC client manager with enable_multiple_conns="
                   << use_multiple_connections << ", num_clients=" << conn_num;
