@@ -18,18 +18,31 @@ def ray_start_single_node_module():
     ray.shutdown()
 
 
+@pytest.fixture
+def defer_cleanup():
+    cleanup_tasks = []
+
+    def defer(actors, group_name="default"):
+        cleanup_tasks.append((actors, group_name))
+
+    yield defer
+
+    for actors, group_name in reversed(cleanup_tasks):
+        cleanup_collective_group(actors, group_name)
+
+    try:
+        for actors, _ in reversed(cleanup_tasks):
+            for actor in actors:
+                ray.kill(actor, no_restart=True)
+    except Exception:
+        pass
+
+
 def cleanup_collective_group(actors, group_name="default"):
     """Clean up actors and collective group after test."""
     try:
         # Destroy the collective group
         ray.get([a.destroy_group.remote(group_name) for a in actors])
-    except Exception:
-        pass
-
-    try:
-        # Kill all actors with a timeout to avoid hanging
-        for actor in actors:
-            ray.kill(actor, no_restart=True)
     except Exception:
         pass
 
@@ -149,9 +162,12 @@ def init_tensors_for_gather_scatter(
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("tensor_backend", ["numpy", "torch"])
 @pytest.mark.parametrize("array_size", [[2, 2]])
-def test_allgather_different_array_size(array_size, tensor_backend, backend):
+def test_allgather_different_array_size(
+    array_size, tensor_backend, backend, defer_cleanup
+):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     init_tensors_for_gather_scatter(
         actors, array_size=array_size, tensor_backend=tensor_backend
     )
@@ -167,27 +183,27 @@ def test_allgather_different_array_size(array_size, tensor_backend, backend):
                     results[i][j]
                     == torch.ones(array_size, dtype=torch.float32) * (j + 1)
                 ).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dtype", [np.float64])
-def test_allgather_different_dtype(dtype, backend):
+def test_allgather_different_dtype(dtype, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     init_tensors_for_gather_scatter(actors, dtype=dtype)
     results = ray.get([a.do_allgather.remote() for a in actors])
     for i in range(world_size):
         for j in range(world_size):
             assert (results[i][j] == np.ones(10, dtype=dtype) * (j + 1)).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("length", [1, 2])
-def test_unmatched_tensor_list_length(length, backend):
+def test_unmatched_tensor_list_length(length, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     list_buffer = [np.ones(10, dtype=np.float32) for _ in range(length)]
     ray.wait([a.set_list_buffer.remote(list_buffer, copy=True) for a in actors])
     if length != world_size:
@@ -195,14 +211,14 @@ def test_unmatched_tensor_list_length(length, backend):
             ray.get([a.do_allgather.remote() for a in actors])
     else:
         ray.get([a.do_allgather.remote() for a in actors])
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("shape", [[4, 5]])
-def test_unmatched_tensor_shape(shape, backend):
+def test_unmatched_tensor_shape(shape, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     init_tensors_for_gather_scatter(actors, array_size=10)
     list_buffer = [np.ones(shape, dtype=np.float32) for _ in range(world_size)]
     ray.get([a.set_list_buffer.remote(list_buffer, copy=True) for a in actors])
@@ -211,14 +227,15 @@ def test_unmatched_tensor_shape(shape, backend):
             ray.get([a.do_allgather.remote() for a in actors])
     else:
         ray.get([a.do_allgather.remote() for a in actors])
-    cleanup_collective_group(actors)
+    defer_cleanup(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allgather_torch_numpy(backend):
+def test_allgather_torch_numpy(backend, defer_cleanup):
     world_size = 2
     shape = [10, 10]
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
 
     # tensor is pytorch, list is numpy
     for i, a in enumerate(actors):
@@ -268,41 +285,40 @@ def test_allgather_torch_numpy(backend):
                 assert (
                     results[i][j] == np.ones(shape, dtype=np.float32) * (j + 1)
                 ).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["test"])
-def test_allreduce_different_name(group_name, backend):
+def test_allreduce_different_name(group_name, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(
         num_workers=world_size, group_name=group_name, backend=backend
     )
+    defer_cleanup(actors, group_name)
     results = ray.get([a.do_allreduce.remote(group_name) for a in actors])
     assert (results[0] == np.ones((10,), dtype=np.float32) * world_size).all()
     assert (results[1] == np.ones((10,), dtype=np.float32) * world_size).all()
-    cleanup_collective_group(actors, group_name)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("array_size", [2])
-def test_allreduce_different_array_size(array_size, backend):
+def test_allreduce_different_array_size(array_size, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     ray.wait(
         [a.set_buffer.remote(np.ones(array_size, dtype=np.float32)) for a in actors]
     )
     results = ray.get([a.do_allreduce.remote() for a in actors])
-    assert (results[0] == np.ones((array_size,), dtype=np.float32) * world_size).all()
-    assert (results[1] == np.ones((array_size,), dtype=np.float32) * world_size).all()
-    cleanup_collective_group(actors)
+    assert (results[0] == np.ones(array_size, dtype=np.float32) * world_size).all()
+    assert (results[1] == np.ones(array_size, dtype=np.float32) * world_size).all()
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_destroy(backend, group_name="default"):
+def test_allreduce_destroy(backend, defer_cleanup, group_name="default"):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
-
+    defer_cleanup(actors, group_name)
     results = ray.get([a.do_allreduce.remote() for a in actors])
     assert (results[0] == np.ones((10,), dtype=np.float32) * world_size).all()
     assert (results[1] == np.ones((10,), dtype=np.float32) * world_size).all()
@@ -322,13 +338,14 @@ def test_allreduce_destroy(backend, group_name="default"):
     results = ray.get([a.do_allreduce.remote() for a in actors])
     assert (results[0] == np.ones((10,), dtype=np.float32) * world_size * 2).all()
     assert (results[1] == np.ones((10,), dtype=np.float32) * world_size * 2).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_multiple_group(backend, num_groups=5):
+def test_allreduce_multiple_group(backend, defer_cleanup, num_groups=5):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
+
     for group_name in range(1, num_groups):
         ray.get(
             [
@@ -336,21 +353,21 @@ def test_allreduce_multiple_group(backend, num_groups=5):
                 for i, actor in enumerate(actors)
             ]
         )
+        defer_cleanup(actors, str(group_name))
+
     for i in range(num_groups):
         group_name = "default" if i == 0 else str(i)
         results = ray.get([a.do_allreduce.remote(group_name) for a in actors])
         assert (
             results[0] == np.ones((10,), dtype=np.float32) * (world_size ** (i + 1))
         ).all()
-    cleanup_collective_group(actors)
-    for i in range(1, num_groups):
-        cleanup_collective_group(actors, str(i))
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_allreduce_different_op(backend):
+def test_allreduce_different_op(backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
 
     # check product
     ray.wait(
@@ -384,29 +401,29 @@ def test_allreduce_different_op(backend):
     results = ray.get([a.do_allreduce.remote(op=ReduceOp.MAX) for a in actors])
     assert (results[0] == np.ones((10,), dtype=np.float32) * 3).all()
     assert (results[1] == np.ones((10,), dtype=np.float32) * 3).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dtype", [np.uint8])
-def test_allreduce_different_dtype(dtype, backend):
+def test_allreduce_different_dtype(dtype, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     ray.wait([a.set_buffer.remote(np.ones(10, dtype=dtype)) for a in actors])
     results = ray.get([a.do_allreduce.remote() for a in actors])
     assert (results[0] == np.ones((10,), dtype=dtype) * world_size).all()
     assert (results[1] == np.ones((10,), dtype=dtype) * world_size).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["test"])
 @pytest.mark.parametrize("src_rank", [0])
-def test_broadcast_different_name(group_name, src_rank, backend):
+def test_broadcast_different_name(group_name, src_rank, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(
         num_workers=world_size, group_name=group_name, backend=backend
     )
+    defer_cleanup(actors, group_name)
     ray.get(
         [
             a.set_buffer.remote(np.ones((10,), dtype=np.float32) * (i + 2))
@@ -421,15 +438,15 @@ def test_broadcast_different_name(group_name, src_rank, backend):
     )
     for i in range(world_size):
         assert (results[i] == np.ones((10,), dtype=np.float32) * (src_rank + 2)).all()
-    cleanup_collective_group(actors, group_name)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("array_size", [2**5])
 @pytest.mark.parametrize("src_rank", [0])
-def test_broadcast_different_array_size(array_size, src_rank, backend):
+def test_broadcast_different_array_size(array_size, src_rank, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     ray.get(
         [
             a.set_buffer.remote(np.ones(array_size, dtype=np.float32) * (i + 2))
@@ -441,16 +458,16 @@ def test_broadcast_different_array_size(array_size, src_rank, backend):
         assert (
             results[i] == np.ones((array_size,), dtype=np.float32) * (src_rank + 2)
         ).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("src_rank", [0])
-def test_broadcast_torch_numpy(src_rank, backend):
+def test_broadcast_torch_numpy(src_rank, backend, defer_cleanup):
     import torch
 
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     ray.wait(
         [
             actors[1].set_buffer.remote(
@@ -468,41 +485,41 @@ def test_broadcast_torch_numpy(src_rank, backend):
     else:
         assert (results[0] == np.ones((10,)) * world_size).all()
         assert (results[1] == torch.ones((10,)) * world_size).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_broadcast_invalid_rank(backend, src_rank=3):
+def test_broadcast_invalid_rank(backend, defer_cleanup, src_rank=3):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     with pytest.raises(ValueError):
         ray.get([a.do_broadcast.remote(src_rank=src_rank) for a in actors])
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["test"])
 @pytest.mark.parametrize("dst_rank", [0])
-def test_reduce_different_name(group_name, dst_rank, backend):
+def test_reduce_different_name(group_name, dst_rank, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(
         num_workers=world_size, group_name=group_name, backend=backend
     )
+    defer_cleanup(actors, group_name)
     results = ray.get([a.do_reduce.remote(group_name, dst_rank) for a in actors])
     for i in range(world_size):
         if i == dst_rank:
             assert (results[i] == np.ones((10,), dtype=np.float32) * world_size).all()
         else:
             assert (results[i] == np.ones((10,), dtype=np.float32)).all()
-    cleanup_collective_group(actors, group_name)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("array_size", [2])
 @pytest.mark.parametrize("dst_rank", [0])
-def test_reduce_different_array_size(array_size, dst_rank, backend):
+def test_reduce_different_array_size(array_size, dst_rank, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     ray.wait(
         [a.set_buffer.remote(np.ones(array_size, dtype=np.float32)) for a in actors]
     )
@@ -514,14 +531,14 @@ def test_reduce_different_array_size(array_size, dst_rank, backend):
             ).all()
         else:
             assert (results[i] == np.ones((array_size,), dtype=np.float32)).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dst_rank", [0])
-def test_reduce_multiple_group(dst_rank, backend, num_groups=5):
+def test_reduce_multiple_group(dst_rank, backend, defer_cleanup, num_groups=5):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     for group_name in range(1, num_groups):
         ray.get(
             [
@@ -529,6 +546,8 @@ def test_reduce_multiple_group(dst_rank, backend, num_groups=5):
                 for i, actor in enumerate(actors)
             ]
         )
+        defer_cleanup(actors, str(group_name))
+
     for i in range(num_groups):
         group_name = "default" if i == 0 else str(i)
         results = ray.get(
@@ -542,16 +561,14 @@ def test_reduce_multiple_group(dst_rank, backend, num_groups=5):
                 assert (results[j] == np.ones((10,), dtype=np.float32) * (i + 2)).all()
             else:
                 assert (results[j] == np.ones((10,), dtype=np.float32)).all()
-    cleanup_collective_group(actors)
-    for i in range(1, num_groups):
-        cleanup_collective_group(actors, str(i))
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dst_rank", [1])
-def test_reduce_different_op(dst_rank, backend):
+def test_reduce_different_op(dst_rank, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
 
     # check product
     ray.wait(
@@ -600,16 +617,16 @@ def test_reduce_different_op(dst_rank, backend):
             assert (results[i] == np.ones((10,), dtype=np.float32) * 3).all()
         else:
             assert (results[i] == np.ones((10,), dtype=np.float32) * (i + 2)).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dst_rank", [0])
-def test_reduce_torch_numpy(dst_rank, backend):
+def test_reduce_torch_numpy(dst_rank, backend, defer_cleanup):
     import torch
 
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     ray.wait(
         [
             actors[1].set_buffer.remote(
@@ -626,24 +643,26 @@ def test_reduce_torch_numpy(dst_rank, backend):
     else:
         assert (results[0] == np.ones((10,))).all()
         assert (results[1] == torch.ones((10,)) * world_size).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_reduce_invalid_rank(backend, dst_rank=3):
+def test_reduce_invalid_rank(backend, defer_cleanup, dst_rank=3):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     with pytest.raises(ValueError):
         ray.get([a.do_reduce.remote(dst_rank=dst_rank) for a in actors])
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("tensor_backend", ["numpy", "torch"])
 @pytest.mark.parametrize("array_size", [[2, 2]])
-def test_reducescatter_different_array_size(array_size, tensor_backend, backend):
+def test_reducescatter_different_array_size(
+    array_size, tensor_backend, backend, defer_cleanup
+):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     init_tensors_for_gather_scatter(
         actors, array_size=array_size, tensor_backend=tensor_backend
     )
@@ -657,27 +676,27 @@ def test_reducescatter_different_array_size(array_size, tensor_backend, backend)
             assert (
                 results[i] == torch.ones(array_size, dtype=torch.float32) * world_size
             ).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dtype", [np.uint8])
-def test_reducescatter_different_dtype(dtype, backend):
+def test_reducescatter_different_dtype(dtype, backend, defer_cleanup):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     init_tensors_for_gather_scatter(actors, dtype=dtype)
     results = ray.get([a.do_reducescatter.remote() for a in actors])
     for i in range(world_size):
         for j in range(world_size):
             assert (results[i] == np.ones(10, dtype=dtype) * world_size).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_reducescatter_torch_numpy(backend):
+def test_reducescatter_torch_numpy(backend, defer_cleanup):
     world_size = 2
     shape = [10, 10]
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
 
     # tensor is pytorch, list is numpy
     for i, a in enumerate(actors):
@@ -746,18 +765,20 @@ def test_reducescatter_torch_numpy(backend):
             ).all()
         else:
             assert (results[i] == np.ones(shape, dtype=np.float32) * world_size).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("group_name", ["test"])
 @pytest.mark.parametrize("dst_rank", [0])
 @pytest.mark.parametrize("array_size", [[2, 2]])
-def test_sendrecv_different_name(group_name, array_size, dst_rank, backend):
+def test_sendrecv_different_name(
+    group_name, array_size, dst_rank, backend, defer_cleanup
+):
     world_size = 2
     actors = create_collective_workers(
         num_workers=world_size, group_name=group_name, backend=backend
     )
+    defer_cleanup(actors, group_name)
     ray.wait(
         [
             a.set_buffer.remote(np.ones(array_size, dtype=np.float32) * (i + 1))
@@ -777,16 +798,16 @@ def test_sendrecv_different_name(group_name, array_size, dst_rank, backend):
         assert (
             results[i] == np.ones(array_size, dtype=np.float32) * (src_rank + 1)
         ).all()
-    cleanup_collective_group(actors, group_name)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
 @pytest.mark.parametrize("dst_rank", [1])
-def test_sendrecv_torch_numpy(dst_rank, backend):
+def test_sendrecv_torch_numpy(dst_rank, backend, defer_cleanup):
     import torch
 
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     ray.wait(
         [
             actors[1].set_buffer.remote(
@@ -813,16 +834,15 @@ def test_sendrecv_torch_numpy(dst_rank, backend):
     else:
         assert (results[0] == np.ones((10,))).all()
         assert (results[1] == torch.ones((10,))).all()
-    cleanup_collective_group(actors)
 
 
 @pytest.mark.parametrize("backend", [Backend.GLOO])
-def test_sendrecv_invalid_rank(backend, dst_rank=3):
+def test_sendrecv_invalid_rank(backend, defer_cleanup, dst_rank=3):
     world_size = 2
     actors = create_collective_workers(world_size, backend=backend)
+    defer_cleanup(actors)
     with pytest.raises(ValueError):
         ray.get([a.do_send.remote(dst_rank=dst_rank) for a in actors])
-    cleanup_collective_group(actors)
 
 
 if __name__ == "__main__":

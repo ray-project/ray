@@ -752,7 +752,6 @@ def _flatten_for_scatter_gather(
     return buffer
 
 
-# TODO(tianyi): remove it when multigpu is deprecated
 def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
     """Check the compatibility between tensor input and tensor list input."""
     if not tensors or not isinstance(tensors, list):
@@ -1035,6 +1034,7 @@ class NCCLGroup(BaseGroup):
             for i, t in enumerate(output_tensor_list):
                 nccl_util.copy_tensor(t, output_buffer[i])
 
+        _check_inputs_compatibility_for_scatter_gather([tensor], [output_tensor_list])
         self._collective(
             tensor, output_buffer, collective_fn, postprocess_fn=postprocess_fn
         )
