@@ -776,8 +776,8 @@ def _map_task(
                 # TODO figure out a better way to track task total duration
                 task_dur_s = time.perf_counter() - task_start_s
 
-                yield BlockMetadataWithSchema(
-                    metadata=replace(
+                yield BlockMetadataWithSchema.from_metadata(
+                    replace(
                         block_meta,
                         exec_stats=blk_exec_stats,
                         task_exec_stats=TaskExecWorkerStats(

@@ -272,15 +272,18 @@ class BlockMetadata(BlockStats):
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
 
-    def __init__(self, metadata: BlockMetadata, schema: Optional["Schema"] = None):
-        super().__init__(
-            input_files=metadata.input_files,
-            size_bytes=metadata.size_bytes,
+    @staticmethod
+    def from_metadata(
+        metadata: "BlockMetadata", schema: Optional["Schema"] = None
+    ) -> "BlockMetadataWithSchema":
+        return BlockMetadataWithSchema(
             num_rows=metadata.num_rows,
+            size_bytes=metadata.size_bytes,
             exec_stats=metadata.exec_stats,
             task_exec_stats=metadata.task_exec_stats,
+            input_files=metadata.input_files,
+            schema=schema,
         )
-        object.__setattr__(self, "schema", schema)
 
     def from_block(
         block: Block,
@@ -289,7 +292,7 @@ class BlockMetadataWithSchema(BlockMetadata):
     ) -> "BlockMetadataWithSchema":
         accessor = BlockAccessor.for_block(block)
 
-        return BlockMetadataWithSchema(
+        return BlockMetadataWithSchema.from_metadata(
             metadata=accessor.get_metadata(
                 block_exec_stats=block_exec_stats,
                 task_exec_stats=task_exec_stats,
