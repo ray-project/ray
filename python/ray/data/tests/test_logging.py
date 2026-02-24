@@ -130,6 +130,30 @@ def test_file_handler_uses_utf8_on_windows(monkeypatch, tmp_path, tmp_logger):
     handler.close()
 
 
+def test_session_file_handler_reinitializes_after_close(tmp_path, tmp_logger):
+    handler = SessionFileHandler(
+        "ray-data.log", get_log_directory=lambda: str(tmp_path)
+    )
+    tmp_logger.addHandler(handler)
+
+    # 1. Initial emit
+    tmp_logger.info("first")
+    assert handler._handler is not None
+    original_handler = handler._handler
+
+    # 2. Close
+    handler.close()
+    assert handler._handler is None
+
+    # 3. Emit after close (should re-initialize)
+    tmp_logger.info("second")
+    assert handler._handler is not None
+    assert handler._handler is not original_handler
+
+    # Clean up
+    handler.close()
+
+
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
     config_path = tmp_path / "logging.yaml"
     monkeypatch.setenv("RAY_DATA_LOGGING_CONFIG", config_path)

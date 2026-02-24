@@ -141,7 +141,7 @@ class SessionFileHandler(logging.Handler):
         if self._handler is not None:
             self._handler.emit(record)
 
-    def setFormatter(self, fmt: logging.Formatter) -> None:
+    def setFormatter(self, fmt: Optional[logging.Formatter]) -> None:
         if self._handler is not None:
             self._handler.setFormatter(fmt)
         self._formatter = fmt
@@ -149,6 +149,7 @@ class SessionFileHandler(logging.Handler):
     def close(self) -> None:
         if self._handler is not None:
             self._handler.close()
+            self._handler = None
         super().close()
 
     def _try_create_handler(self):
