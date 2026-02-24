@@ -26,7 +26,28 @@ TABLE_COLUMNS = {
         "column13": "l_shipinstruct",
         "column14": "l_shipmode",
         "column15": "l_comment",
-    }
+    },
+    "orders": {
+        "column0": "o_orderkey",
+        "column1": "o_custkey",
+        "column2": "o_orderstatus",
+        "column3": "o_totalprice",
+        "column4": "o_orderdate",
+        "column5": "o_orderpriority",
+        "column6": "o_clerk",
+        "column7": "o_shippriority",
+        "column8": "o_comment",
+    },
+    "customer": {
+        "column0": "c_custkey",
+        "column1": "c_name",
+        "column2": "c_address",
+        "column3": "c_nationkey",
+        "column4": "c_phone",
+        "column5": "c_acctbal",
+        "column6": "c_mktsegment",
+        "column7": "c_comment",
+    },
 }
 
 
