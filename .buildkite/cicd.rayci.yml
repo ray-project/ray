@@ -14,7 +14,7 @@ steps:
     key: reef-tests
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
-          //ci/ray_ci/... //release/... //ci/pipeline/... ci
+          //ci/ray_ci/... //ci/build/... //release/... //ci/pipeline/... ci
           --only-tags=release_unit,ci_unit
           --cache-test-results --parallelism-per-worker 2
           --build-name forge

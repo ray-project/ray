@@ -214,6 +214,7 @@ ci/docker/forge.aarch64.wanda.yaml
 .buildkite/hooks/post-command
 .buildkite/release/
 .buildkite/release-automation/
+build-wheel.sh
 @ tools
 ;
 

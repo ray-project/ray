@@ -388,6 +388,17 @@ steps:
       - oss
       - skip-on-premerge
 
+  - label: ":tapioca: smoke test build-wheel.sh --help"
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: small
+    commands:
+      - ./build-wheel.sh --help
+    depends_on:
+      - forge
+
   - label: ":tapioca: smoke test build-docker.sh"
     tags:
       - python_dependencies
