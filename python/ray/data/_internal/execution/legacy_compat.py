@@ -3,7 +3,6 @@
 It should be deleted once we fully move to the new executor backend.
 """
 import logging
-from dataclasses import replace
 from typing import Iterator, Optional, Tuple
 
 from ray.data._internal.execution.execution_callback import get_execution_callbacks
@@ -89,11 +88,8 @@ def execute_to_legacy_bundle_iterator(
             """Collect the metadata from each output bundle and accumulate
             results, so we can access important information, such as
             row count, schema, etc., after iteration completes."""
-            self._collected_metadata = replace(
-                self._collected_metadata,
-                num_rows=self._num_rows + bundle.num_rows(),
-                size_bytes=self._size_bytes + bundle.size_bytes(),
-            )
+            self._num_rows += bundle.num_rows()
+            self._size_bytes += bundle.size_bytes()
             return bundle
 
     return CacheMetadataIterator(bundle_iter)
