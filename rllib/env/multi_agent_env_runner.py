@@ -492,7 +492,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     Columns.INFOS: infos,
                     Columns.TERMINATEDS: terminateds,
                     Columns.TRUNCATEDS: truncateds,
-                    "extra_model_outputs": extra_model_outputs,
                 }
                 if done_episodes_to_run_env_to_module:
                     # Run the env-to-module connector pipeline for all done episodes.

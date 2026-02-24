@@ -393,7 +393,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     Columns.INFOS: infos,
                     Columns.TERMINATEDS: terminateds,
                     Columns.TRUNCATEDS: truncateds,
-                    "extra_model_output": extra_model_output,
                 }
                 self._cached_to_module = self._env_to_module(
                     episodes=self._ongoing_episodes,
