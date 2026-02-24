@@ -4,7 +4,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from pydantic import Field, field_validator, model_validator
 
-import ray
 from ray.data import Dataset
 from ray.data.block import UserDefinedFunction
 from ray.llm._internal.batch.stages import (
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
-DEFAULT_MAX_TASKS_IN_FLIGHT = 4
+DEFAULT_MAX_TASKS_IN_FLIGHT = 16
 
 
 class ProcessorConfig(BaseModelExtended):
@@ -92,39 +91,44 @@ class ProcessorConfig(BaseModelExtended):
             )
         return concurrency
 
-    def get_concurrency(self, autoscaling_enabled: bool = True) -> Tuple[int, int]:
-        """Return a normalized `(min, max)` worker range from `self.concurrency`.
+    def get_concurrency(self, autoscaling_enabled: bool = True) -> Dict[str, int]:
+        """Return a normalized dict of worker pool parameters from `self.concurrency`.
 
         Behavior:
         - If `concurrency` is an int `n`:
-          - `autoscaling_enabled` is True  -> return `(1, n)` (autoscaling).
-          - `autoscaling_enabled` is False -> return `(n, n)` (fixed-size pool).
-        - If `concurrency` is a 2-tuple `(m, n)`, return it unchanged
+          - `autoscaling_enabled` is True  -> return `{"min_size": 1, "max_size": n}` (autoscaling).
+          - `autoscaling_enabled` is False -> return `{"size": n}` (fixed-size pool).
+        - If `concurrency` is a 2-tuple `(m, n)`, return `{"min_size": m, "max_size": n}`
           (the `autoscaling_enabled` flag is ignored).
 
         Args:
-            autoscaling_enabled: When False, treat an integer `concurrency` as fixed `(n, n)`;
-                otherwise treat it as a range `(1, n)`. Defaults to True.
+            autoscaling_enabled: When False, treat an integer `concurrency` as fixed size;
+                otherwise treat it as an autoscaling range from 1 to n. Defaults to True.
 
         Returns:
-            tuple[int, int]: The allowed worker range `(min, max)`.
+            Dict[str, int]: A dictionary with either:
+                - `{"size": n}` for fixed-size pools
+                - `{"min_size": m, "max_size": n}` for autoscaling pools
 
         Examples:
             >>> self.concurrency = (2, 4)
             >>> self.get_concurrency()
-            (2, 4)
+            {'min_size': 2, 'max_size': 4}
             >>> self.concurrency = 4
             >>> self.get_concurrency()
-            (1, 4)
+            {'min_size': 1, 'max_size': 4}
             >>> self.get_concurrency(autoscaling_enabled=False)
-            (4, 4)
+            {'size': 4}
         """
         if isinstance(self.concurrency, int):
             if autoscaling_enabled:
-                return 1, self.concurrency
+                return {"min_size": 1, "max_size": self.concurrency}
             else:
-                return self.concurrency, self.concurrency
-        return self.concurrency
+                return {"size": self.concurrency}
+        return {
+            "min_size": self.concurrency[0],
+            "max_size": self.concurrency[1],
+        }
 
     class Config:
         validate_assignment = True
@@ -157,9 +161,9 @@ class OfflineProcessorConfig(ProcessorConfig):
     should_continue_on_error: bool = Field(
         default=False,
         description="If True, continue processing when inference fails for a row "
-        "instead of raising an exception. Failed rows will have a non-null "
+        "instead of raising an exception. Failed rows will have a non-empty "
         "'__inference_error__' column containing the error message, and other "
-        "output columns will be None. Error rows bypass postprocess. "
+        "output columns will be empty strings. Error rows bypass postprocess. "
         "If False (default), any inference error will raise an exception.",
     )
 
@@ -326,14 +330,6 @@ class Processor:
         self.postprocess_map_kwargs = postprocess_map_kwargs or {}
         self.stages: OrderedDict[str, StatefulStage] = OrderedDict()
 
-        # FIXES: https://github.com/ray-project/ray/issues/53124
-        # TODO (Kourosh): Remove this once the issue is fixed
-        data_context = ray.data.DataContext.get_current()
-        data_context.wait_for_min_actors_s = 600
-        # TODO: Remove this when https://github.com/ray-project/ray/issues/53169
-        # is fixed.
-        data_context._enable_actor_pool_on_exit_hook = True
-
         # NOTE (Kourosh): If pre/postprocess is not provided, use the identity function.
         # Wrapping is required even if they are identity functions, b/c data_column
         # gets inserted/removed via wrap_preprocess/wrap_postprocess.
@@ -346,7 +342,7 @@ class Processor:
         )
 
         # When should_continue_on_error is enabled, include __inference_error__ column
-        # in all output rows for consistent schema (None for success, message for error).
+        # in all output rows for consistent schema (Empty string for success, message for error).
         include_error_column = getattr(config, "should_continue_on_error", False)
         self.postprocess = wrap_postprocess(
             postprocess,

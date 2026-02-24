@@ -254,7 +254,7 @@ class CloudFileSystem:
                 f_hash = "0000000000000000000000000000000000000000"
                 logger.info(
                     f"Hash file does not exist in bucket {bucket_uri}. "
-                    f"Using {f_hash} as the hash."
+                    f"Using default hash {f_hash} - expected behavior - a hash file is optional. "
                 )
 
             # Write hash to refs/main
@@ -494,10 +494,10 @@ class CloudModelAccessor:
         if Path(self.model_id).exists():
             return Path(self.model_id)
         # Delayed import to avoid circular dependencies
-        from transformers.utils.hub import TRANSFORMERS_CACHE
+        from huggingface_hub.constants import HF_HUB_CACHE
 
         return Path(
-            TRANSFORMERS_CACHE, f"models--{self.model_id.replace('/', '--')}"
+            HF_HUB_CACHE, f"models--{self.model_id.replace('/', '--')}"
         ).expanduser()
 
 

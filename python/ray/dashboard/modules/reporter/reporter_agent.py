@@ -6,7 +6,7 @@ import os
 import socket
 import sys
 import traceback
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
@@ -27,7 +27,6 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
     get_or_create_event_loop,
-    get_user_temp_dir,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -188,6 +187,18 @@ METRICS_GAUGES = {
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_power_milliwatts": Gauge(
+        "node_gpu_power_milliwatts",
+        "Current GPU power draw in milliwatts",
+        "milliwatts",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_temperature_celsius": Gauge(
+        "node_gpu_temperature_celsius",
+        "Current GPU temperature in Celsius",
+        "celsius",
         GPU_TAG_KEYS,
     ),
     # TPU metrics
@@ -387,11 +398,10 @@ PSUTIL_PROCESS_ATTRS = (
         "cpu_times",
         "cmdline",
         "memory_info",
-        "memory_full_info",
     ]
-    + ["num_fds"]
-    if sys.platform != "win32"
-    else []
+    + (["num_fds"] if sys.platform != "win32" else [])
+    # Only collect memory_full_info in Mac OS X
+    + (["memory_full_info"] if sys.platform == "darwin" else [])
 )
 
 
@@ -474,9 +484,11 @@ class ReporterAgent(
             dashboard_agent.session_dir,
             self._dashboard_agent.node_id,
             METRICS_EXPORT_PORT_NAME,
-            dashboard_agent.metrics_export_port
-            if not self._metrics_collection_disabled
-            else -1,
+            (
+                dashboard_agent.metrics_export_port
+                if not self._metrics_collection_disabled
+                else -1
+            ),
         )
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
@@ -873,19 +885,19 @@ class ReporterAgent(
         return total, available, percent, used
 
     @staticmethod
-    def _get_disk_usage():
+    def _get_disk_usage(temp_dir: str):
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
-            sdiskusage = type(psutil.disk_usage("/"))
+            sdiskusage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
             return {"/": sdiskusage(total=1, used=0, free=1, percent=0.0)}
+
         if sys.platform == "win32":
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
-            tmp: psutil.disk_usage(tmp),
+            temp_dir: psutil.disk_usage(temp_dir),
         }
 
     @staticmethod
@@ -911,31 +923,59 @@ class ReporterAgent(
             logger.exception("Failed to get worker pids from raylet")
             return []
 
+    async def _async_get_agent_pids_from_raylet(self) -> List[int]:
+        try:
+            # Get agents pids from raylet via gRPC.
+            return await self._raylet_client.async_get_agent_pids()
+        except (GetTimeoutError, RpcError):
+            logger.exception("Failed to get agents pids from raylet")
+            return []
+
     def _get_agent_proc(self) -> psutil.Process:
         # Agent is the current process.
         # This method is not necessary, but we have it for mock testing.
         return psutil.Process()
 
-    def _generate_worker_key(self, proc: psutil.Process) -> Tuple[int, float]:
+    def _generate_proc_key(self, proc: psutil.Process) -> Tuple[int, float]:
         return (proc.pid, proc.create_time())
 
     async def _async_get_worker_processes(self):
         pids = await self._async_get_worker_pids_from_raylet()
         logger.debug(f"Worker PIDs from raylet: {pids}")
         if not pids:
-            return []
+            return {}
         workers = {}
         for pid in pids:
             try:
                 proc = psutil.Process(pid)
-                workers[self._generate_worker_key(proc)] = proc
+                workers[self._generate_proc_key(proc)] = proc
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 logger.error(f"Failed to access worker process {pid}")
                 continue
         return workers
 
-    async def _async_get_workers(self, gpus: Optional[List[GpuUtilizationInfo]] = None):
-        workers = await self._async_get_worker_processes()
+    async def _async_get_agent_processes(self):
+        pids = await self._async_get_agent_pids_from_raylet()
+        logger.debug(f"Agent PIDs from raylet: {pids}")
+        if not pids:
+            return {}
+        agents = {}
+        for pid in pids:
+            try:
+                proc = psutil.Process(pid)
+                agents[self._generate_proc_key(proc)] = proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                logger.error(f"Failed to access agent process {pid}")
+                continue
+        return agents
+
+    async def _async_get_workers_and_agents(
+        self, gpus: Optional[List[GpuUtilizationInfo]] = None
+    ):
+        workers, agents = await asyncio.gather(
+            self._async_get_worker_processes(), self._async_get_agent_processes()
+        )
+        workers.update(agents)
         if not workers:
             return []
         else:
@@ -1095,12 +1135,12 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
-            "workers": await self._async_get_workers(gpus),
+            "workers": await self._async_get_workers_and_agents(gpus),
             "raylet": raylet,
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
-            "disk": self._get_disk_usage(),
+            "disk": self._get_disk_usage(self._dashboard_agent.temp_dir),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
@@ -1196,13 +1236,21 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                mem = stat["memory_info"]
-                total_rss += float(mem.rss) / 1.0e6
-                if hasattr(mem, "shared"):
-                    total_shm += float(mem.shared)
+                total_rss += float(memory_info.rss) / 1.0e6
+                if hasattr(memory_info, "shared"):
+                    total_shm += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
+                # For Mac OS X, directly get USS metric from memory_full_info
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            elif memory_info is not None:
+                # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
+                if hasattr(memory_info, "shared"):
+                    # Linux: USS ≈ RSS - shared
+                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                elif hasattr(memory_info, "private"):
+                    # Windows: private IS USS
+                    total_uss += float(memory_info.private) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
@@ -1468,6 +1516,8 @@ class ReporterAgent(
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
+                gpu_power_mw = gpu.get("power_mw")
+                gpu_temperature_c = gpu.get("temperature_c")
 
                 gram_available = gram_total - gram_used
 
@@ -1497,14 +1547,30 @@ class ReporterAgent(
                         value=gram_available,
                         tags=gpu_tags,
                     )
-                    records_reported.extend(
-                        [
-                            gpus_available_record,
-                            gpus_utilization_record,
-                            gram_used_record,
-                            gram_available_record,
-                        ]
-                    )
+                    gpu_records_to_add = [
+                        gpus_available_record,
+                        gpus_utilization_record,
+                        gram_used_record,
+                        gram_available_record,
+                    ]
+                    # Optional GPU power and temperature (e.g. NVIDIA, AMD)
+                    if gpu_power_mw is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_power_milliwatts"],
+                                value=gpu_power_mw,
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu_temperature_c is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_temperature_celsius"],
+                                value=gpu_temperature_c,
+                                tags=gpu_tags,
+                            )
+                        )
+                    records_reported.extend(gpu_records_to_add)
 
         # -- TPU per node --
         tpus = stats["tpus"]

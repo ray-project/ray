@@ -16,18 +16,23 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray
 from ray._common.network_utils import build_address, find_free_port
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    SignalActor,
+    fetch_prometheus_metric_timeseries,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
 from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
     PrometheusServiceDiscoveryWriter,
 )
 from ray._private.ray_constants import (
+    AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+    AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
 )
 from ray._private.test_utils import (
-    PrometheusTimeseries,
-    fetch_prometheus_metric_timeseries,
-    fetch_prometheus_timeseries,
     get_log_batch,
     raw_metric_timeseries,
 )
@@ -442,7 +447,15 @@ def test_metrics_export_node_metrics(shutdown_only):
             samples = avail_metrics[metric]
             for sample in samples:
                 components.add(sample.labels["Component"])
-        assert components == {"gcs", "raylet", "agent", "ray::IDLE", sys.executable}
+        assert components == {
+            AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
+            AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT,
+            "gcs",
+            "raylet",
+            "agent",
+            "ray::IDLE",
+            sys.executable,
+        }
 
         avail_metrics = set(avail_metrics)
 

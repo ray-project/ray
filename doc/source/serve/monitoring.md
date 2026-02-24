@@ -370,6 +370,37 @@ Then set the environment variable before starting Ray:
 export RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_custom_logging"
 ```
 
+#### Run custom initialization code in the HTTP proxy
+
+Similarly, you can run custom initialization code when the HTTP proxy starts by setting the `RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH` environment variable. This variable should point to a callback function that runs during HTTP proxy initialization. The function doesn't need to return anything.
+
+For example:
+
+```python
+# mymodule/callbacks.py
+import logging
+
+def setup_proxy_logging():
+    logger = logging.getLogger("ray.serve")
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[PROXY] %(message)s"))
+    logger.addHandler(handler)
+```
+
+Then set the environment variable before starting Ray:
+
+```bash
+export RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH="mymodule.callbacks:setup_proxy_logging"
+```
+
+#### Configure slow startup warnings
+
+Ray Serve logs warnings when replicas take too long to start, helping you identify issues such as slow `__init__` methods, long-running `reconfigure` methods, or resource scheduling delays. You can configure this warning behavior with the following environment variables:
+
+- `RAY_SERVE_SLOW_STARTUP_WARNING_S`: The time (in seconds) after which Ray Serve considers a replica to have a slow startup (defaults to `30`). If a replica takes longer than this to be scheduled or initialized, Ray Serve logs a warning.
+- `RAY_SERVE_SLOW_STARTUP_WARNING_PERIOD_S`: The minimum interval (in seconds) between slow startup warning messages (defaults to `30`). This prevents log spam when multiple replicas start slowly.
+
+
 ### Set Request ID
 You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
 
@@ -631,9 +662,10 @@ These metrics track request throughput, errors, and latency at the replica level
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
 | `ray_serve_replica_processing_queries` **[D]** | Gauge | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
+| `ray_serve_replica_utilization_percent` **[D]** | Gauge | `deployment`, `replica`, `application` | Percentage of replica capacity used over a rolling window. Calculated as total user code execution time divided by maximum capacity (`window_duration × max_ongoing_requests`). Useful for capacity planning and identifying underutilized or overloaded replicas. Configure with `RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S` (default: 600s), `RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S` (default: 10s), and `RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS` (default: 60). |
 | `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
 | `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
-| `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of exceptions raised while processing requests. |
+| `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application`, `exception_type` | Total number of exceptions raised while processing requests. |
 
 ### Batching metrics
 
@@ -684,6 +716,7 @@ These metrics provide visibility into autoscaling behavior and help debug scalin
 | `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
 | `ray_serve_autoscaling_replica_metrics_delay_ms` | Gauge | `deployment`, `application`, `replica` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_autoscaling_handle_metrics_delay_ms` | Gauge | `deployment`, `application`, `handle` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
+| `ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms` | Gauge | `deployment`, `application` | Time taken for async inference task queue metrics (from QueueMonitor) to reach the controller in milliseconds. |
 | `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
 | `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
 

@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 
+import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -149,12 +150,10 @@ class DashboardAgent:
             ),  # noqa
         )
 
-        # grpc_port can be 0 for dynamic port assignment. get the actual bound port.
+        grpc_ip = "127.0.0.1" if is_localhost(self.ip) else "0.0.0.0"
         self.grpc_port = add_port_to_grpc_server(
-            self.server, build_address(self.ip, self.grpc_port)
+            self.server, build_address(grpc_ip, self.grpc_port)
         )
-        if not is_localhost(self.ip):
-            add_port_to_grpc_server(self.server, f"127.0.0.1:{self.grpc_port}")
 
         persist_port(
             self.session_dir,
@@ -497,6 +496,8 @@ if __name__ == "__main__":
             is_head=args.head,
             session_name=args.session_name,
         )
+
+        ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT)
 
         def sigterm_handler():
             logger.warning("Exiting with SIGTERM immediately...")

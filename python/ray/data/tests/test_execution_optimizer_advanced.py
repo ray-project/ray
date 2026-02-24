@@ -7,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -20,7 +21,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     Sort,
@@ -28,7 +29,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.rules.configure_map_task_memory import (
+from ray.data._internal.logical.rules import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
 from ray.data._internal.planner import create_planner
@@ -156,7 +157,7 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     op = Write(
         read_op,
         datasink,
-        concurrency=concurrency,
+        compute=TaskPoolStrategy(concurrency),
     )
     plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
@@ -240,7 +241,7 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
 
 
 def test_inherit_batch_format_rule():
-    from ray.data._internal.logical.rules.inherit_batch_format import (
+    from ray.data._internal.logical.rules import (
         InheritBatchFormatRule,
     )
 
@@ -254,7 +255,7 @@ def test_inherit_batch_format_rule():
 
     rule = InheritBatchFormatRule()
     optimized_plan = rule.apply(original_plan)
-    assert optimized_plan.dag._batch_format == "pandas"
+    assert optimized_plan.dag.batch_format == "pandas"
 
 
 def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
@@ -399,14 +400,15 @@ def test_execute_to_legacy_block_list(
 ):
     ds = ray.data.range(10)
     # Stats not initialized until `ds.iter_rows()` is called
-    assert ds._plan._snapshot_stats is None
+    assert ds._plan._cache.get_stats() is None
 
     for i, row in enumerate(ds.iter_rows()):
         assert row["id"] == i
 
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.metadata
-    assert ds._plan._snapshot_stats.time_total_s > 0
+    stats = ds._plan._cache.get_stats()
+    assert stats is not None
+    assert "ReadRange" in stats.metadata
+    assert stats.time_total_s > 0
 
 
 def test_streaming_executor(

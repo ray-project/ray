@@ -22,6 +22,8 @@ if [[ "${PYTHON-}" == "3.12" ]]; then
   # hebo and doc test dependencies are not needed for 3.12 test jobs
   TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
     INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+    # TODO (elliot-barn): Remove this once we are using depsets for ML builds
+    pip install pandas==2.2.2 numpy==1.26.4
 else
   DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
     INSTALL_HDFS=1 ./ci/env/install-dependencies.sh

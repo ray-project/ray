@@ -44,8 +44,8 @@ function retry {
 
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 
-PY_WHEEL_VERSIONS=("39" "310")
-PY_MMS=("3.9" "3.10")
+PY_WHEEL_VERSIONS=("310" "311" "312")
+PY_MMS=("3.10" "3.11" "3.12")
 
 for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   PY_MM="${PY_MMS[i]}"

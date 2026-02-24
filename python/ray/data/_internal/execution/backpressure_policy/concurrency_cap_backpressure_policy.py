@@ -4,7 +4,10 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
 from .backpressure_policy import BackpressurePolicy
-from ray._private.ray_constants import env_float
+from .downstream_capacity_backpressure_policy import (
+    get_available_object_store_budget_fraction,
+)
+from ray._common.utils import env_float
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -154,33 +157,34 @@ class ConcurrencyCapBackpressurePolicy(BackpressurePolicy):
             not isinstance(op, MapOperator)
             or not self._resource_manager.is_op_eligible(op)
             or not self.enable_dynamic_output_queue_size_backpressure
-            or self._resource_manager.has_materializing_downstream_op(op)
+            or self._resource_manager._is_blocking_materializing_op(op)
         ):
             return num_tasks_running < self._concurrency_caps[op]
 
         # For this Op, if the objectstore budget (available) to total
-        # ratio is below threshold (10%), skip dynamic output queue size backpressure.
-        op_usage = self._resource_manager.get_op_usage(op)
-        op_budget = self._resource_manager.get_budget(op)
-        if op_usage is not None and op_budget is not None:
-            total_mem = op_usage.object_store_memory + op_budget.object_store_memory
-            if total_mem == 0 or (
-                op_budget.object_store_memory / total_mem
-                > self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
-            ):
-                # If the objectstore budget (available) to total
-                # ratio is above threshold (10%), skip dynamic output queue size
-                # backpressure, but still enforce the configured cap.
-                return num_tasks_running < self._concurrency_caps[op]
+        # ratio is above threshold, skip dynamic output queue size backpressure.
+        available_budget_fraction = get_available_object_store_budget_fraction(
+            self._resource_manager, op, consider_downstream_ineligible_ops=True
+        )
+        if (
+            available_budget_fraction is not None
+            and available_budget_fraction > self.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
+        ):
+            # If the objectstore budget (available) to total
+            # ratio is above threshold, skip dynamic output queue size
+            # backpressure, but still enforce the configured cap.
+            return num_tasks_running < self._concurrency_caps[op]
 
         # Current total queued bytes (this op + downstream)
         current_queue_size_bytes = self._resource_manager.get_mem_op_internal(
             op
-        ) + self._resource_manager.get_op_outputs_object_store_usage_with_downstream(op)
+        ) + self._resource_manager.get_mem_op_outputs(
+            op, include_ineligible_downstream=True
+        )
 
         # Update EWMA state (level & dev) and compute effective cap. Note that
         # we don't update the EWMA state if the objectstore budget (available) vs total
-        # ratio is above threshold (10%), because the level and dev adjusts quickly.
+        # ratio is above threshold, because the level and dev adjusts quickly.
         self._update_level_and_dev(op, current_queue_size_bytes)
         effective_cap = self._effective_cap(
             op, num_tasks_running, current_queue_size_bytes

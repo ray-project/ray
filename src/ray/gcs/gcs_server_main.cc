@@ -52,7 +52,7 @@ DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of Redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
-DEFINE_string(node_id, "", "The unique ID of this node.");
+DEFINE_string(node_id, "", "The ID of the node where GCS runs (head node).");
 DEFINE_string(session_name, "", "session_name: The current Ray session name.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
@@ -112,7 +112,7 @@ int main(int argc, char *argv[]) {
   const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
-  const std::string node_id_hex = FLAGS_node_id;
+  const std::string node_id = FLAGS_node_id;
   const std::string session_name = FLAGS_session_name;
   const std::string session_dir = FLAGS_session_dir;
   gflags::ShutDownCommandLineFlags();
@@ -172,6 +172,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
+  gcs_server_config.node_id = node_id;
   gcs_server_config.metrics_agent_port = metrics_agent_port;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
@@ -251,11 +252,11 @@ int main(int argc, char *argv[]) {
 #endif
   signals.async_wait(handler);
 
-  gcs_server.SetPortReadyCallback([session_dir, node_id_hex](int bound_port) {
+  gcs_server.SetPortReadyCallback([session_dir, node_id](int bound_port) {
     if (!session_dir.empty()) {
-      auto node_id = ray::NodeID::FromHex(node_id_hex);
+      auto node_id_obj = ray::NodeID::FromHex(node_id);
       RAY_CHECK_OK(
-          ray::PersistPort(session_dir, node_id, kGcsServerPortName, bound_port));
+          ray::PersistPort(session_dir, node_id_obj, kGcsServerPortName, bound_port));
     }
   });
 

@@ -6,12 +6,14 @@ from collections import defaultdict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
-    PrometheusTimeseries,
     raw_metric_timeseries,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_assertion,
     wait_for_dashboard_agent_available,
@@ -106,6 +108,60 @@ ray.get([a.remote(), b.remote()] + [c.remote() for _ in range(8)])
         ("b", "RUNNING"): 1.0,
         ("c", "PENDING_NODE_ASSIGNMENT"): 8.0,
     }
+    proc.kill()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_task_custom_name_metrics(shutdown_only):
+    """Verify that custom task names set via .options(name=...) are used in metrics.
+
+    This tests that RUNNING tasks use the custom name consistently with
+    FINISHED/FAILED tasks. Previously there was a bug where RUNNING metrics used
+    the function name (FunctionDescriptor->CallString()) but FINISHED/FAILED used
+    the custom name (TaskSpec::GetName()).
+    """
+    info = ray.init(num_cpus=2, **METRIC_CONFIG)
+
+    driver = """
+import ray
+import time
+
+ray.init("auto")
+
+@ray.remote
+def my_function():
+    time.sleep(999)
+
+# Submit tasks with custom names
+a = [my_function.options(name="custom_task_name").remote() for _ in range(4)]
+ray.get(a)
+"""
+    proc = run_string_as_driver_nonblocking(driver)
+    timeseries = PrometheusTimeseries()
+
+    # Verify that RUNNING tasks use the custom name, not the function name.
+    # With 2 CPUs, 2 tasks should be running and 2 should be pending.
+    expected = {
+        ("custom_task_name", "RUNNING"): 2.0,
+        ("custom_task_name", "PENDING_NODE_ASSIGNMENT"): 2.0,
+    }
+    wait_for_condition(
+        lambda: tasks_by_name_and_state(info, timeseries) == expected,
+        timeout=20,
+        retry_interval_ms=500,
+    )
+
+    # Verify the original function name is NOT used in metrics
+    breakdown = tasks_by_name_and_state(info, timeseries)
+    assert (
+        "my_function",
+        "RUNNING",
+    ) not in breakdown, "RUNNING tasks should use custom name, not function name"
+    assert (
+        "my_function",
+        "PENDING_NODE_ASSIGNMENT",
+    ) not in breakdown, "PENDING tasks should use custom name, not function name"
+
     proc.kill()
 
 

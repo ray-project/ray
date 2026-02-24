@@ -476,7 +476,7 @@ void RayletClient::GetNodeStats(
 }
 
 void RayletClient::GetWorkerPIDs(
-    const gcs::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+    const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
   rpc::GetWorkerPIDsRequest request;
   auto client_callback = [callback](const Status &status,
                                     rpc::GetWorkerPIDsReply &&reply) {
@@ -490,6 +490,33 @@ void RayletClient::GetWorkerPIDs(
   INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
                             NodeManagerService,
                             GetWorkerPIDs,
+                            request,
+                            client_callback,
+                            grpc_client_,
+                            timeout_ms);
+}
+
+void RayletClient::GetAgentPIDs(
+    const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
+  rpc::GetAgentPIDsRequest request;
+  auto client_callback = [callback](const Status &status,
+                                    rpc::GetAgentPIDsReply &&reply) {
+    if (status.ok()) {
+      std::vector<int32_t> agents;
+      if (reply.has_dashboard_agent_pid()) {
+        agents.push_back(reply.dashboard_agent_pid());
+      }
+      if (reply.has_runtime_env_agent_pid()) {
+        agents.push_back(reply.runtime_env_agent_pid());
+      }
+      callback(status, agents);
+    } else {
+      callback(status, std::nullopt);
+    }
+  };
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            GetAgentPIDs,
                             request,
                             client_callback,
                             grpc_client_,

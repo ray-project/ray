@@ -15,6 +15,23 @@ faster.
 
 If your transformation isn't vectorized, there's no performance benefit.
 
+Enabling Polars for sort operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can speed up :meth:`~ray.data.Dataset.sort` and operations that sort internally,
+such as :meth:`~ray.data.grouped_data.GroupedData.map_groups`, by enabling Polars:
+
+.. testcode::
+
+    import ray
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.use_polars_sort = True
+
+When you enable this flag, Ray Data uses Polars instead of PyArrow for the internal
+sorting step, which can improve performance for large tabular datasets.
+This flag doesn't affect other operations such as :meth:`~ray.data.Dataset.map_batches`.
+
 Optimizing reads
 ----------------
 
@@ -25,7 +42,7 @@ Tuning output blocks for read
 
 By default, Ray Data automatically selects the number of output blocks for read according to the following procedure:
 
-- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <input-output>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
+- The ``override_num_blocks`` parameter passed to Ray Data's :ref:`read APIs <loading-data-api>` specifies the number of output blocks, which is equivalent to the number of read tasks to create.
 - Usually, if the read is followed by a :func:`~ray.data.Dataset.map` or :func:`~ray.data.Dataset.map_batches`, the map is fused with the read; therefore ``override_num_blocks`` also determines the number of map tasks.
 
 Ray Data decides the default value for number of output blocks based on the following heuristics, applied in order:
@@ -427,15 +444,6 @@ You can configure execution options with the global DataContext. The options are
 
 .. note::
     Be mindful that by default Ray reserves only 30% of the memory for its Object Store. This is recommended to be set at least to ***50%*** for all Ray Data workloads.
-
-Locality with output (ML ingest use case)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block::
-
-   ctx.execution_options.locality_with_output = True
-
-Setting this parameter to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This setting can be useful if you know you are consuming the output data directly on the consumer node (such as, for ML training ingest). However, other use cases may incur a performance penalty with this setting.
 
 Reproducibility
 ---------------

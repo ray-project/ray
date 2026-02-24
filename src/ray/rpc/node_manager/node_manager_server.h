@@ -64,6 +64,7 @@ class ServerCallFactory;
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetWorkerPIDs)                  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetAgentPIDs)                   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(KillLocalActor)                 \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelLocalTask)
 
@@ -193,6 +194,10 @@ class NodeManagerServiceHandler {
   virtual void HandleGetWorkerPIDs(GetWorkerPIDsRequest request,
                                    GetWorkerPIDsReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAgentPIDs(GetAgentPIDsRequest request,
+                                  GetAgentPIDsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleKillLocalActor(KillLocalActorRequest request,
                                     KillLocalActorReply *reply,

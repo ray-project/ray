@@ -239,7 +239,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToAllJobs(
-      const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
+      const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Jobs().AsyncSubscribeAll(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -275,7 +275,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool SubscribeActor(
       const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Actors().AsyncSubscribe(actor_id, subscribe, [&promise](Status status) {
       promise.set_value(status.ok());
@@ -429,7 +429,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
+      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });

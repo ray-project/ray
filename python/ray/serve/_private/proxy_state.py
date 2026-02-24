@@ -21,7 +21,6 @@ from ray.serve._private.constants import (
     PROXY_HEALTH_CHECK_TIMEOUT_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     PROXY_READY_CHECK_TIMEOUT_S,
-    RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
@@ -313,7 +312,15 @@ class ActorProxyWrapper(ProxyWrapper):
                 future.cancel()
 
     def kill(self):
-        """Kill the proxy actor."""
+        """Kills the proxy actor after graceful shutdown."""
+        # Prevent multiple concurrent kill attempts
+        if self.is_shutdown():
+            return
+
+        shutdown_ref = self._actor_handle.shutdown.remote()
+        ray.get(shutdown_ref, timeout=5)
+
+        # Shutdown completed successfully, now kill the actor
         ray.kill(self._actor_handle, no_restart=True)
 
 
@@ -690,10 +697,6 @@ class ProxyStateManager:
         """
         if proxy_nodes is None:
             proxy_nodes = set()
-
-        # Ensure head node always has a proxy (unless FF'd off).
-        if RAY_SERVE_ALWAYS_RUN_PROXY_ON_HEAD_NODE:
-            proxy_nodes.add(self._head_node_id)
 
         target_nodes = self._get_target_nodes(proxy_nodes)
         target_node_ids = {node_id for node_id, _, _ in target_nodes}

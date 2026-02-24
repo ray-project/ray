@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/scheduling/scheduling_ids.h"

@@ -53,6 +53,10 @@ class ShutdownExecutorInterface {
                                  std::string_view detail,
                                  std::chrono::milliseconds timeout_ms) = 0;
 
+  /// Wait for shutdown operations to complete.
+  /// \param timeout_ms Maximum time to wait
+  virtual void WaitForCompletion(std::chrono::milliseconds timeout_ms) = 0;
+
   // Best-effort cleanup of child processes spawned by this worker process to
   // avoid leaked subprocesses holding expensive resources (e.g., CUDA contexts).
   //
@@ -208,6 +212,10 @@ class ShutdownCoordinator {
   ///
   /// \return Human-readable reason description
   std::string GetReasonString() const;
+
+  /// Get the executor for accessing completion tracking.
+  /// \return Pointer to executor (nullptr if not initialized)
+  ShutdownExecutorInterface *GetExecutor() const { return executor_.get(); }
 
  private:
   /// Attempt to transition to disconnecting state.

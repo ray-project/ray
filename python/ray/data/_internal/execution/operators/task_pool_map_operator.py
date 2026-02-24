@@ -97,7 +97,7 @@ class TaskPoolMapOperator(MapOperator):
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
-    def _add_bundled_input(self, bundle: RefBundle):
+    def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
@@ -131,27 +131,25 @@ class TaskPoolMapOperator(MapOperator):
             slices=bundle.slices,
             **self.get_map_task_kwargs(),
         )
+
         self._submit_data_task(gen, bundle)
 
     def progress_str(self) -> str:
         return ""
 
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+            memory=self._ray_remote_args.get("memory", 0) * num_active_workers,
         )
 
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return self.per_task_resource_allocation().copy(
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            ),
-        )
+        return self.per_task_resource_allocation()
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
@@ -183,17 +181,19 @@ class TaskPoolMapOperator(MapOperator):
 
         min_resource_usage = per_task.copy(object_store_memory=obj_store_per_task)
 
-        if self._max_concurrency is not None:
-            max_resource_usage = ExecutionResources(
-                cpu=per_task.cpu * self._max_concurrency,
-                gpu=per_task.gpu * self._max_concurrency,
-                memory=per_task.memory * self._max_concurrency,
-                # Set the max `object_store_memory` requirement to 'inf', because we
-                # don't know how much data each task can output.
-                object_store_memory=float("inf"),
-            )
-        else:
-            max_resource_usage = ExecutionResources.for_limits()
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_concurrency = (
+            self._max_concurrency if self._max_concurrency is not None else float("inf")
+        )
+        max_resource_usage = ExecutionResources(
+            cpu=0 if per_task.cpu == 0 else per_task.cpu * max_concurrency,
+            gpu=0 if per_task.gpu == 0 else per_task.gpu * max_concurrency,
+            memory=0 if per_task.memory == 0 else per_task.memory * max_concurrency,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
 
         return min_resource_usage, max_resource_usage
 

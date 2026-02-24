@@ -13,6 +13,11 @@ Installing Ray
 Ray currently officially supports x86_64, aarch64 (ARM) for Linux, and Apple silicon (M1) hardware.
 Ray on Windows is currently in beta.
 
+.. warning::
+   **Pydantic v1 Deprecation Notice:** Pydantic v1 is deprecated and Ray will drop support for it in
+   version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running ``pip install -U pydantic``.
+   See `GitHub issue #58876 <https://github.com/ray-project/ray/issues/58876>`_ for more details.
+
 Official Releases
 -----------------
 
@@ -416,14 +421,14 @@ Installed Python dependencies
 Our docker images are shipped with pre-installed Python dependencies
 required for Ray and its libraries.
 
-We publish the dependencies that are installed in our ``ray`` Docker images for Python 3.9.
+We publish the dependencies that are installed in our ``ray`` Docker images for Python 3.10.
 
 .. tab-set::
 
     .. tab-item:: ray (Python 3.10)
         :sync: ray (Python 3.10)
 
-        Ray version: nightly (`0ddb7ee <https://github.com/ray-project/ray/commit/0ddb7eea6e84cad4b51dbdb5745164535e0a5e97>`_)
+        Ray version: nightly (`d60d131 <https://github.com/ray-project/ray/commit/d60d13127df16209bdabab78ea9735f552813698>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py310-cpu.txt
 

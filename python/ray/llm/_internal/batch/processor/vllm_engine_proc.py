@@ -1,5 +1,6 @@
 """The vLLM engine processor."""
 
+import logging
 from typing import Any, Dict, List, Literal, Optional
 
 import transformers
@@ -7,6 +8,7 @@ from pydantic import ConfigDict, Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
+from ray.llm._internal.batch.constants import TypeVLLMTaskType, vLLMTaskType
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     TelemetryAgent,
@@ -38,7 +40,6 @@ from ray.llm._internal.batch.stages.configs import (
     TokenizerStageConfig,
     resolve_stage_config,
 )
-from ray.llm._internal.batch.stages.vllm_engine_stage import vLLMTaskType
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 from ray.llm._internal.common.utils.download_utils import (
@@ -46,6 +47,9 @@ from ray.llm._internal.common.utils.download_utils import (
     NodeModelDownloadable,
     download_model_files,
 )
+
+logger = logging.getLogger(__name__)
+
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
@@ -75,10 +79,18 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
         "https://docs.vllm.ai/en/latest/serving/engine_args.html "
         "for more details.",
     )
-    task_type: vLLMTaskType = Field(
+    task_type: TypeVLLMTaskType = Field(
         default=vLLMTaskType.GENERATE,
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
+    )
+    log_engine_metrics: bool = Field(
+        default=True,
+        description="Enable vLLM engine metrics export via Ray's Prometheus endpoint. "
+        "When enabled, metrics like prefix cache hit rate, TTFT, TPOT, KV cache "
+        "utilization, and scheduler state are available at Ray's metrics endpoint. "
+        "Requires Ray to be initialized with _metrics_export_port "
+        "(e.g., ray.init(_metrics_export_port=8080)).",
     )
     # LoRA configurations.
     dynamic_lora_loading_path: Optional[str] = Field(
@@ -100,8 +112,23 @@ class vLLMEngineProcessorConfig(OfflineProcessorConfig):
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
-        task_type_str = values.get("task_type", "generate")
-        values["task_type"] = vLLMTaskType(task_type_str)
+        task_type = values.get("task_type", vLLMTaskType.GENERATE)
+        if task_type not in vLLMTaskType.values():
+            raise ValueError(f"Invalid task type: {task_type}")
+
+        engine_kwargs = values.get("engine_kwargs", {})
+        engine_kwargs_task_type = engine_kwargs.get("task_type", "")
+        if engine_kwargs_task_type != task_type:
+            if engine_kwargs_task_type:
+                logger.warning(
+                    "The task_type set in engine kwargs (%s) is different from the "
+                    "config (%s). Overriding the task_type in engine kwargs to %s.",
+                    engine_kwargs_task_type,
+                    task_type,
+                    task_type,
+                )
+            engine_kwargs["task_type"] = task_type
+        values["engine_kwargs"] = engine_kwargs
         return values
 
     @root_validator(pre=True)
@@ -257,6 +284,7 @@ def build_vllm_engine_processor(
                 dynamic_lora_loading_path=config.dynamic_lora_loading_path,
                 placement_group_config=config.placement_group_config,
                 should_continue_on_error=config.should_continue_on_error,
+                log_engine_metrics=config.log_engine_metrics,
             ),
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
@@ -265,8 +293,7 @@ def build_vllm_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    min_size=config.get_concurrency(autoscaling_enabled=False)[0],
-                    max_size=config.get_concurrency(autoscaling_enabled=False)[1],
+                    **config.get_concurrency(autoscaling_enabled=True),
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
@@ -309,10 +336,21 @@ def build_vllm_engine_processor(
         download_model=download_model_mode,
         download_extra_files=False,
     )
-    hf_config = transformers.AutoConfig.from_pretrained(
-        model_path,
-        trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
-    )
+
+    try:
+        hf_config = transformers.AutoConfig.from_pretrained(
+            model_path,
+            trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+        )
+    except Exception:
+        # Failed to retrieve HuggingFace config for telemetry purposes.
+        # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
+        # The actual model loading happens later in vLLM, which may support models
+        # that aren't available via HuggingFace's AutoConfig.
+        logger.warning(
+            f"Failed to retrieve HuggingFace config for {config.model_source}"
+        )
+        hf_config = None
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
@@ -325,7 +363,7 @@ def build_vllm_engine_processor(
             batch_size=config.batch_size,
             accelerator_type=config.accelerator_type or DEFAULT_GPU_TYPE,
             concurrency=config.concurrency,
-            task_type=vLLMTaskType(config.task_type),
+            task_type=config.task_type,
             pipeline_parallel_size=config.engine_kwargs.get(
                 "pipeline_parallel_size", 1
             ),

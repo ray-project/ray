@@ -27,10 +27,14 @@
 #include "ray/common/task/task_common.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 namespace core {
+
+using FreeActorObjectCallback = std::function<void(const ObjectID &)>;
+using SetDirectTransportMetadata = std::function<void(
+    const ObjectID &object_id, const std::string &direct_transport_metadata)>;
 
 // If you change this options's definition, you must change the options used in
 // other files. Please take a global search and modify them !!!
@@ -52,6 +56,9 @@ struct CoreWorkerOptions {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
+      // Human-readable name for the actor class.
+      // Only expected to be populated by actor creation tasks.
+      std::string *actor_repr_name,
       // Application error string, empty if no error.
       std::string *application_error,
       // The following 2 parameters `defined_concurrency_groups` and
@@ -80,6 +87,7 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
+        set_direct_transport_metadata(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
         gc_collect(nullptr),
@@ -91,7 +99,6 @@ struct CoreWorkerOptions {
         kill_main(nullptr),
         cancel_async_actor_task(nullptr),
         actor_shutdown_callback(nullptr),
-        is_local_mode(false),
         metrics_agent_port(-1),
         runtime_env_hash(0),
         cluster_id(ClusterID::Nil()),
@@ -127,8 +134,10 @@ struct CoreWorkerOptions {
   std::string driver_name;
   /// Application-language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
-  /// Callback to free GPU object from the in-actor object store.
-  std::function<void(const ObjectID &)> free_actor_object_callback;
+  /// Callback to free RDT object from the in-actor RDT store.
+  FreeActorObjectCallback free_actor_object_callback;
+  /// Callback to set the direct transport metadata for an RDT object.
+  SetDirectTransportMetadata set_direct_transport_metadata;
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations. If the function returns anything but StatusOK,
@@ -165,8 +174,6 @@ struct CoreWorkerOptions {
   std::function<bool(const TaskID &task_id)> cancel_async_actor_task;
   /// Callback to shutdown actor instance before shutdown.
   std::function<void()> actor_shutdown_callback;
-  /// Is local mode being used.
-  bool is_local_mode;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
   /// The port number of a metrics agent that imports metrics from core workers.
@@ -174,12 +181,10 @@ struct CoreWorkerOptions {
   int metrics_agent_port;
   /// The hash of the runtime env for this worker.
   int runtime_env_hash;
-  /// The startup token of the process assigned to it
-  /// during startup via command line arguments.
-  /// This is needed because the actual core worker process
-  /// may not have the same pid as the process the worker pool
-  /// starts (due to shim processes).
-  StartupToken startup_token{0};
+  /// The worker ID assigned by raylet when starting the worker process.
+  /// This is set for non-driver workers started by raylet. For drivers,
+  /// this should be Nil and the worker ID will be computed from the job ID.
+  WorkerID worker_id;
   /// Cluster ID associated with the core worker.
   ClusterID cluster_id;
   /// The function to allocate a new object for the memory store.

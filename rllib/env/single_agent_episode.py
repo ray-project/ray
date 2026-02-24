@@ -456,9 +456,6 @@ class SingleAgentEpisode:
                     f"action_space: {self.action_space}!"
                 )
 
-        # Validate our data.
-        self.validate()
-
         # Step time stats.
         self._last_step_time = time.perf_counter()
         if self._start_time is None:
@@ -583,6 +580,8 @@ class SingleAgentEpisode:
         Returns:
              This `SingleAgentEpisode` object with the converted numpy data.
         """
+        # Check that the episode data is correct
+        self.validate()
 
         self.observations.finalize()
         if len(self) > 0:
@@ -598,7 +597,7 @@ class SingleAgentEpisode:
 
         In order for this to work, both chunks (`self` and `other`) must fit
         together. This is checked by the IDs (must be identical), the time step counters
-        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        (`self.env_t` must be the same as `other.env_t_started`), as well as the
         observations/infos at the concatenation boundaries. Also, `self.is_done` must
         not be True, meaning `self.is_terminated` and `self.is_truncated` are both
         False.
@@ -615,8 +614,9 @@ class SingleAgentEpisode:
         # able to concatenate.
         assert not self.is_done
         # Make sure the timesteps match.
-        assert self.t == other.t_started
-        # Validate `other`.
+        assert self.t == other.t_started, f"{self.t=}, {other.t_started=}"
+        # Validate both this and the other episode
+        self.validate()
         other.validate()
 
         # Make sure, end matches other episode chunk's beginning.

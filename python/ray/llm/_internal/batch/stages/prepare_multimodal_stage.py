@@ -1,9 +1,51 @@
 """Prepare Multimodal Stage"""
 
 import asyncio
+import copyreg
 from typing import Any, AsyncIterator, Dict, List
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+
+
+def _reconstruct_media_with_bytes(cls, media, original_bytes):
+    """Reconstruct MediaWithBytes by setting __dict__ directly.
+
+    This avoids triggering __getattr__ during unpickling, which would cause
+    infinite recursion since vLLM's MediaWithBytes.__getattr__ accesses
+    self.media unconditionally.
+    """
+    obj = object.__new__(cls)
+    obj.__dict__["media"] = media
+    obj.__dict__["original_bytes"] = original_bytes
+    return obj
+
+
+def _register_vllm_pickle_reducers():
+    """Register pickle reducer for vLLM's MediaWithBytes to fix unpickling.
+
+    vLLM's MediaWithBytes has a __getattr__ that delegates to self.media,
+    but this causes infinite recursion during pickle.load() because pickle
+    creates objects via __new__ (not __init__), so self.media isn't set
+    when __getattr__ is first called.
+
+    TODO(seiji): remove when https://github.com/vllm-project/vllm/issues/30818
+    is fixed
+    """
+    try:
+        from vllm.multimodal.base import MediaWithBytes
+    except ImportError:
+        return
+
+    def _reduce(obj):
+        return (
+            _reconstruct_media_with_bytes,
+            (type(obj), obj.media, obj.original_bytes),
+        )
+
+    copyreg.pickle(MediaWithBytes, _reduce)
+
+
+_register_vllm_pickle_reducers()
 
 
 class PrepareMultimodalUDF(StatefulStageUDF):
@@ -88,19 +130,14 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             along with processing metadata.
         """
         try:
-            from vllm.entrypoints.chat_utils import parse_chat_messages_futures
+            from vllm.entrypoints.chat_utils import parse_chat_messages_async
         except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
 
-        async def _get_mm_data(row: Dict[str, Any], conversation, fut, uuid):
-            multimodal_data = await fut
-            return row, conversation, uuid, multimodal_data
-
-        tasks = []
-        for row in batch:
+        async def _process_row(row: Dict[str, Any]):
             # Extract system messages to keep them as strings (not converted to list format)
             # This avoids issues with chat templates that expect string system messages.
             system_messages = []
@@ -113,21 +150,18 @@ class PrepareMultimodalUDF(StatefulStageUDF):
 
             # Users can provide stable IDs for each multimodal item from messages to
             # enable engine to cache and reuse work across requests.
-            conversation, mm_data_future, mm_uuids = parse_chat_messages_futures(
+            conversation, mm_data, mm_uuids = await parse_chat_messages_async(
                 messages_to_parse,
                 self.model_config,
-                None,  # Tokenizer is not used in vLLM's parse_chat_messages_futures
                 content_format=self.chat_template_content_format,
             )
 
             if system_messages:
                 conversation = system_messages + conversation
 
-            tasks.append(
-                asyncio.create_task(
-                    _get_mm_data(row, conversation, mm_data_future, mm_uuids)
-                )
-            )
+            return row, conversation, mm_uuids, mm_data
+
+        tasks = [asyncio.create_task(_process_row(row)) for row in batch]
 
         for task in asyncio.as_completed(tasks):
             row, conversation, uuid, multimodal_data = await task
