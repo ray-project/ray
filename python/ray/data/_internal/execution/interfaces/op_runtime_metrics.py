@@ -403,7 +403,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     )
     task_completion_time_s: float = metric_field(
         default=0,
-        description="Time spent running tasks to completion. This is a sum of all tasks' completion times.",
+        description="Time spent running tasks to completion, as measured by the *driver*. This is a cumulative sum of all tasks' completion times.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    task_worker_completion_time_s: float = metric_field(
+        default=0,
+        description="Time spent running tasks to completion, as measured by the *workers*. This is a cumulative sum of all tasks' completion times.",
         metrics_group=MetricsGroup.TASKS,
     )
     task_scheduling_time_s: float = metric_field(
@@ -1040,8 +1045,12 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_wall_time_s = time.perf_counter() - task_info.start_time
 
         self.task_completion_time_s += task_wall_time_s
-
         self.task_completion_time.observe(task_wall_time_s)
+
+        # NOTE: This metric tracks task's wall-clock time as measured by
+        #       the workers executing the task
+        self.task_worker_completion_time_s += task_exec_stats.task_wall_time_s
+
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_duration(task_wall_time_s)
 
