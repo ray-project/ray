@@ -6,7 +6,7 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
 )
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data.checkpoint.util import (

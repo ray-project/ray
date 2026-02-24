@@ -5,9 +5,9 @@
 
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS main-build
-ARG PYTHON_VERSION
-ARG PYTHON_DEPSET
-ARG CONSTRAINTS_FILE
+ARG PYTHON_VERSION="3.10"
+ARG PYTHON_DEPSET="python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock"
+ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
 
 RUN <<EOF
 #!/bin/bash
@@ -31,6 +31,10 @@ APT_PKGS=(
     gdb
     vim-tiny
     less
+
+    # For HAProxy
+    socat
+    liblua5.3-0
 )
 
 apt-get update
@@ -177,13 +181,8 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-apt-get update -y
-apt-get install -y --no-install-recommends socat liblua5.3-0
-
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 chown -R ray:"$(id -gn ray)" /run/haproxy
-
-rm -rf /var/lib/apt/lists/*
 
 EOF
 

@@ -48,6 +48,9 @@ class BaseBundleQueue:
         """Return the total # of blocks across all bundles."""
         return self._num_blocks
 
+    def num_bundles(self) -> int:
+        return self._num_bundles
+
     def num_rows(self) -> int:
         """Return the total # of rows across all bundles."""
         return self._num_rows
@@ -64,12 +67,12 @@ class BaseBundleQueue:
 
     def __repr__(self) -> str:
         """Return a string representation showing queue metrics."""
-        nbytes = memory_string(self._nbytes)
+        nbytes = memory_string(self.estimate_size_bytes())
         return (
             f"{self.__class__.__name__}("
-            f"num_bundles={self._num_bundles}, "
-            f"num_blocks={self._num_blocks}, "
-            f"num_rows={self._num_rows}, "
+            f"num_bundles={len(self)}, "
+            f"num_blocks={self.num_blocks()}, "
+            f"num_rows={self.num_rows()}, "
             f"nbytes={nbytes})"
         )
 

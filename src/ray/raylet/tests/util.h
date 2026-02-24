@@ -19,7 +19,11 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
+#include "ray/util/fake_process.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -32,7 +36,7 @@ class MockWorker : public WorkerInterface {
         port_(port),
         runtime_env_hash_(runtime_env_hash),
         job_id_(JobID::FromInt(859)),
-        proc_(Process::CreateNewDummy()) {}
+        proc_(std::make_unique<FakeProcess>()) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -95,12 +99,14 @@ class MockWorker : public WorkerInterface {
   void MarkUnblocked() override { blocked_ = false; }
   bool IsBlocked() const override { return blocked_; }
 
-  Process GetProcess() const override { return proc_; }
-  void SetProcess(Process proc) override { proc_ = std::move(proc); }
+  const ProcessInterface &GetProcess() const override { return *proc_; }
+  void SetProcess(std::unique_ptr<ProcessInterface> proc) override {
+    proc_ = std::move(proc);
+  }
 
-  Language GetLanguage() const override {
+  rpc::Language GetLanguage() const override {
     RAY_CHECK(false) << "Method unused";
-    return Language::PYTHON;
+    return rpc::Language::PYTHON;
   }
 
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
@@ -192,7 +198,7 @@ class MockWorker : public WorkerInterface {
   LeaseID lease_id_;
   JobID job_id_;
   ActorID root_detached_actor_id_;
-  Process proc_;
+  std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
 };

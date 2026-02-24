@@ -11,10 +11,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import (
-    MAX_SAFE_BLOCK_SIZE_FACTOR,
-    DataContext,
-)
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 
 
 def test_average_max_uss_per_task():
@@ -27,6 +24,7 @@ def test_average_max_uss_per_task():
         stats = BlockExecStats()
         stats.max_uss_bytes = uss_bytes
         stats.wall_time_s = 0
+        stats.block_ser_time_s = 0
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=0,
@@ -87,19 +85,28 @@ def test_task_completion_time_histogram():
 
 
 def test_block_completion_time_histogram():
-    """Test block completion time histogram bucket assignment and counting."""
+    """Test block completion time histogram bucket assignment and counting.
+
+    Block completion time = (cum_block_gen_time_s + cum_block_ser_time_s) / num_outputs
+    """
     metrics = OpRuntimeMetrics(MagicMock())
 
     # Test different block generation scenarios
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
+    # Each test case: (num_blocks, gen_time, ser_time, expected_bucket)
+    # Per-block time = (gen_time + ser_time) / num_blocks
     test_cases = [
-        (1, 0.1, 0),  # 1 block, 0.1s total time -> 0.1s per block -> bucket 0 (0.1)
-        (2, 0.5, 1),  # 2 blocks, 0.5s total time -> 0.25s per block -> bucket 1 (0.25)
-        (1, 0.6, 3),  # 1 block, 0.6s total time -> 0.6s per block -> bucket 3 (1.0)
-        (3, 1.5, 2),  # 3 blocks, 1.5s total time -> 0.5s per block -> bucket 2 (0.5)
+        # 1 block, 0.08s gen + 0.02s ser = 0.1s total -> 0.1s per block -> bucket 0 (0.1)
+        (1, 0.08, 0.02, 0),
+        # 2 blocks, 0.4s gen + 0.1s ser = 0.5s total -> 0.25s per block -> bucket 1 (0.25)
+        (2, 0.4, 0.1, 1),
+        # 1 block, 0.5s gen + 0.1s ser = 0.6s total -> 0.6s per block -> bucket 3 (1.0)
+        (1, 0.5, 0.1, 3),
+        # 3 blocks, 1.2s gen + 0.3s ser = 1.5s total -> 0.5s per block -> bucket 2 (0.5)
+        (3, 1.2, 0.3, 2),
     ]
 
-    for i, (num_blocks, total_time, expected_bucket) in enumerate(test_cases):
+    for i, (num_blocks, gen_time, ser_time, expected_bucket) in enumerate(test_cases):
         # Create input bundle
         input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
@@ -108,7 +115,8 @@ def test_block_completion_time_histogram():
 
         # Manually set the task info to simulate the block generation
         metrics._running_tasks[i].num_outputs = num_blocks
-        metrics._running_tasks[i].cum_block_gen_time = total_time
+        metrics._running_tasks[i].cum_block_gen_time_s = gen_time
+        metrics._running_tasks[i].cum_block_ser_time_s = ser_time
 
         # Complete the task
         metrics.on_task_finished(i, None)  # None means no exception
@@ -122,6 +130,49 @@ def test_block_completion_time_histogram():
         metrics.block_completion_time._bucket_counts[expected_bucket] = 0
 
 
+def test_task_completion_time_excl_backpressure():
+    """Test that task_completion_time_excl_backpressure_s includes both
+    block generation time and serialization time.
+
+    This metric is critical for productivity calculation in resource allocators
+    as it represents the actual work time excluding output backpressure delays.
+    """
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+
+    metrics = OpRuntimeMetrics(op)
+
+    # Submit and complete multiple tasks with different gen/ser times
+    test_cases = [
+        # (gen_time, ser_time, num_outputs)
+        (0.5, 0.1, 2),  # Task 0: 0.5s gen + 0.1s ser = 0.6s
+        (0.3, 0.05, 1),  # Task 1: 0.3s gen + 0.05s ser = 0.35s
+        (0.8, 0.2, 3),  # Task 2: 0.8s gen + 0.2s ser = 1.0s
+    ]
+
+    expected_total = 0
+    for i, (gen_time, ser_time, num_outputs) in enumerate(test_cases):
+        input_bundle = RefBundle([], owns_blocks=False, schema=None)
+        metrics.on_task_submitted(i, input_bundle)
+
+        # Set task info
+        metrics._running_tasks[i].num_outputs = num_outputs
+        metrics._running_tasks[i].cum_block_gen_time_s = gen_time
+        metrics._running_tasks[i].cum_block_ser_time_s = ser_time
+
+        metrics.on_task_finished(i, None)
+        expected_total += gen_time + ser_time
+
+    assert metrics.task_completion_time_excl_backpressure_s == pytest.approx(
+        expected_total
+    )
+
+    expected_avg = expected_total / len(test_cases)
+    assert metrics.average_task_completion_excl_backpressure_time_s == pytest.approx(
+        expected_avg
+    )
+
+
 def test_block_size_bytes_histogram():
     """Test block size bytes histogram bucket assignment and counting."""
     metrics = OpRuntimeMetrics(MagicMock())
@@ -131,6 +182,7 @@ def test_block_size_bytes_histogram():
         stats = BlockExecStats()
         stats.max_uss_bytes = 0
         stats.wall_time_s = 0
+        stats.block_ser_time_s = 0
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=size_bytes,
@@ -178,6 +230,7 @@ def test_block_size_rows_histogram():
         stats = BlockExecStats()
         stats.max_uss_bytes = 0
         stats.wall_time_s = 0
+        stats.block_ser_time_s = 0
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
@@ -296,6 +349,7 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
 @pytest.mark.parametrize(
     "metrics_fixture,test_property,expected_calculator",
     [
+        # When no sample is available but target_max_block_size is set, uses fallback
         (
             "metrics_config_no_sample_with_target",
             "obj_store_mem_max_pending_output_per_task",
@@ -305,6 +359,7 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
                 * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
             ),
         ),
+        # When sample is available, uses average_bytes_per_output
         (
             "metrics_config_with_sample",
             "obj_store_mem_max_pending_output_per_task",
@@ -313,6 +368,7 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
                 * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
             ),
         ),
+        # When no sample is available but target_max_block_size is set, uses fallback
         (
             "metrics_config_pending_outputs_no_sample",
             "obj_store_mem_pending_task_outputs",

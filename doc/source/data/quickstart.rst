@@ -61,7 +61,7 @@ across your cluster for better performance.
     def transform_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         vec_a = batch["petal length (cm)"]
         vec_b = batch["petal width (cm)"]
-        batch["petal area (cm^2)"] = vec_a * vec_b
+        batch["petal area (cm^2)"] = np.round(vec_a * vec_b, 2)
         return batch
 
     # Apply the transformation to our dataset
@@ -74,18 +74,25 @@ across your cluster for better performance.
 
 .. testoutput::
 
-    MaterializedDataset(
-       num_blocks=...,
-       num_rows=150,
-       schema={
-          sepal length (cm): double,
-          sepal width (cm): double,
-          petal length (cm): double,
-          petal width (cm): double,
-          target: int64,
-          petal area (cm^2): double
-       }
-    )
+    shape: (150, 6)
+    ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────┬───────────────────╮
+    │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target ┆ petal area (cm^2) │
+    │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    ┆ ---               │
+    │ double            ┆ double           ┆ double            ┆ double           ┆ int64  ┆ double            │
+    ╞═══════════════════╪══════════════════╪═══════════════════╪══════════════════╪════════╪═══════════════════╡
+    │ 5.1               ┆ 3.5              ┆ 1.4               ┆ 0.2              ┆ 0      ┆ 0.28              │
+    │ 4.9               ┆ 3.0              ┆ 1.4               ┆ 0.2              ┆ 0      ┆ 0.28              │
+    │ 4.7               ┆ 3.2              ┆ 1.3               ┆ 0.2              ┆ 0      ┆ 0.26              │
+    │ 4.6               ┆ 3.1              ┆ 1.5               ┆ 0.2              ┆ 0      ┆ 0.3               │
+    │ 5.0               ┆ 3.6              ┆ 1.4               ┆ 0.2              ┆ 0      ┆ 0.28              │
+    │ …                 ┆ …                ┆ …                 ┆ …                ┆ …      ┆ …                 │
+    │ 6.7               ┆ 3.0              ┆ 5.2               ┆ 2.3              ┆ 2      ┆ 11.96             │
+    │ 6.3               ┆ 2.5              ┆ 5.0               ┆ 1.9              ┆ 2      ┆ 9.5               │
+    │ 6.5               ┆ 3.0              ┆ 5.2               ┆ 2.0              ┆ 2      ┆ 10.4              │
+    │ 6.2               ┆ 3.4              ┆ 5.4               ┆ 2.3              ┆ 2      ┆ 12.42             │
+    │ 5.9               ┆ 3.0              ┆ 5.1               ┆ 1.8              ┆ 2      ┆ 9.18              │
+    ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────┴───────────────────╯
+    (Showing 10 of 150 rows)
 
 To explore more transformation capabilities, read :ref:`Transforming data <transforming_data>`.
 

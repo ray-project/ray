@@ -59,6 +59,9 @@ def get_span_list():
     return span_list
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Temp directory cleanup fails on Windows"
+)
 def test_deployment_remote_calls_with_tracing(ray_serve_with_tracing):
     serve.start()
 

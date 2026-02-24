@@ -1,12 +1,16 @@
-# __validate_fn_simple_start__
+# __validation_fn_simple_start__
 
 import os
 import torch
 
 import ray.train
+import ray.data
+
+# Define Ray Data validation dataset outside validation function because it is not json serializable
+validation_dataset = ...
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
+def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Load the checkpoint
     model = ...
     with checkpoint.as_directory() as checkpoint_dir:
@@ -16,18 +20,17 @@ def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
 
     # Perform validation on the data
     total_accuracy = 0
-    dataset = config["dataset"]
     with torch.no_grad():
-        for batch in dataset.iter_torch_batches(batch_size=128):
+        for batch in validation_dataset.iter_torch_batches(batch_size=128):
             images, labels = batch["image"], batch["label"]
             outputs = model(images)
             total_accuracy += (outputs.argmax(1) == labels).sum().item()
-    return {"score": total_accuracy / len(dataset)}
+    return {"score": total_accuracy / len(validation_dataset)}
 
 
-# __validate_fn_simple_end__
+# __validation_fn_simple_end__
 
-# __validate_fn_torch_trainer_start__
+# __validation_fn_torch_trainer_start__
 import torchmetrics
 from torch.nn import CrossEntropyLoss
 
@@ -66,7 +69,7 @@ def eval_only_train_fn(config_dict: dict) -> None:
     )
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
+def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: int) -> dict:
     trainer = ray.train.torch.TorchTrainer(
         eval_only_train_fn,
         train_loop_config={"checkpoint": checkpoint},
@@ -75,18 +78,18 @@ def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
         ),
         # Name validation run to easily associate it with training run
         run_config=ray.train.RunConfig(
-            name=f"{config['train_run_name']}_validation_epoch_{config['epoch']}"
+            name=f"{train_run_name}_validation_epoch_{epoch}"
         ),
         # User weaker GPUs for validation
-        datasets={"validation": config["dataset"]},
+        datasets={"validation": validation_dataset},
     )
     result = trainer.fit()
     return result.metrics
 
 
-# __validate_fn_torch_trainer_end__
+# __validation_fn_torch_trainer_end__
 
-# __validate_fn_map_batches_start__
+# __validation_fn_map_batches_start__
 
 
 class Predictor:
@@ -104,10 +107,10 @@ class Predictor:
         return {"res": (pred.argmax(1) == label).cpu().numpy()}
 
 
-def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
+def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     # Set name to avoid confusion; default name is "Dataset"
-    config["dataset"].set_name("validation")
-    eval_res = config["dataset"].map_batches(
+    validation_dataset.set_name("validation")
+    eval_res = validation_dataset.map_batches(
         Predictor,
         batch_size=128,
         num_gpus=1,
@@ -120,12 +123,12 @@ def validate_fn(checkpoint: ray.train.Checkpoint, config: dict) -> dict:
     }
 
 
-# __validate_fn_map_batches_end__
+# __validation_fn_map_batches_end__
 
-# __validate_fn_report_start__
+# __validation_fn_report_start__
 import tempfile
 
-import ray.data
+from ray.train import ValidationConfig, ValidationTaskConfig
 
 
 def train_func(config: dict) -> None:
@@ -146,12 +149,10 @@ def train_func(config: dict) -> None:
                 training_metrics,
                 checkpoint=ray.train.Checkpoint.from_directory(local_checkpoint_dir),
                 checkpoint_upload_mode=ray.train.CheckpointUploadMode.ASYNC,
-                validate_fn=validate_fn,
-                validate_config={
-                    "dataset": config["validation_dataset"],
+                validation=ValidationTaskConfig(fn_kwargs={
                     "train_run_name": ray.train.get_context().get_experiment_name(),
                     "epoch": epoch,
-                },
+                }),
             )
         else:
             ray.train.report({}, None)
@@ -159,13 +160,11 @@ def train_func(config: dict) -> None:
 
 def run_trainer() -> ray.train.Result:
     train_dataset = ray.data.read_parquet(...)
-    validation_dataset = ray.data.read_parquet(...)
     trainer = ray.train.torch.TorchTrainer(
         train_func,
+        validation_config=ValidationConfig(fn=validation_fn),
         # Pass training dataset in datasets arg to split it across training workers
         datasets={"train": train_dataset},
-        # Pass validation dataset in train_loop_config so validate_fn can choose how to use it later
-        train_loop_config={"validation_dataset": validation_dataset},
         scaling_config=ray.train.ScalingConfig(
             num_workers=2,
             use_gpu=True,
@@ -176,4 +175,4 @@ def run_trainer() -> ray.train.Result:
     return trainer.fit()
 
 
-# __validate_fn_report_end__
+# __validation_fn_report_end__

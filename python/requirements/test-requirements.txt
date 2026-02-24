@@ -31,8 +31,9 @@ jsonpatch==1.32
 kubernetes==24.2.0
 llvmlite==0.42.0
 lxml>=6.0.2
-moto[s3,server]==4.2.12
+moto[s3,server]==5.1.18
 mypy==1.7.0
+pyright==1.1.408
 numba==0.59.1
 openpyxl==3.0.10
 opentelemetry-api
@@ -124,7 +125,7 @@ jsonschema>=4.23.0
 attrs>=22.2.0
 openapi-schema-validator>=0.6.3
 wheel>=0.45.1
-aiohttp>=3.11.16
+aiohttp>=3.13.3
 cryptography>=44.0.3
 pyopenssl>=25.0.0
 starlette>=0.40.0

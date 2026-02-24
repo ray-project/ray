@@ -2,6 +2,7 @@ import abc
 import typing
 from typing import List, Optional
 
+from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     PhysicalOperator,
@@ -131,8 +132,8 @@ class AllToAllOperator(
         self._output_rows = 0
         self._sub_progress_bar_names = sub_progress_bar_names
         self._sub_progress_bar_dict = None
-        self._input_buffer: List[RefBundle] = []
-        self._output_buffer: List[RefBundle] = []
+        self._input_buffer: FIFOBundleQueue = FIFOBundleQueue()
+        self._output_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], data_context, target_max_block_size_override)
 
@@ -153,8 +154,8 @@ class AllToAllOperator(
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
         assert input_index == 0, input_index
-        self._input_buffer.append(refs)
-        self._metrics.on_input_queued(refs)
+        self._input_buffer.add(refs)
+        self._metrics.on_input_queued(refs, input_index=0)
 
     def internal_input_queue_num_blocks(self) -> int:
         return sum(len(bundle.block_refs) for bundle in self._input_buffer)
@@ -170,14 +171,14 @@ class AllToAllOperator(
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue."""
-        while self._input_buffer:
-            bundle = self._input_buffer.pop()
-            self._metrics.on_input_dequeued(bundle)
+        while self._input_buffer.has_next():
+            bundle = self._input_buffer.get_next()
+            self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
-        while self._output_buffer:
-            bundle = self._output_buffer.pop()
+        while self._output_buffer.has_next():
+            bundle = self._output_buffer.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def all_inputs_done(self) -> None:
@@ -189,11 +190,12 @@ class AllToAllOperator(
         )
         # NOTE: We don't account object store memory use from intermediate `bulk_fn`
         # outputs (e.g., map outputs for map-reduce).
-        self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
+        output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
+        self._output_buffer = FIFOBundleQueue(output_buffer)
 
-        while self._input_buffer:
-            refs = self._input_buffer.pop()
-            self._metrics.on_input_dequeued(refs)
+        while self._input_buffer.has_next():
+            refs = self._input_buffer.get_next()
+            self._metrics.on_input_dequeued(refs, input_index=0)
 
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)
@@ -206,7 +208,7 @@ class AllToAllOperator(
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        bundle = self._output_buffer.pop(0)
+        bundle = self._output_buffer.get_next()
         self._metrics.on_output_dequeued(bundle)
         self._output_rows += bundle.num_rows()
         return bundle
@@ -229,6 +231,10 @@ class AllToAllOperator(
         self._sub_progress_bar_dict[name] = pg
 
     def supports_fusion(self):
+        return True
+
+    def throttling_disabled(self) -> bool:
+        # Disable resource allocation and throttling for the operator
         return True
 
 
