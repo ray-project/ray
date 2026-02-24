@@ -453,15 +453,6 @@ def deployment(
             "gang_scheduling_config.gang_placement_strategy instead."
         )
     if num_replicas == "auto":
-        if (
-            gang_scheduling_config is not DEFAULT.VALUE
-            and gang_scheduling_config is not None
-        ):
-            raise ValueError(
-                'num_replicas="auto" is not allowed when '
-                "gang_scheduling_config is provided. Please set num_replicas "
-                "to a fixed multiple of gang_size."
-            )
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
             max_ongoing_requests, autoscaling_config
