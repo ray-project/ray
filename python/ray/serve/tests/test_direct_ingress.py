@@ -735,6 +735,8 @@ def test_get_serve_instance_details(_skip_if_ff_not_enabled, serve_instance):
     assert len(target_groups) == 2
     assert len(target_groups[0].targets) == 4
     assert len(target_groups[1].targets) == 4
+    assert target_groups[0].fallback_target is None
+    assert target_groups[1].fallback_target is None
 
 
 def test_only_ingress_deployment_replicas_are_used_for_target_groups(
@@ -773,6 +775,8 @@ def test_only_ingress_deployment_replicas_are_used_for_target_groups(
     assert len(target_groups) == 2
     assert len(target_groups[0].targets) == 3
     assert len(target_groups[1].targets) == 3
+    assert target_groups[0].fallback_target is None
+    assert target_groups[1].fallback_target is None
 
     # test that the target groups are unique and contain the correct ports for ingress deployment
     http_ports = get_http_ports()
@@ -2397,6 +2401,7 @@ def test_get_serve_instance_details_json_serializable(
                     "route_prefix": "/",
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
+                    "fallback_target": None,
                 },
                 {
                     "targets": [
@@ -2412,6 +2417,7 @@ def test_get_serve_instance_details_json_serializable(
                     "route_prefix": "/",
                     "protocol": "gRPC",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
+                    "fallback_target": None,
                 },
             ],
         }

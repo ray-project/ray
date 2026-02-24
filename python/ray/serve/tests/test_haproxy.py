@@ -469,7 +469,11 @@ def test_haproxy_get_target_groups(shutdown_ray):
     def has_n_targets(route_prefix: str, n: int):
         target_groups = ray.get(proxy_actor.get_target_groups.remote())
         for tg in target_groups:
-            if tg.route_prefix == route_prefix and len(tg.targets) == n:
+            if (
+                tg.route_prefix == route_prefix
+                and len(tg.targets) == n
+                and tg.fallback_target is not None
+            ):
                 return True
         return False
 
