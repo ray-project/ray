@@ -2430,7 +2430,7 @@ class Dataset:
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        ds, dataset_length = self._get_dataset_length_for_split(self)
+        ds, dataset_length = self._try_count_or_materialize(self)
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
             int(dataset_length * proportion) for proportion in cumulative_proportions
@@ -2517,11 +2517,11 @@ class Dataset:
             self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
-            ds, ds_length = self._get_dataset_length_for_split(ds)
+            ds, ds_length = self._try_count_or_materialize(ds)
             ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
             return ds.split_at_indices([ds_length - test_size])
 
-    def _get_dataset_length_for_split(self, ds: "Dataset") -> Tuple["Dataset", int]:
+    def _try_count_or_materialize(self, ds: "Dataset") -> Tuple["Dataset", int]:
         dataset_length = ds._meta_count()
         if dataset_length is None:
             # Materialize once so split_at_indices() can reuse the computed snapshot.
