@@ -19,10 +19,10 @@ pre_commit() {
     python-no-log-warn
     ruff
     check-added-large-files
-    # check-ast
+    check-ast
     check-toml
     black
-    # prettier
+    prettier
     mypy
     rst-directive-colons
     rst-inline-touching-normal

@@ -3184,9 +3184,9 @@ class DeploymentState:
                 gang_id_by_replica = {}
                 for replica in self._replicas.get():
                     if replica.gang_context is not None:
-                        gang_id_by_replica[replica.replica_id] = (
-                            replica.gang_context.gang_id
-                        )
+                        gang_id_by_replica[
+                            replica.replica_id
+                        ] = replica.gang_context.gang_id
 
             if to_remove > 0:
                 removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"

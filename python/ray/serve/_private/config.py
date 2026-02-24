@@ -261,7 +261,13 @@ class DeploymentConfig(BaseModel):
         if v is None:
             return v
         num_replicas = values.get("num_replicas")
-        if num_replicas is not None and num_replicas % v.gang_size != 0:
+        autoscaling_config = values.get("autoscaling_config")
+        # Skip the num_replicas alignment check when autoscaling is enabled
+        if (
+            autoscaling_config is None
+            and num_replicas is not None
+            and num_replicas % v.gang_size != 0
+        ):
             raise ValueError(
                 f"num_replicas ({num_replicas}) must be a multiple of "
                 f"gang_size ({v.gang_size})."

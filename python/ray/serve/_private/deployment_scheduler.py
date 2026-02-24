@@ -899,13 +899,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         # Handle downscales
         deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
-            deployment_to_replicas_to_stop[downscale.deployment_id] = (
-                self._get_replicas_to_stop(
-                    downscale.deployment_id,
-                    downscale.num_to_stop,
-                    gang_id_by_replica=downscale.gang_id_by_replica,
-                    gang_size=downscale.gang_size,
-                )
+            deployment_to_replicas_to_stop[
+                downscale.deployment_id
+            ] = self._get_replicas_to_stop(
+                downscale.deployment_id,
+                downscale.num_to_stop,
+                gang_id_by_replica=downscale.gang_id_by_replica,
+                gang_size=downscale.gang_size,
             )
 
         return deployment_to_replicas_to_stop
@@ -1108,9 +1108,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         # Reverse once so we have newest → oldest, then bucket by node.
         ordered_running_replicas = list(self._running_replicas[deployment_id].items())
         ordered_running_replicas.reverse()
-        ordered_running_replicas_of_target_deployment: Dict[str, List[ReplicaID]] = (
-            defaultdict(list)
-        )
+        ordered_running_replicas_of_target_deployment: Dict[
+            str, List[ReplicaID]
+        ] = defaultdict(list)
         for replica_id, replica_node_id in ordered_running_replicas:
             ordered_running_replicas_of_target_deployment[replica_node_id].append(
                 replica_id

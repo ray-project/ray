@@ -11,7 +11,11 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.test_utils import check_apps_running
+from ray.serve._private.test_utils import (
+    check_apps_running,
+    check_num_replicas_eq,
+    check_num_replicas_gte,
+)
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
 from ray.tests.conftest import *  # noqa
@@ -1274,6 +1278,93 @@ class TestGangScaling:
         assert smaller.issubset(larger)
 
         serve.delete("app")
+        serve.shutdown()
+
+    def test_gang_autoscaling(self, ray_cluster):
+        """Verifies that autoscaling with gang scheduling scales in complete gangs."""
+        GANG_SIZE = 2
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            num_replicas="auto",
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+            autoscaling_config={
+                "min_replicas": 2,
+                "max_replicas": 8,
+                # Lower delays/windows so the test observes scaling within seconds
+                "upscale_delay_s": 0.1,
+                "downscale_delay_s": 0.1,
+                "look_back_period_s": 0.1,
+                "target_ongoing_requests": 1,
+            },
+            max_ongoing_requests=20,
+        )
+        class GangAutoscale:
+            async def __call__(self):
+                await signal.wait.remote()
+                return os.getpid()
+
+        handle = serve.run(GangAutoscale.bind(), name="gang_autoscale_app")
+        wait_for_condition(check_apps_running, apps=["gang_autoscale_app"])
+
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscale",
+            target=2,
+            app_name="gang_autoscale_app",
+        )
+
+        # Send enough requests to trigger upscaling
+        results = [handle.remote() for _ in range(20)]
+
+        # Wait for scale-up to 8 replicas (4 complete gangs).
+        wait_for_condition(
+            check_num_replicas_gte,
+            name="GangAutoscale",
+            target=8,
+            app_name="gang_autoscale_app",
+            timeout=60,
+        )
+
+        # Replica count should always be a multiple of gang_size
+        deployment = (
+            serve.status()
+            .applications["gang_autoscale_app"]
+            .deployments["GangAutoscale"]
+        )
+        running = deployment.replica_states.get("RUNNING")
+        assert running % GANG_SIZE == 0
+
+        # Release all requests to allow traffic to drain
+        signal.send.remote()
+        for res in results:
+            res.result()
+
+        # As the queue is drained, we should scale back down
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscale",
+            target=2,
+            app_name="gang_autoscale_app",
+            timeout=60,
+        )
+
+        deployment = (
+            serve.status()
+            .applications["gang_autoscale_app"]
+            .deployments["GangAutoscale"]
+        )
+        running = deployment.replica_states.get("RUNNING")
+        assert running % GANG_SIZE == 0
+
+        serve.delete("gang_autoscale_app")
         serve.shutdown()
 
 

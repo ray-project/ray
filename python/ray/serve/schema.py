@@ -484,11 +484,17 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         num_replicas = values.get("num_replicas", None)
 
         if num_replicas == "auto":
-            raise ValueError(
-                'num_replicas="auto" is not allowed when '
-                "gang_scheduling_config is provided. Please set num_replicas "
-                "to a fixed multiple of gang_size."
-            )
+            # Validate autoscaling bounds are multiples of gang_size
+            autoscaling_config = values.get("autoscaling_config", None)
+            if autoscaling_config not in [None, DEFAULT.VALUE]:
+                for field in ["min_replicas", "max_replicas", "initial_replicas"]:
+                    val = autoscaling_config.get(field)
+                    if val is not None and val % gang_config.gang_size != 0:
+                        raise ValueError(
+                            f"autoscaling_config.{field} ({val}) must be a "
+                            f"multiple of gang_size ({gang_config.gang_size})."
+                        )
+            return values
 
         if isinstance(num_replicas, int) and num_replicas % gang_config.gang_size != 0:
             raise ValueError(
