@@ -1,6 +1,6 @@
+import pyarrow.compute as pc
 import ray
 from ray.data.aggregate import Count
-from ray.data.expressions import col
 from common import parse_tpch_args, load_table, run_tpch_benchmark
 
 
@@ -31,7 +31,12 @@ def main(args):
 
         # Filter out orders whose comment matches '%<word1>%<word2>%' before the join
         # o_comment NOT LIKE '%special%requests%'
-        orders = orders.filter(expr=~col("o_comment").str.match_regex(f"{word1}.*{word2}"))
+        orders = orders.map_batches(
+            lambda batch: batch.filter(
+                pc.invert(pc.match_substring_regex(batch["o_comment"], f"{word1}.*{word2}"))
+            ),
+            batch_format="pyarrow",
+        )
 
         # Left outer join: customer LEFT OUTER JOIN orders ON c_custkey = o_custkey
         # Customers with no matching orders will have null o_orderkey
