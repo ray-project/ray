@@ -114,8 +114,8 @@ class _GetBaseStructFromSpace:
     However, if the cache blows up for some reason, we don't want to build up memory usage.
 
     We cache by object id of the top-level space object to speed up lookups.
-    The limitation of this is that we assume that the space object is not modified
-    in a relevant way after we first process it.
+    The limitation of this is that we assume that the space object is not mutated.
+    As a weak guard, we patch the `__setitem__` method of seen Dict spaces to raise an error when mutated.
     """
 
     _CACHE_MAX_SIZE = 1000
@@ -173,8 +173,17 @@ class _GetBaseStructFromSpace:
     def _compute(space):
         def _helper_struct(space_):
             if isinstance(space_, gym.spaces.Tuple):
+                # Tuples are immutable, no need to patch
                 return tuple(_helper_struct(s) for s in space_)
             elif isinstance(space_, gym.spaces.Dict):
+                # On first call, patch the `__setitem__` method to prevent later mutations
+                def _err_setitem(self, key, value):
+                    raise RuntimeError(
+                        "Attempt to mutate gym.spaces.Dict's keys (spaces.__setitem__) after "
+                        "calling get_base_struct_from_space. Immutability of keys required!"
+                    )
+
+                space_.spaces.__setitem__ = _err_setitem
                 return {k: _helper_struct(space_[k]) for k in space_.spaces}
             else:
                 return space_
