@@ -14,7 +14,7 @@ public enum RayServeMetrics {
       "serve_router_num_queued_requests",
       "The current number of queries to this deployment waiting to be assigned to a replica."),
 
-  // Deprecated: Remove in Ray 3.0.
+  // Deprecated: Will be removed in Ray 3.0.
   SERVE_DEPLOYMENT_QUEUED_QUERIES_DEPRECATED(
       "serve_deployment_queued_queries",
       "(Deprecated, use serve_router_num_queued_requests) The current number of queries to this deployment waiting to be assigned to a replica."),
