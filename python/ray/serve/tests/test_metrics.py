@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
 from ray.serve._private.test_utils import (
+    PROMETHEUS_METRICS_TIMEOUT,
     TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
     get_application_url,
@@ -40,8 +41,6 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-
-METRICS_TIMEOUT = 5
 
 
 def extract_tags(line: str) -> Dict[str, str]:
@@ -76,7 +75,7 @@ def check_sum_metric_eq(
     metrics = fetch_prometheus_metric_timeseries(
         [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
         timeseries,
-        timeout=METRICS_TIMEOUT,
+        timeout=PROMETHEUS_METRICS_TIMEOUT,
     )
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)

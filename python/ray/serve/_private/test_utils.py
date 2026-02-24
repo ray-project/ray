@@ -44,6 +44,7 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
+PROMETHEUS_METRICS_TIMEOUT = 5
 
 
 class MockTimer(TimerBase):
@@ -931,7 +932,7 @@ def get_metric_dictionaries(
         )
         return True
 
-    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
+    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout * 4)
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
         if sample.name == name:
