@@ -183,7 +183,11 @@ def train_fn(config):
 
 
 # __lightning_save_example_start__
-import pytorch_lightning as pl
+# Support both Lightning 2.x (`lightning.pytorch`) and 1.x (`pytorch_lightning`).
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
 
 from ray import train
 from ray.train.lightning import RayTrainReportCallback
@@ -229,7 +233,11 @@ ray_trainer = TorchTrainer(
 import os
 from tempfile import TemporaryDirectory
 
-from pytorch_lightning.callbacks import Callback
+# Support both Lightning 2.x (`lightning.pytorch`) and 1.x (`pytorch_lightning`).
+try:
+    from lightning.pytorch.callbacks import Callback
+except ModuleNotFoundError:
+    from pytorch_lightning.callbacks import Callback
 
 import ray
 import ray.train
