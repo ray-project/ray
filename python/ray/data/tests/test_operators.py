@@ -15,6 +15,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.progress.base_progress import NoopSubProgressBar
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -215,6 +216,31 @@ def test_input_data_buffer_does_not_free_inputs():
     # `InputDataBuffer` should still hold a reference to the input block even after
     # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
+
+
+def test_apply_transform_dag_consistency():
+    a = Operator("A", [])
+    b = Operator("B", [])
+    c = Operator("C", [a, b])
+
+    def transform_b(op: Operator) -> Operator:
+        """Transform only operator B, leaving A unchanged."""
+        if op.name == "B":
+            return Operator("Transformed B", op.input_dependencies)
+        return op
+
+    # This should create the DAG:
+    #               A --|
+    #                   |--> C
+    #   B transformed --|
+    c_transformed = c._apply_transform(transform_b)
+
+    assert c_transformed.input_dependencies[0] is a
+    assert c_transformed.input_dependencies[0].name == "A"
+
+    assert c_transformed.name == "C"
+    assert c_transformed.input_dependencies[0].output_dependencies[0].name == "C"
+    assert c_transformed is c_transformed.input_dependencies[0].output_dependencies[0]
 
 
 if __name__ == "__main__":
