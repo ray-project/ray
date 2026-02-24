@@ -68,6 +68,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agents: OrderedDict = OrderedDict()
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
+        self.get_xfer_descs_cost: List[float] = []
+        self.ser_cost_map: List[float] = []
+        self.deser_cost_map: List[float] = []
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -126,6 +129,9 @@ class NixlTensorTransport(TensorTransportManager):
             )
         )
 
+    ser_cost_map = []
+    deser_cost_map = []
+
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
@@ -161,8 +167,12 @@ class NixlTensorTransport(TensorTransportManager):
 
                 nixl_agent = self.get_nixl_agent()
                 self._add_tensor_descs(gpu_object)
+                xfer_start = time.time()
                 xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
+                self.get_xfer_descs_cost.append(time.time() - xfer_start)
+                ser_start = time.time()
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
+                self.ser_cost_map.append(time.time() - ser_start)
                 agent_meta = nixl_agent.get_agent_metadata()
                 agent_name = nixl_agent.name
                 agent_meta_version = self._nixl_agent_meta_version
@@ -223,7 +233,9 @@ class NixlTensorTransport(TensorTransportManager):
         xfer_handle = None
         try:
             nixl_agent = self.get_nixl_agent()
+            deserialize_start = time.time()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
+            self.deser_cost_map.append(time.time() - deserialize_start)
             # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
             self._add_tensor_descs(tensors)
             local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
