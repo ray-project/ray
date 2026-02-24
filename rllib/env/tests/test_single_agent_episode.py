@@ -94,7 +94,7 @@ class TestSingleAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.t_started == 0)
         self.assertTrue(episode.t == 90)
         self.assertTrue(len(episode.rewards) == 90)
-        self.assertTrue(len(episode.rewards.data) == 100)
+        self.assertTrue(episode.rewards.len_incl_lookback() == 100)
 
         # Build the same episode, but with a 10 ts lookback buffer AND a specific
         # `t_started`.
@@ -106,7 +106,7 @@ class TestSingleAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.t_started == 50)
         self.assertTrue(episode.t == 140)
         self.assertTrue(len(episode.rewards) == 90)
-        self.assertTrue(len(episode.rewards.data) == 100)
+        self.assertTrue(episode.rewards.len_incl_lookback() == 100)
 
     def test_add_env_reset(self):
         """Tests adding initial observations and infos.

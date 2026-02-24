@@ -5,6 +5,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from gymnasium.utils.env_checker import data_equivalence
 
+from ray.rllib.env.utils.lookback_buffer_base import BaseLookbackBuffer
 from ray.rllib.utils.numpy import LARGE_INTEGER, one_hot, one_hot_multidiscrete
 from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
@@ -16,7 +17,7 @@ from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class InfiniteLookbackBuffer:
+class InfiniteLookbackBuffer(BaseLookbackBuffer):
     def __init__(
         self,
         data: Optional[Union[List, np.ndarray]] = None,
