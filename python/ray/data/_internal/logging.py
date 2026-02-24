@@ -146,6 +146,11 @@ class SessionFileHandler(logging.Handler):
             self._handler.setFormatter(fmt)
         self._formatter = fmt
 
+    def close(self) -> None:
+        if self._handler is not None:
+            self._handler.close()
+        super().close()
+
     def _try_create_handler(self):
         assert self._handler is None
 

@@ -116,22 +116,18 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
     assert logged_msg == "ham"
 
 
-def test_file_handler_uses_utf8_on_windows(tmp_path, tmp_logger):
-    original_os_name = os.name
-    try:
-        os.name = "nt"
-        handler = SessionFileHandler(
-            "ray-data.log", get_log_directory=lambda: str(tmp_path)
-        )
+def test_file_handler_uses_utf8_on_windows(monkeypatch, tmp_path, tmp_logger):
+    monkeypatch.setattr("ray.data._internal.logging.os.name", "nt")
+    handler = SessionFileHandler(
+        "ray-data.log", get_log_directory=lambda: str(tmp_path)
+    )
 
-        tmp_logger.addHandler(handler)
-        tmp_logger.info("ham")
+    tmp_logger.addHandler(handler)
+    tmp_logger.info("ham")
 
-        assert handler._handler is not None
-        assert handler._handler.encoding.lower() == "utf-8"
-        handler.close()
-    finally:
-        os.name = original_os_name
+    assert handler._handler is not None
+    assert handler._handler.encoding.lower() == "utf-8"
+    handler.close()
 
 
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
