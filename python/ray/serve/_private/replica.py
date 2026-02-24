@@ -74,8 +74,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
     RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
-    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
@@ -354,7 +355,7 @@ class ReplicaMetricsManager:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("route",),
+            tag_keys=("route", "exception_type"),
         )
         if self._cached_metrics_enabled:
             self._cached_error_counter = defaultdict(int)
@@ -529,8 +530,10 @@ class ReplicaMetricsManager:
             self._request_counter.inc(count, tags={"route": route})
         self._cached_request_counter.clear()
 
-        for route, count in self._cached_error_counter.items():
-            self._error_counter.inc(count, tags={"route": route})
+        for (route, exception_type), count in self._cached_error_counter.items():
+            self._error_counter.inc(
+                count, tags={"route": route, "exception_type": exception_type}
+            )
         self._cached_error_counter.clear()
 
         for route, latencies in self._cached_latencies.items():
@@ -773,7 +776,14 @@ class ReplicaMetricsManager:
 
         return utilization_percent
 
-    def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
+    def record_request_metrics(
+        self,
+        *,
+        route: str,
+        latency_ms: float,
+        was_error: bool,
+        exception_type: Optional[str] = None,
+    ):
         """Records per-request metrics."""
         # Track latency for utilization calculation (rolling window).
         self._user_code_time_accumulator.add(latency_ms)
@@ -781,13 +791,17 @@ class ReplicaMetricsManager:
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
             if was_error:
-                self._cached_error_counter[route] += 1
+                exc_type = exception_type or "Unknown"
+                self._cached_error_counter[(route, exc_type)] += 1
             else:
                 self._cached_request_counter[route] += 1
         else:
             self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
             if was_error:
-                self._error_counter.inc(tags={"route": route})
+                exc_type = exception_type or "Unknown"
+                self._error_counter.inc(
+                    tags={"route": route, "exception_type": exc_type}
+                )
             else:
                 self._request_counter.inc(tags={"route": route})
 
@@ -1276,10 +1290,14 @@ class ReplicaBase(ABC):
             ),
             extra=self._access_log_context,
         )
+        exception_type = (
+            type(user_exception).__name__ if user_exception is not None else None
+        )
         self._metrics_manager.record_request_metrics(
             route=http_route,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
+            exception_type=exception_type,
         )
 
         # Record ingress metrics for direct ingress HTTP requests
@@ -2710,7 +2728,8 @@ class UserCallableWrapper:
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
-        self._warned_about_sync_method_change = False
+        self._warned_about_sync_method_event_loop = False
+        self._warned_about_sync_method_threadpool = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
         # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
@@ -2899,6 +2918,16 @@ class UserCallableWrapper:
         )
 
         if is_sync_method and run_sync_in_threadpool:
+            if (
+                not self._warned_about_sync_method_threadpool
+                and run_sync_methods_in_threadpool_override is None
+            ):
+                self._warned_about_sync_method_threadpool = True
+                warnings.warn(
+                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING.format(
+                        method_name=callable.__name__,
+                    )
+                )
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True
@@ -2929,12 +2958,12 @@ class UserCallableWrapper:
         else:
             if (
                 is_sync_method
-                and not self._warned_about_sync_method_change
+                and not self._warned_about_sync_method_event_loop
                 and run_sync_methods_in_threadpool_override is None
             ):
-                self._warned_about_sync_method_change = True
+                self._warned_about_sync_method_event_loop = True
                 warnings.warn(
-                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING.format(
+                    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING.format(
                         method_name=callable.__name__,
                     )
                 )

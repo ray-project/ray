@@ -29,7 +29,7 @@
 *ray*gcs*
 *ray*CoreWorker*
 *ray*PeriodicalRunner*
-*ray*internal*
+*ray8internal*
 *PyInit__raylet*
 *Java_io_ray*
 _JNI_On*
