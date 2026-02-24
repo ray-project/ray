@@ -37,5 +37,5 @@ if [[ -z "${raylet_so}" ]]; then
   exit 1
 fi
 
-nm "${nm_args[@]}" "${raylet_so}" | grep -v _ZN3ray | grep -v _ZNK3ray | grep -v _ZTIN3ray | grep -v _ZTVN3ray | grep -v _ZTSN3ray > "${actual}"
+nm "${nm_args[@]}" "${raylet_so}" | grep -E -v '_ZN3ray|_ZNK3ray|_ZTIN3ray|_ZTVN3ray|_ZTSN3ray' > "${actual}"
 diff -u "${golden}" "${actual}"
