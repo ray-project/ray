@@ -88,7 +88,7 @@ def test_get_target_groups_haproxy(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name=mock.Mock(),
+        actor_name="replica1",
         max_ongoing_requests=100,
     )
 
@@ -107,8 +107,8 @@ def test_get_target_groups_haproxy(
     )
 
     # Setup proxy state manager
-    haproxy_controller.proxy_state_manager.add_proxy_details("proxy_node1", "10.0.1.1")
-    haproxy_controller.proxy_state_manager.add_proxy_details("proxy_node2", "10.0.1.2")
+    haproxy_controller.proxy_state_manager.add_proxy_details("proxy_node1", "10.0.1.1", "proxy1")
+    haproxy_controller.proxy_state_manager.add_proxy_details("proxy_node2", "10.0.1.2", "proxy2")
 
     # Allocate ports for replicas using controller's methods
     http_port1 = haproxy_controller.allocate_replica_port(
@@ -128,17 +128,19 @@ def test_get_target_groups_haproxy(
             TargetGroup(
                 protocol=RequestProtocol.HTTP,
                 route_prefix="/",
+                app_name="",
                 targets=[
-                    Target(ip="10.0.1.1", port=8000, instance_id=""),
-                    Target(ip="10.0.1.2", port=8000, instance_id=""),
+                    Target(ip="10.0.1.1", port=8000, instance_id="", name="proxy1"),
+                    Target(ip="10.0.1.2", port=8000, instance_id="", name="proxy2"),
                 ],
             ),
             TargetGroup(
                 protocol=RequestProtocol.GRPC,
                 route_prefix="/",
+                app_name="",
                 targets=[
-                    Target(ip="10.0.1.1", port=9000, instance_id=""),
-                    Target(ip="10.0.1.2", port=9000, instance_id=""),
+                    Target(ip="10.0.1.1", port=9000, instance_id="", name="proxy1"),
+                    Target(ip="10.0.1.2", port=9000, instance_id="", name="proxy2"),
                 ],
             ),
         ]
@@ -147,15 +149,17 @@ def test_get_target_groups_haproxy(
             TargetGroup(
                 protocol=RequestProtocol.HTTP,
                 route_prefix="/app1",
+                app_name="app1",
                 targets=[
-                    Target(ip="10.0.0.1", port=http_port1, instance_id=""),
+                    Target(ip="10.0.0.1", port=http_port1, instance_id="", name="replica1"),
                 ],
             ),
             TargetGroup(
                 protocol=RequestProtocol.GRPC,
                 route_prefix="/app1",
+                app_name="app1",
                 targets=[
-                    Target(ip="10.0.0.1", port=grpc_port1, instance_id=""),
+                    Target(ip="10.0.0.1", port=grpc_port1, instance_id="", name="replica1"),
                 ],
             ),
         ]
