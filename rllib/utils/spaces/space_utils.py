@@ -107,7 +107,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
 class _GetBaseStructFromSpace:
     """Callable singleton that converts a gym Space to a native py tuple/dict struct.
 
-    Results are cached by space hash. If the cache exceeds 1000 entries a warning is
+    Results are cached by object id. If the cache exceeds 1000 entries a warning is
     logged and caching is disabled for the remainder of the process lifetime.
 
     This is useful because without caching, the function adds latency to our sampling loops.
