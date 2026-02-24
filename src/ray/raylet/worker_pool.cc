@@ -1703,12 +1703,8 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredDriver
 void WorkerPool::WarnAboutSize() {
   for (auto &entry : states_by_lang_) {
     auto &state = entry.second;
-    int64_t num_workers_started_or_registered = 0;
-    num_workers_started_or_registered +=
-        static_cast<int64_t>(state.registered_workers.size());
-    for (const auto &[worker_id, process_info] : state.worker_processes) {
-      num_workers_started_or_registered += process_info.is_pending_registration ? 1 : 0;
-    }
+    int64_t num_workers_started_or_registered =
+        static_cast<int64_t>(state.worker_processes.size());
     // Don't count IO workers towards the warning message threshold.
     num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
