@@ -1116,7 +1116,7 @@ First, install the required dependencies:
 
 .. code-block:: console
 
-    pip install kafka-python
+    pip install confluent-kafka
 
 Then, specify your Kafka configuration and read from topics.
 

@@ -4454,7 +4454,7 @@ def read_kafka(
 
     Raises:
         ValueError: If invalid parameters are provided.
-        ImportError: If kafka-python is not installed.
+        ImportError: If confluent-kafka is not installed.
     """  # noqa: E501
     if trigger != "once":
         raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
