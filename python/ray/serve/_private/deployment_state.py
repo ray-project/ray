@@ -3505,6 +3505,10 @@ class DeploymentState:
                 # state?
                 if is_slow and stop_on_slow:
                     self._stop_replica(replica, graceful_stop=False)
+                    # Track failed gang IDs so sibling replicas are also
+                    # stopped, preventing partial gangs from lingering.
+                    if replica.gang_context is not None:
+                        failed_gang_ids.add(replica.gang_context.gang_id)
                 else:
                     self._replicas.add(original_state, replica)
 
@@ -3688,6 +3692,32 @@ class DeploymentState:
                     "deployment will be UNHEALTHY until the replica "
                     "recovers or a new deploy happens.",
                 )
+
+        # If any gang needs restarting due to health check failure, also stop
+        # siblings that are still starting up. Without this, STARTING replicas
+        # would eventually reach RUNNING as orphans, making the total count
+        # non-divisible by gang_size and permanently blocking PG reservation.
+        if gang_ids_to_restart:
+            for state in [
+                ReplicaState.STARTING,
+                ReplicaState.UPDATING,
+                ReplicaState.RECOVERING,
+            ]:
+                for replica in self._replicas.pop(states=[state]):
+                    if (
+                        replica.gang_context is not None
+                        and replica.gang_context.gang_id in gang_ids_to_restart
+                    ):
+                        logger.warning(
+                            f"Replica {replica.replica_id} is still in "
+                            f"{state} state but its gang "
+                            f"(gang_id={replica.gang_context.gang_id}) has an "
+                            "unhealthy replica. Forcefully stopping it because "
+                            "RESTART_GANG runtime failure policy is enabled."
+                        )
+                        self._stop_replica(replica, graceful_stop=False)
+                    else:
+                        self._replicas.add(state, replica)
 
         slow_start_replicas = []
         slow_start = self._check_startup_replicas(ReplicaState.STARTING)
