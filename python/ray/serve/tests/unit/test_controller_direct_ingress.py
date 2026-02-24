@@ -853,8 +853,7 @@ def test_get_target_groups_app_with_no_running_replicas(
     assert target_groups == expected_target_groups
 
 
-@pytest.mark.asyncio
-async def test_control_loop_pruning(
+def test_control_loop_pruning(
     direct_ingress_controller: FakeDirectIngressController,
 ):
     """Test that the controller loop properly prunes stale node port managers."""
