@@ -693,7 +693,7 @@ class ServeController:
         self._maybe_update_ingress_ports()
 
         # HAProxy target group broadcasting
-        if self._ha_proxy_enabled:
+        if self._ha_proxy_enabled and self.done_recovering_event.is_set():
             self.broadcast_target_groups_if_changed()
 
     def _maybe_update_ingress_ports(self) -> None:
