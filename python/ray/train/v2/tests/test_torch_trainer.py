@@ -10,9 +10,6 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.torch.config import _is_backend_nccl
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
-from ray.train.v2.examples.pytorch.torchft_linear_example import (
-    train_func as torchft_linear_train_func,
-)
 from ray.train.v2.torch.torchft_config import TorchftConfig
 
 
@@ -61,18 +58,19 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     [
         (TorchConfig(backend="gloo", init_method="env"), 2),
         (TorchConfig(backend="gloo", init_method="tcp"), 2),
-        (
-            TorchftConfig(
-                backend="gloo", init_method="env", lighthouse_kwargs={"min_replicas": 1}
-            ),
-            1,
-        ),
-        (
-            TorchftConfig(
-                backend="gloo", init_method="tcp", lighthouse_kwargs={"min_replicas": 1}
-            ),
-            1,
-        ),
+        # TODO(tseah): enable this after CI has torchft dependencies
+        # (
+        #     TorchftConfig(
+        #         backend="gloo", init_method="env", lighthouse_kwargs={"min_replicas": 1}
+        #     ),
+        #     1,
+        # ),
+        # (
+        #     TorchftConfig(
+        #         backend="gloo", init_method="tcp", lighthouse_kwargs={"min_replicas": 1}
+        #     ),
+        #     1,
+        # ),
     ],
 )
 def test_torch_start_shutdown(ray_start_4_cpus, torch_config, expected_world_size):
@@ -107,8 +105,13 @@ def test_torch_process_group_shutdown_timeout(ray_start_4_cpus, monkeypatch, tim
     trainer.fit()
 
 
+@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 def test_torchft_linear(ray_start_4_cpus):
     """Test torchft linear training: loss goes down and models are equal across workers."""
+
+    from ray.train.v2.examples.pytorch.torchft_linear_example import (
+        train_func as torchft_linear_train_func,
+    )
 
     @ray.remote
     class WeightCollector:
