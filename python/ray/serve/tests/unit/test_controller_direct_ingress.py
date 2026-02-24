@@ -876,7 +876,7 @@ def test_control_loop_pruning(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name="replica1",
+        actor_name="replica2",
         max_ongoing_requests=100,
     )
     replica_info3 = RunningReplicaInfo(
