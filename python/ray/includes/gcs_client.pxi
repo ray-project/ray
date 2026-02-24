@@ -20,7 +20,7 @@ from ray._common.utils import get_or_create_event_loop
 from typing import List, Sequence
 from libcpp.utility cimport move
 import concurrent.futures
-from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply, GetAllNodeInfoReply
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
@@ -399,7 +399,7 @@ cdef class InnerGcsClient:
         node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
         limit: Optional[int] = None,
-    ) -> Future[CGetAllNodeInfoReply]:
+    ) -> Future[GetAllNodeInfoReply]:
         """Async get all node info with optional filters.
 
         Args:
