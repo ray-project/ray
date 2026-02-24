@@ -13,7 +13,7 @@ In the first half, we'll walk through the core Ray Tune workflow — from a base
 
 **Advanced topics:**
 - **Part 4:** Checkpointing and Fault Tolerance
-- **Part 5:** Advanced Patterns
+- **Part 5:** Integrating with Ray Train
 - **Summary and Next Steps**
 
 ```python
@@ -421,20 +421,7 @@ When running many concurrent trials, OOM errors can occur. Mitigate this by:
 
 ---
 
-## Part 5: Advanced Patterns
-
-### Passing Data to Trials
-
-By default, each trial loads its own copy of the data, which is wasteful. You can place data in the Ray object store once and share it across trials using `tune.with_parameters()`. Call a `@ray.remote` function to load data into the object store, then pass the reference to your trainable:
-
-```python
-# Share data across trials via the Ray object store.
-# trainable_with_data = tune.with_parameters(train_func, data=data_ref)
-```
-
-See the [Tune FAQ on data passing](https://docs.ray.io/en/latest/tune/faq.html) for complete examples.
-
-### Integrating with Ray Train
+## Part 5: Integrating with Ray Train
 
 By default, each Ray Tune trial runs as a single-worker process — training happens on one machine with one GPU. For large models that require distributed (multi-GPU or multi-node) training, you need the Ray Train integration. Wrapping a Ray Train `Trainer` inside a Tune trial lets each trial run a full distributed training job — giving you distributed hyperparameter search *and* distributed training at the same time.
 
