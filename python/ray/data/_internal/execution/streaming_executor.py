@@ -15,6 +15,7 @@ from ray.data._internal.execution.backpressure_policy import (
     get_backpressure_policies,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     Executor,
@@ -87,6 +88,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._progress_manager: Optional["BaseExecutionProgressManager"] = None
+        self._callbacks: List["ExecutionCallback"] = []
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
