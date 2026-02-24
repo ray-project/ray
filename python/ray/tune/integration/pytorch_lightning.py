@@ -12,7 +12,7 @@ from ray.util import log_once
 from ray.util.annotations import Deprecated, PublicAPI
 
 try:
-    from lightning import Callback, LightningModule, Trainer
+    from lightning.pytorch import Callback, LightningModule, Trainer
 except ModuleNotFoundError:
     from pytorch_lightning import Callback, LightningModule, Trainer
 

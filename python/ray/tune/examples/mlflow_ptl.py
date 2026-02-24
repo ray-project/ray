@@ -5,12 +5,16 @@ import os
 import tempfile
 
 import mlflow
-import pytorch_lightning as pl
 
 from ray import tune
 from ray.air.integrations.mlflow import setup_mlflow
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier, MNISTDataModule
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
+
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
 
 
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
