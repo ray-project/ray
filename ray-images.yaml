@@ -1,0 +1,41 @@
+# Ray image configurations, consumed by CI and build scripts.
+
+ray:
+  defaults:
+    python: "3.10"
+    gpu_platform: cu12.1.1-cudnn8
+    architecture: x86_64
+
+  python: ["3.10", "3.11", "3.12", "3.13"]
+  architectures: [x86_64, aarch64]
+  platforms:
+    - cpu
+    - cu11.7.1-cudnn8
+    - cu11.8.0-cudnn8
+    - cu12.1.1-cudnn8
+    - cu12.3.2-cudnn9
+    - cu12.4.1-cudnn
+    - cu12.5.1-cudnn
+    - cu12.6.3-cudnn
+    - cu12.8.1-cudnn
+    - cu12.9.1-cudnn
+
+ray-ml:
+  defaults:
+    python: "3.10"
+    gpu_platform: cu12.1.1-cudnn8
+    architecture: x86_64
+
+  python: ["3.10", "3.11"]
+  architectures: [x86_64]
+  platforms: [cpu, cu12.1.1-cudnn8]
+
+ray-llm:
+  defaults:
+    python: "3.11"
+    gpu_platform: cu12.8.1-cudnn
+    architecture: x86_64
+
+  python: ["3.11", "3.12"]
+  architectures: [x86_64]
+  platforms: [cu12.8.1-cudnn, cu12.9.1-cudnn]
