@@ -1,5 +1,6 @@
 """Tests for Databricks Unity Catalog datasource."""
 
+import json
 import os
 import re
 import tempfile
@@ -339,8 +340,8 @@ class TestDatabricksUCDatasourceIntegration:
 class TestDatabricksUCDatasourceCredentials:
     """Tests for credential provider handling."""
 
-    def test_schema_method_not_overridden_by_schema_name(self, requests_mocker):
-        """Test that Datasource.schema() remains callable."""
+    def test_schema_name_does_not_shadow_datasource_fields(self, requests_mocker):
+        """Test that schema name is stored without using the `schema` attribute."""
         requests_mocker["post"].return_value = mock.Mock(
             status_code=200,
             raise_for_status=lambda: None,
@@ -364,8 +365,12 @@ class TestDatabricksUCDatasourceCredentials:
             credential_provider=provider,
         )
 
-        assert callable(datasource.schema)
-        datasource.schema()
+        assert datasource.schema_name == "test_schema"
+        assert "schema" not in datasource.__dict__
+
+        call_kwargs = requests_mocker["post"].call_args[1]
+        payload = json.loads(call_kwargs["data"])
+        assert payload["schema"] == "test_schema"
 
     def test_with_credential_provider(self, requests_mocker):
         """Test DatabricksUCDatasource with credential_provider parameter."""
