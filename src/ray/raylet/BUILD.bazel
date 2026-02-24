@@ -219,10 +219,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":worker_interface",
-        ":worker_pool",
-        "//src/ray/common:lease",
         "//src/ray/common:memory_monitor_interface",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -236,13 +233,9 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-        ":worker_interface",
         ":worker_killing_policy_interface",
-        ":worker_pool",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_interface",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_prod",
     ],
 )
 

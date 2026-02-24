@@ -75,8 +75,8 @@ For a synchronous deployment:
 
 How this method executes depends on configuration:
 
-- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0` (current default), `__call__` runs directly on the user event loop and blocks it for 1 second.
-- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`, Serve offloads `__call__` to a threadpool so the event loop stays responsive.
+- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1` (default), Serve offloads `__call__` to a threadpool so the event loop stays responsive.
+- With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`, `__call__` runs directly on the user event loop and blocks it for 1 second.
 
 ### FastAPI ingress (`@serve.ingress`)
 
@@ -88,10 +88,7 @@ When you use FastAPI ingress, FastAPI controls how endpoints run:
 :language: python
 ```
 
-Important differences:
-
-- FastAPI  always dispatches `def` endpoints to a threadpool.
-- In pure Serve, `def` methods run on the event loop unless you opt into threadpool behavior.
+Both FastAPI and Serve dispatch `def` methods to threadpool.
 
 ## Threadpool sizing and overrides
 
@@ -269,30 +266,34 @@ Ray Serve exposes several environment variables that control how user code inter
 
 ### `RAY_SERVE_RUN_SYNC_IN_THREADPOOL`
 
-By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`), which means synchronous methods in a deployment run directly on the user event loop. To help you migrate to a safer model, Serve emits a warning like:
+By default (`RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`), synchronous methods in a deployment run in a threadpool. This keeps the event loop responsive while sync handlers execute.
 
-> `RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING`: Calling sync method '...' directly on the asyncio loop. In a future version, sync methods will be run in a threadpool by default...
-
-This warning means:
-
-- You have a `def` method that is currently running on the event loop.
-- In a future version, that method runs in a threadpool instead.
-
-You can opt in to the future behavior now by setting:
-
-```bash
-export RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1
-```
-
-When this flag is `1`:
+When this flag is `1` (default):
 
 - Serve runs synchronous methods in a threadpool.
 - The event loop is free to keep serving other requests while sync methods run.
 
-Before enabling this in production, make sure:
+Ensure your handlers and shared state are thread-safe. The following example is **not** thread-safe. Concurrent requests can race on shared mutable state.
 
-- Your handler code and any shared state are thread-safe.
-- Your model objects can safely be used from multiple threads, or you protect them with locks.
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __non_thread_safe_begin__
+:end-before: __non_thread_safe_end__
+:language: python
+```
+
+Use a lock to protect shared state:
+
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __thread_safe_counter_begin__
+:end-before: __thread_safe_counter_end__
+:language: python
+```
+
+You can opt out of the threadpool by setting:
+
+```bash
+export RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0
+```
 
 ### `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD`
 
@@ -453,5 +454,5 @@ This pattern:
 
 - Use `async def` for I/O-bound and streaming work so the event loop can stay responsive.
 - Use `max_ongoing_requests` to bound concurrency per replica, but remember that blocking `def` handlers can still serialize work if they run on the event loop.
-- Consider enabling `RAY_SERVE_RUN_SYNC_IN_THREADPOOL` once your code is thread-safe, and be aware of the sync-in-threadpool warning.
+- Ensure sync handlers are thread-safe.
 - For CPU-heavy workloads, scale replicas or GIL-releasing native code for real parallelism.
