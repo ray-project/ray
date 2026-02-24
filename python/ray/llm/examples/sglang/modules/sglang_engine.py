@@ -248,7 +248,7 @@ class SGLangServer:
 
         tp_size = llm_config.engine_kwargs.get("tp_size", 1)
         pp_size = llm_config.engine_kwargs.get("pp_size", 1)
-        total_gpus = tp_size * pp_size
+        num_devices = tp_size * pp_size
 
         if tp_size < 1 or pp_size < 1:
             raise ValueError(
@@ -257,7 +257,7 @@ class SGLangServer:
             )
 
         if "placement_group_bundles" not in pg_config:
-            child_bundles = [{"GPU": 1} for _ in range(total_gpus)]
+            child_bundles = [{"GPU": 1} for _ in range(num_devices)]
 
             replica_bundle = {
                 "CPU": ray_actor_options.get("num_cpus", 1),
