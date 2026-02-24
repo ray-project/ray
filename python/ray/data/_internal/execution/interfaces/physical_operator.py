@@ -438,6 +438,9 @@ class PhysicalOperator(Operator):
         # re-running __init__ wiring/ID/metrics initialization during transform.
         target = object.__new__(type(self))
         target.__dict__ = self.__dict__.copy()
+        # The transformed node should have a distinct identity and metrics owner.
+        target._id = str(uuid.uuid4())
+        target._metrics = OpRuntimeMetrics(target)
         # The copied node belongs to a new transformed DAG. Reverse edges are
         # rewired by parents, so avoid carrying stale downstream references.
         target._output_dependencies = []

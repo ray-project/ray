@@ -39,6 +39,8 @@ def test_physical_apply_transform_rewires_all_input_output_dependencies():
     )
 
     assert transformed_root is not root
+    assert transformed_root.id != root.id
+    assert transformed_root.metrics is not root.metrics
     assert transformed_root.input_dependencies == [left_replacement, right_input]
     assert transformed_root in left_replacement.output_dependencies
     assert transformed_root in right_input.output_dependencies
