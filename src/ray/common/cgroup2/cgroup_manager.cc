@@ -83,7 +83,10 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
     std::string base_cgroup,
     const std::string &node_id,
     const int64_t system_reserved_cpu_weight,
-    const int64_t system_reserved_memory_bytes,
+    const int64_t system_memory_bytes_min,
+    const int64_t system_memory_bytes_low,
+    const int64_t user_memory_high_bytes,
+    const int64_t user_memory_max_bytes,
     std::unique_ptr<CgroupDriverInterface> cgroup_driver) {
   if (!cpu_weight_constraint_.IsValid(system_reserved_cpu_weight)) {
     return Status::InvalidArgument(
@@ -94,15 +97,43 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
                         cpu_weight_constraint_.Min(),
                         cpu_weight_constraint_.Max()));
   }
-  if (!memory_min_constraint_.IsValid(system_reserved_memory_bytes)) {
+  if (!memory_min_constraint_.IsValid(system_memory_bytes_min)) {
     return Status::InvalidArgument(
         absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
                         memory_min_constraint_.name_,
-                        system_reserved_memory_bytes,
+                        system_memory_bytes_min,
                         memory_min_constraint_.name_,
                         memory_min_constraint_.Min(),
                         memory_min_constraint_.Max()));
   }
+  if (!memory_low_constraint_.IsValid(system_memory_bytes_low)) {
+    return Status::InvalidArgument(
+        absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
+                        memory_low_constraint_.name_,
+                        system_memory_bytes_low,
+                        memory_low_constraint_.name_,
+                        memory_low_constraint_.Min(),
+                        memory_low_constraint_.Max()));
+  }
+  if (!memory_high_constraint_.IsValid(user_memory_high_bytes)) {
+    return Status::InvalidArgument(
+        absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
+                        memory_high_constraint_.name_,
+                        user_memory_high_bytes,
+                        memory_high_constraint_.name_,
+                        memory_high_constraint_.Min(),
+                        memory_high_constraint_.Max()));
+  }
+  if (!memory_max_constraint_.IsValid(user_memory_max_bytes)) {
+    return Status::InvalidArgument(
+        absl::StrFormat("Invalid constraint %s=%d. %s must be in the range [%d, %d].",
+                        memory_max_constraint_.name_,
+                        user_memory_max_bytes,
+                        memory_max_constraint_.name_,
+                        memory_max_constraint_.Min(),
+                        memory_max_constraint_.Max()));
+  }
+
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroupv2Enabled());
   RAY_RETURN_NOT_OK(cgroup_driver->CheckCgroup(base_cgroup));
   StatusOr<std::unordered_set<std::string>> available_controllers =
@@ -138,7 +169,10 @@ StatusOr<std::unique_ptr<CgroupManager>> CgroupManager::Create(
       new CgroupManager(std::move(base_cgroup), node_id, std::move(cgroup_driver)));
 
   RAY_RETURN_NOT_OK(cgroup_manager->Initialize(system_reserved_cpu_weight,
-                                               system_reserved_memory_bytes));
+                                               system_memory_bytes_min,
+                                               system_memory_bytes_low,
+                                               user_memory_high_bytes,
+                                               user_memory_max_bytes));
 
   return cgroup_manager;
 }
@@ -203,7 +237,10 @@ void CgroupManager::RegisterDisableController(const std::string &cgroup_path,
 }
 
 Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
-                                 int64_t system_reserved_memory_bytes) {
+                                 int64_t system_memory_bytes_min,
+                                 int64_t system_memory_bytes_low,
+                                 int64_t user_memory_high_bytes,
+                                 int64_t user_memory_max_bytes) {
   std::string supported_controllers =
       absl::StrCat("[", absl::StrJoin(supported_controllers_, ", "), "]");
 
@@ -213,8 +250,9 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
       "Initializing CgroupManager at base cgroup at '%s'. Ray's cgroup "
       "hierarchy will under the node cgroup at '%s' with %s controllers enabled. "
       "The system cgroup at '%s' will have [memory] controllers enabled with "
-      "[%s=%lld, %s=%lld] constraints. "
-      "The user cgroup '%s' will have no controllers enabled with [%s=%lld] "
+      "[%s=%lld, %s=%lld, %s=%lld] constraints. "
+      "The user cgroup '%s' will have [memory] controllers enabled with [%s=%lld, "
+      "%s=%lld, %s=%lld] "
       "constraints. "
       "The user cgroup will contain the [%s, %s] cgroups.",
       base_cgroup_,
@@ -224,10 +262,16 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
       cpu_weight_constraint_.name_,
       system_reserved_cpu_weight,
       memory_min_constraint_.name_,
-      system_reserved_memory_bytes,
+      system_memory_bytes_min,
+      memory_low_constraint_.name_,
+      system_memory_bytes_low,
       user_cgroup_,
       cpu_weight_constraint_.name_,
       user_cpu_weight,
+      memory_high_constraint_.name_,
+      user_memory_high_bytes,
+      memory_max_constraint_.name_,
+      user_memory_max_bytes,
       workers_cgroup_,
       non_ray_cgroup_);
 
@@ -275,8 +319,8 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   RegisterMoveAllProcesses(workers_cgroup_, base_cgroup_);
 
   std::array<const std::string *, 2> cpu_controlled_cgroups{&base_cgroup_, &node_cgroup_};
-  std::array<const std::string *, 3> memory_controlled_cgroups{
-      &base_cgroup_, &node_cgroup_, &system_cgroup_};
+  std::array<const std::string *, 4> memory_controlled_cgroups{
+      &base_cgroup_, &node_cgroup_, &system_cgroup_, &user_cgroup_};
 
   for (const std::string *cpu_controlled_cgroup : cpu_controlled_cgroups) {
     RAY_RETURN_NOT_OK(cgroup_driver_->EnableController(*cpu_controlled_cgroup, "cpu"));
@@ -298,12 +342,28 @@ Status CgroupManager::Initialize(int64_t system_reserved_cpu_weight,
   RAY_RETURN_NOT_OK(
       cgroup_driver_->AddConstraint(system_cgroup_,
                                     memory_min_constraint_.name_,
-                                    std::to_string(system_reserved_memory_bytes)));
+                                    std::to_string(system_memory_bytes_min)));
   RegisterRemoveConstraint(system_cgroup_, memory_min_constraint_);
+
+  RAY_RETURN_NOT_OK(
+      cgroup_driver_->AddConstraint(system_cgroup_,
+                                    memory_low_constraint_.name_,
+                                    std::to_string(system_memory_bytes_low)));
+  RegisterRemoveConstraint(system_cgroup_, memory_low_constraint_);
 
   RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(
       user_cgroup_, cpu_weight_constraint_.name_, std::to_string(user_cpu_weight)));
   RegisterRemoveConstraint(user_cgroup_, cpu_weight_constraint_);
+
+  RAY_RETURN_NOT_OK(
+      cgroup_driver_->AddConstraint(user_cgroup_,
+                                    memory_high_constraint_.name_,
+                                    std::to_string(user_memory_high_bytes)));
+  RegisterRemoveConstraint(user_cgroup_, memory_high_constraint_);
+
+  RAY_RETURN_NOT_OK(cgroup_driver_->AddConstraint(
+      user_cgroup_, memory_max_constraint_.name_, std::to_string(user_memory_max_bytes)));
+  RegisterRemoveConstraint(user_cgroup_, memory_max_constraint_);
 
   return Status::OK();
 }
