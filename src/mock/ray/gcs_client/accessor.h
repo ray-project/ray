@@ -85,7 +85,7 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
        const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
        const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
        const std::optional<int64_t> &limit),
-      (override));
+      (const, override));
   MOCK_METHOD(void,
               AsyncGetAllNodeAddressAndLiveness,
               (const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
