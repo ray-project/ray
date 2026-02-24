@@ -405,13 +405,13 @@ class Deployment:
                     f"be a multiple of gang_size ({gc.gang_size})."
                 )
 
-        if gc is not None and max_replicas_per_node not in (DEFAULT.VALUE, None):
+        if gc is not None and max_replicas_per_node is not None:
             raise ValueError(
                 "Setting max_replicas_per_node is not allowed when "
                 "gang_scheduling_config is provided."
             )
 
-        if gc is not None and placement_group_strategy not in (DEFAULT.VALUE, None):
+        if gc is not None and placement_group_strategy is not None:
             raise ValueError(
                 "Setting placement_group_strategy is not allowed when "
                 "gang_scheduling_config is provided. Use "

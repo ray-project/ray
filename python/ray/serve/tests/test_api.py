@@ -898,6 +898,26 @@ def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config():
         )
 
 
+def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config_merged():
+    """Verify the check catches conflicts from the merged config."""
+
+    @serve.deployment(max_replicas_per_node=1, num_replicas=2)
+    class A:
+        pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+        A.options(
+            num_replicas=2,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+
+
 def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config():
     with pytest.raises(
         ValueError,
@@ -932,6 +952,30 @@ def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config(
             placement_group_strategy="SPREAD",
             placement_group_bundles=[{"CPU": 1}],
             num_replicas=4,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+
+
+def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config_merged():
+    """Verify the check catches conflicts from the merged config."""
+
+    @serve.deployment(
+        placement_group_strategy="SPREAD",
+        placement_group_bundles=[{"CPU": 1}],
+        num_replicas=2,
+    )
+    class A:
+        pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting placement_group_strategy is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+        A.options(
+            num_replicas=2,
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
 
