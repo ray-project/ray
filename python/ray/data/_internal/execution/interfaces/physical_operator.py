@@ -433,6 +433,9 @@ class PhysicalOperator(Operator):
         return transformed_target
 
     def _copy_for_transform(self) -> "PhysicalOperator":
+        # copy.copy() is not safe here because PhysicalOperator.__reduce__()
+        # intentionally raises. Use a side-effect-free shallow copy to avoid
+        # re-running __init__ wiring/ID/metrics initialization during transform.
         target = object.__new__(type(self))
         target.__dict__ = self.__dict__.copy()
         # The copied node belongs to a new transformed DAG. Reverse edges are
