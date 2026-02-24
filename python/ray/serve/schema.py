@@ -1413,7 +1413,9 @@ class TargetGroup(BaseModel, frozen=True):
     app_name: str = Field("", description="Name of the application.")
     # TODO(akyang): All target groups have the same fallback target. We should
     # pull this field out of TargetGroup once the API is deprecated.
-    fallback_target: Optional[Target] = Field(None, description="Fallback target when all targets are unavailable.")
+    fallback_target: Optional[Target] = Field(
+        None, description="Fallback target when all targets are unavailable."
+    )
 
 
 @PublicAPI(stability="stable")

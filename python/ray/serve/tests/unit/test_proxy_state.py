@@ -826,7 +826,10 @@ class TestFallbackProxy:
 
         handles = manager.get_proxy_handles()
         assert f"fallback-{HEAD_NODE_ID}" in handles
-        assert handles[f"fallback-{HEAD_NODE_ID}"] is manager._fallback_proxy_state.actor_handle
+        assert (
+            handles[f"fallback-{HEAD_NODE_ID}"]
+            is manager._fallback_proxy_state.actor_handle
+        )
 
     def test_fallback_proxy_included_in_names(self):
         """get_proxy_names() should include the fallback proxy."""
@@ -836,7 +839,10 @@ class TestFallbackProxy:
 
         names = manager.get_proxy_names()
         assert f"fallback-{HEAD_NODE_ID}" in names
-        assert names[f"fallback-{HEAD_NODE_ID}"] == manager._fallback_proxy_state.actor_name
+        assert (
+            names[f"fallback-{HEAD_NODE_ID}"]
+            == manager._fallback_proxy_state.actor_name
+        )
 
     def test_fallback_proxy_included_in_alive_actor_ids(self):
         """get_alive_proxy_actor_ids() should include the fallback proxy's actor ID."""
