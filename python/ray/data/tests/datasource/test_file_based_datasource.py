@@ -449,6 +449,33 @@ def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffl
     FileBasedDatasource("example://iris.csv", shuffle=shuffle)
 
 
+def test_shuffle_files_changes_order(ray_start_regular_shared, tmp_path):
+    num_files = 10
+    for i in range(num_files):
+        (tmp_path / f"file_{i:02d}.txt").write_bytes(f"data_{i}".encode())
+
+    datasource = MockFileBasedDatasource(
+        str(tmp_path), shuffle="files", include_paths=True
+    )
+
+    output_paths_list = []
+    for _ in range(5):
+        tasks = datasource.get_read_tasks(1)
+        rows = execute_read_tasks(tasks)
+        output_filenames = [os.path.basename(row["path"]) for row in rows]
+        output_paths_list.append(output_filenames)
+
+    expected_order = [f"file_{i:02d}.txt" for i in range(num_files)]
+
+    all_paths_matched = [
+        expected_order == output_paths for output_paths in output_paths_list
+    ]
+    assert not all(all_paths_matched)
+
+    for output_paths in output_paths_list:
+        assert sorted(output_paths) == sorted(expected_order)
+
+
 def test_read_s3_file_error(shutdown_only, s3_path):
     from ray.data.datasource.file_meta_provider import _handle_read_os_error
 
