@@ -93,7 +93,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **Detokenize**: Converts output token IDs back to readable text.
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
-Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize, and HttpRequestStage) use autoscaling actor pools (except for ServeDeployment stage), while the GPU stage uses a fixed pool.
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. All stages (CPU and GPU) use autoscaling actor pools by default, except for the ServeDeployment stage which uses a fixed pool.
 
 .. _horizontal_scaling:
 
@@ -108,6 +108,13 @@ Horizontally scale the LLM stage to multiple GPU replicas using the ``concurrenc
     :end-before: __concurrent_config_example_end__
 
 Each replica runs an independent inference engine. Set ``concurrency`` to match the number of available GPUs or GPU nodes.
+
+By default, when you set ``concurrency`` to an integer ``n``, GPU stages autoscale from 1 to ``n`` actors. To use a fixed pool of ``n`` actors, set ``concurrency`` to ``(n, n)``.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_fixed_pool_example_start__
+    :end-before: __concurrent_config_fixed_pool_example_end__
 
 .. _text_generation:
 

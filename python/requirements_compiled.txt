@@ -59,6 +59,7 @@ aiohttp==3.13.3
     #   google-auth
     #   pytest-aiohttp
     #   s3fs
+    #   taskiq
     #   torch-geometric
 aiohttp-cors==0.7.0
     # via -r python/requirements.txt
@@ -95,6 +96,7 @@ anyio==4.12.0
     #   httpx
     #   jupyter-server
     #   starlette
+    #   taskiq
     #   watchfiles
 appdirs==1.4.4
     # via fs
@@ -845,6 +847,8 @@ isoduration==20.11.0
     # via jsonschema
 itsdangerous==2.1.2
     # via flask
+izulu==0.50.0
+    # via taskiq
 jax==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 jaxlib==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
@@ -1180,7 +1184,9 @@ nevergrad==0.4.3.post7
 ninja==1.11.1.1
     # via deepspeed
 nodeenv==1.9.1
-    # via pre-commit
+    # via
+    #   pre-commit
+    #   pyright
 notebook-shim==0.2.3
     # via jupyterlab
     # via vsphere-automation-sdk
@@ -1412,6 +1418,7 @@ packaging==24.2
     #   snowflake-connector-python
     #   sphinx
     #   statsmodels
+    #   taskiq
     #   tensorboardx
     #   tensordict
     #   tensorflow
@@ -1613,6 +1620,8 @@ pybase64==1.4.2
     # via -r python/requirements/ml/data-test-requirements.txt
 pycparser==2.21
     # via cffi
+pycron==3.2.0
+    # via taskiq
 pycurl==7.45.4
     # via -r python/requirements/cloud-requirements.txt
 pydantic==2.12.4
@@ -1625,6 +1634,7 @@ pydantic==2.12.4
     #   gradio
     #   mlflow-skinny
     #   pyiceberg
+    #   taskiq
     #   wandb
 pydantic-core==2.41.5
     # via pydantic
@@ -1646,7 +1656,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.10.0
+pyiceberg==0.11.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
@@ -1692,6 +1702,8 @@ pyparsing==3.1.1
     #   torch-geometric
 pyproject-hooks==1.2.0
     # via build
+pyright==1.1.408
+    # via -r python/requirements/test-requirements.txt
 pyro-api==0.1.2
     # via pyro-ppl
 pyro-ppl==1.9.1
@@ -2095,7 +2107,6 @@ snowflake-connector-python==3.15.0
 sortedcontainers==2.4.0
     # via
     #   distributed
-    #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -2162,6 +2173,10 @@ tabulate==0.9.0
     #   -r python/requirements/cloud-requirements.txt
     #   jupyter-cache
     #   knack
+taskiq==0.12.1
+    # via -r python/requirements.txt
+taskiq-dependencies==1.5.7
+    # via taskiq
 tblib==3.0.0
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
@@ -2399,6 +2414,7 @@ typing-extensions==4.15.0
     #   pydantic
     #   pydantic-core
     #   pyopenssl
+    #   pyright
     #   pytorch-lightning
     #   referencing
     #   semgrep
@@ -2572,7 +2588,9 @@ zipp==3.19.2
 zoopt==0.4.1
     # via -r python/requirements/ml/tune-test-requirements.txt
 zstandard==0.23.0
-    # via clickhouse-connect
+    # via
+    #   clickhouse-connect
+    #   pyiceberg
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

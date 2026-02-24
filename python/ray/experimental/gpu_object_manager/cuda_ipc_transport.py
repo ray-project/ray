@@ -190,7 +190,10 @@ class CudaIpcTransport(TensorTransportManager):
         )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: CudaIpcTransportMetadata
+        self,
+        obj_id: str,
+        tensor_transport_meta: CudaIpcTransportMetadata,
+        tensors: List["torch.Tensor"],
     ):
         pass
 

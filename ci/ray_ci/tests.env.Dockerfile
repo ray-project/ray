@@ -115,7 +115,7 @@ INSTALL_FLAGS=(--no-deps --force-reinstall -v)
 case "$BUILD_TYPE" in
   wheel|wheel-aarch64)
     echo "--- Install Ray (prebuilt wheel)"
-    pip install "${INSTALL_FLAGS[@]}" /opt/ray-wheel/*.whl
+    pip install "${INSTALL_FLAGS[@]}" /opt/ray-wheel/opt/artifacts/*.whl
 
     RAY_SITE_DIR=$(python -c "import ray; print(ray.__path__[0])")
 
@@ -132,7 +132,7 @@ case "$BUILD_TYPE" in
     # (RAY_CI_POST_WHEEL_TESTS path): Path(ray.__file__).resolve().parents[2] / ".whl"
     RAY_WHEEL_PARENT=$(python -c "import ray, pathlib; print(pathlib.Path(ray.__file__).resolve().parents[2])")
     mkdir -p "${RAY_WHEEL_PARENT}/.whl"
-    cp /opt/ray-wheel/*.whl "${RAY_WHEEL_PARENT}/.whl/"
+    cp /opt/ray-wheel/opt/artifacts/*.whl "${RAY_WHEEL_PARENT}/.whl/"
     ;;
   optimized)
     if [[ -e /opt/ray-core/ray_pkg.zip && "$RAY_DISABLE_EXTRA_CPP" == "1" ]]; then

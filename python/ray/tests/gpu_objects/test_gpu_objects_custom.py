@@ -104,7 +104,10 @@ class SharedMemoryTransport(TensorTransportManager):
         pass
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+        self,
+        obj_id: str,
+        tensor_transport_meta: TensorTransportMetadata,
+        tensors: List["torch.Tensor"],
     ):
         self.shared_memory_objects[obj_id].close()
         self.shared_memory_objects[obj_id].unlink()

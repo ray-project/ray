@@ -2,6 +2,36 @@ load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
+    name = "ray_image_lib",
+    srcs = [
+        "configs.py",
+        "container.py",
+        "docker_container.py",
+        "linux_container.py",
+        "ray_image.py",
+    ],
+    visibility = [
+        "//ci/build:__pkg__",
+        "//ci/ray_ci:__subpackages__",
+    ],
+)
+
+py_test(
+    name = "test_ray_image",
+    size = "small",
+    srcs = ["test_ray_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_image_lib",
+        ci_require("pytest"),
+    ],
+)
+
+py_library(
     name = "ray_ci_lib",
     srcs = glob(
         ["*.py"],

@@ -155,11 +155,42 @@ class BlockingCPU:
 @serve.deployment(max_ongoing_requests=100)
 class CPUWithThreadpool:
     def __call__(self, request):
-        # With RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1, each call runs in a thread.
+        # With RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1 (default), each call runs in a thread.
         import time
         time.sleep(1)
         return "ok"
 # __cpu_with_threadpool_end__
+
+
+# __non_thread_safe_begin__
+@serve.deployment
+class NonThreadSafeCounter:
+    def __init__(self):
+        self.count = 0  # Shared mutable state across concurrent requests
+
+    def __call__(self, request):
+        # Race condition: multiple threads can read-modify-write
+        # self.count concurrently, leading to lost updates.
+        self.count += 1
+        return self.count
+# __non_thread_safe_end__
+
+
+# __thread_safe_counter_begin__
+import threading
+
+@serve.deployment
+class ThreadSafeCounter:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.count = 0
+
+    def __call__(self, request):
+        # Lock protects shared state from concurrent access.
+        with self._lock:
+            self.count += 1
+            return self.count
+# __thread_safe_counter_end__
 
 
 # __batched_model_begin__
@@ -378,6 +409,21 @@ if __name__ == "__main__":
     result = batched_model_offload_handle.remote(1).result()
     print(f"BatchedModelOffload result: {result}")
     assert result == "result_1"
+
+    print("\nTesting NonThreadSafeCounter deployment...")
+    # Test NonThreadSafeCounter
+    non_thread_safe_handle = serve.run(NonThreadSafeCounter.bind())
+    result = non_thread_safe_handle.remote(None).result()
+    print(f"NonThreadSafeCounter result: {result}")
+    assert result == 1
+
+    print("\nTesting ThreadSafeCounter deployment...")
+    # Test ThreadSafeCounter
+    thread_safe_handle = serve.run(ThreadSafeCounter.bind())
+    for i in range(3):
+        result = thread_safe_handle.remote(None).result()
+        print(f"ThreadSafeCounter call {i + 1} result: {result}")
+        assert result == i + 1
     
     # Test HTTP-related deployments with try-except
     print("\n--- Testing HTTP-related deployments (may fail due to network) ---")

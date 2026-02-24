@@ -19,7 +19,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockColumnAccessor,
     _get_max_chunk_size,
 )
-from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
+from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array, concat
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
@@ -550,6 +550,30 @@ def test_arrow_nan_element():
 def test_arrow_block_max_chunk_size(table_data, max_chunk_size_bytes, expected):
     table = pa.table(table_data)
     assert _get_max_chunk_size(table, max_chunk_size_bytes) == expected
+
+
+def test_arrow_block_concat():
+    table1 = pa.table(
+        {
+            "a": [1, 2, 3],
+            "s": [{"x": 1} for _ in range(3)],
+        }
+    )
+    table2 = pa.table(
+        {
+            "b": [4, 5, 6],
+        }
+    )
+    concatenated = concat([table1, table2])
+    assert set(concatenated.column_names) == {"a", "s", "b"}
+    expected = pa.table(
+        {
+            "a": [1, 2, 3, None, None, None],
+            "s": [{"x": 1} for _ in range(3)] + [None] * 3,
+            "b": [None, None, None, 4, 5, 6],
+        }
+    )
+    assert concatenated.select(["a", "s", "b"]) == expected
 
 
 if __name__ == "__main__":
