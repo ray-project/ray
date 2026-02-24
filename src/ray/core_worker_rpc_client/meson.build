@@ -8,12 +8,6 @@ core_worker_client_interface_cpp_lib_dependencies = [
     rpc_callback_types_cpp_lib_dep,
 ]
 
-
-core_worker_client_interface_cpp_lib_dependencies = [
-    # Package-managed
-    core_worker_client_interface_cpp_lib_dependencies,
-]
-
 core_worker_client_interface_cpp_lib_dep = declare_dependency(
     sources: ['core_worker_client_interface.h'],
     dependencies: core_worker_client_interface_cpp_lib_dependencies

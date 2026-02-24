@@ -133,8 +133,8 @@ local_resource_manager_cpp_lib_dep = declare_dependency(
 local_lease_manager_interface_cpp_lib_dependencies = [
     # Package-managed
     scheduler_internal_cpp_lib_dep,
-    # fake_metric_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/observability:fake_metric (intentionally omitted — test/fake helper, no Meson target)
-    # raylet_metrics_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/raylet:metrics
+    # `fake_metric_cpp_lib_dep` (only for tests) is NOT AVAILABLE (processed after): //src/ray/observability:fake_metric (intentionally omitted — test/fake helper, no Meson target)
+    # `raylet_metrics_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/raylet:metrics
 
     # Eugo-managed
     absl_container_flat_hash_map,
@@ -157,7 +157,7 @@ cluster_resource_manager_cpp_lib_dependencies = [
     ray_config_cpp_lib_dep,
     cluster_resource_data_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
-    # raylet_metrics_cpp_lib_dep is NOT AVAILABLE (processed after): `//src/ray/raylet:metrics`. Resolved at final link time via _raylet shared library.
+    # `raylet_metrics_cpp_lib_dep` is NOT AVAILABLE (processed after): `//src/ray/raylet:metrics`. Resolved at final link time via _raylet shared library.
     container_util_cpp_lib_dep,
     logging_cpp_lib_dep,
 
@@ -439,14 +439,14 @@ local_lease_manager_cpp_lib_dependencies = [
     # Package-managed
     lease_cpp_lib_dep,
     ray_object_cpp_lib_dep,
-    cluster_resource_scheduler_cpp_lib_dep,
+    cluster_resource_data_cpp_lib_dep,
     placement_group_util_cpp_lib_dep,
     object_manager_common_cpp_lib_dep,
-    # lease_dependency_manager_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/raylet:lease_dependency_manager
-    # raylet_metrics_cpp_lib_dep is NOT AVAILABLE (processed after):         # //src/ray/raylet:metrics
-    # worker_interface_cpp_lib_dep is NOT AVAILABLE (processed after):        # //src/ray/raylet:worker_interface
-    # worker_pool_cpp_lib_dep is NOT AVAILABLE (processed after):             # //src/ray/raylet:worker_pool
-    cluster_resource_data_cpp_lib_dep,
+    # `lease_dependency_manager_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/raylet:lease_dependency_manager. It is resolved at final link time via _raylet shared library.
+    # `raylet_metrics_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/raylet:metrics. It is resolved at final link time via _raylet shared library.
+    # `worker_interface_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/raylet:worker_interface. It is resolved at final link time via _raylet shared library.
+    # `worker_pool_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/raylet:worker_pool. It is resolved at final link time via _raylet shared library.
+    cluster_resource_scheduler_cpp_lib_dep,
     local_lease_manager_interface_cpp_lib_dep,
     scheduler_internal_cpp_lib_dep,
 

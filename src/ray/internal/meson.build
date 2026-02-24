@@ -11,8 +11,12 @@ exported_internal_cpp_lib = static_library(
     dependencies: exported_internal_cpp_lib_dependencies
 )
 
+# Bazel uses `alwayslink = 1` for this target — all symbols must be preserved
+# even if not directly referenced, because they are dynamically looked up at
+# runtime. Meson equivalent: link with --whole-archive.
+
 exported_internal_cpp_lib_dep = declare_dependency(
-    link_with: [exported_internal_cpp_lib],
+    link_whole: [exported_internal_cpp_lib],
     dependencies: exported_internal_cpp_lib_dependencies
 )
 # === @end: exported_internal_cpp_lib (original: exported_internal) ===

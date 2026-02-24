@@ -23,7 +23,7 @@ protoc_cpp_grpc_with_default_args = [
 ]
 proto_cpp_grpc_default_kwargs = {
     'command': protoc_cpp_grpc_with_default_args,
-    'output':  ['@BASENAME@.grpc.pb.cc', '@BASENAME@.gprc.pb.h']
+    'output':  ['@BASENAME@.grpc.pb.cc', '@BASENAME@.grpc.pb.h']
 }
 # === @end: proto_cpp_grpc (original: cc_grpc_library w/o final static library linking) ===
 

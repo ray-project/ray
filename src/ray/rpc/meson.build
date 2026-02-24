@@ -1,3 +1,12 @@
+# IMPORTANT: Ordering within this file respects the internal dependency graph.
+# You will see things "out of order" from a BUILD.bazel perspective because
+# Meson requires define-before-use: if target A depends on target B and both
+# are in this file, B must appear first regardless of Bazel ordering.
+# Specifically:
+#   - `authentication/` subdir must come first (grpc_client, server_call, grpc_server depend on it)
+#   - `rpc_callback_types` and `rpc_metrics` moved before `client_call` (client_call depends on them)
+#   - `metrics_agent_client` and `event_aggregator_client` moved after `grpc_server` (they depend on grpc_client)
+#   - `node_manager_server` defined after `node_manager/` subdir (for include path)
 # === @begin: authentication/ ===
 # @IMPORTANT: authentication must come BEFORE rpc targets because `grpc_client.cc`,
 # `server_call.cc`, and `grpc_server.cc` all depend on authentication targets.
@@ -246,11 +255,6 @@ grpc_common_cpp_lib_dep = declare_dependency(
 )
 
 
-# === @begin: node_manager/ ===
-subdir('node_manager/')
-# === @end: node_manager/ ===
-
-
 # === @begin: node_manager_server_cpp_lib (@original: node_manager_server) ===
 # Header-only
 # @IMPORTANT: the actual header lives at node_manager/node_manager_server.h but the Bazel target
@@ -342,43 +346,3 @@ event_aggregator_client_cpp_lib_dep = declare_dependency(
     dependencies: event_aggregator_client_cpp_lib_dependencies
 )
 # === @end: event_aggregator_client_cpp_lib ===
-
-
-# === @begin: gcs_service_rpc_cpp_lib (@original: convenience aggregate) ===
-# NOTE: Not a direct 1:1 Bazel target — convenience aggregation for gcs service RPC deps
-gcs_service_rpc_cpp_lib_dependencies = [
-    # Package-managed
-    autoscaler_proto_cpp_grpc_lib_dep,
-    gcs_service_proto_cpp_grpc_lib_dep,
-    grpc_common_cpp_lib_dep,
-    pubsub_proto_cpp_lib_dep,
-    ray_common_cpp_lib_dep,
-
-    # Eugo-managed
-    boost_asio,
-    grpc,
-    absl_container_btree,
-]
-
-gcs_service_rpc_cpp_lib_dep = declare_dependency(
-    dependencies: gcs_service_rpc_cpp_lib_dependencies
-)
-# === @end: gcs_service_rpc_cpp_lib ===
-
-
-# === @begin: pubsub_rpc_cpp_lib (@original: convenience aggregate) ===
-pubsub_rpc_cpp_lib_dep = declare_dependency(
-    dependencies: [
-        pubsub_proto_cpp_grpc_lib_dep,
-        grpc_common_cpp_lib_dep,
-        ray_common_cpp_lib_dep,
-    ]
-)
-# === @end: pubsub_rpc_cpp_lib ===
-
-
-# === @begin: autoscaler_rpc_cpp_lib (@original: convenience aggregate) ===
-autoscaler_rpc_cpp_lib_dep = declare_dependency(
-    dependencies: [autoscaler_proto_cpp_grpc_lib_dep]
-)
-# === @end: autoscaler_rpc_cpp_lib ===

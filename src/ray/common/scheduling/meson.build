@@ -1,3 +1,11 @@
+# IMPORTANT: Ordering within this file respects the internal dependency graph.
+# You will see things "out of order" from a BUILD.bazel perspective because
+# Meson requires define-before-use: if target A depends on target B and both
+# are in this file, B must appear first regardless of Bazel ordering.
+# Specifically: resource_instance_set and fallback_strategy are moved before
+# cluster_resource_data and scheduling_class_util (which depend on them).
+
+
 # === @begin: scheduling_ids_cpp_lib (@original: scheduling_ids) ===
 scheduling_ids_cpp_lib_dependencies = [
     # Package-managed
@@ -120,6 +128,62 @@ resource_set_cpp_lib_dep = declare_dependency(
 # === @end: resource_set_cpp_lib (@original: resource_set) ===
 
 
+# === @begin: resource_instance_set_cpp_lib (@original: resource_instance_set) ===
+# Moved before cluster_resource_data (define-before-use constraint)
+resource_instance_set_cpp_lib_dependencies = [
+    # Package-managed
+    fixed_point_cpp_lib_dep,
+    placement_group_util_cpp_lib_dep,
+    resource_set_cpp_lib_dep,
+    scheduling_ids_cpp_lib_dep,
+    container_util_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    absl_strings,
+]
+
+resource_instance_set_cpp_lib = static_library(
+    'resource_instance_set_cpp_lib',
+    ['resource_instance_set.cc'],
+    install: false,
+    dependencies: resource_instance_set_cpp_lib_dependencies
+)
+
+resource_instance_set_cpp_lib_dep = declare_dependency(
+    link_with: [resource_instance_set_cpp_lib],
+    dependencies: resource_instance_set_cpp_lib_dependencies
+)
+# === @end: resource_instance_set_cpp_lib (@original: resource_instance_set) ===
+
+
+# === @begin: fallback_strategy_cpp_lib (@original: fallback_strategy) ===
+# Moved before scheduling_class_util (define-before-use constraint)
+fallback_strategy_cpp_lib_dependencies = [
+    # Package-managed
+    label_selector_cpp_lib_dep,
+    common_proto_cpp_lib_dep,
+    logging_cpp_lib_dep,
+
+    # Eugo-managed
+    absl_hash,
+]
+
+fallback_strategy_cpp_lib = static_library(
+    'fallback_strategy_cpp_lib',
+    ['fallback_strategy.cc'],
+    install: false,
+    dependencies: fallback_strategy_cpp_lib_dependencies
+)
+
+fallback_strategy_cpp_lib_dep = declare_dependency(
+    link_with: [fallback_strategy_cpp_lib],
+    dependencies: fallback_strategy_cpp_lib_dependencies
+)
+# === @end: fallback_strategy_cpp_lib (@original: fallback_strategy) ===
+
+
 # === @begin: cluster_resource_data_cpp_lib (@original: cluster_resource_data) ===
 cluster_resource_data_cpp_lib_dependencies = [
     # Package-managed
@@ -185,57 +249,3 @@ scheduling_class_util_cpp_lib_dep = declare_dependency(
     dependencies: scheduling_class_util_cpp_lib_dependencies
 )
 # === @end: scheduling_class_util_cpp_lib (@original: scheduling_class_util) ===
-
-
-# === @begin: resource_instance_set_cpp_lib (@original: resource_instance_set) ===
-resource_instance_set_cpp_lib_dependencies = [
-    # Package-managed
-    fixed_point_cpp_lib_dep,
-    placement_group_util_cpp_lib_dep,
-    resource_set_cpp_lib_dep,
-    scheduling_ids_cpp_lib_dep,
-    container_util_cpp_lib_dep,
-    logging_cpp_lib_dep,
-
-    # Eugo-managed
-    absl_container_flat_hash_map,
-    absl_strings,
-]
-
-resource_instance_set_cpp_lib = static_library(
-    'resource_instance_set_cpp_lib',
-    ['resource_instance_set.cc'],
-    install: false,
-    dependencies: resource_instance_set_cpp_lib_dependencies
-)
-
-resource_instance_set_cpp_lib_dep = declare_dependency(
-    link_with: [resource_instance_set_cpp_lib],
-    dependencies: resource_instance_set_cpp_lib_dependencies
-)
-# === @end: resource_instance_set_cpp_lib (@original: resource_instance_set) ===
-
-
-# === @begin: fallback_strategy_cpp_lib (@original: fallback_strategy) ===
-fallback_strategy_cpp_lib_dependencies = [
-    # Package-managed
-    label_selector_cpp_lib_dep,
-    common_proto_cpp_lib_dep,
-    logging_cpp_lib_dep,
-
-    # Eugo-managed
-    absl_hash,
-]
-
-fallback_strategy_cpp_lib = static_library(
-    'fallback_strategy_cpp_lib',
-    ['fallback_strategy.cc'],
-    install: false,
-    dependencies: fallback_strategy_cpp_lib_dependencies
-)
-
-fallback_strategy_cpp_lib_dep = declare_dependency(
-    link_with: [fallback_strategy_cpp_lib],
-    dependencies: fallback_strategy_cpp_lib_dependencies
-)
-# === @end: fallback_strategy_cpp_lib (@original: fallback_strategy) ===

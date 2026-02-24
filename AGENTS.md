@@ -898,6 +898,7 @@ Complete mapping of Bazel external dependency labels to Meson variable names. Al
 
 | Bazel Label | Meson Variable |
 |---|---|
+| `@com_google_absl//absl/base` | `absl_base` |
 | `@com_google_absl//absl/base:core_headers` | `absl_base_core_headers` |
 | `@com_google_absl//absl/time` | `absl_time` |
 | `@com_google_absl//absl/types:optional` | `absl_types_optional` |
@@ -1073,7 +1074,7 @@ Many `meson.build` files use `# === @begin: SectionName ===` / `# === @end: Sect
 
 ### Version Script
 
-The `_raylet` extension uses a linker version script (`ray_version_script.lds`) to control symbol visibility. If upstream changes exported symbols, this file may need updating.
+The `_raylet` extension uses `ray_version_script.lds` to control symbol visibility (Linux only — Eugo targets Linux HPC exclusively). The upstream Bazel build is platform-conditional (macOS uses `ray_exported_symbols.lds`), but our Meson build unconditionally uses the Linux version script. If upstream changes exported symbols, `ray_version_script.lds` may need updating.
 
 ### BUILD.bazel ↔ meson.build Correspondence
 
@@ -1422,6 +1423,7 @@ py.extension_module(
     install: true,
     subdir: 'ray/',
     dependencies: [ray_cpp_lib_dep],  # Single dep replaces ~10+ static lib deps
+    # Eugo is Linux-only; upstream Bazel is platform-conditional (macOS uses ray_exported_symbols.lds)
     link_args: ['-Wl,--version-script=' + meson.project_source_root() / 'src/ray/ray_version_script.lds'],
     override_options: ['cython_language=cpp']
 )
@@ -1455,6 +1457,84 @@ The `static_library()` wrappers around proto codegen outputs are removed. The ge
 5. **Do NOT delete the Step 1 `meson.build` files until the shared library builds clean.** Work in a new branch and keep Step 1 as a fallback.
 6. **Every `.cc` file currently in any `static_library()` must appear in `ray_cpp_sources`.** Missing a file means missing symbols. Cross-reference against `eugo_sync.py` output.
 7. **Test-only files, Java JNI files, and `thirdparty/setproctitle/` remain excluded** — same exclusion rules as Step 1.
-8. **The `_raylet` version script (`ray_version_script.lds`) still applies** — symbol visibility control is even more important with a shared library.
+8. **The `_raylet` version script still applies** — use `ray_version_script.lds` unconditionally (Eugo targets Linux only). Symbol visibility control is even more important with a shared library.
+
+---
+
+## 15. Lessons Learned from Audit
+
+This section documents recurring errors found during the comprehensive 1:1 Bazel-to-Meson audit. These are the most common mistakes — read this section before making any changes to `meson.build` files.
+
+### 15.1. Define-Before-Use Ordering Violations
+
+**Error pattern:** A `meson.build` file lists target A before target B, but A depends on B. Meson requires that B be defined (assigned to a variable) before A can reference it.
+
+**Example:** In `src/ray/common/cgroup2/meson.build`, `noop_cgroup_manager_cpp_lib` (position 1) depended on `cgroup_driver_interface_cpp_lib_dep` (position 4). The fix was to move `cgroup_driver_interface_cpp_lib` to position 1.
+
+**Rule:** When a target in the same `meson.build` file depends on another target also in that file, the dependency MUST appear first — even if this deviates from the BUILD.bazel order. **Every file with such deviations MUST have an `# IMPORTANT:` header comment** explaining the reordering rationale (see §3 "Target Ordering Rule").
+
+### 15.2. `alwayslink = 1` Requires `link_whole:` Not `link_with:`
+
+**Error pattern:** A Bazel target has `alwayslink = 1` (or `alwayslink = True`), but the Meson translation uses `link_with:` in the consumer. This silently drops unused symbols from the static library, causing missing symbol errors at runtime or during dynamic loading.
+
+**Rule:** When a Bazel target has `alwayslink = 1`, the **consumer** of that library in Meson must use `link_whole:` instead of `link_with:`. This ensures all object files in the static library are linked, even if they contain no symbols directly referenced by the consumer. The `_raylet` extension module uses this for `exported_internal_cpp_lib`.
+
+### 15.3. Umbrella Dependencies Must Be Disaggregated
+
+**Error pattern:** A convenience "umbrella" dependency like `ray_common_cpp_lib_dep` (which bundles ~20 individual libraries) is used in place of the specific individual dependencies that the Bazel target actually lists. This:
+- Massively over-links (pulling in 20 deps when only 3 are needed)
+- Makes it impossible to audit 1:1 against Bazel
+- Hides missing deps (the umbrella masks them)
+
+**Rule:** Never use umbrella/aggregate dependencies in individual target `_dependencies` lists. Translate each Bazel `deps` entry to its exact Meson equivalent. The umbrella target itself is fine to *define* (as `ray_common_cpp_lib_dep` in `src/ray/common/meson.build`), but it should only be consumed by targets whose Bazel equivalent actually depends on `:ray_common`.
+
+### 15.4. Dead Code Convenience Aggregates
+
+**Error pattern:** A `meson.build` defines a convenience aggregate (e.g., `gcs_service_rpc_cpp_lib` that bundles multiple proto deps) that has zero consumers — nothing in any other `meson.build` references it.
+
+**Rule:** If a target has zero consumers (verified by `grep -rn 'target_name' src/ray/**/meson.build`), delete it. Dead targets mislead readers and accumulate during syncs. Before deleting, verify it truly has no consumers across the entire build tree.
+
+### 15.5. `absl/base` vs `absl/base:core_headers`
+
+**Error pattern:** The Bazel dep `@com_google_absl//absl/base` (the full base library, including `absl::base`) is incorrectly mapped to `absl_base_core_headers` (which is only `absl::base_internal_headers` / `absl::core_headers`).
+
+**Rule:** These are two distinct Bazel targets with different Meson variables:
+- `@com_google_absl//absl/base` → `absl_base` (full base library)
+- `@com_google_absl//absl/base:core_headers` → `absl_base_core_headers` (headers only)
+
+Both are defined in `eugo/dependencies/meson.build`. Always check the exact Bazel label — `:core_headers` is a sub-target of `absl/base`, not the same thing.
+
+### 15.6. Proto Library Deps Are Package-Managed, Not Eugo-Managed
+
+**Error pattern:** A generated proto library dep (e.g., `gcs_proto_cpp_lib_dep`) is listed in the `# Eugo-managed` section of a `_dependencies` list, alongside external deps like `protobuf` and `grpc`.
+
+**Rule:** Proto/gRPC codegen libraries (`*_proto_cpp_lib_dep`, `*_proto_cpp_grpc_lib_dep`) are **package-managed** — they are built by the Meson project from `.proto` files, not provided by external system packages. They belong in the `# Package-managed` section.
+
+### 15.7. Missing Python Proto Codegen Targets
+
+**Error pattern:** A `.proto` file has C++ codegen targets (Pattern 4/5 from §2) but is missing its Python codegen target (Pattern 6). This causes `ImportError` at runtime when Python code tries to `import` the generated `_pb2.py` file.
+
+**Rule:** For every `.proto` file that has a Bazel `*_py_proto` target, there MUST be a corresponding `custom_target()` using `proto_py_default_kwargs` in the `meson.build`. Check the Bazel `BUILD.bazel` for `py_proto_library()` targets to find all needed Python codegen. Pay special attention to proto files in subdirectories (e.g., `protobuf/public/`) — these are often missed.
+
+### 15.8. `@original` Annotation Format
+
+**Error pattern:** The `@begin` line uses `(original: name)` instead of the correct format `(@original: name)`.
+
+**Rule:** The correct format is always `(@original: <exact_bazel_target_name>)` with the `@` prefix. Example: `# === @begin: foo_cpp_lib (@original: foo) ===`. The `@original` tag maps the Meson target name back to the Bazel target name for cross-referencing.
+
+### 15.9. Orphaned `meson.build` Files
+
+**Error pattern:** A subdirectory contains only a `meson.build` file with no source files (`.cc`, `.h`, `.proto`), and no `subdir()` call in any parent references it. The file is dead code.
+
+**Rule:** Follow the assessment procedure in §8.10. If the file is not referenced by any `subdir()` and all its targets are either dead or defined elsewhere, delete the file and its empty directory. Common sources: directories created during initial translation that were later reorganized.
+
+### 15.10. `@skip` Annotations for Excluded Bazel Targets
+
+**Error pattern:** A `meson.build` file omits a Bazel target (e.g., a fake/test-only `ray_cc_library`) without documenting the omission. During audits, this looks like a missing target.
+
+**Rule:** When a Bazel target is intentionally excluded from the Meson build (test fakes, test utilities, etc.), add a `# @skip: <meson_name> (@original: <bazel_name>) — <reason>` comment at the position where the target would appear. This documents that the omission is intentional and prevents audit false positives. Example:
+```meson
+# @skip: fake_raylet_client_cpp_lib (@original: fake_raylet_client) — test-only fake, not needed in Meson
+```
 
 ---

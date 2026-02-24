@@ -8,7 +8,10 @@ constants_cpp_lib_dep = declare_dependency(
 
 # === @begin: macros_cpp_lib (@original: macros) ===
 # Header-only
-macros_cpp_lib_dep = declare_dependency(
+# NOTE: Renamed to common_macros_cpp_lib_dep to avoid overwriting util/macros_cpp_lib_dep
+# which was defined in util/meson.build (processed earlier). Both common/macros.h and
+# util/macros.h exist as separate files with different content.
+common_macros_cpp_lib_dep = declare_dependency(
     sources: ['macros.h']
 )
 # === @end: macros_cpp_lib (@original: macros) ===
@@ -30,9 +33,11 @@ source_location_cpp_lib_dep = declare_dependency(
 # === @begin: status_cpp_lib (@original: status) ===
 status_cpp_lib_dependencies = [
     # Package-managed
-    macros_cpp_lib_dep,
+    common_macros_cpp_lib_dep,
     source_location_cpp_lib_dep,
-    util_cpp_lib_dep,
+    logging_cpp_lib_dep,
+    macros_cpp_lib_dep,
+    visibility_cpp_lib_dep,
 
     # Eugo-managed
     boost_system,
@@ -58,7 +63,7 @@ status_cpp_lib_dep = declare_dependency(
 # Header-only
 status_or_cpp_lib_dependencies = [
     # Package-managed
-    macros_cpp_lib_dep,
+    common_macros_cpp_lib_dep,
     status_cpp_lib_dep,
     logging_cpp_lib_dep,
 
@@ -77,7 +82,6 @@ status_or_cpp_lib_dep = declare_dependency(
 id_cpp_lib_dependencies = [
     # Package-managed
     constants_cpp_lib_dep,
-    status_cpp_lib_dep,
     common_proto_cpp_lib_dep,
     sha256_cpp_lib_dep,
     logging_cpp_lib_dep,
@@ -283,6 +287,8 @@ asio_cpp_lib_dep = declare_dependency(
 )
 # === @end: asio_cpp_lib (@original: asio) ===
 
+# NOTE: @skip: fake_periodical_runner (@original: fake_periodical_runner) — test-only header
+# (`asio/fake_periodical_runner.h`); not compiled in production Meson build.
 
 # === @begin: memory_monitor_interface_cpp_lib (@original: memory_monitor_interface) ===
 # Header-only
@@ -602,22 +608,17 @@ task_common_cpp_lib_dependencies = [
     ray_config_cpp_lib_dep,
     ray_object_cpp_lib_dep,
     runtime_env_cpp_lib_dep,
-
     # Scheduling
     fallback_strategy_cpp_lib_dep,
     label_selector_cpp_lib_dep,
     resource_set_cpp_lib_dep,
     scheduling_class_util_cpp_lib_dep,
-
     # FlatBuffers
     node_manager_cpp_fbs_lib_dep,
-
     # Util
     container_util_cpp_lib_dep,
-
-    # NOTE: //src/ray/observability:metric_interface not available here
-    # (observability/ processed after common/ in src/ray/meson.build).
-    # Resolved at final link time via _raylet shared library.
+    # Observability
+    metric_interface_cpp_lib_dep,   # defined in `src/ray/meson.build` before `subdir('common/')`
 
     # Eugo-managed
     absl_container_flat_hash_map,
@@ -683,7 +684,7 @@ ray_common_cpp_lib_dep = declare_dependency(
         grpc_util_cpp_lib_dep,
         id_cpp_lib_dep,
         lease_cpp_lib_dep,
-        macros_cpp_lib_dep,
+        common_macros_cpp_lib_dep,
         memory_monitor_factory_cpp_lib_dep,
         memory_monitor_interface_cpp_lib_dep,
         metrics_cpp_lib_dep,

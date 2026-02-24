@@ -1,8 +1,20 @@
+# IMPORTANT: Ordering within this file respects the internal dependency graph.
+# You will see things "out of order" from a BUILD.bazel perspective because
+# Meson requires define-before-use: if target A depends on target B and both
+# are in this file, B must appear first regardless of Bazel ordering.
+# Specifically:
+#   - client_connection moved before raylet_ipc_client (raylet_ipc_client depends on it)
+#
+# @skip: fake_raylet_ipc_client (@original: fake_raylet_ipc_client) — test-only header; not compiled in production Meson build.
+
+
 # === @begin: raylet_ipc_client_interface_cpp_lib (@original: raylet_ipc_client_interface) ===
 # Header-only
 raylet_ipc_client_interface_cpp_lib_dependencies = [
     # Package-managed
-    ray_common_cpp_lib_dep,  # buffer, id, status, flatbuf_utils (consolidated),
+    buffer_cpp_lib_dep,
+    id_cpp_lib_dep,
+    status_cpp_lib_dep,
     node_manager_cpp_fbs_lib_dep,
     common_proto_cpp_lib_dep,
     process_interface_cpp_lib_dep,
@@ -50,7 +62,10 @@ raylet_ipc_client_target_cpp_lib_dependencies = [
     # Package-managed
     client_connection_cpp_lib_dep,
     asio_cpp_lib_dep,
-    ray_common_cpp_lib_dep,  # buffer, flatbuf_utils, id, status (consolidated),
+    buffer_cpp_lib_dep,
+    flatbuf_utils_cpp_lib_dep,
+    id_cpp_lib_dep,
+    status_cpp_lib_dep,
     node_manager_cpp_fbs_lib_dep,
     common_proto_cpp_lib_dep,
     raylet_ipc_client_interface_cpp_lib_dep,
@@ -76,10 +91,13 @@ raylet_ipc_client_target_cpp_lib_dep = declare_dependency(
 
 
 # Umbrella dependency — backward compatible with consumers using the consolidated target
+raylet_ipc_client_cpp_lib_dependencies = [
+    # Package-managed
+    raylet_ipc_client_interface_cpp_lib_dep,
+    client_connection_cpp_lib_dep,
+    raylet_ipc_client_target_cpp_lib_dep,
+]
+
 raylet_ipc_client_cpp_lib_dep = declare_dependency(
-    dependencies: [
-        raylet_ipc_client_interface_cpp_lib_dep,
-        client_connection_cpp_lib_dep,
-        raylet_ipc_client_target_cpp_lib_dep,
-    ]
+    dependencies: raylet_ipc_client_cpp_lib_dependencies
 )

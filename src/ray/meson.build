@@ -27,10 +27,11 @@ subdir('flatbuffers/')
 
 subdir('common/')
 
-# ray_syncer (formerly common/ray_syncer/)
-subdir('ray_syncer/')
-
 subdir('rpc/')
+
+# `ray_syncer` depends on `rpc/authentication/` targets (`authentication_mode`, `authentication_token`,
+# `authentication_token_loader`, `authentication_token_validator`), so it must come AFTER rpc/.
+subdir('ray_syncer/')
 
 
 # @IMPORTANT: defined inline here (after rpc/) because it depends on `rpc/` targets
@@ -132,7 +133,7 @@ subdir('core_worker_rpc_client/')
 
 # @IMPORTANT: `gcs_server` targets are inline here (not in `gcs/meson.build`) because they depend on
 # targets from `gcs_rpc_client/`, `raylet/scheduling/`, and others that are processed after `gcs/`.
-# === @begin: gcs/gcs_table_storage_cpp_lib (original: gcs_table_storage_lib) ===
+# === @begin: gcs/gcs_table_storage_cpp_lib (@original: gcs_table_storage) ===
 gcs_table_storage_cpp_lib_dependencies = [
     # Package-managed
     asio_cpp_lib_dep,
@@ -877,19 +878,18 @@ gcs_server_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs/gcs_server ===
-
-gcs_server_cpp_lib_dependencies = [
+gcs_server_exe_dependencies = [
     # Package-managed
     gcs_server_cpp_lib_dep,
     metrics_cpp_lib_dep,                    # //src/ray/common:metrics
     observability_metrics_cpp_lib_dep,      # //src/ray/observability:metrics
-    # @IMPORTANT: Cannot add raylet_metrics_cpp_lib_dep here (//src/ray/raylet:metrics) — it maps to
-    # //src/ray/raylet:metrics but `subdir('raylet/')` is processed AFTER this
+    # @IMPORTANT: Cannot add `raylet_metrics_cpp_lib_dep` here (//src/ray/raylet:metrics) — it maps to
+    # `//src/ray/raylet:metrics` but `subdir('raylet/')` is processed AFTER this
     # executable. `gcs_server_main.cc` includes "ray/raylet/metrics.h", which
     # is found via the project-wide `-I` path. The concrete deps of that header-only
     # target (`observability_metrics_cpp_lib_dep`, `stats_cpp_lib_dep`) are present
     # in this list, so link resolution is complete.
-    stats_cpp_lib_dep,              # //src/ray/stats:stats_lib
+    stats_cpp_lib_dep,              # `//src/ray/stats:stats_lib`
     event_cpp_lib_dep,
     port_persistence_cpp_lib_dep,
     raii_cpp_lib_dep,
@@ -903,7 +903,7 @@ gcs_server_cpp_lib_dependencies = [
 gcs_server = executable(
     'gcs_server',
     ['gcs/gcs_server_main.cc'],
-    dependencies: gcs_server_cpp_lib_dependencies,
+    dependencies: gcs_server_exe_dependencies,
     install: true,
     install_dir: py.get_install_dir() / 'ray/core/src/ray/gcs/'
 )

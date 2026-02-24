@@ -15,17 +15,29 @@ py.extension_module(
     install: true,
     subdir: 'ray/',
     dependencies: [
-        # Package-managed
-        python_callbacks_cpp_lib_dep,
-        core_worker_cpp_lib_dep,
-        exported_internal_cpp_lib_dep,
-        gcs_server_cpp_lib_dep,
-        global_state_accessor_cpp_lib_dep,
-        raylet_cpp_lib_dep,
-        stats_cpp_lib_dep,
-        serialization_proto_cpp_lib_dep,
-        util_cpp_lib_dep
+        # Package-managed (in Bazel dep order)
+        # exported_internal_cpp_lib is linked via link_whole below (Bazel alwayslink=1)
+        # ray_version_script.lds is linked via link_args below (Bazel linkopts)
+        # ray_exported_symbols.lds is excluded, as it's only used for symbol export on macOS, and Eugo targets Linux only.
+        python_callbacks_cpp_lib_dep,                   # //src/ray/common:python_callbacks
+        core_worker_cpp_lib_dep,                        # //src/ray/core_worker:core_worker_lib
+        gcs_server_cpp_lib_dep,                         # //src/ray/gcs:gcs_server_lib
+        redis_store_client_cpp_lib_dep,                 # //src/ray/gcs/store_client:redis_store_client
+        global_state_accessor_cpp_lib_dep,              # //src/ray/gcs_rpc_client:global_state_accessor_lib
+        serialization_proto_cpp_lib_dep,                # //src/ray/protobuf:serialization_cc_proto
+        python_gcs_subscriber_cpp_lib_dep,              # //src/ray/pubsub:python_gcs_subscriber
+        raylet_client_with_io_context_cpp_lib_dep,      # //src/ray/raylet_rpc_client:raylet_client_with_io_context_lib
+        # //src/ray/thirdparty/setproctitle — excluded, installed as pip package
+        memory_cpp_lib_dep,                             # //src/ray/util:memory
+        port_persistence_cpp_lib_dep,                   # //src/ray/util:port_persistence
+        raii_cpp_lib_dep,                               # //src/ray/util:raii
+        stream_redirection_cpp_lib_dep,                 # //src/ray/util:stream_redirection
+        stream_redirection_options_cpp_lib_dep,         # //src/ray/util:stream_redirection_options
     ],
+    link_whole: [exported_internal_cpp_lib],
+    # @EUGO_CHANGE: Linux-only. Upstream Bazel uses platform-conditional linkopts with
+    # ray_exported_symbols.lds on macOS and ray_version_script.lds on Linux.
+    # Eugo targets Linux HPC only, so we unconditionally use the Linux version script.
     link_args : ['-Wl,--version-script=' + meson.project_source_root() / 'src/ray/ray_version_script.lds'],
     override_options : ['cython_language=cpp']
 )

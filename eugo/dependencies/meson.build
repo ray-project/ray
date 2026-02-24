@@ -2,6 +2,7 @@
 # @Important:
 # We import those guys separately to avoid linking every binary to every absl library, as there are hundreds of them.
 absl_base_core_headers = dependency('absl', method: 'cmake', modules: ['absl::core_headers'])
+absl_base = dependency('absl', method: 'cmake', modules: ['absl::base'])
 
 absl_time = dependency('absl', method: 'cmake', modules: ['absl::time'])
 
@@ -145,7 +146,7 @@ gflags = dependency('gflags', method: 'cmake')
 # === @begin: hiredis ===
 hiredis = dependency('hiredis', method: 'cmake')
 hiredis_ssl = dependency('hiredis_ssl', method: 'cmake')
-# === @end: gflags ===
+# === @end: hiredis ===
 
 
 # === @begin: threads ===

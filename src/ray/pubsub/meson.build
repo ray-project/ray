@@ -134,16 +134,13 @@ gcs_subscriber_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: python_gcs_subscriber_cpp_lib (@original: python_gcs_subscriber) ===
-# NOTE: Bazel deps include gcs_rpc_client:rpc_client which is processed after pubsub/.
-# Proto/RPC deps listed directly instead — provides equivalent functionality.
 python_gcs_subscriber_cpp_lib_dependencies = [
     # Package-managed
     status_cpp_lib_dep,
+    # rpc_client_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/gcs_rpc_client:rpc_client
     gcs_service_proto_cpp_lib_dep,
     pubsub_proto_cpp_lib_dep,
     visibility_cpp_lib_dep,
-    retryable_grpc_client_cpp_lib_dep,
-    rpc_callback_types_cpp_lib_dep,
 
     # Eugo-managed
     grpc,

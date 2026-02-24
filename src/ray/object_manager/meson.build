@@ -186,7 +186,7 @@ object_buffer_pool_cpp_lib_dependencies = [
     logging_cpp_lib_dep,
 
     # Eugo-managed
-    absl_base_core_headers,
+    absl_base,
     absl_container_flat_hash_map,
     absl_synchronization,
     absl_time,

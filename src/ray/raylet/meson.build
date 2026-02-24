@@ -1,3 +1,14 @@
+# IMPORTANT: Ordering within this file respects the internal dependency graph.
+# You will see things "out of order" from a BUILD.bazel perspective because
+# Meson requires define-before-use: if target A depends on target B and both
+# are in this file, B must appear first regardless of Bazel ordering.
+# Specifically:
+#   - metrics (last in BUILD.bazel) is first here because worker_pool depends on it
+#   - worker_interface before worker (worker depends on worker_interface)
+#   - wait_manager before lease_dependency_manager (lease_dep_mgr depends on wait_manager)
+#   - runtime_env_agent_client before worker_pool (worker_pool depends on it)
+
+
 # === @begin: raylet_metrics_cpp_lib (@original: metrics) ===
 # Header-only
 # Defined early because worker_pool depends on it
@@ -358,7 +369,7 @@ raylet_cpp_lib_dependencies = [
     memory_monitor_interface_cpp_lib_dep,
     memory_monitor_utils_cpp_lib_dep,
     cgroup_manager_interface_cpp_lib_dep,
-    experimental_mutable_object_provider_cpp_lib_dep,
+    cw_exp_mutable_object_provider_cpp_lib_dep,
     core_worker_client_pool_cpp_lib_dep,
     node_manager_cpp_fbs_lib_dep,
     gcs_client_cpp_lib_dep,
@@ -428,6 +439,7 @@ raylet_executable = executable(
         core_worker_client_pool_cpp_lib_dep,
         gcs_client_cpp_lib_dep,
         ownership_object_directory_cpp_lib_dep,
+        object_manager_client_cpp_lib_dep,
         cluster_lease_manager_cpp_lib_dep,
         raylet_client_lib_cpp_lib_dep,
         raylet_client_pool_cpp_lib_dep,

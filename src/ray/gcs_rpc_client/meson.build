@@ -1,3 +1,13 @@
+# IMPORTANT: Ordering within this file respects the internal dependency graph.
+# You will see things "out of order" from a BUILD.bazel perspective because
+# Meson requires define-before-use: if target A depends on target B and both
+# are in this file, B must appear first regardless of Bazel ordering.
+# Specifically:
+#   - accessor_factory_interface, rpc_client, actor_accessor_interface, gcs_client_context
+#     must all appear before actor_accessor_implementation and gcs_client (which depend on them)
+#   - gcs_client moved from first in BUILD.bazel to near-last here
+
+
 # === @begin: accessor_factory_interface_cpp_lib (@original: accessor_factory_interface) ===
 accessor_factory_interface_cpp_lib_dep = declare_dependency(
     sources: ['accessor_factory_interface.h'],
@@ -29,7 +39,8 @@ rpc_client_cpp_lib_dep = declare_dependency(
 actor_accessor_interface_cpp_lib_dependencies = [
     # Package-managed
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # placement_group, task_common (consolidated),
+    placement_group_cpp_lib_dep,
+    task_common_cpp_lib_dep,
     autoscaler_proto_cpp_lib_dep,
     gcs_proto_cpp_lib_dep,
     rpc_callback_types_cpp_lib_dep,
@@ -65,7 +76,8 @@ actor_accessor_implementation_cpp_lib_dependencies = [
     rpc_client_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # placement_group, protobuf_utils (consolidated),
+    placement_group_cpp_lib_dep,
+    protobuf_utils_cpp_lib_dep,
     redis_store_client_cpp_lib_dep,
     usage_proto_cpp_lib_dep,
     gcs_subscriber_cpp_lib_dep,
@@ -129,7 +141,8 @@ gcs_client_target_cpp_lib_dependencies = [
     rpc_client_cpp_lib_dep,
     asio_cpp_lib_dep,
     id_cpp_lib_dep,
-    ray_common_cpp_lib_dep,     # placement_group, protobuf_utils (consolidated),
+    placement_group_cpp_lib_dep,
+    protobuf_utils_cpp_lib_dep,
     redis_store_client_cpp_lib_dep,
     usage_proto_cpp_lib_dep,
     gcs_subscriber_cpp_lib_dep,
@@ -189,12 +202,3 @@ global_state_accessor_cpp_lib_dep = declare_dependency(
     dependencies: global_state_accessor_cpp_lib_dependencies
 )
 # === @end: global_state_accessor_cpp_lib ===
-
-
-# === @begin: python_callbacks_cpp_lib (original: python_callbacks) ===
-# Header-only — python_callbacks.h is now in common/ but this dep is kept for
-# backward compatibility with downstream consumers
-python_callbacks_cpp_lib_dep = declare_dependency(
-    dependencies: global_state_accessor_cpp_lib_dependencies
-)
-# === @end: python_callbacks_cpp_lib ===

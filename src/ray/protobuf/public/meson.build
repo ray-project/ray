@@ -129,6 +129,83 @@ events_node_lifecycle_event_proto_cpp = custom_target(
 
 
 # ==========================================================================
+# events_*.proto — PYTHON CODEGEN
+# Generates *_pb2.py/*_pb2_grpc.py for all events_* protos.
+# These are consumed by Python dashboard aggregator code at runtime.
+# ==========================================================================
+
+# @begin: proto_py (@original: core_py_proto — events_base_event)
+events_base_event_proto_py = custom_target(
+    input: events_base_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_actor_task_definition_event)
+events_actor_task_definition_event_proto_py = custom_target(
+    input: events_actor_task_definition_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_task_definition_event)
+events_task_definition_event_proto_py = custom_target(
+    input: events_task_definition_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_task_lifecycle_event)
+events_task_lifecycle_event_proto_py = custom_target(
+    input: events_task_lifecycle_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_driver_job_definition_event)
+events_driver_job_definition_event_proto_py = custom_target(
+    input: events_driver_job_definition_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_driver_job_lifecycle_event)
+events_driver_job_lifecycle_event_proto_py = custom_target(
+    input: events_driver_job_lifecycle_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_actor_definition_event)
+events_actor_definition_event_proto_py = custom_target(
+    input: events_actor_definition_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_actor_lifecycle_event)
+events_actor_lifecycle_event_proto_py = custom_target(
+    input: events_actor_lifecycle_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_node_definition_event)
+events_node_definition_event_proto_py = custom_target(
+    input: events_node_definition_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+# @begin: proto_py (@original: core_py_proto — events_node_lifecycle_event)
+events_node_lifecycle_event_proto_py = custom_target(
+    input: events_node_lifecycle_event_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py
+
+
+# ==========================================================================
 # runtime_environment.proto — full Pattern 4 (no imports, no parent deps)
 # Last in BUILD.bazel; no define-before-use constraint forces it earlier.
 # ==========================================================================
@@ -165,4 +242,12 @@ runtime_environment_proto_cpp_lib_dep = declare_dependency(
     dependencies: runtime_environment_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (original: runtime_environment_cc_proto)
+
+# @begin: proto_py (@original: core_py_proto)
+# generates and installs `*_pb2.py/*_pb2_grpc.py` into the wheel via `proto_py_default_kwargs` (install: true).
+runtime_environment_proto_py = custom_target(
+    input: runtime_environment_proto,
+    kwargs: proto_py_default_kwargs
+)
+# @end: proto_py (@original: core_py_proto)
 # === @end: runtime_environment.proto ===

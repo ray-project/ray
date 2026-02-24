@@ -30,8 +30,8 @@ redis_store_client_cpp_lib_dependencies = [
     network_util_cpp_lib_dep,
 
     # Eugo-managed
-    boost_asio,
     hiredis,                # Bazel: //:hiredis — root alias() for @com_github_redis_hiredis//:hiredis
+    boost_asio,
     absl_strings,
     absl_synchronization,
 ]
