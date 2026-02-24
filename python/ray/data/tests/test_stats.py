@@ -137,6 +137,7 @@ def gen_expected_metrics(
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
             "'task_completion_time_s': N",
+            "'task_worker_completion_time_s': N",
             "'task_scheduling_time_s': N",
             "'task_output_backpressure_time_s': Z",
             "'task_completion_time': (samples: N, avg: N)",
@@ -212,6 +213,7 @@ def gen_expected_metrics(
                 f"{'N' if task_output_backpressure else 'Z'}"
             ),
             "'task_completion_time_s': Z",
+            "'task_worker_completion_time_s': Z",
             "'task_scheduling_time_s': Z",
             "'task_output_backpressure_time_s': Z",
             "'task_completion_time': (samples: Z, avg: Z)",
@@ -681,6 +683,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
+        "      task_worker_completion_time_s: N,\n"
         "      task_scheduling_time_s: N,\n"
         "      task_output_backpressure_time_s: Z,\n"
         "      task_completion_time: (samples: N, avg: N),\n"
@@ -832,6 +835,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      task_submission_backpressure_time: N,\n"
         "      task_output_backpressure_time: Z,\n"
         "      task_completion_time_s: N,\n"
+        "      task_worker_completion_time_s: N,\n"
         "      task_scheduling_time_s: N,\n"
         "      task_output_backpressure_time_s: Z,\n"
         "      task_completion_time: (samples: N, avg: N),\n"
@@ -936,6 +940,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            task_submission_backpressure_time: N,\n"
         "            task_output_backpressure_time: Z,\n"
         "            task_completion_time_s: N,\n"
+        "            task_worker_completion_time_s: N,\n"
         "            task_scheduling_time_s: N,\n"
         "            task_output_backpressure_time_s: Z,\n"
         "            task_completion_time: (samples: N, avg: N),\n"

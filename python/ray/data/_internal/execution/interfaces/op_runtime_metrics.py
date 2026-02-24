@@ -1049,7 +1049,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         # NOTE: This metric tracks task's wall-clock time as measured by
         #       the workers executing the task
-        self.task_worker_completion_time_s += task_exec_stats.task_wall_time_s
+        if task_exec_stats is not None:
+            self.task_worker_completion_time_s += task_exec_stats.task_wall_time_s
 
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_duration(task_wall_time_s)

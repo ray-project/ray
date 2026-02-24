@@ -232,9 +232,16 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
     total_scheduling_time_s = sum(t[1] for t in test_cases)
     total_output_bp_time_s = sum(t[2] for t in test_cases)
 
+    total_worker_wall_time_s = sum(
+        t[0] - t[1] for t in test_cases  # driver_wall_time_s - scheduling_time_s
+    )
+
     # Raw counters
     assert metrics.task_block_gen_and_ser_time_s == pytest.approx(total_gen_ser)
     assert metrics.task_completion_time_s == pytest.approx(total_driver_wall_time_s)
+    assert metrics.task_worker_completion_time_s == pytest.approx(
+        total_worker_wall_time_s
+    )
     assert metrics.task_scheduling_time_s == pytest.approx(total_scheduling_time_s)
     assert metrics.task_output_backpressure_time_s == pytest.approx(
         total_output_bp_time_s
