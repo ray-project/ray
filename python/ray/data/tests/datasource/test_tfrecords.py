@@ -361,7 +361,7 @@ def test_read_tfrecords(
     with_tf_schema,
     tfx_read,
     compression,
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     import pandas as pd
