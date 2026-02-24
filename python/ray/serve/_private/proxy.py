@@ -639,7 +639,10 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-            return response
+            # When only ResponseStatus is yielded (not-found, errors), response stays
+            # None. Returning None to gRPC causes serialization/type errors; return
+            # empty bytes so the error status is sent cleanly.
+            return response if response is not None else b""
 
         async def unary_stream(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
@@ -701,7 +704,10 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-            return response
+            # When only ResponseStatus is yielded (not-found, errors), response stays
+            # None. Returning None to gRPC causes serialization/type errors; return
+            # empty bytes so the error status is sent cleanly.
+            return response if response is not None else b""
 
         async def stream_stream(
             request_iterator: Any, context: grpc._cython.cygrpc._ServicerContext

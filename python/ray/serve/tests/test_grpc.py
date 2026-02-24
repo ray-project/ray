@@ -816,6 +816,97 @@ def test_grpc_client_streaming(ray_instance, ray_shutdown):
     assert response.num_x2 == 30  # (1+2+3+4+5) * 2 = 30
 
 
+def test_grpc_unary_not_found(ray_instance, ray_shutdown):
+    """Test gRPC unary returns clean NOT_FOUND when app doesn't exist.
+
+    When proxy_request yields only ResponseStatus (no body), returning None would
+    cause serialization errors. This verifies unary_unary returns empty bytes
+    and the client receives a clean gRPC error.
+    """
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+
+    # Deploy two apps so routing requires metadata; single-app routes to default
+    serve.run(g, name="app1", route_prefix="/app1")
+    serve.run(g, name="app2", route_prefix="/app2")
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    # Call with non-existent app metadata - triggers not_found_response (only
+    # ResponseStatus yielded, no body). Before fix, returning None caused
+    # server-side serialization error.
+    with pytest.raises(grpc.RpcError) as exc_info:
+        stub.__call__.with_call(
+            request=request,
+            metadata=(("application", "nonexistent_app"),),
+        )
+    assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
+
+
+def test_grpc_client_streaming_not_found(ray_instance, ray_shutdown):
+    """Test gRPC client streaming returns clean NOT_FOUND when app doesn't exist.
+
+    When proxy_request yields only ResponseStatus (no body), returning None would
+    cause serialization errors. This verifies stream_unary returns empty bytes
+    and the client receives a clean gRPC error.
+    """
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+
+    @serve.deployment
+    class ClientStreamingService:
+        async def ClientStreaming(self, request_stream: gRPCInputStream):
+            async for _ in request_stream:
+                pass
+            return serve_pb2.UserDefinedResponse(greeting="ok", num_x2=0)
+
+    # Deploy two apps so routing requires metadata; single-app routes to default
+    serve.run(ClientStreamingService.bind(), name="app1", route_prefix="/app1")
+    serve.run(ClientStreamingService.bind(), name="app2", route_prefix="/app2")
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+
+    def request_generator():
+        yield serve_pb2.UserDefinedMessage(name="x", num=1, foo="bar")
+
+    # Call with non-existent app metadata - triggers not_found_response (only
+    # ResponseStatus yielded, no body). Before fix, returning None caused
+    # server-side serialization error.
+    with pytest.raises(grpc.RpcError) as exc_info:
+        stub.ClientStreaming(
+            request_generator(),
+            metadata=(("application", "nonexistent_app"),),
+        )
+    assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
+
+
 def test_grpc_bidirectional_streaming(ray_instance, ray_shutdown):
     """Test gRPC bidirectional streaming (stream-stream) requests.
 
