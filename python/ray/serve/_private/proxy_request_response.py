@@ -10,6 +10,7 @@ from starlette.types import Receive, Scope, Send
 
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.logging_utils import format_grpc_peer_address
 from ray.serve._private.utils import DEFAULT
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -58,6 +59,10 @@ class ProxyRequest(ABC):
     @abstractmethod
     def is_health_request(self) -> bool:
         raise NotImplementedError
+
+    @property
+    def client(self) -> str:
+        return ""
 
 
 class ASGIProxyRequest(ProxyRequest):
@@ -176,6 +181,10 @@ class gRPCProxyRequest(ProxyRequest):
     @property
     def is_health_request(self) -> bool:
         return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
+
+    @property
+    def client(self) -> str:
+        return format_grpc_peer_address(self.context.peer())
 
     def send_request_id(self, request_id: str):
         # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
