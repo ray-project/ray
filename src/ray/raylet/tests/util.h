@@ -205,7 +205,7 @@ class MockWorker : public WorkerInterface {
 };
 
 /**
- * @brief Creates a MockWorker for a normal task.
+ * @brief Creates a MockWorker for a normal or actor creation task.
  *
  * @param owner_id The parent task ID for the lease.
  * @param max_retries The maximum number of task retries allowed.
@@ -237,7 +237,6 @@ inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
   RayLease lease(lease_spec);
   auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port);
   worker->GrantLease(lease);
-  worker->GrantLeaseId(lease.GetLeaseSpecification().LeaseId());
   return worker;
 }
 
