@@ -12,7 +12,7 @@ Or use this script: bash convert_to_md.sh
   <a href="https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content" role="button"><img src="https://img.shields.io/static/v1?label=&message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
 </div>
 
-This tutorial guides you through building and deploying a **multi-agent system** where agents communicate using the **A2A (Agent-to-Agent) protocol**. The system is built on Ray Serve for scalable deployment, LangGraph for agent orchestration, and MCP for tool integration.
+This tutorial guides you through building and deploying a **multi-agent system** where agents communicate using the **A2A (Agent-to-Agent) protocol**. The system is built on Ray Serve for scalable deployment, LangChain for agent orchestration, and MCP for tool integration.
 
 If you're new to Ray Serve and LangChain integration, see this **single-agent template** first:
 - **Anyscale template**: [langchain-agent-ray-serve](https://console.anyscale.com/template-preview/langchain-agent-ray-serve)
@@ -36,7 +36,7 @@ Each agent runs as an independent, autoscaling service with two interfaces: **SS
 
 ### Key terminology
 
-- *Agent*: The LangGraph workflow/logic that decides what actions to take and calls tools.
+- *Agent*: The LangChain workflow/logic that decides what actions to take and calls tools.
 - *Deployment / Service*: The Ray Serve application that hosts an agent (or MCP/LLM) behind HTTP.
 - *SSE endpoint*: Human-to-agent chat endpoint with streaming support, such as `POST /weather-agent/chat`.
 - *A2A endpoint*: Agent-to-agent endpoints for discovery and execution, such as `GET /.well-known/agent-card.json` and `POST /v1/message:send`.
@@ -416,7 +416,7 @@ The configuration module [`agent_runtime/config.py`](https://github.com/ray-proj
 
 #### 5.3.2 Agent building helpers
 
-The agent builder module [`agent_runtime/agent_builder.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/agent_builder.py) provides factory functions for building LangGraph agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
+The agent builder module [`agent_runtime/agent_builder.py`](https://github.com/ray-project/ray/tree/master/doc/source/ray-overview/examples/multi_agent_a2a/content/agent_runtime/agent_builder.py) provides factory functions for building LangChain agents, centralizing LLM setup, MCP tool discovery, and agent creation to eliminate boilerplate.
 
 - **Functions:** `build_llm()`, `load_mcp_tools()`, `build_tool_agent()`, and `build_mcp_agent()`.
 - **Logic handled:** Configuration loading, LLM construction, dynamic MCP tool discovery, and agent creation with `MemorySaver` checkpointing.
@@ -427,7 +427,7 @@ The SSE deployment module [`agent_runtime/serve_deployment.py`](https://github.c
 
 - **Endpoints:** Exposes `POST /chat` with SSE streaming support.
 - **Functions:** `create_chat_app()` and `create_serve_deployment()`.
-- **Features:** Real-time SSE streaming, conversation continuity through Thread IDs, and automatic LangGraph event serialization.
+- **Features:** Real-time SSE streaming, conversation continuity through Thread IDs, and automatic LangChain event serialization.
 
 #### 5.3.4 A2A deployment factory
 
@@ -436,7 +436,7 @@ The A2A deployment module [`agent_runtime/a2a_deployment.py`](https://github.com
 
 ### 5.4 The specialized agents
 
-Each specialized agent is a LangGraph agent that combines an LLM with specific tools. The agents use the builder pattern from the agent runtime to minimize boilerplate code.
+Each specialized agent is a LangChain agent that combines an LLM with specific tools. The agents use the builder pattern from the agent runtime to minimize boilerplate code.
 
 #### Weather agent
 
