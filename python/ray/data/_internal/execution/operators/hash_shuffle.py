@@ -1211,7 +1211,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         )
 
         # Round resource to 2d decimal point (for readability)
-        return round(target_num_cpus, 2)
+        rounded_target_num_cpus = round(target_num_cpus, 2)
+
+        # Lower bound to .01 so that aggregators cannot be scheduled on nodes
+        # with 0 cpus (ie, avoid scheduling on the head node)
+        return max(rounded_target_num_cpus, 0.01)
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
