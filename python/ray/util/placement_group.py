@@ -96,7 +96,6 @@ class PlacementGroup:
         """Returns the number of bundles in this placement group."""
         return len(self.bundle_specs)
 
-    @property
     def _scheduling_options_bundles(self) -> List[List[Dict]]:
         """Return all possible bundles across primary and fallback options
         as a nested list of strategies.
