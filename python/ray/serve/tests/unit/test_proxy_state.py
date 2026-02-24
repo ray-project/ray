@@ -1,5 +1,6 @@
 import json
 from typing import List, Optional, Tuple
+from unittest import mock
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +9,11 @@ from ray._common.test_utils import wait_for_condition
 from ray._common.utils import Timer
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import RequestProtocol
-from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+from ray.serve._private.constants import (
+    PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
+    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
+)
 from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
 from ray.serve.config import DeploymentMode, HTTPOptions
@@ -739,6 +744,33 @@ class TestFallbackProxy:
         manager.update(proxy_nodes={HEAD_NODE_ID})
 
         assert manager._fallback_proxy_state is None
+
+    def test_fallback_proxy_uses_correct_ports(self):
+        """The fallback proxy should use the fallback ports (8500/9500),
+        not the default proxy ports (8000/9000)."""
+        cache = MockClusterNodeInfoCache()
+        cache.alive_nodes = [self.HEAD_NODE, self.WORKER_NODE]
+        manager, _ = _create_proxy_state_manager(
+            http_options=HTTPOptions(location=DeploymentMode.HeadOnly),
+            cluster_node_info_cache=cache,
+            running_native_proxies=True,
+        )
+
+        with mock.patch.object(
+            manager, "_start_proxy", wraps=manager._start_proxy
+        ) as mock_start:
+            manager.update(proxy_nodes={HEAD_NODE_ID})
+
+            fallback_calls = [
+                call
+                for call in mock_start.call_args_list
+                if "fallback" in call.kwargs.get("name", "")
+            ]
+            assert len(fallback_calls) == 1
+
+            kwargs = fallback_calls[0].kwargs
+            assert kwargs["http_options"].port == RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
+            assert kwargs["grpc_options"].port == RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
 
     def test_fallback_proxy_not_started_twice(self):
         """Calling update multiple times should not create a second fallback proxy."""

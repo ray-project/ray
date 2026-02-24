@@ -915,5 +915,55 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     serve.shutdown()
 
 
+def test_fallback_proxy_starts_with_native_proxy_on_head_node(shutdown_ray, call_ray_stop_only):
+    """When HAProxy is enabled, verify that two proxy actors run on the head
+    node (the native proxy + the fallback Serve proxy) and only the native
+    proxy runs on worker nodes."""
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    def hello():
+        return "hello"
+
+    serve.run(hello.options(num_replicas=2).bind(), name="app1", route_prefix="/app1")
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+
+    def check_proxies():
+        actors = list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+            ],
+        )
+
+        # Count native proxies (HAProxyManager) and Serve proxies (ProxyActor)
+        haproxy_actors = [a for a in actors if a["class_name"] == "HAProxyManager"]
+        serve_proxy_actors = [a for a in actors if a["class_name"] == "ProxyActor"]
+
+        # There should be one HAProxy manager per node
+        if len(haproxy_actors) != 2:
+            return False
+
+        # The head node should have a fallback Serve proxy,
+        # worker nodes should not.
+        if len(serve_proxy_actors) != 1:
+            return False
+
+        if serve_proxy_actors[0]["node_id"] != head_node_id:
+            return False
+
+        return True
+
+    wait_for_condition(check_proxies, timeout=30)
+
+    serve.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

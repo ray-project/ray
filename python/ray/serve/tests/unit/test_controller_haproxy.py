@@ -1,4 +1,3 @@
-from audioop import add
 import pytest
 
 from ray.serve._private.common import (
