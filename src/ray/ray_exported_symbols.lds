@@ -3,33 +3,33 @@
 # Note: This file is used for macOS only, and should be kept in sync with `ray_version_script.lds`.
 # Ray ABI is not finalized, the exact set of exported (C/C++) APIs is subject to change.
 # common
-*ray*Language*
-*ray*RayObject*
-*ray*Status*
-*ray*RayFunction*
-*ray*FunctionDescriptorBuilder*
-*ray*TaskArg*
-*ray*TaskOptions*
-*ray*Buffer*
-*ray*LocalMemoryBuffer*
+__ZN3ray*Language*
+__ZN3ray*RayObject*
+__ZN3ray*Status*
+__ZN3ray*RayFunction*
+__ZN3ray*FunctionDescriptorBuilder*
+__ZN3ray*TaskArg*
+__ZN3ray*TaskOptions*
+__ZN3ray*Buffer*
+__ZN3ray*LocalMemoryBuffer*
 # util
-*ray*RayLog*
-*ray*RayLogLevel*
+__ZN3ray*RayLog*
+__ZN3ray*RayLogLevel*
 # id
-*ray*MurmurHash64A*
-*ray*JobID*
-*ray*TaskID*
-*ray*ActorID*
-*ray*ObjectID*
-*ray*ObjectReference*
+__ZN3ray*MurmurHash64A*
+__ZN3ray*JobID*
+__ZN3ray*TaskID*
+__ZN3ray*ActorID*
+__ZN3ray*ObjectID*
+__ZN3ray*ObjectReference*
 # Others
-*ray*metrics*
-*ray*stats*
-*ray*rpc*
-*ray*gcs*
-*ray*CoreWorker*
-*ray*PeriodicalRunner*
-*ray8internal*
+__ZN3ray7metrics*
+__ZN3ray5stats*
+__ZN3ray3rpc*
+__ZN3ray3gcs*
+__ZN3ray*CoreWorker*
+__ZN3ray*PeriodicalRunner*
+__ZN3ray8internal*
 *PyInit__raylet*
 *Java_io_ray*
 _JNI_On*
