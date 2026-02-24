@@ -106,8 +106,12 @@ def test_get_target_groups_haproxy(
     )
 
     # Setup proxy state manager
-    haproxy_controller.proxy_state_manager.add_proxy_details("proxy_node1", "10.0.1.1", "proxy1")
-    haproxy_controller.proxy_state_manager.add_proxy_details("proxy_node2", "10.0.1.2", "proxy2")
+    haproxy_controller.proxy_state_manager.add_proxy_details(
+        "proxy_node1", "10.0.1.1", "proxy1"
+    )
+    haproxy_controller.proxy_state_manager.add_proxy_details(
+        "proxy_node2", "10.0.1.2", "proxy2"
+    )
 
     # Allocate ports for replicas using controller's methods
     http_port1 = haproxy_controller.allocate_replica_port(
@@ -150,7 +154,9 @@ def test_get_target_groups_haproxy(
                 route_prefix="/app1",
                 app_name="app1",
                 targets=[
-                    Target(ip="10.0.0.1", port=http_port1, instance_id="", name="replica1"),
+                    Target(
+                        ip="10.0.0.1", port=http_port1, instance_id="", name="replica1"
+                    ),
                 ],
             ),
             TargetGroup(
@@ -158,7 +164,9 @@ def test_get_target_groups_haproxy(
                 route_prefix="/app1",
                 app_name="app1",
                 targets=[
-                    Target(ip="10.0.0.1", port=grpc_port1, instance_id="", name="replica1"),
+                    Target(
+                        ip="10.0.0.1", port=grpc_port1, instance_id="", name="replica1"
+                    ),
                 ],
             ),
         ]
