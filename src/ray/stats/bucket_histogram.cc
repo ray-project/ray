@@ -33,7 +33,7 @@ double BucketHistogram::GetPercentile(double quantile) const {
   double sum = 0.0;
   for (size_t i = 0; i < counts_.size(); i++) {
     sum += static_cast<double>(counts_[i]);
-    if (sum * inv_count > quantile) {
+    if (sum * inv_count >= quantile) {
       return bucket_scheme_->FromBucket(i);
     }
   }
