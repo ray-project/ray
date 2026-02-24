@@ -41,3 +41,4 @@ requests==2.32.5
 tensorflow==2.20.0
 tf-keras==2.20.0
 xmltodict==0.13.0
+pyarrow==19.0.1
