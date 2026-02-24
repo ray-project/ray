@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,11 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/lease/lease.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/util/fake_process.h"
 
 namespace ray {
 
@@ -67,14 +70,25 @@ class WorkerKillingGroupByOwnerTest : public ::testing::Test {
     worker->GrantLeaseId(lease.GetLeaseSpecification().LeaseId());
     return worker;
   }
+
+  /**
+   * @note This function assumes that the worker is mocked
+   * and SetProcess can be called more than once.
+   *
+   * @param worker The worker whose process should be killed.
+   */
+  void KillWorkerProcess(std::shared_ptr<WorkerInterface> worker) {
+    std::unique_ptr<FakeProcess> fake_process = std::make_unique<FakeProcess>();
+    fake_process->SetAlive(false);
+    worker->SetProcess(std::move(fake_process));
+  }
 };
 
 TEST_F(WorkerKillingGroupByOwnerTest, TestEmptyWorkerPoolSelectsNullWorker) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  auto worker_to_kill_and_should_retry_ =
-      worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
-  auto worker_to_kill = worker_to_kill_and_should_retry_.first;
-  ASSERT_TRUE(worker_to_kill == nullptr);
+  auto worker_to_kill_and_should_retry_ = worker_killing_policy_.SelectWorkersToKill(
+      workers, ProcessesMemorySnapshot(), SystemMemorySnapshot());
+  ASSERT_TRUE(worker_to_kill_and_should_retry_.empty());
 }
 
 TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
@@ -95,11 +109,15 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestLastWorkerInGroupShouldNotRetry) {
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
+        worker_killing_policy_
+            .SelectWorkersToKill(
+                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+            .front();
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
@@ -120,7 +138,9 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestNonRetriableBelongsToItsOwnGroupAndLIF
   expected.push_back(std::make_pair(second_submitted, should_not_retry_));
 
   auto worker_to_kill_and_should_retry_ =
-      worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
+      worker_killing_policy_
+          .SelectWorkersToKill(workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+          .front();
 
   auto worker_to_kill = worker_to_kill_and_should_retry_.first;
   bool retry = worker_to_kill_and_should_retry_.second;
@@ -162,11 +182,15 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByGroupSizeThenFirstSubmitt
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
+        worker_killing_policy_
+            .SelectWorkersToKill(
+                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+            .front();
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
@@ -191,11 +215,15 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
+        worker_killing_policy_
+            .SelectWorkersToKill(
+                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+            .front();
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
@@ -217,11 +245,15 @@ TEST_F(WorkerKillingGroupByOwnerTest,
 
   for (const auto &entry : expected) {
     auto worker_to_kill_and_should_retry_ =
-        worker_killing_policy_.SelectWorkerToKill(workers, ProcessesMemorySnapshot());
+        worker_killing_policy_
+            .SelectWorkersToKill(
+                workers, ProcessesMemorySnapshot(), SystemMemorySnapshot())
+            .front();
     auto worker_to_kill = worker_to_kill_and_should_retry_.first;
     bool retry = worker_to_kill_and_should_retry_.second;
     ASSERT_EQ(worker_to_kill->WorkerId(), entry.first->WorkerId());
     ASSERT_EQ(retry, entry.second);
+    KillWorkerProcess(worker_to_kill);
     workers.erase(std::remove(workers.begin(), workers.end(), worker_to_kill),
                   workers.end());
   }
