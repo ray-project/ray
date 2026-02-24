@@ -266,7 +266,7 @@ class SimpleImputer(SerializablePreprocessorBase):
                 "_strategy": _PublicField(public_field="strategy"),
                 "_fill_value": _PublicField(
                     public_field="fill_value",
-                    default=_Computed(lambda obj: None),
+                    default=None,
                 ),  # _fill_value is optional
             },
         )

@@ -63,33 +63,16 @@ class _AbstractKBinsDiscretizer(Preprocessor):
                 "in it."
             )
 
-    def _get_attr_with_fallback(self, private_name: str, public_name: str):
-        if hasattr(self, private_name):
-            return getattr(self, private_name)
-        return getattr(self, public_name, None)
-
     def __repr__(self):
-        columns = self._get_attr_with_fallback("_columns", "columns")
-        bins = self._get_attr_with_fallback("_bins", "bins")
-        right = self._get_attr_with_fallback("_right", "right")
-        include_lowest = self._get_attr_with_fallback(
-            "_include_lowest", "include_lowest"
-        )
-        duplicates = self._get_attr_with_fallback("_duplicates", "duplicates")
-        dtypes = self._get_attr_with_fallback("_dtypes", "dtypes")
-        output_columns = self._get_attr_with_fallback(
-            "_output_columns", "output_columns"
-        )
-
         return (
             f"{self.__class__.__name__}("
-            f"columns={columns!r}, "
-            f"bins={bins!r}, "
-            f"right={right!r}, "
-            f"include_lowest={include_lowest!r}, "
-            f"duplicates={duplicates!r}, "
-            f"dtypes={dtypes!r}, "
-            f"output_columns={output_columns!r})"
+            f"columns={self.columns!r}, "
+            f"bins={self.bins!r}, "
+            f"right={self.right!r}, "
+            f"include_lowest={self.include_lowest!r}, "
+            f"duplicates={self.duplicates!r}, "
+            f"dtypes={self.dtypes!r}, "
+            f"output_columns={self.output_columns!r})"
         )
 
 
