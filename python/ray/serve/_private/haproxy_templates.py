@@ -123,6 +123,10 @@ backend {{ backend.name or 'unknown' }}
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
+    {%- if fallback_server %}
+    # Fallback to head node's Serve proxy when no ingress replicas are available
+    server {{ fallback_server.name }} {{ fallback_server.host }}:{{ fallback_server.port }} check backup
+    {%- endif %}
 {%- endfor %}
 listen stats
   bind *:{{ config.stats_port }}
