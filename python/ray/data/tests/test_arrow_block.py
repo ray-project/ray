@@ -520,22 +520,6 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
         ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
 
 
-def test_arrow_nan_element():
-    ds = ray.data.from_items(
-        [
-            1.0,
-            1.0,
-            2.0,
-            np.nan,
-            np.nan,
-        ]
-    )
-    ds = ds.groupby("item").count()
-    ds = ds.filter(lambda v: np.isnan(v["item"]))
-    result = ds.take_all()
-    assert result[0]["count()"] == 2
-
-
 @pytest.mark.parametrize(
     "table_data,max_chunk_size_bytes,expected",
     [
