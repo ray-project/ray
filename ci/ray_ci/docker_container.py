@@ -5,32 +5,24 @@ from typing import Dict, List
 
 from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.linux_container import LinuxContainer
+from ci.ray_ci.supported_images import (
+    get_architectures,
+    get_default,
+    get_platforms,
+    get_python_versions,
+)
 
-PLATFORMS_RAY = [
-    "cpu",
-    "cu11.7.1-cudnn8",
-    "cu11.8.0-cudnn8",
-    "cu12.1.1-cudnn8",
-    "cu12.3.2-cudnn9",
-    "cu12.4.1-cudnn",
-    "cu12.5.1-cudnn",
-    "cu12.6.3-cudnn",
-    "cu12.8.1-cudnn",
-    "cu12.9.1-cudnn",
-]
-PLATFORMS_RAY_ML = [
-    "cpu",
-    "cu12.1.1-cudnn8",
-]
-PLATFORMS_RAY_LLM = ["cu12.8.1-cudnn", "cu12.9.1-cudnn"]
-GPU_PLATFORM = "cu12.1.1-cudnn8"
+PLATFORMS_RAY = get_platforms("ray")
+PLATFORMS_RAY_ML = get_platforms("ray-ml")
+PLATFORMS_RAY_LLM = get_platforms("ray-llm")
+GPU_PLATFORM = get_default("ray", "gpu_platform")
 
-PYTHON_VERSIONS_RAY = ["3.10", "3.11", "3.12", "3.13"]
-PYTHON_VERSIONS_RAY_ML = ["3.10", "3.11"]
-PYTHON_VERSIONS_RAY_LLM = ["3.11", "3.12"]
-ARCHITECTURES_RAY = ["x86_64", "aarch64"]
-ARCHITECTURES_RAY_ML = ["x86_64"]
-ARCHITECTURES_RAY_LLM = ["x86_64"]
+PYTHON_VERSIONS_RAY = get_python_versions("ray")
+PYTHON_VERSIONS_RAY_ML = get_python_versions("ray-ml")
+PYTHON_VERSIONS_RAY_LLM = get_python_versions("ray-llm")
+ARCHITECTURES_RAY = get_architectures("ray")
+ARCHITECTURES_RAY_ML = get_architectures("ray-ml")
+ARCHITECTURES_RAY_LLM = get_architectures("ray-llm")
 
 
 class RayType(str, Enum):
