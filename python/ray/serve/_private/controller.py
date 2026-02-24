@@ -1402,12 +1402,12 @@ class ServeController:
 
         return None
 
-    def _get_empty_target_group(self, fallback_proxy_target: Optional[Target]) -> TargetGroup:
+    def _get_empty_target_group(self, protocol: RequestProtocol, fallback_proxy_target: Optional[Target]) -> TargetGroup:
         """Get an empty target group."""
         return TargetGroup(
             targets=[],
             route_prefix="/",
-            protocol=fallback_proxy_target.protocol,
+            protocol=protocol,
             app_name="",
             fallback_target=fallback_proxy_target,
         )
@@ -1476,11 +1476,11 @@ class ServeController:
             # only containing the fallback serve proxy.
             if self._ha_proxy_enabled and from_proxy_manager:
                 target_groups = [
-                    self._get_empty_target_group(fallback_proxy_target=fallback_http_proxy),
+                    self._get_empty_target_group(RequestProtocol.HTTP, fallback_http_proxy),
                 ]
                 if is_grpc_enabled(self.get_grpc_config()):
                     target_groups.append(
-                        self._get_empty_target_group(fallback_proxy_target=fallback_grpc_proxy),
+                        self._get_empty_target_group(RequestProtocol.GRPC, fallback_grpc_proxy),
                     )
 
                 return target_groups
