@@ -174,8 +174,15 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 self._executor = self._base_dataset._plan.create_executor()
+                # NOTE: We pass dataset.context (the original, uncopied context) rather
+                # than self._data_context (the deep copy used for process isolation)
+                # because the planner adds callbacks (e.g. checkpoint) to the original
+                # context during _get_execution_dag. Using self._data_context would cause
+                # those callbacks to be silently missed.
+                # TODO: Fix this by having Planner.plan() return callbacks explicitly
+                # rather than writing them into the context.
                 output_iterator = execute_to_legacy_bundle_iterator(
-                    self._executor, dataset._plan
+                    self._executor, dataset._plan, dataset.context
                 )
                 yield output_iterator
 

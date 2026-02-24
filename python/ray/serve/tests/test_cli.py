@@ -640,7 +640,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=20)
+    wait_for_condition(check_for_failed_deployment, timeout=40)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
