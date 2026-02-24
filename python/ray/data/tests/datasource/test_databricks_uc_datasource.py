@@ -341,7 +341,10 @@ class TestDatabricksUCDatasourceCredentials:
     """Tests for credential provider handling."""
 
     def test_schema_name_does_not_shadow_datasource_fields(self, requests_mocker):
-        """Test that schema name is stored without using the `schema` attribute."""
+        """Test that schema name is stored without using the `schema` attribute.
+        
+        This is a regression test for https://github.com/ray-project/ray/issues/46481.
+        """
         requests_mocker["post"].return_value = mock.Mock(
             status_code=200,
             raise_for_status=lambda: None,
