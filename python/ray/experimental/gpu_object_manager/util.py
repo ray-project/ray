@@ -95,17 +95,23 @@ def _ensure_default_transports_registered():
         if _default_transports_registered:
             return
         _default_transports_registered = True
-    try:
-        import torch
+        try:
+            import torch
 
-        register_tensor_transport(
-            "NIXL", ["cuda", "cpu"], NixlTensorTransport, torch.Tensor
-        )
-        register_tensor_transport("GLOO", ["cpu"], GLOOTensorTransport, torch.Tensor)
-        register_tensor_transport("NCCL", ["cuda"], NCCLTensorTransport, torch.Tensor)
-        register_tensor_transport("CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor)
-    except ImportError:
-        pass
+            register_tensor_transport(
+                "NIXL", ["cuda", "cpu"], NixlTensorTransport, torch.Tensor
+            )
+            register_tensor_transport(
+                "GLOO", ["cpu"], GLOOTensorTransport, torch.Tensor
+            )
+            register_tensor_transport(
+                "NCCL", ["cuda"], NCCLTensorTransport, torch.Tensor
+            )
+            register_tensor_transport(
+                "CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor
+            )
+        except ImportError:
+            pass
 
 
 def get_transport_data_type(tensor_transport: str) -> type:
