@@ -390,55 +390,6 @@ def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
     return IssueDetectorsConfiguration()
 
 
-def _get_execution_callback_classes() -> List[Type["ExecutionCallback"]]:
-    """Factory function to get the default execution callback classes.
-
-    This function constructs the list of callback classes that should be
-    instantiated by the StreamingExecutor. It includes:
-    1. Built-in callbacks that can self-configure (ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback)
-    2. Custom callbacks registered via RAY_DATA_EXECUTION_CALLBACKS environment variable
-
-    Note: LoadCheckpointCallback is NOT included here because it requires a mandatory
-    CheckpointConfig argument and cannot self-configure. It will be conditionally added
-    by the Planner in PR 3 when checkpoint_config is available.
-
-    Returns:
-        List of ExecutionCallback class types (not instances).
-    """
-    classes = []
-
-    # Import and register built-in callbacks that can self-configure
-    from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
-        ExecutionIdxUpdateCallback,
-    )
-    from ray.data._internal.execution.callbacks.insert_issue_detectors import (
-        IssueDetectionExecutionCallback,
-    )
-
-    classes.append(ExecutionIdxUpdateCallback)
-    classes.append(IssueDetectionExecutionCallback)
-
-    # Parse environment variable for custom callbacks
-    env_callbacks = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
-
-    if env_callbacks:
-        for callback_path in env_callbacks.split(","):
-            callback_path = callback_path.strip()
-            if not callback_path:
-                continue
-            try:
-                module_path, class_name = callback_path.rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                callback_cls = getattr(module, class_name)
-                classes.append(callback_cls)
-            except (ImportError, AttributeError, ValueError) as e:
-                raise ValueError(
-                    f"Failed to import callback from '{callback_path}': {e}"
-                )
-
-    return classes
-
-
 @DeveloperAPI
 @dataclass
 class DataContext:
@@ -749,8 +700,8 @@ class DataContext:
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
-    execution_callback_classes: List[Type["ExecutionCallback"]] = field(
-        default_factory=_get_execution_callback_classes
+    custom_execution_callback_classes: List[Type["ExecutionCallback"]] = field(
+        default_factory=list
     )
 
     def __post_init__(self):
@@ -897,6 +848,54 @@ class DataContext:
     @shuffle_strategy.setter
     def shuffle_strategy(self, value: ShuffleStrategy) -> None:
         self._shuffle_strategy = value
+
+    @property
+    def execution_callback_classes() -> List[Type["ExecutionCallback"]]:
+        """Factory function to get the default execution callback classes.
+
+        This function constructs the list of callback classes that should be
+        instantiated by the StreamingExecutor. It includes:
+        1. Built-in callbacks that can self-configure (ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback)
+        2. Custom callbacks registered via RAY_DATA_EXECUTION_CALLBACKS environment variable
+
+        Note: LoadCheckpointCallback is NOT included here because it requires a mandatory
+        CheckpointConfig argument and cannot self-configure. It will be conditionally added
+        by the Planner in PR 3 when checkpoint_config is available.
+
+        Returns:
+            List of ExecutionCallback class types (not instances).
+        """
+        from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
+            ExecutionIdxUpdateCallback,
+        )
+        from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+            IssueDetectionExecutionCallback,
+        )
+
+        classes = [
+            ExecutionIdxUpdateCallback,
+            IssueDetectionExecutionCallback,
+        ]
+
+        # Parse environment variable for custom callbacks
+        env_callbacks = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
+
+        if env_callbacks:
+            for callback_path in env_callbacks.split(","):
+                callback_path = callback_path.strip()
+                if not callback_path:
+                    continue
+                try:
+                    module_path, class_name = callback_path.rsplit(".", 1)
+                    module = importlib.import_module(module_path)
+                    callback_cls = getattr(module, class_name)
+                    classes.append(callback_cls)
+                except (ImportError, AttributeError, ValueError) as e:
+                    raise ValueError(
+                        f"Failed to import callback from '{callback_path}': {e}"
+                    )
+
+        return classes
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.
