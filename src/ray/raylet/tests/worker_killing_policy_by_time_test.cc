@@ -78,9 +78,9 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersOnEmptyWorkerPoo
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyPrioritizesRetriableOverNonRetriable) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
   std::shared_ptr<WorkerInterface> retriable_worker =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
   std::shared_ptr<WorkerInterface> non_retriable_worker =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(non_retriable_worker);
@@ -102,13 +102,13 @@ TEST_F(WorkerKillingPolicyByTimeTest,
        TestPolicyPrioritizesNewerWorkersWithinSameRetriability) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
   std::shared_ptr<WorkerInterface> older_retriable =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
   std::shared_ptr<WorkerInterface> newer_retriable =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
   std::shared_ptr<WorkerInterface> older_non_retriable =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 3);
   std::shared_ptr<WorkerInterface> newer_non_retriable =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 4);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(older_retriable);
@@ -141,13 +141,13 @@ TEST_F(WorkerKillingPolicyByTimeTest,
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyFreesEnoughWorkersToGetUnderThreshold) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
   std::shared_ptr<WorkerInterface> worker1 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
   std::shared_ptr<WorkerInterface> worker2 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
   std::shared_ptr<WorkerInterface> worker3 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 3);
   std::shared_ptr<WorkerInterface> worker4 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 4);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(worker1);
@@ -180,13 +180,13 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyRetriableFlagSetCorrectly) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
 
   std::shared_ptr<WorkerInterface> retriable_task =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
   std::shared_ptr<WorkerInterface> non_retriable_task =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK);
-  std::shared_ptr<WorkerInterface> retriable_actor =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
+  std::shared_ptr<WorkerInterface> retriable_actor = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, 3);
   std::shared_ptr<WorkerInterface> non_retriable_actor =
-      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK);
+      CreateTaskWorker(owner_id, no_retry_, port_, rpc::TaskType::ACTOR_CREATION_TASK, 4);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(retriable_task);
@@ -218,9 +218,9 @@ TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyRetriableFlagSetCorrectly) {
 TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySelectsNoWorkersWhenKillingInProgress) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
   std::shared_ptr<WorkerInterface> worker1 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
   std::shared_ptr<WorkerInterface> worker2 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(worker1);
@@ -244,9 +244,9 @@ TEST_F(WorkerKillingPolicyByTimeTest,
        TestPolicySelectsNewWorkersAfterPreviousSelectedIsKilled) {
   TaskID owner_id = TaskID::ForDriverTask(job_id_);
   std::shared_ptr<WorkerInterface> worker1 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 1);
   std::shared_ptr<WorkerInterface> worker2 =
-      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK);
+      CreateTaskWorker(owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, 2);
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   workers.push_back(worker1);
