@@ -103,7 +103,8 @@ class TaskExecDriverStats:
 
 
 TaskDoneCallbackType = Callable[
-    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]], None
+    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    None,
 ]
 
 

@@ -445,9 +445,9 @@ def process_completed_tasks(
                 else:
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
-        assert max_bytes_to_read is None or max_bytes_to_read >= 0, (
-            f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
-        )
+        assert (
+            max_bytes_to_read is None or max_bytes_to_read >= 0
+        ), f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
 
         # If no policy provides a limit, there's no limit
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
@@ -487,8 +487,7 @@ def process_completed_tasks(
                         if state in remaining_output_budget:
                             # Clamp remaining output budget at 0
                             remaining_output_budget[state] = max(
-                                remaining_output_budget[state] - bytes_read,
-                                0
+                                remaining_output_budget[state] - bytes_read, 0
                             )
                     except Exception as e:
                         num_errored_blocks += 1

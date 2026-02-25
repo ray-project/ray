@@ -222,7 +222,9 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         metrics.on_task_finished(
             i,
             None,
-            TaskExecWorkerStats(task_wall_time_s=driver_wall_time_s - scheduling_time_s),
+            TaskExecWorkerStats(
+                task_wall_time_s=driver_wall_time_s - scheduling_time_s
+            ),
             TaskExecDriverStats(task_output_backpressure_s=output_bp_time_s),
         )
 

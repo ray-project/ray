@@ -966,8 +966,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Checkpoint time to first block
         is_first_block: bool = task_info.num_outputs == 0
         time_to_first_output_s = (
-            time.perf_counter() - task_info.start_time
-            if is_first_block else None
+            time.perf_counter() - task_info.start_time if is_first_block else None
         )
 
         task_info.num_outputs += num_outputs
@@ -1007,8 +1006,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         #       are reported (ie when task completes successfully)
         if is_first_block:
             self.task_scheduling_time_s += time_to_first_output_s - (
-                task_info.cum_block_gen_time_s +
-                task_info.cum_block_ser_time_s
+                task_info.cum_block_gen_time_s + task_info.cum_block_ser_time_s
             )
 
         # Update per node metrics
