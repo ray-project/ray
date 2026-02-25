@@ -183,12 +183,6 @@ def test_get_target_groups_haproxy(
                         name="replica1",
                     ),
                 ],
-                fallback_target=Target(
-                    ip="10.0.0.1",
-                    port=8500,
-                    instance_id="fallback_instance_id",
-                    name="fallback_proxy",
-                ),
             ),
             TargetGroup(
                 protocol=RequestProtocol.GRPC,
@@ -202,12 +196,6 @@ def test_get_target_groups_haproxy(
                         name="replica1",
                     ),
                 ],
-                fallback_target=Target(
-                    ip="10.0.0.1",
-                    port=9500,
-                    instance_id="fallback_instance_id",
-                    name="fallback_proxy",
-                ),
             ),
         ]
 
@@ -216,49 +204,6 @@ def test_get_target_groups_haproxy(
     expected_target_groups.sort(key=lambda g: (g.protocol, g.route_prefix))
 
     assert target_groups == expected_target_groups
-
-
-def test_get_target_groups_haproxy_no_apps(
-    haproxy_controller: FakeHAProxyController,
-):
-    """Tests get_target_groups returns the appropriate target groups based on the
-    ha_proxy_enabled and from_proxy_manager parameters."""
-
-    haproxy_controller._ha_proxy_enabled = True
-    haproxy_controller.proxy_state_manager.add_fallback_proxy_details(
-        "fallback_node_id", "fallback_instance_id", "10.0.0.1", "fallback_proxy"
-    )
-
-    target_groups = haproxy_controller.get_target_groups(
-        from_proxy_manager=True,
-    )
-
-    assert target_groups == [
-        TargetGroup(
-            protocol=RequestProtocol.HTTP,
-            route_prefix="/",
-            app_name="",
-            targets=[],
-            fallback_target=Target(
-                ip="10.0.0.1",
-                port=8500,
-                instance_id="fallback_instance_id",
-                name="fallback_proxy",
-            ),
-        ),
-        TargetGroup(
-            protocol=RequestProtocol.GRPC,
-            route_prefix="/",
-            app_name="",
-            targets=[],
-            fallback_target=Target(
-                ip="10.0.0.1",
-                port=9500,
-                instance_id="fallback_instance_id",
-                name="fallback_proxy",
-            ),
-        ),
-    ]
 
 
 def test_get_target_groups_app_with_no_running_replicas(
@@ -307,24 +252,12 @@ def test_get_target_groups_app_with_no_running_replicas(
             route_prefix="/app1",
             app_name="app1",
             targets=[],
-            fallback_target=Target(
-                ip="10.0.0.1",
-                port=8500,
-                instance_id="fallback_instance_id",
-                name="fallback_proxy",
-            ),
         ),
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app1",
             app_name="app1",
             targets=[],
-            fallback_target=Target(
-                ip="10.0.0.1",
-                port=9500,
-                instance_id="fallback_instance_id",
-                name="fallback_proxy",
-            ),
         ),
     ]
 
