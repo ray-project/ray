@@ -1498,6 +1498,8 @@
     byod:
       runtime_env:
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
+        - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
