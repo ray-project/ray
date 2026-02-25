@@ -88,7 +88,7 @@ class PlacementGroup:
         if self.bundle_cache:
             return self.bundle_cache
 
-        options = self._scheduling_options_bundles
+        options = self._get_scheduling_options_bundles()
         return options[0] if options else []
 
     @property
@@ -96,7 +96,7 @@ class PlacementGroup:
         """Returns the number of bundles in this placement group."""
         return len(self.bundle_specs)
 
-    def _scheduling_options_bundles(self) -> List[List[Dict]]:
+    def _get_scheduling_options_bundles(self) -> List[List[Dict]]:
         """Return all possible bundles across primary and fallback options
         as a nested list of strategies.
         """
@@ -357,7 +357,7 @@ def check_placement_group_index(
             )
     else:
         # Fetch the updated scheduling options first.
-        strategies = placement_group._scheduling_options_bundles
+        strategies = placement_group._get_scheduling_options_bundles
 
         # If scheduled, validate strictly against the active bundles
         if placement_group.bundle_cache:
@@ -566,7 +566,7 @@ def _valid_resource_shape(resources, bundle_specs):
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-    strategies = placement_group._scheduling_options_bundles
+    strategies = placement_group._get_scheduling_options_bundles()
     resources_valid = any(
         _valid_resource_shape(resources, strategy) for strategy in strategies
     )
