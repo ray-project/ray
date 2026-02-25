@@ -22,15 +22,18 @@ class ImageTagsError(Exception):
 
 def format_platform_tag(platform: str) -> str:
     """
-    Format platform as -cpu or shortened CUDA version.
+    Format platform as -cpu, -tpu, or shortened CUDA version.
 
     Examples:
         cpu -> -cpu
+        tpu -> -tpu
         cu12.1.1-cudnn8 -> -cu121
         cu12.3.2-cudnn9 -> -cu123
     """
     if platform == "cpu":
         return "-cpu"
+    if platform == "tpu":
+        return "-tpu"
     # cu12.3.2-cudnn9 -> -cu123
     platform_base = platform.split("-", 1)[0]
     parts = platform_base.split(".")
