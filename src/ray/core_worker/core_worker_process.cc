@@ -15,7 +15,6 @@
 #include "ray/core_worker/core_worker_process.h"
 
 #include <chrono>
-#include <future>
 #include <memory>
 #include <string>
 #include <thread>
@@ -854,8 +853,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     // Initialize metrics agent client.
     // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
     if (options_.metrics_agent_port > 0) {
-      metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
       // Initialize exporters synchronously to avoid a getenv/setenv race condition.
       // POSIX setenv is MT-Unsafe.
       stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
