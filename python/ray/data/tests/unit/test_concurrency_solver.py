@@ -21,7 +21,7 @@ class TestComputeOptimalThroughput:
         result = compute_optimal_throughput(
             rates={"A": 1.0},
             resource_requirements={"A": ExecutionResources(gpu=1)},
-            resource_limits=ExecutionResources(gpu=2),
+            resource_limits=ExecutionResources.for_limits(gpu=2),
             concurrency_limits={"A": float("inf")},
         )
         assert result == pytest.approx(2.0)
