@@ -613,6 +613,57 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
     return take_table(block, indices)
 
 
+def _concat_cols_with_null_list(
+    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+) -> "pyarrow.ChunkedArray":
+    """Concatenate chunked arrays where at least one has type ``list<null>``.
+
+    When a column is empty in some blocks (e.g. an empty TFRecord feature),
+    PyArrow infers its type as ``list<item: null>``.  Other blocks may have
+    a concrete type for the same column (``binary``, ``list<float32>``, etc.).
+    ``pa.concat_tables`` can promote ``list<null>`` to ``list<X>`` natively,
+    but cannot merge ``list<null>`` with a non-list type like ``binary``.
+    This function resolves both cases (for simplicity) by casting or replacing
+    ``list<null>`` arrays to match the concrete type found in other blocks.
+
+    Args:
+        col_chunked_arrays: Chunked arrays (one per block) for a single
+            column, where at least one has type ``list<item: null>``.
+
+    Returns:
+        A single concatenated ``ChunkedArray`` with a consistent type.
+
+    Example::
+
+        >>> import pyarrow as pa
+        >>> ca1 = pa.chunked_array([pa.array([], type=pa.list_(pa.null()))])
+        >>> ca2 = pa.chunked_array([pa.array([[b"hello"]], type=pa.list_(pa.binary()))])
+        >>> result = _concat_cols_with_null_list([ca1, ca2])
+        >>> result.type
+        list<item: binary>
+    """
+    import pyarrow as pa
+
+    scalar_type = None
+    for arr in col_chunked_arrays:
+        if not pa.types.is_list(arr.type) or not pa.types.is_null(arr.type.value_type):
+            scalar_type = arr.type
+            break
+
+    if scalar_type is not None:
+        for c_idx in range(len(col_chunked_arrays)):
+            c = col_chunked_arrays[c_idx]
+            if pa.types.is_list(c.type) and pa.types.is_null(c.type.value_type):
+                if pa.types.is_list(scalar_type):
+                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
+                else:
+                    col_chunked_arrays[c_idx] = pa.chunked_array(
+                        [pa.nulls(c.length(), type=scalar_type)]
+                    )
+
+    return _concatenate_chunked_arrays(col_chunked_arrays)
+
+
 def _concat_cols_with_extension_tensor_types(
     col_chunked_arrays: Iterable["pyarrow.ChunkedArray"],
 ) -> "pyarrow.ChunkedArray":
@@ -808,18 +859,32 @@ def concat(
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
 
+    # Identify columns where any block has list<null> (e.g. empty TFRecord
+    # features).  These need special handling because pa.concat_tables
+    # cannot merge list<null> with a concrete type like binary.
+    cols_with_null_list = set()
+    for b in blocks:
+        for col_name in b.schema.names:
+            col_type = b.schema.field(col_name).type
+            if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
+                cols_with_null_list.add(col_name)
+
     # Concatenate the columns according to their type
     concatenated_cols: Dict[str, pa.ChunkedArray] = {}
 
     # Names of columns that can use pa.concat_tables. This includes
-    #   - native columns
-    #   - extension columns where all blocks have the **same** column type
+    #   - native types (supports type promotion across blocks)
+    #   - extension types (does not support type promotion blocks)
     concatable_cols: List[str] = []
     for col_name in schema.names:
         col_type = schema.field(col_name).type
 
         # _align_struct_fields guarantees the existence of the column
-        if isinstance(col_type, tensor_types):
+        if col_name in cols_with_null_list:
+            concatenated_cols[col_name] = _concat_cols_with_null_list(
+                [block.column(col_name) for block in blocks]
+            )
+        elif isinstance(col_type, tensor_types):
             if all(block.schema.field(col_name).type == col_type for block in blocks):
                 concatable_cols.append(col_name)
             else:
@@ -834,7 +899,6 @@ def concat(
                     block.column(col_name) for block in blocks
                 )
         else:
-            # Add to the list of native pyarrow columns, these will be concatenated after the loop using pyarrow.concat_tables
             concatable_cols.append(col_name)
 
     concatenated_cols.update(
