@@ -22,7 +22,7 @@ python/ray/dashboard/dashboard.py: dashboard linux_wheels python
 
 python/ray/util/dask/dask.py: python dask
 python/ray/dag/dag.py: python cgraphs_direct_transport
-python/ray/experimental/gpu_object_manager/gpu_object_manager.py: python cgraphs_direct_transport
+python/ray/experimental/rdt/gpu_object_manager.py: python cgraphs_direct_transport
 
 # === RLlib ===
 

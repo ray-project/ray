@@ -11,7 +11,7 @@ import torch
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.experimental.collective import create_collective_group
-from ray.experimental.gpu_object_manager.collective_tensor_transport import (
+from ray.experimental.rdt.collective_tensor_transport import (
     CollectiveTransportMetadata,
 )
 

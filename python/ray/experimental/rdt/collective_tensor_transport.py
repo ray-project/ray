@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional
 
 import ray
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
@@ -127,7 +127,7 @@ class CollectiveTensorTransport(TensorTransportManager):
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             create_empty_tensors_from_metadata,
         )
         from ray.util.collective.collective import recv

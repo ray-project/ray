@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
@@ -108,7 +108,7 @@ class NixlTensorTransport(TensorTransportManager):
         ) -> bool:
             # Check if nixl is installed
             try:
-                from ray.experimental.gpu_object_manager.util import (
+                from ray.experimental.rdt.util import (
                     get_tensor_transport_manager,
                 )
 
@@ -192,7 +192,7 @@ class NixlTensorTransport(TensorTransportManager):
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ) -> List["torch.Tensor"]:
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             create_empty_tensors_from_metadata,
         )
 

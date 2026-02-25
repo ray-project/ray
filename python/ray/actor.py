@@ -704,7 +704,7 @@ def method(*args, **kwargs):
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
             tensor_transport = kwargs["tensor_transport"]
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 
@@ -925,7 +925,7 @@ class ActorMethod:
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 

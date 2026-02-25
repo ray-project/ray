@@ -1,13 +1,13 @@
-from ray.experimental.gpu_object_manager.gpu_object_manager import (
+from ray.experimental.rdt.gpu_object_manager import (
     GPUObjectManager,
     wait_tensor_freed,
 )
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
 )
-from ray.experimental.gpu_object_manager.util import (
+from ray.experimental.rdt.util import (
     register_tensor_transport,
 )
 

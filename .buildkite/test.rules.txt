@@ -96,7 +96,7 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-python/ray/experimental/gpu_object_manager/
+python/ray/experimental/rdt/
 python/ray/experimental/collective/
 python/ray/tests/gpu_objects/
 @ python cgraphs_direct_transport
