@@ -224,6 +224,9 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // If PENDING and 'bundles' is empty, the demand comes from the primary strategy
     // (index 0). If RESCHEDULING, 'bundles' is populated with the active strategy we are
     // trying to recover.
+    // TODO(ryanaoleary): Populate all fallback options here when sending pending
+    // placement group requirements to the autoscaler (currently only send primary
+    // strategy).
     auto *bundles_source = pg_data.mutable_bundles();
     if (pg_state == rpc::PlacementGroupTableData::PENDING && bundles_source->empty() &&
         pg_data.scheduling_options_size() > 0) {
