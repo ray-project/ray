@@ -25,7 +25,7 @@ dependencies = [
     'filelock',
     'jsonschema',
     'msgpack<2.0.0,>=1.0.0',
-    'packaging',
+    'packaging>=24.2',
     'protobuf>=3.20.3',
     'pyyaml',
     'watchfiles', # @NOTE: its in requirements.txt but not in setup.py - leaving for now
@@ -47,10 +47,11 @@ all = [
     'ray[observability]',
     'ray[serve]',
     'ray[serve_grpc]',
+    'ray[serve_async_inference]',
     'ray[tune]',
     'ray[train]',
+    'ray[rllib]',
     'ray[cgraph]',
-    'ray[adag]',
 ]
 
 air = [
@@ -69,7 +70,7 @@ adag = [
 ]
 
 client = [
-    'grpcio!=1.56.0',
+    'grpcio',
 ]
 
 cpp = [
@@ -77,16 +78,18 @@ cpp = [
 ]
 
 default = [
-    "aiohttp >= 3.7",
+    "aiohttp >= 3.13.3",
     "aiohttp_cors",
     "colorful",
     "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
     "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
     "requests",
-    "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-    "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+    "grpcio >= 1.42.0",
     "opencensus",
-    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+    "opentelemetry-sdk >= 1.30.0",
+    "opentelemetry-exporter-prometheus",
+    "opentelemetry-proto",
+    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3",
     "prometheus_client >= 0.7.1",
     "smart_open",
     "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -110,26 +113,23 @@ default = [
 ]
 
 data = [
-    'fsspec',
-    'pandas >= 1.3',
     'numpy>=1.20',
+    'pandas >= 1.3',
     'pyarrow>=9.0.0',
+    'fsspec',
 ]
 
 observability = [
-    'opentelemetry-api',
-    'opentelemetry-sdk',
-    'opentelemetry-exporter-otlp',
-    #'memray',
+    'memray; sys_platform != "win32"',
 ]
 
 rllib = [
     'ray[tune]',
 
     'dm_tree',
-    'gymnasium==1.0.0',
+    'gymnasium==1.2.2',
     'lz4',
-    'ormsgpack==1.7.0',
+    'ormsgpack>=1.7.0',
     'pyyaml',
     'scipy',
 ]
@@ -149,16 +149,43 @@ serve_grpc = [
     'pyOpenSSL',
 ]
 
+serve_async_inference = [
+    'ray[serve]',
+    'celery',
+    'taskiq',
+]
+
 tune = [
     'pandas',
-    'tensorboardx>=1.9',
+    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3",
+    'tensorboardX>=1.9',
     'requests',
     'pyarrow>=9.0.0',
     'fsspec',
 ]
 
 train = [
-    'ray[tune]'
+    'ray[tune]',
+    "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3",
+]
+
+# ray[llm] depends on ray[data] + ray[serve]. Not included in ray[all] by design —
+# vllm's dependency set is very large and specific, will likely conflict with other ML libraries.
+# Keep in sync with python/requirements/llm/llm-requirements.txt
+llm = [
+    'ray[data]',
+    'ray[serve]',
+    'vllm[audio]>=0.15.0',
+    'nixl>=0.6.1',
+    'transformers>=4.57.3',
+    'jsonref>=1.1.0',
+    'jsonschema',
+    'ninja',
+    'async-timeout; python_version < "3.11"',
+    'typer',
+    'meson',
+    'pybind11',
+    'hf_transfer',
 ]
 
 

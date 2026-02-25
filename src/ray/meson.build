@@ -60,7 +60,8 @@ open_telemetry_metric_recorder_cpp_lib = static_library(
     'open_telemetry_metric_recorder_cpp_lib',
     ['observability/open_telemetry_metric_recorder.cc'],
     install: false,
-    cpp_args: ['-DENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW'],  # @IMPORTANT: mTLS support, must match opentelemetry-cpp build
+    # IMPORTANT: intentionally ommitted for now as we dont want to enforce mTLS at the moment as it causes other potential complications. Return to this later!
+    # cpp_args: ['-DENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW'],  # @IMPORTANT: mTLS support, must match opentelemetry-cpp build
     dependencies: open_telemetry_metric_recorder_cpp_lib_dependencies
 )
 

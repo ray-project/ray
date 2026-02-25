@@ -3,11 +3,11 @@
 
 # === @begin: plasma_cpp_fbs_lib (@original: plasma_fbs) ===
 # Header-only
+# NOTE: this is the same as `hdrs = ["plasma_generated.h"]` aka @original: plasma_generated
 plasma_cpp_fbs = custom_target(
     input: ['plasma.fbs'],
     kwargs: cpp_fbs_default_kwargs
 )
-
 
 plasma_cpp_fbs_lib_dep = declare_dependency(
     sources: [plasma_cpp_fbs],
@@ -16,25 +16,17 @@ plasma_cpp_fbs_lib_dep = declare_dependency(
 # === @end: plasma_cpp_fbs_lib (@original: plasma_fbs) ===
 
 
-# === @begin: plasma_generated_cpp_lib (@original: plasma_generated) ===
-# Header-only — wraps checked-in plasma_generated.h (distinct from FBS codegen)
-plasma_generated_cpp_lib_dep = declare_dependency(
-    sources: ['plasma_generated.h'],
-    dependencies: [flatbuffers]
-)
-# === @end: plasma_generated_cpp_lib (@original: plasma_generated) ===
-
-
 # === @begin: object_manager_plasma_common_cpp_lib (@original: object_manager_plasma_common) ===
 # Header-only
 object_manager_plasma_common_cpp_lib_dependencies = [
-        # Package-managed
-        plasma_generated_cpp_lib_dep,
-        id_cpp_lib_dep,
-        object_manager_common_cpp_lib_dep,
-        compat_cpp_lib_dep,
+    # Package-managed
+    plasma_generated_cpp_lib_dep,
+    id_cpp_lib_dep,
+    object_manager_common_cpp_lib_dep,
+    compat_cpp_lib_dep,
 
-        # @com_google_googletest//:gtest_prod
+    # Eugo-managed
+    # @com_google_googletest//:gtest_prod
 ]
 object_manager_plasma_common_cpp_lib_dep = declare_dependency(
     sources: [
@@ -111,6 +103,7 @@ plasma_shared_memory_cpp_lib = static_library(
     'plasma_shared_memory_cpp_lib',
     ['shared_memory.cc'],
     install: false,
+    # NOTE: this is not our `native/arrow` but plasma's sources vendored by ray. They originate from older Arrow versions, it's why this flag is prefixed w/ `ARROW_`.
     cpp_args: ['-DARROW_USE_GLOG'],
     dependencies: plasma_shared_memory_cpp_lib_dependencies
 )
@@ -425,6 +418,7 @@ plasma_store_server_cpp_lib = static_library(
     'plasma_store_server_cpp_lib',
     ['store_runner.cc'],
     install: false,
+    # NOTE: this is not our `native/arrow` but plasma's sources vendored by ray. They originate from older Arrow versions, it's why this flag is prefixed w/ `ARROW_`.
     cpp_args: ['-DARROW_USE_GLOG'],
     dependencies: plasma_store_server_cpp_lib_dependencies
 )
@@ -488,6 +482,7 @@ plasma_client_cpp_lib = static_library(
     'plasma_client_cpp_lib',
     ['client.cc'],
     install: false,
+    # NOTE: this is not our `native/arrow` but plasma's sources vendored by ray. They originate from older Arrow versions, it's why this flag is prefixed w/ `ARROW_`.
     cpp_args: ['-DARROW_USE_GLOG'],
     dependencies: plasma_client_cpp_lib_dependencies
 )

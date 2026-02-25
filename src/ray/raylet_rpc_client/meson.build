@@ -3,11 +3,11 @@
 # Meson requires define-before-use: if target A depends on target B and both
 # are in this file, B must appear first regardless of Bazel ordering.
 # Specifically:
-#   - raylet_client_lib moved before raylet_client_pool (raylet_client_pool depends on
-#     gcs_client which is NOT AVAILABLE, but raylet_client_with_io_context depends on
-#     raylet_client_lib)
+#   - `raylet_client_lib` moved before `raylet_client_pool` (`raylet_client_pool` depends on
+#     `gcs_client` which is NOT AVAILABLE (processed after), but `raylet_client_with_io_context` depends on
+#     `raylet_client_lib`)
 #
-# @skip: fake_raylet_client (fake_raylet_client.h) (@original: fake_raylet_client) — test-only header; not compiled in production Meson build.
+# @skip: `fake_raylet_client` (`fake_raylet_client.h`) (@original: `fake_raylet_client`) — test-only header; not compiled in production Meson build.
 
 
 # === @begin: raylet_client_interface_cpp_lib (@original: raylet_client_interface) ===
@@ -57,7 +57,7 @@ raylet_client_lib_cpp_lib_dep = declare_dependency(
 raylet_client_pool_cpp_lib_dependencies = [
     # Package-managed
     raylet_client_interface_cpp_lib_dep,
-    # gcs_client_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/gcs_rpc_client:gcs_client
+    # `gcs_client_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/gcs_rpc_client:gcs_client
 ]
 
 raylet_client_pool_cpp_lib = static_library(

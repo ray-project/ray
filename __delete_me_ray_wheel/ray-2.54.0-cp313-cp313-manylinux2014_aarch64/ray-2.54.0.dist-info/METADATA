@@ -1,0 +1,436 @@
+Metadata-Version: 2.4
+Name: ray
+Version: 2.54.0
+Summary: Ray provides a simple, universal API for building distributed applications.
+Home-page: https://github.com/ray-project/ray
+Author: Ray Team
+Author-email: ray-dev@googlegroups.com
+License: Apache 2.0
+Keywords: ray distributed parallel machine-learning hyperparameter-tuningreinforcement-learning deep-learning serving python
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.10
+License-File: LICENSE.txt
+Requires-Dist: click>=7.0
+Requires-Dist: filelock
+Requires-Dist: jsonschema
+Requires-Dist: msgpack<2.0.0,>=1.0.0
+Requires-Dist: packaging>=24.2
+Requires-Dist: protobuf>=3.20.3
+Requires-Dist: pyyaml
+Requires-Dist: requests
+Provides-Extra: cgraph
+Requires-Dist: cupy-cuda12x; sys_platform != "darwin" and extra == "cgraph"
+Provides-Extra: client
+Requires-Dist: grpcio!=1.56.0; sys_platform == "darwin" and extra == "client"
+Requires-Dist: grpcio; extra == "client"
+Provides-Extra: data
+Requires-Dist: numpy>=1.20; extra == "data"
+Requires-Dist: pandas>=1.3; extra == "data"
+Requires-Dist: pyarrow>=9.0.0; extra == "data"
+Requires-Dist: fsspec; extra == "data"
+Provides-Extra: default
+Requires-Dist: aiohttp>=3.13.3; extra == "default"
+Requires-Dist: aiohttp_cors; extra == "default"
+Requires-Dist: colorful; extra == "default"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "default"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "default"
+Requires-Dist: requests; extra == "default"
+Requires-Dist: grpcio>=1.42.0; extra == "default"
+Requires-Dist: opencensus; extra == "default"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "default"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "default"
+Requires-Dist: opentelemetry-proto; extra == "default"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "default"
+Requires-Dist: prometheus_client>=0.7.1; extra == "default"
+Requires-Dist: smart_open; extra == "default"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "default"
+Provides-Extra: observability
+Requires-Dist: memray; sys_platform != "win32" and extra == "observability"
+Provides-Extra: serve
+Requires-Dist: aiohttp_cors; extra == "serve"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "serve"
+Requires-Dist: opencensus; extra == "serve"
+Requires-Dist: colorful; extra == "serve"
+Requires-Dist: aiohttp>=3.13.3; extra == "serve"
+Requires-Dist: grpcio>=1.42.0; extra == "serve"
+Requires-Dist: starlette; extra == "serve"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "serve"
+Requires-Dist: opentelemetry-proto; extra == "serve"
+Requires-Dist: watchfiles; extra == "serve"
+Requires-Dist: smart_open; extra == "serve"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "serve"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "serve"
+Requires-Dist: prometheus_client>=0.7.1; extra == "serve"
+Requires-Dist: uvicorn[standard]; extra == "serve"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "serve"
+Requires-Dist: fastapi; extra == "serve"
+Requires-Dist: requests; extra == "serve"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "serve"
+Provides-Extra: tune
+Requires-Dist: pandas; extra == "tune"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "tune"
+Requires-Dist: tensorboardX>=1.9; extra == "tune"
+Requires-Dist: requests; extra == "tune"
+Requires-Dist: pyarrow>=9.0.0; extra == "tune"
+Requires-Dist: fsspec; extra == "tune"
+Provides-Extra: adag
+Requires-Dist: cupy-cuda12x; sys_platform != "darwin" and extra == "adag"
+Provides-Extra: serve-grpc
+Requires-Dist: aiohttp_cors; extra == "serve-grpc"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "serve-grpc"
+Requires-Dist: opencensus; extra == "serve-grpc"
+Requires-Dist: pyOpenSSL; extra == "serve-grpc"
+Requires-Dist: colorful; extra == "serve-grpc"
+Requires-Dist: aiohttp>=3.13.3; extra == "serve-grpc"
+Requires-Dist: grpcio>=1.42.0; extra == "serve-grpc"
+Requires-Dist: starlette; extra == "serve-grpc"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "serve-grpc"
+Requires-Dist: opentelemetry-proto; extra == "serve-grpc"
+Requires-Dist: watchfiles; extra == "serve-grpc"
+Requires-Dist: smart_open; extra == "serve-grpc"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "serve-grpc"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "serve-grpc"
+Requires-Dist: prometheus_client>=0.7.1; extra == "serve-grpc"
+Requires-Dist: uvicorn[standard]; extra == "serve-grpc"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "serve-grpc"
+Requires-Dist: fastapi; extra == "serve-grpc"
+Requires-Dist: requests; extra == "serve-grpc"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "serve-grpc"
+Provides-Extra: serve-async-inference
+Requires-Dist: aiohttp_cors; extra == "serve-async-inference"
+Requires-Dist: celery; extra == "serve-async-inference"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "serve-async-inference"
+Requires-Dist: opencensus; extra == "serve-async-inference"
+Requires-Dist: colorful; extra == "serve-async-inference"
+Requires-Dist: aiohttp>=3.13.3; extra == "serve-async-inference"
+Requires-Dist: grpcio>=1.42.0; extra == "serve-async-inference"
+Requires-Dist: starlette; extra == "serve-async-inference"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "serve-async-inference"
+Requires-Dist: opentelemetry-proto; extra == "serve-async-inference"
+Requires-Dist: watchfiles; extra == "serve-async-inference"
+Requires-Dist: smart_open; extra == "serve-async-inference"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "serve-async-inference"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "serve-async-inference"
+Requires-Dist: prometheus_client>=0.7.1; extra == "serve-async-inference"
+Requires-Dist: uvicorn[standard]; extra == "serve-async-inference"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "serve-async-inference"
+Requires-Dist: fastapi; extra == "serve-async-inference"
+Requires-Dist: requests; extra == "serve-async-inference"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "serve-async-inference"
+Provides-Extra: cpp
+Requires-Dist: ray-cpp==2.54.0; extra == "cpp"
+Provides-Extra: rllib
+Requires-Dist: pandas; extra == "rllib"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "rllib"
+Requires-Dist: tensorboardX>=1.9; extra == "rllib"
+Requires-Dist: requests; extra == "rllib"
+Requires-Dist: pyarrow>=9.0.0; extra == "rllib"
+Requires-Dist: fsspec; extra == "rllib"
+Requires-Dist: dm_tree; extra == "rllib"
+Requires-Dist: gymnasium==1.2.2; extra == "rllib"
+Requires-Dist: lz4; extra == "rllib"
+Requires-Dist: ormsgpack>=1.7.0; extra == "rllib"
+Requires-Dist: pyyaml; extra == "rllib"
+Requires-Dist: scipy; extra == "rllib"
+Provides-Extra: train
+Requires-Dist: pandas; extra == "train"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "train"
+Requires-Dist: tensorboardX>=1.9; extra == "train"
+Requires-Dist: requests; extra == "train"
+Requires-Dist: pyarrow>=9.0.0; extra == "train"
+Requires-Dist: fsspec; extra == "train"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "train"
+Provides-Extra: air
+Requires-Dist: aiohttp_cors; extra == "air"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "air"
+Requires-Dist: opencensus; extra == "air"
+Requires-Dist: pandas>=1.3; extra == "air"
+Requires-Dist: pyarrow>=9.0.0; extra == "air"
+Requires-Dist: colorful; extra == "air"
+Requires-Dist: aiohttp>=3.13.3; extra == "air"
+Requires-Dist: grpcio>=1.42.0; extra == "air"
+Requires-Dist: starlette; extra == "air"
+Requires-Dist: pandas; extra == "air"
+Requires-Dist: numpy>=1.20; extra == "air"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "air"
+Requires-Dist: opentelemetry-proto; extra == "air"
+Requires-Dist: watchfiles; extra == "air"
+Requires-Dist: fsspec; extra == "air"
+Requires-Dist: smart_open; extra == "air"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "air"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "air"
+Requires-Dist: prometheus_client>=0.7.1; extra == "air"
+Requires-Dist: tensorboardX>=1.9; extra == "air"
+Requires-Dist: uvicorn[standard]; extra == "air"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "air"
+Requires-Dist: fastapi; extra == "air"
+Requires-Dist: requests; extra == "air"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "air"
+Provides-Extra: all
+Requires-Dist: aiohttp_cors; extra == "all"
+Requires-Dist: celery; extra == "all"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "all"
+Requires-Dist: opencensus; extra == "all"
+Requires-Dist: pandas>=1.3; extra == "all"
+Requires-Dist: pyOpenSSL; extra == "all"
+Requires-Dist: pyarrow>=9.0.0; extra == "all"
+Requires-Dist: lz4; extra == "all"
+Requires-Dist: pyyaml; extra == "all"
+Requires-Dist: colorful; extra == "all"
+Requires-Dist: aiohttp>=3.13.3; extra == "all"
+Requires-Dist: grpcio>=1.42.0; extra == "all"
+Requires-Dist: scipy; extra == "all"
+Requires-Dist: starlette; extra == "all"
+Requires-Dist: pandas; extra == "all"
+Requires-Dist: ormsgpack>=1.7.0; extra == "all"
+Requires-Dist: numpy>=1.20; extra == "all"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "all"
+Requires-Dist: opentelemetry-proto; extra == "all"
+Requires-Dist: watchfiles; extra == "all"
+Requires-Dist: fsspec; extra == "all"
+Requires-Dist: grpcio!=1.56.0; sys_platform == "darwin" and extra == "all"
+Requires-Dist: smart_open; extra == "all"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "all"
+Requires-Dist: dm_tree; extra == "all"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "all"
+Requires-Dist: prometheus_client>=0.7.1; extra == "all"
+Requires-Dist: tensorboardX>=1.9; extra == "all"
+Requires-Dist: uvicorn[standard]; extra == "all"
+Requires-Dist: memray; sys_platform != "win32" and extra == "all"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "all"
+Requires-Dist: gymnasium==1.2.2; extra == "all"
+Requires-Dist: fastapi; extra == "all"
+Requires-Dist: cupy-cuda12x; sys_platform != "darwin" and extra == "all"
+Requires-Dist: requests; extra == "all"
+Requires-Dist: grpcio; extra == "all"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "all"
+Provides-Extra: all-cpp
+Requires-Dist: aiohttp_cors; extra == "all-cpp"
+Requires-Dist: celery; extra == "all-cpp"
+Requires-Dist: grpcio; extra == "all-cpp"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "all-cpp"
+Requires-Dist: opencensus; extra == "all-cpp"
+Requires-Dist: pandas>=1.3; extra == "all-cpp"
+Requires-Dist: pyOpenSSL; extra == "all-cpp"
+Requires-Dist: pyarrow>=9.0.0; extra == "all-cpp"
+Requires-Dist: lz4; extra == "all-cpp"
+Requires-Dist: pyyaml; extra == "all-cpp"
+Requires-Dist: colorful; extra == "all-cpp"
+Requires-Dist: aiohttp>=3.13.3; extra == "all-cpp"
+Requires-Dist: grpcio>=1.42.0; extra == "all-cpp"
+Requires-Dist: scipy; extra == "all-cpp"
+Requires-Dist: starlette; extra == "all-cpp"
+Requires-Dist: pandas; extra == "all-cpp"
+Requires-Dist: ormsgpack>=1.7.0; extra == "all-cpp"
+Requires-Dist: ray-cpp==2.54.0; extra == "all-cpp"
+Requires-Dist: numpy>=1.20; extra == "all-cpp"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "all-cpp"
+Requires-Dist: opentelemetry-proto; extra == "all-cpp"
+Requires-Dist: watchfiles; extra == "all-cpp"
+Requires-Dist: fsspec; extra == "all-cpp"
+Requires-Dist: grpcio!=1.56.0; sys_platform == "darwin" and extra == "all-cpp"
+Requires-Dist: smart_open; extra == "all-cpp"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "all-cpp"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "all-cpp"
+Requires-Dist: prometheus_client>=0.7.1; extra == "all-cpp"
+Requires-Dist: tensorboardX>=1.9; extra == "all-cpp"
+Requires-Dist: uvicorn[standard]; extra == "all-cpp"
+Requires-Dist: memray; sys_platform != "win32" and extra == "all-cpp"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "all-cpp"
+Requires-Dist: gymnasium==1.2.2; extra == "all-cpp"
+Requires-Dist: fastapi; extra == "all-cpp"
+Requires-Dist: cupy-cuda12x; sys_platform != "darwin" and extra == "all-cpp"
+Requires-Dist: requests; extra == "all-cpp"
+Requires-Dist: dm_tree; extra == "all-cpp"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "all-cpp"
+Provides-Extra: llm
+Requires-Dist: async-timeout; python_version < "3.11" and extra == "llm"
+Requires-Dist: aiohttp_cors; extra == "llm"
+Requires-Dist: py-spy>=0.4.0; python_version >= "3.12" and extra == "llm"
+Requires-Dist: opencensus; extra == "llm"
+Requires-Dist: pandas>=1.3; extra == "llm"
+Requires-Dist: pyarrow>=9.0.0; extra == "llm"
+Requires-Dist: typer; extra == "llm"
+Requires-Dist: colorful; extra == "llm"
+Requires-Dist: nixl>=0.6.1; extra == "llm"
+Requires-Dist: aiohttp>=3.13.3; extra == "llm"
+Requires-Dist: grpcio>=1.42.0; extra == "llm"
+Requires-Dist: starlette; extra == "llm"
+Requires-Dist: hf_transfer; extra == "llm"
+Requires-Dist: jsonschema; extra == "llm"
+Requires-Dist: meson; extra == "llm"
+Requires-Dist: numpy>=1.20; extra == "llm"
+Requires-Dist: py-spy>=0.2.0; python_version < "3.12" and extra == "llm"
+Requires-Dist: ninja; extra == "llm"
+Requires-Dist: vllm[audio]>=0.15.0; extra == "llm"
+Requires-Dist: opentelemetry-proto; extra == "llm"
+Requires-Dist: watchfiles; extra == "llm"
+Requires-Dist: fsspec; extra == "llm"
+Requires-Dist: smart_open; extra == "llm"
+Requires-Dist: virtualenv!=20.21.1,>=20.0.24; extra == "llm"
+Requires-Dist: pybind11; extra == "llm"
+Requires-Dist: opentelemetry-sdk>=1.30.0; extra == "llm"
+Requires-Dist: prometheus_client>=0.7.1; extra == "llm"
+Requires-Dist: transformers>=4.57.3; extra == "llm"
+Requires-Dist: uvicorn[standard]; extra == "llm"
+Requires-Dist: pydantic!=2.0.*,!=2.1.*,!=2.10.*,!=2.11.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,<3; extra == "llm"
+Requires-Dist: fastapi; extra == "llm"
+Requires-Dist: requests; extra == "llm"
+Requires-Dist: jsonref>=1.1.0; extra == "llm"
+Requires-Dist: opentelemetry-exporter-prometheus; extra == "llm"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: home-page
+Dynamic: keywords
+Dynamic: license
+Dynamic: license-file
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
+
+.. image:: https://readthedocs.org/projects/ray/badge/?version=master
+    :target: http://docs.ray.io/en/master/?badge=master
+
+.. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
+    :target: https://www.ray.io/join-slack
+
+.. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
+    :target: https://discuss.ray.io/
+
+.. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
+    :target: https://x.com/raydistributed
+
+.. image:: https://img.shields.io/badge/Get_started_for_free-3C8AE9?logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8%2F9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABKElEQVQ4Ea2TvWoCQRRGnWCVWChIIlikC9hpJdikSbGgaONbpAoY8gKBdAGfwkfwKQypLQ1sEGyMYhN1Pd%2B6A8PqwBZeOHt%2FvsvMnd3ZXBRFPQjBZ9K6OY8ZxF%2B0IYw9PW3qz8aY6lk92bZ%2BVqSI3oC9T7%2FyCVnrF1ngj93us%2B540sf5BrCDfw9b6jJ5lx%2FyjtGKBBXc3cnqx0INN4ImbI%2Bl%2BPnI8zWfFEr4chLLrWHCp9OO9j19Kbc91HX0zzzBO8EbLK2Iv4ZvNO3is3h6jb%2BCwO0iL8AaWqB7ILPTxq3kDypqvBuYuwswqo6wgYJbT8XxBPZ8KS1TepkFdC79TAHHce%2F7LbVioi3wEfTpmeKtPRGEeoldSP%2FOeoEftpP4BRbgXrYZefsAI%2BP9JU7ImyEAAAAASUVORK5CYII%3D
+   :target: https://www.anyscale.com/ray-on-anyscale?utm_source=github&utm_medium=ray_readme&utm_campaign=get_started_badge
+
+Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a set of AI libraries for simplifying ML compute:
+
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/what-is-ray-padded.svg
+
+..
+  https://docs.google.com/drawings/d/1Pl8aCYOsZCo61cmp57c7Sja6HhIygGCvSZLi_AuBuqo/edit
+
+Learn more about `Ray AI Libraries`_:
+
+- `Data`_: Scalable Datasets for ML
+- `Train`_: Distributed Training
+- `Tune`_: Scalable Hyperparameter Tuning
+- `RLlib`_: Scalable Reinforcement Learning
+- `Serve`_: Scalable and Programmable Serving
+
+Or more about `Ray Core`_ and its key abstractions:
+
+- `Tasks`_: Stateless functions executed in the cluster.
+- `Actors`_: Stateful worker processes created in the cluster.
+- `Objects`_: Immutable values accessible across the cluster.
+
+Learn more about Monitoring and Debugging:
+
+- Monitor Ray apps and clusters with the `Ray Dashboard <https://docs.ray.io/en/latest/ray-core/ray-dashboard.html>`__.
+- Debug Ray apps with the `Ray Distributed Debugger <https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html>`__.
+
+Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
+`ecosystem of community integrations`_.
+
+Install Ray with: ``pip install ray``. For nightly wheels, see the
+`Installation page <https://docs.ray.io/en/latest/ray-overview/installation.html>`__.
+
+.. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
+.. _`Data`: https://docs.ray.io/en/latest/data/dataset.html
+.. _`Workflow`: https://docs.ray.io/en/latest/workflows/
+.. _`Train`: https://docs.ray.io/en/latest/train/train.html
+.. _`Tune`: https://docs.ray.io/en/latest/tune/index.html
+.. _`RLlib`: https://docs.ray.io/en/latest/rllib/index.html
+.. _`ecosystem of community integrations`: https://docs.ray.io/en/latest/ray-overview/ray-libraries.html
+
+
+Why Ray?
+--------
+
+Today's ML workloads are increasingly compute-intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to meet these demands.
+
+Ray is a unified way to scale Python and AI applications from a laptop to a cluster.
+
+With Ray, you can seamlessly scale the same code from a laptop to a cluster. Ray is designed to be general-purpose, meaning that it can performantly run any kind of workload. If your application is written in Python, you can scale it with Ray, no other infrastructure required.
+
+More Information
+----------------
+
+- `Documentation`_
+- `Ray Architecture whitepaper`_
+- `Exoshuffle: large-scale data shuffle in Ray`_
+- `Ownership: a distributed futures system for fine-grained tasks`_
+- `RLlib paper`_
+- `Tune paper`_
+
+*Older documents:*
+
+- `Ray paper`_
+- `Ray HotOS paper`_
+- `Ray Architecture v1 whitepaper`_
+
+.. _`Ray AI Libraries`: https://docs.ray.io/en/latest/ray-air/getting-started.html
+.. _`Ray Core`: https://docs.ray.io/en/latest/ray-core/walkthrough.html
+.. _`Tasks`: https://docs.ray.io/en/latest/ray-core/tasks.html
+.. _`Actors`: https://docs.ray.io/en/latest/ray-core/actors.html
+.. _`Objects`: https://docs.ray.io/en/latest/ray-core/objects.html
+.. _`Documentation`: http://docs.ray.io/en/latest/index.html
+.. _`Ray Architecture v1 whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview
+.. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
+.. _`Ownership: a distributed futures system for fine-grained tasks`: https://www.usenix.org/system/files/nsdi21-wang.pdf
+.. _`Ray paper`: https://arxiv.org/abs/1712.05889
+.. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
+.. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`Tune paper`: https://arxiv.org/abs/1807.05118
+
+Getting Involved
+----------------
+
+.. list-table::
+   :widths: 25 50 25 25
+   :header-rows: 1
+
+   * - Platform
+     - Purpose
+     - Estimated Response Time
+     - Support Level
+   * - `Discourse Forum`_
+     - For discussions about development and questions about usage.
+     - < 1 day
+     - Community
+   * - `GitHub Issues`_
+     - For reporting bugs and filing feature requests.
+     - < 2 days
+     - Ray OSS Team
+   * - `Slack`_
+     - For collaborating with other Ray users.
+     - < 2 days
+     - Community
+   * - `StackOverflow`_
+     - For asking questions about how to use Ray.
+     - 3-5 days
+     - Community
+   * - `Meetup Group`_
+     - For learning about Ray projects and best practices.
+     - Monthly
+     - Ray DevRel
+   * - `Twitter`_
+     - For staying up-to-date on new features.
+     - Daily
+     - Ray DevRel
+
+.. _`Discourse Forum`: https://discuss.ray.io/
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
+.. _`Twitter`: https://x.com/raydistributed
+.. _`Slack`: https://www.ray.io/join-slack?utm_source=github&utm_medium=ray_readme&utm_campaign=getting_involved

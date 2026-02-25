@@ -1,0 +1,4 @@
+[console_scripts]
+ray = ray.scripts.scripts:main
+serve = ray.serve.scripts:cli
+tune = ray.tune.cli.scripts:cli

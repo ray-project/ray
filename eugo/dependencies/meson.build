@@ -1,6 +1,7 @@
 # === @begin: absl ===
 # @Important:
 # We import those guys separately to avoid linking every binary to every absl library, as there are hundreds of them.
+# absl_base_core_headers = dependency('absl', method: 'cmake', modules: ['absl::absl']) OR
 absl_base_core_headers = dependency('absl', method: 'cmake', modules: ['absl::core_headers'])
 absl_base = dependency('absl', method: 'cmake', modules: ['absl::base'])
 

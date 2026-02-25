@@ -1,0 +1,208 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 1,
+  "iteration": 1667344411089,
+  "links": [],
+  "panels": [],
+  "refresh": false,
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false
+        },
+        "description": "Filter queries to specific prometheus type.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_serve_deployment_replica_healthy{{{global_filters}}}, application)",
+        "description": null,
+        "error": null,
+        "hide": 0,
+        "includeAll": true,
+        "label": null,
+        "multi": true,
+        "name": "Application",
+        "options": [],
+        "query": {
+          "query": "label_values(ray_serve_deployment_replica_healthy{{{global_filters}}}, application)",
+          "refId": "Prometheus-Instance-Variable-Query"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",{global_filters}}}, deployment)",
+        "description": null,
+        "error": null,
+        "hide": 0,
+        "includeAll": true,
+        "label": null,
+        "multi": true,
+        "name": "Deployment",
+        "options": [],
+        "query": {
+          "query": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",{global_filters}}}, deployment)",
+          "refId": "Prometheus-Instance-Variable-Query"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",deployment=~\"$Deployment\",{global_filters}}}, replica)",
+        "description": null,
+        "error": null,
+        "hide": 0,
+        "includeAll": true,
+        "label": null,
+        "multi": true,
+        "name": "Replica",
+        "options": [],
+        "query": {
+          "query": "label_values(ray_serve_deployment_replica_healthy{{application=~\"$Application\",deployment=~\"$Deployment\",{global_filters}}}, replica)",
+          "refId": "Prometheus-Instance-Variable-Query"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["All"],
+          "value": ["$__all"]
+        },
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_serve_deployment_request_counter{{deployment=~\"$Deployment\",{global_filters}}}, route)",
+        "description": null,
+        "error": null,
+        "hide": 0,
+        "includeAll": true,
+        "label": null,
+        "multi": true,
+        "name": "Route",
+        "options": [],
+        "query": {
+          "query": "label_values(ray_serve_deployment_request_counter{{deployment=~\"$Deployment\",{global_filters}}}, route)",
+          "refId": "Prometheus-Instance-Variable-Query"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": false
+        },
+        "datasource": "${datasource}",
+        "definition": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+        "description": "Filter queries to specific Ray clusters for KubeRay. When ingesting metrics across multiple ray clusters, the ray_io_cluster label should be set per cluster. For KubeRay users, this is done automaticaly with Prometheus PodMonitor.",
+        "error": null,
+        "hide": 0,
+        "includeAll": true,
+        "label": null,
+        "multi": false,
+        "name": "Cluster",
+        "options": [],
+        "query": {
+          "query": "label_values(ray_node_network_receive_speed{{{global_filters}}}, ray_io_cluster)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 2,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": false
+      }
+    ]
+  },
+  "rayMeta": ["excludesSystemRoutes"],
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Serve Deployment Dashboard",
+  "uid": "rayServeDeploymentDashboard",
+  "version": 1
+}

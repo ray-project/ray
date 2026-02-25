@@ -34,7 +34,7 @@ stats_metric_cpp_lib_dependencies = [
     tag_defs_cpp_lib_dep,
     ray_config_cpp_lib_dep,
     metric_interface_cpp_lib_dep,                   # defined in `src/ray/meson.build` before `subdir('stats/')`
-    # open_telemetry_metric_recorder_cpp_lib_dep,   # circular: defined in `src/ray/meson.build` after `subdir('stats/')`
+    # open_telemetry_metric_recorder_cpp_lib_dep,   # `open_telemetry_metric_recorder_cpp_lib_dep` is NOT AVAILABLE (processed after): defined in `src/ray/meson.build` after `subdir('stats/')`
     logging_cpp_lib_dep,
     size_literals_cpp_lib_dep,
 

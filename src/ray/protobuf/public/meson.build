@@ -241,6 +241,8 @@ runtime_environment_proto_cpp_lib_dep = declare_dependency(
     link_with: [runtime_environment_proto_cpp_lib],
     dependencies: runtime_environment_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [runtime_environment_proto_cpp_lib_dep]
 # @end: proto_cpp (original: runtime_environment_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -251,3 +253,5 @@ runtime_environment_proto_py = custom_target(
 )
 # @end: proto_py (@original: core_py_proto)
 # === @end: runtime_environment.proto ===
+
+

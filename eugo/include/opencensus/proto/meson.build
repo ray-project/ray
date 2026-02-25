@@ -11,12 +11,19 @@ opencensus_proto_cpp_default_kwargs = proto_cpp_default_kwargs + {'command': ope
 
 
 # === @begin: proto_py ===
-opencensus_protoc_py_with_default_arguments = [protoc_py, '@INPUT@', '@SOURCE_ROOT@/eugo/include', '@BUILD_ROOT@/eugo/include', '@OUTPUT0@', '@OUTPUT1@']
+opencensus_protoc_py_with_default_arguments = [
+    protoc_py,
+    '@INPUT@',
+    '@SOURCE_ROOT@/eugo/include',
+    '@BUILD_ROOT@/eugo/include',
+    '@OUTPUT0@',
+    '@OUTPUT1@'
+]
 
 opencensus_proto_py_default_kwargs = proto_py_default_kwargs + {'command': opencensus_protoc_py_with_default_arguments}
 # === @end: proto_py ===
 
 
-# @Important: Order matters!
+# @IMPORTANT: Order matters!
 subdir('resource/')
 subdir('metrics/')

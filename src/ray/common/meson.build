@@ -446,7 +446,10 @@ runtime_env_cpp_lib_dependencies = [
 
 runtime_env_cpp_lib = static_library(
     'runtime_env_cpp_lib',
-    ['runtime_env_common.cc', 'runtime_env_manager.cc'],
+    [
+        'runtime_env_common.cc',
+        'runtime_env_manager.cc'
+    ],
     install: false,
     dependencies: runtime_env_cpp_lib_dependencies
 )

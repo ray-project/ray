@@ -709,7 +709,49 @@ These files exist upstream but contain `@EUGO_CHANGE` blocks that must be preser
 1. If new `.proto` files: add a `custom_target()` in `src/ray/protobuf/meson.build` (for C++) and the Python proto `meson.build` using the kwargs from `eugo/utils/meson.build`.
 2. If modified `.proto` files: usually just rebuilds automatically.
 3. If deleted `.proto` files: remove the corresponding `custom_target()` entries.
-4. Check `eugo/utils/patching_protoc_py.sh` if Python import paths changed.
+4. Check `eugo/utils/patching_protoc_py.sh` if Python import paths changed — see §8.4.1 below.
+
+#### 8.4.1. Python Proto Import Patching (`patching_protoc_py.sh`)
+
+All generated Python protobuf files (`*_pb2.py`, `*_pb2_grpc.py`) are installed into a single flat directory (`ray/core/generated/`). However, `protoc` generates import statements based on the `.proto` file's directory structure (e.g., `from src.ray.protobuf.public import foo_pb2`). These imports break at runtime because the files are flattened. The script `eugo/utils/patching_protoc_py.sh` fixes these imports via `sed` replacements.
+
+**When new subdirectories are added** under `src/ray/protobuf/` (or any proto source path), the generated Python files will contain imports like `from ..subdirname import ...` or `from src.ray.protobuf.subdirname import ...`. A corresponding `sed` patch **must** be added to `patching_protoc_py.sh` to rewrite these to relative imports (`from . import ...`).
+
+**Current patches (as of this writing):**
+
+```bash
+# MARK: - 1. Eugo-Vendored (opencensus protos from eugo/include/)
+sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "${output}"
+sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "${output}"
+
+# MARK: - 2. Ray-Provided
+# MARK: - 2.1. Primary (top-level src/ray/protobuf/ protos)
+sed -i -E 's/from src.ray.protobuf/from ./' "${output}"
+
+# MARK: - 2.2. Secondary (subdirectory protos — add new entries here)
+sed -i -E 's/from ..public/from ./' "${output}"
+```
+
+**History:** Previously, `src/ray/protobuf/` had `experimental/` and `export_api/` subdirectories, which required patches:
+```bash
+# REMOVED — these subdirectories no longer exist:
+# sed -i -E 's/from ..experimental/from ./' "${output}"
+# sed -i -E 's/from ..export_api/from ./' "${output}"
+```
+These were replaced by the `public/` subdirectory, so the current patch is `from ..public` → `from .`.
+
+**Concrete example of the mapping:**
+- `src/ray/protobuf/public/` exists → `protoc` generates `from ..public import foo_pb2` → we patch to `from . import foo_pb2`
+
+**How to add a new patch:**
+1. Identify the new subdirectory (e.g., `src/ray/protobuf/newdir/`).
+2. Build the wheel or run the proto codegen.
+3. Inspect any generated `*_pb2.py` file that imports from the new subdirectory — note the exact import path `protoc` generates (e.g., `from ..newdir import foo_pb2`).
+4. Add a `sed` command to `patching_protoc_py.sh` under `# MARK: - 2.2. Secondary`:
+   ```bash
+   sed -i -E 's/from ..newdir/from ./' "${output}"
+   ```
+5. **Verify:** All `ray/core/generated/*.py` files should only import from the same directory (`.`) or from external packages (`google.protobuf`), never from relative parent paths (`..`) or absolute proto paths (`src.ray.protobuf`).
 
 ### 8.5. FlatBuffers Schema Changes
 
@@ -1038,7 +1080,7 @@ The #1 issue during syncs. Upstream adds `.cc` / `.c` files that don't exist in 
 
 ### Protobuf Schema Changes
 
-New `.proto` files need both C++ and Python codegen targets. The Python codegen uses `eugo/utils/patching_protoc_py.sh` which patches import paths — if upstream changes proto package structure, this script may need updating.
+New `.proto` files need both C++ and Python codegen targets. The Python codegen uses `eugo/utils/patching_protoc_py.sh` which patches import paths — if upstream changes proto package structure (adds, removes, or renames subdirectories under `src/ray/protobuf/`), this script **must** be updated with corresponding `sed` patches. See §8.4.1 for the full procedure, current patch list, and historical context. Failure to update the script causes `ImportError` at runtime when Python code imports the generated `_pb2.py` files.
 
 ### New External Dependencies
 
@@ -1253,70 +1295,33 @@ meson.build (root)
     └── meson.build               # _raylet links against ray_cpp shared lib instead of static libs
 ```
 
-### Pre-Consolidation Audit
+### Pre-Consolidation Notes
 
-Before consolidating, two invariants must be verified:
+#### 14.1. Duplicate Filenames — Not a Problem
 
-#### 14.1. Duplicate Filename Audit (MANDATORY)
+Meson encodes the **full relative source path** into each object filename by replacing `/` with `_`. All object files land in a target-specific subdirectory (e.g., `libray_cpp.so.p/`), so files with the same basename from different directories produce distinct object files:
 
-Meson's `shared_library()` with source files from multiple subdirectories compiles all `.cc` files into a single build directory. If two source files have the same `basename.extension` (e.g., `src/ray/gcs/common.cc` and `src/ray/object_manager/common.cc`), their object files will collide and one will silently overwrite the other, causing missing symbols.
+- `object_manager/common.cc` → `libray_cpp.so.p/object_manager_common.cc.o`
+- `core_worker/common.cc` → `libray_cpp.so.p/core_worker_common.cc.o`
+- `core_worker/task_execution/common.cc` → `libray_cpp.so.p/core_worker_task_execution_common.cc.o`
+- `rpc/common.cc` → `libray_cpp.so.p/rpc_common.cc.o`
 
-**Similarly for headers:** while header name collisions don't cause object file overwrites, they create ambiguity with `#include` directives and make the build fragile. Two headers with the same `basename.extension` in different directories could shadow each other depending on include path order.
+Ray's `src/ray/` tree actually has 4 files named `common.cc` (`object_manager/`, `core_worker/`, `core_worker/task_execution/`, `rpc/`) — all compile correctly with no collision.
 
-**Rules:**
+**The only theoretical edge case** is two source paths that differ only by replacing a directory separator with an underscore (e.g., `sub1/common.cc` and `sub1_common.cc`), which would produce identical object filenames. This pattern does not exist in Ray's codebase.
 
-1. **No two production source files (`.cc`, `.c`) may share the same `basename.extension`** across the entire `src/ray/` tree.
-2. **No two production header files (`.h`) may share the same `basename.extension`** across the entire `src/ray/` tree.
-3. **Test-only files are excluded** from this check — files that are not compiled by Meson (test files, test utilities, Java JNI) do not participate in the shared library and cannot collide.
-4. **Different extensions are fine** — `raptors.cc` and `raptors.h` is OK (they produce different output artifacts). The collision is only between files of the same extension: `src/ray/foo/raptors.h` vs `src/ray/bar/raptors.h` is NOT OK.
-5. **Generated files (proto/fbs)** must also be checked — the generated `.pb.cc` / `.grpc.pb.cc` / `_generated.h` files must not collide with hand-written source files or with each other.
+Headers are also fine — Ray uses fully-qualified includes (`ray/util/foo.h`, `src/ray/util/foo.h`) rather than bare `foo.h`, so header name collisions don't cause shadowing.
 
-**Audit procedure:**
+#### 14.2. Include Directories — Not Needed
 
-```bash
-# Find duplicate .cc/.c filenames among production sources
-find src/ray -name '*.cc' -o -name '*.c' | \
-    grep -v -E '(test|java/|thirdparty/setproctitle)' | \
-    xargs -I{} basename {} | \
-    sort | uniq -d
+Each `static_library()` in Step 1 implicitly adds its own source directory to the include path. The Step 2 `shared_library()` does **not** implicitly add any source subdirectory — but this is not an issue because the root `meson.build` already sets:
 
-# Find duplicate .h filenames among production headers
-find src/ray -name '*.h' | \
-    grep -v -E '(test|java/|thirdparty/setproctitle)' | \
-    xargs -I{} basename {} | \
-    sort | uniq -d
-
-# For each duplicate found, show full paths:
-find src/ray -name '<duplicate_filename>' | grep -v test
+```meson
+add_project_arguments('-I' + project_source_root() / 'src', ...)
+add_project_arguments('-I' + project_source_root(), ...)
 ```
 
-**If duplicates are found**, resolve by renaming one of the files. Annotate the rename with `@EUGO_CHANGE` and update all `#include` directives that reference the renamed file.
-
-#### 14.2. Include Directory Inventory (MANDATORY)
-
-The single shared library needs an explicit `include_directories()` list — unlike the current approach where each `static_library()` implicitly uses its own directory. Every directory under `src/ray/` that contains headers used by production code must be enumerated.
-
-**Rules:**
-
-1. **Only directories containing headers that production `.cc` files `#include`** need to be listed. Test-only directories can be omitted.
-2. **The list must be comprehensive** — a missing directory means `#include` failures at compile time. Err on the side of including too many directories rather than too few.
-3. **Generated file output directories** (protobuf, flatbuffers) must also be included — these are typically in the build directory, not the source tree.
-
-**Audit procedure:**
-
-```bash
-# List all directories containing .h files used in production
-find src/ray -name '*.h' -not -path '*/test*' -not -path '*/java/*' \
-    -not -path '*/thirdparty/setproctitle/*' | \
-    xargs -I{} dirname {} | \
-    sort -u
-
-# Cross-reference: find all #include paths used in production .cc files
-grep -rh '#include' src/ray --include='*.cc' --include='*.h' | \
-    grep -v test | \
-    sed 's/.*#include [<"]\(.*\)[>"]/\1/' | \
-    sort -u
-```
+These two flags cover every header under `src/ray/` via their fully-qualified paths (`src/ray/util/foo.h`, etc.), which is exactly how Ray's includes are written. No explicit `include_directories()` list is needed for the shared library.
 
 ### Meson Pattern: Single Shared Library
 
@@ -1343,7 +1348,7 @@ ray_cpp_sources = files(
     # ... etc ...
 )
 
-# --- Include directories for all production headers ---
+~~ @begin: # --- Include directories for all production headers ---~~
 ray_cpp_include_dirs = include_directories(
     '.',           # src/ray/ itself
     'common/',
@@ -1359,6 +1364,7 @@ ray_cpp_include_dirs = include_directories(
     'util/',
     # ... every directory containing production headers ...
 )
+~~ @end ~~
 
 # --- All external + codegen dependencies ---
 ray_cpp_dependencies = [
@@ -1441,23 +1447,19 @@ The `static_library()` wrappers around proto codegen outputs are removed. The ge
 
 ### Validation Procedure for Step 2
 
-1. **Duplicate filename audit** — run the commands from §14.1. Zero duplicates among production files.
-2. **Include directory completeness** — compile with the new `include_directories()` list. Any missing directory produces an immediate `#include` error.
-3. **Symbol completeness** — link the shared library. Any missing source file produces undefined symbol errors.
-4. **eugo_sync.py** — must still report "No raptors found!" (all `.cc` files referenced in the single `shared_library()` sources list).
-5. **Wheel comparison** — the output wheel must produce identical runtime behavior to the Step 1 wheel.
-6. **LTO verification** — build with `-Db_lto=true` and verify the shared library is smaller than the sum of all static libraries.
+1. **Symbol completeness** — link the shared library. Any missing source file produces undefined symbol errors.
+2. **eugo_sync.py** — must still report "No raptors found!" (all `.cc` files referenced in the single `shared_library()` sources list).
+3. **Wheel comparison** — the output wheel must produce identical runtime behavior to the Step 1 wheel.
+4. **LTO verification** — build with `-Db_lto=true` and verify the shared library is smaller than the sum of all static libraries.
 
 ### Rules for AI Coding Agents (Step 2 Specific)
 
 1. **Do NOT start Step 2 until Step 1 is complete and tested.** Step 1 is the prerequisite — the 1:1 Bazel mapping must build and pass validation first.
-2. **Run the duplicate filename audit (§14.1) before writing any consolidation code.** If duplicates exist, resolve them first in a separate commit.
-3. **Run the include directory inventory (§14.2) before writing the `include_directories()` list.** Do not guess — enumerate from the actual source tree.
-4. **Keep all codegen `custom_target()` definitions** — proto/fbs generation does not change in Step 2, only the downstream consumption pattern changes.
-5. **Do NOT delete the Step 1 `meson.build` files until the shared library builds clean.** Work in a new branch and keep Step 1 as a fallback.
-6. **Every `.cc` file currently in any `static_library()` must appear in `ray_cpp_sources`.** Missing a file means missing symbols. Cross-reference against `eugo_sync.py` output.
-7. **Test-only files, Java JNI files, and `thirdparty/setproctitle/` remain excluded** — same exclusion rules as Step 1.
-8. **The `_raylet` version script still applies** — use `ray_version_script.lds` unconditionally (Eugo targets Linux only). Symbol visibility control is even more important with a shared library.
+2. **Keep all codegen `custom_target()` definitions** — proto/fbs generation does not change in Step 2, only the downstream consumption pattern changes.
+3. **Do NOT delete the Step 1 `meson.build` files until the shared library builds clean.** Work in a new branch and keep Step 1 as a fallback.
+4. **Every `.cc` file currently in any `static_library()` must appear in `ray_cpp_sources`.** Missing a file means missing symbols. Cross-reference against `eugo_sync.py` output.
+5. **Test-only files, Java JNI files, and `thirdparty/setproctitle/` remain excluded** — same exclusion rules as Step 1.
+6. **The `_raylet` version script still applies** — use `ray_version_script.lds` unconditionally (Eugo targets Linux only). Symbol visibility control is even more important with a shared library.
 
 ---
 

@@ -137,7 +137,7 @@ gcs_subscriber_cpp_lib_dep = declare_dependency(
 python_gcs_subscriber_cpp_lib_dependencies = [
     # Package-managed
     status_cpp_lib_dep,
-    # rpc_client_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/gcs_rpc_client:rpc_client
+    # `rpc_client_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/gcs_rpc_client:rpc_client
     gcs_service_proto_cpp_lib_dep,
     pubsub_proto_cpp_lib_dep,
     visibility_cpp_lib_dep,

@@ -160,6 +160,10 @@ cluster_resource_manager_cpp_lib_dependencies = [
     # `raylet_metrics_cpp_lib_dep` is NOT AVAILABLE (processed after): `//src/ray/raylet:metrics`. Resolved at final link time via _raylet shared library.
     container_util_cpp_lib_dep,
     logging_cpp_lib_dep,
+    # Virtual targets
+    # @Important: This ensures no broken dependency chain, which may be caused by `NOT AVAILABLE`
+    all_proto_cpp_libs_dep,
+    all_proto_cpp_grpc_libs_dep,
 
     # Eugo-managed
     absl_container_flat_hash_map,
@@ -411,7 +415,7 @@ cluster_resource_scheduler_cpp_lib_dependencies = [
     cluster_resource_manager_cpp_lib_dep,
     composite_scheduling_policy_cpp_lib_dep,
     scheduler_internal_cpp_lib_dep,
-    # metric_interface_cpp_lib_dep is NOT AVAILABLE (processed after): //src/ray/observability:metric_interface
+    # `metric_interface_cpp_lib_dep` is NOT AVAILABLE (processed after): //src/ray/observability:metric_interface
     gcs_proto_cpp_lib_dep,
     logging_cpp_lib_dep,
 

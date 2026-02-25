@@ -1,8 +1,9 @@
 # @IMPORTANT: 1. Ordering within this file respects the internal dependency graph.
 # You will also see things "out of order" from a BUILD.bazel perspective,
-# @IMPORTANT: `experimental/` subdir removed — `instance_manager.proto` moved to top level (see below)
-# @IMPORTANT: `export_api/` subdir removed — `export_*.proto` files moved to top level (see below)
-# @IMPORTANT: Bazel implicitly links @com_google_protobuf//:protobuf — it's a built-in rule that always pulls in the protobuf runtime without you having to list it. Meson has no such implicit behavior, so we must add protobuf explicitly to every *_proto_cpp_lib_dependencies list
+# @NOTE: `experimental/` subdir removed — `instance_manager.proto` moved to this top level file (see below)
+# @NOTE: `export_api/` subdir removed — `export_*.proto` files moved to this top level file (see below)
+# @IMPORTANT: Bazel implicitly links @com_google_protobuf//:protobuf — it's a built-in rule that always pulls in the protobuf runtime without you having to list it.
+# Meson has no such implicit behavior, so we must add protobuf explicitly to every *_proto_cpp_lib_dependencies list
 
 # === @begin: runtime_env_common.proto ===
 runtime_env_common_proto = ['runtime_env_common.proto']
@@ -35,6 +36,8 @@ runtime_env_common_proto_cpp_lib_dep = declare_dependency(
     link_with: [runtime_env_common_proto_cpp_lib],
     dependencies: runtime_env_common_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [runtime_env_common_proto_cpp_lib_dep]
 # @end: proto_cpp (original: runtime_env_common_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -56,7 +59,6 @@ subdir('public/')
 
 
 # === @begin: common.proto ===
-# TODO+ @BEGIN: REMOVE ME DONE
 common_proto = ['common.proto']
 
 # @begin: proto_cpp (original: common_cc_proto)
@@ -88,6 +90,8 @@ common_proto_cpp_lib_dep = declare_dependency(
     link_with: [common_proto_cpp_lib],
     dependencies: common_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [common_proto_cpp_lib_dep]
 # @end: proto_cpp (original: common_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -99,7 +103,7 @@ common_proto_py = custom_target(
 )
 # @end: proto_py (@original: core_py_proto)
 # === @end: common.proto ===
-# TODO+ @END: REMOVE ME DONE
+
 
 # === @begin: autoscaler.proto ===
 autoscaler_proto = ['autoscaler.proto']
@@ -133,6 +137,8 @@ autoscaler_proto_cpp_lib_dep = declare_dependency(
     link_with: [autoscaler_proto_cpp_lib],
     dependencies: autoscaler_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [autoscaler_proto_cpp_lib_dep]
 # @end: proto_cpp (original: autoscaler_cc_proto)
 
 # @begin: proto_cpp_grpc (original: autoscaler_cc_grpc)
@@ -165,6 +171,8 @@ autoscaler_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [autoscaler_proto_cpp_grpc_lib],
     dependencies: autoscaler_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [autoscaler_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (original: autoscaler_cc_grpc)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -209,6 +217,8 @@ ray_syncer_proto_cpp_lib_dep = declare_dependency(
     link_with: [ray_syncer_proto_cpp_lib],
     dependencies: ray_syncer_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [ray_syncer_proto_cpp_lib_dep]
 # @end: proto_cpp (original: ray_syncer_cc_proto)
 
 # @begin: proto_cpp_grpc (original: ray_syncer_cc_grpc)
@@ -241,6 +251,8 @@ ray_syncer_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [ray_syncer_proto_cpp_grpc_lib],
     dependencies: ray_syncer_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [ray_syncer_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (original: ray_syncer_cc_grpc)
 # === @end: ray_syncer.proto ===
 
@@ -276,6 +288,8 @@ profile_events_proto_cpp_lib_dep = declare_dependency(
     link_with: [profile_events_proto_cpp_lib],
     dependencies: profile_events_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [profile_events_proto_cpp_lib_dep]
 # @end: proto_cpp (original: profile_events_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -321,6 +335,8 @@ gcs_proto_cpp_lib_dep = declare_dependency(
     link_with: [gcs_proto_cpp_lib],
     dependencies: gcs_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [gcs_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: gcs_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -365,6 +381,8 @@ logging_proto_cpp_lib_dep = declare_dependency(
     link_with: [logging_proto_cpp_lib],
     dependencies: logging_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [logging_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: logging_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -410,6 +428,8 @@ node_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [node_manager_proto_cpp_lib],
     dependencies: node_manager_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [node_manager_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: node_manager_cc_proto)
 
 # @begin: proto_cpp_grpc (@original: node_manager_cc_grpc)
@@ -442,6 +462,8 @@ node_manager_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [node_manager_proto_cpp_grpc_lib],
     dependencies: node_manager_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [node_manager_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (@original: node_manager_cc_grpc)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -461,9 +483,7 @@ reporter_proto = 'reporter.proto'
 # @begin: proto_cpp (@original: reporter_cc_proto)
 reporter_proto_cpp = custom_target(
     input: reporter_proto,
-    kwargs: proto_cpp_default_kwargs + {
-        'command': [protoc_cpp_with_default_args, '-I@SOURCE_ROOT@/eugo/include']
-    }
+    kwargs: proto_cpp_default_kwargs
 )
 
 reporter_proto_cpp_dep = declare_dependency(
@@ -489,14 +509,14 @@ reporter_proto_cpp_lib_dep = declare_dependency(
     link_with: [reporter_proto_cpp_lib],
     dependencies: reporter_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [reporter_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: reporter_cc_proto)
 
 # @begin: proto_cpp_grpc (@original: reporter_cc_grpc)
 reporter_proto_cpp_grpc = custom_target(
     input: reporter_proto,
-    kwargs: proto_cpp_grpc_default_kwargs + {
-        'command': [protoc_cpp_grpc_with_default_args, '-I@SOURCE_ROOT@/eugo/include']
-    }
+    kwargs: proto_cpp_grpc_default_kwargs
 )
 
 reporter_proto_cpp_grpc_dep = declare_dependency(
@@ -523,6 +543,8 @@ reporter_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [reporter_proto_cpp_grpc_lib],
     dependencies: reporter_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [reporter_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (@original: reporter_cc_grpc)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -568,6 +590,8 @@ pubsub_proto_cpp_lib_dep = declare_dependency(
     link_with: [pubsub_proto_cpp_lib],
     dependencies: pubsub_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [pubsub_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: pubsub_cc_proto)
 
 # @begin: proto_cpp_grpc (@original: pubsub_cc_grpc)
@@ -601,6 +625,8 @@ pubsub_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [pubsub_proto_cpp_grpc_lib],
     dependencies: pubsub_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [pubsub_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (@original: pubsub_cc_grpc)
 
 # @Important:
@@ -652,6 +678,8 @@ events_task_profile_events_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_task_profile_events_proto_cpp_lib],
     dependencies: events_task_profile_events_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_task_profile_events_proto_cpp_lib_dep]
 # @end: proto_cpp (original: events_task_profile_events_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -759,6 +787,8 @@ events_driver_job_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_driver_job_lifecycle_event_proto_cpp_lib],
     dependencies: events_driver_job_lifecycle_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_driver_job_lifecycle_event_proto_cpp_lib_dep]
 # @end: events_driver_job_lifecycle_event_proto_cpp_lib
 
 # @begin: events_node_definition_event_proto_cpp_lib
@@ -779,6 +809,8 @@ events_node_definition_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_node_definition_event_proto_cpp_lib],
     dependencies: events_node_definition_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_node_definition_event_proto_cpp_lib_dep]
 # @end: events_node_definition_event_proto_cpp_lib
 
 # @begin: events_node_lifecycle_event_proto_cpp_lib
@@ -799,6 +831,8 @@ events_node_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_node_lifecycle_event_proto_cpp_lib],
     dependencies: events_node_lifecycle_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_node_lifecycle_event_proto_cpp_lib_dep]
 # @end: events_node_lifecycle_event_proto_cpp_lib
 
 # @begin: events_actor_definition_event_proto_cpp_lib
@@ -818,6 +852,8 @@ events_actor_definition_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_actor_definition_event_proto_cpp_lib],
     dependencies: events_actor_definition_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_actor_definition_event_proto_cpp_lib_dep]
 # @end: events_actor_definition_event_proto_cpp_lib
 
 # @begin: events_actor_lifecycle_event_proto_cpp_lib
@@ -837,6 +873,8 @@ events_actor_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_actor_lifecycle_event_proto_cpp_lib],
     dependencies: events_actor_lifecycle_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_actor_lifecycle_event_proto_cpp_lib_dep]
 # @end: events_actor_lifecycle_event_proto_cpp_lib
 
 # @begin: events_task_lifecycle_event_proto_cpp_lib
@@ -856,6 +894,8 @@ events_task_lifecycle_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_task_lifecycle_event_proto_cpp_lib],
     dependencies: events_task_lifecycle_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_task_lifecycle_event_proto_cpp_lib_dep]
 # @end: events_task_lifecycle_event_proto_cpp_lib
 
 # @begin: events_actor_task_definition_event_proto_cpp_lib
@@ -875,6 +915,8 @@ events_actor_task_definition_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_actor_task_definition_event_proto_cpp_lib],
     dependencies: events_actor_task_definition_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_actor_task_definition_event_proto_cpp_lib_dep]
 # @end: events_actor_task_definition_event_proto_cpp_lib
 
 # @begin: events_task_definition_event_proto_cpp_lib
@@ -894,6 +936,8 @@ events_task_definition_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_task_definition_event_proto_cpp_lib],
     dependencies: events_task_definition_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_task_definition_event_proto_cpp_lib_dep]
 # @end: events_task_definition_event_proto_cpp_lib
 
 # @begin: events_driver_job_definition_event_proto_cpp_lib
@@ -913,6 +957,8 @@ events_driver_job_definition_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_driver_job_definition_event_proto_cpp_lib],
     dependencies: events_driver_job_definition_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_driver_job_definition_event_proto_cpp_lib_dep]
 # @end: events_driver_job_definition_event_proto_cpp_lib
 
 # @begin: events_base_event_proto_cpp_lib
@@ -932,6 +978,8 @@ events_base_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_base_event_proto_cpp_lib],
     dependencies: events_base_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_base_event_proto_cpp_lib_dep]
 # @end: events_base_event_proto_cpp_lib
 
 
@@ -972,6 +1020,8 @@ events_event_aggregator_service_proto_cpp_lib_dep = declare_dependency(
     link_with: [events_event_aggregator_service_proto_cpp_lib],
     dependencies: events_event_aggregator_service_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [events_event_aggregator_service_proto_cpp_lib_dep]
 # @end: proto_cpp (original: events_event_aggregator_service_cc_proto)
 
 # @begin: proto_cpp_grpc (original: events_event_aggregator_service_cc_grpc)
@@ -1004,6 +1054,8 @@ events_event_aggregator_service_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [events_event_aggregator_service_proto_cpp_grpc_lib],
     dependencies: events_event_aggregator_service_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [events_event_aggregator_service_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (original: events_event_aggregator_service_cc_grpc)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -1049,6 +1101,8 @@ gcs_service_proto_cpp_lib_dep = declare_dependency(
     link_with: [gcs_service_proto_cpp_lib],
     dependencies: gcs_service_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [gcs_service_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: gcs_service_cc_proto)
 
 # @begin: proto_cpp_grpc (@original: gcs_service_cc_grpc)
@@ -1081,6 +1135,8 @@ gcs_service_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [gcs_service_proto_cpp_grpc_lib],
     dependencies: gcs_service_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [gcs_service_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp (@original: gcs_service_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -1125,6 +1181,8 @@ test_service_proto_cpp_lib_dep = declare_dependency(
     link_with: [test_service_proto_cpp_lib],
     dependencies: test_service_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [test_service_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: test_service_cc_proto)
 
 # @begin: proto_cpp_grpc (@original: test_service_cc_grpc)
@@ -1157,6 +1215,8 @@ test_service_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [test_service_proto_cpp_grpc_lib],
     dependencies: test_service_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [test_service_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (@original: test_service_cc_grpc)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1204,6 +1264,8 @@ object_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [object_manager_proto_cpp_lib],
     dependencies: object_manager_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [object_manager_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: object_manager_cc_proto)
 
 # @begin: proto_cpp_grpc (@original: object_manager_cc_grpc)
@@ -1236,6 +1298,8 @@ object_manager_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [object_manager_proto_cpp_grpc_lib],
     dependencies: object_manager_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [object_manager_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (@original: object_manager_cc_grpc)
 # === @end: object_manager.proto ===
 
@@ -1272,6 +1336,8 @@ core_worker_proto_cpp_lib_dep = declare_dependency(
     link_with: [core_worker_proto_cpp_lib],
     dependencies: core_worker_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [core_worker_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: worker_cc_proto (yep, original version doesn't have `core_` prefix, likely, for historical reasons))
 
 # @begin: proto_cpp_grpc (@original: worker_cc_grpc (yep, original version doesn't have `core_` prefix, likely, for historical reasons))
@@ -1304,6 +1370,8 @@ core_worker_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [core_worker_proto_cpp_grpc_lib],
     dependencies: core_worker_proto_cpp_grpc_lib_dependencies
 )
+
+all_proto_cpp_grpc_libs_dependencies += [core_worker_proto_cpp_grpc_lib_dep]
 # @end: proto_cpp_grpc (@original: worker_cc_grpc (yep, original version doesn't have `core_` prefix, likely, for historical reasons))
 
 # @begin: proto_py (@original: core_py_proto)
@@ -1348,6 +1416,8 @@ serialization_proto_cpp_lib_dep = declare_dependency(
     link_with: [serialization_proto_cpp_lib],
     dependencies: serialization_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [serialization_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: serialization_cc_proto)
 # === @end: serialization.proto ===
 
@@ -1383,6 +1453,8 @@ event_proto_cpp_lib_dep = declare_dependency(
     link_with: [event_proto_cpp_lib],
     dependencies: event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [event_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: event_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -1431,6 +1503,8 @@ runtime_env_agent_proto_cpp_lib_dep = declare_dependency(
     link_with: [runtime_env_agent_proto_cpp_lib],
     dependencies: runtime_env_agent_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [runtime_env_agent_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: runtime_env_agent_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -1475,6 +1549,8 @@ usage_proto_cpp_lib_dep = declare_dependency(
     link_with: [usage_proto_cpp_lib],
     dependencies: usage_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [usage_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: usage_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -1506,7 +1582,7 @@ dependency_proto_py = custom_target(
 
 
 # === @begin: instance_manager.proto ===
-# (moved from experimental/ to top level)
+# (moved from `experimental/` subdir to this top level file)
 instance_manager_proto = ['instance_manager.proto']
 
 # @begin: proto_cpp (original: instance_manager_cc_proto)
@@ -1537,6 +1613,8 @@ instance_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [instance_manager_proto_cpp_lib],
     dependencies: instance_manager_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [instance_manager_proto_cpp_lib_dep]
 # @end: proto_cpp (original: instance_manager_cc_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -1612,6 +1690,8 @@ export_runtime_env_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_runtime_env_proto_cpp_lib],
     dependencies: export_runtime_env_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_runtime_env_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: export_runtime_env_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1656,6 +1736,8 @@ export_train_state_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_train_state_proto_cpp_lib],
     dependencies: export_train_state_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_train_state_proto_cpp_lib_dep]
 # @end: proto_cpp (original: export_train_state_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1700,6 +1782,8 @@ export_dataset_operator_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_dataset_operator_event_proto_cpp_lib],
     dependencies: export_dataset_operator_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_dataset_operator_event_proto_cpp_lib_dep]
 # @end: proto_cpp (original: export_dataset_operator_event_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1744,6 +1828,8 @@ export_dataset_operator_schema_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_dataset_operator_schema_proto_cpp_lib],
     dependencies: export_dataset_operator_schema_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_dataset_operator_schema_proto_cpp_lib_dep]
 # @end: proto_cpp (original: export_dataset_operator_schema_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1788,6 +1874,8 @@ export_dataset_metadata_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_dataset_metadata_proto_cpp_lib],
     dependencies: export_dataset_metadata_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_dataset_metadata_proto_cpp_lib_dep]
 # @end: proto_cpp (original: export_dataset_metadata_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1834,6 +1922,8 @@ export_task_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_task_event_proto_cpp_lib],
     dependencies: export_task_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_task_event_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: export_task_event_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1879,6 +1969,8 @@ export_node_data_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_node_data_proto_cpp_lib],
     dependencies: export_node_data_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_node_data_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: export_node_data_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1925,6 +2017,8 @@ export_actor_data_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_actor_data_proto_cpp_lib],
     dependencies: export_actor_data_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_actor_data_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: export_actor_data_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -1971,6 +2065,8 @@ export_driver_job_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_driver_job_event_proto_cpp_lib],
     dependencies: export_driver_job_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_driver_job_event_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: export_driver_job_event_cc_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -2016,6 +2112,8 @@ export_submission_job_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_submission_job_event_proto_cpp_lib],
     dependencies: export_submission_job_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_submission_job_event_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: export_submission_job_event_cpp_proto)
 
 # @begin: proto_py (@original: N/A — no Bazel py target)
@@ -2072,6 +2170,8 @@ export_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_event_proto_cpp_lib],
     dependencies: export_event_proto_cpp_lib_dependencies
 )
+
+all_proto_cpp_libs_dependencies += [export_event_proto_cpp_lib_dep]
 # @end: proto_cpp (@original: export_event_cpp_proto)
 
 # @begin: proto_py (@original: core_py_proto)
@@ -2083,3 +2183,23 @@ export_event_proto_py = custom_target(
 )
 # @end: proto_py (@original: core_py_proto)
 # === @end: export_event.proto ===
+
+
+# === @begin: Virtual `all` Protobufs Targets ===
+all_proto_cpp_libs_dep = declare_dependency(
+    dependencies: all_proto_cpp_libs_dependencies
+    # @Important: Implies: + [opencensus_metrics_proto_cpp_dep, opencensus_resource_proto_cpp_dep]
+)
+
+all_proto_cpp_grpc_libs_dep = declare_dependency(
+    dependencies: all_proto_cpp_grpc_libs_dependencies
+)
+# === @end: Virtual `all` Protobufs Targets ===
+
+
+
+
+
+
+
+

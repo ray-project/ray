@@ -1,27 +1,27 @@
-# @IMPORTANT: Several util targets depend on `common/` targets (status, status_or, id,
-# ray_config) but `common/` is processed AFTER `util/` in src/ray/meson.build
+# @IMPORTANT: Several util targets depend on `common/` targets (`status`, `status_or`, `id`,
+# `ray_config`) but `common/` is processed AFTER `util/` in src/ray/meson.build
 # (circular dependency). These deps are documented as comments but cannot be
 # declared as Meson deps here. This works because headers resolve via global include paths (src/);
 # symbols resolve at final link time when all static libraries link into `_raylet`.
 #
 # Why it is safe (today): Meson compiles targets in parallel based on the declared dependency
-# graph. Since util/ targets don't declare deps on common/ targets, Meson won't enforce an
+# graph. Since `util/` targets don't declare deps on `common/` targets, Meson won't enforce an
 # ordering between them. This is safe ONLY because status.h, status_or.h, id.h, and
 # ray_config.h are plain source files on disk — the compiler can read them at any time without
 # waiting for a code generation step.
 #
-# The risk: if any of those common/ headers ever transitively #include a generated file
-# (e.g., a .pb.h proto header), a parallel build could fail: Meson might compile a util/
+# The risk: if any of those `common/` headers ever transitively #include a generated file
+# (e.g., a `.pb.h` proto header), a parallel build could fail: Meson might compile a `util/`
 # target before the relevant proto codegen has run, because there is no declared dependency
-# chain requiring that ordering. As of 2026-02-22, status.h / status_or.h / id.h have no
+# chain requiring that ordering. As of 2026-02-22, `status.h` / `status_or.h` / `id.h` have no
 # transitive proto includes, so the build is correct. Monitor upstream changes to these headers.
 #
-# Long-term fix: Step 2 (single shared_library) eliminates all circular deps by merging
+# Long-term fix: Step 2 (single shared_library) eliminates all circular deps / ordering issues by merging
 # everything into one compilation unit, making this entire workaround unnecessary.
 
 
 # ============================================================
-# Level 0: Leaf targets — no internal dependencies
+# Level 0: Sink Nodes — no internal dependencies
 # ============================================================
 
 
@@ -392,7 +392,7 @@ scoped_env_setter_cpp_lib_dep = declare_dependency(
 # Bazel deps: //src/ray/common:status_or
 filesystem_cpp_lib_dependencies = [
     # Package-managed
-    # status_or_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # status_or_cpp_lib_dep,  # `status_or_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 ]
 
 filesystem_cpp_lib = static_library(
@@ -413,8 +413,8 @@ filesystem_cpp_lib_dep = declare_dependency(
 # Bazel deps: //src/ray/common:status, //src/ray/common:status_or
 file_persistence_cpp_lib_dependencies = [
     # Package-managed
-    # status_cpp_lib_dep,     # circular: common/ processed after util/. See comments at the top of this file.
-    # status_or_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # status_cpp_lib_dep,    `status_cpp_lib_dep`  # is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
+    # status_or_cpp_lib_dep,  # `status_or_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 ]
 
 file_persistence_cpp_lib = static_library(
@@ -435,7 +435,7 @@ file_persistence_cpp_lib_dep = declare_dependency(
 # Bazel deps: //src/ray/common:status_or
 string_utils_cpp_lib_dependencies = [
     # Package-managed
-    # status_or_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # status_or_cpp_lib_dep,  # `status_or_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 
     # Eugo-managed
     absl_strings,  # covers both absl/strings and absl/strings:str_format (same Meson variable per AGENTS.md §10)
@@ -460,7 +460,7 @@ string_utils_cpp_lib_dep = declare_dependency(
 compat_cpp_lib_dependencies = [
     # Package-managed
     logging_cpp_lib_dep,
-    # status_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # status_cpp_lib_dep,  # `status_cpp_lib_dep` is NOT AVAILABLE (processed after) `common/` processed after `util/`. See comments at the top of this file.
 ]
 
 compat_cpp_lib = static_library(
@@ -547,7 +547,7 @@ process_interface_cpp_lib_dep = declare_dependency(
 spdlog_fd_sink_cpp_lib_dependencies = [
     # Package-managed
     compat_cpp_lib_dep,
-    # status_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # status_cpp_lib_dep,  # `status_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 
     # Eugo-managed
     spdlog,
@@ -658,9 +658,9 @@ process_utils_cpp_lib_dep = declare_dependency(
 port_persistence_cpp_lib_dependencies = [
     # Package-managed
     file_persistence_cpp_lib_dep,
-    # id_cpp_lib_dep,         # circular: common/ processed after util/. See comments at the top of this file.
-    # status_cpp_lib_dep,     # circular: common/ processed after util/. See comments at the top of this file.
-    # status_or_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # id_cpp_lib_dep,    `id_cpp_lib_dep`      # is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
+    # status_cpp_lib_dep,    `status_cpp_lib_dep`  # is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
+    # status_or_cpp_lib_dep,  # `status_or_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 ]
 
 port_persistence_cpp_lib = static_library(
@@ -681,7 +681,7 @@ port_persistence_cpp_lib_dep = declare_dependency(
 # Bazel deps: //src/ray/common:id
 temporary_directory_cpp_lib_dependencies = [
     # Package-managed
-    # id_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # id_cpp_lib_dep,  # `id_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 
     # Eugo-managed
     absl_strings,  # covers both absl/strings and absl/strings:str_format (same Meson variable per AGENTS.md §10)
@@ -731,8 +731,8 @@ process_cpp_lib_dependencies = [
     macros_cpp_lib_dep,
     process_interface_cpp_lib_dep,
     process_utils_cpp_lib_dep,
-    # status_cpp_lib_dep,     # circular: common/ processed after util/. See comments at the top of this file.
-    # status_or_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
+    # status_cpp_lib_dep,    `status_cpp_lib_dep`  # is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
+    # status_or_cpp_lib_dep,  # `status_or_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 
     # Eugo-managed
     boost_asio,
@@ -768,8 +768,8 @@ pipe_logger_cpp_lib_dependencies = [
     spdlog_newliner_sink_cpp_lib_dep,
     stream_redirection_options_cpp_lib_dep,
     thread_utils_cpp_lib_dep,
-    # ray_config_cpp_lib_dep,  # circular: common/ processed after util/. See comments at the top of this file.
-    # status_cpp_lib_dep,      # circular: common/ processed after util/. See comments at the top of this file.
+    # ray_config_cpp_lib_dep,  # `ray_config_cpp_lib_dep` is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
+    # status_cpp_lib_dep,    `status_cpp_lib_dep`   # is NOT AVAILABLE (processed after): common/ processed after util/. See comments at the top of this file.
 
     # Eugo-managed
     boost_iostreams,
