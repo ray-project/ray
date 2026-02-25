@@ -565,8 +565,6 @@ py_test_module_list(
         "test_tpu.py",
         "test_tqdm.py",
         "test_unhandled_error.py",
-        "test_util_collective_gloo.py",
-        "test_util_collective_nccl.py",
         "test_wait.py",
         "test_widgets.py",
         "test_worker_graceful_shutdown.py",
@@ -574,6 +572,22 @@ py_test_module_list(
     tags = [
         "exclusive",
         "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    files = [
+        "test_util_collective_gloo.py",
+        "test_util_collective_nccl.py",
+    ],
+    tags = [
+        "exclusive",
         "team:core",
     ],
     deps = [
