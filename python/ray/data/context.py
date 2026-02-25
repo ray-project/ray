@@ -850,7 +850,7 @@ class DataContext:
         self._shuffle_strategy = value
 
     @property
-    def execution_callback_classes() -> List[Type["ExecutionCallback"]]:
+    def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
         """Factory function to get the default execution callback classes.
 
         This function constructs the list of callback classes that should be
@@ -904,6 +904,9 @@ class DataContext:
                     raise ValueError(
                         f"Failed to import callback from '{callback_path}': {e}"
                     )
+
+        # User custom classes
+        classes.extend(self.custom_execution_callback_classes)
 
         return classes
 
