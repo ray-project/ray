@@ -901,7 +901,7 @@ class DataContext:
                     raise ValueError(
                         f"Invalid callback class '{callback_path}' specified in "
                         f"{EXECUTION_CALLBACKS_ENV_VAR}. Expected a subclass of "
-                        f"ExecutionCallback, but got {callback_cls}."  # <-- FIXED HERE
+                        f"ExecutionCallback, but got {callback_cls}."
                     )
 
                 classes.append(callback_cls)
