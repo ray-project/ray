@@ -191,7 +191,7 @@ def test_combine_chunked_array_small(
 ):
     result = combine_chunked_array(input_)
 
-    expected_output.equals(result)
+    assert expected_output.equals(result)
 
 
 @pytest.mark.parametrize(
