@@ -1209,12 +1209,6 @@ python/ray/data/preprocessor.py
     DOC103: Method `Preprocessor._derive_and_validate_output_columns`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [columns: List[str], output_columns: Optional[List[str]]].
     DOC201: Method `Preprocessor._derive_and_validate_output_columns` does not have a return section in docstring
 --------------------
-python/ray/data/preprocessors/chain.py
-    DOC103: Method `Chain.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*preprocessors: Preprocessor]. Arguments in the docstring but not in the function signature: [preprocessors: ].
---------------------
-python/ray/data/preprocessors/normalizer.py
-    DOC107: Method `Normalizer.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
---------------------
 python/ray/data/tests/test_split.py
     DOC106: Function `assert_split_assignment`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Function `assert_split_assignment`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
