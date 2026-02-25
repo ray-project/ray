@@ -16,6 +16,9 @@ IGNORE_PATHS = {
     ".deprecation.",
     ".protobuf.",
     ".cloudpickle.",
+    ".dashboard.modules.",
+    ".dashboard.utils.",
+    ".util.state.",
 }
 
 
