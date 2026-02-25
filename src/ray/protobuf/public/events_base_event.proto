@@ -17,6 +17,8 @@ syntax = "proto3";
 package ray.rpc.events;
 
 import "google/protobuf/timestamp.proto";
+import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/public/platform_events.proto";
 import "src/ray/protobuf/events_task_profile_events.proto";
 import "src/ray/protobuf/public/events_actor_task_definition_event.proto";
 import "src/ray/protobuf/public/events_task_definition_event.proto";
@@ -62,6 +64,7 @@ message RayEvent {
     ACTOR_LIFECYCLE_EVENT = 10;
     PLACEMENT_GROUP_DEFINITION_EVENT = 11;
     PLACEMENT_GROUP_LIFECYCLE_EVENT = 12;
+    PLATFORM_EVENT = 13;
   }
 
   // The severities of events that can be generated.
@@ -113,4 +116,6 @@ message RayEvent {
 
   PlacementGroupDefinitionEvent placement_group_definition_event = 19;
   PlacementGroupLifecycleEvent placement_group_lifecycle_event = 20;
+
+  ray.dashboard.events.PlatformEvent platform_event = 21;
 }

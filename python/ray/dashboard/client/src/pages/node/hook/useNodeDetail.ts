@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import useSWR from "swr";
 import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getNodeDetail } from "../../../service/node";
+import { getPlatformEvents, getNodeDetail } from "../../../service/node";
 
 export const useNodeDetail = () => {
   const params = useParams() as { id: string };
@@ -37,6 +37,15 @@ export const useNodeDetail = () => {
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
+  const { data: platformEvents } = useSWR(
+    ["usePlatformEvents"],
+    async () => {
+      const { data } = await getPlatformEvents();
+      return data?.data?.events || [];
+    },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
+
   const raylet = nodeDetail?.raylet;
   const handleChange = (event: React.ChangeEvent<{}>, newValue: string) => {
     setTab(newValue);
@@ -53,5 +62,6 @@ export const useNodeDetail = () => {
     raylet,
     handleChange,
     namespaceMap,
+    platformEvents,
   };
 };

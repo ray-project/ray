@@ -88,6 +88,11 @@ const getColorMap = (orange: string, grey: string) =>
       [ServeSystemActorStatus.UNHEALTHY]: red,
       [ServeSystemActorStatus.STARTING]: orange,
     },
+  severity: {
+    INFO: cyan,
+    WARNING: orange,
+    ERROR: red,
+  },
   } as {
     [key: string]: {
       [key: string]: Color | string;
