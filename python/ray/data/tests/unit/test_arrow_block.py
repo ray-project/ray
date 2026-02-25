@@ -1,7 +1,5 @@
 import base64
-import os
 import sys
-from tempfile import TemporaryDirectory
 from typing import Union
 
 import numpy as np
@@ -19,7 +17,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
-from ray.data._internal.util import GiB, MiB
+from ray.data._internal.util import GiB
 
 
 def simple_array():
@@ -138,35 +136,6 @@ class TestArrowBlockColumnAccessor:
     def test_to_pylist(self, arr, as_py):
         accessor = ArrowBlockColumnAccessor(arr)
         assert accessor.to_pylist() == arr.to_pylist()
-
-
-@pytest.fixture(scope="module")
-def binary_dataset_single_file_gt_2gb():
-    total_size = int(2.1 * GiB)
-    chunk_size = 256 * MiB
-    num_chunks = total_size // chunk_size
-    remainder = total_size % chunk_size
-
-    with TemporaryDirectory() as tmp_dir:
-        dataset_path = f"{tmp_dir}/binary_dataset_gt_2gb_single_file"
-
-        # Create directory
-        os.mkdir(dataset_path)
-
-        with open(f"{dataset_path}/chunk.bin", "wb") as f:
-            for i in range(num_chunks):
-                f.write(b"a" * chunk_size)
-
-                print(f">>> Written chunk #{i}")
-
-            if remainder:
-                f.write(b"a" * remainder)
-
-        print(f">>> Wrote chunked dataset at: {dataset_path}")
-
-        yield dataset_path, total_size
-
-        print(f">>> Cleaning up dataset: {dataset_path}")
 
 
 @pytest.mark.parametrize(
