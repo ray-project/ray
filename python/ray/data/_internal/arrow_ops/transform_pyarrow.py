@@ -826,10 +826,7 @@ def concat(
     import pyarrow as pa
 
     from ray.data._internal.tensor_extensions.arrow import ArrowConversionError
-    from ray.data.extensions import (
-        ArrowPythonObjectType,
-        get_arrow_extension_tensor_types,
-    )
+    from ray.data.extensions import get_arrow_extension_tensor_types
 
     tensor_types = get_arrow_extension_tensor_types()
 
@@ -853,14 +850,62 @@ def concat(
             f"{schemas_to_unify}"
         ) from e
 
-    # Fast path: if all blocks share the same schema, pa.concat_tables
-    # handles everything including same-shape tensor and object extension
-    # types. This avoids per-column decomposition and reconstruction.
-    # Check if all block schemas are already aligned
-    if all(block.schema == schema for block in blocks):
-        return pa.concat_tables(blocks)
+    # Split blocks into those that already match the unified schema (fast
+    # path) and those that need per-column reconciliation (slow path).
+    matched_blocks: List[pa.Table] = []
+    mismatched_blocks: List[pa.Table] = []
+    for block in blocks:
+        if block.schema == schema:
+            matched_blocks.append(block)
+        else:
+            mismatched_blocks.append(block)
 
-    # Handle alignment of struct type columns.
+    # Fast path: concat all schema-matching blocks in one shot.
+    if not mismatched_blocks:
+        return pa.concat_tables(matched_blocks)
+
+    matched_table = pa.concat_tables(matched_blocks) if matched_blocks else None
+
+    # Slow path: reconcile mismatched blocks, then combine with the
+    # matched table.
+    mismatched_table = _concat_mismatched_blocks(
+        mismatched_blocks, schema, tensor_types, promote_types
+    )
+
+    if matched_table is None:
+        return mismatched_table
+
+    return _concat_mismatched_blocks(
+        [matched_table, mismatched_table], schema, tensor_types, promote_types
+    )
+
+
+def _concat_mismatched_blocks(
+    blocks: List["pyarrow.Table"],
+    schema: "pyarrow.Schema",
+    tensor_types: tuple,
+    promote_types: bool,
+) -> "pyarrow.Table":
+    """Concatenate blocks whose schemas differ from the unified schema.
+
+    Handles struct alignment, ``list<null>`` resolution, and per-column
+    reconciliation for tensor / object extension types before delegating
+    remaining columns to ``pa.concat_tables``.
+
+    Args:
+        blocks: Tables that do not all share the same schema.
+        schema: The unified target schema.
+        tensor_types: Tuple of Arrow tensor extension types.
+        promote_types: Whether to allow permissive type promotion for
+            native columns.
+
+    Returns:
+        A single table with columns ordered according to *schema*.
+    """
+    import pyarrow as pa
+
+    from ray.data.extensions import ArrowPythonObjectType
+
     blocks = _align_struct_fields(blocks, schema)
 
     # Identify columns where any block has list<null> (e.g. empty TFRecord
@@ -873,17 +918,15 @@ def concat(
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
 
-    # Concatenate the columns according to their type
     concatenated_cols: Dict[str, pa.ChunkedArray] = {}
 
     # Names of columns that can use pa.concat_tables. This includes
     #   - native types (supports type promotion across blocks)
-    #   - extension types (does not support type promotion blocks)
+    #   - extension types (does not support type promotion across blocks)
     concatable_cols: List[str] = []
     for col_name in schema.names:
         col_type = schema.field(col_name).type
 
-        # _align_struct_fields guarantees the existence of the column
         if col_name in cols_with_null_list:
             concatenated_cols[col_name] = _concat_cols_with_null_list(
                 [block.column(col_name) for block in blocks]
@@ -909,7 +952,6 @@ def concat(
         _concat_cols_via_concat_tables(concatable_cols, blocks, promote_types)
     )
 
-    # Ensure that the columns are in the same order as the schema, reconstruct the table.
     return pyarrow.Table.from_arrays(
         [concatenated_cols[col_name] for col_name in schema.names], schema=schema
     )
