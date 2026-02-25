@@ -12,6 +12,7 @@ from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators import Read
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import _take_first_non_empty_schema
@@ -369,14 +370,22 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
+
+        def _build_limited_plan(plan: "ExecutionPlan") -> "ExecutionPlan":
+            limited_dag = Limit(plan._logical_plan.dag, limit=1)
+            limited_plan = plan.copy()
+            limited_plan.link_logical_plan(LogicalPlan(limited_dag, plan._context))
+            return limited_plan
+
         schema = self._cache.get_schema(self._logical_plan.dag)
         if schema is None:
             schema = self._logical_plan.dag.infer_schema()
         if schema is None and fetch_if_missing:
-            # For consistency with the previous implementation, we fetch the schema if
-            # the plan is read-only even if `fetch_if_missing` is False.
-
-            iter_ref_bundles, _, executor = self.execute_to_iterator()
+            # Lazily execute only the first block to minimize computation.
+            # We achieve this by appending a Limit[1] operation to a copy of
+            # this plan, which we then execute to get its schema.
+            limited_plan = _build_limited_plan(self)
+            iter_ref_bundles, _, executor = limited_plan.execute_to_iterator()
             if executor is not None:
                 # Make sure executor is fully shutdown upon exiting
                 with executor:
@@ -384,11 +393,8 @@ class ExecutionPlan:
                         bundle.schema for bundle in iter_ref_bundles
                     )
         if schema is not None:
-            self.cache_schema(schema)
+            self._cache.set_schema(self._logical_plan.dag, schema)
         return schema
-
-    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
-        self._cache.set_schema(self._logical_plan.dag, schema)
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
@@ -435,7 +441,7 @@ class ExecutionPlan:
         )
 
         executor = self.create_executor()
-        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self, self._context)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
         gen = iter(bundle_iter)
@@ -513,6 +519,7 @@ class ExecutionPlan:
                         self,
                         dataset_uuid=self._dataset_uuid,
                         preserve_order=preserve_order,
+                        data_context=self._context,
                     )
 
                 stats = executor.get_stats()

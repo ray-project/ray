@@ -324,12 +324,13 @@ Ray allows users to register new tensor transports at runtime for use with RDT.
 To implement a new tensor transport, implement the abstract interface :class:`ray.experimental.TensorTransportManager <ray.experimental.TensorTransportManager>`
 defined in `tensor_transport_manager.py <https://github.com/ray-project/ray/blob/master/python/ray/experimental/rdt/tensor_transport_manager.py>`__.
 Then call `register_tensor_transport <ray.experimental.register_tensor_transport>` with the transport name, supported devices for the transport,
-and the class that implements `TensorTransportManager`. Note that you have to register from the same process in which you create the actor you want
+the class that implements `TensorTransportManager`, and the data type for the transport. Note that you have to register from the same process in which you create the actor you want
 to use the transport with, and actors only have access to transports registered before their creation.
 
 .. code-block:: python
 
    import sys
+   import torch
    import ray
    from ray.experimental import (
       register_tensor_transport,
@@ -350,7 +351,7 @@ to use the transport with, and actors only have access to transports registered 
       ...
 
 
-   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport)
+   register_tensor_transport("CUSTOM", ["cuda", "cpu"], CustomTransport, torch.Tensor)
 
 
 Note that there are currently some limitations with custom transports:
