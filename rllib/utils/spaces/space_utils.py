@@ -358,6 +358,13 @@ def batch(
             # Fast path: simple numpy arrays or scalars — no tree traversal needed.
             ret = fast_stack(*list_of_structs)
 
+<<<<<<< HEAD
+=======
+    np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
+    ret = tree.map_structure(
+        lambda *s: np.ascontiguousarray(np_func(s, axis=0)), *list_of_structs
+    )
+>>>>>>> 8e40ef0425 (revert space utils change)
     return ret
 
 
