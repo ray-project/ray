@@ -19,15 +19,18 @@ import requests
 import ray
 import ray.util.serialization_addons
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
-from ray._common.utils import binary_to_hex, get_random_alphanumeric_string, import_attr
-from ray._private.state import state
+from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.core.generated import gcs_pb2
 from ray.serve._private.common import RequestMetadata, ServeComponentType
-from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    HTTP_PROXY_TIMEOUT,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
+from ray.util.state import list_actors
 
 try:
     import pandas as pd
@@ -523,21 +526,25 @@ def get_all_live_placement_group_names() -> List[str]:
 
 def get_active_placement_group_ids() -> Set[str]:
     """
-    Retrieve the set of placement group IDs referenced by alive actors.
+    Retrieve the set of placement group IDs referenced by alive Serve actors.
 
     Returns:
-        The set of placement group IDs referenced by alive actors.
+        The set of placement group IDs referenced by alive Serve actors.
     """
-    accessor = state._connect_and_get_accessor()
-    raw_actors = accessor.get_actor_table(None, "ALIVE")
+    actors = list_actors(
+        filters=[
+            ("ray_namespace", "=", SERVE_NAMESPACE),
+            ("state", "=", "ALIVE"),
+        ],
+        detail=True,
+        raise_on_missing_output=False,
+    )
 
-    occupied: Set[str] = set()
-    for raw_actor_bytes in raw_actors:
-        actor_data = gcs_pb2.ActorTableData.FromString(raw_actor_bytes)
-        if actor_data.HasField("placement_group_id"):
-            occupied.add(binary_to_hex(actor_data.placement_group_id))
-
-    return occupied
+    return {
+        actor.placement_group_id
+        for actor in actors
+        if actor.placement_group_id is not None
+    }
 
 
 def get_current_actor_id() -> str:
