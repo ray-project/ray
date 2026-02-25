@@ -25,6 +25,7 @@ try:
     )
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
+    from ray.serve.utils import get_trace_context
 
 except ModuleNotFoundError as e:
     e.msg += (
@@ -47,6 +48,7 @@ __all__ = [
     "start",
     "HTTPOptions",
     "get_replica_context",
+    "get_trace_context",
     "shutdown",
     "shutdown_async",
     "ingress",

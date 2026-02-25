@@ -445,6 +445,9 @@ class TestRayDockerContainer(RayCITestBase):
         container = RayDockerContainer(v, "cpu", "ray")
         assert container._get_platform_tag() == "-cpu"
 
+        container = RayDockerContainer(v, "tpu", "ray")
+        assert container._get_platform_tag() == "-tpu"
+
         container = RayDockerContainer(v, "cu11.8.0-cudnn8", "ray")
         assert container._get_platform_tag() == "-cu118"
 
