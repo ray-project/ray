@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package ray.dashboard.events;
+
+message K8sEvent {
+  string event_id = 1;
+  
+  enum Severity {
+    INFO = 0;
+    WARNING = 1;
+    ERROR = 2; // Added ERROR to match Python logging levels usually
+  }
+
+  string source = 2;
+  Severity severity = 3;
+  string message = 4;
+  string reason = 5;
+  int64 timestamp_ms = 6;
+  string related_node_id = 7;
+  map<string, string> custom_fields = 8;
+}

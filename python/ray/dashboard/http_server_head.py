@@ -118,6 +118,7 @@ class HttpServerDashboardHead:
             else:
                 raise ex
         dashboard_optional_utils.DashboardHeadRouteTable.bind(self)
+        logger.info(f"HttpServerDashboardHead binding DashboardHeadRouteTable id: {id(dashboard_optional_utils.DashboardHeadRouteTable)}")
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore

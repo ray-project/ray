@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import useSWR from "swr";
 import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getNodeDetail } from "../../../service/node";
+import { getK8sEvents, getNodeDetail } from "../../../service/node";
 
 export const useNodeDetail = () => {
   const params = useParams() as { id: string };
@@ -37,6 +37,15 @@ export const useNodeDetail = () => {
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
+  const { data: k8sEvents } = useSWR(
+    ["useK8sEvents", params.id],
+    async ([_, nodeId]) => {
+      const { data } = await getK8sEvents(nodeId);
+      return data?.data?.events || [];
+    },
+    { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
+  );
+
   const raylet = nodeDetail?.raylet;
   const handleChange = (event: React.ChangeEvent<{}>, newValue: string) => {
     setTab(newValue);
@@ -53,5 +62,6 @@ export const useNodeDetail = () => {
     raylet,
     handleChange,
     namespaceMap,
+    k8sEvents,
   };
 };

@@ -11,6 +11,7 @@ import RayletWorkerTable from "../../components/WorkerTable";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
+import { K8sEvents } from "./K8sEvents";
 
 const NodeDetailPage = () => {
   const {
@@ -23,6 +24,7 @@ const NodeDetailPage = () => {
     onRefreshChange,
     raylet,
     handleChange,
+    k8sEvents,
   } = useNodeDetail();
 
   return (
@@ -70,6 +72,7 @@ const NodeDetailPage = () => {
               Object.values(nodeDetail?.actors || {}).length || 0
             })`}
           />
+          <Tab value="k8s-events" label="Kubernetes Events" />
         </Tabs>
         {nodeDetail && selectedTab === "info" && (
           <Box sx={{ padding: 2, marginTop: 2, marginBottom: 2 }}>
@@ -236,6 +239,17 @@ const NodeDetailPage = () => {
               />
             </TableContainer>
           </React.Fragment>
+        )}
+        {selectedTab === "k8s-events" && (
+          <Box
+            sx={{
+              padding: 2,
+              marginTop: 2,
+              marginBottom: 2,
+            }}
+          >
+            <K8sEvents events={k8sEvents || []} />
+          </Box>
         )}
       </TitleCard>
     </Box>
