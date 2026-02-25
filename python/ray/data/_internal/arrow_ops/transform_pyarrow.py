@@ -860,8 +860,6 @@ def to_numpy(
             numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
             if len(numpy_chunks) == 0:
                 return np.empty((0,) + tuple(array.type.shape))
-            if len(numpy_chunks) == 1:
-                return numpy_chunks[0]
             return np.vstack(numpy_chunks)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)

@@ -7119,7 +7119,6 @@ class Schema:
             if isinstance(dtype, TensorDtype):
                 pa_dtype = _convert_to_pa_type(dtype._dtype)
                 if any(dim is None for dim in dtype._shape):
-                    # variable shaped
                     tensor_type = ArrowVariableShapedTensorType(
                         pa_dtype, len(dtype._shape)
                     )

@@ -738,7 +738,7 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
         return cls(shape, value_type)
 
 
-@DeveloperAPI
+@DeveloperAPI(stability="alpha")
 def create_arrow_fixed_shape_tensor_type(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
