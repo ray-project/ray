@@ -1,5 +1,6 @@
 import math
 import time
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, patch
@@ -302,7 +303,8 @@ class TestResourceManager:
 
     def test_object_store_usage(self, restore_data_context):
         input = make_ref_bundles([[x] for x in range(1)])[0]
-        input.size_bytes = MagicMock(return_value=1)
+        block_ref, block_meta = input.blocks[0]
+        input = replace(input, blocks=[(block_ref, replace(block_meta, size_bytes=1))])
 
         o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)

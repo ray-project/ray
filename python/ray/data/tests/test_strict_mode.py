@@ -248,7 +248,7 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
 
     assert isinstance(schema.base_schema, PandasBlockSchema)
     assert schema.names == ["data"]
-    assert schema.base_schema.types == [TensorDtype(shape=(10,), dtype=pa.float64())]
+    assert schema.base_schema.types == (TensorDtype(shape=(10,), dtype=pa.float64()),)
     # NOTE: Schema by default returns Arrow types
     assert schema.types == [expected_arrow_ext_type]
 

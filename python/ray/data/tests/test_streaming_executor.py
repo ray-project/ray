@@ -1148,7 +1148,7 @@ def create_stub_streaming_gen(
 
             block_accessor = BlockAccessor.for_block(block)
             block_metadata = block_accessor.get_metadata()
-            yield BlockMetadataWithSchema(
+            yield BlockMetadataWithSchema.from_metadata(
                 block_metadata, schema=block_accessor.schema()
             )
 
