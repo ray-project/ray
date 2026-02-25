@@ -170,11 +170,7 @@ class TaskExecWorkerStats:
 @DeveloperAPI
 @dataclass
 class BlockExecStats:
-    """Execution stats for a single output block produced by a task.
-
-    Set by :class:`_BlockExecStatsBuilder` (via :meth:`builder`) and enriched
-    by the map worker before the block is yielded.
-    """
+    """Execution stats for a single output block produced by a task."""
 
     # Index of the task that produced this block, used to attribute rows
     # to individual tasks in per-task statistics.
@@ -185,15 +181,15 @@ class BlockExecStats:
         default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
     )
 
-    # Absolute wall-clock timestamp when the task started.
+    # Absolute wall-clock timestamp when block generation started.
     start_time_s: Optional[float] = None
-    # Absolute wall-clock timestamp when the task finished.
+    # Absolute wall-clock timestamp when block generation finished.
     end_time_s: Optional[float] = None
-    # Total wall-clock duration of the task (end_time_s - start_time_s).
+    # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
-    # Time spent inside user-defined functions for this block.
+    # Time spent inside UDF while generating block.
     udf_time_s: Optional[float] = 0
-    # Time spent serializing this block into a Ray object (object_creation_dur_s).
+    # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
     cpu_time_s: Optional[float] = None
