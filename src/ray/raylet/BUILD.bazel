@@ -267,6 +267,10 @@ ray_cc_library(
     hdrs = [
         "node_manager.h",
     ],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     linkopts = select({
         "@platforms//os:windows": [
         ],
