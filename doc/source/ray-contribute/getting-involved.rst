@@ -10,6 +10,7 @@ Getting Involved / Contributing
     :hidden:
 
     development
+    dependency-management
     ci
     docs
     writing-code-snippets
@@ -96,6 +97,8 @@ Setting up your development environment
 
 To edit the Ray source code, fork the repository, clone it, and build Ray from source. Follow :ref:`these instructions for building <building-ray>` a local copy of Ray to easily make changes.
 
+If you need to update Ray's Python dependencies, see :doc:`dependency-management` for detailed instructions on Ray's dependency compilation process.
+
 Submitting and Merging a Contribution
 -------------------------------------
 
@@ -152,6 +155,10 @@ If you are running tests for the first time, you can install the required depend
 .. code-block:: shell
 
     pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
+
+.. note::
+   If you need to update dependencies in ``requirements_compiled.txt``, see :doc:`dependency-management` 
+   for the complete process.
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

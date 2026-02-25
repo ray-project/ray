@@ -25,9 +25,9 @@ from ray.tune.utils.util import flatten_dict, unflatten_list_dict
 
 try:
     import ax
-    from ax.service.ax_client import AxClient
+    from ax.service.ax_client import AxClient, ObjectiveProperties
 except ImportError:
-    ax = AxClient = None
+    ax = AxClient = ObjectiveProperties = None
 
 # This exception only exists in newer Ax releases for python 3.7
 try:
@@ -198,10 +198,18 @@ class AxSearch(Searcher):
         if not self._ax:
             self._ax = AxClient(**self._ax_kwargs)
 
+        # Intentionally defensive to ensure that if the experiment is not set correctly we raise an error. Prevents silent failures.
         try:
             exp = self._ax.experiment
             has_experiment = True
+        except AssertionError as e:
+            # ax 1.0.0+ raises AssertionError via none_throws() when experiment is None.
+            # Re-raise if the message is unexpected to avoid masking real Ax failures.
+            if "Experiment not set" not in str(e):
+                raise
+            has_experiment = False
         except ValueError:
+            # Older Ax versions raise ValueError when experiment is not set.
             has_experiment = False
 
         if not has_experiment:
@@ -219,10 +227,11 @@ class AxSearch(Searcher):
                 )
             self._ax.create_experiment(
                 parameters=self._space,
-                objective_name=self._metric,
+                objectives={
+                    self._metric: ObjectiveProperties(minimize=self._mode != "max")
+                },
                 parameter_constraints=self._parameter_constraints,
                 outcome_constraints=self._outcome_constraints,
-                minimize=self._mode != "max",
             )
         else:
             if any(
@@ -247,7 +256,22 @@ class AxSearch(Searcher):
                     )
                 )
 
-        exp = self._ax.experiment
+        # Access experiment - should exist now (either created above or already existed)
+        try:
+            exp = self._ax.experiment
+        except AssertionError as e:
+            # Re-raise if the message is unexpected to avoid masking real Ax failures.
+            if "Experiment not set" not in str(e):
+                raise
+            raise RuntimeError(
+                "Failed to access Ax experiment after setup. "
+                "This may indicate an issue with the Ax client setup."
+            ) from e
+        except ValueError as e:
+            raise RuntimeError(
+                "Failed to access Ax experiment after setup. "
+                "This may indicate an issue with the Ax client setup."
+            ) from e
 
         # Update mode and metric from experiment if it has been passed
         self._mode = "min" if exp.optimization_config.objective.minimize else "max"

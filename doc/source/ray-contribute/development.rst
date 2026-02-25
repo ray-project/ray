@@ -334,6 +334,10 @@ Dependencies for running Ray unit tests under ``python/ray/tests`` can be instal
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
 
+.. note::
+   If you need to update or modify dependencies in ``requirements_compiled.txt``, see 
+   :doc:`dependency-management` for detailed instructions on Ray's dependency compilation process.
+
 Pre-commit Hooks
 ----------------
 

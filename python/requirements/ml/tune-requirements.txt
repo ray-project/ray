@@ -1,5 +1,12 @@
 # Searchers
-ax-platform==0.3.2
+ax-platform==1.2.1
+# ax-platform -> botorch -> gpytorch -> jaxtyping: jaxtyping>=0.3.8 requires Python>=3.11.
+# botorch itself declares python_requires>=3.10, but that constraint does not cover its
+# transitive dependencies.
+# In our case we need to pin jaxtyping<0.3.8 (i.e. 0.3.7) which supports Python>=3.10.
+# Remove this pin once Ray drops Python 3.10 support.
+jaxtyping<0.3.8
+
 
 bayesian-optimization==1.4.3
 
