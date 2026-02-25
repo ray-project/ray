@@ -114,9 +114,6 @@ class DPServer(_DPServer):
                     data_parallel_size=2,
                     tensor_parallel_size=1,
                 ),
-                experimental_configs=dict(
-                    dp_size_per_node=2,
-                ),
                 accelerator_type="A10G",
             )
 

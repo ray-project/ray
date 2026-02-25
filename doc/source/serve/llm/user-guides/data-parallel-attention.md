@@ -51,8 +51,6 @@ applications:
       engine_kwargs:
         data_parallel_size: 4
         tensor_parallel_size: 2
-      experimental_configs:
-        dp_size_per_node: 4
 ```
 
 Deploy with:
@@ -70,7 +68,6 @@ The `num_replicas` in `deployment_config` must equal `data_parallel_size` in `en
 ### Required parameters
 
 - `data_parallel_size`: Number of data parallel replicas to create. Must be a positive integer.
-- `dp_size_per_node`: Number of DP replicas per node. Must be set in `experimental_configs`. This controls how replicas are distributed across nodes. This is a temporary required config that we will remove in future versions. 
 
 ### Deployment configuration
 

@@ -51,10 +51,6 @@ config = LLMConfig(
         "max_model_len": 1024,
         "max_num_seqs": 32,
     },
-    experimental_configs={
-        # This is a temporary required config. We will remove this in future versions.
-        "dp_size_per_node": 2,  # DP replicas per node
-    },
 )
 
 app = build_dp_openai_app({

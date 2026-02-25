@@ -321,7 +321,6 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
             },
         },
         experimental_configs={
-            "dp_size_per_node": 4,
             "NIXL_SIDE_CHANNEL_PORT_BASE": 40000,  # Prefill port range
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
@@ -338,7 +337,6 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
             },
         },
         experimental_configs={
-            "dp_size_per_node": 4,
             "NIXL_SIDE_CHANNEL_PORT_BASE": 41000,  # Decode port range (different)
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
