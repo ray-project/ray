@@ -273,18 +273,17 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
         pod_type = "v6e-8"
         topology = "2x4"
 
-        os.environ["TPU_NAME"] = slice_name
-        os.environ["TPU_WORKER_ID"] = str(worker_id)
-        os.environ["TPU_ACCELERATOR_TYPE"] = pod_type
-        os.environ["TPU_TOPOLOGY"] = topology
+        node_env = os.environ.copy()
+        node_env["TPU_NAME"] = slice_name
+        node_env["TPU_WORKER_ID"] = str(worker_id)
+        node_env["TPU_ACCELERATOR_TYPE"] = pod_type
+        node_env["TPU_TOPOLOGY"] = topology
 
         labels = {
             "ray.io/tpu-slice-name": slice_name,
             "ray.io/tpu-worker-id": str(worker_id),
             "ray.io/tpu-pod-type": pod_type,
         }
-
-        node_env = os.environ.copy()
 
         resources = {"TPU": 4, "accelerator_type:TPU-V6E": 1}
 
