@@ -446,7 +446,13 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
 
 # Test for https://github.com/ray-project/ray/issues/49338.
-def test_build_block_with_null_column(ray_start_regular_shared):
+@pytest.mark.parametrize("preserve_order", [True, False])
+def test_build_block_with_null_column(
+    ray_start_regular_shared, restore_data_context, preserve_order
+):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = preserve_order
+
     # The blocks need to contain a tensor column to trigger the bug.
     block1 = BlockAccessor.batch_to_block(
         {"string": [None], "array": np.zeros((1, 2, 2))}
@@ -462,6 +468,10 @@ def test_build_block_with_null_column(ray_start_regular_shared):
 
     rows = list(BlockAccessor.for_block(block).iter_rows(True))
     assert len(rows) == 2
+
+    if not preserve_order:
+        rows = sorted(rows, key=lambda r: (r["string"] is not None, r["string"]))
+
     assert rows[0]["string"] is None
     assert rows[1]["string"] == "spam"
     assert np.array_equal(rows[0]["array"], np.zeros((2, 2)))

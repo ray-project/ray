@@ -818,26 +818,38 @@ def _concat_cols_via_concat_tables(
 
 
 def concat(
-    blocks: List["pyarrow.Table"], *, promote_types: bool = False
+    blocks: List["pyarrow.Table"],
+    *,
+    promote_types: bool = False,
+    preserve_order: Optional[bool] = None,
 ) -> "pyarrow.Table":
     """Concatenate provided Arrow Tables into a single Arrow Table. This has special
     handling for extension types that pyarrow.concat_tables does not yet support.
+
+    Args:
+        blocks: Tables to concatenate.
+        promote_types: Whether to allow permissive type promotion for native
+            columns.
+        preserve_order: If True, rows appear in the same order as the input
+            blocks.  If False, schema-matching blocks may be grouped together
+            for faster concatenation, which can reorder rows relative to
+            non-matching blocks.  Defaults to
+            ``DataContext.get_current().execution_options.preserve_order``.
     """
     import pyarrow as pa
 
     from ray.data._internal.tensor_extensions.arrow import ArrowConversionError
+    from ray.data.context import DataContext
     from ray.data.extensions import get_arrow_extension_tensor_types
 
     tensor_types = get_arrow_extension_tensor_types()
 
     if not blocks:
-        # Short-circuit on empty list of blocks.
         return pa.table([])
 
     if len(blocks) == 1:
         return blocks[0]
 
-    # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
         schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
@@ -850,8 +862,24 @@ def concat(
             f"{schemas_to_unify}"
         ) from e
 
-    # Split blocks into those that already match the unified schema (fast
-    # path) and those that need per-column reconciliation (slow path).
+    # Fast path: all blocks already share the unified schema.
+    if all(block.schema == schema for block in blocks):
+        return pa.concat_tables(blocks)
+
+    if preserve_order is None:
+        preserve_order = DataContext.get_current().execution_options.preserve_order
+
+    if preserve_order:
+        return _concat_mismatched_blocks(
+            blocks,
+            schema=schema,
+            tensor_types=tensor_types,
+            promote_types=promote_types,
+        )
+
+    # When order doesn't matter, split blocks into schema-matching (fast
+    # path) and mismatched (slow path) groups, concat each group, then
+    # combine.
     matched_blocks: List[pa.Table] = []
     mismatched_blocks: List[pa.Table] = []
     for block in blocks:
@@ -860,23 +888,23 @@ def concat(
         else:
             mismatched_blocks.append(block)
 
-    # Fast path: concat all schema-matching blocks in one shot.
+    if not matched_blocks:
+        return _concat_mismatched_blocks(
+            mismatched_blocks,
+            schema=schema,
+            tensor_types=tensor_types,
+            promote_types=promote_types,
+        )
+
+    matched_table = pa.concat_tables(matched_blocks)
     if not mismatched_blocks:
-        return pa.concat_tables(matched_blocks)
-
-    matched_table = pa.concat_tables(matched_blocks) if matched_blocks else None
-
-    # Slow path: reconcile mismatched blocks, then combine with the
-    # matched table.
-    mismatched_table = _concat_mismatched_blocks(
-        mismatched_blocks, schema, tensor_types, promote_types
-    )
-
-    if matched_table is None:
-        return mismatched_table
+        return matched_table
 
     return _concat_mismatched_blocks(
-        [matched_table, mismatched_table], schema, tensor_types, promote_types
+        [matched_table] + mismatched_blocks,
+        schema=schema,
+        tensor_types=tensor_types,
+        promote_types=promote_types,
     )
 
 
@@ -951,6 +979,33 @@ def _concat_mismatched_blocks(
     concatenated_cols.update(
         _concat_cols_via_concat_tables(concatable_cols, blocks, promote_types)
     )
+
+    # When blocks are split by schema match, the mismatched group may
+    # contain only blocks with a single fixed-shape tensor type.
+    # unify_tensor_arrays short-circuits when it sees one distinct type,
+    # leaving the column as-is even though the unified schema expects a
+    # variable-shaped type.  Explicitly promote here so Table.from_arrays
+    # doesn't attempt an unsupported extension-to-extension cast.
+    from ray.data._internal.tensor_extensions.arrow import (
+        ArrowVariableShapedTensorType,
+    )
+
+    for col_name in schema.names:
+        expected_type = schema.field(col_name).type
+        if col_name not in concatenated_cols:
+            continue
+        actual_type = concatenated_cols[col_name].type
+        if actual_type == expected_type:
+            continue
+        if isinstance(expected_type, ArrowVariableShapedTensorType) and isinstance(
+            actual_type, tensor_types
+        ):
+            chunks = concatenated_cols[col_name].chunks
+            converted = [
+                chunk.to_var_shaped_tensor_array(ndim=expected_type.ndim)
+                for chunk in chunks
+            ]
+            concatenated_cols[col_name] = pyarrow.chunked_array(converted)
 
     return pyarrow.Table.from_arrays(
         [concatenated_cols[col_name] for col_name in schema.names], schema=schema
