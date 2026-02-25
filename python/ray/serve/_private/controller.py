@@ -40,8 +40,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
-    RAY_SERVE_FALLBACK_PROXY_GRPC_PORT,
-    RAY_SERVE_FALLBACK_PROXY_HTTP_PORT,
     RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
@@ -296,6 +294,8 @@ class ServeController:
         # Initialize to None (not []) to ensure the first broadcast always happens,
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
+
+        self._last_broadcasted_fallback_proxy: Optional[Target] = None
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -692,9 +692,24 @@ class ServeController:
 
         self._maybe_update_ingress_ports()
 
-        # HAProxy target group broadcasting
-        if self._ha_proxy_enabled and self.done_recovering_event.is_set():
-            self.broadcast_target_groups_if_changed()
+        # HAProxy handling
+        if self._ha_proxy_enabled:
+            # Right after a controller restart, the replica details may be incomplete,
+            # so we wait until recovery is finished before sending any updated target
+            # groups to HAProxy.
+            if self.done_recovering_event.is_set():
+                self.broadcast_target_groups_if_changed()
+
+            # Wait until the fallback proxy has transitioned out of STARTING at
+            # least once before broadcasting. After a controller restart, the proxy
+            # starts as STARTING even if it's already healthy. If we broadcast
+            # before the first health check, the fallback target will be None and
+            # HAProxy will remove the fallback server from its config.
+            if (
+                self.proxy_state_manager
+                and self.proxy_state_manager.started_fallback_proxy_at_least_once()
+            ):
+                self.broadcast_fallback_proxy_if_changed()
 
     def _maybe_update_ingress_ports(self) -> None:
         """Update ingress ports if direct ingress is enabled."""
@@ -730,6 +745,17 @@ class ServeController:
             {LongPollNamespace.TARGET_GROUPS: target_groups}
         )
         self._last_broadcasted_target_groups = target_groups
+
+    def broadcast_fallback_proxy_if_changed(self) -> None:
+        """Broadcast the fallback proxy over long poll if it has changed."""
+        fallback_proxy = self.proxy_state_manager.get_fallback_proxy_target()
+        if self._last_broadcasted_fallback_proxy == fallback_proxy:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.FALLBACK_PROXY: fallback_proxy}
+        )
+        self._last_broadcasted_fallback_proxy = fallback_proxy
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -1384,24 +1410,6 @@ class ServeController:
                 )
         return target_groups
 
-    def _get_fallback_proxy_target(self, protocol: RequestProtocol) -> Optional[Target]:
-        """Get the fallback proxy target."""
-        port = (
-            RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
-            if protocol == RequestProtocol.HTTP
-            else RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
-        )
-        fallback_proxy_details = self.proxy_state_manager.get_fallback_proxy_details()
-        if fallback_proxy_details:
-            return Target(
-                ip=fallback_proxy_details.node_ip,
-                port=port,
-                instance_id=fallback_proxy_details.node_instance_id,
-                name=fallback_proxy_details.actor_name,
-            )
-
-        return None
-
     def _get_empty_target_group(
         self, protocol: RequestProtocol, fallback_proxy_target: Optional[Target]
     ) -> TargetGroup:
@@ -1453,8 +1461,12 @@ class ServeController:
 
         # Compute these once. This can be implemented cleaner once the TargetGroup API
         # is deprecated since the fallback proxy is the same for all target groups.
-        fallback_http_proxy = self._get_fallback_proxy_target(RequestProtocol.HTTP)
-        fallback_grpc_proxy = self._get_fallback_proxy_target(RequestProtocol.GRPC)
+        fallback_http_proxy = self.proxy_state_manager.get_fallback_proxy_target(
+            RequestProtocol.HTTP
+        )
+        fallback_grpc_proxy = self.proxy_state_manager.get_fallback_proxy_target(
+            RequestProtocol.GRPC
+        )
 
         # Get all applications and their metadata
         if app_name is None:
@@ -1603,7 +1615,20 @@ class ServeController:
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
+
         target_groups = []
+        if self._ha_proxy_enabled:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=[],
+                    app_name=app_name,
+                    fallback_target=fallback_http_proxy,
+                )
+            )
+            return target_groups
+
         http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
         grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
 
@@ -1612,7 +1637,7 @@ class ServeController:
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix=route_prefix,
-                    targets=[] if self._ha_proxy_enabled else http_targets,
+                    targets=http_targets,
                     app_name=app_name,
                     fallback_target=fallback_http_proxy,
                 )
@@ -1622,7 +1647,7 @@ class ServeController:
                 TargetGroup(
                     protocol=RequestProtocol.GRPC,
                     route_prefix=route_prefix,
-                    targets=[] if self._ha_proxy_enabled else grpc_targets,
+                    targets=grpc_targets,
                     app_name=app_name,
                     fallback_target=fallback_grpc_proxy,
                 )

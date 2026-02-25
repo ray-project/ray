@@ -130,7 +130,7 @@ class FakeProxyStateManager:
     def get_grpc_config(self):
         return self._grpc_options
 
-    def get_fallback_proxy_details(self):
+    def get_fallback_proxy_target(self):
         return self.fallback_proxy_details
 
 
