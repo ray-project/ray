@@ -842,7 +842,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                  RayConfig::instance().emit_event_to_log_file());
   }
 
-  std::optional<std::future<void>> metrics_init_future;
   {
     // Notify that core worker is initialized.
     absl::Cleanup initialzed_scope_guard = [this] {
@@ -857,31 +856,14 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     if (options_.metrics_agent_port > 0) {
       metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
           "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
-      // Block until exporters are initialized to avoid a getenv/setenv race
+      // Initialize exporters synchronously to avoid a getenv/setenv race condition.
       // POSIX setenv is MT-Unsafe.
-      auto metrics_init_promise = std::make_shared<std::promise<void>>();
-      metrics_init_future = metrics_init_promise->get_future();
-      metrics_agent_client_->WaitForServerReady(
-          [this, metrics_init_promise](const Status &server_status) {
-            if (server_status.ok()) {
-              stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
-              stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
-            } else {
-              RAY_LOG(ERROR)
-                  << "Failed to establish connection to the metrics exporter agent. "
-                     "Metrics will not be exported. "
-                  << "Exporter agent status: " << server_status.ToString();
-            }
-            metrics_init_promise->set_value();
-          });
+      stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
+      stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
     } else {
       RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
                        "with dashboard support: `pip install 'ray[default]'`.";
     }
-  }
-
-  if (metrics_init_future.has_value()) {
-    metrics_init_future->wait();
   }
 }
 
