@@ -851,19 +851,20 @@ class DataContext:
 
     @property
     def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
-        """Factory function to get the default execution callback classes.
+        """Get the complete registry of execution callback classes.
 
-        This function constructs the list of callback classes that should be
-        instantiated by the StreamingExecutor. It includes:
-        1. Built-in callbacks that can self-configure (ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback)
-        2. Custom callbacks registered via RAY_DATA_EXECUTION_CALLBACKS environment variable
+        This property gathers all callback classes that should be instantiated
+        by the execution planner. It includes:
+        1. Built-in default callbacks (e.g., ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback).
+        2. Custom callbacks registered via the RAY_DATA_EXECUTION_CALLBACKS environment variable.
+        3. Custom callbacks programmatically added to `custom_execution_callback_classes`.
 
-        Note: LoadCheckpointCallback is NOT included here because it requires a mandatory
-        CheckpointConfig argument and cannot self-configure. It will be conditionally added
-        by the Planner in PR 3 when checkpoint_config is available.
+        Note: `LoadCheckpointCallback` is NOT included here because it requires
+        a `CheckpointConfig` argument to be instantiated. It is conditionally added
+        later directly by the execution planner.
 
         Returns:
-            List of ExecutionCallback class types (not instances).
+            A list of ExecutionCallback class types (not instances).
         """
         from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
             ExecutionIdxUpdateCallback,
