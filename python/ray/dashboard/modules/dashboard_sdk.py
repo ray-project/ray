@@ -42,6 +42,7 @@ logger.setLevel(logging.INFO)
 DEFAULT_DASHBOARD_ADDRESS = "http://localhost:8265"
 
 
+@DeveloperAPI
 def parse_runtime_env_args(
     runtime_env: Optional[str] = None,
     runtime_env_json: Optional[str] = None,
@@ -77,6 +78,7 @@ def parse_runtime_env_args(
     return final_runtime_env
 
 
+@DeveloperAPI
 @dataclasses.dataclass
 class ClusterInfo:
     address: str
@@ -86,6 +88,7 @@ class ClusterInfo:
 
 
 # TODO (shrekris-anyscale): renaming breaks compatibility, do NOT rename
+@DeveloperAPI
 def get_job_submission_client_cluster_info(
     address: str,
     # For backwards compatibility
@@ -125,6 +128,7 @@ def get_job_submission_client_cluster_info(
     )
 
 
+@DeveloperAPI
 def parse_cluster_info(
     address: Optional[str] = None,
     create_cluster_if_needed: bool = False,
@@ -201,6 +205,7 @@ def parse_cluster_info(
         )
 
 
+@DeveloperAPI
 class SubmissionClient:
     def __init__(
         self,

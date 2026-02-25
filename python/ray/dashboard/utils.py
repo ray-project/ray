@@ -15,6 +15,7 @@ from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray._common.utils import binary_to_hex
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
@@ -43,6 +44,7 @@ except AttributeError:
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class HTTPStatusCode(IntEnum):
     # 2xx Success
     OK = 200
@@ -56,10 +58,12 @@ class HTTPStatusCode(IntEnum):
     INTERNAL_ERROR = 500
 
 
+@DeveloperAPI
 class FrontendNotFoundError(OSError):
     pass
 
 
+@DeveloperAPI
 class DashboardAgentModule(abc.ABC):
     def __init__(self, dashboard_agent):
         """
@@ -91,6 +95,7 @@ class DashboardAgentModule(abc.ABC):
         return self._dashboard_agent.gcs_address
 
 
+@DeveloperAPI
 @dataclass
 class DashboardHeadModuleConfig:
     minimal: bool
@@ -105,6 +110,7 @@ class DashboardHeadModuleConfig:
     http_port: int
 
 
+@DeveloperAPI
 class DashboardHeadModule(abc.ABC):
     def __init__(self, config: DashboardHeadModuleConfig):
         """
@@ -206,6 +212,7 @@ class DashboardHeadModule(abc.ABC):
         """
 
 
+@DeveloperAPI
 class RateLimitedModule(abc.ABC):
     """Simple rate limiter
 
@@ -290,6 +297,7 @@ class RateLimitedModule(abc.ABC):
         """Handler that is invoked when max number of concurrent calls reached"""
 
 
+@DeveloperAPI
 def dashboard_module(enable):
     """A decorator for dashboard module."""
 
@@ -300,6 +308,7 @@ def dashboard_module(enable):
     return _cls_wrapper
 
 
+@DeveloperAPI
 def get_all_modules(module_type):
     """
     Get all importable modules that are subclass of a given module type.
@@ -341,10 +350,12 @@ def get_all_modules(module_type):
     return imported_modules
 
 
+@DeveloperAPI
 def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
 
+@DeveloperAPI
 def address_tuple(address):
     if isinstance(address, tuple):
         return address
@@ -352,6 +363,7 @@ def address_tuple(address):
     return ip, int(port)
 
 
+@DeveloperAPI
 def node_stats_to_dict(
     message: "GetNodeStatsReply",
 ) -> Optional[Dict[str, List[Dict[str, Any]]]]:
@@ -375,6 +387,7 @@ def node_stats_to_dict(
     return result
 
 
+@DeveloperAPI
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, bytes):
@@ -385,6 +398,7 @@ class CustomEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+@DeveloperAPI
 def to_camel_case(snake_str):
     """Convert a snake str to camel case."""
     components = snake_str.split("_")
@@ -393,6 +407,7 @@ def to_camel_case(snake_str):
     return components[0] + "".join(x.title() for x in components[1:])
 
 
+@DeveloperAPI
 def to_google_style(d):
     """Recursive convert all keys in dict to google style."""
     new_dict = {}
@@ -413,6 +428,7 @@ def to_google_style(d):
     return new_dict
 
 
+@DeveloperAPI
 def message_to_dict(message, decode_keys=None, **kwargs):
     """Convert protobuf message to Python dict."""
 
@@ -444,6 +460,7 @@ def message_to_dict(message, decode_keys=None, **kwargs):
         return d
 
 
+@DeveloperAPI
 class Bunch(dict):
     """A dict with attribute-access."""
 
@@ -480,10 +497,12 @@ https://docs.python.org/3/library/json.html?highlight=json#json.JSONEncoder
 _json_compatible_types = {dict, list, tuple, str, int, float, bool, type(None), bytes}
 
 
+@DeveloperAPI
 def is_immutable(self):
     raise TypeError("%r objects are immutable" % self.__class__.__name__)
 
 
+@DeveloperAPI
 def make_immutable(value, strict=True):
     value_type = type(value)
     if value_type is dict:
@@ -496,12 +515,14 @@ def make_immutable(value, strict=True):
     return value
 
 
+@DeveloperAPI
 class Immutable(metaclass=ABCMeta):
     @abstractmethod
     def mutable(self):
         pass
 
 
+@DeveloperAPI
 class ImmutableList(Immutable, Sequence):
     """Makes a :class:`list` immutable."""
 
@@ -549,6 +570,7 @@ class ImmutableList(Immutable, Sequence):
         return "%s(%s)" % (self.__class__.__name__, list.__repr__(self._list))
 
 
+@DeveloperAPI
 class ImmutableDict(Immutable, Mapping):
     """Makes a :class:`dict` immutable."""
 
@@ -613,6 +635,7 @@ for immutable_type in Immutable.__subclasses__():
     _json_compatible_types.add(immutable_type)
 
 
+@DeveloperAPI
 def async_loop_forever(interval_seconds, cancellable=False):
     def _wrapper(coro):
         @functools.wraps(coro)
@@ -640,6 +663,7 @@ def async_loop_forever(interval_seconds, cancellable=False):
     return _wrapper
 
 
+@DeveloperAPI
 def ray_client_address_to_api_server_url(address: str):
     """Convert a Ray Client address of a running Ray cluster to its API server URL.
 
@@ -655,6 +679,7 @@ def ray_client_address_to_api_server_url(address: str):
     return f"http://{dashboard_url}"
 
 
+@DeveloperAPI
 def ray_address_to_api_server_url(address: Optional[str]) -> str:
     """Parse a Ray cluster address into API server URL.
 
@@ -695,6 +720,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     return api_server_url
 
 
+@DeveloperAPI
 def get_address_for_submission_client(address: Optional[str]) -> str:
     """Get Ray API server address from Ray bootstrap or Client address.
 
@@ -735,6 +761,7 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
     return address
 
 
+@DeveloperAPI
 def compose_state_message(
     death_reason: Optional[str], death_reason_message: Optional[str]
 ) -> Optional[str]:
@@ -765,6 +792,7 @@ def compose_state_message(
     return state_message
 
 
+@DeveloperAPI
 def close_logger_file_descriptor(logger_instance):
     for handler in logger_instance.handlers:
         handler.close()

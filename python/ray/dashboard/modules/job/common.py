@@ -19,7 +19,7 @@ from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
@@ -218,6 +218,7 @@ class JobInfo:
         return cls(**json_dict)
 
 
+@DeveloperAPI
 class JobInfoStorageClient:
     """
     Interface to put and get job data from the Internal KV store.
@@ -418,6 +419,7 @@ class JobInfoStorageClient:
         }
 
 
+@DeveloperAPI
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
     suffix = Path(package_uri).suffix
     if suffix not in {".zip", ".whl"}:
@@ -428,14 +430,17 @@ def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
     return protocol.value, package_name
 
 
+@DeveloperAPI
 def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
     return f"{protocol}://{package_name}"
 
 
+@DeveloperAPI
 def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) -> Any:
     return request_type(**json_data)
 
 
+@DeveloperAPI
 @dataclass
 class JobSubmitRequest:
     # Command to start execution, ex: "python script.py"
@@ -573,6 +578,7 @@ class JobSubmitRequest:
                         )
 
 
+@DeveloperAPI
 @dataclass
 class JobSubmitResponse:
     # DEPRECATED: Use submission_id instead.
@@ -580,17 +586,20 @@ class JobSubmitResponse:
     submission_id: str
 
 
+@DeveloperAPI
 @dataclass
 class JobStopResponse:
     stopped: bool
 
 
+@DeveloperAPI
 @dataclass
 class JobDeleteResponse:
     deleted: bool
 
 
 # TODO(jiaodong): Support log streaming #19415
+@DeveloperAPI
 @dataclass
 class JobLogsResponse:
     logs: str

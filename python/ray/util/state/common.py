@@ -30,6 +30,7 @@ from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.util.annotations import DeveloperAPI
 from ray.util.state.exception import RayStateApiException
 
 try:
@@ -61,6 +62,7 @@ RAY_MAX_LIMIT_FROM_DATA_SOURCE = env_integer(
 )  # 10k
 
 
+@DeveloperAPI
 @unique
 class StateResource(Enum):
     ACTORS = "actors"
@@ -74,6 +76,7 @@ class StateResource(Enum):
     CLUSTER_EVENTS = "cluster_events"
 
 
+@DeveloperAPI
 @unique
 class SummaryResource(Enum):
     ACTORS = "actors"
@@ -87,6 +90,7 @@ SupportedFilterType = Union[str, bool, int, float]
 PredicateType = str  # Literal["=", "!="]
 
 
+@DeveloperAPI
 class Humanify:
     """A class containing default methods to
     convert units into a human readable string."""
@@ -124,6 +128,7 @@ class Humanify:
         return resources
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class ListApiOptions:
     # Maximum number of entries to return
@@ -193,6 +198,7 @@ class ListApiOptions:
         return False
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class GetApiOptions:
     # Timeout for the HTTP request
@@ -211,6 +217,7 @@ class GetApiOptions:
         assert self.timeout != 0, "0 second timeout is not supported."
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class SummaryApiOptions:
     # Timeout for the HTTP request
@@ -232,6 +239,7 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
+@DeveloperAPI
 def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
 
@@ -257,6 +265,7 @@ def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kw
     return field(**kwargs)
 
 
+@DeveloperAPI
 class StateSchema(ABC):
     """Schema class for Ray resource abstraction.
 
@@ -364,6 +373,7 @@ class StateSchema(ABC):
         return getattr(self, key, default)
 
 
+@DeveloperAPI
 def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dict:
     """Filter the given data's columns based on the given schema.
 
@@ -382,6 +392,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
     return filtered_data
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class GetLogOptions:
     timeout: int
@@ -457,6 +468,7 @@ class GetLogOptions:
 
 # See the ActorTableData message in gcs.proto for all potential options that
 # can be included in this class.
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class ActorState(StateSchema):
     """Actor State"""
@@ -522,6 +534,7 @@ class ActorState(StateSchema):
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class PlacementGroupState(StateSchema):
     """PlacementGroup State"""
@@ -551,6 +564,7 @@ class PlacementGroupState(StateSchema):
     stats: Optional[dict] = state_column(filterable=False, detail=True)
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class NodeState(StateSchema):
     """Node State"""
@@ -592,6 +606,7 @@ class NodeState(StateSchema):
 # NOTE: Declaring this as dataclass would make __init__ not being called properly.
 # NOTE: `JobDetails` will be `None` in the minimal install because Pydantic is not
 #       installed. Inheriting from `None` raises an exception.
+@DeveloperAPI
 class JobState(StateSchema, JobDetails if JobDetails is not None else object):
     """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
@@ -647,6 +662,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         }
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class WorkerState(StateSchema):
     """Worker State"""
@@ -717,6 +733,7 @@ class WorkerState(StateSchema):
     num_paused_threads: Optional[int] = state_column(filterable=True, detail=True)
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class ClusterEventState(StateSchema):
     severity: str = state_column(filterable=True)
@@ -727,6 +744,7 @@ class ClusterEventState(StateSchema):
     custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class TaskState(StateSchema):
     """Task State"""
@@ -819,6 +837,7 @@ class TaskState(StateSchema):
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class ObjectState(StateSchema):
     """Object State"""
@@ -877,6 +896,7 @@ class ObjectState(StateSchema):
     ip: str = state_column(filterable=True)
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class RuntimeEnvState(StateSchema):
     """Runtime Environment State"""
@@ -933,6 +953,7 @@ for state in AVAILABLE_STATES:
 """
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class ListApiResponse:
     # NOTE(rickyyx): We currently perform hard truncation when querying
@@ -979,6 +1000,7 @@ Summary API schema
 DRIVER_TASK_ID_PREFIX = "ffffffffffffffffffffffffffffffffffffffff"
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class TaskSummaryPerFuncOrClassName:
     #: The function or class name of this task.
@@ -990,6 +1012,7 @@ class TaskSummaryPerFuncOrClassName:
     state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
 
 
+@DeveloperAPI
 @dataclass
 class Link:
     #: The type of entity to link to
@@ -998,6 +1021,7 @@ class Link:
     id: str
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class NestedTaskSummary:
     #: The name of this task group
@@ -1018,6 +1042,7 @@ class NestedTaskSummary:
     link: Optional[Link] = None
 
 
+@DeveloperAPI
 @dataclass
 class TaskSummaries:
     #: Group key -> summary.
@@ -1375,6 +1400,7 @@ class TaskSummaries:
         )
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class ActorSummaryPerClass:
     #: The class name of the actor.
@@ -1384,6 +1410,7 @@ class ActorSummaryPerClass:
     state_counts: Dict[TypeActorStatus, int] = field(default_factory=dict)
 
 
+@DeveloperAPI
 @dataclass
 class ActorSummaries:
     #: Group key (actor class name) -> summary
@@ -1420,6 +1447,7 @@ class ActorSummaries:
         )
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class ObjectSummaryPerKey:
     #: Total number of objects of the type.
@@ -1441,6 +1469,7 @@ class ObjectSummaryPerKey:
     ref_type_counts: Dict[TypeReferenceType, int] = field(default_factory=dict)
 
 
+@DeveloperAPI
 @dataclass
 class ObjectSummaries:
     #: Group key (actor class name) -> summary
@@ -1521,6 +1550,7 @@ class ObjectSummaries:
         )
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class StateSummary:
     #: Node ID -> summary per node
@@ -1529,6 +1559,7 @@ class StateSummary:
     node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
 
 
+@DeveloperAPI
 @dataclass(init=not IS_PYDANTIC_2)
 class SummaryApiResponse:
     # Carried over from ListApiResponse
@@ -1545,6 +1576,7 @@ class SummaryApiResponse:
     warnings: Optional[List[str]] = None
 
 
+@DeveloperAPI
 def resource_to_schema(resource: StateResource) -> StateSchema:
     if resource == StateResource.ACTORS:
         return ActorState
@@ -1568,6 +1600,7 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         assert False, "Unreachable"
 
 
+@DeveloperAPI
 def protobuf_message_to_dict(
     message,
     fields_to_decode: List[str],
@@ -1591,6 +1624,7 @@ def protobuf_message_to_dict(
     )
 
 
+@DeveloperAPI
 def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     """
     Convert a TaskEvents to a dic repr of `TaskState`
@@ -1719,6 +1753,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     return task_state
 
 
+@DeveloperAPI
 def remove_ansi_escape_codes(text: str) -> str:
     """Remove ANSI escape codes from a string."""
     import re
@@ -1726,6 +1761,7 @@ def remove_ansi_escape_codes(text: str) -> str:
     return re.sub(r"\x1b[^m]*m", "", text)
 
 
+@DeveloperAPI
 def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
     """Convert a dict to a state schema.
 

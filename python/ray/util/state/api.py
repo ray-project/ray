@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 _MAX_HTTP_RESPONSE_EXCEPTION_TEXT = 500
 
 
+@DeveloperAPI
 @contextmanager
 def warnings_on_slow_request(
     *, address: str, endpoint: str, timeout: float, explain: bool
