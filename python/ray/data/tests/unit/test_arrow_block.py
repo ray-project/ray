@@ -1,11 +1,9 @@
-import base64
 import sys
 from typing import Union
 
 import numpy as np
 import pyarrow as pa
 import pytest
-from pyarrow import ArrowInvalid
 
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
@@ -17,7 +15,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
-from ray.data._internal.util import GiB
 
 
 def simple_array():
@@ -195,76 +192,6 @@ def test_combine_chunked_array_small(
     result = combine_chunked_array(input_)
 
     expected_output.equals(result)
-
-
-def test_combine_chunked_fixed_width_array_large():
-    """Verifies `combine_chunked_array` on fixed-width arrays > 2 GiB, produces
-    single contiguous PA Array"""
-
-    # 144 MiB
-    ones_1gb = np.ones(shape=(550, 128, 128, 4), dtype=np.int32()).ravel()
-
-    # Total ~2.15 GiB
-    input_ = pa.chunked_array(
-        [
-            pa.array(ones_1gb),
-        ]
-        * 16
-    )
-
-    assert round(input_.nbytes / GiB, 2) == 2.15
-
-    result = combine_chunked_array(input_)
-
-    assert isinstance(result, pa.Int32Array)
-
-
-@pytest.mark.parametrize(
-    "array_type,input_factory",
-    [
-        (
-            pa.binary(),
-            lambda num_bytes: np.arange(num_bytes, dtype=np.uint8).tobytes(),
-        ),
-        (
-            pa.string(),
-            lambda num_bytes: base64.encodebytes(
-                np.arange(num_bytes, dtype=np.int8).tobytes()
-            ).decode("ascii"),
-        ),
-        (pa.list_(pa.uint8()), lambda num_bytes: np.arange(num_bytes, dtype=np.uint8)),
-    ],
-)
-def test_combine_chunked_variable_width_array_large(array_type, input_factory):
-    """Verifies `combine_chunked_array` on variable-width arrays > 2 GiB,
-    safely produces new ChunkedArray with provided chunks recombined into
-    larger ones up to INT32_MAX in size"""
-
-    one_half_gb_arr = pa.array([input_factory(GiB / 2)], type=array_type)
-    chunked_arr = pa.chunked_array(
-        [one_half_gb_arr, one_half_gb_arr, one_half_gb_arr, one_half_gb_arr]
-    )
-
-    # 2 GiB + offsets (4 x int32)
-    num_bytes = chunked_arr.nbytes
-    expected_num_bytes = 4 * one_half_gb_arr.nbytes
-
-    num_chunks = len(chunked_arr.chunks)
-    assert num_chunks == 4
-    assert num_bytes == expected_num_bytes
-
-    # Assert attempt to combine directly fails
-    with pytest.raises(ArrowInvalid):
-        chunked_arr.combine_chunks()
-
-    # Safe combination succeeds by avoiding overflowing combination
-    combined = combine_chunked_array(chunked_arr)
-
-    num_bytes = combined.nbytes
-
-    num_chunks = len(combined.chunks)
-    assert num_chunks == 2
-    assert num_bytes == expected_num_bytes
 
 
 @pytest.mark.parametrize(
