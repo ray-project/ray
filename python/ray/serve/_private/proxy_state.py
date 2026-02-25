@@ -687,9 +687,26 @@ class ProxyStateManager:
             for node_id, state in self._proxy_states.items()
         }
 
-    def get_fallback_proxy_details(self) -> Optional[ProxyDetails]:
-        if self._fallback_proxy_state:
-            return self._fallback_proxy_state.actor_details
+    def started_fallback_proxy_at_least_once(self) -> bool:
+        return (
+            self._fallback_proxy_state
+            and self._fallback_proxy_state.status != ProxyStatus.STARTING
+        )
+
+    def get_fallback_proxy_target(self, protocol: RequestProtocol) -> Optional[Target]:
+        state = self._fallback_proxy_state
+        if state and state.status == ProxyStatus.HEALTHY:
+            port = (
+                RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
+                if protocol == RequestProtocol.HTTP
+                else RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
+            )
+            return Target(
+                ip=state.actor_details.node_ip,
+                port=port,
+                instance_id=state.actor_details.node_instance_id,
+                name=state.actor_name,
+            )
 
         return None
 
