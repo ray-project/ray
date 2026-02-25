@@ -655,8 +655,12 @@ def _concat_cols_with_null_list(
             c = col_chunked_arrays[c_idx]
             if pa.types.is_list(c.type) and pa.types.is_null(c.type.value_type):
                 if pa.types.is_list(scalar_type):
+                    # If we are dealing with a list input,
+                    # cast the array to the scalar_type found above.
                     col_chunked_arrays[c_idx] = c.cast(scalar_type)
                 else:
+                    # If we are dealing with a single value, construct
+                    # a new array with null values filled.
                     col_chunked_arrays[c_idx] = pa.chunked_array(
                         [pa.nulls(c.length(), type=scalar_type)]
                     )
