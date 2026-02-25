@@ -64,6 +64,33 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
 }
 
 
+def _get_cudf_expr_ops_map() -> Dict[Operation, Callable[..., Any]]:
+    """cuDF expression ops - pandas-like but use cudf.isna/cudf.notna."""
+    import cudf
+
+    return {
+        Operation.ADD: operator.add,
+        Operation.SUB: operator.sub,
+        Operation.MUL: operator.mul,
+        Operation.DIV: operator.truediv,
+        Operation.MOD: operator.mod,
+        Operation.FLOORDIV: operator.floordiv,
+        Operation.GT: operator.gt,
+        Operation.LT: operator.lt,
+        Operation.GE: operator.ge,
+        Operation.LE: operator.le,
+        Operation.EQ: operator.eq,
+        Operation.NE: operator.ne,
+        Operation.AND: operator.and_,
+        Operation.OR: operator.or_,
+        Operation.NOT: operator.invert,
+        Operation.IS_NULL: cudf.isna,
+        Operation.IS_NOT_NULL: cudf.notna,
+        Operation.IN: lambda left, right: left.isin(right),
+        Operation.NOT_IN: lambda left, right: ~left.isin(right),
+    }
+
+
 def _is_pa_string_type(t: pa.DataType) -> bool:
     return pa.types.is_string(t) or pa.types.is_large_string(t)
 
@@ -579,6 +606,8 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             self.ops = _PANDAS_EXPR_OPS_MAP
         elif block_type == BlockType.ARROW:
             self.ops = _ARROW_EXPR_OPS_MAP
+        elif block_type == BlockType.CUDF:
+            self.ops = _get_cudf_expr_ops_map()
         else:
             raise TypeError(f"Unsupported block type: {block_type}")
 
@@ -646,11 +675,19 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
 
         result = expr.fn(*args, **kwargs)
 
-        if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):
+        # Check for cudf.Series (use module/name to avoid import when cudf missing)
+        is_cudf_series = (
+            type(result).__name__ == "Series" and type(result).__module__ == "cudf"
+        )
+        if (
+            not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray))
+            and not is_cudf_series
+        ):
             function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
-                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, or pyarrow.ChunkedArray)"
+                f"Expected type (pandas.Series, cudf.Series, numpy.ndarray, "
+                f"pyarrow.Array, or pyarrow.ChunkedArray)"
             )
 
         return result
@@ -743,6 +780,10 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             return pd.Series(ids)
         elif block_type == BlockType.ARROW:
             return pa.array(ids)
+        elif block_type == BlockType.CUDF:
+            import cudf
+
+            return cudf.Series(ids)
         else:
             raise TypeError(f"Unsupported block type: {block_type}")
 

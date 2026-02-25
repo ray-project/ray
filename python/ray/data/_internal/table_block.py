@@ -181,6 +181,12 @@ class TableBlockAccessor(BlockAccessor):
 
         return default
 
+    def to_cudf(self) -> Any:
+        """Convert this block to a cudf.DataFrame (requires cudf to be installed)."""
+        import cudf
+
+        return cudf.DataFrame.from_arrow(self.to_arrow())
+
     def column_names(self) -> List[str]:
         raise NotImplementedError
 
@@ -576,6 +582,19 @@ class TableBlockAccessor(BlockAccessor):
             return BlockAccessor.for_block(block).to_arrow()
         elif block_type == BlockType.PANDAS:
             return BlockAccessor.for_block(block).to_pandas()
+        elif block_type == BlockType.CUDF:
+            acc = BlockAccessor.for_block(block)
+            if hasattr(acc, "to_cudf"):
+                return acc.to_cudf()
+            try:
+                import cudf
+
+                return cudf.DataFrame.from_arrow(acc.to_arrow())
+            except ImportError:
+                raise ImportError(
+                    "Cannot convert block to cuDF format: cudf is not installed. "
+                    "Install with: pip install cudf"
+                )
         else:
             return BlockAccessor.for_block(block).to_default()
 

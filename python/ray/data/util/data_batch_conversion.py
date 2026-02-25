@@ -38,6 +38,20 @@ class BatchFormat(str, Enum):
     # TODO: Remove once Arrow is deprecated as user facing batch format
     ARROW = "arrow"
     NUMPY = "numpy"  # Either a single numpy array or a Dict of numpy arrays.
+    CUDF = "cudf"
+
+
+_cudf = None
+
+
+def _lazy_import_cudf():
+    """Lazy import cudf to avoid import failures when cudf is not installed."""
+    global _cudf
+    if _cudf is None:
+        import cudf
+
+        _cudf = cudf
+    return _cudf
 
 
 def _convert_batch_type_to_pandas(
@@ -71,11 +85,19 @@ def _convert_batch_type_to_pandas(
         data = pd.DataFrame(tensor_dict)
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         data = data.to_pandas()
-    elif not isinstance(data, pd.DataFrame):
-        raise ValueError(
-            f"Received data of type: {type(data)}, but expected it to be one "
-            f"of {DataBatchType}"
-        )
+    else:
+        # Handle cudf.DataFrame (lazy check to avoid import when not used)
+        try:
+            cudf_mod = _lazy_import_cudf()
+            if isinstance(data, cudf_mod.DataFrame):
+                data = data.to_pandas()
+        except ImportError:
+            pass
+        if not isinstance(data, pd.DataFrame):
+            raise ValueError(
+                f"Received data of type: {type(data)}, but expected it to be one "
+                f"of {DataBatchType}"
+            )
     if cast_tensor_columns:
         data = _cast_tensor_columns_to_ndarrays(data)
     return data
@@ -120,7 +142,16 @@ def _convert_pandas_to_batch_type(
                 "install Pyarrow."
             )
         return pyarrow.Table.from_pandas(data)
-
+    elif type == BatchFormat.CUDF:
+        try:
+            cudf_mod = _lazy_import_cudf()
+            return cudf_mod.from_pandas(data)
+        except ImportError:
+            raise ValueError(
+                "Attempted to convert data to cuDF DataFrame but cuDF "
+                "is not installed. Please do `pip install cudf-cu12` to "
+                "install cuDF (GPU required)."
+            )
     else:
         raise ValueError(
             f"Received type {type}, but expected it to be one of {DataBatchType}"
@@ -180,6 +211,15 @@ def _convert_batch_type_to_numpy(
     elif isinstance(data, pd.DataFrame):
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
+        # Handle cudf.DataFrame via pandas path
+        try:
+            cudf_mod = _lazy_import_cudf()
+            if isinstance(data, cudf_mod.DataFrame):
+                return _convert_pandas_to_batch_type(
+                    data.to_pandas(), BatchFormat.NUMPY
+                )
+        except ImportError:
+            pass
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
             f"of {DataBatchType}"

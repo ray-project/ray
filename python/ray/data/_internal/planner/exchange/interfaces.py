@@ -79,6 +79,8 @@ class ExchangeTaskSpec:
             return BlockType.ARROW
         elif batch_format == BatchFormat.PANDAS:
             return BlockType.PANDAS
+        elif batch_format == BatchFormat.CUDF:
+            return BlockType.CUDF
         else:
             # NOTE: Unless desired batch-format is specified, avoid
             #       overriding existing one
