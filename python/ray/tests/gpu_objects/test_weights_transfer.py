@@ -368,8 +368,13 @@ if __name__ == "__main__":
         "trainer_nixl_metrics": {
             **_summarize_timings(
                 {
-                    "get_xfer_descs_s": trainer_nixl_metrics["get_xfer_descs_times_s"],
-                    "serialize_s": trainer_nixl_metrics["serialize_times_s"],
+                    "get_xfer_descs": [
+                        t * 1000.0
+                        for t in trainer_nixl_metrics["get_xfer_descs_times_s"]
+                    ],
+                    "serialize": [
+                        t * 1000.0 for t in trainer_nixl_metrics["serialize_times_s"]
+                    ],
                 }
             ),
             "get_xfer_descs_sum_s": sum(trainer_nixl_metrics["get_xfer_descs_times_s"]),
@@ -378,7 +383,10 @@ if __name__ == "__main__":
         "generator_nixl_metrics": {
             **_summarize_timings(
                 {
-                    "deserialize_s": generator_nixl_metrics["deserialize_times_s"],
+                    "deserialize": [
+                        t * 1000.0
+                        for t in generator_nixl_metrics["deserialize_times_s"]
+                    ],
                 }
             ),
             "deserialize_sum_s": sum(generator_nixl_metrics["deserialize_times_s"]),
