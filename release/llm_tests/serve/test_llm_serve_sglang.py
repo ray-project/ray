@@ -43,6 +43,7 @@ def sglang_client():
             "model_path": MODEL_ID,
             "tp_size": 1,
             "mem_fraction_static": 0.8,
+            "is_embedding": True,
         },
     )
 
