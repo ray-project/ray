@@ -140,6 +140,16 @@ def _is_cudf_dataframe(obj: Any) -> bool:
         return False
 
 
+def _is_cudf_series(obj: Any) -> bool:
+    """Check if the object is a cudf.Series (lazy import)."""
+    try:
+        import cudf
+
+        return isinstance(obj, cudf.Series)
+    except ImportError:
+        return False
+
+
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
     if schema is None:
         return True
@@ -826,7 +836,7 @@ class BlockColumnAccessor:
             from ray.data._internal.pandas_block import PandasBlockColumnAccessor
 
             return PandasBlockColumnAccessor(col)
-        elif type(col).__name__ == "Series" and type(col).__module__ == "cudf":
+        elif _is_cudf_series(col):
             from ray.data._internal.cudf_block import CudfBlockColumnAccessor
 
             return CudfBlockColumnAccessor(col)
