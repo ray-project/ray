@@ -18,28 +18,10 @@ When gRPC transport is enabled for a handle:
 
 Use `handle.options(_by_reference=False)` to enable gRPC transport for a specific handle:
 
-```python
-from ray import serve
-from ray.serve.handle import DeploymentHandle
-
-
-@serve.deployment
-class Downstream:
-    def __call__(self, request):
-        return "Hello from downstream"
-
-
-@serve.deployment
-class Upstream:
-    def __init__(self, downstream: DeploymentHandle):
-        # Enable gRPC transport for this handle
-        self._downstream = downstream.options(_by_reference=False)
-
-    async def __call__(self, request):
-        return await self._downstream.remote()
-
-
-app = Upstream.bind(Downstream.bind())
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __begin_per_handle__
+:end-before: __end_per_handle__
+:language: python
 ```
 
 ### Globally
@@ -60,12 +42,10 @@ When `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` is set, proxy-to-replica communication al
 
 The gRPC transport supports multiple serialization formats. Configure them per-handle:
 
-```python
-handle.options(
-    _by_reference=False,
-    request_serialization="msgpack",
-    response_serialization="msgpack",
-)
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __begin_serialization_options__
+:end-before: __end_serialization_options__
+:language: python
 ```
 
 Available formats:
