@@ -6073,7 +6073,7 @@ class TestGetOutboundDeployments:
 
 def test_broadcast_skips_work_when_replicas_unchanged(mock_deployment_state_manager):
     """Test that broadcast_running_replicas_if_changed() skips all work in
-    steady state when _replicas_changed is False and
+    steady state when _broadcasted_replicas_set_changed is False and
     _request_routing_info_updated is False."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -6082,8 +6082,8 @@ def test_broadcast_skips_work_when_replicas_unchanged(mock_deployment_state_mana
     dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
-    # _replicas_changed should be True after deploy.
-    assert ds._replicas_changed is True
+    # _broadcasted_replicas_set_changed should be True after deploy.
+    assert ds._broadcasted_replicas_set_changed is True
 
     # Bring deployment to healthy state.
     dsm.update()
@@ -6093,7 +6093,7 @@ def test_broadcast_skips_work_when_replicas_unchanged(mock_deployment_state_mana
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
     # After update(), the broadcast should have cleared the flag.
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
     assert ds._request_routing_info_updated is False
 
     # Call broadcast again — should be a no-op (early return).
@@ -6103,19 +6103,19 @@ def test_broadcast_skips_work_when_replicas_unchanged(mock_deployment_state_mana
         ds.broadcast_running_replicas_if_changed()
         mock_get_infos.assert_not_called()
 
-    # Now stop a replica (sets _replicas_changed = True).
+    # Now stop a replica (sets _broadcasted_replicas_set_changed = True).
     ds._stop_one_running_replica_for_testing()
-    assert ds._replicas_changed is True
+    assert ds._broadcasted_replicas_set_changed is True
 
     # broadcast should now do the full check.
     ds.broadcast_running_replicas_if_changed()
     # Flag should be cleared after the broadcast.
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
 
 
 def test_broadcast_runs_when_routing_info_updated(mock_deployment_state_manager):
     """Test that broadcast_running_replicas_if_changed() runs when
-    _request_routing_info_updated is True even if _replicas_changed is False."""
+    _request_routing_info_updated is True even if _broadcasted_replicas_set_changed is False."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
 
@@ -6127,7 +6127,7 @@ def test_broadcast_runs_when_routing_info_updated(mock_deployment_state_manager)
     dsm.update()
     ds._replicas.get()[0]._actor.set_ready()
     dsm.update()
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
 
     # Simulate routing info update.
     ds._request_routing_info_updated = True
@@ -6140,12 +6140,14 @@ def test_broadcast_runs_when_routing_info_updated(mock_deployment_state_manager)
         mock_get_infos.assert_called_once()
 
     # Both flags should be cleared after broadcast.
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
     assert ds._request_routing_info_updated is False
 
 
-def test_replicas_changed_flag_set_on_state_transitions(mock_deployment_state_manager):
-    """Test that _replicas_changed is set correctly during replica state
+def test_broadcasted_replicas_set_changed_flag_set_on_state_transitions(
+    mock_deployment_state_manager,
+):
+    """Test that _broadcasted_replicas_set_changed is set correctly during replica state
     transitions."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -6155,14 +6157,14 @@ def test_replicas_changed_flag_set_on_state_transitions(mock_deployment_state_ma
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     # Flag should be True after deploy (_set_target_state sets it).
-    assert ds._replicas_changed is True
+    assert ds._broadcasted_replicas_set_changed is True
 
     # After update, replicas are STARTING.
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
 
     # broadcast clears the flag.
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
 
     # Set replicas ready — this transitions them to RUNNING in _check_startup_replicas.
     for r in ds._replicas.get():
@@ -6171,23 +6173,23 @@ def test_replicas_changed_flag_set_on_state_transitions(mock_deployment_state_ma
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
 
     # Flag should be cleared again after broadcast.
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
 
-    # Now fail a health check (sets _replicas_changed via _stop_replica).
+    # Now fail a health check (sets _broadcasted_replicas_set_changed via _stop_replica).
     ds._replicas.get()[0]._actor.set_unhealthy()
     dsm.update()
     # Flag set by _stop_replica then cleared by broadcast.
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
     # Verify a replica was stopped.
     assert ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1
 
 
-def test_replicas_changed_flag_set_on_lightweight_broadcast_config_update(
+def test_broadcasted_replicas_set_changed_flag_set_on_lightweight_broadcast_config_update(
     mock_deployment_state_manager,
 ):
     """Regression test: when a config change requires a long-poll broadcast
     (e.g. max_ongoing_requests changed) but does NOT require an actor restart
-    or reconfigure, the _replicas_changed flag must still be set by the
+    or reconfigure, the _broadcasted_replicas_set_changed flag must still be set by the
     requires_long_poll_broadcast path so the broadcast is not skipped.
 
     This guards against a future scenario where a broadcast-affecting field
@@ -6206,16 +6208,16 @@ def test_replicas_changed_flag_set_on_lightweight_broadcast_config_update(
     dsm.update()
     check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
 
     # Deploy v2 with a different max_ongoing_requests.
     b_info_2, v2 = deployment_info(version="1", max_ongoing_requests=42)
     dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
 
-    # _set_target_state also sets _replicas_changed. Clear it so we can
+    # _set_target_state also sets _broadcasted_replicas_set_changed. Clear it so we can
     # isolate whether _stop_or_update_outdated_version_replicas sets the
     # flag via the requires_long_poll_broadcast path.
-    ds._replicas_changed = False
+    ds._broadcasted_replicas_set_changed = False
 
     # Patch the running replica's mock actor so reconfigure() returns False
     # (simulating a broadcast-needed but no-actor-update scenario).
@@ -6241,13 +6243,13 @@ def test_replicas_changed_flag_set_on_lightweight_broadcast_config_update(
     # because our patched reconfigure() returns False.
     check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v2)])
 
-    # Key assertion: _replicas_changed was set by the
+    # Key assertion: _broadcasted_replicas_set_changed was set by the
     # requires_long_poll_broadcast path, NOT by actor_updating.
-    assert ds._replicas_changed is True
+    assert ds._broadcasted_replicas_set_changed is True
 
     # Now broadcast and verify it fires (clearing the flag).
     ds.broadcast_running_replicas_if_changed()
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
     ds._long_poll_host.notify_changed.assert_called()
 
     # Verify the fast path works: no further broadcast on next tick.
@@ -6257,8 +6259,8 @@ def test_replicas_changed_flag_set_on_lightweight_broadcast_config_update(
         mock_get_infos.assert_not_called()
 
 
-def test_needs_reconciliation_cleared_at_steady_state(mock_deployment_state_manager):
-    """Test that _needs_reconciliation is cleared once a deployment reaches
+def test_in_transition_cleared_at_steady_state(mock_deployment_state_manager):
+    """Test that _in_transition is cleared once a deployment reaches
     HEALTHY steady state and that subsequent ticks skip expensive work."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -6268,12 +6270,12 @@ def test_needs_reconciliation_cleared_at_steady_state(mock_deployment_state_mana
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
     # Flag must be True after deploy.
-    assert ds._needs_reconciliation is True
+    assert ds._in_transition is True
 
     # STARTING phase: flag stays True.
     dsm.update()
     check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
-    assert ds._needs_reconciliation is True
+    assert ds._in_transition is True
 
     # Replica becomes ready → transitions to RUNNING.
     ds._replicas.get()[0]._actor.set_ready()
@@ -6282,11 +6284,11 @@ def test_needs_reconciliation_cleared_at_steady_state(mock_deployment_state_mana
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
     # Steady state reached: flag must now be False.
-    assert ds._needs_reconciliation is False
+    assert ds._in_transition is False
 
 
-def test_needs_reconciliation_skips_expensive_methods(mock_deployment_state_manager):
-    """When _needs_reconciliation is False, check_curr_status and
+def test_in_transition_skips_expensive_methods(mock_deployment_state_manager):
+    """When _in_transition is False, check_curr_status and
     scale_deployment_replicas should be no-ops."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -6299,7 +6301,7 @@ def test_needs_reconciliation_skips_expensive_methods(mock_deployment_state_mana
     dsm.update()
     ds._replicas.get()[0]._actor.set_ready()
     dsm.update()
-    assert ds._needs_reconciliation is False
+    assert ds._in_transition is False
 
     # check_curr_status should return fast (False, False).
     assert ds.check_curr_status() == (False, False)
@@ -6314,7 +6316,7 @@ def test_needs_reconciliation_skips_expensive_methods(mock_deployment_state_mana
         mock_startup.assert_not_called()
 
 
-def test_needs_reconciliation_set_on_health_check_failure(
+def test_in_transition_set_on_health_check_failure(
     mock_deployment_state_manager,
 ):
     """A health check failure during steady state must re-enable
@@ -6331,7 +6333,7 @@ def test_needs_reconciliation_set_on_health_check_failure(
     for r in ds._replicas.get():
         r._actor.set_ready()
     dsm.update()
-    assert ds._needs_reconciliation is False
+    assert ds._in_transition is False
 
     # Fail a health check.
     ds._replicas.get()[0]._actor.set_unhealthy()
@@ -6344,10 +6346,10 @@ def test_needs_reconciliation_set_on_health_check_failure(
     # in the same tick and found reconciliation needed, so just verify
     # the system is still functioning — the deployment should not be
     # stuck.
-    assert ds._needs_reconciliation is True
+    assert ds._in_transition is True
 
 
-def test_needs_reconciliation_set_on_target_state_change(
+def test_in_transition_set_on_target_state_change(
     mock_deployment_state_manager,
 ):
     """Changing the target state (redeploy, autoscale) must set the flag."""
@@ -6362,16 +6364,16 @@ def test_needs_reconciliation_set_on_target_state_change(
     dsm.update()
     ds._replicas.get()[0]._actor.set_ready()
     dsm.update()
-    assert ds._needs_reconciliation is False
+    assert ds._in_transition is False
 
     # Redeploy with a new version.
     info_2, v2 = deployment_info(version="2")
     dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
-    assert ds._needs_reconciliation is True
+    assert ds._in_transition is True
 
 
 def test_routing_stats_change_triggers_broadcast(mock_deployment_state_manager):
-    """Routing stats changes during health checks must set _replicas_changed
+    """Routing stats changes during health checks must set _broadcasted_replicas_set_changed
     so that the broadcast fast path does not skip the update."""
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
@@ -6384,7 +6386,7 @@ def test_routing_stats_change_triggers_broadcast(mock_deployment_state_manager):
     dsm.update()
     ds._replicas.get()[0]._actor.set_ready()
     dsm.update()
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
     assert ds._request_routing_info_updated is False
 
     # Simulate routing stats changing on the replica actor.
@@ -6394,7 +6396,7 @@ def test_routing_stats_change_triggers_broadcast(mock_deployment_state_manager):
     ds.check_and_update_replicas()
 
     # The flag must be set because routing_stats changed.
-    assert ds._replicas_changed is True
+    assert ds._broadcasted_replicas_set_changed is True
 
     # Broadcast should now run (not take the fast path).
     with patch.object(
@@ -6403,10 +6405,10 @@ def test_routing_stats_change_triggers_broadcast(mock_deployment_state_manager):
         ds.broadcast_running_replicas_if_changed()
         mock_get_infos.assert_called_once()
 
-    assert ds._replicas_changed is False
+    assert ds._broadcasted_replicas_set_changed is False
 
 
-def test_pending_migration_prevents_needs_reconciliation_clear(
+def test_pending_migration_prevents_in_transition_clear(
     mock_deployment_state_manager,
 ):
     create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
@@ -6433,7 +6435,7 @@ def test_pending_migration_prevents_needs_reconciliation_clear(
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
-    assert ds._needs_reconciliation is False
+    assert ds._in_transition is False
 
     # Drain node_2: one replica transitions to PENDING_MIGRATION and a
     # replacement STARTING replica is created.
@@ -6441,7 +6443,7 @@ def test_pending_migration_prevents_needs_reconciliation_clear(
     dsm.update()
     assert ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 1
     assert ds._replicas.count(states=[ReplicaState.STARTING]) == 1
-    assert ds._needs_reconciliation is True
+    assert ds._in_transition is True
 
     # Node stops draining before the replacement is ready.  The
     # PENDING_MIGRATION replica should move back to RUNNING.
@@ -6453,7 +6455,7 @@ def test_pending_migration_prevents_needs_reconciliation_clear(
     )
     assert pending_migration_count == 0, (
         f"Expected 0 PENDING_MIGRATION replicas but found {pending_migration_count}. "
-        "The replica is stuck because _needs_reconciliation was incorrectly cleared."
+        "The replica is stuck because _in_transition was incorrectly cleared."
     )
 
 
