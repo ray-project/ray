@@ -493,7 +493,7 @@ def test_read_tfrecords_ray_remote_args(
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords(
     with_tf_schema,
-    ray_start_regular_shared_2_cpus_2_cpus,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     """Test that write_tfrecords writes TFRecords correctly.
