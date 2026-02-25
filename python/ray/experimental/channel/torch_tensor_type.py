@@ -121,11 +121,13 @@ class TorchTensorType(ChannelOutputType):
 
         def serialize(t):
             ctx = ChannelContext.get_current()
-            return ctx.serialization_context.serialize_tensor(t)
+            return ctx.serialization_context.serialize_tensor(t, is_rdt=False)
 
         def deserialize(b):
             ctx = ChannelContext.get_current()
-            return ctx.serialization_context.deserialize_tensor(b, self.device)
+            return ctx.serialization_context.deserialize_tensor(
+                b, self.device, is_rdt=False
+            )
 
         ray.util.serialization.register_serializer(
             torch.Tensor,

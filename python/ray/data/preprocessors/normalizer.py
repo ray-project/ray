@@ -1,9 +1,10 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.util.annotations import PublicAPI
 
 
@@ -99,13 +100,13 @@ class Normalizer(Preprocessor):
     def __init__(
         self,
         columns: List[str],
-        norm="l2",
+        norm: str = "l2",
         *,
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
-        self.norm = norm
+        self._columns = columns
+        self._norm = norm
 
         if norm not in self._norm_fns:
             raise ValueError(
@@ -113,20 +114,46 @@ class Normalizer(Preprocessor):
                 f"Supported values are: {self._norm_fns.keys()}"
             )
 
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
-    def _transform_pandas(self, df: pd.DataFrame):
-        columns = df.loc[:, self.columns]
-        column_norms = self._norm_fns[self.norm](columns)
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
 
-        df[self.output_columns] = columns.div(column_norms, axis=0)
+    @property
+    def norm(self) -> str:
+        return self._norm
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
+    def _transform_pandas(self, df: pd.DataFrame):
+        columns = df.loc[:, self._columns]
+        column_norms = self._norm_fns[self._norm](columns)
+
+        df[self._output_columns] = columns.div(column_norms, axis=0)
         return df
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"norm={self.norm!r}, "
-            f"output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"norm={self._norm!r}, "
+            f"output_columns={self._output_columns!r})"
+        )
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_norm": _PublicField(public_field="norm", default="l2"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
         )

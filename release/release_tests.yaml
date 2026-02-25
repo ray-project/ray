@@ -1498,7 +1498,6 @@
     byod:
       runtime_env:
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
-        - RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
