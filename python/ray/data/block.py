@@ -238,6 +238,9 @@ class BlockStats:
     # Execution stats for this block.
     exec_stats: Optional[BlockExecStats]
 
+    # Overall task execution stats (reported from the worker).
+    task_exec_stats: Optional[TaskExecWorkerStats] = field(default=None)
+
     def __post_init__(self):
         if self.size_bytes is not None:
             # Require size_bytes to be int, ray.util.metrics objects
@@ -257,9 +260,6 @@ class BlockMetadata(BlockStats):
     # The list of file paths used to generate this block, or
     # the empty list if indeterminate.
     input_files: Optional[List[str]]
-
-    # Task execution stats reported from the worker
-    task_exec_stats: Optional[TaskExecWorkerStats] = field(default=None)
 
     def to_stats(self):
         return BlockStats(
