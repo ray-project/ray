@@ -395,7 +395,14 @@ class LLMConfig(BaseModelExtended):
     def validate_deployment_config(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the deployment config dictionary."""
         try:
-            DeploymentConfig(**value)
+            # Bypass num_replicas="auto" for validation because it will be converted to None
+            # by handle_num_replicas_auto() before reaching DeploymentConfig in serve.deployment().
+            if value.get("num_replicas") == "auto":
+                value.pop("num_replicas")
+                DeploymentConfig(**value)
+                value["num_replicas"] = "auto"
+            else:
+                DeploymentConfig(**value)
         except Exception as e:
             raise ValueError(f"Invalid deployment config: {value}") from e
 

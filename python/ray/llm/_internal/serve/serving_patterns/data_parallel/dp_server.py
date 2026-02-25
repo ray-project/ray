@@ -181,22 +181,16 @@ class DPServer(LLMServer):
                 f"Invalid data_parallel_size: {dp_size}, expecting positive integer."
             )
         if dp_size != 1:
-            if "autoscaling_config" in deployment_options:
-                raise ValueError(
-                    "autoscaling_config is not supported for DP deployment, "
-                    "remove autoscaling_config instead. The `num_replicas` "
-                    "will be set to `data_parallel_size`."
-                )
-
             num_replicas = deployment_options.get("num_replicas")
-            if num_replicas is not None:
-                if num_replicas % dp_size != 0:
-                    raise ValueError(
-                        f"num_replicas ({num_replicas}) must be a multiple of "
-                        f"data_parallel_size ({dp_size}) for gang DP deployment."
-                    )
-            else:
-                deployment_options["num_replicas"] = dp_size
+            if num_replicas != "auto":
+                if num_replicas is not None:
+                    if num_replicas % dp_size != 0:
+                        raise ValueError(
+                            f"num_replicas ({num_replicas}) must be a multiple of "
+                            f"data_parallel_size ({dp_size}) for gang DP deployment."
+                        )
+                else:
+                    deployment_options["num_replicas"] = dp_size
 
             deployment_options["gang_scheduling_config"] = GangSchedulingConfig(
                 gang_size=dp_size,
