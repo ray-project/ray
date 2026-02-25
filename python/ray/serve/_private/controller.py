@@ -749,18 +749,16 @@ class ServeController:
     def broadcast_fallback_proxy_if_changed(self) -> None:
         """Broadcast the fallback proxies over long poll if they have changed."""
         fallback_proxies = [
-            self.proxy_state_manager.get_fallback_proxy_target(
-                RequestProtocol.HTTP
-            ),
-            self.proxy_state_manager.get_fallback_proxy_target(
-                RequestProtocol.GRPC
-            ),
+            self.proxy_state_manager.get_fallback_proxy_target(RequestProtocol.HTTP),
+            self.proxy_state_manager.get_fallback_proxy_target(RequestProtocol.GRPC),
         ]
 
         if self._last_broadcasted_fallback_proxies == fallback_proxies:
             return
 
-        self.long_poll_host.notify_changed({LongPollNamespace.FALLBACK_PROXY: fallback_proxies})
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.FALLBACK_PROXY: fallback_proxies}
+        )
         self._last_broadcasted_fallback_proxies = fallback_proxies
 
     def _create_control_loop_metrics(self):
