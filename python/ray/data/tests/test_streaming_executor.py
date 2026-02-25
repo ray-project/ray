@@ -1133,7 +1133,7 @@ def create_stub_streaming_gen(
                     task_wall_time_s=_time.perf_counter() - task_start_s,
                 )
             )
-            yield BlockMetadataWithSchema(
+            yield BlockMetadataWithSchema.from_metadata(
                 block_metadata, schema=block_accessor.schema()
             )
 
