@@ -295,7 +295,7 @@ class ServeController:
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
-        self._last_broadcasted_fallback_proxies: Optional[List[Target]] = None
+        self._last_broadcasted_fallback_targets: Optional[List[Target]] = None
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -709,7 +709,7 @@ class ServeController:
                 self.proxy_state_manager
                 and self.proxy_state_manager.started_fallback_proxy_at_least_once()
             ):
-                self.broadcast_fallback_proxy_if_changed()
+                self.broadcast_fallback_targets_if_changed()
 
     def _maybe_update_ingress_ports(self) -> None:
         """Update ingress ports if direct ingress is enabled."""
@@ -746,20 +746,21 @@ class ServeController:
         )
         self._last_broadcasted_target_groups = target_groups
 
-    def broadcast_fallback_proxy_if_changed(self) -> None:
-        """Broadcast the fallback proxies over long poll if they have changed."""
-        fallback_proxies = [
-            self.proxy_state_manager.get_fallback_proxy_target(RequestProtocol.HTTP),
-            self.proxy_state_manager.get_fallback_proxy_target(RequestProtocol.GRPC),
+    def broadcast_fallback_targets_if_changed(self) -> None:
+        """Broadcast the fallback targets over long poll if they have changed."""
+        fallback_targets = [
+            self.proxy_state_manager.get_fallback_proxy_target(protocol)
+            for protocol in RequestProtocol
+            if protocol != RequestProtocol.UNDEFINED
         ]
 
-        if self._last_broadcasted_fallback_proxies == fallback_proxies:
+        if self._last_broadcasted_fallback_targets == fallback_targets:
             return
 
         self.long_poll_host.notify_changed(
-            {LongPollNamespace.FALLBACK_PROXY: fallback_proxies}
+            {LongPollNamespace.FALLBACK_PROXY: fallback_targets}
         )
-        self._last_broadcasted_fallback_proxies = fallback_proxies
+        self._last_broadcasted_fallback_targets = fallback_targets
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
