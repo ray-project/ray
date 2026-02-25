@@ -276,7 +276,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         ctx = DataContext.get_current()
         df = self._table.to_pandas(ignore_metadata=ctx.pandas_block_ignore_metadata)
         if ctx.enable_tensor_extension_casting:
-            df = _cast_tensor_columns_to_ndarrays(df)
+            df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
         return df
 
     def to_numpy(
