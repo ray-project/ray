@@ -1,9 +1,12 @@
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -72,92 +75,151 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
         **kwargs,
     ) -> Any:
 
-        # Actions.
-        if Columns.ACTIONS not in batch:
-            for sa_episode in self.single_agent_episode_iterator(
-                episodes,
-                agents_that_stepped_only=False,
-            ):
-                self.add_n_batch_items(
-                    batch,
-                    Columns.ACTIONS,
-                    # Bulk extraction: get all actions at once instead of per-timestep.
-                    items_to_add=sa_episode.get_actions(slice(0, len(sa_episode))),
-                    num_items=len(sa_episode),
-                    single_agent_episode=sa_episode,
-                )
+        # Determine which standard columns still need to be filled (skip any that a
+        # custom upstream connector has already populated).
+        need_actions = Columns.ACTIONS not in batch
+        need_rewards = Columns.REWARDS not in batch
+        need_terminateds = Columns.TERMINATEDS not in batch
+        need_truncateds = Columns.TRUNCATEDS not in batch
 
-        # Rewards.
-        if Columns.REWARDS not in batch:
-            for sa_episode in self.single_agent_episode_iterator(
-                episodes,
-                agents_that_stepped_only=False,
-            ):
-                self.add_n_batch_items(
-                    batch,
-                    Columns.REWARDS,
-                    # Bulk extraction: get all rewards at once instead of per-timestep.
-                    items_to_add=sa_episode.get_rewards(slice(0, len(sa_episode))),
-                    num_items=len(sa_episode),
-                    single_agent_episode=sa_episode,
-                )
-
-        # Terminateds.
-        if Columns.TERMINATEDS not in batch:
-            for sa_episode in self.single_agent_episode_iterator(
-                episodes,
-                agents_that_stepped_only=False,
-            ):
-                self.add_n_batch_items(
-                    batch,
-                    Columns.TERMINATEDS,
-                    items_to_add=(
-                        [False] * (len(sa_episode) - 1) + [sa_episode.is_terminated]
-                        if len(sa_episode) > 0
-                        else []
-                    ),
-                    num_items=len(sa_episode),
-                    single_agent_episode=sa_episode,
-                )
-
-        # Truncateds.
-        if Columns.TRUNCATEDS not in batch:
-            for sa_episode in self.single_agent_episode_iterator(
-                episodes,
-                agents_that_stepped_only=False,
-            ):
-                self.add_n_batch_items(
-                    batch,
-                    Columns.TRUNCATEDS,
-                    items_to_add=(
-                        [False] * (len(sa_episode) - 1) + [sa_episode.is_truncated]
-                        if len(sa_episode) > 0
-                        else []
-                    ),
-                    num_items=len(sa_episode),
-                    single_agent_episode=sa_episode,
-                )
-
-        # Extra model outputs (except for STATE_OUT, which will be handled by another
-        # default connector piece). Also, like with all the fields above, skip
-        # those that the user already seemed to have populated via custom connector
-        # pieces.
+        # Columns to skip for extra_model_outputs (already in batch or internal states).
         skip_columns = set(batch.keys()) | {Columns.STATE_IN, Columns.STATE_OUT}
+
+        # Single pass over all episodes: compute len(sa_episode) and sub_key once and
+        # reuse them for every column.
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
             agents_that_stepped_only=False,
         ):
-            for column in sa_episode.extra_model_outputs.keys():
-                if column not in skip_columns:
+            n = len(sa_episode)
+
+            # For single-agent episodes (agent_id=None), sub_key is always (id_,).
+            # For multi-agent episodes, fall back to the general add_n_batch_items path.
+            if sa_episode.agent_id is None:
+                # Fast path: inline the dict operations, skipping the function call
+                # overhead of add_n_batch_items / add_batch_item and the repeated
+                # sub_key computation those would do per column.
+                sub_key = (sa_episode.id_,)
+
+                if need_actions:
+                    data = sa_episode.get_actions(slice(0, n)).view(BatchedNdArray)
+                    col = batch.get(Columns.ACTIONS)
+                    if col is None:
+                        batch[Columns.ACTIONS] = {sub_key: [data]}
+                    else:
+                        lst = col.get(sub_key)
+                        if lst is None:
+                            col[sub_key] = [data]
+                        else:
+                            lst.append(data)
+
+                if need_rewards:
+                    data = sa_episode.get_rewards(slice(0, n)).view(BatchedNdArray)
+                    col = batch.get(Columns.REWARDS)
+                    if col is None:
+                        batch[Columns.REWARDS] = {sub_key: [data]}
+                    else:
+                        lst = col.get(sub_key)
+                        if lst is None:
+                            col[sub_key] = [data]
+                        else:
+                            lst.append(data)
+
+                if need_terminateds:
+                    terminateds = np.zeros(n, dtype=np.bool_)
+                    if n > 0:
+                        terminateds[-1] = sa_episode.is_terminated
+                    data = terminateds.view(BatchedNdArray)
+                    col = batch.get(Columns.TERMINATEDS)
+                    if col is None:
+                        batch[Columns.TERMINATEDS] = {sub_key: [data]}
+                    else:
+                        lst = col.get(sub_key)
+                        if lst is None:
+                            col[sub_key] = [data]
+                        else:
+                            lst.append(data)
+
+                if need_truncateds:
+                    truncateds = np.zeros(n, dtype=np.bool_)
+                    if n > 0:
+                        truncateds[-1] = sa_episode.is_truncated
+                    data = truncateds.view(BatchedNdArray)
+                    col = batch.get(Columns.TRUNCATEDS)
+                    if col is None:
+                        batch[Columns.TRUNCATEDS] = {sub_key: [data]}
+                    else:
+                        lst = col.get(sub_key)
+                        if lst is None:
+                            col[sub_key] = [data]
+                        else:
+                            lst.append(data)
+
+                for column in sa_episode.extra_model_outputs.keys():
+                    if column not in skip_columns:
+                        data = sa_episode.get_extra_model_outputs(
+                            key=column, indices=slice(0, n)
+                        ).view(BatchedNdArray)
+                        col = batch.get(column)
+                        if col is None:
+                            batch[column] = {sub_key: [data]}
+                        else:
+                            lst = col.get(sub_key)
+                            if lst is None:
+                                col[sub_key] = [data]
+                            else:
+                                lst.append(data)
+
+            else:
+                # General (multi-agent) path: use the standard API.
+                if need_actions:
                     self.add_n_batch_items(
                         batch,
-                        column,
-                        # Bulk extraction: get all extra outputs at once.
-                        items_to_add=sa_episode.get_extra_model_outputs(
-                            key=column, indices=slice(0, len(sa_episode))
-                        ),
-                        num_items=len(sa_episode),
+                        Columns.ACTIONS,
+                        items_to_add=sa_episode.get_actions(slice(0, n)),
+                        num_items=n,
                         single_agent_episode=sa_episode,
                     )
+                if need_rewards:
+                    self.add_n_batch_items(
+                        batch,
+                        Columns.REWARDS,
+                        items_to_add=sa_episode.get_rewards(slice(0, n)),
+                        num_items=n,
+                        single_agent_episode=sa_episode,
+                    )
+                if need_terminateds:
+                    terminateds = np.zeros(n, dtype=np.bool_)
+                    if n > 0:
+                        terminateds[-1] = sa_episode.is_terminated
+                    self.add_n_batch_items(
+                        batch,
+                        Columns.TERMINATEDS,
+                        items_to_add=terminateds,
+                        num_items=n,
+                        single_agent_episode=sa_episode,
+                    )
+                if need_truncateds:
+                    truncateds = np.zeros(n, dtype=np.bool_)
+                    if n > 0:
+                        truncateds[-1] = sa_episode.is_truncated
+                    self.add_n_batch_items(
+                        batch,
+                        Columns.TRUNCATEDS,
+                        items_to_add=truncateds,
+                        num_items=n,
+                        single_agent_episode=sa_episode,
+                    )
+                for column in sa_episode.extra_model_outputs.keys():
+                    if column not in skip_columns:
+                        self.add_n_batch_items(
+                            batch,
+                            column,
+                            items_to_add=sa_episode.get_extra_model_outputs(
+                                key=column, indices=slice(0, n)
+                            ),
+                            num_items=n,
+                            single_agent_episode=sa_episode,
+                        )
 
         return batch
