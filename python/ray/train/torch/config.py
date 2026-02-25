@@ -268,9 +268,9 @@ def _set_torchft_distributed_env_vars(replica_group_rank, dp_workers):
 
     context = ray.train.get_context()
     os.environ["LOCAL_RANK"] = str(context.get_local_rank())
-    os.environ["RANK"] = str(replica_group_rank)
+    os.environ["RANK"] = str(context.get_world_rank())
     os.environ["LOCAL_WORLD_SIZE"] = str(context.get_local_world_size())
-    os.environ["WORLD_SIZE"] = str(dp_workers)
+    os.environ["WORLD_SIZE"] = str(context.get_world_size())
     os.environ["NODE_RANK"] = str(context.get_node_rank())
 
     device = get_device()
