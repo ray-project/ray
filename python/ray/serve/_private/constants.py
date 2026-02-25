@@ -705,10 +705,6 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
 )
 
-# Direct ingress must be enabled if HAProxy is enabled
-if RAY_SERVE_ENABLE_HA_PROXY:
-    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
-
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
@@ -755,6 +751,10 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
+
+# Direct ingress must be enabled if HAProxy is enabled
+if RAY_SERVE_ENABLE_HA_PROXY:
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
 
 # The maximum allowed RPC latency in milliseconds.
 # This is used to detect and warn about long RPC latencies
