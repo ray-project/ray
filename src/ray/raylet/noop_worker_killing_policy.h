@@ -30,13 +30,11 @@ namespace raylet {
  */
 class NoopWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
-  NoopWorkerKillingPolicy() = default;
-  ~NoopWorkerKillingPolicy() override = default;
-
-  std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const ProcessesMemorySnapshot &process_memory_snapshot) const override {
-    return std::pair<std::shared_ptr<WorkerInterface>, bool>(nullptr, false);
+      const ProcessesMemorySnapshot &process_memory_snapshot,
+      const SystemMemorySnapshot &_) override {
+    return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 };
 

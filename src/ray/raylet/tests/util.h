@@ -19,8 +19,11 @@
 #include <utility>
 #include <vector>
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/util/fake_process.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -101,9 +104,9 @@ class MockWorker : public WorkerInterface {
     proc_ = std::move(proc);
   }
 
-  Language GetLanguage() const override {
+  rpc::Language GetLanguage() const override {
     RAY_CHECK(false) << "Method unused";
-    return Language::PYTHON;
+    return rpc::Language::PYTHON;
   }
 
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
