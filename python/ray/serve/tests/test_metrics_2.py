@@ -17,7 +17,7 @@ from ray._common.test_utils import (
 )
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.test_utils import (
-    PROMETHEUS_METRICS_TIMEOUT,
+    PROMETHEUS_METRICS_TIMEOUT_S,
     get_application_url,
     ping_fruit_stand,
     ping_grpc_call_method,
@@ -175,7 +175,7 @@ class TestRequestContextMetrics:
                 for sample in fetch_prometheus_metric_timeseries(
                     ["localhost:9999"],
                     timeseries,
-                    timeout=PROMETHEUS_METRICS_TIMEOUT,
+                    timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                 )[metric_name]
             ]
             assert {metric["route"] for metric in metrics} == {
@@ -195,7 +195,7 @@ class TestRequestContextMetrics:
                     for sample in fetch_prometheus_metric_timeseries(
                         ["localhost:9999"],
                         timeseries,
-                        timeout=PROMETHEUS_METRICS_TIMEOUT,
+                        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                     )[metric_name]
                 ]
             )
@@ -295,7 +295,7 @@ class TestRequestContextMetrics:
                 for sample in fetch_prometheus_metric_timeseries(
                     ["localhost:9999"],
                     timeseries,
-                    timeout=PROMETHEUS_METRICS_TIMEOUT,
+                    timeout=PROMETHEUS_METRICS_TIMEOUT_S,
                 )[metric_name]
             ]
             assert {metric["route"] for metric in metrics} == {

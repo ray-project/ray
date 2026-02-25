@@ -44,7 +44,7 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
-PROMETHEUS_METRICS_TIMEOUT = 5
+PROMETHEUS_METRICS_TIMEOUT_S = 5
 
 
 class MockTimer(TimerBase):

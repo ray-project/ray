@@ -29,7 +29,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
 from ray.serve._private.test_utils import (
-    PROMETHEUS_METRICS_TIMEOUT,
+    PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
     get_application_url,
@@ -75,7 +75,7 @@ def check_sum_metric_eq(
     metrics = fetch_prometheus_metric_timeseries(
         [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
         timeseries,
-        timeout=PROMETHEUS_METRICS_TIMEOUT,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
     )
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
