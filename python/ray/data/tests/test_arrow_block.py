@@ -20,14 +20,6 @@ from ray.data.context import DataContext
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
-def simple_array():
-    return pa.array([1, 2, None, 6], type=pa.int64())
-
-
-def simple_chunked_array():
-    return pa.chunked_array([pa.array([1, 2]), pa.array([None, 6])])
-
-
 @pytest.fixture(scope="module")
 def binary_dataset_single_file_gt_2gb():
     total_size = int(2.1 * GiB)
