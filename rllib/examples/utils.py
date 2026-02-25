@@ -295,6 +295,14 @@ def add_rllib_example_script_args(
 
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
+    parser.add_argument(
+        "--local-mode",
+        action="store_true",
+        help="Init Ray in local mode for easier debugging.",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="The seed to use for the experiment."
+    )
 
     # Old API stack: config.num_gpus.
     parser.add_argument(
@@ -314,11 +322,6 @@ def add_rllib_example_script_args(
     # Use `--old-api-stack` to disable the new API stack.
     parser.add_argument(
         "--enable-new-api-stack",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--local-mode",
         action="store_true",
         help=argparse.SUPPRESS,
     )
@@ -494,6 +497,9 @@ def run_rllib_example_script_experiment(
     if not keep_config:
         # Set the framework.
         config.framework(args.framework)
+
+        # Set the seed for reproducibility.
+        config.debugging(seed=args.seed)
 
         # Add an env specifier (only if not already set in config)?
         if args.env is not None and config.env is None:

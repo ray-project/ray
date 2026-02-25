@@ -89,12 +89,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         # whether it's an eval worker.
         self._seed: Optional[int] = None
         if self.config.seed is not None:
-            self._seed = int(
-                self.config.seed
-                + (self.worker_index or 0)
-                # Eval workers get a +1M seed.
-                + (1e6 * self.config.in_evaluation)
-            )
+            self._seed = int(self.config.seed + (self.worker_index or 0))
         # Seed everything (random, numpy, torch, tf), if `seed` is provided.
         update_global_seed_if_necessary(
             framework=self.config.framework_str,
