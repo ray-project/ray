@@ -23,36 +23,41 @@ def main(args):
         # Filter orders with total quantity > threshold
         large_orders = lineitem_quantity.filter(expr=col("total_quantity") > quantity)
 
+        orders_customer = orders.join(
+            customer.select_columns(["c_custkey", "c_name"]),
+            join_type="inner",
+            num_partitions=16,
+            on=("o_custkey",),
+            right_on=("c_custkey",),
+        )
+        orders_customer = orders_customer.select_columns(
+            ["o_orderkey", "o_custkey", "o_orderdate", "o_totalprice", "c_name"]
+        )
+
         # Join lineitem with large orders
         lineitem_large = lineitem.join(
             large_orders,
             join_type="inner",
-            num_partitions=100,
+            num_partitions=16,
             on=("l_orderkey",),
         )
+        lineitem_large = lineitem_large.select_columns(
+            ["l_orderkey", "l_quantity", "total_quantity"]
+        )
 
-        # Join with orders
-        lineitem_orders = lineitem_large.join(
-            orders,
+        # Join lineitem_large with orders_customer
+        ds = lineitem_large.join(
+            orders_customer,
             join_type="inner",
-            num_partitions=100,
+            num_partitions=16,
             on=("l_orderkey",),
             right_on=("o_orderkey",),
-        )
-
-        # Join with customer
-        ds = lineitem_orders.join(
-            customer,
-            join_type="inner",
-            num_partitions=100,
-            on=("o_custkey",),
-            right_on=("c_custkey",),
         )
 
         # Aggregate by customer name, customer key, order key, and order date
         _ = (
             ds.groupby(
-                ["c_name", "c_custkey", "o_orderkey", "o_orderdate", "o_totalprice"]
+                ["c_name", "o_custkey", "l_orderkey", "o_orderdate", "o_totalprice"]
             )
             .aggregate(Sum(on="l_quantity", alias_name="sum_quantity"))
             .sort(key=["o_totalprice", "o_orderdate"], descending=[True, False])

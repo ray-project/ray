@@ -37,7 +37,6 @@ TABLE_COLUMNS = {
         "column5": "c_acctbal",
         "column6": "c_mktsegment",
         "column7": "c_comment",
-        "column8": "c_comment_ext",
     },
     "orders": {
         "column0": "o_orderkey",
@@ -49,14 +48,12 @@ TABLE_COLUMNS = {
         "column6": "o_clerk",
         "column7": "o_shippriority",
         "column8": "o_comment",
-        "column9": "o_comment_ext",
     },
     "nation": {
         "column0": "n_nationkey",
         "column1": "n_name",
         "column2": "n_regionkey",
         "column3": "n_comment",
-        "column4": "n_comment_ext",
     },
 }
 
