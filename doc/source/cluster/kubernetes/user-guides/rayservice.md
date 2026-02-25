@@ -236,7 +236,6 @@ This section describes the default `NewCluster` upgrade strategy. For large-scal
 In Step 7, modifying `serveConfigV2` doesn't trigger a zero downtime upgrade for Ray clusters.
 Instead, it reapplies the new configurations to the existing RayCluster.
 However, if you modify `spec.rayClusterConfig` in the RayService YAML file, it triggers a zero downtime upgrade for Ray clusters.
-RayService temporarily creates a new RayCluster and waits for it to be ready, then switches traffic to the new RayCluster by updating the selector of the head service managed by RayService `rayservice-sample-head-svc` and terminates the old one.
 
 During the zero downtime upgrade process, RayService creates a new RayCluster temporarily and waits for it to become ready.
 Once the new RayCluster is ready, RayService updates the selector of the head service managed by RayService `rayservice-sample-head-svc` to point to the new RayCluster to switch the traffic to the new RayCluster.
