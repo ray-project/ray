@@ -62,7 +62,13 @@ class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
     matching the torchrun model.
     """
 
+    def __init__(self):
+        super().__init__()
+        self.lighthouse_actor = None
+
     def before_worker_group_start(self, backend_config: TorchftConfig):
+        if self.lighthouse_actor is not None:
+            return
 
         # Let the OS pick a free port by default
         if "bind" in backend_config.lighthouse_kwargs:
