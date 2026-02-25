@@ -32,11 +32,10 @@ class PlacementGroup:
         self,
         id: "ray._raylet.PlacementGroupID",
         bundle_cache: Optional[List[Dict]] = None,
-        all_bundle_cache: Optional[List[List[Dict]]] = None,
     ):
         self.id = id
         self.bundle_cache = bundle_cache
-        self._scheduling_options_cache = all_bundle_cache
+        self._scheduling_options_cache = None
 
     @property
     def is_empty(self):
@@ -78,18 +77,12 @@ class PlacementGroup:
     def bundle_specs(self) -> List[Dict]:
         """List[Dict]: Return bundles belonging to this placement group.
 
-        This returns the currently active bundles if scheduled. If the placement
-        group is pending, this returns the primary scheduling option.
+        This returns the primary resource requirements specified at creation.
         """
-        if not self.bundle_cache:
-            # If empty, fetch from GCS until the active bundles have been assigned.
+        if self.bundle_cache is None:
             self._fill_bundle_cache()
 
-        if self.bundle_cache:
-            return self.bundle_cache
-
-        options = self._get_scheduling_options_bundles()
-        return options[0] if options else []
+        return self.bundle_cache or []
 
     @property
     def bundle_count(self) -> int:
@@ -106,9 +99,9 @@ class PlacementGroup:
         return self._scheduling_options_cache or []
 
     def _fill_bundle_cache(self) -> None:
-        cache_data = _get_bundle_cache(self.id)
-        self.bundle_cache = cache_data["active"]
-        self._scheduling_options_cache = cache_data["all"]
+        all_bundles = _get_bundle_cache(self.id)
+        self._scheduling_options_cache = all_bundles
+        self.bundle_cache = all_bundles[0] if all_bundles else []
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
@@ -143,18 +136,11 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> Dict[str, List[Dict]]:
 
     table = ray._private.state.state.placement_group_table(pg_id)
 
-    # The bundles actively being used for scheduling.
-    active_bundles = list(table.get("bundles", {}).values())
+    all_bundles = []
+    for strategy in table.get("scheduling_options", []):
+        all_bundles.append(strategy.get("bundles", []))
 
-    # The list of bundles from all scheduling options.
-    if "scheduling_options" in table and table["scheduling_options"]:
-        all_bundles = []
-        for strategy in table["scheduling_options"]:
-            all_bundles.append(strategy.get("bundles", []))
-    else:
-        all_bundles = [active_bundles] if active_bundles else []
-
-    return {"active": active_bundles, "all": all_bundles}
+    return all_bundles
 
 
 @PublicAPI
@@ -357,20 +343,15 @@ def check_placement_group_index(
             )
     else:
         # Fetch the updated scheduling options first.
-        strategies = placement_group._get_scheduling_options_bundles
+        strategies = placement_group._get_scheduling_options_bundles()
 
-        # If scheduled, validate strictly against the active bundles
-        if placement_group.bundle_cache:
-            valid_count = len(placement_group.bundle_cache)
-        else:
-            # Otherwise, check if the index would fit in any possible option.
-            valid_count = max((len(strategy) for strategy in strategies), default=0)
+        valid_count = max((len(strategy) for strategy in strategies), default=0)
 
         if bundle_index >= valid_count or bundle_index < -1:
             raise ValueError(
                 f"placement group bundle index {bundle_index} "
                 f"is invalid. Valid placement group indexes: "
-                f"0-{valid_count} across all scheduling options."
+                f"0 to {valid_count - 1}."
             )
 
 
