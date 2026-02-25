@@ -43,4 +43,7 @@ for f in "$TF_CIFAR" "$TF_KERAS_CIFAR" "$TORCH_CIFAR" "$KERAS_CIFAR"; do
   [ -f "$f" ] && sed -i 's https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz https://air-example-data.s3.us-west-2.amazonaws.com/cifar-10-python.tar.gz g' "$f" || true
 done
 
+# Remove installed ray.
+pip uninstall -y ray
+
 EOF

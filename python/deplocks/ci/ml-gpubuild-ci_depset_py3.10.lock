@@ -6433,6 +6433,12 @@ xgboost==2.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -r python/requirements/ml/core-requirements.txt
+xmltodict==0.13.0 \
+    --hash=sha256:341595a488e3e01a85a9d8911d8912fd922ede5fecc4dce437eb4b6c8d037e56 \
+    --hash=sha256:aa89e8fd76320154a40d19a0df04a4695fb9dc5ba977cbb68ab3e4eb225e7852
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
 xxhash==3.4.1 \
     --hash=sha256:00f2fdef6b41c9db3d2fc0e7f94cb3db86693e5c45d6de09625caad9a469635b \
     --hash=sha256:0379d6cf1ff987cd421609a264ce025e74f346e3e145dd106c0cc2e3ec3f99a9 \
