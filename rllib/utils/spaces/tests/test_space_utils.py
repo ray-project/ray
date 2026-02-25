@@ -74,6 +74,44 @@ class TestSpaceUtils(unittest.TestCase):
         self.assertEqual(action[0], 6)
         self.assertEqual(action[1], 6)
 
+        # Test `get_base_struct_from_space`'s cache behavior.
+        old_cache = get_base_struct_from_space._cache.copy()
+        old_caching_enabled = get_base_struct_from_space._caching_enabled
+        old_cache_max_size = get_base_struct_from_space._CACHE_MAX_SIZE
+
+        try:
+            get_base_struct_from_space._cache = {}
+            get_base_struct_from_space._caching_enabled = True
+            get_base_struct_from_space._CACHE_MAX_SIZE = 1
+
+            cached_space = Box(low=0, high=1, shape=(1,), dtype=np.float32)
+            struct1 = get_base_struct_from_space(cached_space)
+            struct2 = get_base_struct_from_space(cached_space)
+            self.assertIs(struct1, struct2)
+
+            with self.assertLogs(
+                "ray.rllib.utils.spaces.space_utils", level="WARNING"
+            ) as cm:
+                get_base_struct_from_space(
+                    Box(low=0, high=1, shape=(1,), dtype=np.float32)
+                )
+                get_base_struct_from_space(
+                    Box(low=0, high=1, shape=(1,), dtype=np.float32)
+                )
+
+            self.assertIn(
+                "get_base_struct_from_space cache exceeded 1 entries. "
+                "Disabling caching. This likely means that we re-create the same "
+                "space object in a loop.",
+                "\n".join(cm.output),
+            )
+            self.assertFalse(get_base_struct_from_space._caching_enabled)
+            self.assertEqual(len(get_base_struct_from_space._cache), 0)
+        finally:
+            get_base_struct_from_space._cache = old_cache
+            get_base_struct_from_space._caching_enabled = old_caching_enabled
+            get_base_struct_from_space._CACHE_MAX_SIZE = old_cache_max_size
+
     def test_batch_and_unbatch_simple(self):
         """Tests the two utility functions `batch` and `unbatch`."""
         # Test, whether simple structs are batch/unbatch'able.
@@ -127,6 +165,30 @@ class TestSpaceUtils(unittest.TestCase):
         complex_struct_rebatched = batch(complex_struct_unbatched)
         # Should be identical to original struct.
         check(complex_struct, complex_struct_rebatched)
+
+    def test_get_base_struct_from_space_mutation_guard(self):
+        """Dict spaces are guarded against mutation after struct extraction."""
+        dict_space = Dict(
+            {
+                "a": Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                "b": Discrete(2),
+            }
+        )
+        get_base_struct_from_space(dict_space)
+
+        with self.assertRaisesRegex(RuntimeError, r"mutate gym\.spaces\.Dict's keys"):
+            dict_space.spaces["c"] = Discrete(3)
+
+        # Tuple spaces are not patched and remain normally immutable.
+        tuple_space = Tuple(
+            (
+                Box(low=0, high=1, shape=(1,), dtype=np.float32),
+                Discrete(2),
+            )
+        )
+        get_base_struct_from_space(tuple_space)
+        with self.assertRaises(TypeError):
+            tuple_space.spaces[0] = Discrete(3)
 
 
 if __name__ == "__main__":

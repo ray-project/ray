@@ -10,6 +10,26 @@ from ray.rllib.utils.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
+class _ImmutableSpaceDict(dict):
+    """Dict wrapper that disallows key mutations for cached gym Dict spaces."""
+
+    _ERR_MSG = (
+        "Attempt to mutate gym.spaces.Dict's keys (spaces.__setitem__) after "
+        "calling get_base_struct_from_space. Immutability of keys required!"
+    )
+
+    def __readonly(self, *args, **kwargs):
+        raise RuntimeError(self._ERR_MSG)
+
+    __setitem__ = __readonly
+    __delitem__ = __readonly
+    clear = __readonly
+    pop = __readonly
+    popitem = __readonly
+    setdefault = __readonly
+    update = __readonly
+
+
 @DeveloperAPI
 class BatchedNdArray(np.ndarray):
     """A ndarray-wrapper the usage of which indicates that there a batch dim exists.
@@ -176,14 +196,9 @@ class _GetBaseStructFromSpace:
                 # Tuples are immutable, no need to patch
                 return tuple(_helper_struct(s) for s in space_)
             elif isinstance(space_, gym.spaces.Dict):
-                # On first call, patch the `__setitem__` method to prevent later mutations
-                def _err_setitem(self, key, value):
-                    raise RuntimeError(
-                        "Attempt to mutate gym.spaces.Dict's keys (spaces.__setitem__) after "
-                        "calling get_base_struct_from_space. Immutability of keys required!"
-                    )
-
-                space_.spaces.__setitem__ = _err_setitem
+                # Guard against mutating keys via `space.spaces[k] = ...`.
+                if not isinstance(space_.spaces, _ImmutableSpaceDict):
+                    space_.spaces = _ImmutableSpaceDict(space_.spaces)
                 return {k: _helper_struct(space_[k]) for k in space_.spaces}
             else:
                 return space_
