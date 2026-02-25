@@ -12,6 +12,7 @@ dyn-req-batch
 inplace-updates
 dev-workflow
 grpc-guide
+haproxy-guide
 replica-ranks
 replica-scheduling
 managing-java-deployments
@@ -32,6 +33,7 @@ Use these advanced guides for more options and configurations:
 - [In-Place Updates for Serve](serve-inplace-updates)
 - [Development Workflow](serve-dev-workflow)
 - [gRPC Support](serve-set-up-grpc-service)
+- [HAProxy Load Balancing](serve-haproxy-guide)
 - [Replica Ranks](serve-replica-ranks)
 - [Replica Scheduling](serve-replica-scheduling)
 - [Ray Serve Dashboard](dash-serve-view)
