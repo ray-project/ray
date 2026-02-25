@@ -128,7 +128,7 @@ Install the required dependencies:
 
 ```bash
 %%bash
-pip install torch transformers datasets deepspeed
+pip install torch transformers datasets "deepspeed>=0.18.6"
 ```
 
 
@@ -283,17 +283,13 @@ def create_dataloader(
 
 ## 3. Model Parallelization with DeepSpeed AutoTP
 
-DeepSpeed AutoTP provides automatic tensor parallelism through:
-- `set_autotp_mode(training=True)`: Enables AutoTP instrumentation before model creation
-- `deepspeed.tp_model_init()`: Automatically shards linear layers across TP ranks
-- `deepspeed.initialize()`: Creates the DeepSpeed engine for training
+DeepSpeed AutoTP is config-driven: setting `"tensor_parallel": {"autotp_size": N}` in the DeepSpeed config activates automatic tensor parallelism. The sharding happens inside `deepspeed.initialize()` — no additional API calls are needed.
 
 The Model Parallel Unit (MPU) interface tells DeepSpeed about the parallelism topology, enabling correct gradient synchronization across data parallel ranks.
 
 
 ```python
 import deepspeed
-from deepspeed.module_inject.layers import set_autotp_mode
 from transformers import AutoConfig, AutoModelForCausalLM
 
 import ray.train.torch
@@ -408,33 +404,20 @@ def setup_model_with_autotp(
         logger.info(f"Process groups created: tp_rank={tp_rank}, dp_rank={dp_rank}")
 
     # [2] Initialize DeepSpeed distributed backend
-    # This is required before calling tp_model_init()
     deepspeed.init_distributed()
 
-    # [3] Enable AutoTP instrumentation BEFORE model creation
-    set_autotp_mode(training=True)
-
-    # [4] Load pretrained model weights on CPU
-    # Sync seeds to ensure non-TP parameters (embeddings, layer norms) are identical across ranks
-    seed = config.get("seed", 42)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
+    # [3] Load pretrained model weights and move to device
+    device = torch.device(f"cuda:{world_rank % torch.cuda.device_count()}")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         trust_remote_code=True,
         torch_dtype=dtype,
     )
+    model = model.to(device)
 
-    # [5] Apply TP sharding with deepspeed.tp_model_init()
-    model = deepspeed.tp_model_init(
-        model,
-        tp_size=tp_size,
-        dtype=dtype,
-        tp_group=tp_group,
-    )
-
-    # [6] Build DeepSpeed config
+    # [4] Build DeepSpeed config
+    # AutoTP is activated by setting "tensor_parallel": {"autotp_size": N}.
+    # Sharding happens automatically inside deepspeed.initialize().
     batch_size_per_gpu = config.get("batch_size_per_gpu", 1)
     gradient_accumulation_steps = config.get("gradient_accumulation_steps", 1)
     zero_stage = config.get("zero_stage", 1)
@@ -473,7 +456,7 @@ def setup_model_with_autotp(
             "enabled": True,
         }
 
-    # [7] Create optimizer
+    # [5] Create optimizer
     params = list(model.parameters())
     optimizer = torch.optim.AdamW(
         params,
@@ -481,7 +464,7 @@ def setup_model_with_autotp(
         weight_decay=config.get("weight_decay", 0.01),
     )
 
-    # [8] Create MPU for DeepSpeed
+    # [6] Create MPU for DeepSpeed
     mpu = ModelParallelUnit(
         tp_group=tp_group,
         dp_group=dp_group,
@@ -491,13 +474,13 @@ def setup_model_with_autotp(
         dp_rank=dp_rank,
     )
 
-    # [9] Initialize DeepSpeed engine
-    # DeepSpeed handles model device placement during initialize()
+    # [7] Initialize DeepSpeed engine
+    # AutoTP sharding is applied automatically during initialize()
     engine, optimizer, _, _ = deepspeed.initialize(
         model=model,
         optimizer=optimizer,
         config=ds_config,
-        mpu=mpu if tp_size > 1 else None,
+        mpu=mpu,
     )
 
     if world_rank == 0:
