@@ -332,9 +332,11 @@ class PhysicalOperator(Operator):
         target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
+        self._output_dependencies: List["PhysicalOperator"] = []
 
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
+        self._wire_output_deps(input_dependencies)
         self._inputs_complete = not input_dependencies
         self._output_block_size_option_override = OutputBlockSizeOption.of(
             target_max_block_size=target_max_block_size_override
@@ -368,7 +370,7 @@ class PhysicalOperator(Operator):
     def data_context(self) -> DataContext:
         return self._data_context
 
-    # Override the following 3 methods to correct type hints.
+    # Override the following methods to correct type hints.
 
     @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
@@ -376,10 +378,91 @@ class PhysicalOperator(Operator):
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
-        return super().output_dependencies  # type: ignore
+        return self._output_dependencies
 
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def _apply_transform(
+        self, transform: Callable[["PhysicalOperator"], "PhysicalOperator"]
+    ) -> "PhysicalOperator":
+        # 1) Recursively transform input operators first.
+        transformed_input_ops = []
+        has_changes = False
+
+        for input_op in self.input_dependencies:
+            transformed_input_op = input_op._apply_transform(transform)
+            transformed_input_ops.append(transformed_input_op)
+            if transformed_input_op is not input_op:
+                has_changes = True
+
+        # 2) If any input changed, create a shallow copy of the current node,
+        # rebind its inputs, and rewire reverse dependencies from old inputs
+        # to transformed inputs.
+        if has_changes:
+            target = self._copy_for_transform()
+            for input_op in self.input_dependencies:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not self
+                ]
+            target._input_dependencies = transformed_input_ops
+            target._wire_output_deps(transformed_input_ops)
+        else:
+            target = self
+
+        # 3) Apply transform on the current node itself. If transform replaces
+        # the current node, rewire reverse dependencies from old node inputs
+        # to the returned replacement node inputs.
+        # Returning the same node must not mutate inputs in-place.
+        original_inputs = tuple(target.input_dependencies)
+        transformed_target = transform(target)
+        if transformed_target is not target:
+            for input_op in original_inputs:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not target
+                ]
+            transformed_target._rewire_output_deps(
+                target, transformed_target.input_dependencies
+            )
+        else:
+            assert (
+                tuple(transformed_target.input_dependencies) == original_inputs
+            ), "In-place input mutation is not supported; return a new node instead."
+        return transformed_target
+
+    def _copy_for_transform(self) -> "PhysicalOperator":
+        # copy.copy() is not safe here because PhysicalOperator.__reduce__()
+        # intentionally raises. Use a side-effect-free shallow copy to avoid
+        # re-running __init__ wiring/ID/metrics initialization during transform.
+        target = object.__new__(type(self))
+        target.__dict__ = self.__dict__.copy()
+        # The transformed node should have a distinct identity and metrics owner.
+        target._id = str(uuid.uuid4())
+        target._metrics = OpRuntimeMetrics(target)
+        # The copied node belongs to a new transformed DAG. Reverse edges are
+        # rewired by parents, so avoid carrying stale downstream references.
+        target._output_dependencies = []
+        return target
+
+    def _rewire_output_deps(
+        self,
+        source_op: "PhysicalOperator",
+        input_dependencies: List["PhysicalOperator"],
+    ) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies = [
+                dep for dep in input_op._output_dependencies if dep is not source_op
+            ]
+            if self not in input_op._output_dependencies:
+                input_op._output_dependencies.append(self)
+
+    def _wire_output_deps(self, input_dependencies: List["PhysicalOperator"]) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies.append(self)
 
     def set_logical_operators(
         self,
