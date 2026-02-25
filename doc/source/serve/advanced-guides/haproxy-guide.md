@@ -4,7 +4,7 @@
 By default, Ray Serve uses a Python-based HTTP proxy to route requests to replicas. You can optionally replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
 
 When HAProxy mode is enabled:
-- An `HAProxyManager` actor runs on the head node and translates Serve's routing table into HAProxy configuration reloads.
+- An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
 - Each replica opens a direct ingress port, and HAProxy routes traffic directly to replicas — bypassing the Python proxy entirely.
 - Live traffic flows through the HAProxy subprocess, not through any Python actor.
 
@@ -53,12 +53,12 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
 
 The key build flags are:
 - `USE_PROMEX=1` — enables the built-in Prometheus exporter for metrics.
-- `USE_LUA=1` — enables Lua scripting (used for health check endpoints).
+- `USE_LUA=1` — enables Lua scripting support.
 - `USE_OPENSSL=1` — enables TLS support.
 
 Runtime dependencies:
 - `socat` — used for sending commands to the HAProxy admin socket.
-- `liblua5.3-0` — Lua runtime library.
+- `liblua5.3-0` — Lua runtime library (required when HAProxy is built with `USE_LUA=1`).
 
 ## Enabling HAProxy
 
@@ -155,7 +155,7 @@ Ensure that the direct ingress port ranges (30000-31000 for HTTP, 40000-41000 fo
 
 ## Monitoring
 
-HAProxy exposes Prometheus metrics on the port configured by `RAY_SERVE_HAPROXY_METRICS_PORT` (default: 9101). You can scrape these metrics by pointing your Prometheus instance at `http://<head-node-ip>:9101/metrics`.
+HAProxy exposes Prometheus metrics on the port configured by `RAY_SERVE_HAPROXY_METRICS_PORT` (default: 9101). Each node running an HAProxy instance serves metrics at `http://<node-ip>:9101/metrics`.
 
 You can also inspect HAProxy's state through its admin socket using `socat`:
 
