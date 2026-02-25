@@ -5,7 +5,7 @@ By default, Ray Serve uses a Python-based HTTP proxy to route requests to replic
 
 When HAProxy mode is enabled:
 - An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
-- Each replica opens a direct ingress port, and HAProxy routes traffic directly to replicas — bypassing the Python proxy entirely.
+- Each replica opens a direct ingress port, and HAProxy routes traffic directly to replicas — replacing the Python proxy entirely.
 - Live traffic flows through the HAProxy subprocess, not through any Python actor.
 
 ## Prerequisites
@@ -18,7 +18,7 @@ The `rayproject/ray` Docker images already include HAProxy and its runtime depen
 
 ### Installing HAProxy manually
 
-If you are building a custom image or running on bare metal, install HAProxy 2.8+ from source with the required build flags:
+If you are building a custom image or running on bare metal, install HAProxy 2.8+ from source. Here is an example Dockerfile that builds HAProxy with the required flags:
 
 ```dockerfile
 # --- Build stage ---
