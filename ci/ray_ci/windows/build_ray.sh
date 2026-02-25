@@ -25,6 +25,14 @@ fi
 powershell ci/pipeline/fix-windows-container-networking.ps1
 
 # Build ray and ray wheels
+# We pin specific versions of pip, wheel, cython, and packaging here to prevent
+# setup_requires in python/setup.py from fetching the latest versions, which can cause
+# dependency conflicts with preinstalled libraries (for example, packaging must be <26 for mlflow-skinny).
+pip install -q \
+  "pip==25.2" \
+  "wheel==0.45.1" \
+  "cython==3.0.12" \
+  "packaging<26"
 pip install -v -e python
 pip wheel -e python -w .whl
 
