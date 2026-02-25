@@ -7,7 +7,7 @@ from ray.serve.handle import DeploymentHandle
 
 @serve.deployment
 class Downstream:
-    def __call__(self, request):
+    def __call__(self):
         return "Hello from downstream"
 
 
@@ -17,7 +17,7 @@ class Upstream:
         # Enable gRPC transport for this handle
         self._downstream = downstream.options(_by_reference=False)
 
-    async def __call__(self, request):
+    async def __call__(self):
         return await self._downstream.remote()
 
 

@@ -70,4 +70,4 @@ Using `msgpack` or `orjson` can improve serialization performance but restricts 
 
 - **No `_to_object_ref` support.** Handles using gRPC transport (`_by_reference=False`) cannot call `._to_object_ref()` or `._to_object_ref_sync()`. These methods require Ray actor RPC.
 - **Java deployments not supported.** gRPC transport is only available for Python deployments.
-- **Data must be serializable.** When using non-cloudpickle formats, request and response data must be compatible with the chosen serializer.
+- **Data must be serializable.** While `cloudpickle` can serialize most Python objects, other formats like `msgpack` or `orjson` are more restrictive. Ensure your data is compatible with the chosen serializer.
