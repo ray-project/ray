@@ -2143,6 +2143,12 @@ jupyterlab-widgets==3.0.11 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   ipywidgets
+jupytext==1.16.3 \
+    --hash=sha256:1ebac990461dd9f477ff7feec9e3003fa1acc89f3c16ba01b73f79fd76f01a98 \
+    --hash=sha256:870e0d7a716dcb1303df6ad1cec65e3315a20daedd808a55cb3dae2d56e4ed20
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
 keras==2.15.0 ; (python_full_version < '3.12' and platform_machine != 'arm64') or (python_full_version < '3.12' and sys_platform != 'darwin') \
     --hash=sha256:2dcc6d2e30cf9c951064b63c1f4c404b966c59caf09e01f3549138ec8ee0dd1f \
     --hash=sha256:81871d298c064dc4ac6b58440fdae67bfcf47c8d7ad28580fab401834c06a575
@@ -2598,6 +2604,7 @@ markdown-it-py==2.2.0 \
     --hash=sha256:7c9a5e412688bc771c67432cbfebcdd686c93ce6484913dccf06cb5a0bea35a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   jupytext
     #   mdit-py-plugins
     #   rich
     #   textual
@@ -2694,11 +2701,12 @@ matplotlib-inline==0.1.6 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   ipykernel
     #   ipython
-mdit-py-plugins==0.3.5 ; sys_platform != 'win32' \
+mdit-py-plugins==0.3.5 \
     --hash=sha256:ca9a0714ea59a24b2b044a1831f48d817dd0c817e84339f20e7889f392d77c4e \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   jupytext
     #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
@@ -3075,6 +3083,7 @@ nbformat==5.9.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   jupyter-server
+    #   jupytext
     #   nbclient
     #   nbconvert
 nest-asyncio==1.5.8 \
@@ -3502,6 +3511,7 @@ packaging==24.2 \
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   jupytext
     #   kombu
     #   lightning-utilities
     #   matplotlib
@@ -4472,6 +4482,7 @@ pyyaml==6.0.3 \
     #   datasets
     #   huggingface-hub
     #   jupyter-events
+    #   jupytext
     #   ml-collections
     #   mlflow-skinny
     #   mosaicml
@@ -5813,6 +5824,7 @@ tomli==2.0.1 ; python_full_version < '3.11' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   jupyterlab
+    #   jupytext
     #   pytest
 torch==2.3.0+cpu \
     --hash=sha256:1e86e225e472392440ace378ba3165b5e87648e8b5fbf16adc41c0df881c38b8 \
