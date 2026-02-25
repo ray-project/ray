@@ -5,6 +5,15 @@ By default, when one Ray Serve deployment calls another via a `DeploymentHandle`
 
 This is separate from the [gRPC ingress proxy](serve-set-up-grpc-service), which handles external gRPC clients. Interdeployment gRPC controls how deployments talk to *each other* internally.
 
+## When to use gRPC transport
+
+gRPC transport bypasses Ray's actor scheduler and object store, reducing per-request overhead. It is most beneficial for **high-throughput workloads with small payloads** — requests and responses under ~1 MB typically show a benefit. Pairing it with a fast serializer like `msgpack` or `orjson` further reduces overhead when data is JSON-serializable.
+
+**Keep the default (by-reference) transport when:**
+- Payloads are large. Ray's object store enables zero-copy shared-memory transfers between co-located replicas, which is faster than serializing over the network.
+- Deployments are chained. By-reference mode passes `DeploymentResponse` objects through the pipeline without materializing intermediate results.
+- You need `_to_object_ref()` for custom async patterns.
+
 ## How it works
 
 When gRPC transport is enabled for a handle:
