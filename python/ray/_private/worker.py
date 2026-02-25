@@ -859,7 +859,9 @@ class Worker:
                 (
                     serialized_value,
                     tensors,
-                ) = self.get_serialization_context().serialize_gpu_objects(value)
+                ) = self.get_serialization_context().serialize_gpu_objects(
+                    value, tensor_transport
+                )
             else:
                 serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
