@@ -141,14 +141,10 @@ def _is_cudf_dataframe(obj: Any) -> bool:
 
 
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
-    from ray.data._internal.pandas_block import PandasBlockSchema
-
     if schema is None:
         return True
-    # PandasBlockSchema and CudfBlockSchema (table-like) have .names
-    if isinstance(schema, PandasBlockSchema):
-        return not schema.names
-    if hasattr(schema, "names") and hasattr(schema, "types"):
+    # PandasBlockSchema and CudfBlockSchema are table-like and have .names.
+    if hasattr(schema, "names"):
         return not schema.names
     return not schema  # pyarrow schema check
 

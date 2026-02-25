@@ -60,6 +60,11 @@ def _lazy_import_cudf():
     return _cudf
 
 
+def _cudf_series_to_pylist(series: "cudf.Series") -> List[Any]:
+    """Convert a cuDF Series to a Python list, preserving nulls as None."""
+    return series.to_arrow().to_pylist()
+
+
 # Schema type for cuDF blocks (similar to PandasBlockSchema)
 CudfBlockSchema = collections.namedtuple("CudfBlockSchema", ["names", "types"])
 
@@ -75,8 +80,8 @@ class CudfRow(Mapping):
             col = self._row[keys]
             if len(col) == 0:
                 return None
-            items = col.iloc[0]
-            return tuple(item for item in items)
+            items = col.iloc[0]  # cuDF Series of row values
+            return tuple(_cudf_series_to_pylist(items))
 
         is_single_item = isinstance(key, str)
         keys = [key] if is_single_item else key
@@ -156,27 +161,19 @@ class CudfBlockColumnAccessor(BlockColumnAccessor):
         value_counts = self._column.value_counts()
         if len(value_counts) == 0:
             return None
-        # Counts are always non-null int64: direct GPU→CPU via values_host.
-        # Index values may be any type (strings, categoricals, etc.) so use
-        # to_arrow().to_pylist() which handles all types correctly.
+        # Counts are always non-null int64 so the fast path in the helper is
+        # always taken.  Index values may be any type (strings, categoricals,
+        # etc.) so use to_arrow().to_pylist() which handles all types correctly.
         return {
             "values": value_counts.index.to_arrow().to_pylist(),
-            "counts": value_counts.values_host.tolist(),
+            "counts": _cudf_series_to_pylist(value_counts),
         }
 
     def unique(self) -> BlockColumn:
         return self._column.unique()
 
     def to_pylist(self) -> List[Any]:
-        if not self._column.has_nulls:
-            # Fast path: direct GPU→CPU transfer, no Arrow intermediate.
-            return self._column.values_host.tolist()
-        # Null-safe path: get values and null mask in two D2H transfers.
-        # values_host fills nulls with sentinel values (0/NaN), so we overlay
-        # the null mask to replace those positions with Python None.
-        null_mask = self._column.isnull().values_host
-        raw = self._column.values_host.tolist()
-        return [None if null_mask[i] else raw[i] for i in range(len(raw))]
+        return _cudf_series_to_pylist(self._column)
 
     def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
         return self._column.to_numpy()
@@ -288,11 +285,14 @@ class CudfBlockAccessor(TableBlockAccessor):
     def upsert_column(
         self, column_name: str, column_data: BlockColumn
     ) -> "cudf.DataFrame":
+        import pandas as pd
         import pyarrow
 
         cudf = _lazy_import_cudf()
         if isinstance(column_data, (pyarrow.Array, pyarrow.ChunkedArray)):
             column_data = cudf.Series(column_data)
+        elif isinstance(column_data, pd.Series):
+            column_data = cudf.from_pandas(column_data)
         return self._table.assign(**{column_name: column_data})
 
     def random_shuffle(self, random_seed: Optional[int]) -> "cudf.DataFrame":
