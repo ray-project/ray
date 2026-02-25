@@ -210,7 +210,7 @@ def test_spread_hint_inherit(ray_start_regular_shared):
 
     shuffle_op = ds._plan._logical_plan.dag
     read_op = shuffle_op.input_dependencies[0].input_dependencies[0]
-    assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
+    assert read_op.ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
 def test_optimize_randomize_block_order(ray_start_regular_shared):
@@ -290,12 +290,10 @@ def test_optimize_lazy_reuse_base_data(
 
 
 def test_require_preserve_order(ray_start_regular_shared):
-    ds = ray.data.range(100).map_batches(lambda x: x).sort("id")
-    assert ds._plan.require_preserve_order()
-    ds2 = ray.data.range(100).map_batches(lambda x: x).zip(ds)
-    assert ds2._plan.require_preserve_order()
-    ds3 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
-    assert not ds3._plan.require_preserve_order()
+    ds1 = ray.data.range(100).map_batches(lambda x: x).zip(ray.data.range(100))
+    assert ds1._plan.require_preserve_order()
+    ds2 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
+    assert not ds2._plan.require_preserve_order()
 
 
 if __name__ == "__main__":

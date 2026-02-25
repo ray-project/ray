@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <thread>
 
 #include "gmock/gmock.h"
@@ -46,6 +47,10 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
     for (const auto &event : request.events_data().events()) {
       recorded_events_.push_back(event);
     }
+    if (hold_callbacks_) {
+      pending_callback_ = callback;
+      return;
+    }
     callback(Status::OK(), rpc::events::AddEventsReply{});
   }
 
@@ -54,9 +59,36 @@ class FakeEventAggregatorClient : public rpc::EventAggregatorClient {
     return recorded_events_;
   }
 
+  void HoldCallbacks() {
+    absl::MutexLock lock(&mutex_);
+    hold_callbacks_ = true;
+  }
+
+  bool HasPendingCallback() {
+    absl::MutexLock lock(&mutex_);
+    return pending_callback_.has_value();
+  }
+
+  void ReleaseCallbacks() {
+    rpc::ClientCallback<rpc::events::AddEventsReply> callback;
+    {
+      absl::MutexLock lock(&mutex_);
+      if (!pending_callback_) {
+        return;
+      }
+      callback = std::move(*pending_callback_);
+      pending_callback_.reset();
+      hold_callbacks_ = false;
+    }
+    callback(Status::OK(), rpc::events::AddEventsReply{});
+  }
+
  private:
   std::vector<rpc::events::RayEvent> recorded_events_ ABSL_GUARDED_BY(mutex_);
   absl::Mutex mutex_;
+  bool hold_callbacks_ ABSL_GUARDED_BY(mutex_) = false;
+  std::optional<rpc::ClientCallback<rpc::events::AddEventsReply>> pending_callback_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 class RayEventRecorderTest : public ::testing::Test {
@@ -282,6 +314,143 @@ TEST_F(RayEventRecorderTest, TestDisabled) {
   io_service_.run_one();
   std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
   ASSERT_EQ(recorded_events.size(), 0);
+}
+
+// Test that StopExportingEvents() flushes all buffered events.
+TEST_F(RayEventRecorderTest, TestStopFlushesEvents) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true,
+"task_events_shutdown_flush_timeout_ms": 100
+}
+)");
+  recorder_->StartExportingEvents();
+
+  // Add events without running the io service (simulating buffered events)
+  rpc::JobTableData data;
+  data.set_job_id("test_job_id_1");
+  data.set_is_dead(false);
+  data.set_driver_pid(12345);
+  data.set_start_time(absl::ToUnixSeconds(absl::Now()));
+  data.set_end_time(0);
+  data.set_entrypoint("python test_script.py");
+  data.mutable_driver_address()->set_ip_address("127.0.0.1");
+
+  std::vector<std::unique_ptr<RayEventInterface>> events;
+  events.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data, "test_session_name"));
+  recorder_->AddEvents(std::move(events));
+
+  // Don't run the io_service yet - events should still be in the buffer
+
+  // Now call StopExportingEvents() - this should flush the buffered events
+  recorder_->StopExportingEvents();
+
+  // Run the io_service to process the flush
+  io_service_.run_one();
+
+  // Verify that events were flushed
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded_events.size(), 1);
+  ASSERT_EQ(recorded_events[0].driver_job_definition_event().job_id(), "test_job_id_1");
+}
+
+// Test that StopExportingEvents() waits for an in-flight export and then flushes
+// remaining events once the in-flight gRPC completes.
+TEST_F(RayEventRecorderTest, TestStopWaitsForInflightThenFlushes) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true,
+"task_events_shutdown_flush_timeout_ms": 100
+}
+)");
+  recorder_->StartExportingEvents();
+  fake_client_->HoldCallbacks();
+
+  // Add one event and trigger the periodic export to create an in-flight gRPC.
+  rpc::JobTableData data_1;
+  data_1.set_job_id("test_job_id_inflight");
+  std::vector<std::unique_ptr<RayEventInterface>> events_1;
+  events_1.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data_1, "test_session_name"));
+  recorder_->AddEvents(std::move(events_1));
+  io_service_.run_one();
+
+  // Add a second event that should be flushed after the in-flight gRPC completes.
+  rpc::JobTableData data_2;
+  data_2.set_job_id("test_job_id_after");
+  std::vector<std::unique_ptr<RayEventInterface>> events_2;
+  events_2.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data_2, "test_session_name"));
+  recorder_->AddEvents(std::move(events_2));
+
+  std::thread stop_thread([&]() { recorder_->StopExportingEvents(); });
+
+  // Ensure the in-flight callback is released so StopExportingEvents can flush remaining
+  // events.
+  ASSERT_TRUE(fake_client_->HasPendingCallback());
+  fake_client_->ReleaseCallbacks();
+  stop_thread.join();
+
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded_events.size(), 2);
+  EXPECT_EQ(recorded_events[0].driver_job_definition_event().job_id(),
+            "test_job_id_inflight");
+  EXPECT_EQ(recorded_events[1].driver_job_definition_event().job_id(),
+            "test_job_id_after");
+}
+
+// Test that ExportEvents() skips if there's already an in-flight gRPC call.
+// This prevents overlapping exports which could cause StopExportingEvents() to
+// return while a gRPC is still in flight.
+TEST_F(RayEventRecorderTest, TestExportSkipsWhenGrpcInProgress) {
+  RayConfig::instance().initialize(
+      R"(
+{
+"enable_ray_event": true,
+"task_events_shutdown_flush_timeout_ms": 100
+}
+)");
+  recorder_->StartExportingEvents();
+  fake_client_->HoldCallbacks();
+
+  // Add first event and trigger export - this creates an in-flight gRPC
+  rpc::JobTableData data_1;
+  data_1.set_job_id("test_job_id_first");
+  std::vector<std::unique_ptr<RayEventInterface>> events_1;
+  events_1.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data_1, "test_session_name"));
+  recorder_->AddEvents(std::move(events_1));
+  io_service_.run_one();  // This triggers the export
+
+  ASSERT_TRUE(fake_client_->HasPendingCallback());
+
+  // Add second event while gRPC is in progress
+  rpc::JobTableData data_2;
+  data_2.set_job_id("test_job_id_second");
+  std::vector<std::unique_ptr<RayEventInterface>> events_2;
+  events_2.push_back(
+      std::make_unique<RayDriverJobDefinitionEvent>(data_2, "test_session_name"));
+  recorder_->AddEvents(std::move(events_2));
+
+  // Try to trigger another export - this should be skipped because gRPC is in progress
+  io_service_.run_one();
+
+  // Release the first callback
+  fake_client_->ReleaseCallbacks();
+
+  // Now trigger export again - this should send the second event
+  io_service_.run_one();
+
+  // Verify both events were eventually sent (first before skip, second after)
+  std::vector<rpc::events::RayEvent> recorded_events = fake_client_->GetRecordedEvents();
+  ASSERT_EQ(recorded_events.size(), 2);
+  EXPECT_EQ(recorded_events[0].driver_job_definition_event().job_id(),
+            "test_job_id_first");
+  EXPECT_EQ(recorded_events[1].driver_job_definition_event().job_id(),
+            "test_job_id_second");
 }
 
 }  // namespace observability

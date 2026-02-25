@@ -1213,13 +1213,7 @@ class Policy(metaclass=ABCMeta):
         worker_idx = self.config.get("worker_index", 0)
         fake_gpus = self.config.get("_fake_gpus", False)
 
-        if (
-            ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-            and not fake_gpus
-        ):
-            # If in local debugging mode, and _fake_gpus is not on.
-            num_gpus = 0
-        elif worker_idx == 0:
+        if worker_idx == 0:
             # If head node, take num_gpus.
             num_gpus = self.config["num_gpus"]
         else:

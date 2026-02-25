@@ -20,7 +20,7 @@
 
 #include "jni_utils.h"  // NOLINT(build/include_subdir)
 #include "ray/common/id.h"
-#include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"

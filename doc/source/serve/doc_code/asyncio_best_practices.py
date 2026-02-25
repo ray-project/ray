@@ -89,6 +89,19 @@ class ThreadedHTTP:
         return await asyncio.to_thread(fetch)
 # __threaded_http_end__
 
+# __threadpool_override_begin__
+from concurrent.futures import ThreadPoolExecutor
+
+@serve.deployment
+class CustomThreadPool:
+    def __init__(self):
+        loop = asyncio.get_running_loop()
+        loop.set_default_executor(ThreadPoolExecutor(max_workers=16))
+
+    async def __call__(self, request):
+        return await asyncio.to_thread(lambda: "ok")
+# __threadpool_override_end__
+
 
 # __numpy_deployment_begin__
 @serve.deployment
@@ -142,11 +155,42 @@ class BlockingCPU:
 @serve.deployment(max_ongoing_requests=100)
 class CPUWithThreadpool:
     def __call__(self, request):
-        # With RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1, each call runs in a thread.
+        # With RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1 (default), each call runs in a thread.
         import time
         time.sleep(1)
         return "ok"
 # __cpu_with_threadpool_end__
+
+
+# __non_thread_safe_begin__
+@serve.deployment
+class NonThreadSafeCounter:
+    def __init__(self):
+        self.count = 0  # Shared mutable state across concurrent requests
+
+    def __call__(self, request):
+        # Race condition: multiple threads can read-modify-write
+        # self.count concurrently, leading to lost updates.
+        self.count += 1
+        return self.count
+# __non_thread_safe_end__
+
+
+# __thread_safe_counter_begin__
+import threading
+
+@serve.deployment
+class ThreadSafeCounter:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.count = 0
+
+    def __call__(self, request):
+        # Lock protects shared state from concurrent access.
+        with self._lock:
+            self.count += 1
+            return self.count
+# __thread_safe_counter_end__
 
 
 # __batched_model_begin__
@@ -331,7 +375,13 @@ if __name__ == "__main__":
     result = cpu_threadpool_handle.remote(None).result()
     print(f"CPUWithThreadpool result: {result}")
     assert result == "ok"
-    
+
+    print("\nTesting CustomThreadPool deployment...")
+    custom_threadpool_handle = serve.run(CustomThreadPool.bind())
+    result = custom_threadpool_handle.remote(None).result()
+    print(f"CustomThreadPool result: {result}")
+    assert result == "ok"
+
     print("\nTesting BlockingStream deployment...")
     # Test BlockingStream - just verify it can be created and called
     blocking_stream_handle = serve.run(BlockingStream.bind())
@@ -359,6 +409,21 @@ if __name__ == "__main__":
     result = batched_model_offload_handle.remote(1).result()
     print(f"BatchedModelOffload result: {result}")
     assert result == "result_1"
+
+    print("\nTesting NonThreadSafeCounter deployment...")
+    # Test NonThreadSafeCounter
+    non_thread_safe_handle = serve.run(NonThreadSafeCounter.bind())
+    result = non_thread_safe_handle.remote(None).result()
+    print(f"NonThreadSafeCounter result: {result}")
+    assert result == 1
+
+    print("\nTesting ThreadSafeCounter deployment...")
+    # Test ThreadSafeCounter
+    thread_safe_handle = serve.run(ThreadSafeCounter.bind())
+    for i in range(3):
+        result = thread_safe_handle.remote(None).result()
+        print(f"ThreadSafeCounter call {i + 1} result: {result}")
+        assert result == i + 1
     
     # Test HTTP-related deployments with try-except
     print("\n--- Testing HTTP-related deployments (may fail due to network) ---")
@@ -389,7 +454,7 @@ if __name__ == "__main__":
         print("✅ ThreadedHTTP test passed")
     except Exception as e:
         print(f"⚠️  ThreadedHTTP test failed (expected): {type(e).__name__}: {e}")
-    
+
     print("\nTesting OffloadIO deployment...")
     try:
         offload_io_handle = serve.run(OffloadIO.bind())

@@ -54,10 +54,7 @@ class ClusterManager(abc.ABC):
             .replace(":", "_")
             .replace(".", "_")
         )
-        self.cluster_env_name = (
-            f"{byod_image_name_normalized}"
-            f"__env__{dict_hash(self.test.get_byod_runtime_env())}"
-        )
+        self.cluster_env_name = byod_image_name_normalized
 
     def set_cluster_compute(
         self,

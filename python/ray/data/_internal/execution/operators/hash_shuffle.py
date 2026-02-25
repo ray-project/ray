@@ -33,6 +33,7 @@ from ray import ObjectRef
 from ray._private.ray_constants import (
     env_integer,
 )
+from ray._raylet import StreamingGeneratorStats
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -273,7 +274,9 @@ def _shuffle_block(
     )
 
     if block.num_rows == 0:
-        empty = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
+        empty = BlockAccessor.for_block(block).get_metadata(
+            exec_stats=stats.build(block_ser_time_s=0)
+        )
         return (empty, {})
 
     num_partitions = pool.num_partitions
@@ -346,7 +349,7 @@ def _shuffle_block(
         i += 1
 
     original_block_metadata = BlockAccessor.for_block(block).get_metadata(
-        exec_stats=stats.build()
+        exec_stats=stats.build(block_ser_time_s=0)
     )
 
     if logger.isEnabledFor(logging.DEBUG):
@@ -1011,7 +1014,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             reduce_name: self._output_blocks_stats,
         }
 
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         # Current processors resource usage is comprised by
         #   - Base Aggregator actors resource utilization (captured by
         #     `base_resource_usage` method)
@@ -1020,19 +1023,21 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         base_usage = self.base_resource_usage
         running_usage = self._shuffling_resource_usage
 
-        # TODO add memory to resources being tracked
         return base_usage.add(running_usage)
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
-        # TODO add memory to resources being tracked
         return ExecutionResources(
             cpu=(
                 self._aggregator_pool.num_aggregators
                 * self._aggregator_pool._aggregator_ray_remote_args["num_cpus"]
             ),
-            object_store_memory=0,
             gpu=0,
+            memory=(
+                self._aggregator_pool.num_aggregators
+                * self._aggregator_pool._aggregator_ray_remote_args.get("memory", 0)
+            ),
+            object_store_memory=0,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
@@ -1043,6 +1048,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             object_store_memory=0,
             gpu=0,
         )
+
+    def min_scheduling_resources(self) -> ExecutionResources:
+        return self.incremental_resource_usage()
 
     def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
@@ -1745,7 +1753,12 @@ class HashShuffleAggregator:
             exec_stats = exec_stats_builder.build()
             exec_stats_builder = BlockExecStats.builder()
 
-            yield block
+            stats: StreamingGeneratorStats = yield block
+
+            # Update block serialization time
+            if stats:
+                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+
             yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
 
     def _debug_dump(self):

@@ -262,6 +262,7 @@ proto_library(
         ":export_actor_event_proto",
         ":export_dataset_metadata_proto",
         ":export_dataset_operator_event_proto",
+        ":export_dataset_operator_schema_proto",
         ":export_driver_job_event_proto",
         ":export_node_event_proto",
         ":export_submission_job_event_proto",
@@ -363,6 +364,16 @@ proto_library(
 cc_proto_library(
     name = "export_dataset_operator_event_cc_proto",
     deps = [":export_dataset_operator_event_proto"],
+)
+
+proto_library(
+    name = "export_dataset_operator_schema_proto",
+    srcs = ["export_dataset_operator_schema.proto"],
+)
+
+cc_proto_library(
+    name = "export_dataset_operator_schema_cc_proto",
+    deps = [":export_dataset_operator_schema_proto"],
 )
 
 proto_library(

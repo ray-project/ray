@@ -27,8 +27,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
-from ray._common.utils import get_or_create_event_loop
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer, get_or_create_event_loop
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -140,14 +139,14 @@ def plan_project_op(
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
 
-    compute = get_compute(op._compute)
+    compute = get_compute(op.compute)
 
     # Create init_fn to initialize all callable class UDFs at actor startup
     from ray.data.util.expression_utils import (
-        create_callable_class_udf_init_fn,
+        _create_callable_class_udf_init_fn,
     )
 
-    init_fn = create_callable_class_udf_init_fn(projection_exprs)
+    init_fn = _create_callable_class_udf_init_fn(projection_exprs)
 
     def _project_block(block: Block) -> Block:
         try:
@@ -174,8 +173,8 @@ def plan_project_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
 
@@ -186,7 +185,7 @@ def plan_streaming_repartition_op(
 ) -> MapOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
-    compute = get_compute(op._compute)
+    compute = get_compute(op.compute)
     transform_fn = BlockMapTransformFn(
         lambda blocks, ctx: blocks,
         output_block_size_option=OutputBlockSizeOption.of(
@@ -195,16 +194,20 @@ def plan_streaming_repartition_op(
     )
     map_transformer = MapTransformer([transform_fn])
 
-    # Disable fusion for streaming repartition with the downstream op.
+    if op._strict:
+        ref_bundler = StreamingRepartitionRefBundler(op.target_num_rows_per_block)
+    else:
+        ref_bundler = None
+
     operator = MapOperator.create(
         map_transformer,
         input_physical_dag,
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ref_bundler=StreamingRepartitionRefBundler(op.target_num_rows_per_block),
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ref_bundler=ref_bundler,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
     return operator
@@ -222,8 +225,8 @@ def plan_filter_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    predicate_expr = op._predicate_expr
-    compute = get_compute(op._compute)
+    predicate_expr = op.predicate_expr
+    compute = get_compute(op.compute)
     if predicate_expr is not None:
 
         def filter_block_fn(
@@ -241,13 +244,13 @@ def plan_filter_op(
             output_block_size_option=output_block_size_option,
         )
     else:
-        udf_is_callable_class = isinstance(op._fn, CallableClass)
+        udf_is_callable_class = isinstance(op.fn, CallableClass)
         filter_fn, init_fn = _get_udf(
-            op._fn,
-            op._fn_args,
-            op._fn_kwargs,
-            op._fn_constructor_args if udf_is_callable_class else None,
-            op._fn_constructor_kwargs if udf_is_callable_class else None,
+            op.fn,
+            op.fn_args,
+            op.fn_kwargs,
+            op.fn_constructor_args if udf_is_callable_class else None,
+            op.fn_constructor_kwargs if udf_is_callable_class else None,
             compute=compute,
         )
 
@@ -265,8 +268,8 @@ def plan_filter_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        ray_remote_args=op._ray_remote_args,
-        ray_remote_args_fn=op._ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
     )
 
 
@@ -287,23 +290,23 @@ def plan_udf_map_op(
         target_max_block_size=data_context.target_max_block_size,
     )
 
-    compute = get_compute(op._compute)
-    udf_is_callable_class = isinstance(op._fn, CallableClass)
+    compute = get_compute(op.compute)
+    udf_is_callable_class = isinstance(op.fn, CallableClass)
     fn, init_fn = _get_udf(
-        op._fn,
-        op._fn_args,
-        op._fn_kwargs,
-        op._fn_constructor_args if udf_is_callable_class else None,
-        op._fn_constructor_kwargs if udf_is_callable_class else None,
+        op.fn,
+        op.fn_args,
+        op.fn_kwargs,
+        op.fn_constructor_args if udf_is_callable_class else None,
+        op.fn_constructor_kwargs if udf_is_callable_class else None,
         compute=compute,
     )
 
     if isinstance(op, MapBatches):
         transform_fn = BatchMapTransformFn(
             _generate_transform_fn_for_map_batches(fn),
-            batch_size=op._batch_size,
-            batch_format=op._batch_format,
-            zero_copy_batch=op._zero_copy_batch,
+            batch_size=op.batch_size,
+            batch_format=op.batch_format,
+            zero_copy_batch=op.zero_copy_batch,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
@@ -330,10 +333,10 @@ def plan_udf_map_op(
         data_context,
         name=op.name,
         compute_strategy=compute,
-        min_rows_per_bundle=op._min_rows_per_bundled_input,
-        ray_remote_args_fn=op._ray_remote_args_fn,
-        ray_remote_args=op._ray_remote_args,
-        per_block_limit=op._per_block_limit,
+        min_rows_per_bundle=op.min_rows_per_bundled_input,
+        ray_remote_args_fn=op.ray_remote_args_fn,
+        ray_remote_args=op.ray_remote_args,
+        per_block_limit=op.per_block_limit,
     )
 
 
@@ -522,6 +525,86 @@ def _validate_batch_output(batch: Block) -> None:
                 )
 
 
+class _TransformingBatchIterator(Iterator[DataBatch]):
+    """Iterator that applies a UDF to batches.
+
+    Unlike a generator, local variables in __next__ go out of scope when the method
+    returns, avoiding holding references to yielded values.
+
+    Uses a deque with popleft() to actually release references when items are consumed,
+    rather than keeping them in an iterator.
+    """
+
+    def __init__(self, batches: Iterable[DataBatch], fn: UserDefinedFunction):
+        self._input_iter = iter(batches)
+        self._fn = fn
+        self._cur_output_iter: Optional[Iterator[DataBatch]] = None
+
+    def __iter__(self) -> "_TransformingBatchIterator":
+        return self
+
+    def __next__(self) -> DataBatch:
+        while True:
+            # Check if there's pending output iter we'd continue fetching
+            # from
+            if self._cur_output_iter is not None:
+                try:
+                    out_batch = next(self._cur_output_iter)
+                except StopIteration:
+                    pass
+                else:
+                    _validate_batch_output(out_batch)
+                    return out_batch
+
+            # Fetch the next batch from upstream
+            input_batch = next(self._input_iter)
+
+            if (
+                not isinstance(input_batch, collections.abc.Mapping)
+                and BlockAccessor.for_block(input_batch).num_rows() == 0
+            ):
+                # For empty input blocks, we directly output them without
+                # calling the UDF.
+                # TODO(hchen): This workaround is because some all-to-all
+                # operators output empty blocks with no schema.
+                self._cur_output_iter = _ReleasingIterator(
+                    collections.deque([input_batch])
+                )
+            else:
+                try:
+                    res = self._fn(input_batch)
+
+                    if not isinstance(res, GeneratorType):
+                        # NOTE: It's critical that we're utilizing *releasing* iterator
+                        #       to avoid capturing intermediate objects along the whole
+                        #       iterator chain
+                        self._cur_output_iter = _ReleasingIterator(
+                            collections.deque([res])
+                        )
+                    else:
+                        # In cases when UDF returns a generator we iterate over it
+                        # as is (given that we can't release intermediate state from
+                        # UDF anyway)
+                        self._cur_output_iter = res
+                except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
+                    err_msg = str(e)
+                    if any(msg in err_msg for msg in read_only_msgs):
+                        raise ValueError(
+                            f"Batch mapper function {self._fn.__name__} tried to mutate a "
+                            "zero-copy read-only batch. To be able to mutate the "
+                            "batch, pass zero_copy_batch=False to map_batches(); "
+                            "this will create a writable copy of the batch before "
+                            "giving it to fn. To elide this copy, modify your mapper "
+                            "function so it doesn't try to mutate its input."
+                        ) from e
+                    else:
+                        raise e from None
+
+
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
@@ -538,42 +621,7 @@ def _generate_transform_fn_for_map_batches(
         def transform_fn(
             batches: Iterable[DataBatch], _: TaskContext
         ) -> Iterable[DataBatch]:
-            for batch in batches:
-                try:
-                    if (
-                        not isinstance(batch, collections.abc.Mapping)
-                        and BlockAccessor.for_block(batch).num_rows() == 0
-                    ):
-                        # For empty input blocks, we directly output them without
-                        # calling the UDF.
-                        # TODO(hchen): This workaround is because some all-to-all
-                        # operators output empty blocks with no schema.
-                        res = [batch]
-                    else:
-                        res = fn(batch)
-                        if not isinstance(res, GeneratorType):
-                            res = [res]
-                except ValueError as e:
-                    read_only_msgs = [
-                        "assignment destination is read-only",
-                        "buffer source array is read-only",
-                    ]
-                    err_msg = str(e)
-                    if any(msg in err_msg for msg in read_only_msgs):
-                        raise ValueError(
-                            f"Batch mapper function {fn.__name__} tried to mutate a "
-                            "zero-copy read-only batch. To be able to mutate the "
-                            "batch, pass zero_copy_batch=False to map_batches(); "
-                            "this will create a writable copy of the batch before "
-                            "giving it to fn. To elide this copy, modify your mapper "
-                            "function so it doesn't try to mutate its input."
-                        ) from e
-                    else:
-                        raise e from None
-                else:
-                    for out_batch in res:
-                        _validate_batch_output(out_batch)
-                        yield out_batch
+            return _TransformingBatchIterator(batches, fn)
 
     return transform_fn
 
@@ -896,3 +944,17 @@ def _generate_transform_fn_for_async_map(
                     yield item
 
     return _transform
+
+
+class _ReleasingIterator(Iterator[T]):
+    def __init__(self, d: collections.deque):
+        self._d = d
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if not self._d:
+            raise StopIteration
+
+        return self._d.popleft()

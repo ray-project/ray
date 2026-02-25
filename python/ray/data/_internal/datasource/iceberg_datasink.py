@@ -3,11 +3,13 @@ Module to write a Ray Dataset into an iceberg table, by using the Ray Datasink A
 """
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
+from ray._common.retry import call_with_retry
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -139,6 +141,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self._table: "Table" = None
         self._io: "FileIO" = None
         self._table_metadata: "TableMetadata" = None
+        self._data_context = DataContext.get_current()
 
     def __getstate__(self) -> dict:
         """Exclude `_table` during pickling."""
@@ -150,15 +153,43 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         self.__dict__.update(state)
         self._table = None
 
+    def _with_retry(self, func: Callable, description: str) -> Any:
+        """Execute a function with retry logic.
+
+        This helper encapsulates the common retry pattern for Iceberg catalog
+        operations, using the configured retry parameters from DataContext.
+
+        Args:
+            func: The callable to execute with retry logic.
+            description: Human-readable description for logging/error messages.
+
+        Returns:
+            The result of calling func.
+        """
+        iceberg_config = self._data_context.iceberg_config
+        return call_with_retry(
+            func,
+            description=description,
+            match=iceberg_config.catalog_retried_errors,
+            max_attempts=iceberg_config.catalog_max_attempts,
+            max_backoff_s=iceberg_config.catalog_retry_max_backoff_s,
+        )
+
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
-        return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
+        return self._with_retry(
+            lambda: catalog.load_catalog(self._catalog_name, **self._catalog_kwargs),
+            description=f"load Iceberg catalog '{self._catalog_name}'",
+        )
 
     def _reload_table(self) -> None:
         """Reload the Iceberg table from the catalog."""
-        catalog = self._get_catalog()
-        self._table = catalog.load_table(self.table_identifier)
+        cat = self._get_catalog()
+        self._table = self._with_retry(
+            lambda: cat.load_table(self.table_identifier),
+            description=f"load Iceberg table '{self.table_identifier}'",
+        )
         self._io = self._table.io
         self._table_metadata = self._table.metadata
 
@@ -186,7 +217,11 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         with txn._append_snapshot_producer(self._snapshot_properties) as append_files:
             for data_file in data_files:
                 append_files.append_data_file(data_file)
-        txn.commit_transaction()
+
+        self._with_retry(
+            txn.commit_transaction,
+            description=f"commit transaction to Iceberg table '{self.table_identifier}'",
+        )
 
     def _commit_upsert(
         self,
@@ -312,8 +347,15 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         # This prevents PyIceberg name mapping errors when incoming data has new columns
         if schema is not None:
             table_schema = self._table.metadata.schema()
-            with self._table.update_schema() as update:
-                self._update_schema_with_union(update, schema, table_schema)
+
+            def _update_schema():
+                with self._table.update_schema() as update:
+                    self._update_schema_with_union(update, schema, table_schema)
+
+            self._with_retry(
+                _update_schema,
+                description=f"update schema for Iceberg table '{self.table_identifier}'",
+            )
             # Succeeded, reload to get latest table version and exit.
             self._reload_table()
 
@@ -364,13 +406,23 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     if len(upsert_cols) > 0:
                         upsert_keys_tables.append(pa_table.select(upsert_cols))
 
-                # Write data files to storage
-                data_files = list(
-                    _dataframe_to_data_files(
-                        table_metadata=self._table_metadata,
-                        df=pa_table,
-                        io=self._io,
+                # Write data files to storage with retry for transient errors
+                def _write_data_files():
+                    return list(
+                        _dataframe_to_data_files(
+                            table_metadata=self._table_metadata,
+                            df=pa_table,
+                            io=self._io,
+                        )
                     )
+
+                iceberg_config = self._data_context.iceberg_config
+                data_files = call_with_retry(
+                    _write_data_files,
+                    description=f"write data files to Iceberg table '{self.table_identifier}'",
+                    match=self._data_context.retried_io_errors,
+                    max_attempts=iceberg_config.write_file_max_attempts,
+                    max_backoff_s=iceberg_config.write_file_retry_max_backoff_s,
                 )
                 all_data_files.extend(data_files)
 

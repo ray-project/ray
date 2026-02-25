@@ -234,6 +234,9 @@ class GlueTest(unittest.TestCase):
 
         self.command_runner_return["run_prepare_command"] = None
 
+        self.command_runner_return["job_url"] = "http://mock-job-url"
+        self.command_runner_return["job_id"] = "mock-job-id"
+
         if until == "prepare_command":
             return
 
@@ -318,6 +321,7 @@ class GlueTest(unittest.TestCase):
         # Special case: Prepare commands are usually waiting for nodes
         # (this may change in the future!)
         self.assertEqual(result.return_code, ExitCode.CLUSTER_WAIT_TIMEOUT.value)
+        self.assertIsNone(result.job_url)
 
     def testTestCommandFails(self):
         result = Result()
@@ -335,6 +339,7 @@ class GlueTest(unittest.TestCase):
         with self.assertRaises(TestCommandTimeout):
             self._run(result)
         self.assertEqual(result.return_code, ExitCode.COMMAND_TIMEOUT.value)
+        self.assertIsNotNone(result.job_url)
 
     def testTestCommandTimeoutLongRunning(self):
         result = Result()

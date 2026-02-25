@@ -51,6 +51,7 @@ class TaskReceiver {
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       RepeatedObjectRefCount *borrower_refs,
       bool *is_retryable_error,
+      std::string *actor_repr_name,
       std::string *application_error)>;
 
   TaskReceiver(instrumented_io_context &task_execution_service,
@@ -97,21 +98,21 @@ class TaskReceiver {
 
   void Stop();
 
-  /// Set the actor repr name for an actor.
-  ///
-  /// The actor repr name is only available after actor creation task has been run since
-  /// the repr name could include data only initialized during the creation task.
-  void SetActorReprName(const std::string &repr_name);
-
  private:
-  // True once shutdown begins. Requests to execute new tasks will be rejected.
-  std::atomic<bool> stopping_ = false;
-
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
   void SetupActor(bool is_asyncio,
                   int fiber_max_concurrency,
                   bool allow_out_of_order_execution);
+
+  void HandleTaskExecutionResult(Status status,
+                                 const TaskSpecification &task_spec,
+                                 const TaskExecutionResult &result,
+                                 const rpc::SendReplyCallback &send_reply_callback,
+                                 rpc::PushTaskReply *reply);
+
+  // True once shutdown begins. Requests to execute new tasks will be rejected.
+  std::atomic<bool> stopping_ = false;
 
   /// The callback function to process a task.
   TaskHandler task_handler_;
@@ -153,10 +154,6 @@ class TaskReceiver {
   /// Whether this actor executes tasks out of order with respect to client submission
   /// order.
   bool allow_out_of_order_execution_ = false;
-
-  /// The repr name of the actor instance for an anonymous actor.
-  /// This is only available after the actor creation task.
-  std::string actor_repr_name_;
 
   /// The concurrency groups of this worker's actor, computed from actor creation task
   /// spec.

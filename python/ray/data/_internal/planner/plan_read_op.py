@@ -72,9 +72,9 @@ def plan_read_op(
         ), "Read parallelism must be set by the optimizer before execution"
 
         # Get the original read tasks
-        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(
+        read_tasks = op.datasource_or_legacy_reader.get_read_tasks(
             parallelism,
-            per_task_row_limit=op._per_block_limit,
+            per_task_row_limit=op.per_block_limit,
             data_context=data_context,
         )
 
@@ -125,6 +125,6 @@ def plan_read_op(
         inputs,
         data_context,
         name=op.name,
-        compute_strategy=op._compute,
-        ray_remote_args=op._ray_remote_args,
+        compute_strategy=op.compute,
+        ray_remote_args=op.ray_remote_args,
     )

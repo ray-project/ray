@@ -18,6 +18,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -419,5 +420,15 @@ ResourceRequest ResourceMapToResourceRequest(
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<ResourceID, double> &resource_map,
     bool requires_object_store_memory);
+
+// Helper function convert a std::unordered_map to the absl::flat_hash_map used
+// by the NodeResources labels field.
+inline void SetNodeResourcesLabels(
+    NodeResources &resources,
+    const std::unordered_map<std::string, std::string> &labels) {
+  for (const auto &pair : labels) {
+    resources.labels[pair.first] = pair.second;
+  }
+}
 
 }  // namespace ray

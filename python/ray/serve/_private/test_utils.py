@@ -16,12 +16,12 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._common.network_utils import build_address
-from ray._common.test_utils import wait_for_condition
-from ray._common.utils import TimerBase
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
+    wait_for_condition,
 )
+from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -156,6 +156,9 @@ class MockClusterNodeInfoCache:
 
     def set_available_resources_per_node(self, node_id: str, resources: Dict):
         self.available_resources_per_node[node_id] = deepcopy(resources)
+
+    def get_node_labels(self, node_id: str):
+        return self.node_labels.get(node_id, {})
 
 
 class FakeRemoteFunction:

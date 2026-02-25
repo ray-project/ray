@@ -119,8 +119,8 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 """,
-    sha256 = "920cbcaad514cc185634f6f0dcd71df5e8f4ee4456d440a22e0f8c0f142a8203",
-    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.17/uv-x86_64-unknown-linux-gnu.tar.gz"],
+    sha256 = "30ccbf0a66dc8727a02b0e245c583ee970bdafecf3a443c1686e1b30ec4939e8",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.9.26/uv-x86_64-unknown-linux-gnu.tar.gz"],
 )
 
 http_archive(
@@ -132,8 +132,8 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 """,
-    sha256 = "e4d4859d7726298daa4c12e114f269ff282b2cfc2b415dc0b2ca44ae2dbd358e",
-    urls = ["https://github.com/astral-sh/uv/releases/download/0.8.17/uv-aarch64-apple-darwin.tar.gz"],
+    sha256 = "fcf0a9ea6599c6ae28a4c854ac6da76f2c889354d7c36ce136ef071f7ab9721f",
+    urls = ["https://github.com/astral-sh/uv/releases/download/0.9.26/uv-aarch64-apple-darwin.tar.gz"],
 )
 
 http_archive(

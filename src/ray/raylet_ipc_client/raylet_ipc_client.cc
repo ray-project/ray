@@ -25,7 +25,7 @@
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/util/logging.h"
-#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 
 namespace ray::ipc {
 

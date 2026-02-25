@@ -174,13 +174,12 @@ class TFPolicy(Policy):
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
-        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - num_gpus=0 (set by the user).
         # - no GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             self.devices = ["/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)]
         # Place on one or more actual GPU(s), when:
         # - num_gpus > 0 (set by user) AND
-        # - local_mode=False AND
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
