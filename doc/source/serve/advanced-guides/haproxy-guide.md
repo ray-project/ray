@@ -70,6 +70,10 @@ export RAY_SERVE_ENABLE_HA_PROXY=1
 
 This single variable is all that is required. It implicitly enables direct ingress (replicas listen on individual ports that HAProxy routes to).
 
+:::{note}
+On multi-node clusters, you must also set `RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0` so that replica direct ingress servers bind to all interfaces. Without this, replicas bind to `127.0.0.1` (the default) and HAProxy on other nodes cannot connect to them.
+:::
+
 ### KubeRay cluster example
 
 In a KubeRay `RayService` or `RayCluster` spec, set the environment variable on both the head and worker pods:
@@ -79,6 +83,8 @@ In a KubeRay `RayService` or `RayCluster` spec, set the environment variable on 
 env:
   - name: RAY_SERVE_ENABLE_HA_PROXY
     value: "1"
+  - name: RAY_SERVE_DEFAULT_HTTP_HOST
+    value: "0.0.0.0"
 ```
 
 ### VM cluster example
@@ -88,6 +94,7 @@ When using `ray start`, export the variable before starting the cluster:
 ```bash
 # On every node (head and workers)
 export RAY_SERVE_ENABLE_HA_PROXY=1
+export RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
 ray start --head  # or ray start --address=<head-ip>:6379 on workers
 ```
 
