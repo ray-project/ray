@@ -152,10 +152,10 @@ kubectl get pods -w
 # raycluster-sample-worker-worker-mlvtz   1/1     Running             0          71s
 ```
 Note: KAI Scheduler currently only supports **RayCluster** and **RayJob with SidecarMode or HTTPMode**.
-   The following modes are not supported:
+The following modes are not supported:
    
-   - **K8sJobMode**: The submitter pod is created after RayCluster is ready, preventing proper gang scheduling.
-   - **InteractiveMode**: The user-provided submitter runs after RayCluster is ready, preventing proper gang scheduling.
+- **K8sJobMode**: The submitter pod is created after RayCluster is ready, preventing proper gang scheduling.
+- **InteractiveMode**: The user-provided submitter runs after RayCluster is ready, preventing proper gang scheduling.
 
 ## Set priorities for workloads
 
