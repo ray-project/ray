@@ -34,10 +34,8 @@ VERSION_1.0 {
         _ZN3ray8internal*;
         *PyInit*;
         *init_raylet*;
-        _ZTIN3ray*Java;
-        _ZTSN3ray*Java;
-        _ZTVN3ray*Java;
-        *JNI_*;
+        *Java_io_ray*;
+        _JNI_On*;
         *aligned_free*;
         *aligned_malloc*;
     local: *;
