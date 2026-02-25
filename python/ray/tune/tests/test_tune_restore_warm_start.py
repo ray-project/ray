@@ -287,11 +287,18 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        from ax.modelbridge.generation_strategy import (
-            GenerationStep,
-            GenerationStrategy,
-        )
-        from ax.modelbridge.registry import Models
+        try:
+            # ax 1.0+: ax.modelbridge was removed
+            from ax.adapter.registry import Generators as Models
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
+            from ax.generation_strategy.generation_node import GenerationStep
+        except ImportError:
+            # ax 0.x
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
+            from ax.modelbridge.registry import Models
 
         # set generation strategy to sobol to ensure reproductibility
         try:
