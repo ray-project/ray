@@ -14,7 +14,7 @@ from ray.train.torch.config import (
     _TorchBackend,
 )
 from ray.train.v2._internal.constants import TORCHFT_LIGHTHOUSE_ENV_VAR
-from ray.train.v2.backend import ControllerLifecycleMixin
+from ray.train.v2.backend import BeforeWorkerGroupStartMixin
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -55,14 +55,14 @@ class LighthouseServerActor:
         return self.lighthouse.address()
 
 
-class _TorchftBackend(_TorchBackend, ControllerLifecycleMixin):
+class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
     """Backend for torchft-based fault-tolerant training with replica groups.
 
     Creates a separate TCPStore and process group per replica group,
     matching the torchrun model.
     """
 
-    def on_controller_start(self, backend_config: TorchftConfig):
+    def before_worker_group_start(self, backend_config: TorchftConfig):
 
         # Let the OS pick a free port by default
         if "bind" in backend_config.lighthouse_kwargs:
@@ -94,7 +94,8 @@ class _TorchftBackend(_TorchBackend, ControllerLifecycleMixin):
         backend = _get_backend(worker_group, backend_config)
 
         num_workers = len(worker_group)
-        # TODO: when we support model parallelism, these depend on device mesh config.
+        # TODO: when we support model parallelism, we can get device mesh config from the
+        # worker_group object.
         num_replica_groups = num_workers
         num_workers_per_replica_group = 1
 

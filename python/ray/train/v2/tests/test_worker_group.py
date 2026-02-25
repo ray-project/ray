@@ -544,25 +544,9 @@ def test_setup_worker_group(tmp_path):
     def get_storage_context_name():
         return ray.train.get_context().get_storage().experiment_dir_name
 
-    def get_replica_group_rank():
-        return ray.train.get_context().get_replica_group_rank()
-
-    def get_replica_group_world_size():
-        return ray.train.get_context().get_replica_group_world_size()
-
-    def get_replica_group_id():
-        return ray.train.get_context().get_replica_group_id()
-
-    def get_num_replica_groups():
-        return ray.train.get_context().get_num_replica_groups()
-
     assert worker_group.execute(get_world_size) == [num_workers] * num_workers
     assert sorted(worker_group.execute(get_world_rank)) == list(range(num_workers))
     assert worker_group.execute(get_storage_context_name) == ["test"] * num_workers
-    assert worker_group.execute(get_replica_group_rank) == [0] * num_workers
-    assert worker_group.execute(get_replica_group_world_size) == [1] * num_workers
-    assert worker_group.execute(get_replica_group_id) == list(range(num_workers))
-    assert worker_group.execute(get_num_replica_groups) == [num_workers] * num_workers
 
     worker_group.shutdown()
 

@@ -83,10 +83,6 @@ class DistributedContext:
     local_rank: int
     local_world_size: int
     node_rank: int
-    replica_group_rank: Optional[int] = None
-    replica_group_world_size: Optional[int] = None
-    replica_group_id: Optional[int] = None
-    num_replica_groups: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -154,30 +150,6 @@ class TrainContext:
 
     def get_node_rank(self) -> int:
         return self.distributed_context.node_rank
-
-    def get_replica_group_rank(self) -> int:
-        if self.distributed_context.replica_group_rank is not None:
-            return self.distributed_context.replica_group_rank
-        # DDP default: each worker is its own replica group with rank 0.
-        return 0
-
-    def get_replica_group_world_size(self) -> int:
-        if self.distributed_context.replica_group_world_size is not None:
-            return self.distributed_context.replica_group_world_size
-        # DDP default: each worker is its own replica group of size 1.
-        return 1
-
-    def get_replica_group_id(self) -> int:
-        if self.distributed_context.replica_group_id is not None:
-            return self.distributed_context.replica_group_id
-        # DDP default: replica group ID equals the worker's world rank.
-        return self.distributed_context.world_rank
-
-    def get_num_replica_groups(self) -> int:
-        if self.distributed_context.num_replica_groups is not None:
-            return self.distributed_context.num_replica_groups
-        # DDP default: number of replica groups equals world size.
-        return self.distributed_context.world_size
 
     def get_storage(self):
         return self.storage_context

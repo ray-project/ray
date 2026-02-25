@@ -176,38 +176,6 @@ class TrainContext(ABC):
         """
         pass
 
-    @abstractmethod
-    def get_replica_group_rank(self) -> int:
-        """Get the rank of this worker within its replica group.
-
-        For standard DDP, defaults to 0 (each worker is its own replica group).
-        """
-        pass
-
-    @abstractmethod
-    def get_replica_group_world_size(self) -> int:
-        """Get the number of workers in this worker's replica group.
-
-        For standard DDP, defaults to 1 (each worker is its own replica group).
-        """
-        pass
-
-    @abstractmethod
-    def get_replica_group_id(self) -> int:
-        """Get the replica group ID that this worker belongs to.
-
-        For standard DDP, defaults to the worker's world rank.
-        """
-        pass
-
-    @abstractmethod
-    def get_num_replica_groups(self) -> int:
-        """Get the total number of replica groups.
-
-        For standard DDP, defaults to world size.
-        """
-        pass
-
     @DeveloperAPI
     @abstractmethod
     def get_storage(self):
@@ -242,18 +210,6 @@ class DistributedTrainContext(TrainContext):
 
     def get_node_rank(self) -> int:
         return get_internal_train_context().get_node_rank()
-
-    def get_replica_group_rank(self) -> int:
-        return get_internal_train_context().get_replica_group_rank()
-
-    def get_replica_group_world_size(self) -> int:
-        return get_internal_train_context().get_replica_group_world_size()
-
-    def get_replica_group_id(self) -> int:
-        return get_internal_train_context().get_replica_group_id()
-
-    def get_num_replica_groups(self) -> int:
-        return get_internal_train_context().get_num_replica_groups()
 
     def get_storage(self):
         return get_internal_train_context().get_storage()
@@ -296,22 +252,6 @@ class LocalTrainContext(TrainContext):
 
     def get_node_rank(self) -> int:
         return self.node_rank
-
-    def get_replica_group_rank(self) -> int:
-        # DDP default: each worker is its own replica group with rank 0.
-        return 0
-
-    def get_replica_group_world_size(self) -> int:
-        # DDP default: each worker is its own replica group of size 1.
-        return 1
-
-    def get_replica_group_id(self) -> int:
-        # DDP default: replica group ID equals the worker's world rank.
-        return self.world_rank
-
-    def get_num_replica_groups(self) -> int:
-        # DDP default: number of replica groups equals world size.
-        return self.world_size
 
     def get_storage(self):
         raise NotImplementedError("Local storage context not yet implemented. ")

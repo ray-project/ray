@@ -158,10 +158,11 @@ def _set_torch_distributed_env_vars(torchft_enabled: bool = False):
     os.environ["LOCAL_RANK"] = str(context.get_local_rank())
     os.environ["LOCAL_WORLD_SIZE"] = str(context.get_local_world_size())
     os.environ["NODE_RANK"] = str(context.get_node_rank())
-    # torchft can only be enabled in Ray Train v2
+    # torchft can only be enabled in Ray Train v2.
+    # TODO: use dp rank and dp world size after model parallel training is supported
     if torchft_enabled:
-        os.environ["RANK"] = str(context.get_replica_group_rank())
-        os.environ["WORLD_SIZE"] = str(context.get_replica_group_world_size())
+        os.environ["RANK"] = "0"
+        os.environ["WORLD_SIZE"] = "1"
     else:
         os.environ["RANK"] = str(context.get_world_rank())
         os.environ["WORLD_SIZE"] = str(context.get_world_size())

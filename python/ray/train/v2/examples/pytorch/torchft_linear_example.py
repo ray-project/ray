@@ -45,8 +45,9 @@ def train_func(config):
     context = ray.train.get_context()
     world_rank = context.get_world_rank()
     world_size = context.get_world_size()
-    group_rank = context.get_replica_group_rank()
-    replica_group_id = context.get_replica_group_id()
+    # Each worker is its own replica group with rank 0.
+    group_rank = 0
+    replica_group_id = world_rank
 
     # Model and optimizer
     model = nn.Linear(1, hidden_size)
