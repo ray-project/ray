@@ -73,6 +73,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   }
 
   const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
+  RAY_CHECK(!scheduling_strategies.empty())
+      << "Placement group must have at least one scheduling strategy.";
 
   std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule;
   bool is_scheduling_all_bundles = false;
@@ -86,7 +88,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     is_scheduling_all_bundles = true;
   }
 
-  if (is_scheduling_all_bundles && !scheduling_strategies.empty()) {
+  if (is_scheduling_all_bundles) {
     // If we are scheduling all bundles (either brand new PG, or all bundles are
     // rescheduling), start from the primary strategy (index 0).
     bundles_to_schedule.clear();
@@ -155,7 +157,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
-  if (!scheduling_strategies.empty() && is_scheduling_all_bundles) {
+  if (is_scheduling_all_bundles) {
     // Only update active bundles after full scheduling option succeeds.
     placement_group->UpdateActiveBundles(
         selected_strategy_index, scheduling_strategies.Get(selected_strategy_index));
