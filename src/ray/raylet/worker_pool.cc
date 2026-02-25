@@ -1717,7 +1717,8 @@ void WorkerPool::WarnAboutSize() {
           << "WARNING: " << num_workers_started_or_registered << " "
           << Language_Name(entry.first)
           << " worker processes have been started on node: " << node_id_
-          << " with address: " << node_address_ << ". "
+          << " with address: " << node_address_ << ", which is " << multiple
+          << "x the number of CPUs (" << state.multiple_for_warning << "). "
           << "This could be a result of using "
           << "a large number of actors, tasks blocked in ray.get() calls, "
           << "or tasks with fractional CPU requests (e.g., num_cpus=0.1) allowing "
