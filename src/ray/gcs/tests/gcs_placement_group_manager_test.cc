@@ -140,7 +140,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
       }
       // Manually set the active bundles to the updated strategy.
       placement_group->UpdateActiveBundles(
-          placement_group->GetSchedulingStrategy().Get(0));
+          0, placement_group->GetSchedulingStrategy().Get(0));
     }
   }
 
@@ -157,7 +157,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
       }
       // Manually set the active bundles to the updated strategy.
       placement_group->UpdateActiveBundles(
-          placement_group->GetSchedulingStrategy().Get(0));
+          0, placement_group->GetSchedulingStrategy().Get(0));
     }
   }
 
@@ -257,7 +257,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
   // Fill the cache and verify it.
-  placement_group->UpdateActiveBundles(placement_group->GetSchedulingStrategy().Get(0));
+  placement_group->UpdateActiveBundles(0,
+                                       placement_group->GetSchedulingStrategy().Get(0));
   const auto &bundle_specs = placement_group->GetBundles();
   ASSERT_EQ(placement_group->cached_bundle_specs_, bundle_specs);
   ASSERT_FALSE(placement_group->cached_bundle_specs_.empty());
