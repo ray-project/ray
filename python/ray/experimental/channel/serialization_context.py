@@ -19,7 +19,7 @@ class _SerializationContext:
         # If _use_external_transport is True, then these are
         # the tensors that should be sent or received
         # out-of-band, through the external transport.
-        self._out_of_band_tensors: List[Any] = []
+        self._out_of_band_tensors: List["torch.Tensor"] = []
         # During serialization, tensors sent out-of-band are replaced with
         # integer placeholders. This tracks the set of placeholders seen.
         self._deserialized_tensor_placeholders: Set[int] = set()
@@ -79,8 +79,8 @@ class _SerializationContext:
         return self._use_external_transport
 
     def reset_out_of_band_tensors(
-        self, tensors: List[Any]
-    ) -> Tuple[List[Any], Set[int]]:
+        self, tensors: List["torch.Tensor"]
+    ) -> Tuple[List["torch.Tensor"], Set[int]]:
         """
         Return and reset the out-of-band tensors and all tensor placeholders
         that were deserialized since the last call to reset.
@@ -92,13 +92,13 @@ class _SerializationContext:
         return prev_tensors, deserialized_tensor_placeholders
 
     def serialize_tensor(
-        self, tensor: Any, is_rdt: bool
+        self, tensor: "torch.Tensor"
     ) -> Union[int, Tuple["np.ndarray", "torch.dtype", str]]:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
         if self._use_external_transport and (
-            is_rdt or ctx._torch_device is None or ctx._torch_device == tensor.device
+            ctx._torch_device is None or ctx._torch_device == tensor.device
         ):
             # External transport is enabled and we found a tensor that matches
             # our device.  Add the actual tensor to a buffer. The buffer of
@@ -108,16 +108,6 @@ class _SerializationContext:
             # Return a placeholder.
             return len(self._out_of_band_tensors) - 1
 
-        if is_rdt:
-            # If the custom rdt serializer is already registered for this type
-            # but this method is not an rdt method, we'll try to serialize with
-            # the default pickle serializer to avoid registering and deregistering
-            # serializers per function call.
-            import pickle
-
-            return pickle.dumps(tensor)
-
-        # This path is only for cgraphs.
         return self.serialize_to_numpy_or_scalar(tensor)
 
     def serialize_to_numpy_or_scalar(
@@ -152,9 +142,8 @@ class _SerializationContext:
 
     def deserialize_tensor(
         self,
-        val: Union[Tuple["np.ndarray", "torch.dtype", str], int, bytes],
+        val: Union[Tuple["np.ndarray", "torch.dtype", str], int],
         target_device: Device,
-        is_rdt: bool,
     ):
 
         # Found a placeholder for a tensor that was serialized via accelerator.
@@ -172,12 +161,6 @@ class _SerializationContext:
             if target_device == Device.CPU:
                 tensor = tensor.to("cpu")
             return tensor
-
-        if is_rdt:
-            import pickle
-
-            assert isinstance(val, bytes)
-            return pickle.loads(val)
 
         np_array, dtype, tensor_device_type = val
         return self.deserialize_from_numpy_or_scalar(
