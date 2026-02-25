@@ -31,7 +31,6 @@ from ray.serve._private.constants import (
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray.util.state import list_actors
-from ray.util.state.common import RAY_MAX_LIMIT_FROM_API_SERVER
 
 try:
     import pandas as pd
@@ -532,13 +531,12 @@ def get_active_placement_group_ids() -> Set[str]:
     Returns:
         The set of placement group IDs referenced by alive Serve actors.
     """
-
     actors = list_actors(
         filters=[
             ("ray_namespace", "=", SERVE_NAMESPACE),
             ("state", "=", "ALIVE"),
         ],
-        limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+        limit=ray.util.state.common.RAY_MAX_LIMIT_FROM_API_SERVER,
         detail=True,
         raise_on_missing_output=False,
     )
