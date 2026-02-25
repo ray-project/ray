@@ -218,10 +218,11 @@ def test_placement_group_fallback_validation(ray_start_cluster):
     except ValueError as e:
         pytest.fail(f"Validation failed for fallback-compatible task: {e}")
 
-    # Verify bundle_specs contains active bundles.
+    # Verify bundle_specs returns what was specified for the top priority
+    # resource requirements.
     ray.get(pg.ready())
-    assert pg.bundle_specs[0].get("CPU") == 1
-    assert pg.bundle_specs[0].get("GPU") is None
+    assert pg.bundle_specs[0].get("GPU") == 1
+    assert pg.bundle_specs[0].get("CPU") is None
 
     remove_placement_group(pg)
     placement_group_assert_no_leak([pg])

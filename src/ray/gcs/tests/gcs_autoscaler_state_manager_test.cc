@@ -1200,5 +1200,43 @@ TEST_F(GcsAutoscalerStateManagerTest,
   EXPECT_EQ(c2.label_values(0), "TPU");
 }
 
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsEmptyBundlesFallback) {
+  rpc::PlacementGroupLoad load;
+
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  // PG bundles are empty, we only populate the primary scheduling option.
+  auto *scheduling_option = pg_data->add_scheduling_options();
+
+  auto *bundle1 = scheduling_option->add_bundles();
+  (*bundle1->mutable_unit_resources())["CPU"] = 2;
+  (*bundle1->mutable_unit_resources())["GPU"] = 1;
+
+  auto *bundle2 = scheduling_option->add_bundles();
+  (*bundle2->mutable_unit_resources())["CPU"] = 4;
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+
+  const auto &r1 = req.bundle_selectors(0).resource_requests(0);
+  const auto &r2 = req.bundle_selectors(0).resource_requests(1);
+
+  // Verify the autoscaler correctly extracted the resources from scheduling_options(0)
+  ASSERT_EQ(r1.resources_bundle().at("CPU"), 2);
+  ASSERT_EQ(r1.resources_bundle().at("GPU"), 1);
+  ASSERT_EQ(r2.resources_bundle().at("CPU"), 4);
+}
+
 }  // namespace gcs
 }  // namespace ray

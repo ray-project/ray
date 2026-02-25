@@ -79,9 +79,7 @@ class PlacementGroup:
 
         This returns the primary resource requirements specified at creation.
         """
-        if self.bundle_cache is None:
-            self._fill_bundle_cache()
-
+        self._fill_bundle_cache_if_needed()
         return self.bundle_cache or []
 
     @property
@@ -94,14 +92,16 @@ class PlacementGroup:
         as a nested list of strategies.
         """
         # If we haven't fetched the static scheduling options yet, fetch them once.
-        if self._scheduling_options_cache is None:
-            self._fill_bundle_cache()
+        self._fill_scheduling_options_cache_if_needed()
         return self._scheduling_options_cache or []
 
-    def _fill_bundle_cache(self) -> None:
-        all_bundles = _get_bundle_cache(self.id)
-        self._scheduling_options_cache = all_bundles
-        self.bundle_cache = all_bundles[0] if all_bundles else []
+    def _fill_bundle_cache_if_needed(self) -> None:
+        if self.bundle_cache is None:
+            self.bundle_cache = _get_bundle_cache(self.id)
+
+    def _fill_scheduling_options_cache_if_needed(self) -> None:
+        if self._scheduling_options_cache is None:
+            self._scheduling_options_cache = _get_all_scheduling_options(self.id)
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
@@ -130,17 +130,32 @@ def _call_placement_group_ready(pg_id: PlacementGroupID, timeout_seconds: int) -
 
 
 @client_mode_wrap
-def _get_bundle_cache(pg_id: PlacementGroupID) -> Dict[str, List[Dict]]:
+def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
     table = ray._private.state.state.placement_group_table(pg_id)
 
-    all_bundles = []
-    for strategy in table.get("scheduling_options", []):
-        all_bundles.append(strategy.get("bundles", []))
+    # TODO(ryanaoleary): Add a new API for active_bundle_specs to return
+    # `table.get("bundles")`, which are the bundles actually scheduled for the PG.
+    scheduling_options = table.get("scheduling_options", [])
+    if scheduling_options:
+        return scheduling_options[0].get("bundles", [])
+    return []
 
-    return all_bundles
+
+@client_mode_wrap
+def _get_all_scheduling_options(pg_id: PlacementGroupID) -> List[List[Dict]]:
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+
+    table = ray._private.state.state.placement_group_table(pg_id)
+
+    all_options = []
+    for strategy in table.get("scheduling_options", []):
+        all_options.append(strategy.get("bundles", []))
+
+    return all_options
 
 
 @PublicAPI
