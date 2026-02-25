@@ -20,8 +20,8 @@ def allocate_resources(
     """Allocate resources for a pipeline to sustain the given throughput.
 
     Key insight: in a pipeline, all operators must sustain the same throughput T.
-    Operator i with per-bundle rate r_i needs T/r_i bundles to sustain T. So maximizing
-    throughput is equivalent to finding the largest feasible T, then deriving bundle
+    Operator i with per-task rate r_i needs T/r_i tasks to sustain T. So maximizing
+    throughput is equivalent to finding the largest feasible T, then deriving task
     counts from it.
 
     Args:
@@ -42,10 +42,10 @@ def allocate_resources(
     if throughput == 0:
         return {op: ExecutionResources.zero() for op in rates}
 
-    # NOTE: This implementation computes fractional bundle counts. In practice, you
+    # NOTE: This implementation computes fractional task counts. In practice, you
     # can't schedule a fractional task or actor, so the allocations might be infeasible.
-    bundle_counts = {op: throughput / rate for op, rate in rates.items()}
-    return {op: resource_requirements[op].scale(bundle_counts[op]) for op in rates}
+    task_counts = {op: throughput / rate for op, rate in rates.items()}
+    return {op: resource_requirements[op].scale(task_counts[op]) for op in rates}
 
 
 def compute_optimal_throughput(
@@ -60,7 +60,7 @@ def compute_optimal_throughput(
     The optimal throughput is bounded by two constraints (we take the tightest):
       1. Resource limits — total resource usage across all operators must fit the
          budget.
-      2. Concurrency limits — each operator's bundle count cannot exceed its limit.
+      2. Concurrency limits — each operator's task count cannot exceed its limit.
 
     Args:
         rates: The rate at which a task or actor produces outputs for each operator.
