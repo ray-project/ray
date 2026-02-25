@@ -22,6 +22,8 @@ proto_library(
         ":events_task_lifecycle_event_proto",
         ":platform_event_proto",
         "//src/ray/protobuf:events_task_profile_events_proto",
+        ":platform_events_proto",
+        "//src/ray/protobuf:common_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
