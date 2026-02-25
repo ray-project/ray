@@ -201,15 +201,22 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
             @ray.remote(num_gpus=1, enable_tensor_transport=True)
             class Trainer:
                 def __init__(self):
-                    self.weights = torch.randn(1000, 1000, device="cuda")
+                    self.weight = torch.randn(1000, 1000, device="cuda")
                     # Pre-register the memory with NIXL for the lifetime of the process
-                    for weight in self.weights:
-                        register_nixl_memory(weight)
+                    register_nixl_memory(self.weight)
 
-                def get_weights(self):
-                    views = [self.weights[i] for i in range(10)]
+                # Both of the below methods will use the cached NIXL memory registration on multiple calls. You can also mix them,
+                # i.e. call get_weight_ref_by_rows then get_weight_ref and get_weight_ref will not trigger a new NIXL memory registration.
+
+                # You can ray.put views to each row of the weight matrix if you want to use them separately in your code
+                def get_weight_ref_by_rows(self):
+                    views = [self.weight[i] for i in range(1000)]
                     # Each put call does not trigger a new NIXL memory registration
                     return ray.put(views, _tensor_transport="nixl")
+
+                # You can also ray.put the entire weight matrix at once
+                def get_weight_ref(self):
+                    return ray.put(self.weight, _tensor_transport="nixl")
     """
     nixl_transport = get_tensor_transport_manager("NIXL")
     nixl_transport.register_nixl_memory(tensor)
