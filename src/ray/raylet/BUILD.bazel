@@ -186,22 +186,67 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "worker_killing_policy",
-    srcs = [
-        "worker_killing_policy.cc",
-        "worker_killing_policy_group_by_owner.cc",
-    ],
+    name = "worker_killing_policy_factory",
+    srcs = select({
+        "//bazel:is_linux": [
+            "worker_killing_policy_group_by_owner_factory.cc",
+        ],
+        "//conditions:default": [
+            "noop_worker_killing_policy_factory.cc",
+        ],
+    }),
     hdrs = [
-        "worker_killing_policy.h",
-        "worker_killing_policy_group_by_owner.h",
+        "worker_killing_policy_factory.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_killing_policy_interface",
+    ] + select({
+        "//bazel:is_linux": [
+            ":worker_killing_policy_group_by_owner",
+        ],
+        "//conditions:default": [
+            ":noop_worker_killing_policy",
+        ],
+    }),
+)
+
+ray_cc_library(
+    name = "worker_killing_policy_interface",
+    hdrs = [
+        "worker_killing_policy_interface.h",
     ],
     visibility = [":__subpackages__"],
     deps = [
         ":worker_interface",
-        ":worker_pool",
-        "//src/ray/common:lease",
         "//src/ray/common:memory_monitor_interface",
+    ],
+)
+
+ray_cc_library(
+    name = "worker_killing_policy_group_by_owner",
+    srcs = [
+        "worker_killing_policy_group_by_owner.cc",
+    ],
+    hdrs = [
+        "worker_killing_policy_group_by_owner.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_killing_policy_interface",
+        "//src/ray/common:lease",
         "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "noop_worker_killing_policy",
+    hdrs = [
+        "noop_worker_killing_policy.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_killing_policy_interface",
     ],
 )
 
@@ -239,7 +284,8 @@ ray_cc_library(
         ":throttler",
         ":wait_manager",
         ":worker",
-        ":worker_killing_policy",
+        ":worker_killing_policy_factory",
+        ":worker_killing_policy_interface",
         ":worker_pool",
         "//src/ray/common:buffer",
         "//src/ray/common:flatbuf_utils",

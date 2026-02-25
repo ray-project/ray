@@ -2294,6 +2294,18 @@ py_test(
 )
 
 py_test(
+    name = "test_encoder_layernorm",
+    size = "medium",
+    srcs = ["core/models/tests/test_encoder_layernorm.py"],
+    tags = [
+        "core",
+        "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_mlp_heads",
     size = "medium",
     srcs = ["core/models/tests/test_mlp_heads.py"],
@@ -2341,15 +2353,20 @@ py_test(
     deps = [":conftest"],
 )
 
-# TODO(Artur): Comment this back in as soon as we can test with GPU
-# py_test(
-#    name = "test_torch_rl_module_gpu",
-#    main = "core/rl_module/torch/tests/test_torch_rl_module.py",
-#    tags = ["team:rllib", "core", "gpu", "exclusive"],
-#    size = "medium",
-#    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
-#    args = ["TestRLModuleGPU"],
-# )
+py_test(
+    name = "test_torch_rl_module_gpu",
+    size = "medium",
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
+    args = ["TestRLModuleGPU"],
+    main = "core/rl_module/torch/tests/test_torch_rl_module.py",
+    tags = [
+        "core",
+        "exclusive",
+        "gpu",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
 
 py_test(
     name = "test_multi_rl_module",
