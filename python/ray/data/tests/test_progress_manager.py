@@ -5,6 +5,9 @@ import pytest
 
 import ray
 from ray.data._internal.progress import get_progress_manager
+from ray.data._internal.progress.async_progress_wrapper import (
+    AsyncProgressManagerWrapper,
+)
 from ray.data._internal.progress.base_progress import (
     NoopExecutionProgressManager,
 )
@@ -91,6 +94,9 @@ class TestGetProgressManager:
 
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
+        if isinstance(manager, AsyncProgressManagerWrapper):
+            manager = manager._wrapped
+
         assert isinstance(manager, TqdmExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
@@ -103,6 +109,9 @@ class TestGetProgressManager:
         ctx.use_ray_tqdm = False  # this combo was tested above.
 
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
+
+        if isinstance(manager, AsyncProgressManagerWrapper):
+            manager = manager._wrapped
 
         assert isinstance(manager, TqdmExecutionProgressManager)
 
@@ -118,6 +127,9 @@ class TestGetProgressManager:
 
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
 
+        if isinstance(manager, AsyncProgressManagerWrapper):
+            manager = manager._wrapped
+
         assert isinstance(manager, TqdmExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
@@ -127,6 +139,9 @@ class TestGetProgressManager:
         to have default as rich progress reporting once it becomes an official api."""
         ctx = DataContext()
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
+
+        if isinstance(manager, AsyncProgressManagerWrapper):
+            manager = manager._wrapped
 
         assert isinstance(manager, TqdmExecutionProgressManager)
 
@@ -182,6 +197,9 @@ class TestGetProgressManager:
         ctx.enable_operator_progress_bars = enable_op_progress
 
         manager = get_progress_manager(ctx, "test_id", mock_topology, False)
+
+        if isinstance(manager, AsyncProgressManagerWrapper):
+            manager = manager._wrapped
 
         assert isinstance(manager, expected_type)
 

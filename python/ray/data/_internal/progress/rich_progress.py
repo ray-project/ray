@@ -120,7 +120,17 @@ class RichSubProgressBar(BaseProgressBar):
 
 
 class RichExecutionProgressManager(BaseExecutionProgressManager):
-    """Execution progress display using rich."""
+    """
+    Execution progress display using rich.
+
+    Args:
+        dataset_id: id of Dataset
+        topology: operation topology built via `build_streaming_topology`
+        show_op_progress: whether to show individual operator progress
+            (only for non-AllToAll by default).
+        verbose_progress: whether to show individual operator progress for
+            non-AllToAll operators as well.
+    """
 
     def __init__(
         self,
