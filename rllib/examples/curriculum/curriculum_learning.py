@@ -55,6 +55,7 @@ Policy NOT using the curriculum (trying to solve the hardest task right away):
 [DOES NOT LEARN AT ALL]
 """
 from functools import partial
+from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.callbacks.callbacks import RLlibCallback
@@ -69,10 +70,14 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRAINING_ITERATION
 
-parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
+parser = add_rllib_example_script_args(
+    default_iters=1_000,
+    default_timesteps=1_000_000,
+)
 parser.add_argument(
     "--upgrade-task-threshold",
     type=float,
@@ -148,60 +153,70 @@ def _remote_fn(env_runner, new_task: int):
 class EnvTaskCallback(RLlibCallback):
     """Custom callback implementing `on_train_result()` for changing the envs' maps."""
 
-    def on_algorithm_init(
-        self,
-        *,
-        algorithm: "Algorithm",
-        **kwargs,
-    ) -> None:
-        # Set the initial task to 0.
-        algorithm._counters["current_env_task"] = 0
+    def __init__(self):
+        super().__init__()
+        self.patience_limit: int = 3
+        self.curriculum_patience: int = 0
+        self.curriculum_task_key: int = 0
 
     def on_train_result(
         self,
         *,
         algorithm: Algorithm,
-        metrics_logger=None,
+        metrics_logger: Optional[MetricsLogger] = None,
         result: dict,
         **kwargs,
     ) -> None:
-        # Hack: Store the current task inside a counter in our Algorithm.
         # W/o a curriculum, the task is always 2 (hardest).
         if args.no_curriculum:
-            algorithm._counters["current_env_task"] = 2
-        current_task = algorithm._counters["current_env_task"]
+            self.curriculum_task_key = 2
 
         # If episode return is consistently `args.upgrade_task_threshold`, we switch
         # to a more difficult task (if possible). If we already mastered the most
         # difficult task, we publish our victory in the result dict.
         result["task_solved"] = 0.0
         current_return = result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+
         if current_return > args.upgrade_task_threshold:
-            if current_task < 2:
-                new_task = current_task + 1
+            self.curriculum_patience = 0
+
+            if self.curriculum_task_key < 2:
+                self.curriculum_task_key += 1
                 print(
-                    f"Switching task/map on all EnvRunners to #{new_task} (0=easiest, "
+                    f"Training iteration: {result[TRAINING_ITERATION]}: "
+                    f"switching task difficulty to #{self.curriculum_task_key} (0=easiest, "
                     f"2=hardest), b/c R={current_return} on current task."
                 )
                 algorithm.env_runner_group.foreach_env_runner(
-                    func=partial(_remote_fn, new_task=new_task)
+                    func=partial(_remote_fn, new_task=self.curriculum_task_key)
                 )
-                algorithm._counters["current_env_task"] = new_task
 
             # Hardest task was solved (1.0) -> report this in the results dict.
             elif current_return == 1.0:
                 result["task_solved"] = 1.0
-        # Emergency brake: If return is 0.0 AND we are already at a harder task (1 or
-        # 2), we go back to task=0.
-        elif current_return == 0.0 and current_task > 0:
-            print(
-                "Emergency brake: Our policy seemed to have collapsed -> Setting task "
-                "back to 0."
-            )
-            algorithm.env_runner_group.foreach_env_runner(
-                func=partial(_remote_fn, new_task=0)
-            )
-            algorithm._counters["current_env_task"] = 0
+
+        # If:
+        #   return is 0.0 and,
+        #   we are already at a harder task (1 or 2) and,
+        #   patience is saturated,
+        # we go back to task=0.
+        if current_return == 0.0:
+            self.curriculum_patience += 1
+            if (
+                self.curriculum_task_key > 0
+                and self.curriculum_patience >= self.patience_limit
+            ):
+                print(
+                    f"Training iteration: {result[TRAINING_ITERATION]}: "
+                    f"policy seemed to have collapsed: {current_return=}. "
+                    f"Setting task back to 0."
+                )
+
+                self.curriculum_task_key = 0
+                self.curriculum_patience = 0
+                algorithm.env_runner_group.foreach_env_runner(
+                    func=partial(_remote_fn, new_task=self.curriculum_task_key)
+                )
 
 
 if __name__ == "__main__":
@@ -245,5 +260,8 @@ if __name__ == "__main__":
     }
 
     run_rllib_example_script_experiment(
-        base_config, args, stop=stop, success_metric={"task_solved": 1.0}
+        base_config=base_config,
+        args=args,
+        stop=stop,
+        success_metric={"task_solved": 1.0},
     )

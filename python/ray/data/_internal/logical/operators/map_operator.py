@@ -36,7 +36,7 @@ class AbstractMap(AbstractOneToOne):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str] = None,
         input_op: Optional[LogicalOperator] = None,
         num_outputs: Optional[int] = None,
         *,
@@ -71,7 +71,12 @@ class AbstractMap(AbstractOneToOne):
                 to use Ray tasks, or ``ActorPoolStrategy`` to use an
                 autoscaling actor pool.
         """
-        super().__init__(name, input_op, can_modify_num_rows, num_outputs)
+        super().__init__(
+            input_op=input_op,
+            can_modify_num_rows=can_modify_num_rows,
+            num_outputs=num_outputs,
+            name=name,
+        )
         self.min_rows_per_bundled_input = min_rows_per_bundled_input
         self.ray_remote_args = ray_remote_args or {}
         self.ray_remote_args_fn = ray_remote_args_fn
@@ -186,7 +191,7 @@ class MapBatches(AbstractUDFMap):
         fn: UserDefinedFunction,
         can_modify_num_rows: bool = False,
         batch_size: Optional[int] = None,
-        batch_format: str = "default",
+        batch_format: Optional[str] = "default",
         zero_copy_batch: bool = True,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -198,7 +203,7 @@ class MapBatches(AbstractUDFMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "MapBatches",
+            self.__class__.__name__,
             input_op,
             fn,
             can_modify_num_rows=can_modify_num_rows,
@@ -272,7 +277,7 @@ class Filter(AbstractUDFMap):
         self.predicate_expr = predicate_expr
 
         super().__init__(
-            "Filter",
+            self.__class__.__name__,
             input_op,
             can_modify_num_rows=True,
             fn=fn,
@@ -321,7 +326,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             compute = self._detect_and_get_compute_strategy(exprs)
 
         super().__init__(
-            "Project",
             input_op=input_op,
             can_modify_num_rows=False,
             ray_remote_args=ray_remote_args,
@@ -409,7 +413,7 @@ class FlatMap(AbstractUDFMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "FlatMap",
+            self.__class__.__name__,
             input_op,
             fn,
             can_modify_num_rows=True,
@@ -425,19 +429,33 @@ class FlatMap(AbstractUDFMap):
 
 class StreamingRepartition(AbstractMap):
     """Logical operator for streaming repartition operation.
+
     Args:
+        input_op: The operator preceding this operator in the plan DAG.
         target_num_rows_per_block: The target number of rows per block granularity for
-           streaming repartition.
+            streaming repartition.
+        strict: If True, guarantees that all output blocks, except for the last one,
+            will have exactly target_num_rows_per_block rows. If False, uses best-effort
+            bundling and may produce at most one block smaller than target_num_rows_per_block
+            per input block without forcing exact sizes through block splitting.
+            Defaults to False.
     """
 
     def __init__(
         self,
         input_op: LogicalOperator,
         target_num_rows_per_block: int,
+        strict: bool = False,
     ):
+        if target_num_rows_per_block <= 0:
+            raise ValueError(
+                "target_num_rows_per_block must be positive for streaming repartition, "
+                f"got {target_num_rows_per_block}"
+            )
         super().__init__(
-            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block}]",
+            f"StreamingRepartition[num_rows_per_block={target_num_rows_per_block},strict={strict}]",
             input_op,
             can_modify_num_rows=False,
         )
         self.target_num_rows_per_block = target_num_rows_per_block
+        self._strict = strict

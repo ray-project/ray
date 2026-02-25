@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -30,6 +31,7 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/logging.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -72,6 +74,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         on_objects_freed_(std::move(on_objects_freed)),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
+        max_spilling_file_size_bytes_(
+            RayConfig::instance().max_spilling_file_size_bytes()),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(std::move(is_plasma_object_spillable)),
@@ -81,7 +85,29 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         core_worker_subscriber_(core_worker_subscriber),
         object_directory_(object_directory),
         object_store_memory_gauge_(object_store_memory_gauge),
-        spill_manager_metrics_(spill_manager_metrics) {}
+        spill_manager_metrics_(spill_manager_metrics) {
+    if (max_spilling_file_size_bytes_ > 0) {
+      RAY_CHECK_GE(max_spilling_file_size_bytes_, min_spilling_size_) << absl::StrFormat(
+          "Misconfiguration: max_spilling_file_size_bytes (%lld) must be >= "
+          "min_spilling_size (%lld). Set max_spilling_file_size_bytes <= 0 to disable.",
+          static_cast<long long>(max_spilling_file_size_bytes_),
+          static_cast<long long>(min_spilling_size_));
+    }
+
+    const std::string max_spilling_file_size_bytes_str =
+        max_spilling_file_size_bytes_ <= 0
+            ? "unlimited (-1)"
+            : absl::StrFormat("%lld",
+                              static_cast<long long>(max_spilling_file_size_bytes_));
+    RAY_LOG(DEBUG) << absl::StrFormat(
+        "LocalObjectManager object spilling config: min_spilling_size_bytes=%lld, "
+        "max_spilling_file_size_bytes=%s, max_fused_object_count=%lld, "
+        "max_io_workers=%lld",
+        static_cast<long long>(min_spilling_size_),
+        max_spilling_file_size_bytes_str,
+        static_cast<long long>(max_fused_object_count_),
+        static_cast<long long>(max_active_workers_));
+  }
 
   /// Pin objects.
   ///
@@ -323,6 +349,10 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
+
+  /// Maximum bytes to include in a single spill request (i.e. fused spill file).
+  /// If <= 0, the limit is disabled.
+  int64_t max_spilling_file_size_bytes_;
 
   /// The current number of active spill workers.
   std::atomic<int64_t> num_active_workers_;

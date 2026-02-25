@@ -84,8 +84,6 @@ def main():
     # Configure checkpointing to save progress during training
     run_config = RunConfig(
         checkpoint_config=CheckpointConfig(
-            # Checkpoint every 10 iterations.
-            checkpoint_frequency=10,
             # Only keep the latest checkpoint.
             num_to_keep=1,
         ),

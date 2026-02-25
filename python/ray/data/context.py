@@ -1,19 +1,22 @@
+import contextlib
 import copy
 import enum
+import importlib
 import logging
 import os
 import threading
 import warnings
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
-from ray._private.ray_constants import env_bool, env_float, env_integer
+from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.logging import update_dataset_logger_for_worker
-from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
+from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.execution_callback import ExecutionCallback
     from ray.data._internal.execution.interfaces import ExecutionOptions
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
@@ -253,6 +256,9 @@ DEFAULT_MIN_HASH_SHUFFLE_AGGREGATOR_WAIT_TIME_IN_S = env_integer(
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S = env_integer(
     "RAY_DATA_HASH_SHUFFLE_AGGREGATOR_HEALTH_WARNING_INTERVAL_S", 30
 )
+
+# Environment variable for custom execution callbacks
+EXECUTION_CALLBACKS_ENV_VAR = "RAY_DATA_EXECUTION_CALLBACKS"
 
 
 DEFAULT_ACTOR_POOL_UTIL_UPSCALING_THRESHOLD: float = env_float(
@@ -694,6 +700,10 @@ class DataContext:
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
+    custom_execution_callback_classes: List[Type["ExecutionCallback"]] = field(
+        default_factory=list
+    )
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
@@ -795,19 +805,33 @@ class DataContext:
             return _default_context
 
     @staticmethod
-    def _set_current(context: "DataContext") -> None:
+    @contextlib.contextmanager
+    def current(context: "DataContext"):
+        prev: Optional[DataContext] = DataContext._set_current(context)
+        try:
+            yield
+        finally:
+            DataContext._set_current(prev)
+
+    @staticmethod
+    def _set_current(context: Optional["DataContext"]) -> Optional["DataContext"]:
         """Set the current context in a remote worker.
 
         This is used internally by Dataset to propagate the driver context to
         remote workers used for parallelization.
         """
         global _default_context
-        if (
+        if context and (
             not _default_context
             or _default_context.dataset_logger_id != context.dataset_logger_id
         ):
             update_dataset_logger_for_worker(context.dataset_logger_id)
+
+        prev = _default_context
+        # Update current context
         _default_context = context
+
+        return prev
 
     @property
     def shuffle_strategy(self) -> ShuffleStrategy:
@@ -824,6 +848,69 @@ class DataContext:
     @shuffle_strategy.setter
     def shuffle_strategy(self, value: ShuffleStrategy) -> None:
         self._shuffle_strategy = value
+
+    @property
+    def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
+        """Get the complete registry of execution callback classes.
+
+        This property gathers all callback classes that should be instantiated
+        by the execution planner. It includes:
+        1. Built-in default callbacks (e.g., ExecutionIdxUpdateCallback, IssueDetectionExecutionCallback).
+        2. Custom callbacks registered via the RAY_DATA_EXECUTION_CALLBACKS environment variable.
+        3. Custom callbacks programmatically added to `custom_execution_callback_classes`.
+
+        Note: `LoadCheckpointCallback` is NOT included here because it requires
+        a `CheckpointConfig` argument to be instantiated. It is conditionally added
+        later directly by the execution planner.
+
+        Returns:
+            A list of ExecutionCallback class types (not instances).
+        """
+        from ray.data._internal.execution.callbacks.execution_idx_update_callback import (
+            ExecutionIdxUpdateCallback,
+        )
+        from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+            IssueDetectionExecutionCallback,
+        )
+        from ray.data._internal.execution.execution_callback import ExecutionCallback
+
+        classes = [
+            ExecutionIdxUpdateCallback,
+            IssueDetectionExecutionCallback,
+        ]
+
+        # Parse environment variable for custom callbacks
+        env_callbacks = os.environ.get(EXECUTION_CALLBACKS_ENV_VAR, "")
+
+        if env_callbacks:
+            for callback_path in env_callbacks.split(","):
+                callback_path = callback_path.strip()
+                if not callback_path:
+                    continue
+                try:
+                    module_path, class_name = callback_path.rsplit(".", 1)
+                    module = importlib.import_module(module_path)
+                    callback_cls = getattr(module, class_name)
+                except (ImportError, AttributeError, ValueError) as e:
+                    raise ValueError(
+                        f"Failed to import callback from '{callback_path}': {e}"
+                    )
+
+                if not isinstance(callback_cls, type) or not issubclass(
+                    callback_cls, ExecutionCallback
+                ):
+                    raise ValueError(
+                        f"Invalid callback class '{callback_path}' specified in "
+                        f"{EXECUTION_CALLBACKS_ENV_VAR}. Expected a subclass of "
+                        f"ExecutionCallback, but got {callback_cls}."
+                    )
+
+                classes.append(callback_cls)
+
+        # User custom classes
+        classes.extend(self.custom_execution_callback_classes)
+
+        return classes
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.

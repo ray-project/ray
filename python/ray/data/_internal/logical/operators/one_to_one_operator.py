@@ -8,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
+    import pyarrow
 
     from ray.data.block import Schema
 
@@ -25,26 +26,27 @@ class AbstractOneToOne(LogicalOperator):
 
     def __init__(
         self,
-        name: str,
         input_op: Optional[LogicalOperator],
         can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
+        *,
+        name: Optional[str] = None,
     ):
         """Initialize an AbstractOneToOne operator.
 
         Args:
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             can_modify_num_rows: Whether the UDF can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
             num_outputs: If known, the number of blocks produced by this operator.
+            name: Name for this operator. This is the name that will appear when
+                inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            name=name,
             input_dependencies=[input_op] if input_op else [],
             num_outputs=num_outputs,
+            name=name,
         )
         self.can_modify_num_rows = can_modify_num_rows
 
@@ -62,9 +64,9 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         limit: int,
     ):
         super().__init__(
-            f"limit={limit}",
             input_op=input_op,
             can_modify_num_rows=True,
+            name=f"limit={limit}",
         )
         self.limit = limit
 
@@ -115,8 +117,9 @@ class Download(AbstractOneToOne):
         uri_column_names: List[str],
         output_bytes_column_names: List[str],
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ):
-        super().__init__("Download", input_op, can_modify_num_rows=False)
+        super().__init__(input_op=input_op, can_modify_num_rows=False)
         if len(uri_column_names) != len(output_bytes_column_names):
             raise ValueError(
                 f"Number of URI columns ({len(uri_column_names)}) must match "
@@ -125,3 +128,4 @@ class Download(AbstractOneToOne):
         self.uri_column_names = uri_column_names
         self.output_bytes_column_names = output_bytes_column_names
         self.ray_remote_args = ray_remote_args or {}
+        self.filesystem = filesystem

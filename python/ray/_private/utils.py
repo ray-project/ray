@@ -33,6 +33,9 @@ from ray._common.utils import (
     get_ray_address_file,
     get_system_memory,
 )
+from ray._raylet import GcsClient
+from ray.core.generated.gcs_pb2 import GcsNodeInfo
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from ray.core.generated.runtime_environment_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -494,7 +497,7 @@ def get_cgroup_used_memory(
 ):
     """
     The calculation logic is the same with `GetCGroupMemoryUsedBytes`
-    in `memory_monitor.cc` file.
+    in `memory_monitor_utils.cc` file.
     """
     inactive_file_bytes = -1
     active_file_bytes = -1
@@ -518,6 +521,64 @@ def get_cgroup_used_memory(
         return None
 
     return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
+
+
+def resolve_object_store_memory(
+    available_memory_bytes: int,
+    object_store_memory: Optional[int] = None,
+) -> int:
+    """Resolve the object store memory size.
+
+    This function determines the appropriate object store memory size based on
+    the provided value or calculates a default based on available system memory.
+
+    Args:
+        available_memory_bytes: The memory available for this node.
+        object_store_memory: The user-specified object store memory size in bytes.
+            If None, a default size will be calculated.
+
+    Returns:
+        The resolved object store memory size in bytes.
+    """
+    # Derive default object store memory if not specified
+    if object_store_memory is None:
+        object_store_memory_cap = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+
+        # Cap by shm size by default to avoid low performance, but don't
+        # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
+        if sys.platform == "linux" or sys.platform == "linux2":
+            # Multiple by 0.95 to give a bit of wiggle-room.
+            # https://github.com/ray-project/ray/pull/23034/files
+            shm_avail = get_shared_memory_bytes() * 0.95
+            shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
+
+            object_store_memory_cap = min(object_store_memory_cap, shm_cap)
+
+        object_store_memory = int(
+            available_memory_bytes
+            * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        )
+
+        # Set the object_store_memory size to 2GB on Mac
+        # to avoid degraded performance.
+        # (https://github.com/ray-project/ray/issues/20388)
+        if sys.platform == "darwin":
+            object_store_memory = min(
+                object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
+            )
+
+        # Cap memory to avoid memory waste and perf issues on large nodes
+        if object_store_memory > object_store_memory_cap:
+            logger.debug(
+                "Warning: Capping object memory store to {}GB. ".format(
+                    object_store_memory_cap // 1e9
+                )
+                + "To increase this further, specify `object_store_memory` "
+                "when calling ray.init() or ray start."
+            )
+            object_store_memory = object_store_memory_cap
+
+    return object_store_memory
 
 
 def get_used_memory():
@@ -1112,6 +1173,53 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
+
+
+def get_all_node_info_until_retrieved(
+    gcs_client: GcsClient,
+    node_selectors: List[GetAllNodeInfoRequest.NodeSelector] = None,
+    state_filter: Optional[int] = None,
+    num_retries: int = ray_constants.NUM_REDIS_GET_RETRIES,
+    timeout_per_retry: Optional[int | float] = None,
+) -> List[GcsNodeInfo]:
+    """
+    Get all node info from GCS with retry until the node info is found.
+
+    Raises:
+        Exception: If the node info is not found after the retries,
+                   Or the RPC error getting the node info from GCS.
+
+    Args:
+        gcs_client: The GCS client.
+        node_selectors: The attributes to filter the node info.
+        state_filter: The state to filter the node info.
+        num_retries: The number of retries.
+        timeout_per_retry: The timeout per request to get the node info.
+
+    Returns:
+        The list of node info matching the selectors and state filter.
+    """
+    node_infos = []
+    for _ in range(num_retries):
+        try:
+            node_infos = gcs_client.get_all_node_info(
+                timeout=timeout_per_retry,
+                node_selectors=node_selectors,
+                state_filter=state_filter,
+            ).values()
+        except Exception as e:
+            logger.warning(f"RPC error getting node info from GCS: {e}, retrying...")
+            node_infos = []
+
+        if node_infos:
+            break
+        time.sleep(2)
+
+    if not node_infos:
+        raise Exception(
+            "No node info found for head node in GCS. Did the head node or gcs start successfully?"
+        )
+    return node_infos
 
 
 def parse_resources_json(

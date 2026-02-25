@@ -55,6 +55,7 @@ class FakeReplicaResult(ReplicaResult):
         self._replica_id = replica_id
         self._is_generator_object = is_generator_object
         self._queue_len_info = queue_len_info
+        self._done_callbacks: List[Callable] = []
         self.cancelled = False
 
     async def get_rejection_response(self):
@@ -73,7 +74,13 @@ class FakeReplicaResult(ReplicaResult):
         raise NotImplementedError
 
     def add_done_callback(self, callback: Callable):
-        pass
+        self._done_callbacks.append(callback)
+
+    def fire_done_callbacks(self, result=None):
+        """Simulate request completion by invoking all registered callbacks."""
+        for cb in self._done_callbacks:
+            cb(result)
+        self._done_callbacks.clear()
 
     def cancel(self):
         self.cancelled = True
@@ -149,6 +156,7 @@ class FakeRequestRouter(RequestRouter):
         self._dropped_replicas: Set[ReplicaID] = set()
         self._use_queue_len_cache = use_queue_len_cache
         self.on_request_routed_called = False
+        self.completed_requests: List[Tuple[ReplicaID, str]] = []
 
     def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
         return FakeReplica(replica_info)
@@ -240,8 +248,15 @@ class FakeRequestRouter(RequestRouter):
         pending_request: PendingRequest,
         replica_id: ReplicaID,
         result: ReplicaResult,
-    ):
+    ) -> None:
         self.on_request_routed_called = True
+
+    def on_request_completed(
+        self,
+        replica_id: ReplicaID,
+        internal_request_id: str,
+    ) -> None:
+        self.completed_requests.append((replica_id, internal_request_id))
 
 
 @pytest.fixture
@@ -1341,6 +1356,273 @@ class TestSingletonThreadRouter:
         assert assign_request_future.cancelled() is True
         with pytest.raises(concurrent.futures.CancelledError):
             assign_request_future.exception()
+
+
+@pytest.mark.asyncio
+class TestOnRequestCompleted:
+    """Tests for the on_request_completed hook introduced in this branch.
+
+    Verifies that on_request_completed is called on the request router:
+    - Via the done-callback when a request completes normally.
+    - Via the finally block when a request fails before the callback is registered.
+    """
+
+    async def test_on_request_completed_called_via_done_callback(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        """After a normal (no-rejection) request, firing the ReplicaResult's
+        done callback should invoke on_request_completed on the router."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        fake_request_router.set_replica_to_return(FakeReplica(r1_id))
+
+        metadata = RequestMetadata(
+            request_id="req-1",
+            internal_request_id="internal-req-1",
+        )
+        result = await router.assign_request(metadata)
+
+        assert len(fake_request_router.completed_requests) == 0
+
+        # Simulate the request finishing.
+        result.fire_done_callbacks(result=None)
+        await asyncio.sleep(0)
+
+        assert len(fake_request_router.completed_requests) == 1
+        completed_replica_id, completed_req_id = fake_request_router.completed_requests[
+            0
+        ]
+        assert completed_replica_id == r1_id
+        assert completed_req_id == "internal-req-1"
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True}],
+        indirect=True,
+    )
+    async def test_on_request_completed_called_via_finally_on_actor_died(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        """When try_send_request raises ActorDiedError (before the callback is
+        registered), the finally block should call on_request_completed."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, error=ActorDiedError())
+        )
+        fake_request_router.set_replica_to_return_on_retry(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=5
+                ),
+            )
+        )
+
+        await router.assign_request(dummy_request_metadata())
+
+        # The finally block should have called on_request_completed for r1.
+        r1_completions = [
+            (rid, req_id)
+            for rid, req_id in fake_request_router.completed_requests
+            if rid == r1_id
+        ]
+        assert len(r1_completions) == 1
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True}],
+        indirect=True,
+    )
+    async def test_on_request_completed_called_via_finally_on_actor_unavailable(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        """When try_send_request raises ActorUnavailableError, the finally
+        block should call on_request_completed."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(
+                r1_id,
+                error=ActorUnavailableError(error_message="unavailable", actor_id=None),
+            )
+        )
+        fake_request_router.set_replica_to_return_on_retry(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=5
+                ),
+            )
+        )
+
+        await router.assign_request(dummy_request_metadata())
+
+        r1_completions = [
+            (rid, req_id)
+            for rid, req_id in fake_request_router.completed_requests
+            if rid == r1_id
+        ]
+        assert len(r1_completions) == 1
+
+    async def test_multiple_requests_each_trigger_on_request_completed(
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+    ):
+        """Multiple in-flight requests should each trigger their own
+        on_request_completed call when they finish."""
+        router, fake_request_router = setup_router
+
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        fake_request_router.set_replica_to_return(FakeReplica(r1_id))
+
+        results = []
+        for i in range(5):
+            metadata = RequestMetadata(
+                request_id=f"req-{i}",
+                internal_request_id=f"internal-req-{i}",
+            )
+            result = await router.assign_request(metadata)
+            results.append(result)
+
+        assert len(fake_request_router.completed_requests) == 0
+
+        # Complete them one at a time.
+        for i, result in enumerate(results):
+            result.fire_done_callbacks(result=None)
+            await asyncio.sleep(0)
+            assert len(fake_request_router.completed_requests) == i + 1
+
+        completed_ids = {req_id for _, req_id in fake_request_router.completed_requests}
+        expected_ids = {f"internal-req-{i}" for i in range(5)}
+        assert completed_ids == expected_ids
+
+
+@pytest.mark.asyncio
+class TestCustomRequestRouterAPIs:
+    """Tests for the new RequestRouter APIs introduced in this branch:
+    - supports_rejection_protocol property
+    - _compute_backoff_s / _backoff helpers
+    """
+
+    def test_supports_rejection_protocol_defaults_to_true(self):
+        """The base RequestRouter.supports_rejection_protocol should be True."""
+
+        class MinimalRouter(RequestRouter):
+            async def choose_replicas(self, candidate_replicas, pending_request=None):
+                return [candidate_replicas]
+
+        r = MinimalRouter(
+            deployment_id=DeploymentID(name="test"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+        )
+        assert r.supports_rejection_protocol is True
+
+    def test_supports_rejection_protocol_can_be_overridden(self):
+        """A subclass can override supports_rejection_protocol to False."""
+
+        class NoRejectionRouter(RequestRouter):
+            async def choose_replicas(self, candidate_replicas, pending_request=None):
+                return [candidate_replicas]
+
+            @property
+            def supports_rejection_protocol(self) -> bool:
+                return False
+
+        r = NoRejectionRouter(
+            deployment_id=DeploymentID(name="test"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+        )
+        assert r.supports_rejection_protocol is False
+
+    def test_compute_backoff_s_uses_class_parameters(self):
+        """_compute_backoff_s should respect the class-level backoff params."""
+
+        class MinimalRouter(RequestRouter):
+            async def choose_replicas(self, candidate_replicas, pending_request=None):
+                return [candidate_replicas]
+
+        r = MinimalRouter(
+            deployment_id=DeploymentID(name="test"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+        )
+
+        b0 = r._compute_backoff_s(0)
+        b1 = r._compute_backoff_s(1)
+        assert b0 == r.initial_backoff_s
+        assert b1 == pytest.approx(r.initial_backoff_s * r.backoff_multiplier)
+
+    def test_compute_backoff_s_with_custom_multiplier(self):
+        """A subclass can override backoff_multiplier and _compute_backoff_s
+        will respect it."""
+
+        class CustomBackoffRouter(RequestRouter):
+            backoff_multiplier = 1.5
+
+            async def choose_replicas(self, candidate_replicas, pending_request=None):
+                return [candidate_replicas]
+
+        r = CustomBackoffRouter(
+            deployment_id=DeploymentID(name="test"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+        )
+
+        b0 = r._compute_backoff_s(0)
+        b1 = r._compute_backoff_s(1)
+        b2 = r._compute_backoff_s(2)
+
+        assert b0 == r.initial_backoff_s
+        assert b1 == pytest.approx(r.initial_backoff_s * 1.5)
+        assert b2 == pytest.approx(r.initial_backoff_s * 1.5**2)
+
+    def test_compute_backoff_s_capped_at_max(self):
+        """Backoff should never exceed max_backoff_s."""
+
+        class MinimalRouter(RequestRouter):
+            async def choose_replicas(self, candidate_replicas, pending_request=None):
+                return [candidate_replicas]
+
+        r = MinimalRouter(
+            deployment_id=DeploymentID(name="test"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+        )
+
+        for attempt in [50, 100, 1000]:
+            assert r._compute_backoff_s(attempt) <= r.max_backoff_s
+
+    async def test_backoff_is_awaitable(self):
+        """_backoff should be an awaitable coroutine."""
+
+        class MinimalRouter(RequestRouter):
+            async def choose_replicas(self, candidate_replicas, pending_request=None):
+                return [candidate_replicas]
+
+        r = MinimalRouter(
+            deployment_id=DeploymentID(name="test"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
+        )
+        # Should complete without error.
+        await r._backoff(0)
 
 
 if __name__ == "__main__":

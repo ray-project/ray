@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import pyarrow.fs
 
@@ -37,7 +37,11 @@ class ScalingConfig(ScalingConfigV1):
             reserved by each worker can be overridden with the
             ``resources_per_worker`` argument. If the number of workers is 0,
             the training function will run in local mode, meaning the training
-            function runs in the same process.
+            function runs in the same process. To enable elasticity, provide a
+            ``(min_workers, max_workers)`` tuple of ints.
+        elastic_resize_monitor_interval_s: While the worker group is healthy,
+            consider resizing the worker group every
+            ``elastic_resize_monitor_interval_s`` seconds.
         use_gpu: If True, training will be done on GPUs (1 per worker).
             Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
@@ -70,6 +74,7 @@ class ScalingConfig(ScalingConfigV1):
             when `use_tpu` is True and `num_workers` is greater than 1.
     """
 
+    num_workers: Union[int, Tuple[int, int]] = 1
     trainer_resources: Optional[dict] = None
     label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
 
@@ -77,19 +82,47 @@ class ScalingConfig(ScalingConfigV1):
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
 
+    # Elasticity specific fields.
+    elastic_resize_monitor_interval_s: float = 60.0
+
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
+
+        is_fixed = isinstance(self.num_workers, int)
+        is_elastic = (
+            isinstance(self.num_workers, tuple)
+            and len(self.num_workers) == 2
+            and all(isinstance(x, int) for x in self.num_workers)
+        )
+        if not (is_fixed or is_elastic):
+            raise ValueError(
+                "ScalingConfig(num_workers) must be an int or a tuple of two ints."
+            )
+        if self.elastic_resize_monitor_interval_s < 0:
+            raise ValueError(
+                "ScalingConfig(elastic_resize_monitor_interval_s) must be non-negative."
+            )
+        if self.min_workers < 0:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                "Number of workers cannot be negative."
+            )
+        if self.min_workers > self.max_workers:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                f"min_workers={self.min_workers} must be <= max_workers={self.max_workers}."
+            )
 
         self._validate_tpu_config()
 
         if (
             isinstance(self.label_selector, list)
-            and isinstance(self.num_workers, int)
-            and len(self.label_selector) != self.num_workers
+            and len(self.label_selector) != self.max_workers
         ):
             raise ValueError(
-                "If `label_selector` is a list, it must be the same length as `num_workers`."
+                "If `label_selector` is a list, it must be the same length as "
+                "`max_workers` (or `num_workers` when fixed)."
             )
 
         if self.num_workers == 0:
@@ -101,8 +134,42 @@ class ScalingConfig(ScalingConfigV1):
 
         super().__post_init__()
 
+    @property
+    def elasticity_enabled(self) -> bool:
+        return isinstance(self.num_workers, tuple)
+
+    @property
+    def min_workers(self) -> int:
+        return (
+            self.num_workers
+            if isinstance(self.num_workers, int)
+            else self.num_workers[0]
+        )
+
+    @property
+    def max_workers(self) -> int:
+        return (
+            self.num_workers
+            if isinstance(self.num_workers, int)
+            else self.num_workers[1]
+        )
+
+    @property
+    def total_resources(self):
+        """Map of total resources required for training.
+
+        For elastic configs, this returns an upper bound based on max_workers.
+        """
+        total_resource_map = dict(self._trainer_resources_not_none)
+        for k, value in self._resources_per_worker_not_none.items():
+            total_resource_map[k] = total_resource_map.get(k, 0.0) + (
+                value * self.max_workers
+            )
+        return total_resource_map
+
     def _validate_tpu_config(self):
         """Validates configuration specifically for TPU usage."""
+        max_workers = self.max_workers
 
         if self.use_gpu and self.use_tpu:
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
@@ -125,7 +192,7 @@ class ScalingConfig(ScalingConfigV1):
                 "`resources_per_worker."
             )
 
-        if self.num_workers > 1:
+        if max_workers > 1:
             if not self.topology:
                 raise ValueError(
                     "`topology` must be specified in ScalingConfig when `use_tpu=True` "
@@ -158,9 +225,16 @@ class ScalingConfig(ScalingConfigV1):
                     f"topology={self.topology}. Error: {e}"
                 )
 
-            if workers_per_slice > 0 and self.num_workers % workers_per_slice != 0:
+            if workers_per_slice > 0 and max_workers % workers_per_slice != 0:
                 raise ValueError(
                     f"The configured `num_workers` ({self.num_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
+                )
+            if workers_per_slice > 0 and self.min_workers % workers_per_slice != 0:
+                raise ValueError(
+                    f"The configured `min_workers` ({self.min_workers}) must be a "
                     f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
                     "TPU workloads typically require symmetric resource distribution "
                     "across all slices to function correctly."

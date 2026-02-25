@@ -14,7 +14,7 @@ from typing import (
     Union,
 )
 
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
