@@ -1,6 +1,6 @@
 import pytest
 
-from ray.data._internal.concurrency_solver import (
+from ray.data._internal.cluster_autoscaler.concurrency_solver import (
     allocate_resources,
     compute_optimal_throughput,
 )
