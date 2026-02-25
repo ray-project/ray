@@ -703,7 +703,7 @@ class ProxyStateManager:
         elif protocol == RequestProtocol.GRPC:
             if not is_grpc_enabled(self._grpc_options):
                 return None
-            port = self._grpc_options.port
+            port = RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
         else:
             raise ValueError(f"Invalid protocol: {protocol}")
 

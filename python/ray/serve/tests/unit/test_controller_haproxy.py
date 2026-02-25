@@ -48,9 +48,6 @@ def haproxy_controller():
     app_state_manager = FakeApplicationStateManager({}, {}, {})
     deployment_state_manager = FakeDeploymentStateManager({})
     proxy_state_manager = FakeProxyStateManager()
-    proxy_state_manager.add_fallback_proxy_details(
-        "fallback_node_id", "fallback_instance_id", "10.0.0.1", "fallback_proxy"
-    )
 
     controller = FakeHAProxyController(
         kv_store=kv_store,
@@ -109,10 +106,10 @@ def test_get_target_groups_haproxy(
 
     # Setup proxy state manager
     haproxy_controller.proxy_state_manager.add_proxy_details(
-        "proxy_node1", "instance1", "10.0.1.1", "proxy1"
+        "proxy_node1", "10.0.1.1", "proxy1"
     )
     haproxy_controller.proxy_state_manager.add_proxy_details(
-        "proxy_node2", "instance2", "10.0.1.2", "proxy2"
+        "proxy_node2", "10.0.1.2", "proxy2"
     )
 
     # Allocate ports for replicas using controller's methods
@@ -135,18 +132,8 @@ def test_get_target_groups_haproxy(
                 route_prefix="/",
                 app_name="",
                 targets=[
-                    Target(
-                        ip="10.0.1.1",
-                        port=8000,
-                        instance_id="instance1",
-                        name="proxy1",
-                    ),
-                    Target(
-                        ip="10.0.1.2",
-                        port=8000,
-                        instance_id="instance2",
-                        name="proxy2",
-                    ),
+                    Target(ip="10.0.1.1", port=8000, instance_id="", name="proxy1"),
+                    Target(ip="10.0.1.2", port=8000, instance_id="", name="proxy2"),
                 ],
             ),
             TargetGroup(
@@ -154,18 +141,8 @@ def test_get_target_groups_haproxy(
                 route_prefix="/",
                 app_name="",
                 targets=[
-                    Target(
-                        ip="10.0.1.1",
-                        port=9000,
-                        instance_id="instance1",
-                        name="proxy1",
-                    ),
-                    Target(
-                        ip="10.0.1.2",
-                        port=9000,
-                        instance_id="instance2",
-                        name="proxy2",
-                    ),
+                    Target(ip="10.0.1.1", port=9000, instance_id="", name="proxy1"),
+                    Target(ip="10.0.1.2", port=9000, instance_id="", name="proxy2"),
                 ],
             ),
         ]
@@ -177,10 +154,7 @@ def test_get_target_groups_haproxy(
                 app_name="app1",
                 targets=[
                     Target(
-                        ip="10.0.0.1",
-                        port=http_port1,
-                        instance_id="",
-                        name="replica1",
+                        ip="10.0.0.1", port=http_port1, instance_id="", name="replica1"
                     ),
                 ],
             ),
@@ -190,10 +164,7 @@ def test_get_target_groups_haproxy(
                 app_name="app1",
                 targets=[
                     Target(
-                        ip="10.0.0.1",
-                        port=grpc_port1,
-                        instance_id="",
-                        name="replica1",
+                        ip="10.0.0.1", port=grpc_port1, instance_id="", name="replica1"
                     ),
                 ],
             ),
@@ -213,9 +184,6 @@ def test_get_target_groups_app_with_no_running_replicas(
     has no running replicas."""
 
     haproxy_controller._ha_proxy_enabled = True
-    haproxy_controller.proxy_state_manager.add_fallback_proxy_details(
-        "fallback_node_id", "fallback_instance_id", "10.0.0.1", "fallback_proxy"
-    )
 
     # Setup test data with running applications
     app_statuses = {"app1": {}}
@@ -239,7 +207,7 @@ def test_get_target_groups_app_with_no_running_replicas(
     )
 
     haproxy_controller.proxy_state_manager.add_proxy_details(
-        "proxy_node1", "instance1", "10.0.0.1", "proxy1"
+        "proxy_node1", "10.0.0.1", "proxy1"
     )
 
     target_groups = haproxy_controller.get_target_groups(
