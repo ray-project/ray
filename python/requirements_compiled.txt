@@ -1,5 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
 
 absl-py==1.4.0
     # via
@@ -1285,7 +1285,7 @@ numpy==1.26.4
     #   webdataset
     #   xgboost
     #   zoopt
-nvidia-nccl-cu12==2.20.5
+nvidia-nccl-cu12==2.26.2
     # via xgboost
 oauth2client==4.1.3
     # via
@@ -2263,7 +2263,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.7.0+cpu
+torch==2.7.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2301,7 +2301,7 @@ torchmetrics==0.10.3
     #   pytorch-lightning
 torchtext==0.18.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.22.0+cpu
+torchvision==0.22.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml

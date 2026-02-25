@@ -4139,7 +4139,7 @@ stringzilla==3.12.5 \
     --hash=sha256:ff6967a7660218a0aeacc840dcb0190b72f082a9c9a9cd5aa050153779f2c603 \
     --hash=sha256:ffd00a552235fa20e0d2b3071d2a067d854456fc0fa78554790bbd37453326d6
     # via albucore
-sympy==1.13.1 \
+sympy==1.13.3 \
     --hash=sha256:9cebf7e04ff162015ce31c9c6c9144daa34a93bd082f54fd8f12deca4f47515f \
     --hash=sha256:db36cdc64bf61b9b24578b6f7bab1ecdd2452cf008f34faa33776680c26d66f8
     # via
@@ -4339,7 +4339,7 @@ tomli==2.0.1 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   jupytext
     #   pytest
-torch==2.3.0 \
+torch==2.7.0 \
     --hash=sha256:09c81c5859a5b819956c6925a405ef1cdda393c9d8a01ce3851453f699d3358c \
     --hash=sha256:1bf023aa20902586f614f7682fedfa463e773e26c58820b74158a72470259459 \
     --hash=sha256:20572f426965dd8a04e92a473d7e445fa579e09943cc0354f3e6fef6130ce061 \
