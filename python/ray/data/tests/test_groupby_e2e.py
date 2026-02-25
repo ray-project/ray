@@ -1336,6 +1336,145 @@ def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):
     assert result_ds.count() == 6
 
 
+def test_small_data_local_aggregation(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test that small datasets use local aggregation fast-path."""
+    ctx = DataContext.get_current()
+    original_shuffle_strategy = ctx.shuffle_strategy
+    original_threshold = ctx.small_data_threshold_for_local_aggregation
+
+    try:
+        ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+        ctx.small_data_threshold_for_local_aggregation = 1024 * 1024
+
+        ds = ray.data.from_items([{"group": x % 3, "value": x} for x in range(100)])
+
+        result = ds.groupby("group").sum("value").sort("group").take_all()
+
+        assert result == [
+            {"group": 0, "sum(value)": 1683},
+            {"group": 1, "sum(value)": 1617},
+            {"group": 2, "sum(value)": 1650},
+        ]
+    finally:
+        ctx.shuffle_strategy = original_shuffle_strategy
+        ctx.small_data_threshold_for_local_aggregation = original_threshold
+
+
+def test_local_aggregation_threshold_disabled(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test that setting threshold to 0 disables local aggregation."""
+    ctx = DataContext.get_current()
+    original_shuffle_strategy = ctx.shuffle_strategy
+    original_threshold = ctx.small_data_threshold_for_local_aggregation
+
+    try:
+        ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+        ctx.small_data_threshold_for_local_aggregation = 0
+
+        ds = ray.data.from_items([{"group": x % 3, "value": x} for x in range(100)])
+
+        result = ds.groupby("group").sum("value").sort("group").take_all()
+
+        assert result == [
+            {"group": 0, "sum(value)": 1683},
+            {"group": 1, "sum(value)": 1617},
+            {"group": 2, "sum(value)": 1650},
+        ]
+    finally:
+        ctx.shuffle_strategy = original_shuffle_strategy
+        ctx.small_data_threshold_for_local_aggregation = original_threshold
+
+
+def test_local_aggregation_mean(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test that Mean aggregation works correctly with local aggregation."""
+    ctx = DataContext.get_current()
+    original_shuffle_strategy = ctx.shuffle_strategy
+    original_threshold = ctx.small_data_threshold_for_local_aggregation
+
+    try:
+        ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+        ctx.small_data_threshold_for_local_aggregation = 1024 * 1024
+
+        ds = ray.data.from_items([{"group": x % 3, "value": x} for x in range(100)])
+
+        result = ds.groupby("group").mean("value").sort("group").take_all()
+
+        for row in result:
+            assert "group" in row
+            assert "mean(value)" in row
+            assert row["mean(value)"] is not None
+    finally:
+        ctx.shuffle_strategy = original_shuffle_strategy
+        ctx.small_data_threshold_for_local_aggregation = original_threshold
+
+
+def test_local_aggregation_global_agg(
+    ray_start_regular_shared_2_cpus,
+    disable_fallback_to_object_extension,
+):
+    """Test that global aggregation (groupby None) works with local aggregation."""
+    ctx = DataContext.get_current()
+    original_shuffle_strategy = ctx.shuffle_strategy
+    original_threshold = ctx.small_data_threshold_for_local_aggregation
+
+    try:
+        ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+        ctx.small_data_threshold_for_local_aggregation = 1024 * 1024
+
+        ds = ray.data.range(10)
+
+        result = ds.groupby(None).min()
+
+        assert result.take_all() == [{"min(id)": 0}]
+
+        result = ds.groupby(None).max()
+
+        assert result.take_all() == [{"max(id)": 9}]
+
+        result = ds.groupby(None).sum("id")
+
+        assert result.take_all() == [{"sum(id)": 45}]
+    finally:
+        ctx.shuffle_strategy = original_shuffle_strategy
+        ctx.small_data_threshold_for_local_aggregation = original_threshold
+
+
+def test_estimate_input_size_bytes(ray_start_regular_shared_2_cpus):
+    """Test the _estimate_input_size_bytes function."""
+    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.planner.plan_all_to_all_op import (
+        _estimate_input_size_bytes,
+    )
+    from ray.data.block import BlockMetadata
+
+    block = pa.table({"a": [1, 2, 3], "b": [4, 5, 6]})
+    ray_block = ray.put(block)
+    metadata = BlockMetadata(
+        num_rows=3,
+        size_bytes=100,
+        exec_stats=None,
+        input_files=None,
+    )
+
+    ref_bundle = RefBundle(
+        [(ray_block, metadata)],
+        schema=None,
+        owns_blocks=True,
+    )
+
+    size = _estimate_input_size_bytes([ref_bundle])
+
+    assert size > 0
+
+
 if __name__ == "__main__":
     import sys
 
