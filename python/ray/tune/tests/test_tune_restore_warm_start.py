@@ -301,30 +301,41 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             from ax.modelbridge.registry import Models
 
         # set generation strategy to sobol to ensure reproductibility
+        # ax 1.0+ renamed 'model' to 'generator'; ax <0.2.0 used 'num_arms'
         try:
-            # ax-platform>=0.2.0
             gs = GenerationStrategy(
                 steps=[
                     GenerationStep(
-                        model=Models.SOBOL,
+                        generator=Models.SOBOL,
                         num_trials=-1,
-                        model_kwargs={"seed": 4321},
+                        model_kwargs={"seed": 42},
                     ),
                 ]
             )
         except TypeError:
-            # ax-platform<0.2.0
-            gs = GenerationStrategy(
-                steps=[
-                    GenerationStep(
-                        model=Models.SOBOL,
-                        num_arms=-1,
-                        model_kwargs={"seed": 4321},
-                    ),
-                ]
-            )
+            try:
+                gs = GenerationStrategy(
+                    steps=[
+                        GenerationStep(
+                            model=Models.SOBOL,
+                            num_trials=-1,
+                            model_kwargs={"seed": 42},
+                        ),
+                    ]
+                )
+            except TypeError:
+                # ax-platform<0.2.0
+                gs = GenerationStrategy(
+                    steps=[
+                        GenerationStep(
+                            model=Models.SOBOL,
+                            num_arms=-1,
+                            model_kwargs={"seed": 42},
+                        ),
+                    ]
+                )
 
-        client = AxClient(random_seed=4321, generation_strategy=gs)
+        client = AxClient(random_seed=42, generation_strategy=gs)
         client.create_experiment(
             parameters=space,
             objectives={"loss": ObjectiveProperties(minimize=True)},
