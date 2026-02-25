@@ -263,15 +263,7 @@ import deepspeed
 
 def setup_model_and_optimizer(model_name: str, learning_rate: float, ds_config: Dict[str, Any]) -> deepspeed.runtime.engine.DeepSpeedEngine:
     # (1) Load pretrained model
-    try:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-    except TypeError as e:
-        if "'NoneType' object is not callable" in str(e):
-            raise RuntimeError(
-                "Failed to initialize model during setup. "
-                "Please verify the runtime dependencies and model configuration."
-            ) from e
-        raise
+    model = AutoModelForCausalLM.from_pretrained(model_name)
 
     # (2) Define optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)

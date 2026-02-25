@@ -84,15 +84,7 @@ def setup_dataloader(
 def setup_model_and_optimizer(
     model_name: str, learning_rate: float, ds_config: Dict[str, Any]
 ) -> deepspeed.runtime.engine.DeepSpeedEngine:
-    try:
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-    except TypeError as e:
-        if "'NoneType' object is not callable" in str(e):
-            raise RuntimeError(
-                "Failed to initialize model during setup. "
-                "Please verify the runtime dependencies and model configuration."
-            ) from e
-        raise
+    model = AutoModelForCausalLM.from_pretrained(model_name)
     log_rank0(
         f"Model loaded: {model_name} (#parameters: {sum(p.numel() for p in model.parameters())})"
     )
