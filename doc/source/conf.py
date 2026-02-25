@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import sys
 import zipfile
 from datetime import datetime
@@ -618,10 +619,14 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
     """
-    generate.generate_autosummary_docs(
-        [os.path.join(app.srcdir, file) for file in autogen_files],
-        app=app,
-    )
+    try:
+        generate.generate_autosummary_docs(
+            [os.path.join(app.srcdir, file) for file in autogen_files],
+            app=app,
+        )
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Skipping autogen due to: {e}")
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -702,6 +707,18 @@ def setup(app):
             app.env.metadata[docname]["orphan"] = True
 
     app.connect('source-read', mark_orphans)
+
+    # Fix code-block language tags in _collections markdown files.
+    # Notebooks converted to markdown tag Jupyter magic shell commands
+    # (e.g. ``!serve run ...``) as ``python`` code blocks, which causes
+    # Sphinx highlighting warnings.  Re-tag them as ``bash``.
+    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n(![a-z])")
+
+    def fix_collections_code_blocks(app, docname, source):
+        if docname.startswith("_collections/"):
+            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```bash\n\1", source[0])
+
+    app.connect('source-read', fix_collections_code_blocks)
 
 
 redoc = [
