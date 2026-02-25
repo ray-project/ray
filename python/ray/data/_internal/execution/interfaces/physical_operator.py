@@ -30,7 +30,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
-from ray.data.block import Block, BlockMetadata, TaskExecStats
+from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -103,7 +103,7 @@ class TaskExecDriverStats:
 
 
 TaskDoneCallbackType = Callable[
-    [Optional[Exception], Optional[TaskExecStats], Optional[TaskExecDriverStats]], None
+    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]], None
 ]
 
 

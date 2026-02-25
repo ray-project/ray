@@ -13,7 +13,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
 from ray.data._internal.util import KiB
-from ray.data.block import BlockExecStats, BlockMetadata, TaskExecStats
+from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 
 
@@ -81,7 +81,7 @@ def test_task_completion_time_histogram():
         metrics.on_task_finished(
             i,
             None,
-            TaskExecStats(task_wall_time_s=completion_time),
+            TaskExecWorkerStats(task_wall_time_s=completion_time),
             TaskExecDriverStats(task_output_backpressure_s=0),
         )
 
@@ -130,7 +130,7 @@ def test_block_completion_time_histogram():
         metrics.on_task_finished(
             i,
             None,
-            TaskExecStats(task_wall_time_s=gen_time + ser_time),
+            TaskExecWorkerStats(task_wall_time_s=gen_time + ser_time),
             TaskExecDriverStats(task_output_backpressure_s=0),
         )
 
@@ -222,7 +222,7 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         metrics.on_task_finished(
             i,
             None,
-            TaskExecStats(task_wall_time_s=driver_wall_time_s - scheduling_time_s),
+            TaskExecWorkerStats(task_wall_time_s=driver_wall_time_s - scheduling_time_s),
             TaskExecDriverStats(task_output_backpressure_s=output_bp_time_s),
         )
 

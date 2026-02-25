@@ -69,7 +69,7 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadataWithSchema,
     BlockStats,
-    TaskExecStats,
+    TaskExecWorkerStats,
     _take_first_non_empty_schema,
     to_stats,
 )
@@ -575,7 +575,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         def _task_done_callback(
             task_index: int,
             exception: Optional[Exception],
-            task_exec_stats: Optional[TaskExecStats],
+            task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
@@ -779,7 +779,7 @@ def _map_task(
                     metadata=replace(
                         block_meta,
                         exec_stats=blk_exec_stats,
-                        task_exec_stats=TaskExecStats(task_wall_time_s=task_dur_s),
+                        task_exec_stats=TaskExecWorkerStats(task_wall_time_s=task_dur_s),
                     ),
                     # TODO only pass schema w/ the first block
                     schema=block_schema,

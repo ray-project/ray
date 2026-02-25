@@ -160,7 +160,7 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 @DeveloperAPI
 @dataclass(frozen=True)
-class TaskExecStats:
+class TaskExecWorkerStats:
     """Task's execution stats reported from the executing worker"""
 
     # Total task's wall-clock time from start to finish (measured on the worker)
@@ -265,7 +265,7 @@ class BlockMetadata(BlockStats):
     input_files: Optional[List[str]]
 
     # Task execution stats reported from the worker
-    task_exec_stats: Optional[TaskExecStats] = field(default=None)
+    task_exec_stats: Optional[TaskExecWorkerStats] = field(default=None)
 
     def to_stats(self):
         return BlockStats(
@@ -297,7 +297,7 @@ class BlockMetadataWithSchema(BlockMetadata):
     def from_block(
         block: Block,
         block_exec_stats: Optional["BlockExecStats"] = None,
-        task_exec_stats: Optional["TaskExecStats"] = None,
+        task_exec_stats: Optional["TaskExecWorkerStats"] = None,
     ) -> "BlockMetadataWithSchema":
         accessor = BlockAccessor.for_block(block)
 
@@ -458,7 +458,7 @@ class BlockAccessor:
         self,
         input_files: Optional[List[str]] = None,
         block_exec_stats: Optional[BlockExecStats] = None,
-        task_exec_stats: Optional[TaskExecStats] = None,
+        task_exec_stats: Optional[TaskExecWorkerStats] = None,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(

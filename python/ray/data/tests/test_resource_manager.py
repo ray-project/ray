@@ -34,7 +34,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.block import TaskExecStats
+from ray.data.block import TaskExecWorkerStats
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 from ray.data.tests.conftest import *  # noqa
 
@@ -361,7 +361,7 @@ class TestResourceManager:
         o2.metrics.on_task_finished(
             0,
             None,
-            TaskExecStats(task_wall_time_s=0.0),
+            TaskExecWorkerStats(task_wall_time_s=0.0),
             TaskExecDriverStats(task_output_backpressure_s=0),
         )
         resource_manager.update_usages()
@@ -401,7 +401,7 @@ class TestResourceManager:
         o3.metrics.on_task_finished(
             0,
             None,
-            TaskExecStats(task_wall_time_s=0.0),
+            TaskExecWorkerStats(task_wall_time_s=0.0),
             TaskExecDriverStats(task_output_backpressure_s=0),
         )
         resource_manager.update_usages()

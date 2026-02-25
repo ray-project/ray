@@ -15,7 +15,7 @@ from ray.data._internal.execution.interfaces.common import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
-from ray.data.block import BlockMetadata, TaskExecStats
+from ray.data.block import BlockMetadata, TaskExecWorkerStats
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 if TYPE_CHECKING:
@@ -1024,7 +1024,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self,
         task_index: int,
         exception: Optional[Exception],
-        task_exec_stats: Optional["TaskExecStats"],
+        task_exec_stats: Optional["TaskExecWorkerStats"],
         task_exec_driver_stats: Optional["TaskExecDriverStats"],
     ):
         """Callback when a task is finished."""

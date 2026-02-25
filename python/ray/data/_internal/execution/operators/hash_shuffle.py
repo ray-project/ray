@@ -67,7 +67,7 @@ from ray.data.block import (
     BlockMetadataWithSchema,
     BlockStats,
     BlockType,
-    TaskExecStats,
+    TaskExecWorkerStats,
     to_stats,
 )
 from ray.data.context import (
@@ -886,7 +886,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         def _on_aggregation_done(
             partition_id: int,
             exc: Optional[Exception],
-            task_exec_stats: Optional[TaskExecStats],
+            task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
@@ -1787,7 +1787,7 @@ class HashShuffleAggregator:
             yield BlockMetadataWithSchema.from_block(
                 block,
                 block_exec_stats=exec_stats,
-                task_exec_stats=TaskExecStats(
+                task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )

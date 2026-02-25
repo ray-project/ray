@@ -59,7 +59,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.operators import MapRows, Read, Write
 from ray.data._internal.util import MiB
-from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecStats
+from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 
@@ -1151,7 +1151,7 @@ def create_stub_streaming_gen(
 
             block_accessor = BlockAccessor.for_block(block)
             block_metadata = block_accessor.get_metadata(
-                task_exec_stats=TaskExecStats(
+                task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=_time.perf_counter() - task_start_s,
                 )
             )
