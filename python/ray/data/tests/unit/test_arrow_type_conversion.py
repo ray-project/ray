@@ -167,7 +167,7 @@ def test_pa_infer_type_failing_to_infer():
 
     inferred_dtype = _infer_pyarrow_type(column_vals)
 
-    # Arrow (17.0) seem to fallback to assume the dtype of the first element
+    # Arrow (17.0) seems to fallback to assume the dtype of the first element
     assert pa.string().equals(inferred_dtype)
 
 
