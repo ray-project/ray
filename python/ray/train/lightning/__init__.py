@@ -1,6 +1,6 @@
 # isort: off
 try:
-    import lightning.pytorch  # noqa: F401
+    import lightning  # noqa: F401
 except ModuleNotFoundError:
     try:
         import pytorch_lightning  # noqa: F401

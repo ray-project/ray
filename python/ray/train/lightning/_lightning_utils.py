@@ -18,7 +18,7 @@ from ray.util import PublicAPI
 def import_lightning():  # noqa: F402
     try:
         import lightning.pytorch as pl
-    except ImportError:
+    except ModuleNotFoundError:
         import pytorch_lightning as pl
     return pl
 
@@ -32,7 +32,7 @@ _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_avail
 
 try:
     from lightning.pytorch.plugins.environments import LightningEnvironment
-except ImportError:
+except ModuleNotFoundError:
     from pytorch_lightning.plugins.environments import LightningEnvironment
 
 if _LIGHTNING_GREATER_EQUAL_2_0:
