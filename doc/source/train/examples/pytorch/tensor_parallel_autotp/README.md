@@ -229,7 +229,13 @@ def create_dataloader(
 
     # Set pad token if needed
     if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+        if tokenizer.eos_token is not None:
+            tokenizer.pad_token = tokenizer.eos_token
+        else:
+            raise ValueError(
+                f"Tokenizer for {model_name} has no pad_token or eos_token. "
+                "Please set a pad token manually."
+            )
 
     # Tokenize dataset
     def tokenize_fn(examples):
