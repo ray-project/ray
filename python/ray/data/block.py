@@ -168,41 +168,43 @@ class TaskExecWorkerStats:
 
 
 @DeveloperAPI
+@dataclass
 class BlockExecStats:
-    """Execution stats for this block.
+    """Execution stats for a single output block produced by a task.
 
-    Attributes:
-        wall_time_s: The wall-clock time it took to compute this block.
-        cpu_time_s: The CPU time it took to compute this block.
-        node_id: A unique id for the node that computed this block.
-        max_uss_bytes: An estimate of the maximum amount of physical memory that the
-            process was using while computing this block.
+    Set by :class:`_BlockExecStatsBuilder` (via :meth:`builder`) and enriched
+    by the map worker before the block is yielded.
     """
 
-    def __init__(self):
-        self.start_time_s: Optional[float] = None
-        self.end_time_s: Optional[float] = None
-        self.wall_time_s: Optional[float] = None
-        self.udf_time_s: Optional[float] = 0
-        self.block_ser_time_s: Optional[float] = None
-        self.cpu_time_s: Optional[float] = None
-        self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        self.max_uss_bytes: int = 0
-        self.task_idx: Optional[int] = None
+    # Index of the task that produced this block, used to attribute rows
+    # to individual tasks in per-task statistics.
+    task_idx: Optional[int] = None
+
+    # Ray node ID of the worker that produced this block.
+    node_id: str = field(
+        default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
+    )
+
+    # Absolute wall-clock timestamp when the task started.
+    start_time_s: Optional[float] = None
+    # Absolute wall-clock timestamp when the task finished.
+    end_time_s: Optional[float] = None
+    # Total wall-clock duration of the task (end_time_s - start_time_s).
+    wall_time_s: Optional[float] = None
+    # Time spent inside user-defined functions for this block.
+    udf_time_s: Optional[float] = 0
+    # Time spent serializing this block into a Ray object (object_creation_dur_s).
+    block_ser_time_s: Optional[float] = None
+    # Total CPU time consumed by the worker process during the task, across all threads.
+    cpu_time_s: Optional[float] = None
+
+    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
+    # as estimated by the memory profiler.
+    max_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
         return _BlockExecStatsBuilder()
-
-    def __repr__(self):
-        return repr(
-            {
-                "wall_time_s": self.wall_time_s,
-                "cpu_time_s": self.cpu_time_s,
-                "udf_time_s": self.udf_time_s,
-                "node_id": self.node_id,
-            }
-        )
 
 
 class _BlockExecStatsBuilder:
@@ -217,19 +219,15 @@ class _BlockExecStatsBuilder:
         self._start_cpu = time.process_time()
 
     def build(self, block_ser_time_s: Optional[int] = None) -> "BlockExecStats":
-        # Record end times.
         end_time = time.perf_counter()
         end_cpu = time.process_time()
-
-        # Build the stats.
-        stats = BlockExecStats()
-        stats.start_time_s = self._start_time
-        stats.end_time_s = end_time
-        stats.wall_time_s = end_time - self._start_time
-        stats.cpu_time_s = end_cpu - self._start_cpu
-        stats.block_ser_time_s = block_ser_time_s
-
-        return stats
+        return BlockExecStats(
+            start_time_s=self._start_time,
+            end_time_s=end_time,
+            wall_time_s=end_time - self._start_time,
+            cpu_time_s=end_cpu - self._start_cpu,
+            block_ser_time_s=block_ser_time_s,
+        )
 
 
 @DeveloperAPI
