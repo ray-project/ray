@@ -678,7 +678,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.TASKS,
     )
     def average_task_block_gen_and_ser_time_s(self) -> Optional[float]:
-        """Average task's completion time in seconds (excluding throttling)"""
+        """Average task's block generation and serialization time in seconds."""
         if self.num_tasks_finished == 0:
             return None
 
