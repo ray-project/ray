@@ -139,5 +139,4 @@ class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
             worker_group.execute_single(
                 global_rank,
                 _set_torch_distributed_env_vars,
-                torchft_enabled=True,
             )

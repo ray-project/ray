@@ -149,7 +149,7 @@ def _shutdown_torch(destroy_process_group=False):
                 torch.cuda.empty_cache()
 
 
-def _set_torch_distributed_env_vars(torchft_enabled: bool = False):
+def _set_torch_distributed_env_vars():
     # Same env vars as in
     # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
     from ray.train.torch import get_device
@@ -158,14 +158,8 @@ def _set_torch_distributed_env_vars(torchft_enabled: bool = False):
     os.environ["LOCAL_RANK"] = str(context.get_local_rank())
     os.environ["LOCAL_WORLD_SIZE"] = str(context.get_local_world_size())
     os.environ["NODE_RANK"] = str(context.get_node_rank())
-    # torchft can only be enabled in Ray Train v2.
-    # TODO: use dp rank and dp world size after model parallel training is supported
-    if torchft_enabled:
-        os.environ["RANK"] = "0"
-        os.environ["WORLD_SIZE"] = "1"
-    else:
-        os.environ["RANK"] = str(context.get_world_rank())
-        os.environ["WORLD_SIZE"] = str(context.get_world_size())
+    os.environ["RANK"] = str(context.get_world_rank())
+    os.environ["WORLD_SIZE"] = str(context.get_world_size())
 
     # Makes sure Hugging Face Accelerate uses the correct device
     device = get_device()
