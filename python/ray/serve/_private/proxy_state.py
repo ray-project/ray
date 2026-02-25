@@ -706,14 +706,13 @@ class ProxyStateManager:
             port = self._grpc_options.port
         else:
             raise ValueError(f"Invalid protocol: {protocol}")
-        
+
         return Target(
             ip=state.actor_details.node_ip,
             port=port,
             instance_id=state.actor_details.node_instance_id,
             name=state.actor_name,
         )
-
 
     def get_targets(self, protocol: RequestProtocol) -> List[Target]:
         """In Ray Serve, every proxy is responsible for routing requests to the
