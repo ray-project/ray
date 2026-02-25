@@ -782,7 +782,9 @@ def test_read_with_invalid_schema(
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared_2_cpus, min_rows_per_file):
+def test_write_min_rows_per_file(
+    tmp_path, ray_start_regular_shared_2_cpus, min_rows_per_file
+):
     ray.data.range(100, override_num_blocks=20).write_tfrecords(
         tmp_path, min_rows_per_file=min_rows_per_file
     )
