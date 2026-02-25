@@ -695,20 +695,25 @@ class ProxyStateManager:
 
     def get_fallback_proxy_target(self, protocol: RequestProtocol) -> Optional[Target]:
         state = self._fallback_proxy_state
-        if state and state.status == ProxyStatus.HEALTHY:
-            port = (
-                RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
-                if protocol == RequestProtocol.HTTP
-                else RAY_SERVE_FALLBACK_PROXY_GRPC_PORT
-            )
-            return Target(
-                ip=state.actor_details.node_ip,
-                port=port,
-                instance_id=state.actor_details.node_instance_id,
-                name=state.actor_name,
-            )
+        if not state or state.status != ProxyStatus.HEALTHY:
+            return None
 
-        return None
+        if protocol == RequestProtocol.HTTP:
+            port = RAY_SERVE_FALLBACK_PROXY_HTTP_PORT
+        elif protocol == RequestProtocol.GRPC:
+            if not is_grpc_enabled(self._grpc_options):
+                return None
+            port = self._grpc_options.port
+        else:
+            raise ValueError(f"Invalid protocol: {protocol}")
+        
+        return Target(
+            ip=state.actor_details.node_ip,
+            port=port,
+            instance_id=state.actor_details.node_instance_id,
+            name=state.actor_name,
+        )
+
 
     def get_targets(self, protocol: RequestProtocol) -> List[Target]:
         """In Ray Serve, every proxy is responsible for routing requests to the
