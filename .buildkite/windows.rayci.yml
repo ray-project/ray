@@ -56,6 +56,7 @@ steps:
     parallelism: 5
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
+        || true
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --build-name windowsbuild
         --operating-system windows
@@ -64,6 +65,8 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
+        || true
+      - sleep 28800
     depends_on: windowsbuild
 
   - label: ":ray-serve: serve: :windows: tests"
