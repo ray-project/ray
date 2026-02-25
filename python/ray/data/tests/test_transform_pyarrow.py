@@ -172,7 +172,9 @@ def test_pyarrow_conversion_error_handling(
         ]
 
 
-@pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
 @pytest.mark.skipif(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
