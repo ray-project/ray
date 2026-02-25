@@ -349,21 +349,13 @@ class PandasBlockBuilder(TableBlockBuilder):
 # NOTE: This has to be compatible with pyarrow.lib.schema
 @dataclass(frozen=True, init=False)
 class PandasBlockSchema:
-    # Stored as tuples for hash-ability; exposed as lists via properties.
-    _names: Tuple[str, ...]
-    _types: Tuple
+    # Stored as tuples for hash-ability.
+    names: Tuple[str, ...]
+    types: Tuple
 
     def __init__(self, names, types):
-        object.__setattr__(self, "_names", tuple(names))
-        object.__setattr__(self, "_types", tuple(types))
-
-    @property
-    def names(self) -> List[str]:
-        return list(self._names)
-
-    @property
-    def types(self) -> List:
-        return list(self._types)
+        object.__setattr__(self, "names", tuple(names))
+        object.__setattr__(self, "types", tuple(types))
 
 
 class PandasBlockAccessor(TableBlockAccessor):
