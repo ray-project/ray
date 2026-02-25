@@ -163,6 +163,12 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
           "Can't find memory usage for PID, reporting zero. PID: %d", pid);
     }
 
+    if (worker_debug_strings.size() >= 10) {
+      worker_debug_strings.push_back(absl::StrFormat(
+          "  ... (%zu more workers)", workers.size() - worker_debug_strings.size()));
+      break;
+    }
+
     bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
     worker_debug_strings.push_back(absl::StrFormat(
         "(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | Memory used: %d "
@@ -171,12 +177,6 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
         absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone()),
         retriable ? "yes" : "no",
         used_memory));
-
-    if (worker_debug_strings.size() >= 10) {
-      worker_debug_strings.push_back(absl::StrFormat(
-          "  ... (%zu more workers)", workers.size() - worker_debug_strings.size()));
-      break;
-    }
   }
 
   result << absl::StrJoin(worker_debug_strings, ", ");

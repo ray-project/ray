@@ -41,7 +41,7 @@ class MockWorker : public WorkerInterface {
         port_(port),
         runtime_env_hash_(runtime_env_hash),
         job_id_(JobID::FromInt(859)),
-        proc_(std::make_unique<FakeProcess>()) {}
+        proc_(std::make_unique<FakeProcess>(worker_process_pid)) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
