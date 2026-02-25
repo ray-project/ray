@@ -18,7 +18,7 @@ except ImportError:
     watch = None
     ApiException = None
 
-from ray.core.generated.platform_events_pb2 import PlatformEvent, Source
+from ray.core.generated.platform_event_pb2 import PlatformEvent, Source
 from ray.core.generated.events_base_event_pb2 import RayEvent
 
 logger = logging.getLogger(__name__)
@@ -248,7 +248,7 @@ class PlatformEventsHead(dashboard_utils.DashboardHeadModule):
         
         # Create Protocol Buffer message
         source_proto = Source(
-            platform="kubernetes",
+            platform="KUBERNETES",
             component=event_obj.source.component if event_obj.source else "k8s",
             metadata={"namespace": event_obj.metadata.namespace or "default"}
         )
@@ -259,13 +259,11 @@ class PlatformEventsHead(dashboard_utils.DashboardHeadModule):
         timestamp_ns = int(event_timestamp.timestamp() * 1e9) if event_timestamp else int(time.time() * 1e9)
         
         proto_platform_event = PlatformEvent(
-            source_event_id=event_obj.metadata.uid,
             source=source_proto,
             object_kind=involved_object.kind,
             object_name=involved_object.name,
             message=event_obj.message or "",
             reason=event_obj.reason or "",
-            timestamp_ns=timestamp_ns,
         )
 
         # Wrap in RayEvent for unified framework integration
@@ -304,7 +302,7 @@ class PlatformEventsHead(dashboard_utils.DashboardHeadModule):
         data = {
             "events": [
                 {
-                    "source_event_id": e.platform_event.source_event_id,
+                    "source_event_id": e.event_id.decode("utf-8"),
                     "severity": RayEvent.Severity.Name(e.severity),
                     "source": {
                         "platform": e.platform_event.source.platform,
@@ -315,7 +313,7 @@ class PlatformEventsHead(dashboard_utils.DashboardHeadModule):
                     "object_name": e.platform_event.object_name,
                     "message": e.platform_event.message,
                     "reason": e.platform_event.reason,
-                    "timestamp_ns": e.platform_event.timestamp_ns,
+                    "timestamp_ns": e.timestamp.seconds * 10**9 + e.timestamp.nanos,
                 } for e in events_list
             ],
         }

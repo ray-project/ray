@@ -531,7 +531,7 @@ python_grpc_compile(
         ":runtime_env_common_proto",
         ":usage_proto",
         "//src/ray/protobuf/public:events_base_event_proto",
-        "//src/ray/protobuf/public:platform_events_proto",
+        "//src/ray/protobuf/public:platform_event_proto",
         "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )
