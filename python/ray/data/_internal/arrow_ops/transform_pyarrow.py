@@ -1,7 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -614,7 +614,7 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
 
 
 def _concat_cols_with_extension_tensor_types(
-    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+    col_chunked_arrays: Iterable["pyarrow.ChunkedArray"],
 ) -> "pyarrow.ChunkedArray":
     """Concatenate chunked arrays that have tensor extension types.
 
@@ -658,7 +658,7 @@ def _concat_cols_with_extension_tensor_types(
 
 
 def _concat_cols_with_extension_object_types(
-    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+    col_chunked_arrays: Iterable["pyarrow.ChunkedArray"],
 ) -> "pyarrow.ChunkedArray":
     """Concatenate chunked arrays where the unified type is ``ArrowPythonObjectType``.
 
@@ -812,8 +812,8 @@ def concat(
     concatenated_cols: Dict[str, pa.ChunkedArray] = {}
 
     # Names of columns that can use pa.concat_tables. This includes
-    #   - native types (supports type promotion across blocks)
-    #   - extension types (does not support type promotion blocks)
+    #   - native columns
+    #   - extension columns where all blocks have the **same** column type
     concatable_cols: List[str] = []
     for col_name in schema.names:
         col_type = schema.field(col_name).type
