@@ -2839,7 +2839,8 @@ cdef class CoreWorker:
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
         options.debug_source = debug_source
-        CCoreWorkerProcess.Initialize(options)
+        with nogil:
+            CCoreWorkerProcess.Initialize(options)
 
         self.cgname_to_eventloop_dict = None
         self.fd_to_cgname_dict = None
