@@ -177,7 +177,7 @@ class TestConcatenator:
 
     def test_concatenator_deserialize_backward_compat(self):
         p1 = Concatenator(columns=["A"], flatten=True)
-        delattr(p1, "flatten")
+        delattr(p1, "_flatten")
         data = p1.serialize()
         p2 = Concatenator.deserialize(data)
         assert isinstance(p2, Concatenator)

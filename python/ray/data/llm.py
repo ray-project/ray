@@ -153,8 +153,8 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig):
         concurrency: The number of workers for data parallelism. Default to 1.
             If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
-            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
-            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            If ``concurrency`` is an ``int`` ``n``, both CPU and GPU stages use an autoscaling
+            pool from ``(1, n)``.
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:
@@ -251,8 +251,8 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig):
         concurrency: The number of workers for data parallelism. Default to 1.
             If ``concurrency`` is a tuple ``(m, n)``, Ray creates an autoscaling
             actor pool that scales between ``m`` and ``n`` workers (``1 <= m <= n``).
-            If ``concurrency`` is an ``int`` ``n``, CPU stages use an autoscaling
-            pool from ``(1, n)``, while GPU stages use a fixed pool of ``n`` workers.
+            If ``concurrency`` is an ``int`` ``n``, both CPU and GPU stages use an autoscaling
+            pool from ``(1, n)``.
             Stage-specific concurrency can be set via nested stage configs.
 
     Examples:

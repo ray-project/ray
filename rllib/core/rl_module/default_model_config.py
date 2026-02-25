@@ -85,6 +85,9 @@ class DefaultModelConfig:
     #: Kwargs passed into the initializer function defined through
     #: `fcnet_bias_initializer`.
     fcnet_bias_initializer_kwargs: Optional[dict] = None
+    #: Whether to insert LayerNorm after each hidden layer in the encoder stack
+    #: configured by `fcnet_hiddens`.
+    fcnet_use_layernorm: bool = False
     # __sphinx_doc_default_model_config_fcnet_end__
 
     # ====================================================
@@ -151,6 +154,9 @@ class DefaultModelConfig:
     #: Kwargs passed into the initializer function defined through
     #: `head_fcnet_bias_initializer`.
     head_fcnet_bias_initializer_kwargs: Optional[dict] = None
+    #: Whether to insert LayerNorm after each hidden layer in the head stack
+    #: configured by `head_fcnet_hiddens`.
+    head_fcnet_use_layernorm: bool = False
 
     # ====================================================
     # Continuous action settings
