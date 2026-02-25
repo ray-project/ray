@@ -198,13 +198,18 @@ class AxSearch(Searcher):
         if not self._ax:
             self._ax = AxClient(**self._ax_kwargs)
 
-        # Ententionally defensive to ensure that if the experiment is not set correctly we raise an error. Prevents silent failures.
+        # Intentionally defensive to ensure that if the experiment is not set correctly we raise an error. Prevents silent failures.
         try:
             exp = self._ax.experiment
             has_experiment = True
-        except (ValueError, AssertionError):
-            # ValueError: older Ax versions raise this when experiment not set
-            # AssertionError: newer Ax versions (1.0.0+) raise this when experiment not set
+        except AssertionError as e:
+            # ax 1.0.0+ raises AssertionError via none_throws() when experiment is None.
+            # Re-raise if the message is unexpected to avoid masking real Ax failures.
+            if "Experiment not set" not in str(e):
+                raise
+            has_experiment = False
+        except ValueError:
+            # Older Ax versions raise ValueError when experiment is not set.
             has_experiment = False
 
         if not has_experiment:
@@ -254,8 +259,15 @@ class AxSearch(Searcher):
         # Access experiment - should exist now (either created above or already existed)
         try:
             exp = self._ax.experiment
-        except (ValueError, AssertionError) as e:
-            # This should not happen if create_experiment succeeded, but handle it defensively
+        except AssertionError as e:
+            # Re-raise if the message is unexpected to avoid masking real Ax failures.
+            if "Experiment not set" not in str(e):
+                raise
+            raise RuntimeError(
+                "Failed to access Ax experiment after setup. "
+                "This may indicate an issue with the Ax client setup."
+            ) from e
+        except ValueError as e:
             raise RuntimeError(
                 "Failed to access Ax experiment after setup. "
                 "This may indicate an issue with the Ax client setup."
