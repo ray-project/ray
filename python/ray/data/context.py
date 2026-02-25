@@ -871,6 +871,7 @@ class DataContext:
         from ray.data._internal.execution.callbacks.insert_issue_detectors import (
             IssueDetectionExecutionCallback,
         )
+        from ray.data._internal.execution.execution_callback import ExecutionCallback
 
         classes = [
             ExecutionIdxUpdateCallback,
@@ -889,21 +890,21 @@ class DataContext:
                     module_path, class_name = callback_path.rsplit(".", 1)
                     module = importlib.import_module(module_path)
                     callback_cls = getattr(module, class_name)
-
-                    if not isinstance(callback_cls, type) or not issubclass(
-                        callback_cls, ExecutionCallback
-                    ):
-                        raise ValueError(
-                            f"Invalid callback class '{callback_path}' specified in "
-                            f"{EXECUTION_CALLBACKS_ENV_VAR}. Expected a subclass of "
-                            f"ExecutionCallback, but got {type(callback_cls)}."
-                        )
-
-                    classes.append(callback_cls)
                 except (ImportError, AttributeError, ValueError) as e:
                     raise ValueError(
                         f"Failed to import callback from '{callback_path}': {e}"
                     )
+
+                if not isinstance(callback_cls, type) or not issubclass(
+                    callback_cls, ExecutionCallback
+                ):
+                    raise ValueError(
+                        f"Invalid callback class '{callback_path}' specified in "
+                        f"{EXECUTION_CALLBACKS_ENV_VAR}. Expected a subclass of "
+                        f"ExecutionCallback, but got {type(callback_cls)}."
+                    )
+
+                classes.append(callback_cls)
 
         # User custom classes
         classes.extend(self.custom_execution_callback_classes)
