@@ -22,7 +22,6 @@ from ray._raylet import ObjectRef
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import torch
 
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
@@ -66,7 +65,7 @@ class TransferMetadata(NamedTuple):
 
 
 @PublicAPI(stability="alpha")
-def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
+def wait_tensor_freed(tensor: Any, timeout: Optional[float] = None):
     """
     Wait for the tensor to be freed.
 
@@ -639,7 +638,7 @@ class GPUObjectManager:
         self,
         object_id: str,
         use_object_store: bool = False,
-    ) -> List["torch.Tensor"]:
+    ) -> List[Any]:
         """
         Get the RDT object for a given object ID.
 
@@ -732,7 +731,7 @@ class GPUObjectManager:
         self,
         obj_ref: ObjectRef,
         tensor_transport: str,
-        tensors: List["torch.Tensor"],
+        tensors: List[Any],
     ):
         """
         Put the GPU object into the GPU object manager.
