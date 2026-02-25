@@ -123,6 +123,34 @@ def test_read_dir_and_file_mixed(ray_start_regular_shared, tmp_path):
     assert sorted(rows, key=lambda r: r["data"]) == [{"data": b"a"}, {"data": b"c"}]
 
 
+def test_pathlib_paths(ray_start_regular_shared, tmp_path):
+    """Test that FileBasedDatasource accepts pathlib.Path objects."""
+    from pathlib import Path
+
+    path = Path(tmp_path) / "test_pathlib"
+    path.mkdir()
+
+    # Create pathlib.Path objects
+    file1 = path / "file1.txt"
+    file2 = path / "file2.txt"
+
+    file1.write_bytes(b"hello")
+    file2.write_bytes(b"world")
+
+    # Verify list of pathlib.Path works
+    datasource = MockFileBasedDatasource([file1, file2])
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+    assert sorted(rows, key=lambda r: r["data"]) == [
+        {"data": b"hello"},
+        {"data": b"world"},
+    ]
+
+    # Verify single pathlib.Path works
+    datasource = MockFileBasedDatasource(file1)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+    assert rows == [{"data": b"hello"}]
+
+
 def test_single_file_infinite_target_max_block_size(
     ray_start_regular_shared, target_max_block_size_infinite_or_default, tmp_path
 ):
