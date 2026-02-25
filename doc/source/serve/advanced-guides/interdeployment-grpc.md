@@ -10,7 +10,7 @@ This is separate from the [gRPC ingress proxy](serve-set-up-grpc-service), which
 gRPC transport bypasses Ray's actor scheduler and object store, reducing per-request overhead. It is most beneficial for **high-throughput workloads with small payloads** — requests and responses under ~1 MB typically show a benefit. Pairing it with a fast serializer like `msgpack` or `orjson` further reduces overhead when data is JSON-serializable.
 
 **Keep the default (by-reference) transport when:**
-- Payloads are large. Ray's object store enables zero-copy shared-memory transfers between co-located replicas, which is faster than serializing over the network.
+- Payloads are large. By-reference mode uses Ray's actor RPC, which can pass data without serialization overhead for co-located replicas.
 - Deployments are chained. By-reference mode passes `DeploymentResponse` objects through the pipeline without materializing intermediate results.
 - You need `_to_object_ref()` for custom async patterns.
 
@@ -18,7 +18,7 @@ gRPC transport bypasses Ray's actor scheduler and object store, reducing per-req
 
 When gRPC transport is enabled for a handle:
 1. Each replica starts an internal gRPC server on a random port at startup.
-2. The calling deployment's `DeploymentHandle` sends serialized requests over gRPC to the target replica's port, bypassing Ray's actor RPC.
+2. Requests are serialized and sent over gRPC directly to the target replica's port, bypassing Ray's actor RPC.
 3. Serialization format is configurable (cloudpickle, pickle, msgpack, or orjson).
 
 ## Enabling gRPC transport
@@ -59,7 +59,7 @@ The gRPC transport supports multiple serialization formats. Configure them per-h
 
 Available formats:
 - `"cloudpickle"` (default) — most flexible, supports arbitrary Python objects.
-- `"pickle"` — standard library pickle, slightly faster than cloudpickle.
+- `"pickle"` — standard library pickle.
 - `"msgpack"` — fast binary format, requires data to be msgpack-serializable.
 - `"orjson"` — fast JSON format, requires data to be JSON-serializable.
 
