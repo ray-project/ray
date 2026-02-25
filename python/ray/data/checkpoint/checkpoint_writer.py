@@ -50,7 +50,7 @@ class CheckpointWriter:
             return BatchBasedCheckpointWriter(config)
         if backend == CheckpointBackend.ICEBERG:
             return IcebergCheckpointWriter(config)
-        raise (f"Backend {backend} not implemented")
+        raise NotImplementedError(f"Backend {backend} not implemented")
 
 
 class IcebergCheckpointWriter(CheckpointWriter):
