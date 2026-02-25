@@ -1,6 +1,9 @@
 import logging
+import tempfile
 from types import ModuleType
 from typing import Dict, Optional, Union
+
+import pyarrow.fs
 
 import ray
 from ray.air._internal import usage as air_usage
@@ -263,7 +266,6 @@ class MLflowLoggerCallback(LoggerCallback):
         save_artifact: bool = False,
         log_params_on_trial_end: bool = False,
     ):
-
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
         self.experiment_name = experiment_name
@@ -302,7 +304,6 @@ class MLflowLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         # Create run if not already exists.
         if trial not in self._trial_runs:
-
             # Set trial name in tags
             tags = self.tags.copy()
             tags["trial_name"] = str(trial)
@@ -327,7 +328,19 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Log the artifact if set_artifact is set to True.
         if self.should_save_artifact:
-            self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.local_path)
+            fs = trial.storage.storage_filesystem
+            # `trial.path` can be a remote URI. `mlflow.log_artifacts` expects a local
+            # path. If the filesystem is not local, we need to download it first.
+            if fs.type_name in ("local", "file"):
+                self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.path)
+            else:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    pyarrow.fs.copy_files(
+                        trial.path,
+                        tmpdir,
+                        source_filesystem=fs,
+                    )
+                    self.mlflow_util.save_artifacts(run_id=run_id, dir=tmpdir)
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
