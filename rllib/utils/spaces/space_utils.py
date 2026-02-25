@@ -320,8 +320,23 @@ def batch(
         flat = tree.flatten(list_of_structs[0])
         individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
 
-    np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
-    ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
+    if individual_items_already_have_batch_dim:
+        ret = tree.map_structure(lambda *s: np.concatenate(s, axis=0), *list_of_structs)
+    else:
+        n = len(list_of_structs)
+
+        def fast_stack(*s):
+            # NOTE (Artur): This is a faster version of np.stack as per my benchmarks.
+            s0 = s[0]
+            if not isinstance(s0, np.ndarray):
+                return np.array(s)
+            out = np.empty((n, *s0.shape), dtype=s0.dtype)
+            for i in range(n):
+                out[i] = s[i]
+            return out
+
+        ret = tree.map_structure(fast_stack, *list_of_structs)
+
     return ret
 
 
