@@ -132,11 +132,35 @@ class ProtocolsProvider:
             )
 
         account_url = f"https://{azure_storage_account_name}.blob.core.windows.net/"
-        transport_params = {
-            "client": BlobServiceClient(
-                account_url=account_url, credential=DefaultAzureCredential()
-            )
-        }
+        try:
+            transport_params = {
+                "client": BlobServiceClient(
+                    account_url=account_url, credential=DefaultAzureCredential()
+                )
+            }
+        except Exception as e:
+            _is_credential_error = False
+            try:
+                from azure.core.exceptions import ClientAuthenticationError
+
+                _is_credential_error = isinstance(e, ClientAuthenticationError)
+            except ImportError:
+                pass
+            if not _is_credential_error:
+                try:
+                    from azure.identity import CredentialUnavailableError
+
+                    _is_credential_error = isinstance(e, CredentialUnavailableError)
+                except ImportError:
+                    pass
+            if _is_credential_error:
+                raise RuntimeError(
+                    "Azure credential error when setting up Blob Storage access. "
+                    "Your Azure credentials may have expired or are misconfigured.\n"
+                    "Try: `az login` or set AZURE_CLIENT_ID/AZURE_CLIENT_SECRET/"
+                    "AZURE_TENANT_ID environment variables."
+                ) from e
+            raise
 
         return open_file, transport_params
 
@@ -193,10 +217,38 @@ class ProtocolsProvider:
                 )
 
             # Handle ABFSS URI with adlfs
-            filesystem = adlfs.AzureBlobFileSystem(
-                account_name=azure_storage_account_name,
-                credential=DefaultAzureCredential(),
-            )
+            try:
+                filesystem = adlfs.AzureBlobFileSystem(
+                    account_name=azure_storage_account_name,
+                    credential=DefaultAzureCredential(),
+                )
+            except Exception as e:
+                _is_credential_error = False
+                try:
+                    from azure.core.exceptions import ClientAuthenticationError
+
+                    _is_credential_error = isinstance(e, ClientAuthenticationError)
+                except ImportError:
+                    pass
+                if not _is_credential_error:
+                    try:
+                        from azure.identity import CredentialUnavailableError
+
+                        _is_credential_error = isinstance(
+                            e, CredentialUnavailableError
+                        )
+                    except ImportError:
+                        pass
+                if _is_credential_error:
+                    raise RuntimeError(
+                        "Azure credential error when setting up ABFSS access. "
+                        "Your Azure credentials may have expired or are "
+                        "misconfigured.\n"
+                        "Try: `az login` or set AZURE_CLIENT_ID/"
+                        "AZURE_CLIENT_SECRET/AZURE_TENANT_ID environment "
+                        "variables."
+                    ) from e
+                raise
             return filesystem.open(uri, mode)
 
         return open_file, None

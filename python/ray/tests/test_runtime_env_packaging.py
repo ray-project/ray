@@ -784,6 +784,134 @@ class TestS3Protocol:
             assert transport_params["client"] == mock_unsigned_client
 
 
+class TestAzureProtocolCredentialErrors:
+    """Test Azure protocol handlers produce helpful errors on credential failures."""
+
+    def test_azure_protocol_expired_credential(self):
+        """_handle_azure_protocol raises RuntimeError when BlobServiceClient
+        fails with a ClientAuthenticationError."""
+        import os
+        import unittest.mock as mock
+
+        # Build mock Azure modules
+        class _ClientAuthenticationError(Exception):
+            pass
+
+        mock_azure_identity = mock.MagicMock()
+        mock_azure_identity.DefaultAzureCredential.return_value = mock.MagicMock()
+
+        mock_azure_storage_blob = mock.MagicMock()
+        mock_azure_storage_blob.BlobServiceClient.side_effect = (
+            _ClientAuthenticationError("token expired")
+        )
+
+        mock_azure_core_exceptions = mock.MagicMock()
+        mock_azure_core_exceptions.ClientAuthenticationError = (
+            _ClientAuthenticationError
+        )
+
+        mock_smart_open = mock.MagicMock()
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "azure": mock.MagicMock(),
+                "azure.identity": mock_azure_identity,
+                "azure.storage": mock.MagicMock(),
+                "azure.storage.blob": mock_azure_storage_blob,
+                "azure.core": mock.MagicMock(),
+                "azure.core.exceptions": mock_azure_core_exceptions,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            with mock.patch.dict(os.environ, {"AZURE_STORAGE_ACCOUNT": "teststorage"}):
+                from ray._private.runtime_env.protocol import ProtocolsProvider
+
+                with pytest.raises(RuntimeError, match="az login"):
+                    ProtocolsProvider._handle_azure_protocol()
+
+    def test_abfss_protocol_expired_credential(self):
+        """_handle_abfss_protocol's open_file raises RuntimeError when
+        AzureBlobFileSystem fails with a ClientAuthenticationError."""
+        import unittest.mock as mock
+
+        class _ClientAuthenticationError(Exception):
+            pass
+
+        mock_azure_identity = mock.MagicMock()
+        mock_azure_identity.DefaultAzureCredential.return_value = mock.MagicMock()
+
+        mock_adlfs = mock.MagicMock()
+        mock_adlfs.AzureBlobFileSystem.side_effect = _ClientAuthenticationError(
+            "token expired"
+        )
+
+        mock_azure_core_exceptions = mock.MagicMock()
+        mock_azure_core_exceptions.ClientAuthenticationError = (
+            _ClientAuthenticationError
+        )
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "azure": mock.MagicMock(),
+                "azure.identity": mock_azure_identity,
+                "azure.core": mock.MagicMock(),
+                "azure.core.exceptions": mock_azure_core_exceptions,
+                "adlfs": mock_adlfs,
+            },
+        ):
+            from ray._private.runtime_env.protocol import ProtocolsProvider
+
+            open_file, _ = ProtocolsProvider._handle_abfss_protocol()
+            uri = "abfss://container@account.dfs.core.windows.net/path/file.zip"
+            with pytest.raises(RuntimeError, match="az login"):
+                open_file(uri, "rb")
+
+    def test_azure_protocol_non_credential_error_passes_through(self):
+        """Non-credential errors from BlobServiceClient should propagate as-is."""
+        import os
+        import unittest.mock as mock
+
+        mock_azure_identity = mock.MagicMock()
+        mock_azure_identity.DefaultAzureCredential.return_value = mock.MagicMock()
+
+        mock_azure_core_exceptions = mock.MagicMock()
+        # ClientAuthenticationError is a distinct class – ConnectionError won't match.
+        mock_azure_core_exceptions.ClientAuthenticationError = type(
+            "ClientAuthenticationError", (Exception,), {}
+        )
+
+        mock_azure_storage_blob = mock.MagicMock()
+        mock_azure_storage_blob.BlobServiceClient.side_effect = ConnectionError(
+            "network failure"
+        )
+
+        mock_smart_open = mock.MagicMock()
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "azure": mock.MagicMock(),
+                "azure.identity": mock_azure_identity,
+                "azure.storage": mock.MagicMock(),
+                "azure.storage.blob": mock_azure_storage_blob,
+                "azure.core": mock.MagicMock(),
+                "azure.core.exceptions": mock_azure_core_exceptions,
+                "smart_open": mock_smart_open,
+            },
+        ):
+            mock_smart_open.open = mock.MagicMock()
+
+            with mock.patch.dict(os.environ, {"AZURE_STORAGE_ACCOUNT": "teststorage"}):
+                from ray._private.runtime_env.protocol import ProtocolsProvider
+
+                with pytest.raises(ConnectionError, match="network failure"):
+                    ProtocolsProvider._handle_azure_protocol()
+
+
 def test_https_handler_requires_smart_open(monkeypatch):
     monkeypatch.setitem(sys.modules, "smart_open", None)
     with pytest.raises(ImportError):

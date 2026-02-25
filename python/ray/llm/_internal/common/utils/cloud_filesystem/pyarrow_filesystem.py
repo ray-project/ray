@@ -143,10 +143,35 @@ class PyArrowFileSystem(BaseCloudFileSystem):
             )
 
         # Create the adlfs filesystem
-        adlfs_fs = adlfs.AzureBlobFileSystem(
-            account_name=azure_storage_account_name,
-            credential=DefaultAzureCredential(),
-        )
+        try:
+            adlfs_fs = adlfs.AzureBlobFileSystem(
+                account_name=azure_storage_account_name,
+                credential=DefaultAzureCredential(),
+            )
+        except Exception as e:
+            _is_credential_error = False
+            try:
+                from azure.core.exceptions import ClientAuthenticationError
+
+                _is_credential_error = isinstance(e, ClientAuthenticationError)
+            except ImportError:
+                pass
+            if not _is_credential_error:
+                try:
+                    from azure.identity import CredentialUnavailableError
+
+                    _is_credential_error = isinstance(e, CredentialUnavailableError)
+                except ImportError:
+                    pass
+            if _is_credential_error:
+                raise RuntimeError(
+                    f"Azure credential error accessing storage account "
+                    f"{azure_storage_account_name}.\n"
+                    "Credentials may be expired or misconfigured. "
+                    "Try: `az login`\n"
+                    "Or set: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID"
+                ) from e
+            raise
 
         # Wrap with PyArrow's PyFileSystem for compatibility
         fs = pa_fs.PyFileSystem(pa_fs.FSSpecHandler(adlfs_fs))
