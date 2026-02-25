@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
@@ -346,19 +346,37 @@ def _resolve_custom_scheme(path: str) -> str:
     return path
 
 
+def _normalize_paths_to_strings(
+    paths: Union[str, pathlib.Path, List[Union[str, pathlib.Path]]]
+) -> List[str]:
+    """Normalize path input to a list of strings.
+
+    Accepts a single path (str or pathlib.Path) or a list of paths.
+    Returns a list of string paths. Raises ValueError if paths is empty
+    or contains invalid types.
+    """
+    if isinstance(paths, str):
+        return [paths]
+    elif isinstance(paths, pathlib.Path):
+        return [str(paths)]
+    elif isinstance(paths, list):
+        normalized = [str(p) if isinstance(p, pathlib.Path) else p for p in paths]
+        if not normalized:
+            raise ValueError("Must provide at least one path.")
+        if any(not isinstance(p, str) for p in normalized):
+            raise ValueError("All paths must be str or pathlib.Path")
+        return normalized
+    else:
+        raise ValueError(f"paths must be str, pathlib.Path, or list, got {type(paths)}")
+
+
 def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     """Returns True if the given paths are in local scheme.
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    if isinstance(paths, str):
-        paths = [paths]
-    if isinstance(paths, pathlib.Path):
-        paths = [str(paths)]
-    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError("paths must be a path string or a list of path strings.")
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
+    paths = _normalize_paths_to_strings(paths)
+
     num = sum(urllib.parse.urlparse(path).scheme == _LOCAL_SCHEME for path in paths)
     if num > 0 and num < len(paths):
         raise ValueError(
@@ -1792,3 +1810,17 @@ def infer_compression(path: str) -> Optional[str]:
         if suffix and suffix[1:] == "snappy":
             compression = "snappy"
     return compression
+
+
+def get_max_task_capacity(
+    allocated_resources: Optional["ExecutionResources"],
+    min_scheduling_resources: "ExecutionResources",
+) -> float:
+    if allocated_resources is None:
+        return 0
+
+    if min_scheduling_resources.copy(object_store_memory=0).is_zero():
+        return float("inf")
+
+    capacity = allocated_resources.floordiv(min_scheduling_resources)
+    return min(capacity.cpu, capacity.gpu, capacity.memory)

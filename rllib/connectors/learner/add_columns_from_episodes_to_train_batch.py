@@ -81,10 +81,8 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                 self.add_n_batch_items(
                     batch,
                     Columns.ACTIONS,
-                    items_to_add=[
-                        sa_episode.get_actions(indices=ts)
-                        for ts in range(len(sa_episode))
-                    ],
+                    # Bulk extraction: get all actions at once instead of per-timestep.
+                    items_to_add=sa_episode.get_actions(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
@@ -98,10 +96,8 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                 self.add_n_batch_items(
                     batch,
                     Columns.REWARDS,
-                    items_to_add=[
-                        sa_episode.get_rewards(indices=ts)
-                        for ts in range(len(sa_episode))
-                    ],
+                    # Bulk extraction: get all rewards at once instead of per-timestep.
+                    items_to_add=sa_episode.get_rewards(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
@@ -156,10 +152,10 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     self.add_n_batch_items(
                         batch,
                         column,
-                        items_to_add=[
-                            sa_episode.get_extra_model_outputs(key=column, indices=ts)
-                            for ts in range(len(sa_episode))
-                        ],
+                        # Bulk extraction: get all extra outputs at once.
+                        items_to_add=sa_episode.get_extra_model_outputs(
+                            key=column, indices=slice(0, len(sa_episode))
+                        ),
                         num_items=len(sa_episode),
                         single_agent_episode=sa_episode,
                     )

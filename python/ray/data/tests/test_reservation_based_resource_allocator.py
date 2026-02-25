@@ -1047,70 +1047,69 @@ class TestReservationOpResourceAllocator:
         resource_manager._update_allocated_budgets()
 
         """
-        UnionOperator (o6) has throttling disabled, so only o8 gets budget allocation.
         global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
         +-----+------------------+------------------+--------------+
         |     | _op_reserved     | _reserved_for    | used shared  |
         |     | (used/remaining) | _op_outputs      | resources    |
         |     |                  | (used/remaining) |              |
         +-----+------------------+------------------+--------------+
-        | op8 | 0/400            | 0/400            | 0            |
+        | op6 | 0/200            | 0/200            | 0            |
+        +-----+------------------+------------------+--------------+
+        | op8 | 0/200            | 0/200            | 0            |
         +-----+------------------+------------------+--------------+
         """
         allocator = resource_manager._op_resource_allocator
 
-        # Verify o6 (UnionOperator) is not in eligible ops due to throttling disabled
-        eligible_ops = set(resource_manager.get_eligible_ops())
-        assert o6 not in eligible_ops
-        assert o8 in eligible_ops
-
-        # Only o8 (JoinOperator) gets budget allocation since o6 (UnionOperator) has throttling disabled
-        assert set(allocator._op_budgets.keys()) == {o8}
-        assert set(allocator._op_reserved.keys()) == {o8}
-        assert allocator._op_reserved[o8] == ExecutionResources(
-            cpu=6, object_store_memory=400
+        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_reserved.keys()) == {o6, o8}
+        assert allocator._op_reserved[o6] == ExecutionResources(
+            cpu=3, object_store_memory=200
         )
-        assert allocator._reserved_for_op_outputs[o8] == 400
+        assert allocator._op_reserved[o8] == ExecutionResources(
+            cpu=3, object_store_memory=200
+        )
+        assert allocator._reserved_for_op_outputs[o6] == 200
+        assert allocator._reserved_for_op_outputs[o8] == 200
         assert allocator._total_shared == ExecutionResources(
             cpu=6, object_store_memory=800
         )
+        assert allocator._op_budgets[o6] == ExecutionResources(
+            cpu=6, object_store_memory=600
+        )
         # object_store_memory budget is unlimited, since join is a materializing
-        # operator. CPU budget gets all remaining 12 CPU.
+        # operator
         assert allocator._op_budgets[o8] == ExecutionResources(
-            cpu=12, object_store_memory=float("inf")
+            cpu=6, object_store_memory=float("inf")
         )
 
         # Test when resources are used.
-        op_usages[o6] = ExecutionResources.zero()
-        op_internal_usage[o6] = 0
-        op_outputs_usages[o6] = 0
+        op_usages[o6] = ExecutionResources(2, 0, 500)
+        op_internal_usage[o6] = 300
+        op_outputs_usages[o6] = 200
         op_usages[o8] = ExecutionResources(2, 0, 100)
         op_internal_usage[o8] = 50
         op_outputs_usages[o8] = 50
-
         """
-        global_limits (20 CPU, 2000 mem) - o2 usage (2 CPU, 150 mem) - o3 usage (2 CPU, 50 mem) - o5 usage (3 CPU, 100 mem) - o7 usage (1 CPU, 100 mem) = remaining (12 CPU, 1600 mem)
         +-----+------------------+------------------+--------------+
         |     | _op_reserved     | _reserved_for    | used shared  |
         |     | (used/remaining) | _op_outputs      | resources    |
         |     |                  | (used/remaining) |              |
         +-----+------------------+------------------+--------------+
-        | op8 | 50/350           | 50/350           | 0            |
+        | op6 | 200/0            | 200/0            | 100          |
+        +-----+------------------+------------------+--------------+
+        | op8 | 50/150           | 50/150           | 0            |
         +-----+------------------+------------------+--------------+
         """
+
         resource_manager._update_allocated_budgets()
 
-        assert allocator._op_reserved[o8] == ExecutionResources(
-            cpu=6, object_store_memory=400
-        )
-        assert allocator._reserved_for_op_outputs[o8] == 400
-        assert allocator._total_shared == ExecutionResources(
-            cpu=6, object_store_memory=800
+        assert allocator._op_budgets[o6] == ExecutionResources(
+            cpu=4, object_store_memory=350
         )
         # object_store_memory budget is unlimited, since join is a materializing
-        # operator. CPU budget = 12 - 2 (o8 internal) = 10
+        # operator
         assert allocator._op_budgets[o8] == ExecutionResources(
-            cpu=10, object_store_memory=float("inf")
+            cpu=4, object_store_memory=float("inf")
         )
 
         # Test when completed ops update the usage.
@@ -1125,22 +1124,32 @@ class TestReservationOpResourceAllocator:
         |     | (used/remaining) | _op_outputs      | resources    |
         |     |                  | (used/remaining) |              |
         +-----+------------------+------------------+--------------+
-        | op8 | 50/375           | 50/375           | 0            |
+        | op6 | 213/0            | 200/13           | 300-213=87   |
+        +-----+------------------+------------------+--------------+
+        | op8 | 50/163           | 50/163           | 0            |
         +-----+------------------+------------------+--------------+
         """
-        assert set(allocator._op_budgets.keys()) == {o8}
-        assert set(allocator._op_reserved.keys()) == {o8}
-        assert allocator._op_reserved[o8] == ExecutionResources(
-            cpu=7.5, object_store_memory=425
+        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_reserved.keys()) == {o6, o8}
+        assert allocator._op_reserved[o6] == ExecutionResources(
+            cpu=3.75, object_store_memory=213
         )
-        assert allocator._reserved_for_op_outputs[o8] == 425
+        assert allocator._op_reserved[o8] == ExecutionResources(
+            cpu=3.75, object_store_memory=213
+        )
+        assert allocator._reserved_for_op_outputs[o6] == 212
+        assert allocator._reserved_for_op_outputs[o8] == 212
         assert allocator._total_shared == ExecutionResources(
             cpu=7.5, object_store_memory=850
         )
+        # object_store_memory budget = 0 + (850 - 87) / 2 = 381 (rounded down)
+        assert allocator._op_budgets[o6] == ExecutionResources(
+            cpu=5.5, object_store_memory=381
+        )
         # object_store_memory budget is unlimited, since join is a materializing
-        # operator. CPU budget = 15 - 2 (o8 internal) = 13
+        # operator
         assert allocator._op_budgets[o8] == ExecutionResources(
-            cpu=13, object_store_memory=float("inf")
+            cpu=5.5, object_store_memory=float("inf")
         )
 
 

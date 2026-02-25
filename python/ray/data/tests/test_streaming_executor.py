@@ -10,7 +10,6 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray._raylet import NodeID
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -63,7 +62,6 @@ from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def mock_resource_manager(
@@ -710,57 +708,12 @@ def test_validate_dag(ray_start_regular_shared):
         _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
 
 
-# Mock the `scale_up` method to avoid creating and leaking resources.
-@patch(
-    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
-    return_value=1,
-)
-def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(DataContext.get_current(), inputs)
-    o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
-    )
-    o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=1),
-    )
-    # No locality.
-    build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
-    assert o2._ray_remote_args.get("scheduling_strategy") is None
-    assert o3._ray_remote_args.get("scheduling_strategy") == "SPREAD"
+def test_configure_output_locality_is_deprecated_noop(restore_data_context):
+    data_context = ray.data.DataContext.get_current()
 
-    # Current node locality.
-    build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
-    s1 = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert isinstance(s1, NodeAffinitySchedulingStrategy)
-    assert s1.node_id == ray.get_runtime_context().get_node_id()
-    s2 = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert isinstance(s2, NodeAffinitySchedulingStrategy)
-    assert s2.node_id == ray.get_runtime_context().get_node_id()
-
-    # Multi node locality.
-    node_id_1 = NodeID.from_random().hex()
-    node_id_2 = NodeID.from_random().hex()
-    build_streaming_topology(
-        o3, ExecutionOptions(locality_with_output=[node_id_1, node_id_2])
-    )
-    s1a = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s1b = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s1c = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert s1a.node_id == node_id_1
-    assert s1b.node_id == node_id_2
-    assert s1c.node_id == node_id_1
-    s2a = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s2b = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s2c = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert s2a.node_id == node_id_1
-    assert s2b.node_id == node_id_2
-    assert s2c.node_id == node_id_1
+    with pytest.warns(DeprecationWarning, match="no-op"):
+        data_context.execution_options.locality_with_output = True
+    assert data_context.execution_options.locality_with_output is False
 
 
 class OpBufferQueueTest(unittest.TestCase):

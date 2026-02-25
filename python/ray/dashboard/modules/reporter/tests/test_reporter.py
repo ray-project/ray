@@ -490,6 +490,101 @@ def test_report_stats_gpu(tmp_path):
     assert isinstance(stats_payload, str)
 
 
+def test_report_stats_gpu_power_and_temperature(tmp_path):
+    """Test that GPU power and temperature metrics are reported when present in stats."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-aaa",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 10,
+            "memory_used": 100,
+            "memory_total": 1024,
+            "processes": [],
+            "power_mw": 125000,  # 125 W
+            "temperature_c": 65,
+        },
+        {
+            "index": 1,
+            "uuid": "GPU-bbb",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 20,
+            "memory_used": 200,
+            "memory_total": 1024,
+            "processes": [],
+            "power_mw": 200000,  # 200 W
+            "temperature_c": 72,
+        },
+    ]
+
+    records = agent._to_records(stats, {})
+
+    power_records = [r for r in records if r.gauge.name == "node_gpu_power_milliwatts"]
+    temp_records = [
+        r for r in records if r.gauge.name == "node_gpu_temperature_celsius"
+    ]
+
+    assert len(power_records) == 2
+    assert len(temp_records) == 2
+
+    power_by_index = {r.tags["GpuIndex"]: r.value for r in power_records}
+    assert power_by_index["0"] == 125000
+    assert power_by_index["1"] == 200000
+
+    temp_by_index = {r.tags["GpuIndex"]: r.value for r in temp_records}
+    assert temp_by_index["0"] == 65
+    assert temp_by_index["1"] == 72
+
+    # Tags should include GpuIndex and GpuDeviceName
+    for r in power_records + temp_records:
+        assert "GpuIndex" in r.tags
+        assert r.tags.get("GpuDeviceName") == "NVIDIA A10G"
+
+
+def test_report_stats_gpu_without_power_temperature(tmp_path):
+    """Test that no power/temperature records are emitted when fields are absent."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-ccc",
+            "name": "NVIDIA A10G",
+            "utilization_gpu": 0,
+            "memory_used": 0,
+            "memory_total": 1024,
+            "processes": [],
+            # no power_mw or temperature_c
+        },
+    ]
+
+    records = agent._to_records(stats, {})
+
+    power_records = [r for r in records if r.gauge.name == "node_gpu_power_milliwatts"]
+    temp_records = [
+        r for r in records if r.gauge.name == "node_gpu_temperature_celsius"
+    ]
+
+    assert len(power_records) == 0
+    assert len(temp_records) == 0
+
+
 def test_get_tpu_usage(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
@@ -854,7 +949,9 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
         IN_KUBERNETES_POD=True,
         ENABLE_K8S_DISK_USAGE=enable_k8s_disk_usage,
     ):
-        root_usage = ReporterAgent._get_disk_usage()["/"]
+        root_usage = ReporterAgent._get_disk_usage(
+            ray._common.utils.get_default_ray_temp_dir()
+        )["/"]
         if enable_k8s_disk_usage:
             # Since K8s disk usage is enabled, we shouuld get non-dummy values.
             assert root_usage.total != 1

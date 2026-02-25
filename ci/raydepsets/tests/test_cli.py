@@ -417,12 +417,12 @@ class TestCli(unittest.TestCase):
             [
                 "--no-annotate",
                 "--no-header",
-                "--extra-index-url https://download.pytorch.org/whl/cu128",
+                "--index https://download.pytorch.org/whl/cu128",
             ]
         ) == [
             "--no-annotate",
             "--no-header",
-            "--extra-index-url",
+            "--index",
             "https://download.pytorch.org/whl/cu128",
         ]
 
@@ -1028,7 +1028,7 @@ class TestCli(unittest.TestCase):
             for pkg in expected_packages:
                 assert pkg in names, f"Expected package {pkg} not found"
 
-            # Verify options (--index-url and --extra-index-url)
+            # Verify options (--index-url and --index)
             assert len(rf.options) >= 1
 
             # Verify packages with environment markers are parsed

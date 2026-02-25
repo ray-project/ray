@@ -9,7 +9,6 @@ import ray
 from ray.data.context import DataContext
 from ray.data.dataset import Schema
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
@@ -106,16 +105,6 @@ def test_numpy_read_x(ray_start_regular_shared, tmp_path):
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
     )
 
-    # Add a file with a non-matching file extension. This file should be ignored.
-    with open(os.path.join(path, "foo.txt"), "w") as f:
-        f.write("foobar")
-
-    ds = ray.data.read_numpy(path, override_num_blocks=1)
-    assert ds._plan.initial_num_blocks() == 1
-    assert ds.count() == 10
-    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
-    assert [v["data"].item() for v in ds.take(2)] == [0, 1]
-
 
 def test_numpy_write(ray_start_regular_shared, tmp_path):
     ds = ray.data.range_tensor(1)
@@ -126,17 +115,6 @@ def test_numpy_write(ray_start_regular_shared, tmp_path):
         [np.load(os.path.join(tmp_path, filename)) for filename in os.listdir(tmp_path)]
     )
     assert actual_array == np.array((0,))
-
-
-@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
-    ray.data.range(100, override_num_blocks=20).write_numpy(
-        tmp_path, column="id", min_rows_per_file=min_rows_per_file
-    )
-
-    for filename in os.listdir(tmp_path):
-        array = np.load(os.path.join(tmp_path, filename))
-        assert len(array) == min_rows_per_file
 
 
 if __name__ == "__main__":

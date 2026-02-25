@@ -570,6 +570,34 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
         stack=False,
     ),
     Panel(
+        id=62,
+        title="Node GPU Power",
+        description="Current GPU power draw per node. Reported in milliwatts; displayed in watts. Supported on NVIDIA and AMD GPUs.",
+        unit="mwatt",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_power_milliwatts{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Power: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=63,
+        title="Node GPU Temperature",
+        description="Current GPU temperature per node in Celsius. Supported on NVIDIA GPUs.",
+        unit="celsius",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_temperature_celsius{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Temperature: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
         id=32,
         title="Node Disk IO Speed",
         description="Disk IO per node.",

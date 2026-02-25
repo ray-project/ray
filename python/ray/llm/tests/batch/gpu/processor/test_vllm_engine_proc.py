@@ -72,6 +72,7 @@ def test_vllm_engine_processor(
         "max_concurrent_batches": 8,
         "batch_size": 64,
         "should_continue_on_error": False,
+        "log_engine_metrics": True,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")

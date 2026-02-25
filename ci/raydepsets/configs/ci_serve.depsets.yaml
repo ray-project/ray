@@ -17,7 +17,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/serve_base_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
@@ -38,20 +38,6 @@ depsets:
       - --python-platform=linux
       - --unsafe-package ray
       - --override python/requirements/serve/tracing-reqs.txt
-      - --override python/requirements/serve/serve-overrides.txt
-    build_arg_sets:
-      - py310
-
-  - name: serve_pydantic1_ci_depset_${PYTHON_SHORT}
-    operation: expand
-    depsets:
-      - serve_ci_depset_${PYTHON_SHORT}
-    output: python/deplocks/ci/serve_pydantic1_depset_py${PYTHON_VERSION}.lock
-    append_flags:
-      - --python-version=${PYTHON_VERSION}
-      - --python-platform=linux
-      - --unsafe-package ray
-      - --override python/requirements/serve/pydantic-reqs.txt
       - --override python/requirements/serve/serve-overrides.txt
     build_arg_sets:
       - py310

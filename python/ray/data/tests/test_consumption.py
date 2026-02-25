@@ -272,7 +272,7 @@ def test_range(ray_start_regular_shared):
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(0)
     assert ds.count() == 0
-    assert ds.size_bytes() is None
+    assert ds.size_bytes() == 0
     assert ds.schema() is None
 
     ds = ray.data.range(1)

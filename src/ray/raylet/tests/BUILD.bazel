@@ -6,7 +6,12 @@ ray_cc_library(
     # NOTE(edoakes): scheduling/ tests use this; the dependency should be broken.
     visibility = ["//visibility:public"],
     deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:lease",
+        "//src/ray/protobuf:common_cc_proto",
         "//src/ray/raylet:worker_interface",
+        "//src/ray/util:fake_process",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -34,7 +39,10 @@ ray_cc_test(
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/raylet:worker",
         "//src/ray/raylet:worker_pool",
+        "//src/ray/util:fake_process",
         "//src/ray/util:path_utils",
+        "//src/ray/util:process",
+        "//src/ray/util:process_interface",
         "//src/ray/util:raii",
         "@com_google_googletest//:gtest_main",
     ],
@@ -114,16 +122,18 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "worker_killing_policy_test",
+    name = "worker_killing_policy_group_by_owner_test",
     size = "small",
     srcs = [
-        "worker_killing_policy_test.cc",
+        "worker_killing_policy_group_by_owner_test.cc",
     ],
     tags = ["team:core"],
     deps = [
         ":util",
+        "//src/ray/common:asio",
         "//src/ray/common:lease",
-        "//src/ray/raylet:worker_killing_policy",
+        "//src/ray/raylet:worker_killing_policy_group_by_owner",
+        "//src/ray/util:fake_process",
         "@com_google_googletest//:gtest_main",
     ],
 )
