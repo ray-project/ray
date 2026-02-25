@@ -758,7 +758,7 @@ class ServeController:
             return
 
         self.long_poll_host.notify_changed(
-            {LongPollNamespace.FALLBACK_PROXY: fallback_targets}
+            {LongPollNamespace.FALLBACK_TARGETS: fallback_targets}
         )
         self._last_broadcasted_fallback_targets = fallback_targets
 
