@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import logging
 import time
@@ -13,6 +14,30 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _deployment_uses_multiplexed(deployment_def) -> bool:
+    """Check if a deployment class or function uses @serve.multiplexed.
+
+    Multiplexing is not supported on ingress deployments. The multiplexed
+    decorator sets _serve_multiplexed=True on wrapped functions.
+    """
+    if not callable(deployment_def):
+        return False
+    if getattr(deployment_def, "_serve_multiplexed", False):
+        return True
+    if inspect.isclass(deployment_def):
+        for cls in inspect.getmro(deployment_def):
+            for name in dir(cls):
+                if name.startswith("_"):
+                    continue
+                try:
+                    attr = getattr(cls, name)
+                    if getattr(attr, "_serve_multiplexed", False):
+                        return True
+                except (AttributeError, TypeError):
+                    continue
+    return False
 
 
 def get_deploy_args(
@@ -36,6 +61,16 @@ def get_deploy_args(
         deployment_config = DeploymentConfig.parse_obj(deployment_config)
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
+
+    if ingress:
+        deployment_def = replica_config.deployment_def
+        if _deployment_uses_multiplexed(deployment_def):
+            raise ValueError(
+                "Model multiplexing (@serve.multiplexed) is not supported on "
+                "ingress deployments. Multiplexing should only be used on "
+                "downstream replicas composed via DeploymentHandle. The ingress "
+                "is the routing entry point, not a model-serving leaf."
+            )
 
     deployment_config.version = version
 
