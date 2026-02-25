@@ -10,7 +10,7 @@ os="$(uname -s)"
 case "${os}" in
   Linux)
     golden="${TEST_SRCDIR}/io_ray/python/ray/tests/raylet_exported_symbols_linux.txt"
-    nm_args=(-D --defined-only -g -j)
+    nm_args=(-D --defined-only -g)
     actual="${TEST_TMPDIR}/raylet_exported_symbols_linux.actual.txt"
     ;;
   Darwin)
@@ -37,5 +37,8 @@ if [[ -z "${raylet_so}" ]]; then
   exit 1
 fi
 
-nm "${nm_args[@]}" "${raylet_so}" | grep -E -v '_ZN3ray|_ZNK3ray|_ZTIN3ray|_ZTVN3ray|_ZTSN3ray' > "${actual}"
+nm "${nm_args[@]}" "${raylet_so}" \
+  | awk '{print $NF}' \  # keep symbol name only
+  | grep -E -v '_ZN3ray|_ZNK3ray|_ZTIN3ray|_ZTVN3ray|_ZTSN3ray' \  # drop Ray symbols since we want to test the leaks of non-Ray symbols
+  > "${actual}"
 diff -u "${golden}" "${actual}"
