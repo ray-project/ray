@@ -197,6 +197,8 @@ include "includes/setproctitle.pxi"
 include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
 include "includes/rpc_token_authentication.pxi"
+# Ray Serve-only: Cython timeseries utilities for autoscaling metrics.
+include "includes/timeseries_utils.pxi"
 
 import ray
 from ray.exceptions import (
@@ -4295,7 +4297,7 @@ cdef class CoreWorker:
             if tensor_transport is not None:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
-                serialized_object, tensors = context.serialize_gpu_objects(output)
+                serialized_object, tensors = context.serialize_gpu_objects(output, tensor_transport)
                 pickled_rdt_metadata = context.store_gpu_objects(
                     return_id.Hex().decode("ascii"), tensors, tensor_transport)
                 # One copy from python bytes object to C++ string
