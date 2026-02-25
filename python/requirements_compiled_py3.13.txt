@@ -2220,7 +2220,7 @@ strictyaml==1.7.3
     # via pyiceberg
 supersuit==3.9.3
     # via -r python/requirements/ml/rllib-test-requirements.txt
-sympy==1.13.1
+sympy==1.13.3
     # via
     #   ax-platform
     #   cfn-lint
@@ -2308,7 +2308,7 @@ toolz==0.12.1
     #   dask
     #   distributed
     #   partd
-torch==2.7.0
+torch==2.7.0+cpu
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   accelerate
@@ -2346,7 +2346,7 @@ torchmetrics==0.10.3
     #   pytorch-lightning
 torchtext==0.18.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.22.0
+torchvision==0.22.0+cpu
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   mosaicml
