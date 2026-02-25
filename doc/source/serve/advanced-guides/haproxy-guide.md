@@ -10,7 +10,7 @@ When HAProxy mode is enabled:
 
 ## Prerequisites
 
-HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The official Ray Docker images (2.44+) include HAProxy pre-built.
+HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The official Ray Docker images (2.55+) include HAProxy pre-built.
 
 ### Using a Ray Docker image
 
