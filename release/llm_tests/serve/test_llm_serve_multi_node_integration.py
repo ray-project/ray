@@ -97,14 +97,14 @@ def test_llm_serve_multi_node(tp_size, pp_size):
         # TP=1 cases
         (1, 4, None, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Single group, single node
         (1, 8, None, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Single group, multi-node
-        (1, 2, 4, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Multi-group, single node
-        (1, 4, 8, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Multi-group, multi-node
+        (1, 2, 2, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Multi-group, single node
+        (1, 4, 2, {"bundles": [{"GPU": 1, "CPU": 1}]}),  # Multi-group, multi-node
         # TP=2 cases — auto-generates correct bundles from TP size
-        (2, 2, None, None),  # TP, single group, single node
-        (2, 2, 4, None),  # TP, multi-group, multi-node
+        (2, 2, 1, None),  # TP, single group, single node
+        (2, 2, 2, None),  # TP, multi-group, multi-node
         # TP=2 cases — explicit placement_group_config with 2 bundles for TP=2
         (2, 2, None, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}),
-        (2, 2, 4, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}),
+        (2, 2, 2, {"bundles": [{"GPU": 1, "CPU": 1}, {"GPU": 1}]}),
     ],
 )
 def test_llm_serve_data_parallelism(
@@ -148,8 +148,8 @@ def test_llm_serve_data_parallelism_autoscaling():
     deployment_config = {
         "num_replicas": "auto",
         "autoscaling_config": dict(
-            min_replicas=2,
-            max_replicas=4,
+            min_replicas=1,
+            max_replicas=2,
             upscale_delay_s=0.1,
             downscale_delay_s=5,
             metrics_interval_s=1,
@@ -182,7 +182,6 @@ def test_llm_serve_data_parallelism_autoscaling():
 
     wait_for_condition(is_default_app_running, timeout=300)
 
-    # Verify initial replica count (min_replicas=2, one full gang)
     def check_num_replicas_eq(target):
         dep = (
             serve.status()

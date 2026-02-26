@@ -14,6 +14,7 @@ from ray.experimental.internal_kv import (
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.serve.config import (
+    AutoscalingConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
@@ -184,20 +185,43 @@ class DPServer(LLMServer):
             num_replicas = deployment_options.get("num_replicas")
             if num_replicas != "auto":
                 if num_replicas is not None:
-                    if num_replicas % dp_size != 0:
-                        raise ValueError(
-                            f"num_replicas ({num_replicas}) must be a multiple of "
-                            f"data_parallel_size ({dp_size}) for gang DP deployment."
-                        )
+                    logger.warning(
+                        "In DP deployment, num_replicas refers to the number of DP groups. "
+                        f"Multiplying num_replicas ({num_replicas}) by data_parallel_size ({dp_size}) "
+                        f"to get the total number of serve replicas ({num_replicas * dp_size})."
+                    )
+                    deployment_options["num_replicas"] = num_replicas * dp_size
                 else:
                     deployment_options["num_replicas"] = dp_size
+            else:
+                autoscaling_config = AutoscalingConfig.default().dict()
+                user_config = deployment_options.get("autoscaling_config")
+                if user_config is not None:
+                    autoscaling_config.update(user_config)
+
+                logger.warning(
+                    "In DP deployment, a replica refers to a DP group. "
+                    "Multiplying autoscaling_config's min_replicas, max_replicas, and "
+                    f"initial_replicas by data_parallel_size ({dp_size})."
+                )
+                for key in ["min_replicas", "max_replicas", "initial_replicas"]:
+                    if autoscaling_config.get(key) is not None:
+                        autoscaling_config[key] *= dp_size
+
+                deployment_options["autoscaling_config"] = autoscaling_config
 
             deployment_options["gang_scheduling_config"] = GangSchedulingConfig(
                 gang_size=dp_size,
                 gang_placement_strategy=GangPlacementStrategy.PACK,
                 runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_GANG,
             )
-            # Remove per-replica placement_group_strategy
-            deployment_options.pop("placement_group_strategy", None)
+            # Remove per-replica placement_group_strategy. Ray Serve raises an error
+            # if both placement_group_strategy and gang_scheduling_config are provided.
+            if "placement_group_strategy" in deployment_options:
+                logger.warning(
+                    "placement_group_strategy configured in the deployment config is ignored. "
+                    "DP deployment uses PACK strategy for scheduling DP groups."
+                )
+                deployment_options.pop("placement_group_strategy", None)
 
         return deployment_options
