@@ -313,9 +313,22 @@ class RequestRouterConfig(BaseModel):
         request_router_module, request_router_class = import_module_and_attr(
             request_router_path
         )
-        cloudpickle.register_pickle_by_value(request_router_module)
-        self.set_serialized_request_router_cls(cloudpickle.dumps(request_router_class))
-        cloudpickle.unregister_pickle_by_value(request_router_module)
+        # TODO (jeffreywang): Revert this block
+        try:
+            # Try to pickle by value first
+            cloudpickle.register_pickle_by_value(request_router_module)
+            try:
+                self.set_serialized_request_router_cls(
+                    cloudpickle.dumps(request_router_class)
+                )
+            finally:
+                cloudpickle.unregister_pickle_by_value(request_router_module)
+        except TypeError:
+            # If pickling by value fails (e.g., due to protobuf descriptors),
+            # fall back to pickling by reference
+            self.set_serialized_request_router_cls(
+                cloudpickle.dumps(request_router_class)
+            )
 
         # Update the request_router_class field to be the string path
         self.request_router_class = request_router_path
