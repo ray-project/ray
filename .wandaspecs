@@ -8,3 +8,6 @@
 # to have been built by prior pipeline steps and are pulled from the work repo.
 
 ci/docker/
+docker/base-deps/
+docker/base-extra/
+docker/ray-llm/
