@@ -207,7 +207,7 @@ class ExecutionPlan:
                     LogicalPlan(dag, self._context),
                 )
                 if schema is None:
-                    schema = ds.schema(base=True)
+                    schema = ds.schema(fetch_if_missing=False, base=True)
                 if count is None:
                     count = ds._meta_count()
 
