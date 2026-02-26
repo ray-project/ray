@@ -1,4 +1,4 @@
-r"""Verify that python/ray/serve no longer imports from ray._private.
+r"""Verify that python/ray/serve no longer references ray._private.
 
 Run from repo root after migration:
   cd python && python -c "
@@ -6,14 +6,14 @@ Run from repo root after migration:
   verify()
   "
 Or with grep (no ray needed):
-  grep -R 'from ray\._private' ray/serve --include='*.py' && echo 'FAIL' || echo 'PASS'
+  grep -R 'ray\._private' ray/serve --include='*.py' && echo 'FAIL' || echo 'PASS'
 """
 
 import os
 
 
 def verify() -> bool:
-    """Return True if serve has no ray._private imports."""
+    """Return True if serve has no ``ray._private`` references."""
     serve_dir = os.path.join(os.path.dirname(__file__), "..", "..", "serve")
     if not os.path.isdir(serve_dir):
         return True
@@ -25,7 +25,7 @@ def verify() -> bool:
             path = os.path.join(root, f)
             with open(path, "r", encoding="utf-8", errors="ignore") as fp:
                 for i, line in enumerate(fp, 1):
-                    if "from ray._private" in line or "import ray._private" in line:
+                    if "ray._private" in line:
                         failures.append((path, i, line.strip()))
     if failures:
         for path, line_no, line in failures:

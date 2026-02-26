@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import ray
+from ray._common.worker_compat import set_filter_logs_by_job
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, ReplicaID
@@ -169,7 +170,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     """
 
     # Initialize ray if needed.
-    ray._private.worker.global_worker._filter_logs_by_job = False
+    set_filter_logs_by_job(False)
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 

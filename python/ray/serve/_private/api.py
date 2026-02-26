@@ -6,6 +6,7 @@ from typing import Any, Dict, Union
 import ray
 from ray._common.pydantic_compat import is_subclass_of_base_model
 from ray._common.usage import usage_lib
+from ray._common.worker_compat import set_filter_logs_by_job
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
@@ -64,7 +65,7 @@ def _start_controller(
     """
 
     # Initialize ray if needed.
-    ray._private.worker.global_worker._filter_logs_by_job = False
+    set_filter_logs_by_job(False)
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
