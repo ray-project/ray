@@ -687,6 +687,14 @@ class ServeController:
                 | self.proxy_state_manager.get_alive_proxy_actor_ids()
             )
 
+        self._maybe_update_ingress_ports()
+
+        # HAProxy target group broadcasting
+        if self._ha_proxy_enabled:
+            self.broadcast_target_groups_if_changed()
+
+    def _maybe_update_ingress_ports(self) -> None:
+        """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
         if self._direct_ingress_enabled:
             # Update port values for ingress replicas.
@@ -700,10 +708,6 @@ class ServeController:
             # Clean up stale ports
             # get all alive replica ids and their node ids.
             NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
-
-        # HAProxy target group broadcasting
-        if self._ha_proxy_enabled:
-            self.broadcast_target_groups_if_changed()
 
     def broadcast_target_groups_if_changed(self) -> None:
         """Broadcast target groups over long poll if they have changed.

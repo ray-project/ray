@@ -939,5 +939,7 @@ class GangSchedulingConfig(BaseModel):
     @classmethod
     def _validate_runtime_failure_policy(cls, v):
         if v == GangRuntimeFailurePolicy.RESTART_REPLICA:
-            raise NotImplementedError("RESTART_REPLICA policy is not yet implemented.")
+            raise NotImplementedError(
+                "RESTART_REPLICA policy is not yet implemented. File a GitHub issue if you need this feature."
+            )
         return v

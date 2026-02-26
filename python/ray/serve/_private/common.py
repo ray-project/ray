@@ -20,6 +20,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
+GANG_PG_NAME_PREFIX = "SERVE_GANG::"
 
 
 @dataclass(frozen=True)
@@ -884,9 +885,21 @@ class GangPlacementGroupRequest:
     gang_placement_strategy: str
     num_replicas_to_add: int
     replica_resource_dict: Dict[str, float]
-    """Resource requirements for a single replica, used as the bundle
-    template for every bundle in the gang placement group.
-    Example: ``{"CPU": 4, "GPU": 1}``."""
+    """Actor-level resource requirements derived from ray_actor_options.
+    Used as the bundle template for every bundle in the gang placement group
+    when per-replica placement group bundle is not set.
+    Example: {"CPU": 4, "GPU": 1}."""
+
+    replica_placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    """Per-replica placement group bundles.  When set, each replica occupies
+    len(bundles) consecutive bundles in the gang placement group instead
+    of a single flat bundle derived from replica_resource_dict."""
+
+    replica_pg_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    """Label selector for per-replica placement group bundles."""
+
+    replica_pg_fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    """Fallback strategy for per-replica placement group bundles."""
 
 
 @dataclass

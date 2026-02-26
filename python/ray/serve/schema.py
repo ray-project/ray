@@ -548,6 +548,39 @@ class DeploymentSchema(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_max_replicas_per_node_and_gang_scheduling_config(self):
+        max_replicas_per_node = self.max_replicas_per_node
+        gang_scheduling_config = self.gang_scheduling_config
+
+        if max_replicas_per_node not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_placement_group_strategy_and_gang_scheduling_config(self):
+        placement_group_strategy = self.placement_group_strategy
+        gang_scheduling_config = self.gang_scheduling_config
+
+        if placement_group_strategy not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting placement_group_strategy is not allowed when "
+                "gang_scheduling_config is provided. Use "
+                "gang_scheduling_config.gang_placement_strategy instead."
+            )
+
+        return self
+
+    @model_validator(mode="after")
     def validate_max_queued_requests(self):
         max_queued_requests = self.max_queued_requests
         if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
