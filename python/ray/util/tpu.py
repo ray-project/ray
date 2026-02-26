@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -223,6 +223,45 @@ def get_tpu_coordinator_env_vars(
 
 
 @PublicAPI(stability="alpha")
+def get_tpu_slice_name_from_node(node: Dict[str, Any]) -> Optional[str]:
+    """Returns the TPU slice name for a given Ray node dictionary.
+
+    Args:
+        node: A dictionary representing a Ray node (returned by ray.nodes()).
+
+    Returns:
+        The TPU slice name if the node belongs to a slice, otherwise None.
+    """
+    return node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+
+
+@PublicAPI(stability="alpha")
+def get_tpu_nodes_for_slice(
+    slice_name: str, nodes: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
+    """Returns all alive Ray nodes belonging to the specified TPU slice.
+
+    Args:
+        slice_name: The TPU slice name to filter by.
+        nodes: Optional list of Ray node dictionaries. If not provided,
+            it will be fetched via `ray.nodes()` from GCS.
+
+    Returns:
+        A list of node dictionaries that are alive and belong to the specified TPU slice.
+    """
+    if nodes is None:
+        if not ray.is_initialized():
+            return []
+        nodes = ray.nodes()
+
+    return [
+        node
+        for node in nodes
+        if node.get("Alive") and get_tpu_slice_name_from_node(node) == slice_name
+    ]
+
+
+@PublicAPI(stability="alpha")
 def get_num_ready_tpu_slices(
     topology: str,
     accelerator_type: str,
@@ -231,6 +270,15 @@ def get_num_ready_tpu_slices(
     """
     Checks the cluster state to determine how many full TPU slices of the
     specified topology are currently intact and available.
+
+    Args:
+        topology: The TPU topology string (e.g. "2x4").
+        accelerator_type: The accelerator type string (e.g. "TPU-V6E").
+        resources_per_worker: Optional dictionary specifying the resources
+            expected per worker node.
+
+    Returns:
+        The integer count of fully ready and intact TPU slices.
     """
     if not ray.is_initialized():
         return 0
@@ -265,7 +313,7 @@ def get_num_ready_tpu_slices(
         if node.get("Alive"):
             labels = node.get("Labels", {})
             if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
-                slice_name = labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+                slice_name = get_tpu_slice_name_from_node(node)
                 if slice_name:
                     slice_to_nodes.setdefault(slice_name, []).append(node)
 

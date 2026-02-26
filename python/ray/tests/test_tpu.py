@@ -571,5 +571,56 @@ def test_get_num_ready_tpu_slices_uninitialized(mock_is_initialized):
     assert ray.util.tpu.get_num_ready_tpu_slices("2x2x2", "v4") == 0
 
 
+@pytest.mark.parametrize(
+    "node_dict, expected_slice_name",
+    [
+        (_make_mock_tpu_node(True, "v4-16", "slice-1", 0), "slice-1"),
+        (_make_mock_tpu_node(True, "v6e-8", "slice-A", 1), "slice-A"),
+        (_make_mock_tpu_node(True, "v4-16", "", 0), ""),
+        ({"Alive": True, "Labels": {}}, None),  # Missing TPU slice name
+        ({"Alive": True}, None),  # Missing Node labels dict
+    ],
+)
+def test_get_tpu_slice_name_from_node(node_dict, expected_slice_name):
+    """Tests that the utility correctly extracts the TPU slice name from a node dictionary."""
+    assert ray.util.tpu.get_tpu_slice_name_from_node(node_dict) == expected_slice_name
+
+
+@patch("ray.is_initialized", return_value=True)
+@patch("ray.nodes")
+def test_get_tpu_nodes_for_slice(mock_nodes_call, mock_is_initialized):
+    """Tests that the utility correctly filters alive nodes for a specific slice."""
+    mock_nodes = [
+        _make_mock_tpu_node(True, "v4-16", "slice-A", 0),
+        _make_mock_tpu_node(True, "v4-16", "slice-A", 1),
+        _make_mock_tpu_node(False, "v4-16", "slice-A", 2),  # Dead node
+        _make_mock_tpu_node(True, "v4-16", "slice-B", 0),  # Wrong slice
+    ]
+    mock_nodes_call.return_value = mock_nodes
+
+    # Call ray.nodes() to fetch from GCS
+    nodes_a = ray.util.tpu.get_tpu_nodes_for_slice("slice-A")
+    assert len(nodes_a) == 2
+    assert nodes_a[0]["Labels"][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "0"
+    assert nodes_a[1]["Labels"][ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] == "1"
+    assert mock_nodes_call.call_count == 1
+
+    # Pass cached nodes directly
+    nodes_b = ray.util.tpu.get_tpu_nodes_for_slice("slice-B", nodes=mock_nodes)
+    assert len(nodes_b) == 1
+    assert nodes_b[0]["Labels"][ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY] == "slice-B"
+    assert mock_nodes_call.call_count == 1  # Call count remains 1
+
+    # Use non-existent slice
+    nodes_c = ray.util.tpu.get_tpu_nodes_for_slice("slice-C", nodes=mock_nodes)
+    assert len(nodes_c) == 0
+
+
+@patch("ray.is_initialized", return_value=False)
+def test_get_tpu_nodes_for_slice_uninitialized(mock_is_initialized):
+    """Test that the utility gracefully handles an uninitialized Ray context."""
+    assert ray.util.tpu.get_tpu_nodes_for_slice("slice-A") == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
