@@ -317,6 +317,18 @@ const RayletWorkerTable = ({
                           jstat
                         </Button>
                       </div>
+                    ) : language === "PYTHON" ? (
+                      <div>
+                        <Button
+                          onClick={() => {
+                            window.open(
+                              `#/cmd/torchtrace/${coreWorkerStats[0]?.ipAddress}/${pid}`,
+                            );
+                          }}
+                        >
+                          Torch Trace
+                        </Button>
+                      </div>
                     ) : (
                       "N/A"
                     )}
