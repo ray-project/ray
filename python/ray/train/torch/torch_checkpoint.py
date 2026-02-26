@@ -165,7 +165,9 @@ class TorchCheckpoint(FrameworkCheckpoint):
                     "created this `TorchCheckpoint` from one of its public "
                     "constructors (`from_state_dict` or `from_model`)."
                 )
-            model_or_state_dict = torch.load(model_path, map_location="cpu")
+            model_or_state_dict = torch.load(
+                model_path, map_location="cpu", weights_only=False
+            )
 
         if isinstance(model_or_state_dict, torch.nn.Module):
             if model:

@@ -1252,7 +1252,10 @@ dm-tree==0.1.8 \
 einops==0.8.2 \
     --hash=sha256:54058201ac7087911181bfec4af6091bb59380360f069276601256a76af08193 \
     --hash=sha256:609da665570e5e265e27283aab09e7f279ade90c4f01bcfca111f3d3e13f2827
-    # via deepspeed
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   deepspeed
 entrypoints==0.4 \
     --hash=sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4 \
     --hash=sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f
