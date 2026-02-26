@@ -703,6 +703,7 @@ class DQN(Algorithm):
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
                         sample_episodes=True,
+                        to_numpy=True,
                     )
 
                     # Get the replay buffer metrics.
