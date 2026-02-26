@@ -58,8 +58,8 @@ class DefaultModelConfig:
     #: List containing the sizes (number of nodes) of a fully connected (MLP) stack.
     #: Note that in an encoder-based default architecture with a policy head (and
     #: possible value head), this setting only affects the encoder component. To set the
-    #: policy (and value) head sizes, use `post_fcnet_hiddens`, instead. For example,
-    #: if you set `fcnet_hiddens=[32, 32]` and `post_fcnet_hiddens=[64]`, you would get
+    #: policy (and value) head sizes, use `head_fcnet_hiddens`, instead. For example,
+    #: if you set `fcnet_hiddens=[32, 32]` and `head_fcnet_hiddens=[64]`, you would get
     #: an RLModule with a [32, 32] encoder, a [64, act-dim] policy head, and a [64, 1]
     #: value head (if applicable).
     fcnet_hiddens: List[int] = field(default_factory=lambda: [256, 256])
