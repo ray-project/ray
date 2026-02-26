@@ -416,10 +416,7 @@ class TestRequestContextMetrics:
             == 2,
             timeout=40,
         )
-        (
-            requests_metrics_route,
-            _,
-        ) = self._generate_metrics_summary(
+        (requests_metrics_route, _,) = self._generate_metrics_summary(
             get_metric_dictionaries(
                 "ray_serve_deployment_request_counter_total", timeseries=timeseries
             )
