@@ -1,13 +1,3 @@
-"""Shared mock infrastructure for deployment state unit tests.
-
-This module contains MockReplicaActorWrapper and its associated module-level
-globals. It exists as a separate module (rather than living in conftest.py)
-because bazel's test sandboxing can create duplicate module copies of conftest,
-causing `from conftest import` to yield different objects than the ones pytest
-auto-loads. By placing the mutable state and mock class here, both conftest.py
-and test files get the same objects via Python's standard import caching.
-"""
-
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import Mock
 
@@ -21,7 +11,6 @@ from ray.serve._private.deployment_state import (
 from ray.serve._private.test_utils import MockActorHandle
 from ray.serve.gang import GangContext
 from ray.serve.schema import ReplicaRank
-
 
 # Global variable that is fetched during controller recovery that
 # marks (simulates) which replicas have died since controller first

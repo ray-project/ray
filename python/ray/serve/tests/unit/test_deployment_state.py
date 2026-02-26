@@ -4,10 +4,6 @@ from typing import Any, List, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
-from ray.serve.tests.unit.common.mock_replica_actor_wrapper import (
-    dead_replicas_context,
-    replica_rank_context,
-)
 
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
@@ -54,6 +50,10 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import GangSchedulingConfig
 from ray.serve.schema import ReplicaRank
+from ray.serve.tests.unit.common.mock_replica_actor_wrapper import (
+    dead_replicas_context,
+    replica_rank_context,
+)
 from ray.util.placement_group import validate_placement_group
 
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")

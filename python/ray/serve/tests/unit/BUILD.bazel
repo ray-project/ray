@@ -15,9 +15,9 @@ py_test_run_all_subdirectory(
     tags = ["team:serve"],
     deps = [
         ":conftest",
-        "//python/ray/serve/tests/unit/common:mock_replica_actor_wrapper",
         "//python/ray/serve:serve_lib",
         "//python/ray/serve/tests:common",
+        "//python/ray/serve/tests/unit/common:mock_replica_actor_wrapper",
     ],
 )
 
@@ -39,9 +39,9 @@ py_test_module_list(
     ],
     deps = [
         ":conftest",
-        "//python/ray/serve/tests/unit/common:mock_replica_actor_wrapper",
         "//python/ray/serve:serve_lib",
         "//python/ray/serve/tests:common",
+        "//python/ray/serve/tests/unit/common:mock_replica_actor_wrapper",
     ],
 )
 
@@ -84,8 +84,8 @@ py_test_module_list_with_env_variants(
     ],
     deps = [
         ":conftest",
-        "//python/ray/serve/tests/unit/common:mock_replica_actor_wrapper",
         "//python/ray/serve:serve_lib",
         "//python/ray/serve/tests:common",
+        "//python/ray/serve/tests/unit/common:mock_replica_actor_wrapper",
     ],
 )
