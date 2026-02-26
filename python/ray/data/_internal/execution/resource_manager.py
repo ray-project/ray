@@ -312,11 +312,52 @@ class ResourceManager:
     def _get_downstream_ineligible_ops_usage(
         self, op: PhysicalOperator
     ) -> ExecutionResources:
-        return reduce(
+        """Return resource usage for downstream ineligible ops.
+
+        For ineligible ops (e.g., LimitOperator with throttling_disabled=True), we need
+        to account for all downstream object store memory, not just the ineligible ops
+        themselves, because memory is held across the entire downstream chain.
+
+        Returns:
+            ExecutionResources where CPU/GPU are summed over ineligible ops only, and
+            object_store_memory is the sum of ineligible ops plus all their downstream
+            ops.
+
+        Args:
+            op: The operator whose downstream ineligible usage is computed.
+        """
+        ineligible_ops = list(self._get_downstream_ineligible_ops(op))
+        if not ineligible_ops:
+            return ExecutionResources.zero()
+
+        usage = reduce(
             lambda x, y: x.add(y),
-            [self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)],
+            [self._op_usages[op] for op in ineligible_ops],
             ExecutionResources.zero(),
         )
+        # For ineligible ops, include all downstream object store usage to avoid
+        # undercounting memory held beyond the ineligible chain.
+        ineligible_set = set(ineligible_ops)
+        additional_object_store_usage = sum(
+            self._op_usages[op].object_store_memory
+            for op in self._collect_downstream_ops(ineligible_ops)
+            if op not in ineligible_set
+        )
+        object_store_usage = usage.object_store_memory + additional_object_store_usage
+        return usage.copy(object_store_memory=object_store_usage)
+
+    def _collect_downstream_ops(
+        self, ops: Iterable[PhysicalOperator]
+    ) -> Iterable[PhysicalOperator]:
+        visited = set()
+        stack = list(ops)
+        while stack:
+            cur = stack.pop()
+            if cur in visited:
+                continue
+            visited.add(cur)
+            stack.extend(cur.output_dependencies)
+        return visited
 
     def get_mem_op_internal(self, op: PhysicalOperator) -> int:
         """Return the memory usage of pending task outputs for the given operator."""

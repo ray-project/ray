@@ -98,6 +98,23 @@ def mock_all_to_all_op(input_op, name="MockShuffle"):
     return op
 
 
+def mock_op_metrics(topo, op, pending_output, internal_outqueue, external_outqueue):
+    op.update_resource_usage = MagicMock()
+    op.current_processor_usage = MagicMock(return_value=ExecutionResources.zero())
+    op.running_processor_usage = MagicMock(return_value=ExecutionResources.zero())
+    op.pending_processor_usage = MagicMock(return_value=ExecutionResources.zero())
+    op.extra_resource_usage = MagicMock(return_value=ExecutionResources.zero())
+    op._metrics = MagicMock(
+        obj_store_mem_pending_task_outputs=pending_output,
+        obj_store_mem_internal_outqueue=internal_outqueue,
+        obj_store_mem_internal_inqueue=0,
+        obj_store_mem_pending_task_inputs=0,
+    )
+    if external_outqueue:
+        ref_bundle = MagicMock(size_bytes=MagicMock(return_value=external_outqueue))
+        topo[op].add_output(ref_bundle)
+
+
 class TestResourceManager:
     """Unit tests for ResourceManager."""
 
@@ -298,6 +315,150 @@ class TestResourceManager:
 
         assert resource_manager.get_global_usage() == ExecutionResources(
             global_cpu, 0, global_mem
+        )
+
+    def test_ineligible_ops_include_downstream_object_store_usage(self):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, name="Map1")
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+        o4 = mock_map_op(o3, name="Map2")
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+
+        op_outputs = {
+            o1: 0,
+            o2: 0,
+            o3: 20,
+            o4: 70,
+        }
+        op_pending_outputs = {
+            o1: 0,
+            o2: 0,
+            o3: 10,
+            o4: 50,
+        }
+        op_internal_outqueue = {
+            o1: 0,
+            o2: 0,
+            o3: 30,
+            o4: 60,
+        }
+
+        for op in [o1, o2, o3, o4]:
+            mock_op_metrics(
+                topo,
+                op,
+                op_pending_outputs[op],
+                op_internal_outqueue[op],
+                op_outputs[op],
+            )
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager._op_resource_allocator = None
+        resource_manager.update_usages()
+
+        ineligible_usage = (
+            op_pending_outputs[o3] + op_internal_outqueue[o3] + op_outputs[o3]
+        )
+        downstream_usage = (
+            op_pending_outputs[o4] + op_internal_outqueue[o4] + op_outputs[o4]
+        )
+        assert (
+            resource_manager.get_op_usage(
+                o2, include_ineligible_downstream=True
+            ).object_store_memory
+            == ineligible_usage + downstream_usage
+        )
+
+    def test_ineligible_ops_multi_layer_chain(self):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, name="Map1")
+        limit1 = LimitOperator(1, o2, DataContext.get_current())
+        limit2 = LimitOperator(1, limit1, DataContext.get_current())
+        o3 = mock_map_op(limit2, name="Map2")
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+
+        mock_op_metrics(topo, o1, 0, 0, 0)
+        mock_op_metrics(topo, o2, 0, 0, 0)
+        mock_op_metrics(topo, limit1, 10, 30, 20)
+        mock_op_metrics(topo, limit2, 5, 15, 25)
+        mock_op_metrics(topo, o3, 50, 60, 70)
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager._op_resource_allocator = None
+        resource_manager.update_usages()
+
+        limit1_usage = 10 + 30 + 20
+        limit2_usage = 5 + 15 + 25
+        downstream_usage = 50 + 60 + 70
+        assert (
+            resource_manager.get_op_usage(
+                o2, include_ineligible_downstream=True
+            ).object_store_memory
+            == limit1_usage + limit2_usage + downstream_usage
+        )
+
+    def test_ineligible_ops_branching_downstream(self):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, name="Map1")
+        limit = LimitOperator(1, o2, DataContext.get_current())
+        o3 = mock_map_op(limit, name="Map2")
+        o4 = mock_map_op(limit, name="Map3")
+        o5 = mock_union_op([o3, o4])
+
+        topo = build_streaming_topology(o5, ExecutionOptions())
+
+        mock_op_metrics(topo, o1, 0, 0, 0)
+        mock_op_metrics(topo, o2, 0, 0, 0)
+        mock_op_metrics(topo, limit, 10, 20, 30)
+        mock_op_metrics(topo, o3, 40, 50, 60)
+        mock_op_metrics(topo, o4, 70, 80, 90)
+        mock_op_metrics(topo, o5, 0, 0, 0)
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager._op_resource_allocator = None
+        resource_manager.update_usages()
+
+        limit_usage = 10 + 20 + 30
+        o3_usage = 40 + 50 + 60
+        o4_usage = 70 + 80 + 90
+        assert (
+            resource_manager.get_op_usage(
+                o2, include_ineligible_downstream=True
+            ).object_store_memory
+            == limit_usage + o3_usage + o4_usage
+        )
+
+    def test_ineligible_ops_without_downstream(self):
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, name="Map1")
+        limit = LimitOperator(1, o2, DataContext.get_current())
+
+        topo = build_streaming_topology(limit, ExecutionOptions())
+
+        mock_op_metrics(topo, o1, 0, 0, 0)
+        mock_op_metrics(topo, o2, 0, 0, 0)
+        mock_op_metrics(topo, limit, 5, 15, 25)
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager._op_resource_allocator = None
+        resource_manager.update_usages()
+
+        limit_usage = 5 + 15 + 25
+        assert (
+            resource_manager.get_op_usage(
+                o2, include_ineligible_downstream=True
+            ).object_store_memory
+            == limit_usage
         )
 
     def test_object_store_usage(self, restore_data_context):
