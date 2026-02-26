@@ -3565,6 +3565,10 @@ class DeploymentState:
         transition happened.
         """
 
+        # Track gang IDs of replicas that failed health checks so we can
+        # stop sibling gang members afterwards.
+        failed_health_gang_ids: Set[str] = set()
+
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
         ):
@@ -3596,6 +3600,8 @@ class DeploymentState:
                 self._stop_replica(
                     replica, graceful_stop=not self.FORCE_STOP_UNHEALTHY_REPLICAS
                 )
+                if replica.gang_context is not None:
+                    failed_health_gang_ids.add(replica.gang_context.gang_id)
                 # If this is a replica of the target version, the deployment
                 # enters the "UNHEALTHY" status until the replica is
                 # recovered or a new deploy happens.
@@ -3606,6 +3612,24 @@ class DeploymentState:
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
                     )
+
+        # If any gang member failed a health check, stop all other members
+        # of that gang so partial gangs never run.
+        if failed_health_gang_ids:
+            for state in [ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]:
+                for replica in self._replicas.pop(states=[state]):
+                    if (
+                        replica.gang_context is not None
+                        and replica.gang_context.gang_id in failed_health_gang_ids
+                    ):
+                        logger.info(
+                            f"Stopping {replica.replica_id} because a gang "
+                            f"member failed health check "
+                            f"(gang_id={replica.gang_context.gang_id})."
+                        )
+                        self._stop_replica(replica, graceful_stop=False)
+                    else:
+                        self._replicas.add(state, replica)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency
