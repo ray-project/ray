@@ -34,7 +34,7 @@ from ray.tests.conftest import *  # noqa
 # Parquet, CSV, Range, etc. The ->Filter(...) suffix appears when
 # predicates are pushed down into the datasource.
 READ_OPERATOR_PATTERN = (
-    r"^(Read\[Read\w+(?:->Filter\(.+\))?\]|"
+    r"^(Read\[Read\w+(?:->Filter\(.+?\))?\]|"
     r"ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\])"
 )
 
