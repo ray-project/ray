@@ -183,7 +183,7 @@ class ExecutionPlan:
                 self._logical_plan.dag, including_source=False
             )
 
-        schema = dataset.schema(fetch_if_missing=False)
+        schema = dataset.schema(fetch_if_missing=False, base=True)
         count = self._cache.get_num_rows(self._logical_plan.dag)
 
         if schema is None or count is None:
@@ -207,7 +207,7 @@ class ExecutionPlan:
                     LogicalPlan(dag, self._context),
                 )
                 if schema is None:
-                    schema = ds.schema()
+                    schema = ds.schema(base=True)
                 if count is None:
                     count = ds._meta_count()
 

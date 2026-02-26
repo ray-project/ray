@@ -3884,7 +3884,9 @@ class Dataset:
         pattern="Time complexity:",
     )
     @PublicAPI(api_group=IM_API_GROUP)
-    def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
+    def schema(
+        self, fetch_if_missing: bool = True, base: bool = False
+    ) -> Optional[Union["Schema", type, "pyarrow.lib.Schema"]]:
         """Return the schema of the dataset.
 
         Examples:
@@ -3901,29 +3903,33 @@ class Dataset:
             fetch_if_missing: If True, synchronously fetch the schema if it's
                 not known. If False, None is returned if the schema is not known.
                 Default is True.
+            base: If True, return the base_schema, instead of wrapping it in the
+                Schema class. Default is False.
 
         Returns:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        schema = self._plan._cache.get_schema(self._logical_plan.dag)
-        if schema is None:
-            schema = self._logical_plan.dag.infer_schema()
-        if schema is None and fetch_if_missing:
+        base_schema = self._plan._cache.get_schema(self._logical_plan.dag)
+        if base_schema is None:
+            base_schema = self._logical_plan.dag.infer_schema()
+        if base_schema is None and fetch_if_missing:
             # Lazily execute only the first block to minimize computation.
             # We achieve this by appending a Limit[1] operation to a copy of
             # this plan, which we then execute to get its schema.
-            iter_ref_bundles, _, executor = self.limit(1)._execute_to_iterator()
+            limited_ds = self.limit(1)
+            iter_ref_bundles, _, executor = limited_ds._execute_to_iterator()
             if executor is not None:
                 # Make sure executor is fully shutdown upon exiting
                 with executor:
-                    schema = _take_first_non_empty_schema(
+                    base_schema = _take_first_non_empty_schema(
                         bundle.schema for bundle in iter_ref_bundles
                     )
-        if schema is not None:
-            self._plan._cache.set_schema(self._logical_plan.dag, schema)
-        if schema is not None:
-            return Schema(schema, data_context=self._plan._context)
+        if base_schema is not None:
+            self._plan._cache.set_schema(self._logical_plan.dag, base_schema)
+            if base:
+                return base_schema
+            return Schema(base_schema, data_context=self._plan._context)
         return None
 
     @ConsumptionAPI(
