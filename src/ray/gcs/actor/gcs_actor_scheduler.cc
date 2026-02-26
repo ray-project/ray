@@ -84,9 +84,26 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   // Select a node to lease worker for the actor.
   std::shared_ptr<const rpc::GcsNodeInfo> node;
 
+  const auto &lease_spec = actor->GetLeaseSpecification();
+
+  // For NodeAffinitySchedulingStrategy, forward directly to the target node.
+  // This avoids funneling all lease requests through the owner node
+  if (lease_spec.IsNodeAffinitySchedulingStrategy()) {
+    auto target_node_id = lease_spec.GetNodeAffinitySchedulingStrategyNodeId();
+    if (!target_node_id.IsNil()) {
+      auto maybe_node = gcs_node_manager_.GetAliveNode(target_node_id);
+      if (maybe_node.has_value()) {
+        return target_node_id;
+      } else if (!lease_spec.GetNodeAffinitySchedulingStrategySoft()) {
+        // For hard node affinity, if the target node is not alive, the scheduling should
+        // fail.
+        return NodeID::Nil();
+      }
+    }
+  }
+
   // If an actor has resource requirements, we will try to schedule it on the same node as
   // the owner if possible.
-  const auto &lease_spec = actor->GetLeaseSpecification();
   if (!lease_spec.GetRequiredResources().IsEmpty()) {
     auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value()
