@@ -143,10 +143,10 @@ def plan_project_op(
 
     # Create init_fn to initialize all callable class UDFs at actor startup
     from ray.data.util.expression_utils import (
-        create_callable_class_udf_init_fn,
+        _create_callable_class_udf_init_fn,
     )
 
-    init_fn = create_callable_class_udf_init_fn(projection_exprs)
+    init_fn = _create_callable_class_udf_init_fn(projection_exprs)
 
     def _project_block(block: Block) -> Block:
         try:
