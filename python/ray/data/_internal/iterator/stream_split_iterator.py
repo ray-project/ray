@@ -202,9 +202,10 @@ class SplitCoordinator:
         with self._lock:
             # This check gates that we start epoch only once
             if self._cur_epoch == starting_epoch:
+                # Reset state
+                self._reset_state()
+                # Ratchet epoch
                 self._cur_epoch += 1
-                self._unfinished_clients_in_epoch = self._n
-                self._next_bundle.clear()
 
                 try:
                     # Force executor shutdown if present
@@ -232,6 +233,11 @@ class SplitCoordinator:
             # If there was an error when advancing to the next epoch,
             # re-raise it for all threads.
             raise self._gen_epoch_error
+
+    def _reset_state(self):
+        self._unfinished_clients_in_epoch = self._n
+        self._next_bundle.clear()
+        self._gen_epoch_error = None
 
     def get(
         self,
