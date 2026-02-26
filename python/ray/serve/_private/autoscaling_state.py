@@ -932,8 +932,6 @@ class ApplicationAutoscalingState:
             total_target, total_current
         )
 
-        errors: List[str] = []
-
         policy_name_str = f"{self._policy.__module__}.{self._policy.__name__}"
 
         return ApplicationSnapshot(
@@ -946,7 +944,6 @@ class ApplicationAutoscalingState:
             total_target_replicas=total_target,
             scaling_status=scaling_status,
             policy_name=policy_name_str,
-            errors=errors,
         )
 
     def register_deployment(

@@ -996,7 +996,6 @@ class ApplicationSnapshot(BaseModel):
     total_target_replicas: int
     scaling_status: str
     policy_name: str
-    errors: List[str]
 
     def is_scaling_equivalent(self, other: "ApplicationSnapshot") -> bool:
         """Return True if scaling-related fields are equal.
@@ -1011,7 +1010,6 @@ class ApplicationSnapshot(BaseModel):
             and self.total_target_replicas == other.total_target_replicas
             and self.scaling_status == other.scaling_status
             and self.num_deployments == other.num_deployments
-            and self.errors == other.errors
             and self.policy_name == other.policy_name
         )
 

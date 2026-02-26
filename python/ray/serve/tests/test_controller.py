@@ -794,7 +794,6 @@ def test_application_autoscaling_snapshot_log_emitted_and_well_formed(serve_inst
         "total_target_replicas",
         "scaling_status",
         "policy_name",
-        "errors",
     ]:
         assert key in snap, f"Missing required key: {key}"
 
