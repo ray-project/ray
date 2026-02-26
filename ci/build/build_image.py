@@ -8,11 +8,22 @@ Build Ray Docker images locally using raymake.
 """
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
-from ci.build.build_common import BuildError, find_ray_root
+from ci.build.build_common import (
+    BuildError,
+    detect_host_arch,
+    find_ray_root,
+    get_git_commit,
+    log,
+    parse_file,
+)
 
 DEFAULT_ARCHITECTURE = "x86_64"
 
@@ -157,3 +168,152 @@ WANDA_SPEC_PATHS: dict[WandaSpecKey, str] = {
 
 SUPPORTED_IMAGE_TYPES: list[str] = list(dict.fromkeys(t for t, _ in WANDA_SPEC_PATHS))
 REGISTRY_PREFIX = "cr.ray.io/rayproject/"
+
+
+@dataclass(frozen=True)
+class ImageBuildConfig:
+    ray_image: RayImage
+    ray_root: Path
+    raymake_version: str
+    manylinux_version: str
+    ray_version: str
+    commit: str
+    wanda_spec_path: str
+    wanda_image_tag: str
+    nightly_alias: str | None
+    build_env: dict[str, str]
+
+    @classmethod
+    def from_args(
+        cls,
+        image_type: str,
+        python_version: str,
+        image_platform: str,
+    ) -> ImageBuildConfig:
+        ray_image = RayImage(
+            image_type=image_type,
+            python_version=python_version,
+            platform=image_platform,
+            architecture=cls._detect_host_arch(),
+        )
+        try:
+            ray_image.validate()
+            ray_image.get_wanda_spec_path()
+        except RayImageError as e:
+            raise BuildError(str(e)) from e
+
+        root = find_ray_root()
+        manylinux_version = parse_file(
+            root / "rayci.env", r'MANYLINUX_VERSION=["\']?([^"\'\s]+)'
+        )
+        ray_version = parse_file(root / "rayci.env", r'RAY_VERSION=["\']?([^"\'\s]+)')
+        commit = get_git_commit(root)
+
+        cfg = IMAGE_TYPE_CONFIG[image_type]
+        nightly_alias = (
+            f"{REGISTRY_PREFIX}{ray_image.repo}:nightly{ray_image.variation_suffix}"
+            if (
+                ray_image.python_version == cfg["default_python"]
+                and ray_image.platform == cfg["default_platform"]
+                and ray_image.architecture == DEFAULT_ARCHITECTURE
+            )
+            else None
+        )
+
+        build_env: dict[str, str] = {
+            "PYTHON_VERSION": ray_image.python_version,
+            "MANYLINUX_VERSION": manylinux_version,
+            "HOSTTYPE": ray_image.architecture,
+            "ARCH_SUFFIX": ray_image.arch_suffix,
+            "BUILDKITE_COMMIT": commit,
+            "RAY_VERSION": ray_version,
+            "IS_LOCAL_BUILD": "true",
+            "IMAGE_TYPE": ray_image.repo,
+        }
+        if ray_image.platform.startswith("cu"):
+            build_env["CUDA_VERSION"] = ray_image.platform.removeprefix("cu")
+
+        return cls(
+            ray_image=ray_image,
+            ray_root=root,
+            raymake_version=(root / ".rayciversion").read_text().strip(),
+            manylinux_version=manylinux_version,
+            ray_version=ray_version,
+            commit=commit,
+            wanda_spec_path=ray_image.get_wanda_spec_path(),
+            wanda_image_tag=f"{REGISTRY_PREFIX}{ray_image.wanda_image_name}",
+            nightly_alias=nightly_alias,
+            build_env=build_env,
+        )
+
+    @staticmethod
+    def _detect_host_arch() -> str:
+        return detect_host_arch()
+
+
+class ImageBuilder:
+    def __init__(self, config: ImageBuildConfig):
+        self.config = config
+
+    def build(self) -> str:
+        """Build the image and return the primary image tag."""
+        if not shutil.which("raymake"):
+            raise BuildError("raymake not found. Run via ./build-image.sh")
+
+        log.info("Build configuration:")
+        summary = {
+            "Image Type": self.config.ray_image.image_type,
+            "Python": self.config.ray_image.python_version,
+            "Platform": self.config.ray_image.platform,
+            "Arch": self.config.ray_image.architecture,
+            "Commit": self.config.commit,
+            "Raymake": self.config.raymake_version,
+            "Ray Version": self.config.ray_version,
+            "Wanda Spec": self.config.wanda_spec_path,
+        }
+        print("-" * 50)
+        for k, v in summary.items():
+            print(f"{k:<12}: {v}")
+        print("-" * 50)
+
+        cmd = [
+            "raymake",
+            str(self.config.wanda_spec_path),
+        ]
+
+        log.info(f"Running raymake: {self.config.wanda_spec_path}")
+        log.info(f"Build environment: {self.config.build_env}")
+        proc = subprocess.Popen(
+            cmd,
+            cwd=self.config.ray_root,
+            env={**os.environ, **self.config.build_env},
+        )
+        try:
+            if proc.wait() != 0:
+                raise BuildError("raymake failed")
+        except KeyboardInterrupt:
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            raise
+
+        image_tag = self.config.wanda_image_tag
+        log.info(f"Built image: {image_tag}")
+
+        alias = self.config.nightly_alias
+        if alias:
+            self._docker_tag(image_tag, alias)
+            log.info(f"Tagged alias: {alias}")
+
+        return image_tag
+
+    @staticmethod
+    def _docker_tag(source: str, dest: str) -> None:
+        result = subprocess.run(
+            ["docker", "tag", source, dest],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise BuildError(f"docker tag failed: {result.stderr.strip()}")
