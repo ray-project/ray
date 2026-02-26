@@ -1,4 +1,7 @@
 import pathlib
+from collections import defaultdict
+import asyncio
+import time
 
 import pytest
 import yaml
@@ -10,7 +13,8 @@ from ray.experimental.internal_kv import _internal_kv_list
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     GangMasterInfoRegistry,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.common import DeploymentID, ReplicaState
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.llm import (
     build_dp_deployment,
     build_dp_openai_app,
@@ -351,6 +355,117 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
     serve.run(app, blocking=False)
 
     wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_llm_serve_data_parallelism_worker_fault():
+    """Test DP deployment recovers after replica death."""
+
+    deployment_name = "DPServer:microsoft--Phi-tiny-MoE-instruct"
+    dp_size = 2
+    num_replicas = 2
+    expected_serve_replicas = num_replicas * dp_size
+
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="microsoft/Phi-tiny-MoE-instruct",
+            model_source="microsoft/Phi-tiny-MoE-instruct",
+        ),
+        deployment_config=dict(
+            num_replicas=2,
+            health_check_period_s=1,
+            health_check_timeout_s=5,
+        ),
+        engine_kwargs=dict(
+            tensor_parallel_size=1,
+            pipeline_parallel_size=1,
+            data_parallel_size=dp_size,
+            distributed_executor_backend="ray",
+            max_model_len=1024,
+            max_num_seqs=32,
+            enforce_eager=True,
+        ),
+        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+    )
+    handle = serve.run(build_dp_deployment(llm_config), blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    deployment_id = DeploymentID(name=deployment_name, app_name=SERVE_DEFAULT_APP_NAME)
+    controller = serve.context._global_client._controller
+
+    # Verify 4 running replicas in 2 gangs.
+    replicas = ray.get(controller._dump_replica_states_for_testing.remote(deployment_id))
+    running = replicas.get([ReplicaState.RUNNING])
+    assert len(running) == expected_serve_replicas
+
+    gangs = defaultdict(list)
+    for r in running:
+        assert r.gang_context is not None
+        gangs[r.gang_context.gang_id].append(r)
+    assert len(gangs) == 2
+
+    # Pick one gang and kill one of its replicas.
+    target_gang_id = list(gangs.keys())[0]
+    victim = gangs[target_gang_id][0]
+    victim_actor = ray.get_actor(victim.replica_id.to_full_id_str(), namespace=SERVE_NAMESPACE)
+    original_replica_ids = {r.replica_id.unique_id for r in running}
+
+    # Background request sender
+    @ray.remote
+    class RequestSender:
+        def __init__(self, handle):
+            self._handle = handle.options(stream=True)
+            self.total = 0
+            self.errors = []
+            self._stop = False
+
+        async def run(self):
+            request = CompletionRequest(
+                model="microsoft/Phi-tiny-MoE-instruct",
+                prompt="Hello, world!",
+                max_tokens=5,
+            )
+            while not self._stop:
+                try:
+                    async for _ in self._handle.completions.remote(request):
+                        pass
+                    self.total += 1
+                except Exception as e:
+                    self.errors.append(str(e))
+                    self.total += 1
+                await asyncio.sleep(0.1)
+
+        def stop(self):
+            self._stop = True
+
+        def get_results(self):
+            return self.total, self.errors
+
+    sender = RequestSender.remote(handle)
+    sender.run.remote()
+    time.sleep(1)
+
+    # Kill the victim replica
+    ray.kill(victim_actor, no_restart=False)
+
+    # Wait for the killed gang to be replaced
+    def all_replicas_recovered():
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        if len(running) != expected_serve_replicas:
+            return False
+        current_ids = {r.replica_id.unique_id for r in running}
+        new_ids = current_ids - original_replica_ids
+        return len(new_ids) == dp_size
+
+    wait_for_condition(all_replicas_recovered, timeout=180)
+
+    # Stop sender and verify no requests were dropped
+    ray.get(sender.stop.remote())
+    total, errors = ray.get(sender.get_results.remote())
+    assert total > 0
+    assert len(errors) == 0
 
 
 if __name__ == "__main__":
