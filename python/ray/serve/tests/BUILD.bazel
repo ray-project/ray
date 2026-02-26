@@ -109,6 +109,7 @@ py_test_module_list(
         "test_callback.py",
         "test_cluster.py",
         "test_controller.py",
+        "test_controller_benchmark.py",
         "test_controller_recovery.py",
         "test_deploy_2.py",
         "test_deployment_scheduler.py",
