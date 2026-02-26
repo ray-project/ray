@@ -4,7 +4,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
 
@@ -267,7 +267,7 @@ class IKubernetesHttpApiClient(ABC):
     def patch(
         self,
         path: str,
-        payload: List[Dict[str, Any]],
+        payload: Union[List[Dict[str, Any]], Dict[str, Any]],
         content_type: str = "application/json-patch+json",
     ) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
@@ -324,14 +324,15 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
     def patch(
         self,
         path: str,
-        payload: List[Dict[str, Any]],
+        payload: Union[List[Dict[str, Any]], Dict[str, Any]],
         content_type: str = "application/json-patch+json",
     ) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers
 
         Args:
             path: The part of the resource path that starts with the resource type.
-            payload: The JSON patch payload.
+            payload: The patch payload, either a JSON Patch list or a
+                strategic-merge patch object.
             content_type: The content type of the merge strategy.
 
         Returns:
