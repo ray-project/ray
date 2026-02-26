@@ -78,9 +78,11 @@ def test_add_authentication_to_config():
         sasl_plain_password="testpass",
         sasl_kerberos_name="kafka/hostname@REALM",
         sasl_kerberos_service_name="kafka",
+        # These three are explicitly unsupported by Confluent and should be skipped
         sasl_kerberos_domain_name="example.com",
-        # ssl_context and sasl_oauth_token_provider are skipped (not supported by Confluent)
-        sasl_oauth_token_provider=object(),  # Should be skipped with warning
+        sasl_oauth_token_provider=object(),
+        ssl_context=object(),
+        # SSL configuration
         ssl_check_hostname=False,
         ssl_cafile="/path/to/ca.pem",
         ssl_certfile="/path/to/cert.pem",
@@ -92,14 +94,13 @@ def test_add_authentication_to_config():
 
     _add_authentication_to_config(config, kafka_auth_config)
 
-    # Verify Confluent parameter names
+    # Verify Confluent parameter names mapped correctly
     assert config["security.protocol"] == "SASL_SSL"
     assert config["sasl.mechanism"] == "SCRAM-SHA-256"
     assert config["sasl.username"] == "testuser"
     assert config["sasl.password"] == "testpass"
     assert config["sasl.kerberos.principal"] == "kafka/hostname@REALM"
     assert config["sasl.kerberos.service.name"] == "kafka"
-    assert config["sasl.kerberos.domain"] == "example.com"
     assert config["enable.ssl.certificate.verification"] is False
     assert config["ssl.ca.location"] == "/path/to/ca.pem"
     assert config["ssl.certificate.location"] == "/path/to/cert.pem"
@@ -107,6 +108,11 @@ def test_add_authentication_to_config():
     assert config["ssl.key.password"] == "keypassword"
     assert config["ssl.cipher.suites"] == "HIGH:!aNULL"
     assert config["ssl.crl.location"] == "/path/to/crl.pem"
+
+    # Verify unsupported parameters were safely ignored and NOT added to the config dict
+    assert "sasl.kerberos.domain" not in config
+    assert "ssl.context" not in config
+    assert "sasl.oauthbearer.token.endpoint.url" not in config
 
 
 def test_build_consumer_config():

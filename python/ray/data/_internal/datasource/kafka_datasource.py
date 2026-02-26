@@ -47,13 +47,14 @@ _KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
     "sasl_plain_username": "sasl.username",
     "sasl_plain_password": "sasl.password",
     "sasl_kerberos_service_name": "sasl.kerberos.service.name",
-    "sasl_kerberos_domain_name": "sasl.kerberos.domain",
+    "sasl_kerberos_name": "sasl.kerberos.principal",
     "ssl_cafile": "ssl.ca.location",
     "ssl_certfile": "ssl.certificate.location",
     "ssl_keyfile": "ssl.key.location",
     "ssl_password": "ssl.key.password",
     "ssl_ciphers": "ssl.cipher.suites",
     "ssl_crlfile": "ssl.crl.location",
+    "ssl_check_hostname": "enable.ssl.certificate.verification",
 }
 
 KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
@@ -72,7 +73,10 @@ KAFKA_MSG_SCHEMA = pa.schema(
         ("topic", pa.string()),
         ("partition", pa.int32()),
         ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
-        ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
+        (
+            "timestamp_type",
+            pa.int32(),
+        ),  # 0=TIMESTAMP_NOT_AVAILABLE, 1=TIMESTAMP_CREATE_TIME, 2=TIMESTAMP_LOG_APPEND_TIME
         ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
     ]
 )
@@ -100,8 +104,11 @@ class KafkaAuthConfig:
         sasl_kerberos_domain name are ignored. Default: None.
     sasl_kerberos_service_name: Service name to include in GSSAPI
         sasl mechanism handshake. Default: 'kafka'
-    sasl_kerberos_domain_name: kerberos domain name to use in GSSAPI
-        sasl mechanism handshake. Default: one of bootstrap servers
+    sasl_kerberos_domain_name: Kerberos domain name to use in GSSAPI
+        sasl mechanism handshake. Note: This option is not supported by
+        Confluent/librdkafka and will be ignored when building the client
+        configuration. Prefer specifying an explicit principal via
+        `sasl_kerberos_name` or rely on broker defaults.
     sasl_oauth_token_provider: OAuthBearer
         token provider instance. Default: None (Confluent uses sasl.oauthbearer.* config)
     ssl_context: Pre-configured SSLContext. Not supported by Confluent; use ssl_* file paths.
@@ -172,7 +179,6 @@ def _add_authentication_to_config(
             )
             continue
 
-        # Skip sasl_oauth_token_provider - Confluent uses sasl.oauthbearer.* config
         if field.name == "sasl_oauth_token_provider":
             logger.warning(
                 "sasl_oauth_token_provider is not supported by Confluent. Skipping. "
@@ -180,14 +186,16 @@ def _add_authentication_to_config(
             )
             continue
 
+        if field.name == "sasl_kerberos_domain_name":
+            logger.warning(
+                "sasl_kerberos_domain_name is not supported by Confluent and will be ignored. "
+                "Set sasl_kerberos_name (principal) or rely on defaults."
+            )
+            continue
+
         confluent_key = _KAFKA_AUTH_TO_CONFLUENT.get(field.name)
         if confluent_key:
             config[confluent_key] = value
-        elif field.name == "sasl_kerberos_name":
-            # Confluent uses sasl.kerberos.principal
-            config["sasl.kerberos.principal"] = value
-        elif field.name == "ssl_check_hostname":
-            config["enable.ssl.certificate.verification"] = value
 
 
 def _build_confluent_config(
