@@ -228,6 +228,7 @@ def _build_consumer_config(
         extra={
             "enable.auto.commit": False,
             "group.id": "ray-data-kafka-reader",  # Required by Confluent but we use assign()
+            "enable.partition.eof": True,
         },
     )
 
@@ -364,7 +365,7 @@ class KafkaDatasource(Datasource):
         if not bootstrap_servers:
             raise ValueError("bootstrap_servers cannot be empty")
 
-        if timeout_ms != -1 and timeout_ms < 0:
+        if timeout_ms != -1 and timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive, or -1 for no timeout")
 
         if isinstance(start_offset, int) and isinstance(end_offset, int):
