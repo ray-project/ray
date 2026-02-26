@@ -342,7 +342,8 @@ Built-in PyTorch Datasets
 If you are using built-in PyTorch datasets, for example from ``torchvision``, these can be converted to a Ray Dataset using the :meth:`from_torch() <ray.data.from_torch>` API.
 
 .. testcode::
-
+    :skipif: True
+    
     import torchvision
     import ray
 

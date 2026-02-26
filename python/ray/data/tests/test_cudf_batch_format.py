@@ -142,13 +142,16 @@ class TestCudfMapBatches:
             cudf_batch = (
                 cudf.from_pandas(batch)
                 if batch_format == "pandas"
-                else cudf.DataFrame.from_arrow(batch)
+                else cudf.from_arrow(batch)
             )
             cudf_batch["id"] = cudf_batch["id"] + 1
             return cudf_batch
 
         result = ds.map_batches(
-            add_one, batch_format=batch_format, num_gpus=0.001
+            add_one,
+            batch_format=batch_format,
+            batch_size=10,
+            num_gpus=0.001,
         ).take()
         assert result == [{"id": i} for i in range(1, 11)]
 
@@ -162,13 +165,16 @@ class TestCudfMapBatches:
             cudf_batch = (
                 cudf.from_pandas(batch)
                 if batch_format == "pandas"
-                else cudf.DataFrame.from_arrow(batch)
+                else cudf.from_arrow(batch)
             )
             cudf_batch["id"] = cudf_batch["id"] * 2
             return cudf_batch
 
         result = ds.map_batches(
-            to_cudf_and_double, batch_format=batch_format, num_gpus=0.001
+            to_cudf_and_double,
+            batch_format=batch_format,
+            batch_size=5,
+            num_gpus=0.001,
         ).take()
         assert result == [{"id": 0}, {"id": 2}, {"id": 4}, {"id": 6}, {"id": 8}]
 
@@ -212,14 +218,20 @@ class TestCudfFilterExpressions:
         if test_data is not None:
             ds = ray.data.from_items(test_data)
             ds = ds.map_batches(
-                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+                lambda x: x,
+                batch_format="cudf",
+                batch_size=3,
+                num_gpus=0.001,
             )
             result = ds.filter(expr=predicate_expr).take()
             result_ids = [r.get("value", r.get("id", r)) for r in result]
         else:
             ds = ray.data.range(10, override_num_blocks=2)
             ds = ds.map_batches(
-                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+                lambda x: x,
+                batch_format="cudf",
+                batch_size=10,
+                num_gpus=0.001,
             )
             result = ds.filter(expr=predicate_expr).take()
             result_ids = [r["id"] for r in result]
@@ -234,7 +246,10 @@ class TestCudfFilterExpressions:
             ds = ray.data.from_items(test_data)
             ds = ds.filter(expr=predicate_expr)
             ds = ds.map_batches(
-                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+                lambda x: x,
+                batch_format="cudf",
+                batch_size=3,
+                num_gpus=0.001,
             )
             result = ds.take()
             result_ids = [r.get("value", r.get("id", r)) for r in result]
@@ -242,7 +257,10 @@ class TestCudfFilterExpressions:
             ds = ray.data.range(10, override_num_blocks=2)
             ds = ds.filter(expr=predicate_expr)
             ds = ds.map_batches(
-                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+                lambda x: x,
+                batch_format="cudf",
+                batch_size=10,
+                num_gpus=0.001,
             )
             result = ds.take()
             result_ids = [r["id"] for r in result]
@@ -256,7 +274,11 @@ class TestCudfAddColumn:
     def test_add_column_cudf(self, ray_start_regular_shared):
         """add_column with batch_format='cudf' adds column to cudf batches."""
         ds = ray.data.range(5).add_column(
-            "doubled", lambda x: x["id"] * 2, batch_format="cudf", num_gpus=0.001
+            "doubled",
+            lambda x: x["id"] * 2,
+            batch_format="cudf",
+            batch_size=5,
+            num_gpus=0.001,
         )
         result = ds.take()
         assert result == [
@@ -506,7 +528,8 @@ class TestCudfBlockAccessor:
         acc = self._acc(df)
         result = acc.random_shuffle(random_seed=42)
         assert len(result) == 5
-        assert set(result["a"].to_list()) == {1, 2, 3, 4, 5}
+        # cuDF does not support .to_list(); use .to_arrow().to_pylist()
+        assert set(result["a"].to_arrow().to_pylist()) == {1, 2, 3, 4, 5}
 
     def test_schema(self):
         df = cudf.DataFrame({"a": [1, 2], "b": [3.0, 4.0]})
