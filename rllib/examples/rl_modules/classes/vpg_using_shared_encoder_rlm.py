@@ -26,6 +26,7 @@ class VPGPolicyAfterSharedEncoder(TorchRLModule):
         RLModule's forward and returns the embeddings under the "encoder_embeddings"
         key.
     """
+
     # __sphinx_doc_policy_2_begin__
 
     def setup(self):
@@ -126,6 +127,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
             print(algo.train())
             # __sphinx_doc_how_to_run_end__
     """
+
     # __sphinx_doc_mrlm_2_begin__
 
     def setup(self):
