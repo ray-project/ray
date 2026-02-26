@@ -51,6 +51,7 @@ ray.get(refs)
 def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
     with monkeypatch.context() as m:
         m.setenv("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+        m.setenv("RAY_max_io_workers", "0")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=1)
         cluster.add_node(num_cpus=1)
