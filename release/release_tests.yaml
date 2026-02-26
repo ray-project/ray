@@ -1458,6 +1458,35 @@
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
+- name: serve_controller_benchmark_haproxy
+  python: "3.10"
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      runtime_env:
+        # specifically testing haproxy here because with serve
+        # proxy the benchmark profile changes significantly.
+        # Given that haproxy is going to be the path forward, make sense
+        # to use that here.
+        - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
+        - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+    cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 14400
+    long_running: false
+    script: python workloads/microbenchmarks.py --run-controller
+
+  alert: default
+
 - name: pytest_serve_microbenchmarks
   python: "3.10"
   group: Serve tests
