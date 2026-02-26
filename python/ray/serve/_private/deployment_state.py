@@ -1538,9 +1538,18 @@ class DeploymentReplica:
 class ReplicaStateContainer:
     """Container for mapping ReplicaStates to lists of DeploymentReplicas."""
 
-    def __init__(self):
+    def __init__(self, on_replica_state_change=None):
         self._replicas: Dict[ReplicaState, List[DeploymentReplica]] = defaultdict(list)
         self._replica_id_index: Dict[ReplicaID, DeploymentReplica] = {}
+        self._on_replica_state_change = on_replica_state_change
+
+    def __getstate__(self):
+        # Exclude the callback to keep the container picklable (the callback
+        # is a bound method on DeploymentState which holds unpicklable objects
+        # like asyncio futures).  Used by _dump_replica_states_for_testing.
+        state = self.__dict__.copy()
+        state["_on_replica_state_change"] = None
+        return state
 
     def add(self, state: ReplicaState, replica: DeploymentReplica):
         """Add the provided replica under the provided state.
@@ -1550,9 +1559,13 @@ class ReplicaStateContainer:
             replica: replica to add.
         """
         assert isinstance(state, ReplicaState), f"Type: {type(state)}"
+        actor_details = getattr(replica, "actor_details", None)
+        old_state = actor_details.state if actor_details is not None else None
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
+        if self._on_replica_state_change and state != old_state:
+            self._on_replica_state_change(old_state, state)
 
     def get(
         self, states: Optional[List[ReplicaState]] = None
@@ -2233,7 +2246,9 @@ class DeploymentState:
         # This is reset to False when the deployment is re-deployed.
         self._replica_has_started: bool = False
 
-        self._replicas: ReplicaStateContainer = ReplicaStateContainer()
+        self._replicas: ReplicaStateContainer = ReplicaStateContainer(
+            on_replica_state_change=self._on_replica_state_change
+        )
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._id.name,
             DeploymentStatus.UPDATING,
@@ -2350,12 +2365,42 @@ class DeploymentState:
         # time we checked.
         self._request_routing_info_updated = False
 
+        # Dirty flag: set when replicas transition state (start, stop, health
+        # check fail, migration) or when availability-related fields change.
+        # When False *and* _request_routing_info_updated is False, the
+        # broadcast_running_replicas_if_changed() method can skip all work.
+        self._broadcasted_replicas_set_changed = True
+
+        # Reconciliation flag: when False the deployment is in steady state
+        # (all replicas RUNNING at target version, status HEALTHY) and
+        # expensive per-tick work in check_curr_status(),
+        # scale_deployment_replicas(), and the startup/stopping sections of
+        # check_and_update_replicas() can be skipped.  Health checks on
+        # RUNNING/PENDING_MIGRATION replicas always run regardless.
+        # Cleared only when check_curr_status() confirms steady state.
+        self._in_transition = True
+
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
         self._last_broadcasted_availability: bool = True
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
         self._route_patterns: Optional[List[str]] = None
+
+    _BROADCAST_STATES = frozenset(
+        {ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION}
+    )
+
+    def _on_replica_state_change(
+        self, old_state: ReplicaState, new_state: ReplicaState
+    ) -> None:
+        """Called by ReplicaStateContainer.add() when a replica transitions."""
+        broadcast_set_changed = (old_state in self._BROADCAST_STATES) != (
+            new_state in self._BROADCAST_STATES
+        )
+        if broadcast_set_changed:
+            self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
 
     def should_autoscale(self) -> bool:
         """
@@ -2532,17 +2577,33 @@ class DeploymentState:
 
         The set will also be broadcast if any replicas have an updated set of
         multiplexed model IDs.
+
+        Uses a dirty flag (_broadcasted_replicas_set_changed) to skip all work in steady state
+        when no replicas have transitioned and no routing info has been updated.
+        RunningReplicaInfo objects are only constructed when a broadcast may
+        actually be needed.
         """
+        # Fast path: nothing could have changed, skip entirely.
+        if (
+            not self._broadcasted_replicas_set_changed
+            and not self._request_routing_info_updated
+        ):
+            return
+
         running_replica_infos = self.get_running_replica_infos()
         is_available = not self._terminally_failed()
 
-        running_replicas_changed = (
+        running_broadcasted_replicas_set_changed = (
             set(self._last_broadcasted_running_replica_infos)
             != set(running_replica_infos)
             or self._request_routing_info_updated
         )
         availability_changed = is_available != self._last_broadcasted_availability
-        if not running_replicas_changed and not availability_changed:
+
+        # Clear the dirty flag now that we've done the comparison.
+        self._broadcasted_replicas_set_changed = False
+
+        if not running_broadcasted_replicas_set_changed and not availability_changed:
             return
 
         deployment_metadata = DeploymentTargetInfo(
@@ -2597,6 +2658,8 @@ class DeploymentState:
         self._curr_status_info = self._curr_status_info.handle_transition(
             trigger=DeploymentStatusInternalTrigger.DELETE
         )
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
         logger.info(
             f"Deleting {self._id}",
             extra={"log_to_stderr": False},
@@ -2637,6 +2700,8 @@ class DeploymentState:
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         self._target_state = new_target_state
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
 
         # Emit target replicas metric
         self.target_replicas_gauge.set(target_num_replicas)
@@ -2863,6 +2928,8 @@ class DeploymentState:
                     self._target_state.version
                 ):
                     replicas_changed = True
+                    self._broadcasted_replicas_set_changed = True
+                    self._in_transition = True
                 # Get current rank for the replica
                 current_rank = self._rank_manager.get_replica_rank(
                     replica.replica_id.unique_id
@@ -2956,6 +3023,11 @@ class DeploymentState:
     ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas."""
 
+        # Fast path: already at target count with all replicas at target
+        # version — no scaling or version updates needed.
+        if not self._in_transition:
+            return [], None
+
         assert (
             self._target_state.target_num_replicas >= 0
         ), "Target number of replicas must be greater than or equal to 0."
@@ -3019,9 +3091,10 @@ class DeploymentState:
 
         Returns (deleted, any_replicas_recovering).
         """
-        # TODO(edoakes): we could make this more efficient in steady-state by
-        # having a "healthy" flag that gets flipped if an update or replica
-        # failure happens.
+        # Fast path: deployment is in steady state — status is already
+        # HEALTHY, all replicas are RUNNING at target version.  Nothing to do.
+        if not self._in_transition:
+            return False, False
 
         target_version = self._target_state.version
 
@@ -3082,6 +3155,9 @@ class DeploymentState:
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
                 self._replica_constructor_retry_counter = 0
+                # Deployment is in steady state: all replicas RUNNING at
+                # target version, no pending operations.
+                self._in_transition = False
                 return False, any_replicas_recovering
 
         return False, any_replicas_recovering
@@ -3200,8 +3276,11 @@ class DeploymentState:
         if self._target_state.target_num_replicas == 0:
             return
 
-        # Increase startup failure counter
+        # Increase startup failure counter (may change _terminally_failed()
+        # result, which affects broadcasted availability).
         self._replica_constructor_retry_counter += 1
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
         self._replica_constructor_error_msg = error_msg
 
         # Update the deployment message only if replicas are failing during
@@ -3290,6 +3369,8 @@ class DeploymentState:
                 self._replicas.add(replica.actor_details.state, replica)
                 self._set_health_gauge(replica.replica_id.unique_id, 1)
                 routing_stats = replica.pull_routing_stats()
+                if routing_stats is not None and routing_stats != replica.routing_stats:
+                    self._broadcasted_replicas_set_changed = True
                 replica.record_routing_stats(routing_stats)
             else:
                 logger.warning(
@@ -3309,6 +3390,41 @@ class DeploymentState:
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
                     )
+
+        # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
+        # replicas, so skip startup/stopping checks.  The rank consistency
+        # check below still runs (it has its own lightweight guard).
+        if self._in_transition:
+            self._check_and_update_transitioning_replicas()
+
+        # After replica state updates, check rank consistency and perform minimal reassignment if needed
+        # This ensures ranks are continuous after lifecycle events
+        # Only do consistency check when deployment is stable (not during active updates)
+        # maybe this constraint need to be relaxed in the future. The implication is that
+        # if we delay the rank reassignment, the rank system will be in an invalid state
+        # for a longer period of time. Abrar made this decision because he is not confident
+        # about how rollouts work in the deployment state machine.
+        active_replicas = self._replicas.get()
+        if (
+            active_replicas
+            and self._curr_status_info.status == DeploymentStatus.HEALTHY
+            # Skip consistency check if there are STARTING replicas. During node
+            # migration, new replicas are created in STARTING state (without ranks)
+            # after the status is set to HEALTHY. Running the consistency check
+            # with STARTING replicas causes "active keys without ranks" error.
+            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
+        ):
+            replicas_to_reconfigure = (
+                self._rank_manager.check_rank_consistency_and_reassign_minimally(
+                    active_replicas,
+                )
+            )
+
+            # Reconfigure replicas that had their ranks reassigned
+            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+
+    def _check_and_update_transitioning_replicas(self):
+        """Check STARTING/UPDATING/RECOVERING/STOPPING replicas for state transitions."""
 
         slow_start_replicas = []
         slow_start = self._check_startup_replicas(ReplicaState.STARTING)
@@ -3412,32 +3528,6 @@ class DeploymentState:
                     )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
 
-        # After replica state updates, check rank consistency and perform minimal reassignment if needed
-        # This ensures ranks are continuous after lifecycle events
-        # Only do consistency check when deployment is stable (not during active updates)
-        # maybe this constraint need to be relaxed in the future. The implication is that
-        # if we delay the rank reassignment, the rank system will be in an invalid state
-        # for a longer period of time. Abrar made this decision because he is not confident
-        # about how rollouts work in the deployment state machine.
-        active_replicas = self._replicas.get()
-        if (
-            active_replicas
-            and self._curr_status_info.status == DeploymentStatus.HEALTHY
-            # Skip consistency check if there are STARTING replicas. During node
-            # migration, new replicas are created in STARTING state (without ranks)
-            # after the status is set to HEALTHY. Running the consistency check
-            # with STARTING replicas causes "active keys without ranks" error.
-            and self._replicas.count(states=[ReplicaState.STARTING]) == 0
-        ):
-            replicas_to_reconfigure = (
-                self._rank_manager.check_rank_consistency_and_reassign_minimally(
-                    active_replicas,
-                )
-            )
-
-            # Reconfigure replicas that had their ranks reassigned
-            self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
-
     def _reconfigure_replicas_with_new_ranks(
         self, replicas_to_reconfigure: List["DeploymentReplica"]
     ):
@@ -3516,6 +3606,12 @@ class DeploymentState:
         return to_stop, remaining
 
     def migrate_replicas_on_draining_nodes(self, draining_nodes: Dict[str, int]):
+        # Fast path: no draining nodes and deployment is in steady state —
+        # no PENDING_MIGRATION replicas to move back and no replicas to
+        # migrate, so skip the O(N) pop-and-readd.
+        if not draining_nodes and not self._in_transition:
+            return
+
         # Move replicas back to running if they are no longer on a draining node.
         # If this causes the number of replicas to exceed the target state,
         # they will be scaled down because `scale_deployment_replicas` is called on
