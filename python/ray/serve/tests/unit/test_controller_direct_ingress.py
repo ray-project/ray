@@ -19,8 +19,6 @@ from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
     DeploymentDetails,
     DeploymentSchema,
-    ProxyDetails,
-    ProxyStatus,
     ReplicaDetails,
     Target,
     TargetGroup,
@@ -76,25 +74,10 @@ class FakeDeploymentReplica:
 
 
 class FakeProxyState:
-    def __init__(
-        self,
-        node_id,
-        node_ip,
-        actor_name,
-        node_instance_id="",
-        status: ProxyStatus = ProxyStatus.STARTING,
-    ):
+    def __init__(self, node_id, node_ip, name):
         self.node_id = node_id
         self.node_ip = node_ip
-        self.actor_name = actor_name
-        self.status = status
-        self.actor_details = ProxyDetails(
-            node_id=node_id,
-            node_ip=node_ip,
-            node_instance_id=node_instance_id,
-            actor_name=actor_name,
-            status=status,
-        )
+        self.name = name
 
 
 class FakeProxyStateManager:
@@ -106,12 +89,12 @@ class FakeProxyStateManager:
         )
         self._fallback_proxy_targets = []
 
-    def add_proxy_details(self, node_id, node_ip, actor_name):
+    def add_proxy_details(self, node_id, node_ip, name):
 
         self.proxy_details[node_id] = FakeProxyState(
             node_id=node_id,
             node_ip=node_ip,
-            actor_name=actor_name,
+            name=name,
         )
 
     def add_fallback_proxy_target(
@@ -143,16 +126,16 @@ class FakeProxyStateManager:
                 ip=proxy_details.node_ip,
                 port=port,
                 instance_id="",
-                name=proxy_details.actor_name,
+                name=proxy_details.name,
             )
             for node_id, proxy_details in self.proxy_details.items()
         ]
 
-    def get_fallback_proxy_targets(self):
-        return self._fallback_proxy_targets
-
     def get_grpc_config(self):
         return self._grpc_options
+
+    def get_fallback_proxy_targets(self):
+        return self._fallback_proxy_targets
 
 
 class FakeReplicaStateContainer:
