@@ -37,6 +37,24 @@ def pytest_configure(config):
     )
 
 
+@pytest.fixture(autouse=True)
+def warn_if_unit_in_integration(request):
+    import pathlib
+
+    """ this fixture is only applied to tests in the integration test directory."""
+    integration_test_directory = pathlib.Path(__file__).parent
+
+    if request.fspath.dirpath() != integration_test_directory:
+        yield
+        return
+
+    if request.node.get_closest_marker("unit_in_integration"):
+        yield
+        return
+
+    # Warn if the test is a unit test but not marked as unit_in_integration
+
+
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
     """Create a mock AllToAllOperator for testing.
 
