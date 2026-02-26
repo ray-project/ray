@@ -8,6 +8,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, ReplicaState
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import check_apps_running
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
@@ -671,6 +672,11 @@ class TestGangConstructorFailure:
         deployment_dict = ray.get(client._controller._all_running_replicas.remote())
         deployment_id = DeploymentID(name="GangConstructorFailure")
         assert len(deployment_dict[deployment_id]) == 0
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app_status.status == "DEPLOY_FAILED"
+        assert (
+            app_status.deployments["GangConstructorFailure"].status == "DEPLOY_FAILED"
+        )
 
     def test_partial_constructor_failure(self, ray_shutdown):
         """Validates gang deployment where one replica consistently fails."""
@@ -706,6 +712,11 @@ class TestGangConstructorFailure:
         deployment_id = DeploymentID(name="GangPartialConstructorFailure")
         deployment_dict = ray.get(client._controller._all_running_replicas.remote())
         assert len(deployment_dict[deployment_id]) == 4
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app_status.status == "RUNNING"
+        assert (
+            app_status.deployments["GangPartialConstructorFailure"].status == "HEALTHY"
+        )
 
     def test_transient_constructor_failure(self, ray_shutdown):
         """Validates gang deployment where the first constructor call fails then succeeds."""
@@ -737,6 +748,12 @@ class TestGangConstructorFailure:
         deployment_id = DeploymentID(name="GangTransientConstructorFailure")
         deployment_dict = ray.get(client._controller._all_running_replicas.remote())
         assert len(deployment_dict[deployment_id]) == 4
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app_status.status == "RUNNING"
+        assert (
+            app_status.deployments["GangTransientConstructorFailure"].status
+            == "HEALTHY"
+        )
 
 
 class TestGangFailureRecovery:
@@ -746,7 +763,8 @@ class TestGangFailureRecovery:
         serve.start()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            failed_once_file = os.path.join(tmpdir, "failed_once.txt")
+            failed_replica_file = os.path.join(tmpdir, "failed_replica_id.txt")
+            allow_recovery_file = os.path.join(tmpdir, "allow_recovery.txt")
 
             @serve.deployment(
                 num_replicas=4,
@@ -755,10 +773,20 @@ class TestGangFailureRecovery:
             )
             class StartupFailureDeployment:
                 def __init__(self):
-                    if not os.path.exists(failed_once_file):
-                        with open(failed_once_file, "w") as f:
-                            f.write("failed")
+                    replica_id = serve.get_replica_context().replica_id.unique_id
+                    if not os.path.exists(failed_replica_file):
+                        with open(failed_replica_file, "w") as f:
+                            f.write(replica_id)
                         raise RuntimeError("Fail one startup to trigger gang cleanup.")
+
+                    with open(failed_replica_file) as f:
+                        failed_replica_id = f.read().strip()
+                    if replica_id == failed_replica_id and not os.path.exists(
+                        allow_recovery_file
+                    ):
+                        raise RuntimeError(
+                            "Hold failing replica until intermediate state is asserted."
+                        )
 
                 def __call__(self):
                     ctx = serve.get_replica_context()
@@ -799,6 +827,10 @@ class TestGangFailureRecovery:
                     break
             assert len(contexts) == 2
             assert len({ctx["gang_id"] for ctx in contexts.values()}) == 1
+
+            # Release constructor retry gate so the failed gang can recover.
+            with open(allow_recovery_file, "w") as f:
+                f.write("allow")
 
             # After retry, all 4 replicas should be RUNNING.
             wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
@@ -897,6 +929,7 @@ class TestGangFailureRecovery:
                 )
 
             wait_for_condition(check_target_gang_restarted, timeout=90)
+            wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
             serve.delete(app_name)
             serve.shutdown()
 

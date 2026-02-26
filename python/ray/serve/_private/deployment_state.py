@@ -2613,18 +2613,17 @@ class DeploymentState:
             else None
         )
 
-    def get_num_replicas_to_add(self) -> int:
-        """Calculate the number of replicas to be added to reach the target state."""
+    def get_target_replica_delta(self) -> int:
+        """Calculate delta between target replicas and active replicas."""
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
         )
         recovering_replicas = self._replicas.count(states=[ReplicaState.RECOVERING])
-        delta = (
+        return (
             self._target_state.target_num_replicas
             - current_replicas
             - recovering_replicas
         )
-        return max(0, delta)
 
     def get_active_node_ids(self) -> Set[str]:
         """Get the node ids of all running replicas in this deployment.
@@ -3131,16 +3130,7 @@ class DeploymentState:
 
         self._check_and_stop_outdated_version_replicas()
 
-        current_replicas = self._replicas.count(
-            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
-        )
-        recovering_replicas = self._replicas.count(states=[ReplicaState.RECOVERING])
-
-        delta_replicas = (
-            self._target_state.target_num_replicas
-            - current_replicas
-            - recovering_replicas
-        )
+        delta_replicas = self.get_target_replica_delta()
         if delta_replicas == 0:
             return (upscale, downscale)
 
@@ -3479,6 +3469,7 @@ class DeploymentState:
                             f"member failed during startup "
                             f"(gang_id={replica.gang_context.gang_id})."
                         )
+                        # Forcefully stop siblings to avoid partial gangs
                         self._stop_replica(replica, graceful_stop=False)
                     else:
                         self._replicas.add(state, replica)
@@ -3627,6 +3618,7 @@ class DeploymentState:
                             f"member failed health check "
                             f"(gang_id={replica.gang_context.gang_id})."
                         )
+                        # Forcefully stop siblings to avoid partial gangs
                         self._stop_replica(replica, graceful_stop=False)
                     else:
                         self._replicas.add(state, replica)
@@ -4391,6 +4383,7 @@ class DeploymentStateManager:
 
         # STEP 3: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
+
         # STEP 4: Scale replicas
         for deployment_id, deployment_state in self._deployment_states.items():
             upscale, downscale = deployment_state.scale_deployment_replicas(
@@ -4547,7 +4540,7 @@ class DeploymentStateManager:
             if gang_config is None:
                 continue
 
-            num_replicas_to_add = deployment_state.get_num_replicas_to_add()
+            num_replicas_to_add = max(0, deployment_state.get_target_replica_delta())
             if num_replicas_to_add <= 0:
                 continue
 
