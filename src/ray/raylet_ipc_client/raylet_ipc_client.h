@@ -27,7 +27,7 @@
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 #include "src/ray/protobuf/common.pb.h"
 
 using MessageType = ray::protocol::MessageType;

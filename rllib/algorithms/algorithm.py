@@ -1444,18 +1444,11 @@ class Algorithm(Checkpointable, Trainable):
                 return self._run_offline_evaluation_old_api_stack()
 
             if self.config.enable_env_runner_and_connector_v2:
-                if (
-                    self.env_runner_group is not None
-                    and self.env_runner_group.healthy_env_runner_ids()
-                ):
-                    # TODO (sven): Replace this with a new ActorManager API:
-                    #  try_remote_request_till_success("get_state") -> tuple(int,
-                    #  remoteresult)
-                    weights_src = self.env_runner_group._worker_manager._actors[
-                        self.env_runner_group.healthy_env_runner_ids()[0]
-                    ]
-                else:
-                    weights_src = self.learner_group
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult) and get results from EnvRunners.
+                # TODO (Artur): Use Ray Core's concurrency groups to give get_state a separate concurrency limit.
+                weights_src = self.learner_group
             else:
                 weights_src = self.env_runner
 
@@ -2046,17 +2039,16 @@ class Algorithm(Checkpointable, Trainable):
                     for i in range(1, num_workers + 1)
                 ]
 
-                results = (
-                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
-                        func=_env_runner_remote,
-                        kwargs={
-                            "num": _num,
-                            "round": _round,
-                            "iter": algo_iteration,
-                            "_force_reset": force_reset,
-                        },
-                        tag="_env_runner_remote",
-                    )
+                results = self.eval_env_runner_group.foreach_env_runner(
+                    func=_env_runner_remote,
+                    kwargs={
+                        "num": _num,
+                        "round": _round,
+                        "iter": algo_iteration,
+                        "_force_reset": force_reset,
+                    },
+                    timeout_seconds=time_out,
+                    local_env_runner=False,
                 )
 
                 # Make sure we properly time out if we have not received any results

@@ -475,6 +475,7 @@ class VLLMEngine(LLMEngine):
         engine_client = AsyncLLM(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,
+            log_requests=vllm_engine_args.enable_log_requests,
             log_stats=not vllm_engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )

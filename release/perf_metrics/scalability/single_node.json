@@ -1,8 +1,8 @@
 {
-    "args_time": 17.71234498399999,
-    "get_time": 23.304285948,
+    "args_time": 11.357349357000004,
+    "get_time": 15.349179023000005,
     "large_object_size": 107374182400,
-    "large_object_time": 28.68260234600001,
+    "large_object_time": 22.459637914999973,
     "num_args": 10000,
     "num_get_args": 10000,
     "num_queued": 1000000,
@@ -11,30 +11,30 @@
         {
             "perf_metric_name": "10000_args_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 17.71234498399999
+            "perf_metric_value": 11.357349357000004
         },
         {
             "perf_metric_name": "3000_returns_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 5.576066161
+            "perf_metric_value": 3.577688757000004
         },
         {
             "perf_metric_name": "10000_get_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 23.304285948
+            "perf_metric_value": 15.349179023000005
         },
         {
             "perf_metric_name": "1000000_queued_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 220.095988608
+            "perf_metric_value": 148.61821138700003
         },
         {
             "perf_metric_name": "107374182400_large_object_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 28.68260234600001
+            "perf_metric_value": 22.459637914999973
         }
     ],
-    "queued_time": 220.095988608,
-    "returns_time": 5.576066161,
+    "queued_time": 148.61821138700003,
+    "returns_time": 3.577688757000004,
     "success": "1"
 }

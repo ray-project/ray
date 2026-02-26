@@ -637,6 +637,10 @@ def test_autoscaling_metrics(metrics_start_shutdown):
     ray.get(signal.send.remote())
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Async Inference feature testing is flaky on Windows.",
+)
 def test_async_inference_task_queue_metrics_delay(
     metrics_start_shutdown, external_redis  # noqa: F811
 ):

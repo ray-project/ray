@@ -415,6 +415,20 @@ config = vLLMEngineProcessorConfig(
 )
 # __concurrent_config_example_end__
 
+
+# __concurrent_config_fixed_pool_example_start__
+config = vLLMEngineProcessorConfig(
+    model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "enable_chunked_prefill": True,
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 16384,
+    },
+    concurrency=(10, 10),
+    batch_size=64,
+)
+# __concurrent_config_fixed_pool_example_end__
+
 # __concurrent_batches_tuning_example_start__
 # Tuning concurrent batch processing
 # Configure both parameters together for optimal throughput

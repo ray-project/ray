@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_scheduler import ReplicaSchedulingRequest
@@ -1983,6 +1984,90 @@ def test_health_check(
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert ds.curr_status_info.status_trigger == DeploymentStatusTrigger.UNSPECIFIED
+
+
+def test_health_gauge_caching(mock_deployment_state_manager):
+    """Test that the health gauge is only set when the value changes.
+
+    The _health_gauge_cache avoids redundant Gauge.set() calls on every
+    control-loop iteration, which are expensive at scale.
+    """
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    b_info_1, v1 = deployment_info(num_replicas=2, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
+
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+
+    # First update: _check_startup_replicas transitions STARTING -> RUNNING.
+    # check_and_update_replicas hasn't seen them as RUNNING yet.
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+
+    # Second update: check_and_update_replicas processes the RUNNING replicas
+    # for the first time, calling check_health() and setting the gauge.
+    dsm.update()
+
+    replica_ids = [r.replica_id.unique_id for r in ds._replicas.get()]
+    # After the second update the cache should have (value=1, timestamp) for both.
+    for rid in replica_ids:
+        cached_value, cached_time = ds._health_gauge_cache[rid]
+        assert cached_value == 1
+
+    # Track how many times Gauge.set is called using a wrapper.
+    original_set = ds.health_check_gauge.set
+    call_count = 0
+
+    def counting_set(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return original_set(*args, **kwargs)
+
+    ds.health_check_gauge.set = counting_set
+
+    # Subsequent updates with all-healthy replicas should NOT call Gauge.set
+    # because the cache already has value 1 for each replica (within TTL).
+    dsm.update()
+    dsm.update()
+    dsm.update()
+    assert call_count == 0, (
+        f"Gauge.set was called {call_count} times for already-healthy replicas; "
+        "expected 0 (should be cached)"
+    )
+
+    # After the TTL expires, the gauge should be re-reported even though
+    # the value hasn't changed.
+    timer.advance(RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S + 1)
+    dsm.update()
+    assert call_count == len(replica_ids), (
+        f"Gauge.set was called {call_count} times after TTL expired; "
+        f"expected {len(replica_ids)} (one per replica)"
+    )
+
+    # Mark one replica unhealthy — gauge should transition to 0.
+    call_count = 0
+    ds._replicas.get()[0]._actor.set_unhealthy()
+    dsm.update()
+    # Gauge.set should have been called at least once (for the now-unhealthy replica).
+    assert call_count >= 1
+    # The stopping replica should have cache value 0.
+    stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+    assert len(stopping) == 1
+    cached_value, _ = ds._health_gauge_cache[stopping[0].replica_id.unique_id]
+    assert cached_value == 0
+
+    # After the stopped replica is fully removed, its cache entry should be cleaned up.
+    stopped_id = stopping[0].replica_id.unique_id
+    stopping[0]._actor.set_done_stopping()
+    call_count = 0
+    dsm.update()
+    assert stopped_id not in ds._health_gauge_cache
 
 
 def test_update_while_unhealthy(mock_deployment_state_manager):

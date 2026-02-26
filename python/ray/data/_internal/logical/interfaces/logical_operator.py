@@ -19,10 +19,13 @@ class LogicalOperator(Operator):
 
     def __init__(
         self,
-        name: str,
         input_dependencies: List["LogicalOperator"],
         num_outputs: Optional[int] = None,
+        *,
+        name: Optional[str] = None,
     ):
+        if name is None:
+            name = self.__class__.__name__
         super().__init__(
             name,
             input_dependencies,
@@ -57,10 +60,6 @@ class LogicalOperator(Operator):
     def input_dependencies(self, value: List["LogicalOperator"]) -> None:
         self._input_dependencies = value
 
-    @property
-    def output_dependencies(self) -> List["LogicalOperator"]:
-        return super().output_dependencies  # type: ignore
-
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
 
@@ -78,7 +77,26 @@ class LogicalOperator(Operator):
             else:
                 # Keep underscore-prefixed keys to preserve legacy export schema.
                 args[f"_{key}"] = value
+        # Preserve legacy export shape even though output deps are no longer tracked.
+        args["_output_dependencies"] = []
         return args
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self.name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self.name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""

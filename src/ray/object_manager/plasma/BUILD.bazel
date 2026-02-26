@@ -312,7 +312,7 @@ ray_cc_library(
         "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/util:compat",
         "//src/ray/util:logging",
-        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "@com_github_google_flatbuffers//:flatbuffers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

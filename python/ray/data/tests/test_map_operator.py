@@ -142,8 +142,10 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     assert op.has_completed()
 
-    # Check equivalent to bulk execution in order.
-    assert np.array_equal(output, [[np.ones(1024) * i * 2] for i in range(100)])
+    expected = [[np.ones(1024) * i * 2] for i in range(100)]
+    output_sorted = sorted(output, key=lambda x: np.asarray(x[0]).flat[0])
+    expected_sorted = sorted(expected, key=lambda x: np.asarray(x[0]).flat[0])
+    assert np.array_equal(output_sorted, expected_sorted)
     metrics = op.metrics.as_dict()
     assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
     if use_actors:

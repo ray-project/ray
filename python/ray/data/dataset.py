@@ -46,6 +46,7 @@ from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
+from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -117,6 +118,9 @@ from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
 from ray.data.datasource.file_datasink import _FileDatasink
+from ray.data.datasource.util import (
+    _validate_head_node_resources_for_local_scheduling,
+)
 from ray.data.datatype import DataType
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
@@ -141,6 +145,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
+    from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
@@ -1656,6 +1661,7 @@ class Dataset:
         num_blocks: Optional[int] = None,
         target_num_rows_per_block: Optional[int] = None,
         *,
+        strict: bool = False,
         shuffle: bool = False,
         keys: Optional[List[str]] = None,
         sort: bool = False,
@@ -1705,6 +1711,13 @@ class Dataset:
                 optimal execution, based on the `target_num_rows_per_block`. This is
                 the current behavior because of the implementation and may change in
                 the future.
+            strict: If ``True``, ``repartition`` guarantees that all output blocks,
+                except for the last one, will have exactly ``target_num_rows_per_block`` rows.
+                If ``False``, ``repartition`` uses best-effort bundling and may produce at most
+                one block smaller than ``target_num_rows_per_block`` per input block without
+                forcing exact sizes through block splitting.
+                This parameter is only used with ``target_num_rows_per_block``.
+                Defaults to ``False``.
             shuffle: Whether to perform a distributed shuffle during the
                 repartition. When shuffle is enabled, each output block
                 contains a subset of data rows from each input block, which
@@ -1741,6 +1754,13 @@ class Dataset:
                 warnings.warn(
                     "`shuffle` is ignored when `target_num_rows_per_block` is set."
                 )
+        else:
+            if strict:
+                # strict is used in row-based repartition only
+                warnings.warn(
+                    "`strict` is ignored when `target_num_rows_per_block` is not set. "
+                    "Use `target_num_rows_per_block` instead of `num_blocks` to enable `strict` mode."
+                )
 
         if (num_blocks is None) and (target_num_rows_per_block is None):
             raise ValueError(
@@ -1762,6 +1782,7 @@ class Dataset:
             op = StreamingRepartition(
                 self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
+                strict=strict,
             )
         else:
             op = Repartition(
@@ -2409,7 +2430,7 @@ class Dataset:
         if any(p <= 0 for p in proportions):
             raise ValueError("proportions must be bigger than 0")
 
-        dataset_length = self.count()
+        ds, dataset_length = self._try_count_or_materialize(self)
         cumulative_proportions = np.cumsum(proportions)
         split_indices = [
             int(dataset_length * proportion) for proportion in cumulative_proportions
@@ -2427,7 +2448,7 @@ class Dataset:
                 "Couldn't create non-empty splits with the given proportions."
             )
 
-        return self.split_at_indices(split_indices)
+        return ds.split_at_indices(split_indices)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
@@ -2496,9 +2517,21 @@ class Dataset:
             self._validate_test_size_float(test_size)
             return ds.split_proportionately([1 - test_size])
         else:
-            self._validate_test_size_int(test_size, ds)
-            ds_length = ds.count()
+            ds, ds_length = self._try_count_or_materialize(ds)
+            ds_length = self._validate_test_size_int(test_size, ds, ds_length=ds_length)
             return ds.split_at_indices([ds_length - test_size])
+
+    def _try_count_or_materialize(self, ds: "Dataset") -> Tuple["Dataset", int]:
+        dataset_length = ds._meta_count()
+        if dataset_length is None:
+            # Materialize once so split_at_indices() can reuse the computed snapshot.
+            # Calling count() first would execute the upstream pipeline for counting,
+            # then execute it again for the split.
+            ds = ds.materialize()
+            dataset_length = ds._meta_count()
+            if dataset_length is None:
+                dataset_length = ds.count()
+        return ds, dataset_length
 
     def _stratified_train_test_split(
         self, ds: "Dataset", test_size: Union[int, float], stratify: str
@@ -2554,12 +2587,18 @@ class Dataset:
                 f"than 1. Got {test_size}."
             )
 
-    def _validate_test_size_int(self, test_size: int, ds: "Dataset") -> int:
+    def _validate_test_size_int(
+        self,
+        test_size: int,
+        ds: "Dataset",
+        ds_length: Optional[int] = None,
+    ) -> int:
         """Validate test_size when it's an int and return dataset length.
 
         Args:
             test_size: Test size as int.
             ds: Dataset to validate against.
+            ds_length: Dataset length if already known.
 
         Returns:
             Dataset length for reuse.
@@ -2567,7 +2606,8 @@ class Dataset:
         Raises:
             ValueError: If test_size is not in valid range.
         """
-        ds_length = ds.count()
+        if ds_length is None:
+            ds_length = ds.count()
         if test_size <= 0 or test_size >= ds_length:
             raise ValueError(
                 "If `test_size` is an int, it must be bigger than 0 and smaller "
@@ -3661,7 +3701,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return res
 
     @ConsumptionAPI
@@ -3712,7 +3752,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._cache.set_stats(limited_ds._plan.stats())
         return output
 
     @ConsumptionAPI
@@ -3865,23 +3905,10 @@ class Dataset:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-
-        context = self._plan._context
-
-        # First check if the schema is already known from materialized blocks.
-        base_schema = self._plan.schema(fetch_if_missing=False)
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
-            return Schema(base_schema, data_context=context)
-
-        # Lazily execute only the first block to minimize computation. We achieve this
-        # by appending a Limit[1] operation to a copy of this Dataset, which we then
-        # execute to get its schema.
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
-        if base_schema is not None:
-            self._plan.cache_schema(base_schema)
-            return Schema(base_schema, data_context=context)
-        else:
-            return None
+            return Schema(base_schema, data_context=self._plan._context)
+        return None
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -3955,10 +3982,10 @@ class Dataset:
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
             return self._logical_plan.dag.infer_metadata().size_bytes
 
-        metadata = self._plan.execute().metadata
-        if not metadata or metadata[0].size_bytes is None:
-            return None
-        return sum(m.size_bytes for m in metadata)
+        cached = self._plan._cache.get_size_bytes(self._logical_plan.dag)
+        if cached is not None:
+            return cached
+        return self._plan.execute().size_bytes()
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
@@ -5299,6 +5326,131 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    def write_turbopuffer(
+        self,
+        *,
+        namespace: Optional[str] = None,
+        namespace_column: Optional[str] = None,
+        region: Optional[str] = None,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        schema: Optional[Dict[str, Any]] = None,
+        id_column: str = "id",
+        vector_column: str = "vector",
+        batch_size: int = 10000,
+        distance_metric: str = "cosine_distance",
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write the dataset to a Turbopuffer vector database namespace.
+
+        Supports two modes:
+
+        * **Single namespace** -- pass ``namespace`` to write all rows into
+          one Turbopuffer namespace.
+        * **Multi-namespace** -- pass ``namespace_column`` to route each row
+          to the namespace whose name is stored in that column.  The column
+          is dropped before the data is sent to Turbopuffer.
+
+        Exactly one of ``namespace`` or ``namespace_column`` must be supplied.
+
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Examples:
+
+            Write to a single namespace:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds = ds.map_batches(
+                    lambda batch: {
+                        "id": batch["id"],
+                        "vector": ...,
+                    }
+                )
+
+                ds.write_turbopuffer(
+                    namespace="my-namespace",
+                    api_key="<YOUR_API_KEY>",
+                    region="gcp-us-central1",
+                )
+
+            Write to multiple namespaces driven by a column:
+
+            .. testcode::
+                :skipif: True
+
+                ds.write_turbopuffer(
+                    namespace_column="tenant",
+                    api_key="<YOUR_API_KEY>",
+                    region="gcp-us-central1",
+                )
+
+        Args:
+            namespace: Name of the Turbopuffer namespace to write into.
+                Mutually exclusive with ``namespace_column``.
+            namespace_column: Name of a column whose values determine the
+                target namespace for each row.  Rows are grouped by this
+                column and each group is written to its corresponding
+                namespace.  The column is removed from the data before
+                writing.  Mutually exclusive with ``namespace``.
+            region: Turbopuffer region identifier (for example,
+                ``"gcp-us-central1"``).  Mutually exclusive with
+                ``base_url``.  Exactly one of ``region`` or ``base_url``
+                must be supplied.
+            base_url: Base URL for the Turbopuffer API (for example,
+                ``"https://gcp-us-central1.turbopuffer.com"``).  Mutually
+                exclusive with ``region``.  Exactly one of ``region`` or
+                ``base_url`` must be supplied.
+            api_key: Turbopuffer API key. If omitted, the value is read from
+                the ``TURBOPUFFER_API_KEY`` environment variable.
+            schema: Optional Turbopuffer schema definition to pass along with
+                writes. If provided, it is forwarded as the ``schema`` argument
+                to ``namespace.write``.
+            id_column: Name of the column to treat as the document identifier.
+                Rows with null IDs are dropped before writing. Defaults to
+                ``"id"``.
+            vector_column: Name of the column containing embedding vectors. If
+                this differs from ``"vector"``, it is renamed to ``"vector"``
+                before writing. Defaults to ``"vector"``.
+            batch_size: Maximum number of rows to include in a single
+                Turbopuffer write call (logical row batching; subject to
+                Turbopuffer's 256MiB request-size limit). Defaults to ``10000``.
+            distance_metric: Name of the distance metric to use for the
+                Turbopuffer namespace. Defaults to ``"cosine_distance"``.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write
+                tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently.
+                Set this to control number of tasks to run concurrently. This
+                doesn't change the total number of tasks run. By default,
+                concurrency is dynamically decided based on the available
+                resources.
+        """
+        datasink = TurbopufferDatasink(
+            namespace=namespace,
+            namespace_column=namespace_column,
+            region=region,
+            base_url=base_url,
+            api_key=api_key,
+            schema=schema,
+            id_column=id_column,
+            vector_column=vector_column,
+            batch_size=batch_size,
+            distance_metric=distance_metric,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
     def write_lance(
         self,
         path: str,
@@ -5388,6 +5540,11 @@ class Dataset:
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,
+            )
+
+            _validate_head_node_resources_for_local_scheduling(
+                ray_remote_args,
+                op_description="Writing to a local:// path",
             )
 
         plan = self._plan.copy()
@@ -6594,7 +6751,7 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_snapshot()
+        ds._plan.clear_cache()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -7052,3 +7209,138 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+class _ExecutionCache:
+    """Consolidated cache for Dataset execution results.
+
+    Caches the output bundle, execution stats, and lightweight metadata
+    (schema, num_rows, size_bytes), and tracks which operator produced
+    the cached data.
+
+    There are two "layers" of cache:
+      1. Bundle layer: the full RefBundle from eager execution (execute()).
+         Valid only when _operator matches the current DAG.
+      2. Metadata layer: schema, num_rows, size_bytes cached as scalars.
+         Populated when a streaming iterator is fully exhausted
+         (CacheMetadataIterator in legacy_compat.py).
+
+    Getters check the bundle layer first, then the metadata layer.
+    """
+
+    def __init__(self):
+        # --- Bundle layer (from eager execution) ---
+        self._operator: Optional["LogicalOperator"] = None
+        self._bundle: Optional[RefBundle] = None
+
+        # --- Metadata layer (from streaming iteration) ---
+        self._num_rows: Optional[int] = None
+        self._size_bytes: Optional[int] = None
+        # Note schema can be cached via other means as well.
+        self._schema: Optional["Schema"] = None
+
+        # --- Other ---
+        self._stats: Optional[DatasetStats] = None
+
+    # --- Consolidated Getters ---
+
+    def _cache_is_fresh(self, dag: "LogicalOperator") -> bool:
+        # This _ExecutionCache is only fresh if the current logical
+        # plan dag ends with the same operator. Otherwise, the plan
+        # has changed, so there may have been a change in schema,
+        # count, etc.
+        return self._operator == dag
+
+    def get_bundle(self, dag: "LogicalOperator") -> Optional[RefBundle]:
+        if self._cache_is_fresh(dag):
+            return self._bundle
+        return None
+
+    def get_stats(self) -> Optional[DatasetStats]:
+        # We don't check for cache freshness just for stats for behaviorial
+        # backwards compatibility.
+        return self._stats
+
+    def get_schema(self, dag: "LogicalOperator") -> Optional["Schema"]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None and self._bundle.schema is not None:
+                return self._bundle.schema
+            return self._schema
+        return None
+
+    def get_num_rows(self, dag: "LogicalOperator") -> Optional[int]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None and self._bundle.num_rows() is not None:
+                return self._bundle.num_rows()
+            return self._num_rows
+        return None
+
+    def get_size_bytes(self, dag: "LogicalOperator") -> Optional[int]:
+        if self._cache_is_fresh(dag):
+            if self._bundle is not None:
+                return self._bundle.size_bytes()
+            return self._size_bytes
+        return None
+
+    # --- Setters ---
+
+    def set_stats(self, stats: DatasetStats) -> None:
+        # stats are cached independently
+        self._stats = stats
+
+    def set_num_rows(self, dag: "LogicalOperator", num_rows: int) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._num_rows = num_rows
+
+    def set_size_bytes(self, dag: "LogicalOperator", size_bytes: int) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._size_bytes = size_bytes
+
+    def set_schema(self, dag: "LogicalOperator", schema: "Schema") -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._schema = schema
+
+    def set_bundle(self, dag: "LogicalOperator", bundle: RefBundle) -> None:
+        if dag != self._operator:
+            self._clear_dag_dependent_cache()
+        self._operator = dag
+        self._bundle = bundle
+
+    # --- Lifecycle ---
+
+    def clear(self) -> None:
+        self._stats = None
+        self._clear_dag_dependent_cache()
+
+    def _clear_dag_dependent_cache(self) -> None:
+        self._operator = None
+        self._bundle = None
+        self._schema = None
+        self._num_rows = None
+        self._size_bytes = None
+
+    def copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
+        new._operator = self._operator
+        new._bundle = self._bundle
+        new._stats = self._stats
+        new._schema = self._schema
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new
+
+    def deep_copy(self) -> "_ExecutionCache":
+        new = _ExecutionCache()
+        new._operator = copy.copy(self._operator)
+        new._bundle = copy.copy(self._bundle)
+        new._stats = copy.copy(self._stats)
+        new._schema = copy.copy(self._schema)
+        new._num_rows = self._num_rows
+        new._size_bytes = self._size_bytes
+        return new

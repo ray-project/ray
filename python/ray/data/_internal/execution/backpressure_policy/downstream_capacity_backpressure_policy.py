@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from .backpressure_policy import BackpressurePolicy
-from ray._private.ray_constants import env_float
+from ray._common.utils import env_float
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
