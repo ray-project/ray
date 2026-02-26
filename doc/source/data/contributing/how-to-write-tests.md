@@ -121,7 +121,7 @@ def test_invalid_concurrency_raises(ray_start_regular_shared, concurrency):
         ds.map(lambda row: row, concurrency=concurrency)
 ```
 
-## Avoid testing against repr outputs to validate specific data
+### Avoid testing against repr outputs to validate specific data
 
 `repr` output isn’t part of any interface contract — it can change at any time.
 Besides, tests that assert against repr often hide the real intent: are you trying to
@@ -140,7 +140,7 @@ assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
 assert ds.count() == 6
 ```
 
-## Avoid assumptions about the number or size of blocks
+### Avoid assumptions about the number or size of blocks
 
 Unless you’re testing an API like `repartition`, don’t lock your test to a specific 
 number or size of blocks. Both can change depending on the implementation or the cluster 
@@ -176,7 +176,7 @@ assert sum(len(bundle.blocks) for bundle in ds.iter_internal_ref_bundles()) == 5
 # Assertion about the number of rows in each block has been removed.
 ```
 
-## Avoid testing that the DAG looks a particular way
+### Avoid testing that the DAG looks a particular way
 
 The operators in the execution plan can shift over time as the implementation evolves. 
 Unless you’re specifically testing optimization rules or working at the operator level,

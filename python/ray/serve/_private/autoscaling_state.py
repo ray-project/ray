@@ -1,3 +1,4 @@
+import inspect
 import logging
 import math
 import time
@@ -7,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
+    AsyncInferenceTaskQueueMetricReport,
     AutoscalingSnapshotError,
     AutoscalingStatus,
     DeploymentID,
@@ -19,6 +21,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -39,6 +42,24 @@ from ray.util import metrics
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
+    """Return a ready-to-call policy callable from an ``AutoscalingPolicy``.
+
+    If the deserialized policy is a class (rather than a plain function),
+    instantiate it once — forwarding any ``policy_kwargs`` — so that the
+    framework invokes ``instance.__call__(ctx)`` on every autoscaling tick
+    instead of ``Class(ctx)`` (which would create a new, stateless instance
+    each time).
+    """
+    raw = policy.get_policy()
+    if inspect.isclass(raw):
+        logger.info(
+            f"Instantiating class-callable autoscaling policy '{raw.__name__}' with kwargs: {policy.policy_kwargs}"
+        )
+        return raw(**policy.policy_kwargs)
+    return raw
+
+
 class DeploymentAutoscalingState:
     """Manages autoscaling for a single deployment."""
 
@@ -53,6 +74,9 @@ class DeploymentAutoscalingState:
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
+        # Async inference task queue length (from QueueMonitor).
+        # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
+        self._total_pending_async_requests: int = 0
 
         self._deployment_info = None
         self._config = None
@@ -121,7 +145,9 @@ class DeploymentAutoscalingState:
         self._deployment_info = info
         self._config = config
         # Apply default autoscaling config to the policy
-        self._policy = _apply_autoscaling_config(self._config.policy.get_policy())
+        self._policy = _apply_autoscaling_config(
+            _resolve_policy_callable(self._config.policy)
+        )
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -236,6 +262,12 @@ class DeploymentAutoscalingState:
                 self._latest_metrics_timestamp = max(
                     self._latest_metrics_timestamp, send_timestamp
                 )
+
+    def record_async_inference_task_queue_metrics(
+        self, report: AsyncInferenceTaskQueueMetricReport
+    ) -> None:
+        """Records task queue length from QueueMonitor for async inference."""
+        self._total_pending_async_requests = report.queue_length
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
@@ -366,6 +398,7 @@ class DeploymentAutoscalingState:
             raw_metrics=self._get_raw_custom_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
+            total_pending_async_requests=self._total_pending_async_requests,
         )
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:
@@ -653,6 +686,18 @@ class DeploymentAutoscalingState:
                         ).get(replica_id)
         return total_requests
 
+    def _should_aggregate_metrics_at_controller(self) -> bool:
+        """
+        Determine if metrics should be aggregated at the controller.
+        If the Direct Ingress is enabled, then metrics should only be aggregated at the controller.
+
+        Returns:
+            True if metrics should be aggregated at the controller, False otherwise.
+        """
+        return (
+            RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
+        )
+
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -664,7 +709,7 @@ class DeploymentAutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             return self._calculate_total_requests_aggregate_mode()
         else:
             return self._calculate_total_requests_simple_mode()
@@ -753,7 +798,7 @@ class DeploymentAutoscalingState:
             Sum of queued requests at all handles. Uses aggregated values in simple mode,
             or aggregates timeseries data in aggregate mode.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             # Aggregate mode: collect and aggregate timeseries
             queued_timeseries = self._collect_handle_queued_requests()
             if not queued_timeseries:
@@ -853,7 +898,7 @@ class ApplicationAutoscalingState:
         """
         # Apply default autoscaling config to the policy
         self._policy = _apply_app_level_autoscaling_config(
-            autoscaling_policy.get_policy()
+            _resolve_policy_callable(autoscaling_policy)
         )
         self._policy_state = {}
 
@@ -1068,6 +1113,15 @@ class ApplicationAutoscalingState:
                 dep_id
             ].record_request_metrics_for_handle(handle_metric_report)
 
+    def record_async_inference_task_queue_metrics(
+        self, report: AsyncInferenceTaskQueueMetricReport
+    ):
+        """Record async inference task queue metrics for a deployment."""
+        if report.deployment_id in self._deployment_autoscaling_states:
+            self._deployment_autoscaling_states[
+                report.deployment_id
+            ].record_async_inference_task_queue_metrics(report)
+
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]):
         """Drops handle metrics that are no longer valid.
 
@@ -1249,6 +1303,15 @@ class AutoscalingStateManager:
         )
         if app_state:
             app_state.record_request_metrics_for_handle(handle_metric_report)
+
+    def record_async_inference_task_queue_metrics(
+        self,
+        report: AsyncInferenceTaskQueueMetricReport,
+    ) -> None:
+        """Record async inference task queue metrics from QueueMonitor."""
+        app_state = self._app_autoscaling_states.get(report.deployment_id.app_name)
+        if app_state:
+            app_state.record_async_inference_task_queue_metrics(report)
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():

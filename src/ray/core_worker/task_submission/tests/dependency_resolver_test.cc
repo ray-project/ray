@@ -27,7 +27,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
-#include "ray/core_worker/fake_actor_creator.h"
+#include "ray/core_worker/actor_management/fake_actor_creator.h"
 
 namespace ray {
 namespace core {

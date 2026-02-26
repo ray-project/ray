@@ -26,7 +26,7 @@ from ray.rllib.core import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
@@ -63,27 +63,97 @@ if TYPE_CHECKING:
 
 torch, _ = try_import_torch()
 
-TOTAL_EVAL_LOSS_KEY = "total_eval_loss"
-
 
 # TODO (simon): Implement more ...
 class OfflinePolicyEvaluationTypes(str, Enum):
     """Defines the offline policy evaluation types.
 
+    EVAL_LOSS: Evaluates the policy by computing the loss on a held-out
+        validation dataset.
     IS: Importance Sampling.
     PDIS: Per-Decision Importance Sampling. In contrast to IS this method
         weighs each reward and not the return as a whole. As a result it
         usually exhibits lower variance.
     """
 
+    EVAL_LOSS = "eval_loss"
     IS = "is"
     PDIS = "pdis"
+
+
+class MiniBatchEpisodeRayDataIterator(MiniBatchRayDataIterator):
+    """A minibatch iterator that yields episodes from Ray Datasets."""
+
+    def __init__(
+        self,
+        *,
+        iterator: DataIterator,
+        device: DeviceType,
+        minibatch_size: int,
+        num_iters: Optional[int],
+        **kwargs,
+    ):
+        # A `ray.data.DataIterator` that can iterate in different ways over the data.
+        self._iterator = iterator
+        # Note, in multi-learner settings the `return_state` is in `kwargs`.
+        self._kwargs = {k: v for k, v in kwargs.items() if k != "return_state"}
+        self._device = device
+
+        # Holds a batched_iterable over the dataset.
+        self._batched_iterable = self._iterator.iter_batches(
+            batch_size=minibatch_size,
+            **self._kwargs,
+        )
+        # Create an iterator that can be stopped and resumed during an epoch.
+        self._epoch_iterator = iter(self._batched_iterable)
+        self._num_iters = num_iters
+
+    def _collate_fn(
+        self,
+        _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]],
+    ) -> Dict[EpisodeID, Dict[str, TensorType]]:
+        """Converts a batch of episodes to torch tensors."""
+        # Avoid torch import error when framework is tensorflow.
+        # Note (artur): This can be removed when we remove tf support.
+        from ray.data.util.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
+        return [
+            convert_ndarray_batch_to_torch_tensor_batch(
+                episode, device=self._device, dtypes=torch.float32
+            )
+            for episode in _batch["episodes"]
+        ]
+
+    def __iter__(self) -> Iterable[List[Dict[str, numpy.ndarray]]]:
+        """Yields minibatches of episodes."""
+        iteration = 0
+        while self._num_iters is None or iteration < self._num_iters:
+            for batch in self._epoch_iterator:
+                # Update the iteration counter.
+                iteration += 1
+
+                # Convert batch to tensors.
+                batch = self._collate_fn(batch)
+                yield (batch)
+
+                # If `num_iters` is reached break and return.
+                if self._num_iters and iteration == self._num_iters:
+                    break
+            else:
+                # Reinstantiate a new epoch iterator.
+                self._epoch_iterator = iter(self._batched_iterable)
+                # If a full epoch on the data should be run, stop.
+                if not self._num_iters:
+                    # Exit the loop.
+                    break
 
 
 class OfflinePolicyPreEvaluator(OfflinePreLearner):
     def __call__(self, batch: Dict[str, numpy.ndarray]) -> Dict[str, numpy.ndarray]:
         # If we directly read in episodes we just convert to list.
-        if self.input_read_episodes:
+        if self.config.input_read_episodes:
             # Import `msgpack` for decoding.
             import msgpack
             import msgpack_numpy as mnp
@@ -114,14 +184,13 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
                 to_numpy=True,
             )
         # Else, if we have old stack `SampleBatch`es.
-        elif self.input_read_sample_batches:
+        elif self.config.input_read_sample_batches:
             episodes: List[
                 SingleAgentEpisode
             ] = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
                 to_numpy=True,
-                schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )[
                 "episodes"
@@ -147,13 +216,7 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
         # Otherwise we map the batch to episodes.
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
-                self._is_multi_agent,
-                batch,
-                schema=SCHEMA | self.config.input_read_schema,
-                to_numpy=False,
-                input_compress_columns=self.config.input_compress_columns,
-                observation_space=self.observation_space,
-                action_space=self.action_space,
+                batch, to_numpy=False
             )["episodes"]
 
         episode_dicts = []
@@ -237,36 +300,9 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
 
     def _create_batch_iterator(self, **kwargs) -> Iterable:
 
-        # Import the torch utils here b/c Ray Air imports `torch`` directly.
-        from ray.air._internal.torch_utils import (
-            convert_ndarray_batch_to_torch_tensor_batch,
-        )
-
-        # Define the collate function that converts the flattened dictionary
-        # to a `MultiAgentBatch` with Tensors.
-        def _collate_fn(
-            _batch: Dict[str, numpy.ndarray],
-        ) -> Dict[EpisodeID, Dict[str, numpy.ndarray]]:
-
-            return _batch["episodes"]
-
-        # Define the finalize function that makes the host-to-device transfer.
-        def _finalize_fn(
-            _batch: Dict[EpisodeID, Dict[str, numpy.ndarray]],
-        ) -> Dict[EpisodeID, Dict[str, TensorType]]:
-
-            return [
-                convert_ndarray_batch_to_torch_tensor_batch(
-                    episode, device=self._device, dtypes=torch.float32
-                )
-                for episode in _batch
-            ]
-
-        # Return a minibatch iterator.
-        return MiniBatchRayDataIterator(
+        return MiniBatchEpisodeRayDataIterator(
             iterator=self._dataset_iterator,
-            collate_fn=_collate_fn,
-            finalize_fn=_finalize_fn,
+            device=self._device,
             minibatch_size=self.config.offline_eval_batch_size_per_runner,
             num_iters=self.config.dataset_num_iters_per_eval_runner,
             **kwargs,
@@ -315,7 +351,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
                     weights = torch.exp(action_logp) / torch.exp(behavior_action_logp)
                     offline_return = torch.dot(weights, episode[Columns.REWARDS]).item()
 
-                episode_len = episode[Columns.REWARDS].shape[0] + 1
+                episode_len = episode[Columns.REWARDS].shape[0]
                 num_env_steps += episode_len
 
                 self._log_episode_metrics(episode_len, offline_return)
@@ -490,6 +526,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
     def _log_batch_metrics(self, batch_size: int, num_env_steps: int):
         """Logs batch metrics for each mini batch."""
 
+        # Note, Offline RL does not support multi-agent RLModules yet.
         # Log weights seq no for this batch.
         self.metrics.log_value(
             (DEFAULT_MODULE_ID, WEIGHTS_SEQ_NO),
@@ -512,6 +549,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             key=(DEFAULT_MODULE_ID, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
             reduce="lifetime_sum",
+            with_throughput=True,
         )
         # Log module steps (sum of all modules).
         self.metrics.log_value(
@@ -523,6 +561,7 @@ class OfflinePolicyEvaluationRunner(Runner, Checkpointable):
             key=(ALL_MODULES, NUM_MODULE_STEPS_SAMPLED_LIFETIME),
             value=num_env_steps,
             reduce="lifetime_sum",
+            with_throughput=True,
         )
         # Log env steps (all modules).
         self.metrics.log_value(

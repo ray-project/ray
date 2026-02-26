@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces.common import (
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -497,7 +498,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Start time of current pause due to task output backpressure
         self._task_output_backpressure_start_time = -1
 
-        self._internal_inqueue = create_bundle_queue()
+        num_inputs = max(len(op.input_dependencies), 1)
+        self._internal_inqueues = [create_bundle_queue() for _ in range(num_inputs)]
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
         self._op_task_duration_stats = TaskDurationStats()
@@ -548,8 +550,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             result.append((metric.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
-        # avoid calling self._op.current_processor_usage()
-        resource_usage = self._op.current_processor_usage()
+        # avoid calling self._op.current_logical_usage()
+        resource_usage = self._op.current_logical_usage()
         result.extend(
             [
                 ("cpu_usage", resource_usage.cpu or 0),
@@ -631,11 +633,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
 
     @metric_property(
-        description="Byte size of input blocks in the operator's internal input queue.",
+        description="Byte size of input blocks in the operator's internal input queues, summed across all input dependencies.",
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
     def obj_store_mem_internal_inqueue(self) -> int:
-        return self._internal_inqueue.estimate_size_bytes()
+        """Return the total inqueue bytes of all input dependencies."""
+        return sum(q.estimate_size_bytes() for q in self._internal_inqueues)
+
+    def obj_store_mem_internal_inqueue_for_input(self, input_index: int) -> int:
+        """Return the inqueue bytes attributable to a specific input dependency."""
+        return self._internal_inqueues[input_index].estimate_size_bytes()
 
     @metric_property(
         description=(
@@ -689,9 +696,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
-        # If we don’t have a sample, just return null
+        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
+        # estimate – just bail out.
         if bytes_per_output is None:
-            return None
+            if context.target_max_block_size is None:
+                return None
+            else:
+                # Block size can be up to MAX_SAFE_BLOCK_SIZE_FACTOR larger before being sliced.
+                bytes_per_output = (
+                    context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
+                )
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:
@@ -783,16 +797,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_row_inputs_received += input.num_rows() or 0
         self.bytes_inputs_received += input.size_bytes()
 
-    def on_input_queued(self, input: RefBundle):
+    def on_input_queued(self, input: RefBundle, *, input_index: int):
         """Callback when the operator queues an input."""
         self.obj_store_mem_internal_inqueue_blocks += len(input.blocks)
-        self._internal_inqueue.add(input)
+        self._internal_inqueues[input_index].add(input)
 
-    def on_input_dequeued(self, input: RefBundle):
+    def on_input_dequeued(self, input: RefBundle, *, input_index: int):
         """Callback when the operator dequeues an input."""
         self.obj_store_mem_internal_inqueue_blocks -= len(input.blocks)
         input_size = input.size_bytes()
-        self._internal_inqueue.remove(input)
+        self._internal_inqueues[input_index].remove(input)
         assert self.obj_store_mem_internal_inqueue >= 0, (
             self._op,
             self.obj_store_mem_internal_inqueue,

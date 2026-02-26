@@ -11,7 +11,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import (
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata
-from ray.data.context import DataContext
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 
 
 def test_average_max_uss_per_task():
@@ -349,11 +349,15 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
 @pytest.mark.parametrize(
     "metrics_fixture,test_property,expected_calculator",
     [
-        # When no sample is available, returns None
+        # When no sample is available but target_max_block_size is set, uses fallback
         (
             "metrics_config_no_sample_with_target",
             "obj_store_mem_max_pending_output_per_task",
-            lambda m: None,
+            lambda m: (
+                m._op.data_context.target_max_block_size
+                * MAX_SAFE_BLOCK_SIZE_FACTOR
+                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
+            ),
         ),
         # When sample is available, uses average_bytes_per_output
         (
@@ -364,11 +368,16 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
                 * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
             ),
         ),
-        # When no sample is available, obj_store_mem_pending_task_outputs returns None
+        # When no sample is available but target_max_block_size is set, uses fallback
         (
             "metrics_config_pending_outputs_no_sample",
             "obj_store_mem_pending_task_outputs",
-            lambda m: None,
+            lambda m: (
+                m.num_tasks_running
+                * m._op.data_context.target_max_block_size
+                * MAX_SAFE_BLOCK_SIZE_FACTOR
+                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
+            ),
         ),
     ],
 )

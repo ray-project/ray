@@ -17,6 +17,7 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -962,6 +963,40 @@ TEST_F(TaskEventBufferTest, TestIsDebuggerPausedFlag) {
   ASSERT_TRUE(event->state_updates().is_debugger_paused());
 }
 
+TEST_F(TaskEventBufferTest, TestTaskLogInfoInLifecycleEvent) {
+  // Create task log info
+  rpc::TaskLogInfo task_log_info;
+  task_log_info.set_stdout_file("/tmp/stdout.log");
+  task_log_info.set_stderr_file("/tmp/stderr.log");
+  task_log_info.set_stdout_start(0);
+  task_log_info.set_stdout_end(100);
+  task_log_info.set_stderr_start(0);
+  task_log_info.set_stderr_end(50);
+
+  // Generate the event
+  auto task_id = RandomTaskId();
+  TaskStatusEvent::TaskStateUpdate state_update(task_log_info);
+  auto task_event = GenStatusTaskEvent(task_id, 0, 1, state_update);
+
+  // Convert to RayEvents format
+  RayEventsTuple ray_events_tuple;
+  task_event->ToRpcRayEvents(ray_events_tuple);
+
+  // Verify the lifecycle event has task_log_info
+  ASSERT_TRUE(ray_events_tuple.task_lifecycle_event.has_value());
+  const auto &lifecycle_event =
+      ray_events_tuple.task_lifecycle_event->task_lifecycle_event();
+  ASSERT_TRUE(lifecycle_event.has_task_log_info());
+
+  const auto &log_info = lifecycle_event.task_log_info();
+  EXPECT_EQ(log_info.stdout_file(), "/tmp/stdout.log");
+  EXPECT_EQ(log_info.stderr_file(), "/tmp/stderr.log");
+  EXPECT_EQ(log_info.stdout_start(), 0);
+  EXPECT_EQ(log_info.stdout_end(), 100);
+  EXPECT_EQ(log_info.stderr_start(), 0);
+  EXPECT_EQ(log_info.stderr_end(), 50);
+}
+
 TEST_F(TaskEventBufferTest, TestGracefulDestruction) {
   delete task_event_buffer_.release();
 }
@@ -1247,9 +1282,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
   ray::rpc::StatusCallback gcs_callback;
-  bool gcs_callback_set = false;
+  std::atomic_bool gcs_callback_set = false;
   ray::rpc::StatusCallback gcs_callback_2;
-  bool gcs_callback_2_set = false;
+  std::atomic_bool gcs_callback_2_set = false;
 
   if (to_gcs) {
     // Expect 2 calls: first from FlushEvents(), second from Stop() after waiting
@@ -1278,9 +1313,9 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   rpc::ClientCallback<rpc::events::AddEventsReply> aggregator_callback;
-  bool aggregator_callback_set = false;
+  std::atomic_bool aggregator_callback_set = false;
   rpc::ClientCallback<rpc::events::AddEventsReply> aggregator_callback_2;
-  bool aggregator_callback_2_set = false;
+  std::atomic_bool aggregator_callback_2_set = false;
 
   if (to_aggregator) {
     // Expect 2 calls: first from FlushEvents(), second from Stop() after waiting
@@ -1316,11 +1351,11 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
 
   // Complete the first in-flight gRPC calls - this unblocks Stop() to do the final flush
   if (to_gcs) {
-    ASSERT_TRUE(gcs_callback_set);
+    ASSERT_TRUE(gcs_callback_set.load());
     gcs_callback(Status::OK());
   }
   if (to_aggregator) {
-    ASSERT_TRUE(aggregator_callback_set);
+    ASSERT_TRUE(aggregator_callback_set.load());
     aggregator_callback(Status::OK(), rpc::events::AddEventsReply{});
   }
 
@@ -1329,11 +1364,11 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestStopWaitsForInflightThenFlus
 
   // Complete the second gRPC calls from the final flush
   if (to_gcs) {
-    ASSERT_TRUE(gcs_callback_2_set);
+    ASSERT_TRUE(gcs_callback_2_set.load());
     gcs_callback_2(Status::OK());
   }
   if (to_aggregator) {
-    ASSERT_TRUE(aggregator_callback_2_set);
+    ASSERT_TRUE(aggregator_callback_2_set.load());
     aggregator_callback_2(Status::OK(), rpc::events::AddEventsReply{});
   }
 

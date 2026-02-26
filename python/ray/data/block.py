@@ -12,6 +12,7 @@ from typing import (
     List,
     Optional,
     Protocol,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -141,7 +142,7 @@ def _take_first_non_empty_schema(schemas: Iterator["Schema"]) -> Optional["Schem
     return None
 
 
-def _apply_batch_format(given_batch_format: Optional[str]) -> str:
+def _apply_batch_format(given_batch_format: Optional[str]) -> Optional[str]:
     if given_batch_format == "default":
         given_batch_format = DEFAULT_BATCH_FORMAT
     if given_batch_format not in VALID_BATCH_FORMATS:
@@ -653,6 +654,31 @@ class BlockAccessor:
         projected_block = self.to_numpy(keys)
 
         return _get_group_boundaries_sorted_numpy(list(projected_block.values()))
+
+    def _iter_groups_sorted(
+        self, sort_key: "SortKey"
+    ) -> Iterator[Tuple[Sequence[KeyType], Block]]:
+        """
+        NOTE: THIS METHOD ASSUMES THE BLOCK BEING SORTED
+
+        Creates an iterator over (zero-copy) blocks of rows grouped by
+        provided key(s).
+        """
+
+        key_col_names: List[str] = sort_key.get_columns()
+
+        if not key_col_names:
+            # Global aggregation consists of a single "group", so we short-circuit.
+            yield tuple(), self.to_block()
+            return
+
+        boundaries = self._get_group_boundaries_sorted(key_col_names)
+
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            # Fetch tuple of key values from the first row
+            row = self._get_row(start)
+
+            yield row[key_col_names], self.slice(start, end, copy=False)
 
 
 @DeveloperAPI(stability="beta")

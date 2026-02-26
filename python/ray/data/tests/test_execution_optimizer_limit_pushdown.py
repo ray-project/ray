@@ -615,5 +615,17 @@ def test_does_not_pushdown_limit_past_map_batches_by_default(
     assert num_rows == 1, num_rows
 
 
+def test_does_not_pushdown_limit_past_map_groups_by_default(
+    ray_start_regular_shared_2_cpus,
+):
+    def duplicate_id(batch):
+        yield {"data": list(batch["id"]) * 2}
+
+    # If the optimizer incorrectly pushes the limit past the map operator, then the
+    # returned count is 2.
+    num_rows = ray.data.range(1).groupby("id").map_groups(duplicate_id).limit(1).count()
+    assert num_rows == 1, num_rows
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -86,6 +86,12 @@ static inline void Init(
   }
   RAY_LOG(DEBUG) << "Initialized stats";
 
+  // Force-initialize OtlpGrpcMetricExporterOptions in the OpenTelemetryMetricRecorder
+  // early to avoid setenv/getenv races from lazy GetInstance().
+  if (RayConfig::instance().enable_open_telemetry()) {
+    OpenTelemetryMetricRecorder::GetInstance();
+  }
+
   // Set interval.
   StatsConfig::instance().SetReportInterval(absl::Milliseconds(std::max(
       RayConfig::instance().metrics_report_interval_ms(), static_cast<uint64_t>(1000))));

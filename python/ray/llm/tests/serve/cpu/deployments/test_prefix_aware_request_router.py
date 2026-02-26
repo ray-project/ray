@@ -409,19 +409,23 @@ class TestMultiDeploymentIsolation:
         """Verify that two deployments using PrefixCacheAffinityRouter get
         deployment-specific prefix tree actors to avoid replica ID conflicts."""
 
+        # Create separate tree actors for each deployment
+        prefill_tree = PrefixTreeActor.options(name="PrefillTree").remote()
+        decode_tree = PrefixTreeActor.options(name="DecodeTree").remote()
+
         # Create two routers for different deployments (e.g., Prefill and Decode in PD setup)
-        async def construct_router(deployment_name: str):
+        async def construct_router(deployment_name: str, tree_actor):
             router = PrefixCacheAffinityRouter(
                 deployment_id=DeploymentID(name=deployment_name),
                 handle_source=DeploymentHandleSource.REPLICA,
                 use_replica_queue_len_cache=False,
                 get_curr_time_s=TIMER.time,
             )
-            router.initialize_state()
+            router.initialize_state(tree_actor=tree_actor)
             return router
 
-        prefill_router = await construct_router("Prefill:deepseek")
-        decode_router = await construct_router("Decode:deepseek")
+        prefill_router = await construct_router("Prefill:deepseek", prefill_tree)
+        decode_router = await construct_router("Decode:deepseek", decode_tree)
 
         # Create replicas for each deployment
         prefill_r1 = FakeRunningReplica("prefill_r1")

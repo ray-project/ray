@@ -1,3 +1,4 @@
+import contextlib
 import copy
 import enum
 import logging
@@ -7,9 +8,9 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from ray._private.ray_constants import env_bool, env_float, env_integer
+from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.logging import update_dataset_logger_for_worker
-from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
+from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -164,6 +165,35 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error SERVICE_UNAVAILABLE",
 )
 
+DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_ICEBERG_WRITE_FILE_MAX_ATTEMPTS", 10
+)
+DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S", 32
+)
+
+DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_ICEBERG_CATALOG_MAX_ATTEMPTS", 5
+)
+DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S", 16
+)
+DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
+    "429",
+    "503",
+    "502",
+    "500",
+    "Too Many Requests",
+    "Service Unavailable",
+    "Internal Server Error",
+    "Connection reset",
+    "Connection refused",
+    "Connection timed out",
+    "Read timed out",
+    "UNAVAILABLE",
+    "DEADLINE_EXCEEDED",
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
@@ -251,6 +281,36 @@ DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
 DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
     "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
 )
+
+
+@DeveloperAPI
+@dataclass
+class IcebergConfig:
+    """Configuration for Iceberg datasource operations.
+
+    Args:
+        write_file_max_attempts: Maximum number of retry attempts when writing
+            Iceberg data files to storage. Defaults to 10.
+        write_file_retry_max_backoff_s: Maximum backoff time in seconds between
+            Iceberg write retry attempts. Uses exponential backoff with jitter.
+            Defaults to 32.
+        catalog_max_attempts: Maximum number of retry attempts for Iceberg
+            catalog operations (load catalog, load table, commit transactions).
+            Defaults to 5.
+        catalog_retry_max_backoff_s: Maximum backoff time in seconds between
+            Iceberg catalog retry attempts. Defaults to 16.
+        catalog_retried_errors: A list of substrings of error messages that
+            should trigger a retry for Iceberg catalog operations. Includes common
+            HTTP error codes and connection errors.
+    """
+
+    write_file_max_attempts: int = DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS
+    write_file_retry_max_backoff_s: int = DEFAULT_ICEBERG_WRITE_FILE_RETRY_MAX_BACKOFF_S
+    catalog_max_attempts: int = DEFAULT_ICEBERG_CATALOG_MAX_ATTEMPTS
+    catalog_retry_max_backoff_s: int = DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
+    catalog_retried_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
+    )
 
 
 @DeveloperAPI
@@ -448,6 +508,9 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        iceberg_config: Configuration for Iceberg datasource operations including
+            retry settings for file writes and catalog operations. See
+            :class:`IcebergConfig` for details.
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
@@ -602,6 +665,7 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+    iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
@@ -732,19 +796,33 @@ class DataContext:
             return _default_context
 
     @staticmethod
-    def _set_current(context: "DataContext") -> None:
+    @contextlib.contextmanager
+    def current(context: "DataContext"):
+        prev: Optional[DataContext] = DataContext._set_current(context)
+        try:
+            yield
+        finally:
+            DataContext._set_current(prev)
+
+    @staticmethod
+    def _set_current(context: Optional["DataContext"]) -> Optional["DataContext"]:
         """Set the current context in a remote worker.
 
         This is used internally by Dataset to propagate the driver context to
         remote workers used for parallelization.
         """
         global _default_context
-        if (
+        if context and (
             not _default_context
             or _default_context.dataset_logger_id != context.dataset_logger_id
         ):
             update_dataset_logger_for_worker(context.dataset_logger_id)
+
+        prev = _default_context
+        # Update current context
         _default_context = context
+
+        return prev
 
     @property
     def shuffle_strategy(self) -> ShuffleStrategy:

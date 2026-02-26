@@ -56,16 +56,16 @@ async def test_vllm_multimodal_utils():
     """Test vLLM's multimodal utilities.
 
     This test is adapted from https://github.com/vllm-project/vllm/blob/main/tests/entrypoints/test_chat_utils.py.
-    `parse_chat_messages_futures` is thoroughly tested in vLLM. This test serves as an
+    `parse_chat_messages_async` is thoroughly tested in vLLM. This test serves as an
     integration test to verify that the function isn't moved to an unexpected location and its signature isn't changed.
     """
     from vllm.config import ModelConfig
-    from vllm.entrypoints.chat_utils import parse_chat_messages_futures
+    from vllm.entrypoints.chat_utils import parse_chat_messages_async
 
     image_url = "https://air-example-data.s3.us-west-2.amazonaws.com/rayllm-ossci/assets/cherry_blossom.jpg"
     image_uuid = str(hash(image_url))
 
-    conversation, mm_future, mm_uuids = parse_chat_messages_futures(
+    conversation, mm_data, mm_uuids = await parse_chat_messages_async(
         [
             {
                 "role": "user",
@@ -92,7 +92,6 @@ async def test_vllm_multimodal_utils():
         {"role": "user", "content": "<|image_1|>\nWhat's in the image?"}
     ]
 
-    mm_data = await mm_future
     assert mm_data is not None
     assert set(mm_data.keys()) == {"image"}
 
@@ -564,6 +563,76 @@ def test_vllm_placement_group(backend, placement_group_config):
     outs = ds.take_all()
     assert len(outs) == 60
     assert all("resp" in out for out in outs)
+
+
+def test_vllm_autoscaling_no_starvation():
+    """Test that chained vLLMEngineProcessor instances with autoscaling
+    concurrency can run without starving each other.
+    """
+    processor_config_1 = vLLMEngineProcessorConfig(
+        model_source="facebook/opt-1.3b",
+        chat_template_stage=False,
+        tokenize_stage=False,
+        detokenize_stage=False,
+        batch_size=16,
+        concurrency=(1, 4),
+    )
+
+    processor_config_2 = vLLMEngineProcessorConfig(
+        model_source="facebook/opt-1.3b",
+        chat_template_stage=False,
+        tokenize_stage=False,
+        detokenize_stage=False,
+        batch_size=16,
+        concurrency=(3, 4),
+    )
+
+    processor_1 = build_processor(
+        processor_config_1,
+        preprocess=lambda row: dict(
+            prompt=f"Calculate {row['id']} ** 2 = ",
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=30,
+                detokenize=True,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp_1": row["generated_text"],
+            "id": row.get("id", None),
+        },
+    )
+
+    processor_2 = build_processor(
+        processor_config_2,
+        preprocess=lambda row: dict(
+            prompt=f"Previous result: {row.get('resp_1', 'N/A')}. Now calculate its cube: ",
+            sampling_params=dict(
+                temperature=0.3,
+                max_tokens=30,
+                detokenize=True,
+            ),
+        ),
+        postprocess=lambda row: {
+            "resp_2": row["generated_text"],
+            "resp_1": row.get("resp_1", None),
+            "id": row.get("id", None),
+        },
+    )
+
+    ds = ray.data.range(60)
+    ds = ds.map(lambda x: {"id": x["id"], "val": x["id"] + 1})
+
+    processed_ds = processor_2(processor_1(ds))
+    processed_ds = processed_ds.materialize()
+    results = processed_ds.take_all()
+
+    assert len(results) == 60
+    assert all("resp_1" in out for out in results)
+    assert all("resp_2" in out for out in results)
+    assert all("id" in out for out in results)
+    assert all(out.get("resp_1") for out in results)
+    assert all(out.get("resp_2") for out in results)
 
 
 if __name__ == "__main__":

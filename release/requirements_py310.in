@@ -25,6 +25,7 @@ aws_requests_auth
 tzdata
 tqdm
 networkx
+pip_requirements_parser
 -r requirements-doc.txt
 
 # Upgrades
