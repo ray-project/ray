@@ -30,9 +30,12 @@ from ray.data.tests.test_util import (
 from ray.tests.conftest import *  # noqa
 
 # Pattern to match read operators in logical plans.
-# Matches Read[Read<Format>] where format is Parquet, CSV, Range, etc.
+# Matches Read[Read<Format>] or Read[Read<Format>->Filter(<expr>)] where format is
+# Parquet, CSV, Range, etc. The ->Filter(...) suffix appears when
+# predicates are pushed down into the datasource.
 READ_OPERATOR_PATTERN = (
-    r"^(Read\[Read\w+\]|ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\])"
+    r"^(Read\[Read\w+(?:->Filter\(.+\))?\]|"
+    r"ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\])"
 )
 
 
@@ -391,6 +394,31 @@ class TestPredicatePushdownIntoRead:
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "No Filter operators should remain after pushdown into Read"
+
+    def test_pushed_down_filter_displayed_in_plan(self, parquet_ds):
+        """Verify that pushed-down predicates are displayed in the Read operator."""
+        ds = parquet_ds.filter(expr=col("sepal.length") > 4.2)
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        plan_str = optimized_plan.dag.dag_str
+
+        # The Read operator should display the pushed-down filter
+        assert (
+            "ReadParquet->Filter(col('sepal.length') > 4.2)" in plan_str
+        ), f"Expected plan to display pushed-down filter, got: {plan_str}"
+
+    def test_pushed_down_combined_filter_displayed_in_plan(self, parquet_ds):
+        """Verify that combined predicates (AND) are displayed in the Read operator."""
+        ds = parquet_ds.filter(
+            expr=(col("sepal.length") < 5.0) & (col("sepal.width") > 2.5)
+        )
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        plan_str = optimized_plan.dag.dag_str
+
+        # The Read operator should display the pushed-down filter
+        assert (
+            "ReadParquet->Filter((col('sepal.length') < 5.0) & (col('sepal.width') > 2.5))"
+            in plan_str
+        ), f"Expected plan to display pushed-down filter, got: {plan_str}"
 
 
 class TestPassthroughBehavior:
