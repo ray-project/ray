@@ -20,6 +20,24 @@ from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data.context import DataContext, ShuffleStrategy
 
 
+def _plan_gpu_shuffle_repartition(
+    data_context: DataContext,
+    logical_op: Repartition,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.gpu_shuffle.hash_shuffle import GPUShuffleOperator
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.keys).get_columns()
+
+    return GPUShuffleOperator(
+        input_physical_op,
+        data_context,
+        key_columns=tuple(normalized_key_columns),
+        num_partitions=logical_op.num_outputs,
+    )
+
+
 def _plan_hash_shuffle_repartition(
     data_context: DataContext,
     logical_op: Repartition,
@@ -100,14 +118,19 @@ def plan_all_to_all_op(
 
     elif isinstance(op, Repartition):
         if op.keys:
-            if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+                return _plan_gpu_shuffle_repartition(
+                    data_context, op, input_physical_dag
+                )
+            elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
             else:
                 raise ValueError(
                     "Key-based repartitioning only supported for "
-                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE` "
+                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE` or "
+                    f"`DataContext.shuffle_strategy=GPU_SHUFFLE` "
                     f"(got {data_context.shuffle_strategy})"
                 )
 

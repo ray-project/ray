@@ -37,6 +37,7 @@ class ShuffleStrategy(str, enum.Enum):
     SORT_SHUFFLE_PULL_BASED = "sort_shuffle_pull_based"
     SORT_SHUFFLE_PUSH_BASED = "sort_shuffle_push_based"
     HASH_SHUFFLE = "hash_shuffle"
+    GPU_SHUFFLE = "gpu_shuffle"
 
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
@@ -552,6 +553,13 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
+            to total GPUs available in the cluster.
+        gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
+            uses 90% of free device memory; ``None`` uses an expandable pool.
+        gpu_shuffle_spill_memory_limit: Device-to-host spill threshold per rank.
+            ``"auto"`` uses 80% of ``gpu_shuffle_rmm_pool_size``; ``None`` disables
+            spilling.
     """
 
     # `None` means the block size is infinite.
@@ -610,6 +618,21 @@ class DataContext:
     join_operator_actor_num_cpus_override: float = None
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
+
+    ################################################################
+    # GPU Shuffle configuration
+    ################################################################
+
+    # Number of GPU actors (ranks). Defaults to total GPUs in the cluster.
+    gpu_shuffle_num_actors: Optional[int] = None
+
+    # RMM GPU memory pool size for each rank.
+    # "auto" = 90% of free device memory; None = expandable pool (no fixed size).
+    gpu_shuffle_rmm_pool_size: Union[int, str, None] = "auto"
+
+    # Device→host spill threshold for each rank.
+    # "auto" = 80% of rmm_pool_size; None = spilling disabled.
+    gpu_shuffle_spill_memory_limit: Union[int, str, None] = "auto"
 
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
