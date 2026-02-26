@@ -30,6 +30,13 @@ from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "unit_in_integration: mark a test as intentionally kept in the integration directory despite having no Ray cluster dependency",
+    )
+
+
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
     """Create a mock AllToAllOperator for testing.
 
