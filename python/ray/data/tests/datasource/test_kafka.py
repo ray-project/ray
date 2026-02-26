@@ -428,6 +428,34 @@ def test_read_kafka_timeout(bootstrap_server, kafka_producer, ray_start_regular_
         ds.take_all()
 
 
+def test_read_kafka_mixed_type_offsets_validation(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Mixed-type offsets where resolved start > end should raise ValueError.
+
+    Use a future datetime for start_offset so it resolves to latest,
+    and an integer end_offset smaller than latest.
+    """
+    topic = "test-mixed-type-offsets-validation"
+
+    num_messages = 30
+    for i in range(num_messages):
+        kafka_producer.produce(topic, value={"id": i})
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    future_time = datetime(2099, 1, 1)
+
+    with pytest.raises(ValueError, match="start_offset must be less than end_offset"):
+        ds = ray.data.read_kafka(
+            topics=[topic],
+            bootstrap_servers=[bootstrap_server],
+            start_offset=future_time,
+            end_offset=20,
+        )
+        ds.take_all()
+
+
 def test_read_kafka_with_datetime_offsets(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):

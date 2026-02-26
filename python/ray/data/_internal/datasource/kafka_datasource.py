@@ -286,6 +286,9 @@ def _resolve_offsets_with_consumer(
     earliest_offset = low
     latest_offset = high
 
+    original_start_offset = start_offset
+    original_end_offset = end_offset
+
     if start_offset == "earliest" or start_offset is None:
         start_offset = earliest_offset
     elif isinstance(start_offset, datetime):
@@ -323,6 +326,17 @@ def _resolve_offsets_with_consumer(
         raise ValueError(
             f"end_offset {end_offset} is greater than latest_offset {latest_offset} for partition {topic_partition.partition} in topic {topic_partition.topic}"
         )
+
+    # Final post-resolution validation to catch mixed-type cases
+    # where the resolved start offset is greater than the resolved end offset.
+    if isinstance(start_offset, int) and isinstance(end_offset, int):
+        if start_offset > end_offset:
+            raise ValueError(
+                "Resolved offsets: start_offset="
+                f"{start_offset} end_offset={end_offset}; Original: start_offset="
+                f"{original_start_offset}, end_offset={original_end_offset}. "
+                "start_offset must be less than end_offset"
+            )
 
     return start_offset, end_offset
 
