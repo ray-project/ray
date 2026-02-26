@@ -1,5 +1,6 @@
 """Test utils in rllib/utils/space_utils.py."""
 
+import pickle
 import unittest
 
 import numpy as np
@@ -7,6 +8,7 @@ import tree  # pip install dm_tree
 from gymnasium.spaces import Box, Dict, Discrete, MultiBinary, MultiDiscrete, Tuple
 
 from ray.rllib.utils.spaces.space_utils import (
+    _ImmutableSpaceDict,
     batch,
     convert_element_to_space_type,
     get_base_struct_from_space,
@@ -190,6 +192,21 @@ class TestSpaceUtils(unittest.TestCase):
         get_base_struct_from_space(tuple_space)
         with self.assertRaises(TypeError):
             tuple_space.spaces[0] = Discrete(3)
+
+    def test_immutable_space_dict_pickle_and_cloudpickle(self):
+        immutable_dict = _ImmutableSpaceDict({"a": Box(0.0, 1.0, shape=(1,))})
+
+        pickled = pickle.loads(pickle.dumps(immutable_dict))
+        self.assertIsInstance(pickled, _ImmutableSpaceDict)
+        with self.assertRaisesRegex(RuntimeError, r"mutate gym\.spaces\.Dict's keys"):
+            pickled["b"] = Discrete(2)
+
+        from ray import cloudpickle
+
+        cloudpickled = cloudpickle.loads(cloudpickle.dumps(immutable_dict))
+        self.assertIsInstance(cloudpickled, _ImmutableSpaceDict)
+        with self.assertRaisesRegex(RuntimeError, r"mutate gym\.spaces\.Dict's keys"):
+            cloudpickled["b"] = Discrete(2)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,14 @@ logger = logging.getLogger(__name__)
 
 
 class _ImmutableSpaceDict(dict):
-    """Dict wrapper that disallows key mutations for cached gym Dict spaces."""
+    """Dict wrapper that disallows key mutations for cached gym Dict spaces.
+
+    RLlib caches the base struct of spaces to avoid recomputing it for each episode.
+    This dict is used to wrap the spaces dict to disallow mutations to the keys after
+    the base struct is computed. Changes to the spaces dict would otherwise invalidate the cache.
+
+    This class is pickle/cloudpickle-safe.
+    """
 
     _ERR_MSG = (
         "Attempt to mutate gym.spaces.Dict's keys (spaces.__setitem__) after "
@@ -28,6 +35,21 @@ class _ImmutableSpaceDict(dict):
     popitem = __readonly
     setdefault = __readonly
     update = __readonly
+
+    @classmethod
+    def _from_dict(cls, data):
+        # Rebuild using base `dict.update` to avoid triggering our readonly guards
+        # during pickle/cloudpickle deserialization.
+        obj = cls.__new__(cls)
+        dict.update(obj, data)
+        return obj
+
+    def __reduce__(self):
+        # Make this class pickle/cloudpickle-safe by controlling reconstruction.
+        return (self.__class__._from_dict, (dict(self),))
+
+    def __reduce_ex__(self, protocol):
+        return self.__reduce__()
 
 
 @DeveloperAPI
@@ -134,8 +156,8 @@ class _GetBaseStructFromSpace:
     However, if the cache blows up for some reason, we don't want to build up memory usage.
 
     We cache by object id of the top-level space object to speed up lookups.
-    The limitation of this is that we assume that the space object is not mutated.
-    As a weak guard, we patch the `__setitem__` method of seen Dict spaces to raise an error when mutated.
+    The limitation of this is that we assume that any nested Dict spaces are not mutated.
+    As a weak guard, we replace the spaces dict with an immutable one to prevent later mutations.
     """
 
     _CACHE_MAX_SIZE = 1000
@@ -198,6 +220,8 @@ class _GetBaseStructFromSpace:
             elif isinstance(space_, gym.spaces.Dict):
                 # Guard against mutating keys via `space.spaces[k] = ...`.
                 if not isinstance(space_.spaces, _ImmutableSpaceDict):
+                    # Replace the spaces dict with an immutable one to prevent later mutations.
+                    # A new space should be created instead of mutating the existing one that has cached the base struct.
                     space_.spaces = _ImmutableSpaceDict(space_.spaces)
                 return {k: _helper_struct(space_[k]) for k in space_.spaces}
             else:
