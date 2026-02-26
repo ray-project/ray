@@ -87,6 +87,7 @@ def _value_to_feature(
 ) -> "tf.train.Feature":
     import pyarrow as pa
     import tensorflow as tf
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
 
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in
@@ -95,7 +96,13 @@ def _value_to_feature(
         value = value.as_py()
     elif isinstance(value.type, get_arrow_extension_tensor_types()):
         value_type = value.type
-        value = value.as_py()
+        py_val = value.as_py()
+        if _is_native_tensor_type(value_type):
+            # PyArrow's native FixedShapeTensorType returns a flat list from
+            # as_py(), so use to_numpy()
+            value = value.to_numpy()
+        else:
+            value = py_val
     else:
         value_type = value.type
         value = value.as_py()
