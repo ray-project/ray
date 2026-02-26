@@ -87,7 +87,10 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
         need_terminateds = Columns.TERMINATEDS not in batch
         need_truncateds = Columns.TRUNCATEDS not in batch
 
-        # Columns to skip for extra_model_outputs (already in batch or internal states).
+        # Extra model outputs (except for STATE_OUT, which will be handled by another
+        # default connector piece). Also, like with all the fields above, skip
+        # those that the user already seemed to have populated via custom connector
+        # pieces.
         skip_columns = set(batch.keys()) | {Columns.STATE_IN, Columns.STATE_OUT}
 
         # Single pass over all episodes: compute len(sa_episode) and sub_key once and
@@ -99,7 +102,8 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
             n = len(sa_episode)
 
             # For single-agent episodes (agent_id=None), sub_key is always (id_,).
-            # For multi-agent episodes, fall back to the general add_n_batch_items path.
+            # We can use a fast path to extend the batch.
+            # For multi-agent episodes, we need to use add_n_batch_items path.
             if sa_episode.agent_id is None:
                 # Fast path: inline the dict operations, skipping the function call
                 # overhead of add_n_batch_items / add_batch_item and the repeated
@@ -108,18 +112,17 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
 
                 if need_actions:
                     # Actions may be a composite action space, so we need to map the structure.
-                    data = tree.map_structure(
-                        BatchedNdArray, sa_episode.get_actions(slice(0, n))
-                    )
+                    data = sa_episode.get_actions(slice(0, n))
+                    # Check if the we have to call tree.map_structure to convert the data to a BatchedNdArray.
+                    if isinstance(data, np.ndarray):
+                        data = data.view(BatchedNdArray)
+                    else:
+                        data = tree.map_structure(BatchedNdArray, data)
                     col = batch.get(Columns.ACTIONS)
                     if col is None:
                         batch[Columns.ACTIONS] = {sub_key: [data]}
                     else:
-                        lst = col.get(sub_key)
-                        if lst is None:
-                            col[sub_key] = [data]
-                        else:
-                            lst.append(data)
+                        col[sub_key].append(data)
 
                 if need_rewards:
                     data = sa_episode.get_rewards(slice(0, n)).view(BatchedNdArray)
@@ -127,11 +130,7 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     if col is None:
                         batch[Columns.REWARDS] = {sub_key: [data]}
                     else:
-                        lst = col.get(sub_key)
-                        if lst is None:
-                            col[sub_key] = [data]
-                        else:
-                            lst.append(data)
+                        col[sub_key].append(data)
 
                 if need_terminateds:
                     terminateds = np.zeros(n, dtype=np.bool_)
@@ -142,11 +141,7 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     if col is None:
                         batch[Columns.TERMINATEDS] = {sub_key: [data]}
                     else:
-                        lst = col.get(sub_key)
-                        if lst is None:
-                            col[sub_key] = [data]
-                        else:
-                            lst.append(data)
+                        col[sub_key].append(data)
 
                 if need_truncateds:
                     truncateds = np.zeros(n, dtype=np.bool_)
@@ -157,11 +152,7 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     if col is None:
                         batch[Columns.TRUNCATEDS] = {sub_key: [data]}
                     else:
-                        lst = col.get(sub_key)
-                        if lst is None:
-                            col[sub_key] = [data]
-                        else:
-                            lst.append(data)
+                        col[sub_key].append(data)
 
                 for column in sa_episode.extra_model_outputs.keys():
                     if column not in skip_columns:
@@ -176,11 +167,7 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                         if col is None:
                             batch[column] = {sub_key: [data]}
                         else:
-                            lst = col.get(sub_key)
-                            if lst is None:
-                                col[sub_key] = [data]
-                            else:
-                                lst.append(data)
+                            col[sub_key].append(data)
 
             else:
                 # General (multi-agent) path: use the standard API.
