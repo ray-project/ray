@@ -5,37 +5,37 @@
 VERSION_1.0 {
     global:
         # common
-        _ZN3ray*Language*;
-        _ZN3ray*RayObject*;
-        _ZN3ray*Status*;
-        _ZN3ray*RayFunction*;
-        _ZN3ray*FunctionDescriptorBuilder*;
-        _ZN3ray*TaskArg*;
-        _ZN3ray*TaskOptions*;
-        _ZN3ray*Buffer*;
-        _ZN3ray*LocalMemoryBuffer*;
+        *ray*Language*;
+        *ray*RayObject*;
+        *ray*Status*;
+        *ray*RayFunction*;
+        *ray*FunctionDescriptorBuilder*;
+        *ray*TaskArg*;
+        *ray*TaskOptions*;
+        *ray*Buffer*;
+        *ray*LocalMemoryBuffer*;
         # util
-        _ZN3ray*RayLog*;
-        _ZN3ray*RayLogLevel*;
+        *ray*RayLog*;
+        *ray*RayLogLevel*;
         # id
-        _ZN3ray*MurmurHash64A*;
-        _ZN3ray*JobID*;
-        _ZN3ray*TaskID*;
-        _ZN3ray*ActorID*;
-        _ZN3ray*ObjectID*;
-        _ZN3ray*ObjectReference*;
+        *ray*MurmurHash64A*;
+        *ray*JobID*;
+        *ray*TaskID*;
+        *ray*ActorID*;
+        *ray*ObjectID*;
+        *ray*ObjectReference*;
         # Others
-        _ZN3ray7metrics*;
-        _ZN3ray5rpc*;
-        _ZN3ray3gcs*;
-        _ZN3ray3stats*;
-        _ZN3ray*CoreWorker*;
-        _ZN3ray*PeriodicalRunner*;
-        _ZN3ray8internal*;
+        *ray7metrics*;
+        *ray3rpc*;
+        *ray3gcs*;
+        *ray5stats*;
+        *ray*CoreWorker*;
+        *ray*PeriodicalRunner*;
+        *ray8internal*;
         *PyInit*;
         *init_raylet*;
         *Java*;
-        _JNI_On*;
+        *JNI_*;
         *aligned_free*;
         *aligned_malloc*;
     local: *;
