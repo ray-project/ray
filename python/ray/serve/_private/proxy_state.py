@@ -719,7 +719,7 @@ class ProxyStateManager:
                     name=state.actor_name,
                 )
             )
-        
+
         return targets
 
     def get_targets(self, protocol: RequestProtocol) -> List[Target]:

@@ -81,7 +81,7 @@ class FakeProxyState:
         node_id,
         node_ip,
         actor_name,
-        node_instance_id = "",
+        node_instance_id="",
         status: ProxyStatus = ProxyStatus.STARTING,
     ):
         self.node_id = node_id
@@ -95,6 +95,7 @@ class FakeProxyState:
             actor_name=actor_name,
             status=status,
         )
+
 
 class FakeProxyStateManager:
     def __init__(self):
@@ -146,12 +147,13 @@ class FakeProxyStateManager:
             )
             for node_id, proxy_details in self.proxy_details.items()
         ]
-    
+
     def get_fallback_proxy_targets(self):
         return self._fallback_proxy_targets
 
     def get_grpc_config(self):
         return self._grpc_options
+
 
 class FakeReplicaStateContainer:
     def __init__(self, replica_infos: List[RunningReplicaInfo]):

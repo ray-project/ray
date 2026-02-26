@@ -10,7 +10,6 @@ from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve.schema import (
     Target,
     TargetGroup,
-    ProxyStatus,
 )
 from ray.serve.tests.unit.test_controller_direct_ingress import (
     FakeApplicationStateManager,
@@ -18,7 +17,6 @@ from ray.serve.tests.unit.test_controller_direct_ingress import (
     FakeDirectIngressController,
     FakeKVStore,
     FakeLongPollHost,
-    FakeProxyState,
     FakeProxyStateManager,
 )
 
@@ -273,6 +271,7 @@ def test_broadcast_fallback_targets(
         Target(ip="10.0.0.1", port=8500, instance_id="instance1", name="proxy1"),
         Target(ip="10.0.0.2", port=9500, instance_id="instance2", name="proxy2"),
     ]
+
 
 if __name__ == "__main__":
     pytest.main()
