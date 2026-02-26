@@ -22,9 +22,8 @@ def test_generate_self_signed_tls_certs_pem_format():
 
 
 def test_generate_self_signed_tls_certs_usable_for_ssl():
-    import tempfile
-
     import ssl
+    import tempfile
 
     cert_contents, key_contents = generate_self_signed_tls_certs()
     with (

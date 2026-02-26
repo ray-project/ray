@@ -1,6 +1,8 @@
 from enum import Enum
 
-from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS  # noqa: F401 (re-export)
+from ray._common.logging_constants import (
+    LOGRECORD_STANDARD_ATTRS,  # noqa: F401 (re-export)
+)
 
 LOGGER_FLATTEN_KEYS = {
     "ray_serve_extra_fields",
