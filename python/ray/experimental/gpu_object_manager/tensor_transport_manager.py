@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
+    import numpy as np
     import torch
 
     import ray
@@ -27,8 +28,10 @@ class TensorTransportMetadata:
         list have the same device type.
     """
 
-    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
-    tensor_device: Optional["torch.device"] = None
+    tensor_meta: List[
+        Union[Tuple["torch.Size", "torch.dtype"], Tuple[Tuple[int, ...], "np.dtype"]]
+    ]
+    tensor_device: Optional[str] = None
 
 
 class TensorTransportManager(ABC):
@@ -79,7 +82,7 @@ class TensorTransportManager(ABC):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List["torch.Tensor"],
+        gpu_object: List[Any],
     ) -> TensorTransportMetadata:
         """
         Extract the tensor transport metadata from the GPU object. This is called on the
@@ -119,7 +122,7 @@ class TensorTransportManager(ABC):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-    ) -> List["torch.Tensor"]:
+    ) -> List[Any]:
         """
         Receive multiple tensors from the source actor. This is called on the destination actor.
 
@@ -129,21 +132,21 @@ class TensorTransportManager(ABC):
             communicator_metadata: The communicator metadata for the send/recv operation.
 
         Returns:
-            List[torch.Tensor]: The received tensors.
+            Union[List[torch.Tensor], List[jax.Array]]: The received tensors or jax arrays.
         """
 
     @abstractmethod
     def send_multiple_tensors(
         self,
-        tensors: List["torch.Tensor"],
+        tensors: List[Any],
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
         """
-        Send multiple tensors to the destination actor. This is called on the source actor.
+        Send multiple tensors or jax arrays to the destination actor. This is called on the source actor.
 
         Args:
-            tensors: The tensors to send.
+            tensors: The tensors or jax arrays to send.
             tensor_transport_metadata: The tensor transport metadata for the RDT object.
             communicator_metadata: The communicator metadata for the send/recv operation.
         """
@@ -153,7 +156,7 @@ class TensorTransportManager(ABC):
         self,
         obj_id: str,
         tensor_transport_meta: TensorTransportMetadata,
-        tensors: List["torch.Tensor"],
+        tensors: List[Any],
     ):
         """
         Garbage collect for the tensor transport after the GPU object is freed. This is only

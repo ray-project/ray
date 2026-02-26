@@ -473,6 +473,43 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    @pytest.mark.parametrize("gang_size", [0, -1])
+    def test_gang_scheduling_config_invalid_gang_size(self, gang_size):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = 4
+        deployment_schema["gang_scheduling_config"] = {"gang_size": gang_size}
+
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["max_replicas_per_node"] = 2
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 2}
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            ),
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config(
+        self,
+    ):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["placement_group_strategy"] = "SPREAD"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 2}
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting placement_group_strategy is not allowed when "
+                "gang_scheduling_config is provided."
+            ),
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):

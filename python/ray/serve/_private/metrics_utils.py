@@ -1,6 +1,5 @@
 import asyncio
 import bisect
-import heapq
 import logging
 import statistics
 from collections import defaultdict
@@ -19,6 +18,10 @@ from typing import (
     Union,
 )
 
+from ray._raylet import (
+    merge_instantaneous_total_cython,
+    time_weighted_average_cython,
+)
 from ray.serve._private.common import TimeSeries, TimeStampedValue
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -309,6 +312,8 @@ def time_weighted_average(
     """
     Compute time-weighted average of a step function over a time interval.
 
+    This function uses a Cython-optimized implementation for improved performance.
+
     Args:
         step_series: Step function as list of (timestamp, value) points, sorted by time.
             Values are right-continuous (constant until next change).
@@ -318,50 +323,12 @@ def time_weighted_average(
     Returns:
         Time-weighted average over the interval, or None if no data overlaps.
     """
-    if not step_series:
-        return None
-
-    # Handle None values by using full timeseries bounds
-    if window_start is None:
-        window_start = step_series[0].timestamp
-    if window_end is None:
-        # Use timestamp after the last point to include the final segment
-        window_end = step_series[-1].timestamp + last_window_s
-
-    if window_end <= window_start:
-        return None
-
-    total_weighted_value = 0.0
-    total_duration = 0.0
-    current_value = 0.0  # Default if no data before window_start
-    current_time = window_start
-
-    # Process each segment that overlaps with the window
-    for point in step_series:
-        if point.timestamp <= window_start:
-            # Find the value at window_start (LOCF)
-            current_value = point.value
-            continue
-        if point.timestamp >= window_end:
-            break  # Beyond our window
-
-        # Add contribution of current segment
-        segment_end = min(point.timestamp, window_end)
-        duration = segment_end - current_time
-        if duration > 0:
-            total_weighted_value += current_value * duration
-            total_duration += duration
-
-        current_value = point.value
-        current_time = segment_end
-
-    # Add final segment if it extends to window_end
-    if current_time < window_end:
-        duration = window_end - current_time
-        total_weighted_value += current_value * duration
-        total_duration += duration
-
-    return total_weighted_value / total_duration if total_duration > 0 else None
+    # Convert None to negative infinity for Cython (C doesn't have None)
+    # Using -inf instead of a specific value like -1.0 ensures any valid float
+    # (including -1.0) can be used as a window boundary.
+    ws = window_start if window_start is not None else float("-inf")
+    we = window_end if window_end is not None else float("-inf")
+    return time_weighted_average_cython(step_series, ws, we, last_window_s)
 
 
 def aggregate_timeseries(
@@ -387,6 +354,9 @@ def merge_instantaneous_total(
     Merge multiple gauge time series (right-continuous, LOCF) into an
     instantaneous total time series as a step function.
 
+    This function uses a Cython-optimized implementation for 5-10x performance
+    improvement over pure Python.
+
     This approach treats each replica's gauge as right-continuous, last-observation-
     carried-forward (LOCF), which matches gauge semantics. It produces an exact
     instantaneous total across replicas without bias from arbitrary windowing.
@@ -406,68 +376,16 @@ def merge_instantaneous_total(
         Between events, the total remains constant (step function). Timestamps are
         rounded to 10ms precision and duplicate timestamps are combined.
     """
-    # Filter out empty timeseries
+    # Handle trivial cases in Python to avoid type conversion overhead
     active_series = [series for series in replicas_timeseries if series]
     if not active_series:
         return []
-
     if len(active_series) == 1:
         return active_series[0]
 
-    # True k-way merge: heap maintains exactly k elements (one per series)
-    # Each element is (timestamp, replica_id, iterator)
-    merge_heap = []
-    current_values = [0.0] * len(active_series)  # Current value for each replica (LOCF)
-
-    # Initialize heap with first element from each series
-    for replica_idx, series in enumerate(active_series):
-        if series:  # Non-empty series
-            iterator = iter(series)
-            try:
-                first_point = next(iterator)
-                heapq.heappush(
-                    merge_heap,
-                    (first_point.timestamp, replica_idx, first_point.value, iterator),
-                )
-            except StopIteration:
-                pass
-
-    merged: TimeSeries = []
-    running_total = 0.0
-
-    while merge_heap:
-        # Pop the earliest event (heap size stays ≤ k)
-        timestamp, replica_idx, value, iterator = heapq.heappop(merge_heap)
-
-        old_value = current_values[replica_idx]
-        current_values[replica_idx] = value
-        running_total += value - old_value
-
-        # Try to get the next point from this replica's series and push it back
-        try:
-            next_point: TimeStampedValue = next(iterator)
-            heapq.heappush(
-                merge_heap,
-                (next_point.timestamp, replica_idx, next_point.value, iterator),
-            )
-        except StopIteration:
-            pass  # This series is exhausted
-
-        # Only add a point if the total actually changed
-        if value != old_value:  # Equivalent to new_total != old_total
-            # Round timestamp to 10ms precision (2 decimal places)
-            rounded_timestamp = round(timestamp, 2)
-
-            # Check if we already have a point with this rounded timestamp
-            # If so, update its value; otherwise, add a new point
-            if merged and merged[-1].timestamp == rounded_timestamp:
-                # Update the last point's value since timestamps match
-                merged[-1] = TimeStampedValue(rounded_timestamp, running_total)
-            else:
-                # Add new point with rounded timestamp
-                merged.append(TimeStampedValue(rounded_timestamp, running_total))
-
-    return merged
+    # Cython returns list of (timestamp, value) tuples; convert to TimeStampedValue
+    merged_tuples = merge_instantaneous_total_cython(active_series)
+    return [TimeStampedValue(ts, val) for ts, val in merged_tuples]
 
 
 def merge_timeseries_dicts(

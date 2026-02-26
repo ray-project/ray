@@ -4,7 +4,11 @@ import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
-from ray.data._internal.util import RetryingPyFileSystem, _resolve_custom_scheme
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _normalize_paths_to_strings,
+    _resolve_custom_scheme,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -289,17 +293,7 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
     """
-    if isinstance(paths, str):
-        paths = [paths]
-    if isinstance(paths, pathlib.Path):
-        paths = [str(paths)]
-    elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError(
-            "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
-            f"`{paths}`"
-        )
-    elif len(paths) == 0:
-        raise ValueError("Must provide at least one path.")
+    paths = _normalize_paths_to_strings(paths)
 
     # Validate/wrap filesystem upfront so we return a proper PyArrow filesystem
     filesystem = _validate_and_wrap_filesystem(filesystem)
