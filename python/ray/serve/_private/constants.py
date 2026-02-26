@@ -515,15 +515,19 @@ RAY_SERVE_FORCE_LOCAL_TESTING_MODE = get_env_bool(
 )
 
 # Run sync methods defined in the replica in a thread pool by default.
-RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0")
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1")
 
-RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
-    "Calling sync method '{method_name}' directly on the "
-    "asyncio loop. In a future version, sync methods will be run in a "
-    "threadpool by default. Ensure your sync methods are thread safe "
-    "or keep the existing behavior by making them `async def`. Opt "
-    "into the new behavior by setting "
-    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING = (
+    "Calling sync method '{method_name}' directly on the asyncio loop because "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0. This blocks async operations. To run "
+    "sync methods in a threadpool, set RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1, or "
+    "convert to `async def`."
+)
+
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING = (
+    "Sync method '{method_name}' is running in a threadpool. Ensure your "
+    "handler and shared state are thread-safe, or convert to `async def` for "
+    "event-loop execution."
 )
 
 # Feature flag to turn off GC optimizations in the proxy (in case there is a
@@ -701,10 +705,6 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
 )
 
-# Direct ingress must be enabled if HAProxy is enabled
-if RAY_SERVE_ENABLE_HA_PROXY:
-    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
-
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
@@ -733,6 +733,18 @@ SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
 # HTTP request disconnect disabled
 SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER = "x-request-disconnect-disabled"
 
+# Path to tracing exporter function
+# If empty string (default), then tracing is disabled
+RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH", ""
+)
+DEFAULT_TRACING_EXPORTER_IMPORT_PATH = (
+    "ray.serve._private.tracing_utils:default_tracing_exporter"
+)
+RAY_SERVE_TRACING_SAMPLING_RATIO = float(
+    os.environ.get("RAY_SERVE_TRACING_SAMPLING_RATIO", 0.01)
+)
+
 # If throughput optimized Ray Serve is enabled, set the following constants.
 # This should be at the end.
 RAY_SERVE_THROUGHPUT_OPTIMIZED = get_env_bool("RAY_SERVE_THROUGHPUT_OPTIMIZED", "0")
@@ -751,6 +763,10 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
+
+# Direct ingress must be enabled if HAProxy is enabled
+if RAY_SERVE_ENABLE_HA_PROXY:
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
 
 # The maximum allowed RPC latency in milliseconds.
 # This is used to detect and warn about long RPC latencies
