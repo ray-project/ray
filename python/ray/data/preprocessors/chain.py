@@ -1,6 +1,10 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import (
+    _PublicField,
+    migrate_private_fields,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 
@@ -123,7 +127,7 @@ class Chain(SerializablePreprocessorBase):
         # For Chain preprocessor, we picked the first one as entry point.
         # TODO (jiaodong): We should revisit if our Chain preprocessor is
         # still optimal with context of lazy execution.
-        return self._preprocessors[0]._determine_transform_to_use()
+        return self.preprocessors[0]._determine_transform_to_use()
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
@@ -137,12 +141,9 @@ class Chain(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        # Migrate from old public field names to new private field names
-        if "_preprocessors" not in self.__dict__ and "preprocessors" in self.__dict__:
-            self._preprocessors = self.__dict__.pop("preprocessors")
-
-        # Set defaults for missing fields
-        if "_preprocessors" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized Chain preprocessor: missing required field 'preprocessors'."
-            )
+        migrate_private_fields(
+            self,
+            fields={
+                "_preprocessors": _PublicField(public_field="preprocessors"),
+            },
+        )

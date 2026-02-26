@@ -4,7 +4,11 @@ from typing import Any, Dict, List
 import pandas as pd
 
 from ray.data.preprocessor import SerializablePreprocessorBase
-from ray.data.preprocessors.utils import simple_hash
+from ray.data.preprocessors.utils import (
+    _PublicField,
+    migrate_private_fields,
+    simple_hash,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
@@ -133,9 +137,9 @@ class FeatureHasher(SerializablePreprocessorBase):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self._columns!r}, "
-            f"num_features={self._num_features!r}, "
-            f"output_column={self._output_column!r})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"num_features={self.num_features!r}, "
+            f"output_column={self.output_column!r})"
         )
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
@@ -153,22 +157,11 @@ class FeatureHasher(SerializablePreprocessorBase):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_num_features" not in self.__dict__ and "num_features" in self.__dict__:
-            self._num_features = self.__dict__.pop("num_features")
-        if "_output_column" not in self.__dict__ and "output_column" in self.__dict__:
-            self._output_column = self.__dict__.pop("output_column")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized FeatureHasher: missing required field 'columns'."
-            )
-        if "_num_features" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized FeatureHasher preprocessor: missing required field 'num_features'."
-            )
-        if "_output_column" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized FeatureHasher preprocessor: missing required field 'output_column'."
-            )
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_num_features": _PublicField(public_field="num_features"),
+                "_output_column": _PublicField(public_field="output_column"),
+            },
+        )

@@ -28,7 +28,10 @@ from ray.data.preprocessor import (
     SerializablePreprocessorBase,
 )
 from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
     make_post_processor,
+    migrate_private_fields,
 )
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
@@ -313,21 +316,19 @@ class OrdinalEncoder(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-        if "_encode_lists" not in self.__dict__ and "encode_lists" in self.__dict__:
-            self._encode_lists = self.__dict__.pop("encode_lists")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized OrdinalEncoder: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
-        if "_encode_lists" not in self.__dict__:
-            self._encode_lists = True
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_encode_lists": _PublicField(
+                    public_field="encode_lists", default=True
+                ),
+            },
+        )
 
     def __repr__(self):
         return (
@@ -599,21 +600,19 @@ class OneHotEncoder(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-        if "_max_categories" not in self.__dict__ and "max_categories" in self.__dict__:
-            self._max_categories = self.__dict__.pop("max_categories")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized OneHotEncoder: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
-        if "_max_categories" not in self.__dict__:
-            self._max_categories = {}
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_max_categories": _PublicField(
+                    public_field="max_categories", default={}
+                ),
+            },
+        )
 
     def __repr__(self):
         return (
@@ -787,27 +786,25 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-        if "_max_categories" not in self.__dict__ and "max_categories" in self.__dict__:
-            self._max_categories = self.__dict__.pop("max_categories")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized MultiHotEncoder: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
-        if "_max_categories" not in self.__dict__:
-            self._max_categories = {}
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_max_categories": _PublicField(
+                    public_field="max_categories", default={}
+                ),
+            },
+        )
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self._columns!r}, "
             f"max_categories={self._max_categories!r}, "
-            f"output_columns={self._output_columns})"
+            f"output_columns={self._output_columns!r})"
         )
 
 
@@ -980,17 +977,16 @@ class LabelEncoder(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_label_column" not in self.__dict__ and "label_column" in self.__dict__:
-            self._label_column = self.__dict__.pop("label_column")
-        if "_output_column" not in self.__dict__ and "output_column" in self.__dict__:
-            self._output_column = self.__dict__.pop("output_column")
-
-        if "_label_column" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized LabelEncoder: missing required field 'label_column'."
-            )
-        if "_output_column" not in self.__dict__:
-            self._output_column = self._label_column
+        migrate_private_fields(
+            self,
+            fields={
+                "_label_column": _PublicField(public_field="label_column"),
+                "_output_column": _PublicField(
+                    public_field="output_column",
+                    default=_Computed(lambda obj: obj._label_column),
+                ),
+            },
+        )
 
     def __repr__(self):
         return f"{self.__class__.__name__}(label_column={self._label_column!r}, output_column={self._output_column!r})"
@@ -1153,21 +1149,17 @@ class Categorizer(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-        if "_dtypes" not in self.__dict__ and "dtypes" in self.__dict__:
-            self._dtypes = self.__dict__.pop("dtypes")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized Categorizer: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
-        if "_dtypes" not in self.__dict__:
-            self._dtypes = {}
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_dtypes": _PublicField(public_field="dtypes", default={}),
+            },
+        )
 
     def __repr__(self):
         return (

@@ -3,7 +3,12 @@ from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
 
 from ray.data.preprocessor import SerializablePreprocessorBase
-from ray.data.preprocessors.utils import simple_split_tokenizer
+from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
+    migrate_private_fields,
+    simple_split_tokenizer,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
@@ -124,21 +129,16 @@ class Tokenizer(SerializablePreprocessorBase):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if (
-            "_tokenization_fn" not in self.__dict__
-            and "tokenization_fn" in self.__dict__
-        ):
-            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized Tokenizer: missing required field 'columns'."
-            )
-        if "_tokenization_fn" not in self.__dict__:
-            self._tokenization_fn = simple_split_tokenizer
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )

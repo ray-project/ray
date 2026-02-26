@@ -355,7 +355,6 @@ async def test_drain_and_undrain_haproxy_manager(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
         proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
-        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
         current_status = {
             status: proxy_status_list.count(status) for status in proxy_status_list
         }

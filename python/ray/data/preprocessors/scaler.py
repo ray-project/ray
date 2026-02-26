@@ -8,6 +8,7 @@ import pyarrow.compute as pc
 from ray.data.aggregate import AbsMax, ApproximateQuantile, Max, Mean, Min, Std
 from ray.data.block import BlockAccessor
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -197,17 +198,16 @@ class StandardScaler(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized StandardScaler: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
 
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
@@ -333,17 +333,16 @@ class MinMaxScaler(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized MinMaxScaler: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
 
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
@@ -462,17 +461,16 @@ class MaxAbsScaler(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized MaxAbsScaler: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
 
     def __repr__(self):
         return f"{self.__class__.__name__}(columns={self._columns!r}, output_columns={self._output_columns!r})"
@@ -653,32 +651,27 @@ class RobustScaler(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-        if "_quantile_range" not in self.__dict__ and "quantile_range" in self.__dict__:
-            self._quantile_range = self.__dict__.pop("quantile_range")
-        if (
-            "_quantile_precision" not in self.__dict__
-            and "quantile_precision" in self.__dict__
-        ):
-            self._quantile_precision = self.__dict__.pop("quantile_precision")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized RobustScaler: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
-        if "_quantile_range" not in self.__dict__:
-            self._quantile_range = (0.25, 0.75)
-        if "_quantile_precision" not in self.__dict__:
-            self._quantile_precision = self.DEFAULT_QUANTILE_PRECISION
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_quantile_range": _PublicField(
+                    public_field="quantile_range", default=(0.25, 0.75)
+                ),
+                "_quantile_precision": _PublicField(
+                    public_field="quantile_precision",
+                    default=self.DEFAULT_QUANTILE_PRECISION,
+                ),
+            },
+        )
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self._columns!r}, "
-            f"quantile_range={self._quantile_range!r}), "
+            f"quantile_range={self._quantile_range!r}, "
             f"output_columns={self._output_columns!r})"
         )

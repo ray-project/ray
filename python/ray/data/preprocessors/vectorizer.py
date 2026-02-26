@@ -4,7 +4,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 import pandas as pd
 
 from ray.data.preprocessor import SerializablePreprocessorBase
-from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
+from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
+    migrate_private_fields,
+    simple_hash,
+    simple_split_tokenizer,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
@@ -205,30 +211,20 @@ class HashingVectorizer(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_num_features" not in self.__dict__ and "num_features" in self.__dict__:
-            self._num_features = self.__dict__.pop("num_features")
-        if (
-            "_tokenization_fn" not in self.__dict__
-            and "tokenization_fn" in self.__dict__
-        ):
-            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized HashingVectorizer: missing required field 'columns'."
-            )
-        if "_num_features" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized HashingVectorizer: missing required field 'num_features'."
-            )
-        if "_tokenization_fn" not in self.__dict__:
-            self._tokenization_fn = simple_split_tokenizer
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_num_features": _PublicField(public_field="num_features"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
 
 
 @SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.count_vectorizer")
@@ -432,25 +428,19 @@ class CountVectorizer(SerializablePreprocessorBase):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if (
-            "_tokenization_fn" not in self.__dict__
-            and "tokenization_fn" in self.__dict__
-        ):
-            self._tokenization_fn = self.__dict__.pop("tokenization_fn")
-        if "_max_features" not in self.__dict__ and "max_features" in self.__dict__:
-            self._max_features = self.__dict__.pop("max_features")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized CountVectorizer: missing required field 'columns'."
-            )
-        if "_tokenization_fn" not in self.__dict__:
-            self._tokenization_fn = simple_split_tokenizer
-        if "_max_features" not in self.__dict__:
-            self._max_features = None
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_max_features": _PublicField(
+                    public_field="max_features", default=None
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )

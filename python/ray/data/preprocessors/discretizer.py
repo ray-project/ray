@@ -5,6 +5,11 @@ import pandas as pd
 
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
+    migrate_private_fields,
+)
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
@@ -65,27 +70,15 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
         return getattr(self, public_name, None)
 
     def __repr__(self):
-        columns = self._get_attr_with_fallback("_columns", "columns")
-        bins = self._get_attr_with_fallback("_bins", "bins")
-        right = self._get_attr_with_fallback("_right", "right")
-        include_lowest = self._get_attr_with_fallback(
-            "_include_lowest", "include_lowest"
-        )
-        duplicates = self._get_attr_with_fallback("_duplicates", "duplicates")
-        dtypes = self._get_attr_with_fallback("_dtypes", "dtypes")
-        output_columns = self._get_attr_with_fallback(
-            "_output_columns", "output_columns"
-        )
-
         return (
             f"{self.__class__.__name__}("
-            f"columns={columns!r}, "
-            f"bins={bins!r}, "
-            f"right={right!r}, "
-            f"include_lowest={include_lowest!r}, "
-            f"duplicates={duplicates!r}, "
-            f"dtypes={dtypes!r}, "
-            f"output_columns={output_columns!r})"
+            f"columns={self.columns!r}, "
+            f"bins={self.bins!r}, "
+            f"right={self.right!r}, "
+            f"include_lowest={self.include_lowest!r}, "
+            f"duplicates={self.duplicates!r}, "
+            f"dtypes={self.dtypes!r}, "
+            f"output_columns={self.output_columns!r})"
         )
 
 
@@ -275,41 +268,23 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        # Migrate old public field names to new private field names
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_bins" not in self.__dict__ and "bins" in self.__dict__:
-            self._bins = self.__dict__.pop("bins")
-        if "_right" not in self.__dict__ and "right" in self.__dict__:
-            self._right = self.__dict__.pop("right")
-        if "_include_lowest" not in self.__dict__ and "include_lowest" in self.__dict__:
-            self._include_lowest = self.__dict__.pop("include_lowest")
-        if "_duplicates" not in self.__dict__ and "duplicates" in self.__dict__:
-            self._duplicates = self.__dict__.pop("duplicates")
-        if "_dtypes" not in self.__dict__ and "dtypes" in self.__dict__:
-            self._dtypes = self.__dict__.pop("dtypes")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        # Validate required fields
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized CustomKBinsDiscretizer: missing required field 'columns'."
-            )
-        if "_bins" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized CustomKBinsDiscretizer: missing required field 'bins'."
-            )
-        if "_right" not in self.__dict__:
-            self._right = True
-        if "_include_lowest" not in self.__dict__:
-            self._include_lowest = False
-        if "_duplicates" not in self.__dict__:
-            self._duplicates = "raise"
-        if "_dtypes" not in self.__dict__:
-            self._dtypes = None
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_bins": _PublicField(public_field="bins"),
+                "_right": _PublicField(public_field="right", default=True),
+                "_include_lowest": _PublicField(
+                    public_field="include_lowest", default=False
+                ),
+                "_duplicates": _PublicField(public_field="duplicates", default="raise"),
+                "_dtypes": _PublicField(public_field="dtypes", default=None),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
 
 
 @SerializablePreprocessor(
@@ -523,41 +498,23 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        # Migrate old public field names to new private field names
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_bins" not in self.__dict__ and "bins" in self.__dict__:
-            self._bins = self.__dict__.pop("bins")
-        if "_right" not in self.__dict__ and "right" in self.__dict__:
-            self._right = self.__dict__.pop("right")
-        if "_include_lowest" not in self.__dict__ and "include_lowest" in self.__dict__:
-            self._include_lowest = self.__dict__.pop("include_lowest")
-        if "_duplicates" not in self.__dict__ and "duplicates" in self.__dict__:
-            self._duplicates = self.__dict__.pop("duplicates")
-        if "_dtypes" not in self.__dict__ and "dtypes" in self.__dict__:
-            self._dtypes = self.__dict__.pop("dtypes")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        # Validate required fields
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized UniformKBinsDiscretizer: missing required field 'columns'."
-            )
-        if "_bins" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized UniformKBinsDiscretizer: missing required field 'bins'."
-            )
-        if "_right" not in self.__dict__:
-            self._right = True
-        if "_include_lowest" not in self.__dict__:
-            self._include_lowest = False
-        if "_duplicates" not in self.__dict__:
-            self._duplicates = "raise"
-        if "_dtypes" not in self.__dict__:
-            self._dtypes = None
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_bins": _PublicField(public_field="bins"),
+                "_right": _PublicField(public_field="right", default=True),
+                "_include_lowest": _PublicField(
+                    public_field="include_lowest", default=False
+                ),
+                "_duplicates": _PublicField(public_field="duplicates", default="raise"),
+                "_dtypes": _PublicField(public_field="dtypes", default=None),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
 
 
 def post_fit_processor(aggregate_stats: dict, bins: Union[str, Dict], right: bool):

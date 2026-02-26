@@ -456,12 +456,15 @@ class Preprocessor(abc.ABC):
         state = self.__dict__.copy()
         # Exclude unpicklable attributes
         state.pop("_stat_computation_plan", None)
+        state.pop("stat_computation_plan", None)
         return state
 
     def __setstate__(self, state: Dict[str, Any]):
         from ray.data.preprocessors.utils import StatComputationPlan
 
         self.__dict__.update(state)
+        # Remove old version of stat_computation_plan if it exists, and create a new one
+        self.__dict__.pop("stat_computation_plan", None)
         self._stat_computation_plan = StatComputationPlan()
 
     @DeveloperAPI

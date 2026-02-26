@@ -1387,6 +1387,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: pytest_serve_multi_deployment_1k_noop_replica
   python: "3.10"
@@ -1412,6 +1417,11 @@
     - __suffix__: aws
     - __suffix__: aws.py312
       python: "3.12"
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1442,6 +1452,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: pytest_serve_microbenchmarks
   python: "3.10"
@@ -1483,7 +1498,6 @@
     byod:
       runtime_env:
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
-        - RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1527,6 +1541,11 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1668,21 +1687,21 @@
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=ray_data --num_workers=4 --skip_train_step=True --skip_validation_at_epoch_end=True
       cluster:
-        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+        cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus.preserve_order
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=ray_data --num_workers=4 --skip_train_step=True --skip_validation_at_epoch_end=True --preserve_order=True
       cluster:
-        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+        cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
     - __suffix__: skip_training.jpeg.local_fs_multi_gpus.torch_dataloader
       run:
         timeout: 1200
         script: bash image_classification/jpeg/download_input_data_from_s3.sh && RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --image_classification_data_format=jpeg --image_classification_local_dataset=True --dataloader_type=torch --num_workers=4 --num_torch_workers=9 --skip_train_step=True --skip_validation_at_epoch_end=True
       cluster:
-        cluster_compute: compute_configs/compute_gpu_1x1_multi_gpus_aws.yaml
+        cluster_compute: compute_configs/compute_gpu_1x4_aws.yaml
 
 - name: training_ingest_benchmark-task=image_classification-heterogenous_fixed_size
   python: "3.10"
@@ -1972,6 +1991,56 @@
 
     run:
       timeout: 1800
+
+  alert: default
+
+- name: train_elastic_e2e_with_node_killing
+  python: "3.10"
+  group: Train tests
+  working_dir: train_tests/elastic_training
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_gpu_aws.yaml
+
+  run:
+    timeout: 4800
+    script: RAY_TRAIN_V2_ENABLED=1 python torch_elastic_e2e.py run --num-epochs 60
+
+    wait_for_nodes:
+      num_nodes: 1
+
+  variations:
+    - __suffix__: aws
+
+  alert: default
+
+- name: elastic_benchmark
+  python: "3.10"
+  group: Train tests
+  working_dir: train_tests/benchmark
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_configs/compute_gpu_8x4_aws.yaml
+
+  run:
+    timeout: 7200
+    script: RAY_TRAIN_V2_ENABLED=1 python -m elastic_training.elastic_e2e --task="image_classification" --image_classification_data_format="parquet" --dataloader_type=ray_data --checkpoint_every_n_steps=100 --min_workers=8 --max_workers=32 --num_epochs=4
+
+    wait_for_nodes:
+      num_nodes: 1
+
+  variations:
+    - __suffix__: aws
 
   alert: default
 
@@ -4106,6 +4175,25 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot1_8b_quantized_tp1_2p6d_lmcache.yaml --skip-hf-token true
 
+- name: llm_serve_sglang_e2e
+  frequency: manual
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+      runtime_env:
+        - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
+      post_build_script: byod_llm_sglang_test.sh
+    cluster_compute: llm_four_L4_gpu_head_node.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_llm_serve_sglang.py
+
 ##############
 # LLM Batch
 ##############
@@ -4346,6 +4434,31 @@
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
 
+
+- name: multi_agent_a2a  # do not use dashes (regex sensitive)
+  frequency: weekly
+  python: "3.11"
+  group: ray-examples
+  team: serve
+  working_dir: //doc/source/ray-overview/examples/multi_agent_a2a
+
+  cluster:
+    byod:
+      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      post_build_script: byod_multi_agent_a2a.sh  # release/ray_release/byod/
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws  # uses default specs above
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
 
 - name: deployment_serve_llm  # do not use dashes (regex sensitive)
   frequency: weekly

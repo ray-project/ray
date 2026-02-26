@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
@@ -140,24 +141,15 @@ class PowerTransformer(SerializablePreprocessorBase):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_power" not in self.__dict__ and "power" in self.__dict__:
-            self._power = self.__dict__.pop("power")
-        if "_method" not in self.__dict__ and "method" in self.__dict__:
-            self._method = self.__dict__.pop("method")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized PowerTransformer: missing required field 'columns'."
-            )
-        if "_power" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized PowerTransformer: missing required field 'power'."
-            )
-        if "_method" not in self.__dict__:
-            self._method = "yeo-johnson"
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_power": _PublicField(public_field="power"),
+                "_method": _PublicField(public_field="method", default="yeo-johnson"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )

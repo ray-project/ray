@@ -9,6 +9,7 @@ from pandas.api.types import is_categorical_dtype
 
 from ray.data.aggregate import Mean
 from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import (
     SerializablePreprocessor as Serializable,
 )
@@ -254,26 +255,21 @@ class SimpleImputer(SerializablePreprocessorBase):
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-        if "_strategy" not in self.__dict__ and "strategy" in self.__dict__:
-            self._strategy = self.__dict__.pop("strategy")
-        if "_fill_value" not in self.__dict__ and "fill_value" in self.__dict__:
-            self._fill_value = self.__dict__.pop("fill_value")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized SimpleImputer: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
-        if "_strategy" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized SimpleImputer: missing required field 'strategy'."
-            )
-        # _fill_value is optional
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+                "_strategy": _PublicField(public_field="strategy"),
+                "_fill_value": _PublicField(
+                    public_field="fill_value",
+                    default=None,
+                ),  # _fill_value is optional
+            },
+        )
 
 
 def _get_most_frequent_values(

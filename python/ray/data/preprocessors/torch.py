@@ -4,6 +4,7 @@ import numpy as np
 
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import PublicAPI
@@ -194,27 +195,17 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
-        if "_columns" not in self.__dict__ and "columns" in self.__dict__:
-            self._columns = self.__dict__.pop("columns")
-        if "_output_columns" not in self.__dict__ and "output_columns" in self.__dict__:
-            self._output_columns = self.__dict__.pop("output_columns")
-        if (
-            "_torchvision_transform" not in self.__dict__
-            and "torchvision_transform" in self.__dict__
-        ):
-            self._torchvision_transform = self.__dict__.pop("torchvision_transform")
-        if "_batched" not in self.__dict__ and "batched" in self.__dict__:
-            self._batched = self.__dict__.pop("batched")
-
-        if "_columns" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized TorchVisionPreprocessor: missing required field 'columns'."
-            )
-        if "_output_columns" not in self.__dict__:
-            self._output_columns = self._columns
-        if "_torchvision_transform" not in self.__dict__:
-            raise ValueError(
-                "Invalid serialized TorchVisionPreprocessor: missing required field 'torchvision_transform'."
-            )
-        if "_batched" not in self.__dict__:
-            self._batched = False
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_torchvision_transform": _PublicField(
+                    public_field="torchvision_transform"
+                ),
+                "_batched": _PublicField(public_field="batched", default=False),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )
