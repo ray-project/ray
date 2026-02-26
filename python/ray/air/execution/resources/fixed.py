@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import ray
-from ray import LOCAL_MODE, SCRIPT_MODE
+from ray import SCRIPT_MODE
 from ray.air.execution.resources.request import (
     AcquiredResources,
     RemoteRayEntity,
@@ -70,7 +70,7 @@ class FixedResourceManager(ResourceManager):
         rtc = ray.get_runtime_context()
 
         if not total_resources:
-            if rtc.worker.mode in {None, SCRIPT_MODE, LOCAL_MODE}:
+            if rtc.worker.mode in {None, SCRIPT_MODE}:
                 total_resources = ray.cluster_resources()
             else:
                 total_resources = rtc.get_assigned_resources()

@@ -603,7 +603,7 @@ class FunctionActorManager:
             if isinstance(object, ray.actor.ActorClass):
                 return object.__ray_metadata__.modified_class
             else:
-                return object
+                return ray.actor._modify_class(object)
         else:
             return None
 

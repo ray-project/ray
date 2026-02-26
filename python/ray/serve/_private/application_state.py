@@ -48,7 +48,12 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    AutoscalingPolicy,
+    GangSchedulingConfig,
+    RequestRouterConfig,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -1737,6 +1742,13 @@ def override_deployment_info(
             placement_group_fallback_strategy=override_fallback_strategy,
         )
         override_options["replica_config"] = replica_config
+
+        if "gang_scheduling_config" in options:
+            gang_scheduling_config = options.get("gang_scheduling_config")
+            if gang_scheduling_config and isinstance(gang_scheduling_config, dict):
+                options["gang_scheduling_config"] = GangSchedulingConfig(
+                    **gang_scheduling_config
+                )
 
         if "request_router_config" in options:
             request_router_config = options.get("request_router_config")

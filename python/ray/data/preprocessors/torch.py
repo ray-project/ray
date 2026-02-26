@@ -1,9 +1,11 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Union
 
 import numpy as np
 
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import PublicAPI
 
@@ -11,8 +13,11 @@ if TYPE_CHECKING:
     import torch
 
 
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.torchvision_preprocessor"
+)
 @PublicAPI(stability="alpha")
-class TorchVisionPreprocessor(Preprocessor):
+class TorchVisionPreprocessor(SerializablePreprocessorBase):
     """Apply a `TorchVision transform <https://pytorch.org/vision/stable/transforms.html>`_
     to image columns.
 
@@ -97,6 +102,24 @@ class TorchVisionPreprocessor(Preprocessor):
         self._torchvision_transform = transform
         self._batched = batched
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def torchvision_transform(
+        self,
+    ) -> Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"]:
+        return self._torchvision_transform
+
+    @property
+    def batched(self) -> bool:
+        return self._batched
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
@@ -154,3 +177,35 @@ class TorchVisionPreprocessor(Preprocessor):
 
     def preferred_batch_format(cls) -> BatchFormat:
         return BatchFormat.NUMPY
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "output_columns": self._output_columns,
+            "torchvision_transform": self._torchvision_transform,
+            "batched": self._batched,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._output_columns = fields["output_columns"]
+        self._torchvision_transform = fields["torchvision_transform"]
+        self._batched = fields["batched"]
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_torchvision_transform": _PublicField(
+                    public_field="torchvision_transform"
+                ),
+                "_batched": _PublicField(public_field="batched", default=False),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
+        )

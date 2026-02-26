@@ -30,6 +30,7 @@
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
 #include "ray/rpc/authentication/authentication_token.h"
+#include "ray/rpc/authentication/authentication_token_validator.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {
@@ -213,8 +214,12 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
  public:
   explicit RaySyncerService(
       RaySyncer &syncer,
-      std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token = nullptr)
-      : syncer_(syncer), auth_token_(std::move(auth_token)) {}
+      std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token = nullptr,
+      ray::rpc::AuthenticationTokenValidator &auth_token_validator =
+          ray::rpc::AuthenticationTokenValidator::instance())
+      : syncer_(syncer),
+        auth_token_(std::move(auth_token)),
+        auth_token_validator_(auth_token_validator) {}
 
   grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
       grpc::CallbackServerContext *context) override;
@@ -225,6 +230,9 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   // Authentication token for validation, will be nullptr if token authentication is
   // disabled
   std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token_;
+
+  // Validator for authentication token
+  ray::rpc::AuthenticationTokenValidator &auth_token_validator_;
 };
 
 }  // namespace ray::syncer

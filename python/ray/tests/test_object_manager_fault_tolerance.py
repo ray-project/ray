@@ -5,11 +5,11 @@ import numpy as np
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.test_utils import (
     RPC_FAILURE_MAP,
     RPC_FAILURE_TYPES,
-    wait_for_condition,
 )
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 

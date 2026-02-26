@@ -1,9 +1,13 @@
+import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import ray
+from ray._common.utils import binary_to_hex
 from ray._raylet import GcsClient
-from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S
+from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S, SERVE_LOGGER_NAME
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ClusterNodeInfoCache(ABC):
@@ -15,6 +19,9 @@ class ClusterNodeInfoCache(ABC):
         self._cached_node_labels = dict()
         self._cached_total_resources_per_node = dict()
         self._cached_available_resources_per_node = dict()
+        # Track alive node IDs to detect cluster membership changes and skip
+        # rebuilding labels / total resources when nothing changed.
+        self._alive_node_id_set: FrozenSet[str] = frozenset()
 
     def update(self):
         """Update the cache by fetching latest node information from GCS.
@@ -32,21 +39,53 @@ class ClusterNodeInfoCache(ABC):
         ]
 
         # Sort on NodeID to ensure the ordering is deterministic across the cluster.
-        sorted(alive_nodes)
+        alive_nodes.sort()
         self._cached_alive_nodes = alive_nodes
-        self._cached_node_labels = {
-            node_id.hex(): dict(node.labels) for (node_id, node) in nodes.items()
-        }
 
-        # Node resources
-        self._cached_total_resources_per_node = {
-            node_id.hex(): dict(node.resources_total)
-            for (node_id, node) in nodes.items()
-        }
+        # Detect whether the set of alive nodes has changed. Rebuild labels
+        # and total resources only when it has, since they are static per-node
+        # properties that don't change while a node stays alive.
+        current_alive_ids = frozenset(node_id for node_id, _, _ in alive_nodes)
+        if current_alive_ids != self._alive_node_id_set:
+            self._alive_node_id_set = current_alive_ids
+            self._cached_node_labels = {
+                node_id.hex(): dict(node.labels)
+                for (node_id, node) in nodes.items()
+                if node_id.hex() in current_alive_ids
+            }
+            self._cached_total_resources_per_node = {
+                node_id.hex(): dict(node.resources_total)
+                for (node_id, node) in nodes.items()
+                if node_id.hex() in current_alive_ids
+            }
 
+        # Fetch available resources using the existing GCS client rather than
+        # the legacy GlobalStateAccessor path (which opens a second connection
+        # and performs redundant protobuf deserialization).
         self._cached_available_resources_per_node = (
-            ray._private.state.available_resources_per_node()
+            self._fetch_available_resources_per_node()
         )
+
+    def _fetch_available_resources_per_node(self) -> Dict[str, Dict[str, float]]:
+        """Fetch available resources per alive node via get_all_resource_usage()."""
+        try:
+            reply = self._gcs_client.get_all_resource_usage(
+                timeout=RAY_GCS_RPC_TIMEOUT_S
+            )
+        except Exception:
+            logger.warning(
+                "Failed to fetch resource usage from GCS. "
+                "Available resources cache will be stale.",
+                exc_info=True,
+            )
+            return self._cached_available_resources_per_node
+
+        return {
+            node_id: dict(resource_data.resources_available)
+            for resource_data in reply.resource_usage_data.batch
+            if (node_id := binary_to_hex(resource_data.node_id))
+            in self._alive_node_id_set
+        }
 
     def get_alive_nodes(self) -> List[Tuple[str, str, str]]:
         """Get IDs, IPs, and Instance IDs for all live nodes in the cluster.

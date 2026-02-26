@@ -7,7 +7,7 @@ import pandas as pd
 import pyarrow
 import torch
 
-from ray._private.ray_constants import env_bool
+from ray._common.utils import env_bool
 from ray.data.collate_fn import (
     TensorBatchReturnType,
     TensorBatchType,

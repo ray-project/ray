@@ -98,31 +98,52 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
             fetch_local=False,
             timeout=0.1,
         )
+
         for ref in ready:
             task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
-                task.on_data_ready(None)
+                # Read all currently available output from the streaming generator
+                task.on_data_ready(max_bytes_to_read=None)
+                # Only remove the task when the generator has been fully exhausted
+                if task.has_finished:
+                    tasks.remove(task)
             else:
                 assert isinstance(task, MetadataOpTask)
                 task.on_task_finished()
+                tasks.remove(task)
+
+        # NOTE: If only existing tasks need to be handled skip refreshing list
+        #       of outstanding tasks
         if only_existing:
-            return
-        tasks = op.get_active_tasks()
+            pass
+        else:
+            tasks = op.get_active_tasks()
 
 
 def run_one_op_task(op):
     """Run one task of a PhysicalOperator."""
     tasks = op.get_active_tasks()
-    waitable_to_tasks = {task.get_waitable(): task for task in tasks}
-    ready, _ = ray.wait(
-        list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
-    )
-    task = waitable_to_tasks[ready[0]]
-    if isinstance(task, DataOpTask):
-        task.on_data_ready(None)
-    else:
-        assert isinstance(task, MetadataOpTask)
-        task.on_task_finished()
+
+    while tasks:
+        waitable_to_tasks = {task.get_waitable(): task for task in tasks}
+
+        # Block, until 1 task is ready
+        ready, _ = ray.wait(
+            list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
+        )
+
+        task = waitable_to_tasks[ready[0]]
+        # Reset tasks to track just 1 task
+        tasks = [task]
+
+        if isinstance(task, DataOpTask):
+            task.on_data_ready(None)
+            if task.has_finished:
+                tasks.remove(task)
+        else:
+            assert isinstance(task, MetadataOpTask)
+            task.on_task_finished()
+            tasks.remove(task)
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):

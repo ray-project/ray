@@ -177,11 +177,49 @@ class TestConcatenator:
 
     def test_concatenator_deserialize_backward_compat(self):
         p1 = Concatenator(columns=["A"], flatten=True)
-        delattr(p1, "flatten")
+        delattr(p1, "_flatten")
         data = p1.serialize()
         p2 = Concatenator.deserialize(data)
         assert isinstance(p2, Concatenator)
         assert p2.flatten is False
+
+
+    def test_concatenator_serialization(self):
+        """Test Concatenator serialization and deserialization functionality."""
+        from ray.data.preprocessor import SerializablePreprocessorBase
+
+        # Create concatenator
+        concatenator = Concatenator(
+            columns=["A", "B"],
+            output_column_name="combined",
+            dtype=np.float32,
+            flatten=True,
+        )
+
+        # Serialize using CloudPickle
+        serialized = concatenator.serialize()
+
+        # Verify it's binary CloudPickle format
+        assert isinstance(serialized, bytes)
+        assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+        # Deserialize
+        deserialized = Concatenator.deserialize(serialized)
+
+        # Verify type and field values
+        assert isinstance(deserialized, Concatenator)
+        assert deserialized.columns == ["A", "B"]
+        assert deserialized.output_column_name == "combined"
+        assert deserialized.dtype == np.float32
+        assert deserialized.flatten is True
+
+        # Verify it works correctly
+        df = pd.DataFrame({"A": [[1, 2]], "B": [[3, 4]]})
+        result = deserialized.transform_batch(df)
+
+        # Verify concatenation was applied correctly
+        assert "combined" in result.columns
+        assert len(result["combined"][0]) == 4
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "ray/common/constants.h"
+#include "ray/rpc/authentication/authentication_mode.h"
 
 namespace ray::syncer {
 
@@ -39,6 +40,7 @@ RayServerBidiReactor::RayServerBidiReactor(
     std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
+    ray::rpc::AuthenticationTokenValidator &auth_token_validator,
     size_t max_batch_size,
     uint64_t max_batch_delay_ms)
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
@@ -49,8 +51,9 @@ RayServerBidiReactor::RayServerBidiReactor(
           max_batch_delay_ms),
       cleanup_cb_(std::move(cleanup_cb)),
       server_context_(server_context),
-      auth_token_(std::move(auth_token)) {
-  if (auth_token_ && !auth_token_->empty()) {
+      auth_token_(std::move(auth_token)),
+      auth_token_validator_(auth_token_validator) {
+  if ((auth_token_ && !auth_token_->empty()) || ray::rpc::IsK8sTokenAuthEnabled()) {
     // Validate authentication token
     const auto &metadata = server_context->client_metadata();
     auto it = metadata.find(kAuthTokenKey);
@@ -64,7 +67,7 @@ RayServerBidiReactor::RayServerBidiReactor(
 
     const std::string_view header(it->second.data(), it->second.length());
 
-    if (!auth_token_->CompareWithMetadata(header)) {
+    if (!auth_token_validator_.ValidateToken(auth_token_, header)) {
       RAY_LOG(WARNING) << "Invalid bearer token in syncer connection from node "
                        << NodeID::FromBinary(GetRemoteNodeID());
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Invalid bearer token"));

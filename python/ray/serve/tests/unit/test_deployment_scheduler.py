@@ -19,6 +19,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
     ReplicaSchedulingRequest,
+    ReplicaSchedulingRequestStatus,
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
@@ -1423,6 +1424,252 @@ class TestPackScheduling:
             },
             downscales={},
         )
+
+    def test_actor_creation_failure_does_not_decrement_resources(self):
+        """When actor creation fails for a replica, available resources
+        should not be decremented so subsequent replicas in the same
+        scheduling batch can still use that node.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node has exactly 1 CPU — enough for one 1-CPU replica.
+        cluster_node_info_cache.add_node(node_id, {"CPU": 1})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1}),
+        )
+
+        # Create a mock actor class whose .options().remote() raises on the
+        # first call (simulating actor creation failure) but succeeds after.
+        call_count = 0
+
+        class FailOnceMockActorClass(MockActorClass):
+            def remote(self, *args):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("Simulated actor creation failure")
+                return super().remote(*args)
+
+        on_scheduled_mock = Mock()
+        r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        req0 = ReplicaSchedulingRequest(
+            replica_id=r0_id,
+            actor_def=FailOnceMockActorClass(),
+            actor_resources={"CPU": 1},
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+        req1 = ReplicaSchedulingRequest(
+            replica_id=r1_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 1},
+            actor_options={},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+
+        scheduler.schedule(
+            upscales={d_id: [req0, req1]},
+            downscales={},
+        )
+
+        # The first replica should have failed.
+        assert req0.status == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+
+        # The second replica should have succeeded and been scheduled to the
+        # node.
+        assert req1.status == ReplicaSchedulingRequestStatus.SUCCEEDED
+        assert on_scheduled_mock.call_count == 1
+        call = on_scheduled_mock.call_args_list[0]
+        scheduling_strategy = call.args[0]._options["scheduling_strategy"]
+        assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+        assert scheduling_strategy.node_id == node_id
+
+    def test_pg_creation_failure_does_not_decrement_resources(self):
+        """When placement group creation fails for a replica, available
+        resources should not be decremented so subsequent replicas in the
+        same scheduling batch can still use that node.
+        """
+
+        d_id = DeploymentID(name="deployment1")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node has exactly 1 CPU — enough for one replica with 1-CPU PG.
+        cluster_node_info_cache.add_node(node_id, {"CPU": 1})
+
+        call_count = 0
+
+        def fail_once_create_pg(request):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("Simulated PG creation failure")
+            return MockPlacementGroup(request)
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=fail_once_create_pg,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(
+                dummy,
+                ray_actor_options={"num_cpus": 0},
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_strategy="STRICT_PACK",
+            ),
+        )
+
+        on_scheduled_mock = Mock()
+        r0_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        req0 = ReplicaSchedulingRequest(
+            replica_id=r0_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            actor_options={"name": "r0"},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+        req1 = ReplicaSchedulingRequest(
+            replica_id=r1_id,
+            actor_def=MockActorClass(),
+            actor_resources={"CPU": 0},
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            actor_options={"name": "r1"},
+            actor_init_args=(),
+            on_scheduled=on_scheduled_mock,
+        )
+
+        scheduler.schedule(
+            upscales={d_id: [req0, req1]},
+            downscales={},
+        )
+
+        # The first replica should have failed at PG creation.
+        assert (
+            req0.status
+            == ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+        )
+
+        # The second replica should still succeed.
+        assert req1.status == ReplicaSchedulingRequestStatus.SUCCEEDED
+        assert on_scheduled_mock.call_count == 1
+        call = on_scheduled_mock.call_args_list[0]
+        scheduling_strategy = call.args[0]._options["scheduling_strategy"]
+        assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
+
+    def test_pack_prefers_newly_non_idle_node(self):
+        """After scheduling a replica to a previously idle node, subsequent
+        replicas in the same batch should prefer that node (now non-idle)
+        over other idle nodes, even if the idle node is a tighter fit.
+
+        Regression test: without updating node_to_running_replicas after
+        each scheduling, the PACK scheduler would treat all initially-idle
+        nodes as idle for the entire batch, falling through to pure
+        best-fit and potentially spreading replicas across nodes.
+        """
+
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # Node 1 has GPU + CPU; node 2 has only CPU.
+        # After the GPU replica is placed on node 1, node 2 would be
+        # a tighter best-fit for a CPU-only replica (2 CPU remaining
+        # vs 4 CPU on node 1). But PACK should prefer node 1 because
+        # it is now non-idle.
+        cluster_node_info_cache.add_node(node_id_1, {"GPU": 1, "CPU": 4})
+        cluster_node_info_cache.add_node(node_id_2, {"CPU": 2})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+
+        scheduler.on_deployment_deployed(
+            d_id1,
+            ReplicaConfig.create(
+                dummy, ray_actor_options={"num_gpus": 1, "num_cpus": 0}
+            ),
+        )
+        scheduler.on_deployment_deployed(
+            d_id2,
+            ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1}),
+        )
+
+        on_scheduled_mock1 = Mock()
+        on_scheduled_mock2 = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r0", deployment_id=d_id1),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_mock1,
+                    )
+                ],
+                d_id2: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r1", deployment_id=d_id2),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_mock2,
+                    )
+                ],
+            },
+            downscales={},
+        )
+
+        # The GPU replica must go to node 1 (only node with GPU).
+        assert len(on_scheduled_mock1.call_args_list) == 1
+        call1 = on_scheduled_mock1.call_args_list[0]
+        strategy1 = call1.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy1, NodeAffinitySchedulingStrategy)
+        assert strategy1.node_id == node_id_1
+        assert call1.kwargs == {"placement_group": None}
+
+        # The CPU replica should also go to node 1 (now non-idle) rather
+        # than node 2 (idle but tighter fit). The PACK scheduler prefers
+        # non-idle nodes to consolidate replicas onto fewer nodes.
+        assert len(on_scheduled_mock2.call_args_list) == 1
+        call2 = on_scheduled_mock2.call_args_list[0]
+        strategy2 = call2.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy2, NodeAffinitySchedulingStrategy)
+        assert strategy2.node_id == node_id_1
+        assert call2.kwargs == {"placement_group": None}
 
 
 if __name__ == "__main__":

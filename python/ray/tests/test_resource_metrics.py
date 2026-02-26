@@ -5,11 +5,11 @@ import pytest
 
 import ray
 from ray._common.network_utils import build_address
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     fetch_prometheus_metrics,
-    run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 METRIC_CONFIG = {
     "_system_config": {

@@ -36,7 +36,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         input_metadata: List[BlockMetadataWithSchema],
     ):
         super().__init__(
-            name=self.__class__.__name__,
             input_dependencies=[],
             num_outputs=len(input_blocks),
         )

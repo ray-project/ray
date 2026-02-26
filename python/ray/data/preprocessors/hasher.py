@@ -1,15 +1,21 @@
 import collections
-from typing import List
+from typing import Any, Dict, List
 
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import simple_hash
+from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessors.utils import (
+    _PublicField,
+    migrate_private_fields,
+    simple_hash,
+)
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.feature_hasher")
 @PublicAPI(stability="alpha")
-class FeatureHasher(Preprocessor):
+class FeatureHasher(SerializablePreprocessorBase):
     r"""Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
     table that describes token frequencies.
 
@@ -83,43 +89,79 @@ class FeatureHasher(Preprocessor):
         output_column: str,
     ):
         super().__init__()
-        self.columns = columns
+        self._columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
-        self.num_features = num_features
-        self.output_column = output_column
+        self._num_features = num_features
+        self._output_column = output_column
+
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def num_features(self) -> int:
+        return self._num_features
+
+    @property
+    def output_column(self) -> str:
+        return self._output_column
 
     def _transform_pandas(self, df: pd.DataFrame):
         # TODO(matt): Use sparse matrix for efficiency.
         def row_feature_hasher(row):
             hash_counts = collections.defaultdict(int)
-            for column in self.columns:
-                hashed_value = simple_hash(column, self.num_features)
+            for column in self._columns:
+                hashed_value = simple_hash(column, self._num_features)
                 hash_counts[hashed_value] += row[column]
-            return {f"hash_{i}": hash_counts[i] for i in range(self.num_features)}
+            return {f"hash_{i}": hash_counts[i] for i in range(self._num_features)}
 
-        feature_columns = df.loc[:, self.columns].apply(
+        feature_columns = df.loc[:, self._columns].apply(
             row_feature_hasher, axis=1, result_type="expand"
         )
 
         # Concatenate the hash columns
-        hash_columns = [f"hash_{i}" for i in range(self.num_features)]
+        hash_columns = [f"hash_{i}" for i in range(self._num_features)]
         concatenated = feature_columns[hash_columns].to_numpy()
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
-        df.loc[:, self.output_column] = pd.Series(list(concatenated))
+        df.loc[:, self._output_column] = pd.Series(list(concatenated))
 
         return df
 
     def get_input_columns(self) -> List[str]:
-        return self.columns
+        return self._columns
 
     def get_output_columns(self) -> List[str]:
-        return [self.output_column]
+        return [self._output_column]
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(columns={self.columns!r}, "
             f"num_features={self.num_features!r}, "
             f"output_column={self.output_column!r})"
+        )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "num_features": self._num_features,
+            "output_column": self._output_column,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._num_features = fields["num_features"]
+        self._output_column = fields["output_column"]
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_num_features": _PublicField(public_field="num_features"),
+                "_output_column": _PublicField(public_field="output_column"),
+            },
         )

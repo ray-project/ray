@@ -74,6 +74,12 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
     ) -> Dict[str, float]:
         """Return the resources reserved for training, so that Data can exclude
         these resources logically from its available pool."""
+        if scaling_config.elasticity_enabled:
+            # If Train is running with a variable number of workers,
+            # we can't provide a fixed number of resources to exclude.
+            # Instead, Train and Data should coordinate via the autoscaling
+            # coordinator to allocate resources dynamically.
+            return {}
         return scaling_config.total_resources
 
     def _get_coordinator_actors(

@@ -10,6 +10,7 @@ from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.tests.conftest import *  # noqa: F401,F403
 
@@ -665,6 +666,40 @@ def test_readback_tfrecords_empty_features(
             override_num_blocks=1,
         )
         _ds_eq_streaming(ds, readback_ds)
+
+
+@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
+def test_write_tfrecords_tensor(
+    ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
+):
+    """Test that write_tfrecords handles tensor data by serializing
+    tensors to bytes via tf.io.serialize_tensor, preserving shape and dtype."""
+    import tensorflow as tf
+
+    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
+
+    ds = ray.data.range_tensor(3, shape=(2, 2))
+
+    ds.write_tfrecords(tmp_path)
+
+    # Read back the raw TFRecord examples and deserialize tensors.
+    filenames = sorted(os.listdir(tmp_path))
+    filepaths = [os.path.join(tmp_path, filename) for filename in filenames]
+    raw_dataset = tf.data.TFRecordDataset(filepaths)
+
+    results = []
+    for raw_record in raw_dataset:
+        example = tf.train.Example()
+        example.ParseFromString(raw_record.numpy())
+        serialized = example.features.feature["data"].bytes_list.value[0]
+        tensor = tf.io.parse_tensor(serialized, out_type=tf.int64)
+        results.append(tensor.numpy())
+
+    assert len(results) == 3
+    for i, result in enumerate(results):
+        assert result.shape == (2, 2)
+        expected = np.full((2, 2), i)
+        np.testing.assert_array_equal(result, expected)
 
 
 def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):

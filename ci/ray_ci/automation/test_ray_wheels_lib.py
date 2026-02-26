@@ -9,7 +9,6 @@ from botocore.exceptions import ClientError
 from ci.ray_ci.automation.ray_wheels_lib import (
     ALL_PLATFORMS,
     PYTHON_VERSIONS,
-    RAY_TYPES,
     _check_downloaded_wheels,
     _get_wheel_names,
     add_build_tag_to_wheel,
@@ -32,8 +31,9 @@ def test_get_wheel_names():
 
     assert (
         len(wheel_names)
-        == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) * len(RAY_TYPES) - 2
-    )  # Except for the win_amd64 wheel for cp313 on ray and ray-cpp
+        == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) + len(ALL_PLATFORMS) - 1
+    )  # Except for the win_amd64 wheel for cp313
+    python_versions = list(PYTHON_VERSIONS) + ["py3-none"]
 
     for wheel_name in wheel_names:
         assert len(wheel_name.split("-")) == 5
@@ -46,9 +46,9 @@ def test_get_wheel_names():
         ) = wheel_name.split("-")
         platform = platform.split(".")[0]  # Remove the .whl suffix
 
-        assert ray_type in RAY_TYPES
+        assert ray_type in ["ray", "ray_cpp"]
         assert ray_version == ray_version
-        assert f"{python_version}-{python_version2}" in PYTHON_VERSIONS
+        assert f"{python_version}-{python_version2}" in python_versions
         assert platform in ALL_PLATFORMS
 
 
