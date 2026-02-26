@@ -270,6 +270,9 @@ def _cast_tensor_columns_to_ndarrays(
             ``FixedShapeTensorType`` in Arrow.  PyArrow's ``to_pandas()``
             flattens these to 1-D ndarrays; passing the original schema
             lets us restore the correct shape.
+
+    Returns:
+        The DataFrame with tensor columns converted to NumPy ndarrays.
     """
     # Get the SettingWithCopyWarning class if available
     SettingWithCopyWarning = _get_setting_with_copy_warning()
