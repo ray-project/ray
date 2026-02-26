@@ -10,7 +10,7 @@ from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -74,6 +74,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     DeploymentDetails,
@@ -83,9 +84,6 @@ from ray.serve.schema import (
 )
 from ray.util import metrics as ray_metrics
 from ray.util.placement_group import PlacementGroup
-
-if TYPE_CHECKING:
-    from ray.serve.context import GangContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -325,7 +323,7 @@ class ActorReplicaWrapper:
         self._assign_rank_callback: Optional[Callable[[ReplicaID], ReplicaRank]] = None
         self._rank: Optional[ReplicaRank] = None
         # Gang context for the replica.
-        self._gang_context: Optional["GangContext"] = None
+        self._gang_context: Optional[GangContext] = None
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
         self._placement_group: PlacementGroup = None
@@ -404,7 +402,7 @@ class ActorReplicaWrapper:
         return self._rank
 
     @property
-    def gang_context(self) -> Optional["GangContext"]:
+    def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
 
     @property
@@ -584,8 +582,8 @@ class ActorReplicaWrapper:
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
-        gang_replica_rank: Optional[int] = None,
-        gang_context: Optional["GangContext"] = None,
+        gang_pg_index: Optional[int] = None,
+        gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -596,7 +594,7 @@ class ActorReplicaWrapper:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
-            gang_replica_rank: Bundle index within the gang PG for this replica.
+            gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
 
         Returns:
@@ -606,7 +604,7 @@ class ActorReplicaWrapper:
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
-        self._gang_replica_rank = gang_replica_rank
+        self._gang_pg_index = gang_pg_index
         self._gang_context = gang_context
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
@@ -726,7 +724,7 @@ class ActorReplicaWrapper:
             ),
             on_scheduled=self.on_scheduled,
             gang_placement_group=self._gang_placement_group,
-            gang_replica_rank=self._gang_replica_rank,
+            gang_pg_index=self._gang_pg_index,
         )
 
     def on_scheduled(
@@ -1013,11 +1011,16 @@ class ActorReplicaWrapper:
             if stopped and self._placement_group is not None:
                 try:
                     ray.util.remove_placement_group(self._placement_group)
+                except ValueError:
+                    # ValueError thrown from ray.util.remove_placement_group means the
+                    # placement group has already been removed.
+                    logger.debug(
+                        f"Placement group for {self._replica_id} was already removed."
+                    )
                 except Exception:
-                    # Gang PGs are shared across multiple replicas.
-                    # Another replica in the same gang may have already
-                    # removed this PG.
-                    pass
+                    logger.exception(
+                        f"Failed to remove placement group for {self._replica_id}."
+                    )
 
         return stopped
 
@@ -1396,8 +1399,8 @@ class DeploymentReplica:
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
         gang_placement_group: Optional[PlacementGroup] = None,
-        gang_replica_rank: Optional[int] = None,
-        gang_context: Optional["GangContext"] = None,
+        gang_pg_index: Optional[int] = None,
+        gang_context: Optional[GangContext] = None,
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
@@ -1406,7 +1409,7 @@ class DeploymentReplica:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
-            gang_replica_rank: Bundle index within the gang PG for this replica.
+            gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
 
         Returns:
@@ -1416,7 +1419,7 @@ class DeploymentReplica:
             deployment_info,
             assign_rank_callback=assign_rank_callback,
             gang_placement_group=gang_placement_group,
-            gang_replica_rank=gang_replica_rank,
+            gang_pg_index=gang_pg_index,
             gang_context=gang_context,
         )
         self._start_time = time.time()
@@ -1462,7 +1465,7 @@ class DeploymentReplica:
         return self._actor.rank
 
     @property
-    def gang_context(self) -> Optional["GangContext"]:
+    def gang_context(self) -> Optional[GangContext]:
         """Get the gang context for this replica."""
         return self._actor.gang_context
 
@@ -3237,9 +3240,6 @@ class DeploymentState:
             f"(gang_size={gang_size}, {num_gangs} gang(s))."
         )
 
-        # Lazy import to avoid circular imports
-        from ray.serve.context import GangContext
-
         for gang_pg in gang_pgs:
             # Pre-generate replica IDs for all members of this gang
             gang_id = get_random_string()
@@ -3265,7 +3265,7 @@ class DeploymentState:
                     self._target_state.info,
                     assign_rank_callback=self._rank_manager.assign_rank,
                     gang_placement_group=gang_pg,
-                    gang_replica_rank=bundle_index * bundles_per_replica,
+                    gang_pg_index=bundle_index * bundles_per_replica,
                     gang_context=gang_context,
                 )
 
@@ -3479,7 +3479,7 @@ class DeploymentState:
                             f"member failed during startup "
                             f"(gang_id={replica.gang_context.gang_id})."
                         )
-                        self._stop_replica(replica)
+                        self._stop_replica(replica, graceful_stop=False)
                     else:
                         self._replicas.add(state, replica)
 

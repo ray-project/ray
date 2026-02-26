@@ -167,7 +167,9 @@ class ReplicaSchedulingRequest:
     # Gang scheduling fields -- if set, replica should be scheduled on
     # the reserved gang placement group at the specified bundle index.
     gang_placement_group: Optional[PlacementGroup] = None
-    gang_replica_rank: Optional[int] = None
+    # Bundle index inside gang_placement_group where this replica actor is scheduled.
+    # Example: If each replica uses 2 bundles, ranks 0 and 1 use indices 0 and 2 respectively.
+    gang_pg_index: Optional[int] = None
 
     @property
     def required_resources(self) -> Resources:
@@ -582,7 +584,7 @@ class DeploymentScheduler(ABC):
             placement_group = scheduling_request.gang_placement_group
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=placement_group,
-                placement_group_bundle_index=scheduling_request.gang_replica_rank,
+                placement_group_bundle_index=scheduling_request.gang_pg_index,
                 placement_group_capture_child_tasks=True,
             )
             # TODO (jeffreywang): Add support for target labels and node affinity
