@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
@@ -61,6 +62,10 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
     their own data and store it in `data` under those keys. In this case, the default
     connector will not change the data under these keys and simply act as a
     pass-through.
+
+
+    We expect that `episodes` are numpy'ized.
+    In standard training flows, episodes have already been numpy'ized before they enter this connector via EnvRunners, ReplayBuffers or offline sampling.
     """
 
     @override(ConnectorV2)
@@ -102,7 +107,10 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                 sub_key = (sa_episode.id_,)
 
                 if need_actions:
-                    data = sa_episode.get_actions(slice(0, n)).view(BatchedNdArray)
+                    # Actions may be a composite action space, so we need to map the structure.
+                    data = tree.map_structure(
+                        BatchedNdArray, sa_episode.get_actions(slice(0, n))
+                    )
                     col = batch.get(Columns.ACTIONS)
                     if col is None:
                         batch[Columns.ACTIONS] = {sub_key: [data]}
@@ -157,9 +165,13 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
 
                 for column in sa_episode.extra_model_outputs.keys():
                     if column not in skip_columns:
-                        data = sa_episode.get_extra_model_outputs(
-                            key=column, indices=slice(0, n)
-                        ).view(BatchedNdArray)
+                        # Extra model outputs may be a composite space, so we need to map the structure.
+                        data = tree.map_structure(
+                            BatchedNdArray,
+                            sa_episode.get_extra_model_outputs(
+                                key=column, indices=slice(0, n)
+                            ),
+                        )
                         col = batch.get(column)
                         if col is None:
                             batch[column] = {sub_key: [data]}
