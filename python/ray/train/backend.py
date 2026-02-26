@@ -24,6 +24,10 @@ class BackendConfig:
     def train_func_context(self):
         return nullcontext
 
+    @property
+    def has_replica_groups(self):
+        return False
+
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
 

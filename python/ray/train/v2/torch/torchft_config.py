@@ -1,19 +1,15 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional
-
-import torch.distributed as dist
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict
 
 import ray
-from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.torch.config import (
     TorchConfig,
-    _get_backend,
-    _set_torch_distributed_env_vars,
-    _setup_torch_process_group_with_master,
     _TorchBackend,
 )
 from ray.train.v2._internal.constants import TORCHFT_LIGHTHOUSE_ENV_VAR
+from ray.train.v2._internal.execution.worker_group import WorkerGroup
 from ray.train.v2.backend import BeforeWorkerGroupStartMixin
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -38,6 +34,10 @@ class TorchftConfig(TorchConfig):
     def backend_cls(self):
         return _TorchftBackend
 
+    @property
+    def has_replica_groups(self):
+        return True
+
 
 @ray.remote
 class LighthouseServerActor:
@@ -58,8 +58,8 @@ class LighthouseServerActor:
 class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
     """Backend for torchft-based fault-tolerant training with replica groups.
 
-    Creates a separate TCPStore and process group per replica group,
-    matching the torchrun model.
+    Creates a separate process group per replica group by calling
+    the parent _TorchBackend.on_start() once per replica group.
     """
 
     def __init__(self):
@@ -88,55 +88,17 @@ class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
         logger.info(f"Created torchft lighthouse at {lighthouse_address}")
         os.environ[TORCHFT_LIGHTHOUSE_ENV_VAR] = lighthouse_address
 
-    def on_start(
-        self,
-        worker_group: BaseWorkerGroup,
-        backend_config: TorchftConfig,
-        workers_subset: Optional[List[int]] = None,
-    ):
-        if not dist.is_available():
-            raise RuntimeError("Distributed torch is not available.")
+    def on_start(self, worker_group, backend_config: TorchftConfig):
+        assert isinstance(worker_group, WorkerGroup)
+        replica_groups = worker_group.get_replica_groups()
 
-        backend = _get_backend(worker_group, backend_config)
-
-        num_workers = len(worker_group)
-        # TODO: when we support model parallelism, we can get device mesh config from the
-        # worker_group object.
-        num_replica_groups = num_workers
-        num_workers_per_replica_group = 1
-
-        # Determine which groups need initialization based on the subset
-        if workers_subset is not None:
-            group_ids = set()
-            for rank in workers_subset:
-                group_ids.add(rank // num_workers_per_replica_group)
-        else:
-            group_ids = set(range(num_replica_groups))
-
-        for group_id in group_ids:
-            group_ranks = list(
-                range(
-                    group_id * num_workers_per_replica_group,
-                    (group_id + 1) * num_workers_per_replica_group,
-                )
-            )
-            _setup_torch_process_group_with_master(
-                worker_group, backend_config, backend, group_ranks
-            )
-
-    def on_training_start(
-        self,
-        worker_group: BaseWorkerGroup,
-        backend_config: TorchftConfig,
-        workers_subset: Optional[List[int]] = None,
-    ):
-        if workers_subset is not None:
-            ranks_to_init = workers_subset
-        else:
-            ranks_to_init = list(range(len(worker_group)))
-
-        for global_rank in ranks_to_init:
-            worker_group.execute_single(
-                global_rank,
-                _set_torch_distributed_env_vars,
-            )
+        # Bind super() eagerly — the zero-arg form relies on a __class__ cell
+        # that doesn't transfer correctly into ThreadPoolExecutor submissions.
+        parent_on_start = super().on_start
+        with ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(parent_on_start, rg, backend_config)
+                for rg in replica_groups
+            ]
+            for f in futures:
+                f.result()
