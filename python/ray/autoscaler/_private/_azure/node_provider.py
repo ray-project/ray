@@ -23,7 +23,7 @@ from ray.autoscaler._private._azure.config import (
     bootstrap_azure,
     get_azure_sdk_function,
 )
-from ray.autoscaler._private._azure.utils import (
+from ray._common.azure_utils import (
     catch_azure_credential_errors,
     handle_azure_credential_error,
 )

@@ -2,7 +2,7 @@
 
 Tests the handle_azure_credential_error(), validate_azure_credentials(),
 and catch_azure_credential_errors() helpers from
-ray.autoscaler._private._azure.utils without requiring the Azure SDK.
+ray._common.azure_utils without requiring the Azure SDK.
 """
 
 import sys
@@ -80,7 +80,7 @@ class TestHandleAzureCredentialError:
         with patch.dict(sys.modules, modules_dict):
             # Force re-import so lazy imports inside the function resolve
             # against the patched modules.
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 handle_azure_credential_error,
             )
             return handle_azure_credential_error
@@ -175,7 +175,7 @@ class TestHandleAzureCredentialError:
         # import inside the handler fails.
         handler_module = {}  # empty – no azure at all
         with patch.dict(sys.modules, handler_module):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 handle_azure_credential_error,
             )
             # Should be a silent no-op for any exception.
@@ -194,7 +194,7 @@ class TestCatchAzureCredentialErrorsDecorator:
         mods, ClientAuthErr, _, _, _ = _make_mock_azure_modules()
 
         with patch.dict(sys.modules, mods):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 catch_azure_credential_errors,
             )
 
@@ -209,7 +209,7 @@ class TestCatchAzureCredentialErrorsDecorator:
         mods, _, _, _, _ = _make_mock_azure_modules()
 
         with patch.dict(sys.modules, mods):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 catch_azure_credential_errors,
             )
 
@@ -224,7 +224,7 @@ class TestCatchAzureCredentialErrorsDecorator:
         mods, _, _, _, _ = _make_mock_azure_modules()
 
         with patch.dict(sys.modules, mods):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 catch_azure_credential_errors,
             )
 
@@ -238,7 +238,7 @@ class TestCatchAzureCredentialErrorsDecorator:
         mods, _, _, _, _ = _make_mock_azure_modules()
 
         with patch.dict(sys.modules, mods):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 catch_azure_credential_errors,
             )
 
@@ -261,7 +261,7 @@ class TestValidateAzureCredentials:
         mods, _, _, _, _ = _make_mock_azure_modules()
 
         with patch.dict(sys.modules, mods):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 validate_azure_credentials,
             )
             cred = MagicMock()
@@ -276,7 +276,7 @@ class TestValidateAzureCredentials:
         mods, ClientAuthErr, _, _, _ = _make_mock_azure_modules()
 
         with patch.dict(sys.modules, mods):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 validate_azure_credentials,
             )
             cred = MagicMock()
@@ -288,7 +288,7 @@ class TestValidateAzureCredentials:
         mods, _, _, _, _ = _make_mock_azure_modules()
 
         with patch.dict(sys.modules, mods):
-            from ray.autoscaler._private._azure.utils import (
+            from ray._common.azure_utils import (
                 validate_azure_credentials,
             )
             cred = MagicMock()

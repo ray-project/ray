@@ -139,27 +139,9 @@ class ProtocolsProvider:
                 )
             }
         except Exception as e:
-            _is_credential_error = False
-            try:
-                from azure.core.exceptions import ClientAuthenticationError
+            from ray._common.azure_utils import handle_azure_credential_error
 
-                _is_credential_error = isinstance(e, ClientAuthenticationError)
-            except ImportError:
-                pass
-            if not _is_credential_error:
-                try:
-                    from azure.identity import CredentialUnavailableError
-
-                    _is_credential_error = isinstance(e, CredentialUnavailableError)
-                except ImportError:
-                    pass
-            if _is_credential_error:
-                raise RuntimeError(
-                    "Azure credential error when setting up Blob Storage access. "
-                    "Your Azure credentials may have expired or are misconfigured.\n"
-                    "Try: `az login` or set AZURE_CLIENT_ID/AZURE_CLIENT_SECRET/"
-                    "AZURE_TENANT_ID environment variables."
-                ) from e
+            handle_azure_credential_error(e, resource_type="Blob Storage")
             raise
 
         return open_file, transport_params
@@ -223,31 +205,9 @@ class ProtocolsProvider:
                     credential=DefaultAzureCredential(),
                 )
             except Exception as e:
-                _is_credential_error = False
-                try:
-                    from azure.core.exceptions import ClientAuthenticationError
+                from ray._common.azure_utils import handle_azure_credential_error
 
-                    _is_credential_error = isinstance(e, ClientAuthenticationError)
-                except ImportError:
-                    pass
-                if not _is_credential_error:
-                    try:
-                        from azure.identity import CredentialUnavailableError
-
-                        _is_credential_error = isinstance(
-                            e, CredentialUnavailableError
-                        )
-                    except ImportError:
-                        pass
-                if _is_credential_error:
-                    raise RuntimeError(
-                        "Azure credential error when setting up ABFSS access. "
-                        "Your Azure credentials may have expired or are "
-                        "misconfigured.\n"
-                        "Try: `az login` or set AZURE_CLIENT_ID/"
-                        "AZURE_CLIENT_SECRET/AZURE_TENANT_ID environment "
-                        "variables."
-                    ) from e
+                handle_azure_credential_error(e, resource_type="ABFSS")
                 raise
             return filesystem.open(uri, mode)
 
