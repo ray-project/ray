@@ -203,11 +203,12 @@ class Read(
         clone.datasource_or_legacy_reader = predicated_datasource
 
         # Append filter expression to name for plan display when predicate is pushed down.
+        # Use base datasource name to avoid accumulation when apply_predicate is called
+        # multiple times (e.g., filters separated by passthrough operators like Sort).
         applied_predicate = predicated_datasource.get_current_predicate()
         if applied_predicate is not None:
-
-            # Walk the predicate expression to get a string representation.
+            base_name = f"Read{predicated_datasource.get_name()}"
             expr_str = _InlineExprReprVisitor().visit(applied_predicate)
-            clone._name = f"{self._name}->Filter({expr_str})"
+            clone._name = f"{base_name}->Filter({expr_str})"
 
         return clone

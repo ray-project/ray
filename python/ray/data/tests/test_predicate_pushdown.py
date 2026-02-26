@@ -420,6 +420,27 @@ class TestPredicatePushdownIntoRead:
             in plan_str
         ), f"Expected plan to display pushed-down filter, got: {plan_str}"
 
+    def test_pushed_down_combine_separated_filters(self, parquet_ds):
+        """When apply_predicate is called multiple times (e.g. filters separated by Sort),
+        the name should show the combined predicate, not accumulate ->Filter(...)->Filter(...).
+        """
+        ds = (
+            parquet_ds.filter(expr=col("sepal.length") > 4.5)
+            .sort("sepal.length")
+            .filter(expr=col("sepal.width") > 2.5)
+        )
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        plan_str = optimized_plan.dag.dag_str
+
+        assert (
+            "ReadParquet->Filter((col('sepal.length') > 4.5) & (col('sepal.width') > 2.5))"
+            in plan_str
+        ), f"Expected plan to display pushed-down filter, got: {plan_str}"
+        assert ")->Filter(" not in plan_str, (
+            "Filter name should not accumulate; expected single ->Filter(...), "
+            f"got: {plan_str}"
+        )
+
 
 class TestPassthroughBehavior:
     """Tests for PASSTHROUGH behavior operators.
