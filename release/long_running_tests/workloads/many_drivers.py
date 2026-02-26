@@ -4,7 +4,8 @@ import argparse
 
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.test_utils import run_string_as_driver, safe_write_to_results_json
+from ray._common.test_utils import run_string_as_driver
+from ray._private.test_utils import safe_write_to_results_json
 
 
 def update_progress(result):
