@@ -35,6 +35,7 @@ from ray.data.block import (
     BlockType,
     U,
 )
+from ray.data.util.data_batch_conversion import _lazy_import_cudf
 
 if TYPE_CHECKING:
     import cudf
@@ -43,18 +44,6 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
-
-_cudf = None
-
-
-def _lazy_import_cudf():
-    """Lazy import cudf to avoid ImportError when cudf is not installed."""
-    global _cudf
-    if _cudf is None:
-        import cudf as cudf_module
-
-        _cudf = cudf_module
-    return _cudf
 
 
 def _cudf_series_to_pylist(series: "cudf.Series") -> List[Any]:
