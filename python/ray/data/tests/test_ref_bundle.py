@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
@@ -79,13 +80,16 @@ def test_ref_bundle_num_rows_size_bytes():
     assert bundle.num_rows() == 15
     assert bundle.size_bytes() == 150
     # After slice
-    bundle.slices = [
-        BlockSlice(start_offset=2, end_offset=6),  # 4 rows
-        BlockSlice(start_offset=0, end_offset=2),  # 2 rows
-    ]
+    sliced = replace(
+        bundle,
+        slices=(
+            BlockSlice(start_offset=2, end_offset=6),  # 4 rows
+            BlockSlice(start_offset=0, end_offset=2),  # 2 rows
+        ),
+    )
 
-    assert bundle.num_rows() == 6
-    assert bundle.size_bytes() == 60
+    assert sliced.num_rows() == 6
+    assert sliced.size_bytes() == 60
 
 
 @pytest.mark.parametrize(
@@ -138,13 +142,11 @@ def test_slice_ref_bundle_basic():
     assert consumed.num_rows() == 8
     assert remaining.num_rows() == 2
 
-    assert consumed.slices == [
+    assert consumed.slices == (
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
-    ]
-    assert remaining.slices == [
-        BlockSlice(start_offset=2, end_offset=4),
-    ]
+    )
+    assert remaining.slices == (BlockSlice(start_offset=2, end_offset=4),)
 
 
 def test_slice_ref_bundle_should_raise_error_if_needed_rows_is_not_less_than_num_rows():
@@ -192,15 +194,13 @@ def test_slice_ref_bundle_with_existing_slices():
     consumed, remaining = bundle.slice(7)
 
     assert consumed.num_rows() == 7
-    assert consumed.slices == [
-        BlockSlice(start_offset=2, end_offset=9),
-    ]
+    assert consumed.slices == (BlockSlice(start_offset=2, end_offset=9),)
     assert consumed.size_bytes() == 70
     assert remaining.num_rows() == 4
-    assert remaining.slices == [
+    assert remaining.slices == (
         BlockSlice(start_offset=9, end_offset=10),
         BlockSlice(start_offset=0, end_offset=3),
-    ]
+    )
     assert remaining.size_bytes() == 40
 
 
@@ -325,13 +325,11 @@ def test_slice_ref_bundle_with_none_slices():
     assert remaining.num_rows() == 2
 
     # The None slices should be converted to explicit BlockSlice objects
-    assert consumed.slices == [
+    assert consumed.slices == (
         BlockSlice(start_offset=0, end_offset=6),
         BlockSlice(start_offset=0, end_offset=2),
-    ]
-    assert remaining.slices == [
-        BlockSlice(start_offset=2, end_offset=4),
-    ]
+    )
+    assert remaining.slices == (BlockSlice(start_offset=2, end_offset=4),)
 
 
 def test_ref_bundle_str():
@@ -415,12 +413,69 @@ def test_merge_ref_bundles():
     # blocks.
     assert merged.owns_blocks is False
     assert len(merged.blocks) == 4
-    assert merged.slices == [
+    assert merged.slices == (
         BlockSlice(start_offset=0, end_offset=1),
         BlockSlice(start_offset=1, end_offset=2),
         BlockSlice(start_offset=2, end_offset=3),
         BlockSlice(start_offset=3, end_offset=4),
-    ]
+    )
+
+
+def test_ref_bundle_eq_and_hash():
+    """Tests that `__eq__` and `__hash__` use field-based comparison, so that
+    copies (e.g. from dataclasses.replace) are equal to the original and
+    usable as dict keys."""
+
+    ref_a = ObjectRef(b"1" * 28)
+    ref_b = ObjectRef(b"2" * 28)
+    meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
+
+    bundle = RefBundle(
+        blocks=[(ref_a, meta)],
+        owns_blocks=True,
+        schema="schema",
+        slices=[BlockSlice(start_offset=0, end_offset=5)],
+        output_split_idx=1,
+    )
+
+    # Identity: same object is always equal
+    assert bundle == bundle
+
+    # A dataclasses.replace copy should be equal and have the same hash
+    copy = replace(bundle)
+    assert copy is not bundle
+    assert copy == bundle
+    assert hash(copy) == hash(bundle)
+
+    # Equal bundles work as dict keys
+    d = {bundle: "value"}
+    assert d[copy] == "value"
+
+    # Non-RefBundle comparison returns False (not TypeError)
+    assert bundle != "not a bundle"
+    assert bundle != 42
+    assert bundle != None  # noqa: E711
+
+    # Differing any field should break equality and hash
+    diff_bundle_1 = replace(bundle, owns_blocks=False)
+    assert bundle != diff_bundle_1 and hash(bundle) != hash(diff_bundle_1)
+
+    diff_bundle_2 = replace(bundle, output_split_idx=2)
+    assert bundle != diff_bundle_2 and hash(bundle) != hash(diff_bundle_2)
+
+    diff_bundle_3 = replace(bundle, schema="other")
+    assert bundle != diff_bundle_3 and hash(bundle) != hash(diff_bundle_3)
+
+    diff_bundle_4 = replace(bundle, slices=(None,))
+    assert bundle != diff_bundle_4 and hash(bundle) != hash(diff_bundle_4)
+
+    # Differing block ref
+    diff_ref_bundle = replace(bundle, blocks=[(ref_b, meta)])
+    assert bundle != diff_ref_bundle
+
+    # Differing block metadata
+    diff_meta_bundle = replace(bundle, blocks=[(ref_a, replace(meta, num_rows=11))])
+    assert bundle != diff_meta_bundle
 
 
 if __name__ == "__main__":

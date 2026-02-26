@@ -116,7 +116,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
 
         meta = block.get_metadata(exec_stats=stats.build())
         schema = block.schema()
-        meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
+        meta_with_schema = BlockMetadataWithSchema.from_metadata(meta, schema=schema)
         return slices + [meta_with_schema]
 
     @staticmethod
@@ -146,7 +146,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         )
         from ray.data.block import BlockMetadataWithSchema
 
-        meta_with_schema = BlockMetadataWithSchema(
-            metadata=new_metadata, schema=accessor.schema()
+        meta_with_schema = BlockMetadataWithSchema.from_metadata(
+            new_metadata, schema=accessor.schema()
         )
         return new_block, meta_with_schema

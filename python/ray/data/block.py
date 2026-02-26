@@ -1,7 +1,7 @@
 import collections
 import logging
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -224,7 +224,7 @@ class _BlockExecStatsBuilder:
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockStats:
     """Statistics about the block produced"""
 
@@ -246,40 +246,48 @@ _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
-    #: The pyarrow schema or types of the block elements, or None.
-    #: The list of file paths used to generate this block, or
-    #: the empty list if indeterminate.
-    input_files: Optional[List[str]]
+    # The list of file paths used to generate this block, or
+    # the empty list if indeterminate.
+    input_files: Tuple[str] = field(default_factory=tuple)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        input_files = self.input_files
+
+        if input_files is None:
+            input_files = tuple()
+        elif not isinstance(input_files, tuple):
+            input_files = tuple(input_files)
+
+        object.__setattr__(self, "input_files", input_files)
 
     def to_stats(self):
         return BlockStats(
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
-    def __post_init__(self):
-        super().__post_init__()
-
-        if self.input_files is None:
-            self.input_files = []
-
 
 @DeveloperAPI(stability="alpha")
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
 
-    def __init__(self, metadata: BlockMetadata, schema: Optional["Schema"] = None):
-        super().__init__(
-            input_files=metadata.input_files,
-            size_bytes=metadata.size_bytes,
+    @staticmethod
+    def from_metadata(
+        metadata: "BlockMetadata", schema: Optional["Schema"] = None
+    ) -> "BlockMetadataWithSchema":
+        return BlockMetadataWithSchema(
             num_rows=metadata.num_rows,
+            size_bytes=metadata.size_bytes,
             exec_stats=metadata.exec_stats,
+            input_files=metadata.input_files,
+            schema=schema,
         )
-        self.schema = schema
 
     def from_block(
         block: Block, stats: Optional["BlockExecStats"] = None
@@ -287,7 +295,7 @@ class BlockMetadataWithSchema(BlockMetadata):
         accessor = BlockAccessor.for_block(block)
         meta = accessor.get_metadata(exec_stats=stats)
         schema = accessor.schema()
-        return BlockMetadataWithSchema(metadata=meta, schema=schema)
+        return BlockMetadataWithSchema.from_metadata(meta, schema=schema)
 
     @property
     def metadata(self) -> BlockMetadata:
@@ -442,7 +450,7 @@ class BlockAccessor:
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
-            input_files=input_files,
+            input_files=tuple(input_files) if input_files is not None else None,
             exec_stats=exec_stats,
         )
 
