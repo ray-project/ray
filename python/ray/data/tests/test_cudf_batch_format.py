@@ -142,7 +142,7 @@ class TestCudfMapBatches:
             cudf_batch = (
                 cudf.from_pandas(batch)
                 if batch_format == "pandas"
-                else cudf.from_arrow(batch)
+                else cudf.DataFrame.from_arrow(batch)
             )
             cudf_batch["id"] = cudf_batch["id"] + 1
             return cudf_batch
@@ -165,7 +165,7 @@ class TestCudfMapBatches:
             cudf_batch = (
                 cudf.from_pandas(batch)
                 if batch_format == "pandas"
-                else cudf.from_arrow(batch)
+                else cudf.DataFrame.from_arrow(batch)
             )
             cudf_batch["id"] = cudf_batch["id"] * 2
             return cudf_batch
