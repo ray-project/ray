@@ -4,7 +4,7 @@ from typing import Any, List, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
-from conftest import (
+from ray.serve.tests.unit.common.mock_replica_actor_wrapper import (
     dead_replicas_context,
     replica_rank_context,
 )

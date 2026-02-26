@@ -1,0 +1,7 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "mock_replica_actor_wrapper",
+    srcs = ["mock_replica_actor_wrapper.py"],
+    visibility = ["//python/ray/serve/tests/unit:__subpackages__"],
+)

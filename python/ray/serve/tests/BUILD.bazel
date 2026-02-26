@@ -115,7 +115,6 @@ py_test_module_list(
         "test_deployment_topology.py",
         "test_failure.py",
         "test_failure_2.py",
-        "test_gang_scheduling.py",
         "test_grpc_e2e.py",
         "test_grpc_replica_wrapper.py",
         "test_handle.py",
@@ -187,6 +186,23 @@ py_test_module_list(
     },
     files = [
         "test_tracing_utils.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Gang scheduling tests
+py_test_module_list(
+    size = "large",
+    files = [
+        "test_gang_scheduling.py",
     ],
     tags = [
         "exclusive",
