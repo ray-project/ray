@@ -403,6 +403,17 @@ steps:
     depends_on:
       - forge
 
+  - label: ":tapioca: smoke test build-image.sh --help"
+    tags:
+      - python_dependencies
+      - docker
+      - oss
+    instance_type: small
+    commands:
+      - ./build-image.sh --help
+    depends_on:
+      - forge
+
   - label: ":tapioca: generate nightly indexes"
     instance_type: small
     tags:
