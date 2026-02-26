@@ -93,7 +93,7 @@ def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     assert num_bytes == expected_num_bytes
 
 
-def test_add_rows_with_different_column_names():
+def test_add_rows_with_different_column_names(ray_start_regular_shared):
     builder = ArrowBlockBuilder()
 
     builder.add({"col1": "spam"})
@@ -194,7 +194,7 @@ def test_random_shuffle(ray_start_regular_shared):
     ), "The shuffled data should contain all the original values"
 
 
-def test_register_arrow_types(tmp_path):
+def test_register_arrow_types(ray_start_regular_shared, tmp_path):
     # Test that our custom arrow extension types are registered on initialization.
     ds = ray.data.from_items(np.zeros((8, 8, 8), dtype=np.int64))
     tmp_file = f"{tmp_path}/test.parquet"
@@ -299,7 +299,7 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
         ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
 
 
-def test_arrow_nan_element():
+def test_arrow_nan_element(ray_start_regular_shared):
     ds = ray.data.from_items(
         [
             1.0,
