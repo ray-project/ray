@@ -343,7 +343,7 @@ If you are using built-in PyTorch datasets, for example from ``torchvision``, th
 
 .. testcode::
     :skipif: True
-    
+
     import torchvision
     import ray
 
