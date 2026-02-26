@@ -1063,6 +1063,7 @@ class NCCLGroup(BaseGroup):
             for i, t in enumerate(input_tensor_list):
                 nccl_util.copy_tensor(input_buffer[i], t)
 
+        _check_inputs_compatibility_for_scatter_gather([tensor], [input_tensor_list])
         self._collective(
             input_buffer, tensor, collective_fn, preprocess_fn=preprocess_fn
         )
