@@ -36,6 +36,7 @@ class TorchMLPHead(TorchModel):
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_layer_use_layernorm=config.output_layer_use_layernorm,
             output_weights_initializer=config.output_layer_weights_initializer,
             output_weights_initializer_config=(
                 config.output_layer_weights_initializer_config
@@ -94,6 +95,7 @@ class TorchFreeLogStdMLPHead(TorchModel):
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_layer_use_layernorm=config.output_layer_use_layernorm,
             output_weights_initializer=config.output_layer_weights_initializer,
             output_weights_initializer_config=(
                 config.output_layer_weights_initializer_config
