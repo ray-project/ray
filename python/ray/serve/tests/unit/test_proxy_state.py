@@ -907,7 +907,7 @@ class TestFallbackProxy:
         manager.update(proxy_nodes={HEAD_NODE_ID})
         assert manager._fallback_proxy_state.status == ProxyStatus.HEALTHY
         assert manager._fallback_proxy_state._actor_proxy_wrapper.num_health_checks > 0
-    
+
     def test_get_fallback_proxy_targets(self):
         """get_fallback_proxy_targets() should return the fallback proxy targets
         when the fallback proxy is set and healthy."""
