@@ -34,6 +34,7 @@ def main(args):
         # Filter region by name
         region_filtered = region.filter(expr=col("r_name") == "ASIA")
 
+        # Join region with nation (Ray join) to restrict to the target region
         nation_region = region_filtered.join(
             nation,
             num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
@@ -42,49 +43,39 @@ def main(args):
             right_on=("n_regionkey",),
         )
 
-        import pandas as pd
-
-        # Broadcast join: nation_region is tiny (~5 rows for ASIA). Materializing it
-        # and merging per-batch avoids shuffling the large supplier/customer tables.
-        # TODO: Use Ray Data native join once it supports broadcast join optimization.
-        nation_region_pd = nation_region.to_pandas()[["n_nationkey", "n_name"]].copy()
-
-        def _join_supplier(batch: pd.DataFrame) -> pd.DataFrame:
-            out = batch.merge(
-                nation_region_pd,
-                left_on="s_nationkey",
-                right_on="n_nationkey",
-                how="inner",
-            )
-            return out.rename(
-                columns={
-                    "n_nationkey": "n_nationkey_supp",
-                    "n_name": "n_name_supp",
-                }
-            )
-
-        supplier_nation = supplier.map_batches(
-            _join_supplier,
-            batch_format="pandas",
+        # Keep only needed nation columns and construct small helper tables
+        # for supplier / customer so that join keys are consistently named
+        asia_for_supplier = (
+            nation_region.select_columns(["n_nationkey", "n_name"])
+            .rename_columns({"n_nationkey": "s_nationkey"})
+        )
+        asia_for_customer = (
+            nation_region.select_columns(["n_nationkey", "n_name"])
+            .rename_columns({"n_nationkey": "c_nationkey"})
         )
 
-        def _join_customer(batch: pd.DataFrame) -> pd.DataFrame:
-            out = batch.merge(
-                nation_region_pd,
-                left_on="c_nationkey",
-                right_on="n_nationkey",
-                how="inner",
-            )
-            return out.rename(
-                columns={
-                    "n_nationkey": "n_nationkey_cust",
-                    "n_name": "n_name_cust",
-                }
-            )
+        # supplier ⋈ asia_for_supplier (Ray join), get supplier nations
+        supplier_nation = supplier.join(
+            asia_for_supplier,
+            num_partitions=16,
+            join_type="inner",
+            on=("s_nationkey",),
+        )
+        supplier_nation = (
+            supplier_nation.rename_columns({"n_name": "n_name_supp"})
+            .select_columns(["s_suppkey", "s_nationkey", "n_name_supp"])
+        )
 
-        customer_nation = customer.map_batches(
-            _join_customer,
-            batch_format="pandas",
+        # customer ⋈ asia_for_customer (Ray join), get customer nations
+        customer_nation = customer.join(
+            asia_for_customer,
+            num_partitions=16,
+            join_type="inner",
+            on=("c_nationkey",),
+        )
+        customer_nation = (
+            customer_nation.rename_columns({"n_name": "n_name_cust"})
+            .select_columns(["c_custkey", "c_nationkey", "n_name_cust"])
         )
 
         orders_filtered = orders.filter(
@@ -109,13 +100,17 @@ def main(args):
             right_on=("o_orderkey",),
         )
 
+        # lineitem_orders ⋈ supplier_nation (Ray join)
         ds = lineitem_orders.join(
             supplier_nation,
             num_partitions=16,
             join_type="inner",
-            on=("l_suppkey", "n_nationkey_cust"),
-            right_on=("s_suppkey", "n_nationkey_supp"),
+            on=("l_suppkey",),
+            right_on=("s_suppkey",),
         )
+
+        # Keep only local suppliers: customer and supplier share the same nation
+        ds = ds.filter(expr=col("c_nationkey") == col("s_nationkey"))
 
         # Calculate revenue
         ds = ds.with_column(
