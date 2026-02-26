@@ -4540,8 +4540,9 @@ class DeploymentStateManager:
             if gang_config is None:
                 continue
 
-            num_replicas_to_add = max(0, deployment_state.get_target_replica_delta())
+            num_replicas_to_add = deployment_state.get_target_replica_delta()
             if num_replicas_to_add <= 0:
+                # Only reserve PGs if we need to add replicas
                 continue
 
             # Skip if deployment is terminally failed
