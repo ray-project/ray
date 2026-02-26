@@ -3956,6 +3956,24 @@
     script: >
       pytest -sv test_llm_serve_multi_node_integration.py
 
+- name: llm_serve_dp_engine_fault
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu128
+    cluster_compute: llm_2x_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      pip install -e plugins/vllm_fault &&
+      pytest -sv test_llm_serve_dp_engine_fault.py
+
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
   python: "3.11"
