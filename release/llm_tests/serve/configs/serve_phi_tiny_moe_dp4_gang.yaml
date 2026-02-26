@@ -5,7 +5,7 @@ applications:
           model_id: microsoft/Phi-tiny-MoE-instruct
           model_source: microsoft/Phi-tiny-MoE-instruct
         deployment_config:
-          num_replicas: 8
+          num_replicas: 2
         engine_kwargs:
           tensor_parallel_size: 1
           pipeline_parallel_size: 1
