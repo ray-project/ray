@@ -34,7 +34,7 @@ TEST(CgroupManagerTest, CreateReturnsInvalidIfCgroupv2NotAvailable) {
 
   driver->check_cgroup_enabled_s_ = Status::Invalid("");
   auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup/ray", "node_id_123", 100, 1000000, std::move(driver));
+      "/sys/fs/cgroup/ray", "node_id_123", 100, 1000000, 0, 0, 0, std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.IsInvalid()) << cgroup_manager_s.ToString();
   // No visible side-effects
   ASSERT_EQ(cgroups->size(), 1);
@@ -46,8 +46,14 @@ TEST(CgroupManagerTest, CreateReturnsNotFoundIfBaseCgroupDoesNotExist) {
       std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
   driver->check_cgroup_s_ = Status::NotFound("");
-  auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup/ray", "node_id_123", 100, 1000000, std::move(driver));
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup/ray",
+                                                "node_id_123",
+                                                100,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                10000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.IsNotFound()) << cgroup_manager_s.ToString();
   // No visible side-effects
   ASSERT_EQ(cgroups->size(), 0);
@@ -61,8 +67,14 @@ TEST(CgroupManagerTest,
   FakeCgroup base_cgroup{"/sys/fs/cgroup"};
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
   driver->check_cgroup_s_ = Status::PermissionDenied("");
-  auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup/ray", "node_id_123", 100, 1000000, std::move(driver));
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup/ray",
+                                                "node_id_123",
+                                                100,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                100000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.IsPermissionDenied()) << cgroup_manager_s.ToString();
   // No visible side-effects
   ASSERT_EQ(cgroups->size(), 1);
@@ -75,8 +87,14 @@ TEST(CgroupManagerTest, CreateReturnsInvalidIfSupportedControllersAreNotAvailabl
   cgroups->emplace("/sys/fs/cgroup", FakeCgroup{"/sys/fs/cgroup"});
   FakeCgroup base_cgroup{"/sys/fs/cgroup"};
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
-  auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup",
+                                                "node_id_123",
+                                                100,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                100000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.IsInvalid()) << cgroup_manager_s.ToString();
   // No visible side-effects
   ASSERT_EQ(cgroups->size(), 1);
@@ -89,8 +107,15 @@ TEST(CgroupManagerTest, CreateReturnsInvalidArgumentIfConstraintValuesOutOfBound
   cgroups->emplace("/sys/fs/cgroup", FakeCgroup{"/sys/fs/cgroup"});
   FakeCgroup base_cgroup{"/sys/fs/cgroup"};
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
-  auto cgroup_manager_s =
-      CgroupManager::Create("/sys/fs/cgroup", "node_id_123", -1, -1, std::move(driver));
+  // cpu_weight -1 is out of bounds [1, 10000]
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup",
+                                                "node_id_123",
+                                                -1,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                100000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.IsInvalidArgument()) << cgroup_manager_s.ToString();
   // No visible side-effects
   ASSERT_EQ(cgroups->size(), 1);
@@ -139,12 +164,18 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   std::string workers_cgroup_path = "/sys/fs/cgroup/ray-node_id_123/user/workers";
   std::string non_ray_cgroup_path = "/sys/fs/cgroup/ray-node_id_123/user/non-ray";
   int64_t system_reserved_cpu_weight = 1000;
-  int64_t system_reserved_memory_bytes = 1024 * 1024 * 1024;
+  int64_t system_memory_bytes_min = 1024 * 1024 * 1024;
+  int64_t system_memory_bytes_low = 1024 * 1024 * 1024;
+  int64_t user_memory_high_bytes = 10 * 1024 * static_cast<int64_t>(1024 * 1024);
+  int64_t user_memory_max_bytes = 10 * 1024 * static_cast<int64_t>(1024 * 1024);
 
   auto cgroup_manager_s = CgroupManager::Create(base_cgroup_path,
                                                 node_id,
                                                 system_reserved_cpu_weight,
-                                                system_reserved_memory_bytes,
+                                                system_memory_bytes_min,
+                                                system_memory_bytes_low,
+                                                user_memory_high_bytes,
+                                                user_memory_max_bytes,
                                                 std::move(owned_driver));
 
   // The cgroup hierarchy was created correctly.
@@ -166,6 +197,7 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   ASSERT_EQ(base_cgroup.enabled_controllers_.size(), 2);
   ASSERT_EQ(node_cgroup.enabled_controllers_.size(), 2);
   ASSERT_EQ(system_cgroup.enabled_controllers_.size(), 1);
+  ASSERT_EQ(user_cgroup.enabled_controllers_.size(), 1);
 
   // cpu controllers are enabled on base, and node.
   std::array<const std::string *, 2> cpu_controlled_cgroup_paths{&base_cgroup_path,
@@ -176,9 +208,9 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
     ASSERT_NE(cg.enabled_controllers_.find("cpu"), cg.enabled_controllers_.end());
   }
 
-  // memory controllers are enabled on base, node, and system
-  std::array<const std::string *, 3> memory_controlled_cgroup_paths{
-      &base_cgroup_path, &node_cgroup_path, &system_cgroup_path};
+  // memory controllers are enabled on base, node, system, and user
+  std::array<const std::string *, 4> memory_controlled_cgroup_paths{
+      &base_cgroup_path, &node_cgroup_path, &system_cgroup_path, &user_cgroup_path};
 
   for (const auto cg_path : memory_controlled_cgroup_paths) {
     const FakeCgroup &cg = cgroups->at(*cg_path);
@@ -190,19 +222,28 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   ASSERT_EQ(non_ray_cgroup.processes_.size(), 1);
 
   // The memory and cpu constraints were enabled correctly on the system cgroup.
-  ASSERT_EQ(system_cgroup.constraints_.size(), 2);
+  ASSERT_EQ(system_cgroup.constraints_.size(), 3);
   ASSERT_NE(system_cgroup.constraints_.find("cpu.weight"),
             system_cgroup.constraints_.end());
   ASSERT_EQ(system_cgroup.constraints_.at("cpu.weight"),
             std::to_string(system_reserved_cpu_weight));
   ASSERT_EQ(system_cgroup.constraints_.at("memory.min"),
-            std::to_string(system_reserved_memory_bytes));
+            std::to_string(system_memory_bytes_min));
+  ASSERT_EQ(system_cgroup.constraints_.at("memory.low"),
+            std::to_string(system_memory_bytes_low));
 
-  // The cpu constraints were enabled correctly on the user cgroup.
-  ASSERT_EQ(user_cgroup.constraints_.size(), 1);
+  // The cpu and memory constraints were enabled correctly on the user cgroup.
+  ASSERT_EQ(user_cgroup.constraints_.size(), 3);
   ASSERT_NE(user_cgroup.constraints_.find("cpu.weight"), user_cgroup.constraints_.end());
   // (10000 - system_reserved_cpu_weight)
   ASSERT_EQ(user_cgroup.constraints_.at("cpu.weight"), "9000");
+  // memory.high and memory.max constraints
+  ASSERT_NE(user_cgroup.constraints_.find("memory.high"), user_cgroup.constraints_.end());
+  ASSERT_EQ(user_cgroup.constraints_.at("memory.high"),
+            std::to_string(user_memory_high_bytes));
+  ASSERT_NE(user_cgroup.constraints_.find("memory.max"), user_cgroup.constraints_.end());
+  ASSERT_EQ(user_cgroup.constraints_.at("memory.max"),
+            std::to_string(user_memory_max_bytes));
 
   // Switching to cleanup mode to record cleanup operations.
   driver->cleanup_mode_ = true;
@@ -220,7 +261,7 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   // operations was correct.
   //
   // Constraints have to be disabled before controllers are disabled.
-  ASSERT_EQ(constraints_disabled->size(), 3);
+  ASSERT_EQ(constraints_disabled->size(), 6);
 
   // Since constraints were enabled on sibling nodes, the order in which you disable
   // them does not matter.
@@ -243,22 +284,47 @@ TEST(CgroupManagerTest, CreateSucceedsWithCleanupInOrder) {
   ASSERT_EQ(
       std::count_if(constraints_disabled->begin(),
                     constraints_disabled->end(),
+                    [&system_cgroup_path](const std::pair<int, FakeConstraint> &item) {
+                      return item.second.cgroup_ == system_cgroup_path &&
+                             item.second.name_ == "memory.low";
+                    }),
+      1);
+  ASSERT_EQ(
+      std::count_if(constraints_disabled->begin(),
+                    constraints_disabled->end(),
                     [&user_cgroup_path](const std::pair<int, FakeConstraint> &item) {
                       return item.second.cgroup_ == user_cgroup_path &&
                              item.second.name_ == "cpu.weight";
                     }),
       1);
+  ASSERT_EQ(
+      std::count_if(constraints_disabled->begin(),
+                    constraints_disabled->end(),
+                    [&user_cgroup_path](const std::pair<int, FakeConstraint> &item) {
+                      return item.second.cgroup_ == user_cgroup_path &&
+                             item.second.name_ == "memory.high";
+                    }),
+      1);
+  ASSERT_EQ(
+      std::count_if(constraints_disabled->begin(),
+                    constraints_disabled->end(),
+                    [&user_cgroup_path](const std::pair<int, FakeConstraint> &item) {
+                      return item.second.cgroup_ == user_cgroup_path &&
+                             item.second.name_ == "memory.max";
+                    }),
+      1);
 
   // Controllers were disabled second.
-  ASSERT_EQ(controllers_disabled->size(), 5);
+  ASSERT_EQ(controllers_disabled->size(), 6);
   // Controllers must be disabled after the constraints are removed.
   ASSERT_LT(constraints_disabled->back().first, controllers_disabled->front().first);
   // Check to see controllers are disabled.
-  ASSERT_EQ((*controllers_disabled)[0].second.cgroup_, system_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[1].second.cgroup_, node_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[2].second.cgroup_, base_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[3].second.cgroup_, node_cgroup_path);
-  ASSERT_EQ((*controllers_disabled)[4].second.cgroup_, base_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[0].second.cgroup_, user_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[1].second.cgroup_, system_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[2].second.cgroup_, node_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[3].second.cgroup_, base_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[4].second.cgroup_, node_cgroup_path);
+  ASSERT_EQ((*controllers_disabled)[5].second.cgroup_, base_cgroup_path);
 
   // The memory and cpu controller are both disabled for each cgroup
   for (const auto cg_path : cpu_controlled_cgroup_paths) {
@@ -325,8 +391,14 @@ TEST(CgroupManagerTest, AddProcessToSystemCgroupFailsIfInvalidProcess) {
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
   driver->add_process_to_cgroup_s_ = Status::InvalidArgument("");
 
-  auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup",
+                                                "node_id_123",
+                                                100,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                100000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
@@ -344,8 +416,14 @@ TEST(CgroupManagerTest, AddProcessToSystemCgroupIsFatalIfSystemCgroupDoesNotExis
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
   driver->add_process_to_cgroup_s_ = Status::NotFound("");
 
-  auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup",
+                                                "node_id_123",
+                                                100,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                100000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
@@ -365,8 +443,14 @@ TEST(CgroupManagerTest,
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
   driver->add_process_to_cgroup_s_ = Status::PermissionDenied("");
 
-  auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup",
+                                                "node_id_123",
+                                                100,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                100000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
@@ -386,8 +470,14 @@ TEST(
 
   std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
 
-  auto cgroup_manager_s = CgroupManager::Create(
-      "/sys/fs/cgroup", "node_id_123", 100, 1000000, std::move(driver));
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup",
+                                                "node_id_123",
+                                                100,
+                                                1000000,
+                                                1000000,
+                                                10000000,
+                                                100000000,
+                                                std::move(driver));
   ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
 
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());

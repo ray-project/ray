@@ -34,6 +34,10 @@ from ray.serve._private.constants import (
     BATCH_WAIT_TIME_BUCKETS_MS,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.tracing_utils import (
+    BatchTraceContextManager,
+    get_trace_context,
+)
 from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.exceptions import RayServeException
 from ray.serve.metrics import Counter, Gauge, Histogram
@@ -53,6 +57,7 @@ class _SingleRequest:
     flattened_args: List[Any]
     future: asyncio.Future
     request_context: serve.context._RequestContext
+    trace_context: Optional[Any]
 
 
 @dataclass
@@ -567,12 +572,17 @@ class _BatchQueue:
                 [req.request_context for req in batch]
             )
 
-            if isasyncgenfunction(func):
-                func_generator = func_future_or_generator
-                await self._consume_func_generator(func_generator, futures, len(batch))
-            else:
-                func_future = func_future_or_generator
-                await self._assign_func_results(func_future, futures, len(batch))
+            # As OTEL span cannot belong to multiple traces, we choose the first request’s context
+            # as the parent, so the span emitted by this batch will appear only in the first request’s trace.
+            with BatchTraceContextManager(batch[0].trace_context):
+                if isasyncgenfunction(func):
+                    func_generator = func_future_or_generator
+                    await self._consume_func_generator(
+                        func_generator, futures, len(batch)
+                    )
+                else:
+                    func_future = func_future_or_generator
+                    await self._assign_func_results(func_future, futures, len(batch))
 
             # Reset the batch request context after the batch is processed
             serve.context._set_batch_request_context([])
@@ -941,8 +951,11 @@ def batch(
 
             future = get_or_create_event_loop().create_future()
             request_context = serve.context._get_serve_request_context()
+            trace_context = get_trace_context()
             batch_queue.put(
-                _SingleRequest(self, flattened_args, future, request_context)
+                _SingleRequest(
+                    self, flattened_args, future, request_context, trace_context
+                )
             )
             return future
 
