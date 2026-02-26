@@ -60,6 +60,10 @@ class AbstractAllToAll(LogicalOperator):
         self.ray_remote_args = ray_remote_args or {}
         self.sub_progress_bar_names = sub_progress_bar_names
 
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
+
 
 class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for randomize_block_order."""
