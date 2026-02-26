@@ -15,7 +15,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.logical.rules.projection_pushdown import (
     _extract_input_columns_renaming_mapping,
 )
-from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType, _is_cudf_series
+from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
@@ -646,14 +646,11 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
 
         result = expr.fn(*args, **kwargs)
 
-        if not isinstance(
-            result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)
-        ) and not _is_cudf_series(result):
+        if not isinstance(result, (pd.Series, np.ndarray, pa.Array, pa.ChunkedArray)):
             function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
-                f"Expected type (pandas.Series, cudf.Series, numpy.ndarray, "
-                f"pyarrow.Array, or pyarrow.ChunkedArray)"
+                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, or pyarrow.ChunkedArray)"
             )
 
         return result

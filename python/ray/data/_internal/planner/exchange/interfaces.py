@@ -81,7 +81,7 @@ class ExchangeTaskSpec:
             return BlockType.PANDAS
         else:
             # NOTE: Unless desired batch-format is specified, avoid
-            #       overriding existing one. cudf is batch-format only (no block type).
+            #       overriding existing one
             return None
 
 
