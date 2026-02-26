@@ -276,9 +276,14 @@ class SGLangServer:
         if request.stream:
             gen_id = f"sglang-gen-{uuid.uuid4().hex}"
             created = int(time.time())
+            first_chunk = True
             async for delta_text, finish_reason in self._stream_generate(
                 request, prompt
             ):
+                delta: dict[str, Any] = {"content": delta_text}
+                if first_chunk:
+                    delta["role"] = "assistant"
+                    first_chunk = False
                 chunk_data = {
                     "id": gen_id,
                     "object": "chat.completion.chunk",
@@ -287,10 +292,7 @@ class SGLangServer:
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {
-                                "role": "assistant",
-                                "content": delta_text,
-                            },
+                            "delta": delta,
                             "finish_reason": finish_reason,
                         }
                     ],
