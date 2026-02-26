@@ -15,6 +15,9 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    EmbeddingCompletionRequest,
+    EmbeddingRequest,
+    EmbeddingResponse,
 )
 
 
@@ -228,6 +231,55 @@ class SGLangServer:
             model=getattr(request, "model", "default_model"),
             choices=all_choices,
             usage=usage_data,
+        )
+
+        yield resp
+
+    async def embeddings(
+        self, request: EmbeddingRequest, raw_request: Optional[Any] = None
+    ) -> AsyncGenerator[EmbeddingResponse, None]:
+        # Input handling follows SGLang's OpenAIServingEmbedding pattern:
+        # https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/openai/serving_embedding.py
+        if isinstance(request, EmbeddingCompletionRequest):
+            prompt = request.input
+        else:
+            # Chat embedding request - convert messages to prompt
+            prompt = format_messages_to_prompt(request.messages)
+
+        # async_encode handles both single strings and lists of strings
+        results = await self.engine.async_encode(prompt)
+        if not isinstance(results, list):
+            results = [results]
+
+        if not results:
+            raise RuntimeError(
+                "SGLang engine returned an empty response for embedding request."
+            )
+
+        # Build response following SGLang's _build_embedding_response pattern
+        data = []
+        total_prompt_tokens = 0
+
+        for idx, ret_item in enumerate(results):
+            data.append(
+                {
+                    "index": idx,
+                    "object": "embedding",
+                    "embedding": ret_item.get("embedding", []),
+                }
+            )
+            meta = ret_item.get("meta_info", {}) or {}
+            total_prompt_tokens += int(meta.get("prompt_tokens", 0))
+
+        resp = EmbeddingResponse(
+            object="list",
+            model=request.model or "",
+            data=data,
+            usage={
+                "prompt_tokens": total_prompt_tokens,
+                "total_tokens": total_prompt_tokens,
+                "completion_tokens": 0,
+            },
         )
 
         yield resp
