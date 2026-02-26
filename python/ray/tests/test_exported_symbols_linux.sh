@@ -31,4 +31,4 @@ symbols_non_ray="${TEST_TMPDIR}/raylet_exported_symbols.non_ray.txt"
 symbols_original="${TEST_TMPDIR}/raylet_exported_symbols.original.txt"
 nm "${nm_args[@]}" "${raylet_so}" | awk '{print $NF}' > "${symbols_original}"  # keep symbol names only
 grep -v '3ray' "${symbols_original}" > "${symbols_non_ray}"  # drop Ray mangled symbols; check only non-Ray leaks
-diff -u "${golden}" "${symbols_non_ray}"
+diff -u <(sort "${golden}") <(sort "${symbols_non_ray}")
