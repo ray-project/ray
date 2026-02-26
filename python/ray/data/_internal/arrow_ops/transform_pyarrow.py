@@ -888,20 +888,11 @@ def concat(
         else:
             mismatched_blocks.append(block)
 
-    if not matched_blocks:
-        return _concat_mismatched_blocks(
-            mismatched_blocks,
-            schema=schema,
-            tensor_types=tensor_types,
-            promote_types=promote_types,
-        )
-
-    matched_table = pa.concat_tables(matched_blocks)
-    if not mismatched_blocks:
-        return matched_table
+    if matched_blocks:
+        mismatched_blocks.append(pa.concat_tables(matched_blocks))
 
     return _concat_mismatched_blocks(
-        [matched_table] + mismatched_blocks,
+        mismatched_blocks,
         schema=schema,
         tensor_types=tensor_types,
         promote_types=promote_types,
@@ -979,33 +970,6 @@ def _concat_mismatched_blocks(
     concatenated_cols.update(
         _concat_cols_via_concat_tables(concatable_cols, blocks, promote_types)
     )
-
-    # When blocks are split by schema match, the mismatched group may
-    # contain only blocks with a single fixed-shape tensor type.
-    # unify_tensor_arrays short-circuits when it sees one distinct type,
-    # leaving the column as-is even though the unified schema expects a
-    # variable-shaped type.  Explicitly promote here so Table.from_arrays
-    # doesn't attempt an unsupported extension-to-extension cast.
-    from ray.data._internal.tensor_extensions.arrow import (
-        ArrowVariableShapedTensorType,
-    )
-
-    for col_name in schema.names:
-        expected_type = schema.field(col_name).type
-        if col_name not in concatenated_cols:
-            continue
-        actual_type = concatenated_cols[col_name].type
-        if actual_type == expected_type:
-            continue
-        if isinstance(expected_type, ArrowVariableShapedTensorType) and isinstance(
-            actual_type, tensor_types
-        ):
-            chunks = concatenated_cols[col_name].chunks
-            converted = [
-                chunk.to_var_shaped_tensor_array(ndim=expected_type.ndim)
-                for chunk in chunks
-            ]
-            concatenated_cols[col_name] = pyarrow.chunked_array(converted)
 
     return pyarrow.Table.from_arrays(
         [concatenated_cols[col_name] for col_name in schema.names], schema=schema
