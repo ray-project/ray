@@ -41,8 +41,6 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data.expressions import Expr
-
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
@@ -315,26 +313,6 @@ class CudfBlockAccessor(TableBlockAccessor):
     def _empty_table() -> "cudf.DataFrame":
         cudf = _lazy_import_cudf()
         return cudf.DataFrame()
-
-    def filter(self, predicate_expr: "Expr") -> "cudf.DataFrame":
-        """Filter rows based on a predicate expression (cuDF-native)."""
-        if len(self._table) == 0:
-            return self._table
-
-        from ray.data._internal.planner.plan_expression.expression_evaluator import (
-            eval_expr,
-        )
-
-        # eval_expr supports cuDF blocks natively - returns cudf.Series (boolean mask)
-        mask = eval_expr(predicate_expr, self._table)
-
-        # Scalar result (e.g. literal True/False or pyarrow.Scalar)
-        if isinstance(mask, bool):
-            return self._table if mask else self._empty_table()
-        if hasattr(mask, "as_py"):
-            return self._table if mask.as_py() else self._empty_table()
-        # Boolean mask - apply directly to cuDF DataFrame
-        return self._table[mask]
 
     def iter_rows(
         self, public_row_format: bool

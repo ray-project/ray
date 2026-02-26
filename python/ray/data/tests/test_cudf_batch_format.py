@@ -534,20 +534,6 @@ class TestCudfBlockAccessor:
         np.testing.assert_array_equal(result["a"], np.array([1, 2]))
         np.testing.assert_array_equal(result["b"], np.array([3, 4]))
 
-    def test_filter_expr(self):
-        """CudfBlockAccessor.filter with expression (direct block-level test)."""
-        df = cudf.DataFrame({"a": [1, 2, 3, 4, 5]})
-        acc = self._acc(df)
-        result = acc.filter(col("a") > 3)
-        cudf.testing.assert_eq(result, cudf.DataFrame({"a": [4, 5]}))
-
-    def test_filter_empty_table(self):
-        """CudfBlockAccessor.filter on empty table returns empty."""
-        df = cudf.DataFrame()
-        acc = self._acc(df)
-        result = acc.filter(col("a") > 0)
-        assert len(result) == 0
-
 
 class TestCudfRow:
     """Tests for CudfRow (cudf_block.py) via iter_rows."""

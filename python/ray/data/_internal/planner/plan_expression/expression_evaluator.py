@@ -15,14 +15,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.logical.rules.projection_pushdown import (
     _extract_input_columns_renaming_mapping,
 )
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockColumn,
-    BlockType,
-    _is_cudf_dataframe,
-    _is_cudf_series,
-)
+from ray.data.block import Block, BlockAccessor, BlockColumn, BlockType, _is_cudf_series
 from ray.data.expressions import (
     AliasExpr,
     BinaryExpr,
@@ -69,33 +62,6 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.IN: lambda left, right: left.isin(right),
     Operation.NOT_IN: lambda left, right: ~left.isin(right),
 }
-
-
-def _get_cudf_expr_ops_map() -> Dict[Operation, Callable[..., Any]]:
-    """cuDF expression ops - pandas-like but use cudf.isna/cudf.notna."""
-    import cudf
-
-    return {
-        Operation.ADD: operator.add,
-        Operation.SUB: operator.sub,
-        Operation.MUL: operator.mul,
-        Operation.DIV: operator.truediv,
-        Operation.MOD: operator.mod,
-        Operation.FLOORDIV: operator.floordiv,
-        Operation.GT: operator.gt,
-        Operation.LT: operator.lt,
-        Operation.GE: operator.ge,
-        Operation.LE: operator.le,
-        Operation.EQ: operator.eq,
-        Operation.NE: operator.ne,
-        Operation.AND: operator.and_,
-        Operation.OR: operator.or_,
-        Operation.NOT: operator.invert,
-        Operation.IS_NULL: cudf.isna,
-        Operation.IS_NOT_NULL: cudf.notna,
-        Operation.IN: lambda left, right: left.isin(right),
-        Operation.NOT_IN: lambda left, right: ~left.isin(right),
-    }
 
 
 def _is_pa_string_type(t: pa.DataType) -> bool:
@@ -607,18 +573,14 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         self.block = block
         self.block_accessor = BlockAccessor.for_block(block)
 
-        # Use block type to determine operation mappings.
-        # cudf is batch-format only, so detect it via isinstance rather than BlockType.
-        if _is_cudf_dataframe(block):
-            self.ops = _get_cudf_expr_ops_map()
+        # Use BlockAccessor to determine operation mappings
+        block_type = self.block_accessor.block_type()
+        if block_type == BlockType.PANDAS:
+            self.ops = _PANDAS_EXPR_OPS_MAP
+        elif block_type == BlockType.ARROW:
+            self.ops = _ARROW_EXPR_OPS_MAP
         else:
-            block_type = self.block_accessor.block_type()
-            if block_type == BlockType.PANDAS:
-                self.ops = _PANDAS_EXPR_OPS_MAP
-            elif block_type == BlockType.ARROW:
-                self.ops = _ARROW_EXPR_OPS_MAP
-            else:
-                raise TypeError(f"Unsupported block type: {block_type}")
+            raise TypeError(f"Unsupported block type: {block_type}")
 
     def visit_column(self, expr: ColumnExpr) -> Union[BlockColumn, ScalarType]:
         """Visit a column expression and return the column data.
@@ -779,10 +741,6 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
         partition_mask = ctx.task_idx << ROW_BITS
         ids = partition_mask + np.arange(start_idx, end_idx, dtype=np.int64)
 
-        if _is_cudf_dataframe(self.block):
-            import cudf
-
-            return cudf.Series(ids)
         block_type = self.block_accessor.block_type()
         if block_type == BlockType.PANDAS:
             return pd.Series(ids)
