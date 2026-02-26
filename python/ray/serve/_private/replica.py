@@ -74,8 +74,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
     RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
-    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
@@ -130,6 +131,17 @@ from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
     extract_route_patterns,
     get_asgi_route_name,
+)
+from ray.serve._private.tracing_utils import (
+    TraceContextManager,
+    extract_propagated_context,
+    is_span_recording,
+    is_tracing_enabled,
+    set_http_span_attributes,
+    set_rpc_span_attributes,
+    set_span_attributes,
+    set_span_exception,
+    setup_tracing,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -1328,7 +1340,14 @@ class ReplicaBase(ABC):
         # Design: We return it so it can be passed to _wrap_request() which
         # stores it in _RequestContext. Users can then access it via serve.context
         # if needed (advanced use case), while keeping it out of their method signatures.
+        #
+        # For gRPC requests (when using RAY_SERVE_USE_GRPC_BY_DEFAULT),
+        # the _ray_trace_ctx is not injected into kwargs since there's no Ray actor
+        # call. Instead, the tracing context is passed via request_metadata.tracing_context.
+        # We fall back to using that if _ray_trace_ctx is not in kwargs.
         ray_trace_ctx = request_kwargs.pop("_ray_trace_ctx", None)
+        if ray_trace_ctx is None:
+            ray_trace_ctx = request_metadata.tracing_context
 
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
@@ -1707,6 +1726,20 @@ class Replica(ReplicaBase):
 
         super().__init__(**kwargs)
 
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
@@ -1899,6 +1932,33 @@ class Replica(ReplicaBase):
             return super()._can_accept_request(request_metadata)
 
     @contextmanager
+    def _tracing_context(self, request_metadata: RequestMetadata):
+        if not is_tracing_enabled():
+            yield
+            return
+
+        call_method = request_metadata.call_method
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name=f"replica_handle_request {self._deployment_id.name} {call_method}",
+            trace_context=trace_context,
+        )
+        with trace_manager:
+            if is_span_recording():
+                trace_attributes = {
+                    "request_id": request_metadata.request_id,
+                    "replica_id": self._replica_id.unique_id,
+                    "deployment": self._deployment_id.name,
+                    "app": self._deployment_id.app_name,
+                    "call_method": request_metadata.call_method,
+                    "route": request_metadata.route,
+                    "multiplexed_model_id": request_metadata.multiplexed_model_id,
+                    "is_streaming": request_metadata.is_streaming,
+                }
+                set_span_attributes(trace_attributes)
+            yield
+
+    @contextmanager
     def _wrap_request(
         self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
     ) -> Generator[StatusCodeCallback, None, None]:
@@ -1908,22 +1968,53 @@ class Replica(ReplicaBase):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(
-                route=request_metadata.route,
-                request_id=request_metadata.request_id,
-                _internal_request_id=request_metadata.internal_request_id,
-                app_name=self._deployment_id.app_name,
-                multiplexed_model_id=request_metadata.multiplexed_model_id,
-                grpc_context=request_metadata.grpc_context,
-                cancel_on_parent_request_cancel=self._ingress
-                and RAY_SERVE_ENABLE_DIRECT_INGRESS,
-                _ray_trace_ctx=ray_trace_ctx,
+        with self._tracing_context(request_metadata):
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context._RequestContext(
+                    route=request_metadata.route,
+                    request_id=request_metadata.request_id,
+                    _internal_request_id=request_metadata.internal_request_id,
+                    app_name=self._deployment_id.app_name,
+                    multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    grpc_context=request_metadata.grpc_context,
+                    cancel_on_parent_request_cancel=self._ingress
+                    and RAY_SERVE_ENABLE_DIRECT_INGRESS,
+                    _ray_trace_ctx=ray_trace_ctx,
+                )
             )
+
+            with self._handle_errors_and_metrics(
+                request_metadata
+            ) as status_code_callback:
+                yield status_code_callback
+
+    def _record_errors_and_metrics(
+        self,
+        user_exception: Optional[BaseException],
+        status_code: Optional[str],
+        latency_ms: float,
+        request_metadata: RequestMetadata,
+    ):
+        super()._record_errors_and_metrics(
+            user_exception, status_code, latency_ms, request_metadata
         )
 
-        with self._handle_errors_and_metrics(request_metadata) as status_code_callback:
-            yield status_code_callback
+        if is_span_recording():
+            if request_metadata.is_http_request:
+                set_http_span_attributes(
+                    method=request_metadata._http_method,
+                    status_code=status_code,
+                    route=request_metadata.route,
+                )
+            else:
+                set_rpc_span_attributes(
+                    system=request_metadata._request_protocol,
+                    method=request_metadata.call_method,
+                    status_code=status_code,
+                    service=self._deployment_id.name,
+                )
+            if user_exception is not None:
+                set_span_exception(user_exception, escaped=False)
 
     @_wrap_grpc_call
     async def HandleRequest(
@@ -2051,6 +2142,23 @@ class Replica(ReplicaBase):
 
         return healthy, message
 
+    def get_grpc_tracing_context(self, context: grpc._cython.cygrpc._ServicerContext):
+        """Populate tracing context for gRPC requests.
+
+        This method extracts the "traceparent" metadata from the request headers and
+        sets the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        tracing_ctx = {}
+        for key, value in context.invocation_metadata():
+            if key in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key] = value
+
+        return tracing_ctx
+
     async def _direct_ingress_unary_unary(
         self,
         service_method: str,
@@ -2092,7 +2200,7 @@ class Replica(ReplicaBase):
             # TODO(edoakes): populate this.
             multiplexed_model_id="",
             route=self._deployment_id.app_name,
-            tracing_context=None,
+            tracing_context=self.get_grpc_tracing_context(context),
             is_streaming=False,
             is_direct_ingress=True,
         )
@@ -2196,6 +2304,24 @@ class Replica(ReplicaBase):
             raise ValueError(f"Unsupported streaming type: {streaming_type}")
 
         return handler
+
+    def get_asgi_tracing_context(self, headers: List[Tuple[bytes, bytes]]):
+        """Extract tracing context from ASGI request headers.
+
+        This method extracts both "traceparent" and "tracestate" headers from the
+        request headers to maintain proper trace context propagation.
+        """
+        if not is_tracing_enabled():
+            return None
+
+        tracing_ctx = None
+        for key, value in headers:
+            key_str = key.decode()
+            if key_str in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key_str] = value.decode()
+
+        return tracing_ctx
 
     def _determine_http_route(self, scope: Scope) -> str:
         # Default to route prefix for consistency with non-DI mode
@@ -2313,7 +2439,7 @@ class Replica(ReplicaBase):
             multiplexed_model_id="",
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
-            tracing_context=None,
+            tracing_context=self.get_asgi_tracing_context(scope["headers"]),
             _http_method=scope.get("method", "WS"),
             is_direct_ingress=True,
         )
@@ -2727,7 +2853,8 @@ class UserCallableWrapper:
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
-        self._warned_about_sync_method_change = False
+        self._warned_about_sync_method_event_loop = False
+        self._warned_about_sync_method_threadpool = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
         # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
@@ -2916,6 +3043,16 @@ class UserCallableWrapper:
         )
 
         if is_sync_method and run_sync_in_threadpool:
+            if (
+                not self._warned_about_sync_method_threadpool
+                and run_sync_methods_in_threadpool_override is None
+            ):
+                self._warned_about_sync_method_threadpool = True
+                warnings.warn(
+                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING.format(
+                        method_name=callable.__name__,
+                    )
+                )
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True
@@ -2946,12 +3083,12 @@ class UserCallableWrapper:
         else:
             if (
                 is_sync_method
-                and not self._warned_about_sync_method_change
+                and not self._warned_about_sync_method_event_loop
                 and run_sync_methods_in_threadpool_override is None
             ):
-                self._warned_about_sync_method_change = True
+                self._warned_about_sync_method_event_loop = True
                 warnings.warn(
-                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING.format(
+                    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING.format(
                         method_name=callable.__name__,
                     )
                 )
