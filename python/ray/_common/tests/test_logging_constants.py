@@ -17,7 +17,7 @@ def test_logrecord_standard_attrs_contains_standard_names():
 
 
 def test_logrecord_standard_attrs_has_expected_size():
-    assert len(LOGRECORD_STANDARD_ATTRS) >= 20
+    assert len(LOGRECORD_STANDARD_ATTRS) == 23
 
 
 if __name__ == "__main__":

@@ -27,20 +27,17 @@ def test_generate_self_signed_tls_certs_usable_for_ssl():
     import ssl
 
     cert_contents, key_contents = generate_self_signed_tls_certs()
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".crt", delete=False) as cf:
+    with (
+        tempfile.NamedTemporaryFile(mode="w", suffix=".crt") as cf,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".key") as kf,
+    ):
         cf.write(cert_contents)
-        cert_path = cf.name
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".key", delete=False) as kf:
+        cf.flush()
         kf.write(key_contents)
-        key_path = kf.name
-    try:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(cert_path, key_path)
-    finally:
-        import os
+        kf.flush()
 
-        os.unlink(cert_path)
-        os.unlink(key_path)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cf.name, kf.name)
 
 
 if __name__ == "__main__":

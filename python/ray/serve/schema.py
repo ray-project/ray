@@ -190,7 +190,7 @@ class LoggingConfig(BaseModel):
             if attr not in LOGRECORD_STANDARD_ATTRS:
                 raise ValueError(
                     f"Unknown attribute '{attr}'. "
-                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
+                    f"Additional log standard attributes must be one of {set(LOGRECORD_STANDARD_ATTRS)}."
                 )
         return list(set(v))
 

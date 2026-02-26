@@ -8,9 +8,9 @@ from ray._common.runtime_env_uri import Protocol, parse_uri
 
 
 def test_parse_uri_https():
-    protocol, path = parse_uri("https://test.com/file.zip")
+    protocol, package_name = parse_uri("https://test.com/file.zip")
     assert protocol == Protocol.HTTPS
-    assert "file" in path or "zip" in path
+    assert package_name == "https_test_com_file.zip"
 
 
 def test_parse_uri_whl_preserves_filename():
