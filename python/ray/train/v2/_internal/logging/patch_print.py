@@ -2,7 +2,7 @@ import builtins
 import contextlib
 import logging
 import sys
-from typing import Callable
+from typing import Callable, TextIO
 
 from ray._private.ray_constants import env_bool
 from ray.train.v2._internal.constants import (
@@ -10,8 +10,9 @@ from ray.train.v2._internal.constants import (
     ENABLE_PRINT_PATCH_ENV_VAR,
 )
 
-# Save the original print function
+# Save the original print function and original stdout
 _original_print = builtins.print
+_original_stdout = sys.stdout
 
 
 @contextlib.contextmanager
@@ -27,10 +28,12 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     """Implement python's print function to redirect logs to Train's logger.
 
     If the file is set to anything other than stdout, stderr, or None, call the
-    builtin print. Else, construct the message and redirect to Train's logger.
+    builtin print. If stdout has been redirected (e.g., via contextlib.redirect_stdout),
+    honor that redirection instead of logging. Otherwise, redirect to Train's logger.
 
     This makes sure that print to customized file in user defined function will not
-    be overwritten by the redirected print function.
+    be overwritten by the redirected print function, and respects stdout redirection
+    used by libraries like smart_open for docstring capture.
 
     See https://docs.python.org/3/library/functions.html#print
     """
@@ -38,7 +41,14 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     # should move this to ray core and make it available to both libraries.
 
     if file not in [sys.stdout, sys.stderr, None]:
-        return _original_print(objects, sep=sep, end=end, file=file, flush=flush)
+        return _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
+    
+    # If stdout has been redirected (e.g., via contextlib.redirect_stdout),
+    # honor that redirection instead of going to the logger. This fixes
+    # compatibility with libraries like smart_open that capture docstrings
+    # during import using redirect_stdout.
+    if sys.stdout is not _original_stdout:
+        return _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
 
     root_logger = logging.getLogger()
     message = sep.join(map(str, objects))

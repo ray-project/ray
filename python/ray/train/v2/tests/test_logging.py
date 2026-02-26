@@ -1,4 +1,6 @@
 import builtins
+import contextlib
+import io
 import logging
 import os
 
@@ -145,6 +147,53 @@ def test_worker_app_print_redirect(worker_logging):
     log_contents = get_file_contents(f"ray-train-app-worker-{worker_id}.log")
     assert "ham" in log_contents, log_contents
     assert "ham\\n" not in log_contents, log_contents
+
+
+def test_print_patch_respects_stdout_redirection(worker_logging):
+    """Test that print patch respects contextlib.redirect_stdout like smart_open uses.
+    
+    This test simulates what smart_open does during import - it uses
+    contextlib.redirect_stdout to capture docstring content during import.
+    The print patch should respect this redirection instead of logging.
+    
+    Regression test for: https://github.com/ray-project/ray/issues/61050
+    """
+    LoggingManager.configure_worker_logger(create_dummy_train_context())
+    patch_print_function()
+    
+    # Simulate smart_open's docstring capture during import
+    captured_output = io.StringIO()
+    with contextlib.redirect_stdout(captured_output):
+        print("docstring content")
+    
+    # The content should be captured in the StringIO, not logged
+    assert captured_output.getvalue() == "docstring content\n"
+    
+    # Verify it wasn't logged (this would be the bug)
+    worker_id = get_runtime_context().get_worker_id()
+    log_contents = get_file_contents(f"ray-train-app-worker-{worker_id}.log")
+    assert "docstring content" not in log_contents, (
+        "Print patch incorrectly logged redirected stdout content instead of "
+        "respecting the redirection. This breaks smart_open docstring capture."
+    )
+
+
+def test_print_patch_still_works_for_normal_prints(worker_logging):
+    """Test that normal print statements are still redirected to logging.
+    
+    This ensures our fix doesn't break the normal print patching behavior.
+    """
+    LoggingManager.configure_worker_logger(create_dummy_train_context())
+    patch_print_function()
+    worker_id = get_runtime_context().get_worker_id()
+    
+    # Normal print should still go to logging
+    print("normal print")
+    
+    log_contents = get_file_contents(f"ray-train-app-worker-{worker_id}.log")
+    assert "normal print" in log_contents, (
+        "Normal print statements should still be redirected to logging"
+    )
 
 
 if __name__ == "__main__":
