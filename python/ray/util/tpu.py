@@ -240,13 +240,13 @@ def get_num_ready_tpu_slices(
         if not pod_type:
             return 0
 
-        expected_nodes, _ = get_tpu_worker_resources(
+        expected_nodes_per_slice, _ = get_tpu_worker_resources(
             topology=topology,
             accelerator_type=accelerator_type,
             resources_per_unit=resources_per_worker,
             num_slices=1,
         )
-        if expected_nodes <= 0:
+        if expected_nodes_per_slice <= 0:
             return 0
 
     except Exception as e:
@@ -271,7 +271,7 @@ def get_num_ready_tpu_slices(
 
     ready_slices = 0
     for slice_name, nodes in slice_to_nodes.items():
-        if len(nodes) == expected_nodes:
+        if len(nodes) == expected_nodes_per_slice:
             # A ready TPU slice must have an available TPU head (worker rank 0) node.
             has_head = any(
                 n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
