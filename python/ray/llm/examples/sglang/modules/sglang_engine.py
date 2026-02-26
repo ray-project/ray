@@ -413,9 +413,13 @@ class SGLangServer:
         if isinstance(request, EmbeddingCompletionRequest):
             prompt = request.input
         else:
-            # Chat embedding request - convert messages to prompt
+            # Chat embedding request - join messages without the trailing
+            # "assistant:" generation cue that _render_fallback_prompt adds.
             chat_messages = self._build_chat_messages(request.messages)
-            prompt = self._render_fallback_prompt(chat_messages)
+            prompt = "\n".join(
+                f"{m.get('role', 'user')}: {m.get('content', '')}"
+                for m in chat_messages
+            )
 
         # async_encode handles both single strings and lists of strings
         results = await self.engine.async_encode(prompt)
