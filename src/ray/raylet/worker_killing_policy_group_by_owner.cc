@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,34 +14,61 @@
 
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
-#include <gtest/gtest_prod.h>
-
 #include <algorithm>
-#include <boost/container_hash/hash.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "ray/common/lease/lease.h"
-#include "ray/raylet/worker_interface.h"
-#include "ray/raylet/worker_pool.h"
 
 namespace ray {
 
 namespace raylet {
 
-GroupByOwnerIdWorkerKillingPolicy::GroupByOwnerIdWorkerKillingPolicy() {}
+std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
+    const std::vector<std::shared_ptr<WorkerInterface>> &workers,
+    const ProcessesMemorySnapshot &process_memory_snapshot,
+    const SystemMemorySnapshot &system_memory_snapshot) {
+  RAY_UNUSED(system_memory_snapshot);
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
+  for (const auto &worker_to_kill_or_should_retry : workers_being_killed_) {
+    std::shared_ptr<WorkerInterface> worker = worker_to_kill_or_should_retry.first;
+    if (worker->GetProcess().IsAlive()) {
+      RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetGrantedLeaseId())
+          << absl::StrFormat(
+                 "Still waiting for worker eviction to free up memory. worker pid: %d",
+                 worker->GetProcess().GetId());
+      remaining_alive_targets.push_back(worker_to_kill_or_should_retry);
+    }
+  }
+  workers_being_killed_ = remaining_alive_targets;
+  if (workers_being_killed_.empty()) {
+    workers_being_killed_ = Policy(workers, process_memory_snapshot);
+    if (workers_being_killed_.empty()) {
+      RAY_LOG_EVERY_MS(WARNING, 5000)
+          << "Worker killer did not select any workers to "
+             "kill even though memory usage is high. Object store "
+             "may be causing high memory pressure. Consider checking "
+             "if too many objects are unintentionally being stored.";
+    }
+    return workers_being_killed_;
+  }
+  // Else, there are workers still alive from the previous iteration.
+  // We need to wait until they are dead before we can kill more workers.
+  return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
+}
 
-std::pair<std::shared_ptr<WorkerInterface>, bool>
-GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
+std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+GroupByOwnerIdWorkerKillingPolicy::Policy(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     const ProcessesMemorySnapshot &process_memory_snapshot) const {
   if (workers.empty()) {
-    RAY_LOG_EVERY_MS(INFO, 5000) << "Worker list is empty. Nothing can be killed";
-    return std::make_pair(nullptr, /*should retry*/ false);
+    return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
   // Prioritize killing IDLE workers that don't have any lease granted and occupy
@@ -69,7 +96,8 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
             .WithField("memory_threshold", memory_threshold)
         << "Selected a worker that doesn't have any lease granted and occupies large "
            "amount of memory to kill. ";
-    return std::make_pair(idle_worker_to_kill, /*should retry*/ false);
+    return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>{
+        std::make_pair(idle_worker_to_kill, /*should retry*/ false)};
   }
 
   // Group workers by owner id
@@ -102,7 +130,7 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
     sorted.push_back(it->second);
   }
 
-  /// Prioritizes killing groups that are retriable, else it picks the largest group,
+  /// Prioritizes selecting groups that are retriable, else it picks the largest group,
   /// else it picks the newest group.
   std::sort(
       sorted.begin(), sorted.end(), [](const Group &left, const Group &right) -> bool {
@@ -127,8 +155,11 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkerToKill(
       "Sorted list of leases based on the policy: %s, Lease should be retried? %s",
       PolicyDebugString(sorted, process_memory_snapshot),
       should_retry ? "true" : "false");
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+      workers_to_kill_and_should_retry;
+  workers_to_kill_and_should_retry.emplace_back(worker_to_kill, should_retry);
 
-  return std::make_pair(worker_to_kill, should_retry);
+  return workers_to_kill_and_should_retry;
 }
 
 std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
@@ -136,26 +167,34 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
     const ProcessesMemorySnapshot &process_memory_snapshot) {
   std::stringstream result;
   int32_t group_index = 0;
-  for (auto &group : groups) {
+  for (const auto &group : groups) {
     if (group_index > 0) {
       result << ", ";
     }
-    result << "Leases (retriable: " << group.IsRetriable()
-           << ") (parent task id: " << group.OwnerId() << ") (Earliest granted time: "
-           << absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone()) << "): ";
+    result << absl::StrFormat(
+        "Leases (retriable: %d) (parent task id: %s) (Earliest granted "
+        "time: %s): ",
+        group.IsRetriable(),
+        group.OwnerId().Hex(),
+        absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone()));
 
     int64_t worker_index = 0;
-    for (auto &worker : group.GetAllWorkers()) {
-      int64_t used_memory = GetProcessUsedMemoryBytes(process_memory_snapshot,
-                                                      worker->GetProcess().GetId());
+    for (const auto &worker : group.GetAllWorkers()) {
       if (worker_index > 0) {
         result << ", ";
       }
-      result << "Lease granted time "
-             << absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone())
-             << " worker id " << worker->WorkerId() << " memory used " << used_memory
-             << " lease spec "
-             << worker->GetGrantedLease().GetLeaseSpecification().DebugString();
+      int64_t used_memory = GetProcessUsedMemoryBytes(process_memory_snapshot,
+                                                      worker->GetProcess().GetId());
+      const LeaseSpecification &lease_spec =
+          worker->GetGrantedLease().GetLeaseSpecification();
+      result << absl::StrFormat(
+          "Lease granted time %s worker id %s memory used %d lease_id %s "
+          "task_name %s",
+          absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone()),
+          worker->WorkerId().Hex(),
+          used_memory,
+          lease_spec.LeaseId().Hex(),
+          lease_spec.GetTaskName());
 
       worker_index += 1;
       if (worker_index > 10) {

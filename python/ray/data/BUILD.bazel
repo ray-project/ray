@@ -1073,7 +1073,7 @@ py_test(
 
 py_test(
     name = "test_operator_fusion",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_operator_fusion.py"],
     tags = [
         "exclusive",

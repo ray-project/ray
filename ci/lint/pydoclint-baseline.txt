@@ -190,8 +190,6 @@ python/ray/_private/services.py
     DOC101: Function `start_raylet`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `start_raylet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `start_raylet`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cluster_id: str, socket_to_use: Optional[int]].
-    DOC101: Function `determine_plasma_store_config`: Docstring contains fewer arguments than in function signature.
-    DOC103: Function `determine_plasma_store_config`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [temp_dir: str].
     DOC101: Function `start_monitor`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [autoscaler_v2: bool, fate_share: Optional[bool]].
     DOC101: Function `start_ray_client_server`: Docstring contains fewer arguments than in function signature.
@@ -1034,8 +1032,6 @@ python/ray/data/_internal/execution/interfaces/execution_options.py
     DOC103: Method `ExecutionResources.subtract`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [other: 'ExecutionResources'].
     DOC107: Method `ExecutionResources.satisfies_limit`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC201: Method `ExecutionResources.satisfies_limit` does not have a return section in docstring
-    DOC101: Method `ExecutionOptions.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ExecutionOptions.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [actor_locality_enabled: bool, exclude_resources: Optional[ExecutionResources], locality_with_output: Union[bool, List[NodeIdStr]], preserve_order: bool, resource_limits: Optional[ExecutionResources], verbose_progress: Optional[bool]].
 --------------------
 python/ray/data/_internal/execution/interfaces/executor.py
     DOC201: Method `OutputIterator.get_next` does not have a return section in docstring
@@ -1117,10 +1113,6 @@ python/ray/data/_internal/logical/operators/join_operator.py
     DOC001: Function/method `__init__`: Potential formatting errors in docstring. Error message: No specification for "Args": "" (Note: DOC001 could trigger other unrelated violations under this function/method too. Please fix the docstring formatting first.)
     DOC101: Method `Join.__init__`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `Join.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [aggregator_ray_remote_args: Optional[Dict[str, Any]], join_type: str, left_columns_suffix: Optional[str], left_input_op: LogicalOperator, left_key_columns: Tuple[str], num_partitions: int, partition_size_hint: Optional[int], right_columns_suffix: Optional[str], right_input_op: LogicalOperator, right_key_columns: Tuple[str]].
---------------------
-python/ray/data/_internal/logical/operators/map_operator.py
-    DOC101: Method `StreamingRepartition.__init__`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `StreamingRepartition.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [input_op: LogicalOperator].
 --------------------
 python/ray/data/_internal/logical/operators/n_ary_operator.py
     DOC001: Method `__init__` Potential formatting errors in docstring. Error message: No specification for "Args": ""
@@ -1216,12 +1208,6 @@ python/ray/data/preprocessor.py
     DOC101: Method `Preprocessor._derive_and_validate_output_columns`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `Preprocessor._derive_and_validate_output_columns`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [columns: List[str], output_columns: Optional[List[str]]].
     DOC201: Method `Preprocessor._derive_and_validate_output_columns` does not have a return section in docstring
---------------------
-python/ray/data/preprocessors/chain.py
-    DOC103: Method `Chain.__init__`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*preprocessors: Preprocessor]. Arguments in the docstring but not in the function signature: [preprocessors: ].
---------------------
-python/ray/data/preprocessors/normalizer.py
-    DOC107: Method `Normalizer.__init__`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------
 python/ray/data/tests/test_split.py
     DOC106: Function `assert_split_assignment`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
