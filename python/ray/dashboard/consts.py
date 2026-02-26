@@ -102,3 +102,12 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
 SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = env_float(
     "RAY_DASHBOARD_SUBPROCESS_MODULE_WAIT_READY_TIMEOUT", 30.0
 )
+# Timeout for graceful shutdown of subprocess module.
+SUBPROCESS_MODULE_GRACEFUL_SHUTDOWN_TIMEOUT = env_float(
+    "RAY_DASHBOARD_SUBPROCESS_MODULE_GRACEFUL_SHUTDOWN_TIMEOUT", 5.0
+)
+
+# Timeout to wait for subprocess to join (after force kill or when already dead).
+SUBPROCESS_MODULE_JOIN_TIMEOUT = env_float(
+    "RAY_DASHBOARD_SUBPROCESS_MODULE_JOIN_TIMEOUT", 2.0
+)

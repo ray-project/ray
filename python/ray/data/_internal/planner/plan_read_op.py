@@ -13,7 +13,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
 )
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import _warn_on_high_parallelism
 from ray.data.block import Block, BlockMetadata
@@ -72,9 +72,9 @@ def plan_read_op(
         ), "Read parallelism must be set by the optimizer before execution"
 
         # Get the original read tasks
-        read_tasks = op._datasource_or_legacy_reader.get_read_tasks(
+        read_tasks = op.datasource_or_legacy_reader.get_read_tasks(
             parallelism,
-            per_task_row_limit=op._per_block_limit,
+            per_task_row_limit=op.per_block_limit,
             data_context=data_context,
         )
 
@@ -125,6 +125,6 @@ def plan_read_op(
         inputs,
         data_context,
         name=op.name,
-        compute_strategy=op._compute,
-        ray_remote_args=op._ray_remote_args,
+        compute_strategy=op.compute,
+        ray_remote_args=op.ray_remote_args,
     )

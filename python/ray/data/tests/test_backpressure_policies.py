@@ -1,6 +1,7 @@
 import functools
 import math
 import time
+import types
 import unittest
 from collections import defaultdict
 from unittest.mock import MagicMock, patch
@@ -16,7 +17,9 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data.context import DataContext
+from ray.data.tests.conftest import mock_all_to_all_op
 
 
 class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
@@ -37,6 +40,18 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         ray.shutdown()
         data_context = ray.data.DataContext.get_current()
         data_context.remove_config(ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY)
+
+    def _mock_resource_manager(self):
+        """Helper to create a resource manager mock with real method bindings."""
+        rm = MagicMock()
+        rm.is_op_eligible = types.MethodType(ResourceManager.is_op_eligible, rm)
+        rm._get_downstream_ineligible_ops = types.MethodType(
+            ResourceManager._get_downstream_ineligible_ops, rm
+        )
+        rm._is_blocking_materializing_op = types.MethodType(
+            ResourceManager._is_blocking_materializing_op, rm
+        )
+        return rm
 
     def test_basic(self):
         concurrency = 16
@@ -196,9 +211,9 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         topology = {map_op: MagicMock(), input_op: MagicMock()}
 
-        mock_resource_manager = MagicMock()
-        # Op is not eligible for backpressure
-        mock_resource_manager.is_op_eligible.return_value = False
+        mock_resource_manager = self._mock_resource_manager()
+        # Override to test policy behavior when op is not eligible
+        mock_resource_manager.is_op_eligible = MagicMock(return_value=False)
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -224,11 +239,12 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         )
         map_op.metrics.num_tasks_running = 3
 
+        # Create materializing downstream op (automatically adds to map_op._output_dependencies)
+        mock_all_to_all_op(map_op)
+
         topology = {map_op: MagicMock(), input_op: MagicMock()}
 
-        mock_resource_manager = MagicMock()
-        mock_resource_manager.is_op_eligible.return_value = True
-        mock_resource_manager.has_materializing_downstream_op.return_value = True
+        mock_resource_manager = self._mock_resource_manager()
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -263,7 +279,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         topology = {map_op: MagicMock(), input_op: MagicMock()}
 
-        mock_resource_manager = MagicMock()
+        mock_resource_manager = self._mock_resource_manager()
 
         # Mock available object store memory budget fraction above threshold to skip dynamic backpressure
         threshold = (
@@ -271,8 +287,6 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         )
         # Set fraction above threshold to skip dynamic backpressure
         mock_get_budget_fraction.return_value = threshold + 0.05
-        mock_resource_manager.is_op_eligible.return_value = True
-        mock_resource_manager.has_materializing_downstream_op.return_value = False
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -318,7 +332,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         topology = {map_op: MagicMock(), input_op: MagicMock()}
 
-        mock_resource_manager = MagicMock()
+        mock_resource_manager = self._mock_resource_manager()
 
         # Mock available object store memory budget fraction below threshold to apply dynamic backpressure
         threshold = (
@@ -326,14 +340,10 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         )
         # Set fraction below threshold to apply dynamic backpressure
         mock_get_budget_fraction.return_value = threshold - 0.05
-        mock_resource_manager.is_op_eligible.return_value = True
-        mock_resource_manager.has_materializing_downstream_op.return_value = False
 
         # Mock queue size methods
         mock_resource_manager.get_mem_op_internal.return_value = 100
-        mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
-            200
-        )
+        mock_resource_manager.get_mem_op_outputs.return_value = 200
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -379,14 +389,12 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
 
         topology = {map_op: MagicMock(), input_op: MagicMock()}
 
-        mock_resource_manager = MagicMock()
+        mock_resource_manager = self._mock_resource_manager()
         threshold = (
             ConcurrencyCapBackpressurePolicy.AVAILABLE_OBJECT_STORE_BUDGET_THRESHOLD
         )
         # Set fraction below threshold to apply dynamic backpressure
         mock_get_budget_fraction.return_value = threshold - 0.05
-        mock_resource_manager.is_op_eligible.return_value = True
-        mock_resource_manager.has_materializing_downstream_op.return_value = False
 
         policy = ConcurrencyCapBackpressurePolicy(
             DataContext.get_current(),
@@ -434,6 +442,7 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         ) in test_cases:
             with self.subTest(description=description):
                 mock_resource_manager.get_mem_op_internal.return_value = internal_usage
+                mock_resource_manager.get_mem_op_outputs.return_value = downstream_usage
                 mock_resource_manager.get_op_outputs_object_store_usage_with_downstream.return_value = (
                     downstream_usage
                 )

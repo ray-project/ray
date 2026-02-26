@@ -22,7 +22,6 @@ namespace rpc {
 enum class AuthenticationMode {
   DISABLED,
   TOKEN,
-  K8S,
 };
 
 /// Get the authentication mode from the RayConfig.
@@ -30,9 +29,7 @@ enum class AuthenticationMode {
 /// the authentication mode is not set or is invalid.
 AuthenticationMode GetAuthenticationMode();
 
-// Checks authentication mode and returns whether token authentication is required.
-// \return bool
-bool RequiresTokenAuthentication();
+bool IsK8sTokenAuthEnabled();
 
 }  // namespace rpc
 }  // namespace ray

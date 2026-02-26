@@ -116,9 +116,8 @@ from ray.widgets.util import repr_with_fallback
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
-LOCAL_MODE = 2
-SPILL_WORKER_MODE = 3
-RESTORE_WORKER_MODE = 4
+SPILL_WORKER_MODE = 2
+RESTORE_WORKER_MODE = 3
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -450,8 +449,7 @@ class Worker:
 
     Attributes:
         node (ray._private.node.Node): The node this worker is attached to.
-        mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
-            WORKER_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE or WORKER_MODE.
     """
 
     def __init__(self):
@@ -578,11 +576,6 @@ class Worker:
     @property
     def current_node_id(self):
         return self.core_worker.get_current_node_id()
-
-    @property
-    def current_temp_dir(self):
-        self.check_connected()
-        return self.node.temp_dir
 
     @property
     def task_depth(self):
@@ -798,13 +791,8 @@ class Worker:
         The mode WORKER_MODE should be used if this Worker is not a driver. It
         will not print information about tasks.
 
-        The mode LOCAL_MODE should be used if this Worker is a driver and if
-        you want to run the driver in a manner equivalent to serial Python for
-        debugging purposes. It will not send remote function calls to the
-        scheduler and will instead execute them in a blocking fashion.
-
         Args:
-            mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
+            mode: One of SCRIPT_MODE or WORKER_MODE.
         """
         self.mode = mode
 
@@ -1120,18 +1108,6 @@ class Worker:
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
-            # Give all accelerator ids in local_mode.
-            if self.mode == LOCAL_MODE:
-                if resource_name == ray_constants.GPU:
-                    max_accelerators = self.node.get_resource_and_label_spec().num_gpus
-                else:
-                    max_accelerators = (
-                        self.node.get_resource_and_label_spec().resources.get(
-                            resource_name, None
-                        )
-                    )
-                if max_accelerators:
-                    assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
 
     def shutdown_gpu_object_manager(self):
@@ -1187,12 +1163,6 @@ def get_resource_ids():
     """
     worker = global_worker
     worker.check_connected()
-
-    if _mode() == LOCAL_MODE:
-        raise RuntimeError(
-            "ray._private.worker.get_resource_ids() does not work in local_mode."
-        )
-
     return global_worker.core_worker.resource_ids()
 
 
@@ -1437,6 +1407,7 @@ def init(
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     enable_resource_isolation: bool = False,
+    cgroup_path: Optional[str] = None,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
     **kwargs,
@@ -1512,7 +1483,8 @@ def init(
             object store with.
             By default, this is 30% of available system memory capped by
             the shm size and 200G but can be set higher.
-        local_mode: Deprecated: consider using the Ray Distributed Debugger instead.
+        local_mode: No longer supported. For interactive debugging consider
+            using the Ray distributed debugger.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
         include_dashboard: Boolean flag indicating whether or not to start the
@@ -1545,13 +1517,16 @@ def init(
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         object_spilling_directory: The path to spill objects to. The same path will
-            be used as the object store fallback directory as well. Defaults to the node's session dir.
-            If head node specifies an object spilling directory, and this node doesn't specify one,
-            use the head node's object spilling directory.
+            be used as the object store fallback directory as well.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
             cpu controllers must also be enabled.
+        cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
+            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
+            The process starting ray must have read/write permissions to this path.
+            Cgroup memory and cpu controllers must be enabled for this cgroup.
+            This option only works if enable_resource_isolation is True.
         system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
             Cores can be fractional i.e. 1.5 means one and a half a cpu core.
             By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
@@ -1560,11 +1535,6 @@ def init(
         system_reserved_memory: The amount of memory (in bytes) to reserve for ray system processes.
             By default, the value will be atleast 500MB, and at most 10GB. The default value is
             calculated using the formula min(10GB, max(500MB, 0.10 * memory_available_on_the_system))
-            This option only works if enable_resource_isolation is True.
-        _cgroup_path: The path for the cgroup the raylet should use to enforce resource isolation.
-            By default, the cgroup used for resource isolation will be /sys/fs/cgroup.
-            The process starting ray must have read/write permissions to this path.
-            Cgroup memory and cpu controllers be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
         _enable_object_reconstruction: If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
@@ -1583,8 +1553,7 @@ def init(
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Must be an absolute path. Defaults to an
-            OS-specific conventional location, e.g., "/tmp/ray" for head node, and
-            head node's temp dir for worker node.
+            OS-specific conventional location, e.g., "/tmp/ray".
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -1628,8 +1597,6 @@ def init(
         logging_config._apply()
 
     # Parse the hidden options
-    _cgroup_path: str = kwargs.pop("_cgroup_path", None)
-
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
     )
@@ -1657,13 +1624,6 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
-
-    resource_isolation_config = ResourceIsolationConfig(
-        enable_resource_isolation=enable_resource_isolation,
-        cgroup_path=_cgroup_path,
-        system_reserved_cpu=system_reserved_cpu,
-        system_reserved_memory=system_reserved_memory,
-    )
 
     # terminate any signal before connecting driver
     def sigterm_handler(signum, frame):
@@ -1829,16 +1789,9 @@ def init(
         _node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
 
     if local_mode:
-        driver_mode = LOCAL_MODE
-        warnings.warn(
-            "`local_mode` is an experimental feature that is no "
-            "longer maintained and will be removed in the near future. "
-            "For debugging consider using the Ray distributed debugger.",
-            FutureWarning,
-            stacklevel=2,
+        raise RuntimeError(
+            "`local_mode` is no longer supported. For interactive debugging consider using the Ray distributed debugger."
         )
-    else:
-        driver_mode = SCRIPT_MODE
 
     global _global_node
 
@@ -1873,10 +1826,22 @@ def init(
         else:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
 
+        available_memory_bytes = ray._private.utils.estimate_available_memory()
+        object_store_memory = ray._private.utils.resolve_object_store_memory(
+            available_memory_bytes, object_store_memory
+        )
+
+        resource_isolation_config = ResourceIsolationConfig(
+            enable_resource_isolation=enable_resource_isolation,
+            cgroup_path=cgroup_path,
+            system_reserved_cpu=system_reserved_cpu,
+            system_reserved_memory=system_reserved_memory,
+            object_store_memory=object_store_memory,
+        )
+
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=_node_ip_address,
-            driver_mode=driver_mode,
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -1893,6 +1858,7 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
+            available_memory_bytes=available_memory_bytes,
             object_store_memory=object_store_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
@@ -1975,7 +1941,7 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
-        except (ConnectionError, RuntimeError):
+        except (ConnectionError, RuntimeError) as e:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
                     "Failed to connect to the default Ray cluster address at "
@@ -1984,7 +1950,9 @@ def init(
                     "address to connect to, run `ray stop` or restart Ray with "
                     "`ray start`."
                 )
-            raise ConnectionError
+            raise ConnectionError(
+                f"Failed to connect to Ray cluster at {gcs_address}"
+            ) from e
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
@@ -2017,7 +1985,7 @@ def init(
     connect(
         _global_node,
         _global_node.session_name,
-        mode=driver_mode,
+        mode=SCRIPT_MODE,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=_driver_object_store_memory,
@@ -2142,7 +2110,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
+        if global_worker.mode == SCRIPT_MODE:
             global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
@@ -2504,7 +2472,7 @@ def connect(
     Args:
         node (ray._private.node.Node): The node to connect.
         session_name: The current Ray session name.
-        mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
+        mode: The mode of the worker. One of SCRIPT_MODE or WORKER_MODE.
         log_to_driver: If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
@@ -2559,7 +2527,7 @@ def connect(
         if job_id is None:
             job_id = ray._private.state.next_job_id()
 
-    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE:
+    if mode is not SCRIPT_MODE:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
         if mode is SPILL_WORKER_MODE:
             process_name = ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
@@ -2600,8 +2568,6 @@ def connect(
         else:
             interactive_mode = True
             driver_name = "INTERACTIVE MODE"
-    elif not LOCAL_MODE:
-        raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     gcs_options = ray._raylet.GcsClientOptions.create(
         node.gcs_address,
@@ -2703,7 +2669,6 @@ def connect(
         logs_dir,
         node.node_ip_address,
         node.node_manager_port,
-        (mode == LOCAL_MODE),
         driver_name,
         serialized_job_config,
         node.metrics_agent_port,
@@ -2821,13 +2786,11 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    if _mode() is not LOCAL_MODE:
-        ray._raylet.setproctitle(title)
+    ray._raylet.setproctitle(title)
     try:
         yield
     finally:
-        if _mode() is not LOCAL_MODE:
-            ray._raylet.setproctitle(next_title)
+        ray._raylet.setproctitle(next_title)
 
 
 # Global variable to make sure we only send out the warning once.
@@ -3019,11 +2982,11 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any,
+    value: R,
     *,
     _owner: Optional["ray.actor.ActorHandle"] = None,
     _tensor_transport: Optional[str] = None,
-) -> "ray.ObjectRef":
+) -> "ray.ObjectRef[R]":
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.

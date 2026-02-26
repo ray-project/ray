@@ -8,13 +8,13 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
 from ray.train.xgboost import XGBoostCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class XGBoostPredictor(Predictor):
     """A predictor for XGBoost models.
 

@@ -16,7 +16,13 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 import ray
 from ray._common.network_utils import build_address, find_free_port
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    SignalActor,
+    fetch_prometheus_metric_timeseries,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
 from ray._private.metrics_agent import (
     Gauge as MetricsAgentGauge,
     PrometheusServiceDiscoveryWriter,
@@ -27,9 +33,6 @@ from ray._private.ray_constants import (
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
 )
 from ray._private.test_utils import (
-    PrometheusTimeseries,
-    fetch_prometheus_metric_timeseries,
-    fetch_prometheus_timeseries,
     get_log_batch,
     raw_metric_timeseries,
 )

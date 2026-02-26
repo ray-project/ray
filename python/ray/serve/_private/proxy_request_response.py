@@ -2,6 +2,7 @@ import logging
 import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, AsyncIterator, List, Tuple, Union
 
 import grpc
@@ -13,6 +14,21 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.grpc_util import RayServegRPCContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class gRPCStreamingType(str, Enum):
+    """Enum representing the gRPC streaming type."""
+
+    UNARY_UNARY = "unary_unary"  # Single request, single response
+    UNARY_STREAM = (
+        "unary_stream"  # Single request, streaming response (server streaming)
+    )
+    STREAM_UNARY = (
+        "stream_unary"  # Streaming request, single response (client streaming)
+    )
+    STREAM_STREAM = (
+        "stream_stream"  # Streaming request, streaming response (bidirectional)
+    )
 
 
 class ProxyRequest(ABC):

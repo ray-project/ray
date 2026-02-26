@@ -1,11 +1,11 @@
 .+\.py.*Cluster: test-cli
 .+\.py.*Checking AWS environment settings
-.+\.py.*Creating new IAM instance profile ray-autoscaler-v1 for use as the default\.
-.+\.py.*Creating new IAM role ray-autoscaler-v1 for use as the default instance role\.
+.+\.py.*Creating new IAM instance profile .+ for use as the default\.
+.+\.py.*Creating new IAM role .+ for use as the default instance role\.
 .+\.py.*Creating new key pair __test-cli_key-1 for use as the default\.
-.+\.py.*Created new security group ray-autoscaler-test-cli \[id=sg-.+\]
+.+\.py.*Created new security group ray-autoscaler.+ \[id=sg-.+\]
 .+\.py.*AWS config
-.+\.py.*IAM Profile: ray-autoscaler-v1 \[default\]
+.+\.py.*IAM Profile: .+ \[default\]
 .+\.py.*EC2 Key pair \(all available node types\): __test-cli_key-1 \[default\]
 .+\.py.*VPC Subnets \(all available node types\): subnet-.+ \[default\]
 .+\.py.*EC2 Security groups \(all available node types\): sg-.+ \[default\]

@@ -27,6 +27,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
     get_or_create_event_loop,
+    get_user_temp_dir,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -187,6 +188,18 @@ METRICS_GAUGES = {
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_power_milliwatts": Gauge(
+        "node_gpu_power_milliwatts",
+        "Current GPU power draw in milliwatts",
+        "milliwatts",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_temperature_celsius": Gauge(
+        "node_gpu_temperature_celsius",
+        "Current GPU temperature in Celsius",
+        "celsius",
         GPU_TAG_KEYS,
     ),
     # TPU metrics
@@ -378,15 +391,19 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = [
-    "pid",
-    "create_time",
-    "cpu_percent",
-    "cpu_times",
-    "cmdline",
-    "memory_info",
-    "memory_full_info",
-] + (["num_fds"] if sys.platform != "win32" else [])
+PSUTIL_PROCESS_ATTRS = (
+    [
+        "pid",
+        "create_time",
+        "cpu_percent",
+        "cpu_times",
+        "cmdline",
+        "memory_info",
+    ]
+    + (["num_fds"] if sys.platform != "win32" else [])
+    # Only collect memory_full_info in Mac OS X
+    + (["memory_full_info"] if sys.platform == "darwin" else [])
+)
 
 
 class ReporterAgent(
@@ -869,7 +886,7 @@ class ReporterAgent(
         return total, available, percent, used
 
     @staticmethod
-    def _get_disk_usage(temp_dir: str):
+    def _get_disk_usage():
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
             sdiskusage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
@@ -879,9 +896,10 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
+        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
-            temp_dir: psutil.disk_usage(temp_dir),
+            tmp: psutil.disk_usage(tmp),
         }
 
     @staticmethod
@@ -1124,7 +1142,7 @@ class ReporterAgent(
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
-            "disk": self._get_disk_usage(self._dashboard_agent.temp_dir),
+            "disk": self._get_disk_usage(),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
@@ -1220,13 +1238,21 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                mem = stat["memory_info"]
-                total_rss += float(mem.rss) / 1.0e6
-                if hasattr(mem, "shared"):
-                    total_shm += float(mem.shared)
+                total_rss += float(memory_info.rss) / 1.0e6
+                if hasattr(memory_info, "shared"):
+                    total_shm += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
+                # For Mac OS X, directly get USS metric from memory_full_info
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            elif memory_info is not None:
+                # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
+                if hasattr(memory_info, "shared"):
+                    # Linux: USS ≈ RSS - shared
+                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                elif hasattr(memory_info, "private"):
+                    # Windows: private IS USS
+                    total_uss += float(memory_info.private) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
@@ -1492,6 +1518,8 @@ class ReporterAgent(
                 gram_total += gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
+                gpu_power_mw = gpu.get("power_mw")
+                gpu_temperature_c = gpu.get("temperature_c")
 
                 gram_available = gram_total - gram_used
 
@@ -1521,14 +1549,30 @@ class ReporterAgent(
                         value=gram_available,
                         tags=gpu_tags,
                     )
-                    records_reported.extend(
-                        [
-                            gpus_available_record,
-                            gpus_utilization_record,
-                            gram_used_record,
-                            gram_available_record,
-                        ]
-                    )
+                    gpu_records_to_add = [
+                        gpus_available_record,
+                        gpus_utilization_record,
+                        gram_used_record,
+                        gram_available_record,
+                    ]
+                    # Optional GPU power and temperature (e.g. NVIDIA, AMD)
+                    if gpu_power_mw is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_power_milliwatts"],
+                                value=gpu_power_mw,
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu_temperature_c is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_temperature_celsius"],
+                                value=gpu_temperature_c,
+                                tags=gpu_tags,
+                            )
+                        )
+                    records_reported.extend(gpu_records_to_add)
 
         # -- TPU per node --
         tpus = stats["tpus"]

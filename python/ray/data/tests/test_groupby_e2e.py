@@ -10,13 +10,13 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     combine_chunks,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_nan
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
@@ -1273,7 +1273,7 @@ def test_groupby_map_groups_multicolumn_with_nan(
     )
 
 
-def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
+def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension, capsys):
     """
     The partial function name should show up as
     +- Sort
@@ -1297,7 +1297,9 @@ def test_groupby_map_groups_with_partial(disable_fallback_to_object_extension):
         {"x_add_5": 25},
         {"x_add_5": 25},
     ]
-    assert "MapBatches(func)" in ds.__repr__()
+    ds.explain()
+    captured = capsys.readouterr()
+    assert "MapBatches(func)" in captured.out
 
 
 def test_map_groups_generator_udf(ray_start_regular_shared_2_cpus):

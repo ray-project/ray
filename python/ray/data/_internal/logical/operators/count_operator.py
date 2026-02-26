@@ -1,5 +1,9 @@
 from ray.data._internal.logical.interfaces import LogicalOperator
 
+__all__ = [
+    "Count",
+]
+
 
 class Count(LogicalOperator):
     """Logical operator that represents counting the number of rows in inputs.
@@ -15,4 +19,4 @@ class Count(LogicalOperator):
         self,
         input_op: LogicalOperator,
     ):
-        super().__init__("Count", [input_op])
+        super().__init__(input_dependencies=[input_op])

@@ -8,14 +8,14 @@ import os
 import gymnasium as gym
 import numpy as np
 
-from ray._common.utils import get_default_ray_temp_dir
+from ray._common.utils import get_user_temp_dir
 from ray.rllib.evaluation.sample_batch_builder import SampleBatchBuilder
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.offline.json_writer import JsonWriter
 
 if __name__ == "__main__":
     batch_builder = SampleBatchBuilder()  # or MultiAgentSampleBatchBuilder
-    writer = JsonWriter(os.path.join(get_default_ray_temp_dir(), "demo-out"))
+    writer = JsonWriter(os.path.join(get_user_temp_dir(), "demo-out"))
 
     # You normally wouldn't want to manually create sample batches if a
     # simulator is available, but let's do it anyways for example purposes:

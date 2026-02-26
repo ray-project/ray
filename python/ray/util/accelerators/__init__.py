@@ -14,6 +14,7 @@ from ray.util.accelerators.accelerators import (
     GOOGLE_TPU_V5LITEPOD,
     GOOGLE_TPU_V5P,
     GOOGLE_TPU_V6E,
+    GOOGLE_TPU_V7X,
     INTEL_GAUDI,
     INTEL_MAX_1100,
     INTEL_MAX_1550,
@@ -62,6 +63,7 @@ __all__ = [
     "GOOGLE_TPU_V5P",
     "GOOGLE_TPU_V5LITEPOD",
     "GOOGLE_TPU_V6E",
+    "GOOGLE_TPU_V7X",
     "METAX_C500",
     "METAX_C550",
     # Deprecated

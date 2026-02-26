@@ -1,0 +1,13 @@
+# Head node
+head_node_type:
+  name: head
+  instance_type: n2-standard-8
+
+# Worker nodes
+worker_node_types:
+  - name: gpu-workers
+    instance_type: a2-highgpu-1g
+    min_workers: 8
+    max_workers: 8
+
+auto_select_worker_config: false

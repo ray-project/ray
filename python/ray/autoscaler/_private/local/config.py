@@ -1,8 +1,8 @@
 import copy
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
-from ray._common.utils import get_default_ray_temp_dir
+from ray._common.utils import get_ray_temp_dir
 from ray.autoscaler._private.cli_logger import cli_logger
 
 unsupported_field_message = "The field {} is not supported for on-premise clusters."
@@ -10,7 +10,7 @@ unsupported_field_message = "The field {} is not supported for on-premise cluste
 LOCAL_CLUSTER_NODE_TYPE = "local.cluster.node"
 
 
-def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
+def prepare_local(config: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
     """
     Prepare local cluster config for ingestion by cluster launcher and
     autoscaler.
@@ -18,6 +18,12 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
     config = copy.deepcopy(config)
     for field in "head_node", "worker_nodes", "available_node_types":
         if config.get(field):
+            # If the config already contains the internal node type, it's been prepared via ray up already hence return as-is.
+            if (
+                field == "available_node_types"
+                and LOCAL_CLUSTER_NODE_TYPE in config.get(field, {})
+            ):
+                return config, False
             err_msg = unsupported_field_message.format(field)
             cli_logger.abort(err_msg)
     # We use a config with a single node type for on-prem clusters.
@@ -31,7 +37,7 @@ def prepare_local(config: Dict[str, Any]) -> Dict[str, Any]:
         config = prepare_coordinator(config)
     else:
         config = prepare_manual(config)
-    return config
+    return config, True
 
 
 def prepare_coordinator(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -110,15 +116,11 @@ def prepare_manual(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_lock_path(cluster_name: str) -> str:
-    return os.path.join(
-        get_default_ray_temp_dir(), "cluster-{}.lock".format(cluster_name)
-    )
+    return os.path.join(get_ray_temp_dir(), "cluster-{}.lock".format(cluster_name))
 
 
 def get_state_path(cluster_name: str) -> str:
-    return os.path.join(
-        get_default_ray_temp_dir(), "cluster-{}.state".format(cluster_name)
-    )
+    return os.path.join(get_ray_temp_dir(), "cluster-{}.state".format(cluster_name))
 
 
 def bootstrap_local(config: Dict[str, Any]) -> Dict[str, Any]:

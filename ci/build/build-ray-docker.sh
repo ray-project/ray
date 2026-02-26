@@ -3,9 +3,8 @@ set -euo pipefail
 
 WHEEL_NAME="$1"
 SOURCE_IMAGE="$2"
-CONSTRAINTS_FILE="$3"
-DEST_IMAGE="$4"
-PIP_FREEZE_FILE="$5"
+DEST_IMAGE="$3"
+PIP_FREEZE_FILE="$4"
 
 RAY_VERSION="$(python python/ray/_version.py | cut -d' ' -f1)"
 RAY_COMMIT="$(git rev-parse HEAD)"
@@ -14,7 +13,6 @@ CPU_TMP="$(mktemp -d)"
 
 cp -r .whl "${CPU_TMP}/.whl"
 cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
-cp python/"${CONSTRAINTS_FILE}" "${CPU_TMP}/requirements_compiled.txt"
 
 # Build the image.
 cd "${CPU_TMP}"

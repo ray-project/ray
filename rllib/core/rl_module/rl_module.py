@@ -63,8 +63,12 @@ class RLModuleSpec:
             Note that `inference_only=True` AND `learner_only=True` is not allowed.
         model_config: The model config dict or default RLlib dataclass to use.
         catalog_class: The Catalog class to use.
-        load_state_path: The path to the module state to load from. NOTE: This must be
-            an absolute path.
+        load_state_path: The path to the RLModule state to load from.
+            Deprecated. This field will be removed in the future Ray release.
+            To restore RLModule state use
+            `Algorithm.restore_from_path(path=..., component=...)` instead.
+            See docs for more details: :
+            https://docs.ray.io/en/latest/rllib/rl-modules.html#checkpointing-rlmodules
     """
 
     module_class: Optional[Type["RLModule"]] = None

@@ -1,5 +1,6 @@
+import enum
+import logging
 import os
-from enum import Enum
 from typing import TYPE_CHECKING
 
 from .base_autoscaling_coordinator import (
@@ -8,55 +9,61 @@ from .base_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
 from .base_cluster_autoscaler import ClusterAutoscaler
-from .default_autoscaling_coordinator import DefaultAutoscalingCoordinator
+from .default_autoscaling_coordinator import (
+    DefaultAutoscalingCoordinator,
+    get_or_create_autoscaling_coordinator,
+)
 from .default_cluster_autoscaler import DefaultClusterAutoscaler
 from .default_cluster_autoscaler_v2 import DefaultClusterAutoscalerV2
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data.context import DataContext
 
+logger = logging.getLogger(__name__)
 
 CLUSTER_AUTOSCALER_ENV_KEY = "RAY_DATA_CLUSTER_AUTOSCALER"
-CLUSTER_AUTOSCALER_ENV_DEFAULT_VALUE = "V1"
+DEFAULT_CLUSTER_AUTOSCALER_VERSION = "V2"
 
 
-class ClusterAutoscalerVersion(Enum):
+class ClusterAutoscalerVersion(str, enum.Enum):
     V2 = "V2"
     V1 = "V1"
 
 
 def create_cluster_autoscaler(
-    topology: "Topology", resource_manager: "ResourceManager", *, execution_id: str
+    topology: "Topology",
+    resource_manager: "ResourceManager",
+    data_context: "DataContext",
+    *,
+    execution_id: str,
 ) -> ClusterAutoscaler:
-    selected_autoscaler = _get_cluster_autoscaler_version()
+    resource_limits = data_context.execution_options.resource_limits
+    cluster_autoscaler_version = os.environ.get(
+        CLUSTER_AUTOSCALER_ENV_KEY, DEFAULT_CLUSTER_AUTOSCALER_VERSION
+    )
+    logger.debug(f"Using cluster autoscaler version: {cluster_autoscaler_version!r}")
 
-    if selected_autoscaler == ClusterAutoscalerVersion.V2:
+    if cluster_autoscaler_version == ClusterAutoscalerVersion.V2:
         return DefaultClusterAutoscalerV2(
             resource_manager,
             execution_id=execution_id,
+            resource_limits=resource_limits,
         )
 
-    elif selected_autoscaler == ClusterAutoscalerVersion.V1:
+    elif cluster_autoscaler_version == ClusterAutoscalerVersion.V1:
         return DefaultClusterAutoscaler(
             topology,
+            resource_limits=resource_limits,
             execution_id=execution_id,
         )
 
-    assert False, "Invalid cluster autoscaler option"
-
-
-def _get_cluster_autoscaler_version() -> ClusterAutoscalerVersion:
-    cluster_autoscaler_env_value = os.getenv(
-        CLUSTER_AUTOSCALER_ENV_KEY, CLUSTER_AUTOSCALER_ENV_DEFAULT_VALUE
-    )
-    try:
-        return ClusterAutoscalerVersion(cluster_autoscaler_env_value)
-    except ValueError:
+    else:
         valid_values = [version.value for version in ClusterAutoscalerVersion]
         raise ValueError(
-            f"{cluster_autoscaler_env_value} isn't a valid option for "
-            f"{CLUSTER_AUTOSCALER_ENV_KEY}. Valid options are: {valid_values}."
+            f"Cluster autoscaler version of {cluster_autoscaler_version} isn't a valid "
+            f"option. Valid options are: {valid_values}."
         )
 
 
@@ -65,6 +72,7 @@ __all__ = [
     # Objects related to the `AutoscalingCoordinator`.
     "AutoscalingCoordinator",
     "DefaultAutoscalingCoordinator",
+    "get_or_create_autoscaling_coordinator",
     "ResourceDict",
     "ResourceRequestPriority",
 ]

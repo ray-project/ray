@@ -14,54 +14,37 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation, gRPCOptions
+from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
 from ray.serve.deployment import Application
-from ray.serve.exceptions import RayServeConfigException, RayServeException
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _check_http_options(
-    curr_http_options: HTTPOptions, new_http_options: Union[dict, HTTPOptions]
+    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
 ) -> None:
-    def maybe_restore_proxy_location(prev_value, new_value) -> (str, str):
-        if isinstance(prev_value, DeploymentMode) and isinstance(
-            new_value, DeploymentMode
-        ):
-            # restore ProxyLocation as this is the property user configured
-            prev_value = ProxyLocation._from_deployment_mode(prev_value).value
-            new_value = ProxyLocation._from_deployment_mode(new_value).value
-        return prev_value, new_value
-
-    if not new_http_options:
-        return
-
-    if isinstance(new_http_options, HTTPOptions):
-        new_http_options = new_http_options.dict(exclude_unset=True)
-
-    diff_http_options = {}
-    for option, new_value in new_http_options.items():
-        if not hasattr(curr_http_options, option):
-            valid_fields = (
-                getattr(HTTPOptions, "__fields__", None)
-                or getattr(HTTPOptions, "model_fields", {}).keys()
-            )
-            raise RayServeConfigException(
-                f"Invalid http_options key '{option}'. Valid keys: {sorted(valid_fields)}"
-            )
-        prev_value = getattr(curr_http_options, option)
-        if prev_value != new_value:
-            prev_value, new_value = maybe_restore_proxy_location(prev_value, new_value)
-            diff_http_options[option] = {"previous": prev_value, "new": new_value}
-    if diff_http_options:
-        raise RayServeConfigException(
-            "Attempt to update `http_options` or `proxy_location` has been detected! "
-            f"Attempted updates: `{diff_http_options}`. "
-            "HTTP config is global to your Ray cluster, and you can't update it during runtime. "
-            "Please restart Ray Serve to apply the change."
+    if http_options:
+        client_http_options = client.http_config
+        new_http_options = (
+            http_options
+            if isinstance(http_options, HTTPOptions)
+            else HTTPOptions.parse_obj(http_options)
         )
+        different_fields = []
+        all_http_option_fields = new_http_options.__dict__
+        for field in all_http_option_fields:
+            if getattr(new_http_options, field) != getattr(client_http_options, field):
+                different_fields.append(field)
+
+        if len(different_fields):
+            logger.warning(
+                "The new client HTTP config differs from the existing one "
+                f"in the following fields: {different_fields}. "
+                "The new HTTP config is ignored."
+            )
 
 
 def _start_controller(
@@ -153,7 +136,7 @@ async def serve_start_async(
             " New http options will not be applied."
         )
         if http_options:
-            _check_http_options(client.http_config, http_options)
+            _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass
@@ -227,7 +210,7 @@ def serve_start(
             " New http options will not be applied."
         )
         if http_options:
-            _check_http_options(client.http_config, http_options)
+            _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass

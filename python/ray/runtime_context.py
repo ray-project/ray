@@ -115,17 +115,6 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
-    def get_temp_dir(self) -> str:
-        """Get the temp directory for the current node.
-
-        Returns:
-            The temp directory for the current node.
-        """
-        assert (
-            ray.is_initialized()
-        ), "Temp directory is not available because Ray has not been initialized."
-        return self.worker.current_temp_dir
-
     def get_session_name(self) -> str:
         """Get the session name for the Ray cluster this process is connected to.
 
@@ -307,7 +296,7 @@ class RuntimeContext(object):
                 b = AsyncActor.remote()
                 # Task names are available for actor tasks.
                 print(ray.get(a.get_task_name.remote()))
-                # Task names are avaiable for async actor tasks.
+                # Task names are available for async actor tasks.
                 print(ray.get(b.get_task_name.remote()))
                 # Task names are available for normal tasks.
                 # Get default task name
@@ -321,7 +310,7 @@ class RuntimeContext(object):
                 Actor.get_task_name
                 AsyncActor.get_task_name
                 get_task_name
-                task_nams
+                task_name
 
         Returns:
             The current worker's task name
@@ -370,9 +359,9 @@ class RuntimeContext(object):
             .. testoutput::
                 :options: +MOCK
 
-                [python modual name].Actor.get_task_function_name
-                [python modual name].AsyncActor.get_task_function_name
-                [python modual name].get_task_function_name
+                [python module name].Actor.get_task_function_name
+                [python module name].AsyncActor.get_task_function_name
+                [python module name].get_task_function_name
 
         Returns:
             The current worker's task function call string

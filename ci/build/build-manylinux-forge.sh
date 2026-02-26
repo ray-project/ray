@@ -44,7 +44,7 @@ if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1
 fi
 
 # Install nodejs
-NODE_VERSION_FULL="${NODE_VERSION_FULL:-14.21.3}"
+NODE_VERSION_FULL="14.21.3"
 
 if [[ "${ARCH}" == "x86_64" ]]; then
   NODE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}/node-v${NODE_VERSION_FULL}-linux-x64.tar.xz"

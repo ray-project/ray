@@ -134,8 +134,8 @@ def test_serve_deployment_continue_on_error(serve_cleanup):
     assert len(outs) == 60
 
     # Check __inference_error__ directly
-    errors = [o for o in outs if o.get("__inference_error__") is not None]
-    successes = [o for o in outs if o.get("__inference_error__") is None]
+    errors = [o for o in outs if o.get("__inference_error__", "")]
+    successes = [o for o in outs if not o.get("__inference_error__", "")]
 
     assert len(errors) == 6, f"Expected 6 errors, got {len(errors)}: {errors[:3]}..."
     assert len(successes) == 54

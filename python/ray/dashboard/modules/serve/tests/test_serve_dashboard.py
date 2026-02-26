@@ -907,6 +907,8 @@ class TestScaleDeploymentEndpoint:
         self, ray_start_stop
     ):
         """Test that replica counts set via /scale are retained after serve controller restart."""
+        serve.start()
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
 

@@ -247,7 +247,7 @@ def test_release_move_from_passing_to_failing():
 
 
 def test_release_move_from_failing_to_consisently_failing():
-    test = Test(name="test", team="ci", stable=False)
+    test = Test(name="test", team="ci")
     test[Test.KEY_BISECT_BUILD_NUMBER] = 1
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -264,7 +264,6 @@ def test_release_move_from_failing_to_consisently_failing():
     assert "Blamed commit: 1234567890" in issue.comments[0]
     labels = [label.name for label in issue.get_labels()]
     assert "ci" in labels
-    assert "unstable-release-test" in labels
 
 
 def test_release_move_from_failing_to_passing():

@@ -31,6 +31,10 @@ RayNodeDefinitionEvent::RayNodeDefinitionEvent(const rpc::GcsNodeInfo &data,
       AbslTimeNanosToProtoTimestamp(absl::ToInt64Nanoseconds(
           absl::FromUnixMillis(data.start_time_ms()) - absl::UnixEpoch())));
   data_.mutable_labels()->insert(data.labels().begin(), data.labels().end());
+  data_.set_hostname(data.node_manager_hostname());
+  data_.set_node_name(data.node_name());
+  data_.set_instance_id(data.instance_id());
+  data_.set_instance_type_name(data.instance_type_name());
 }
 
 std::string RayNodeDefinitionEvent::GetEntityId() const { return data_.node_id(); }

@@ -286,7 +286,7 @@ def get_ec2_cwa_installed_tag_true(ec2_client_stub, node_id):
 
 def update_hash_tag_success(ec2_client_stub, node_id, config_type, cloudwatch_helper):
     hash_key_value = "-".join([CLOUDWATCH_CONFIG_HASH_TAG_BASE, config_type])
-    cur_hash_value = get_sha1_hash_of_cloudwatch_config_file(
+    cur_hash_value = get_sha256_hash_of_cloudwatch_config_file(
         config_type, cloudwatch_helper
     )
     ec2_client_stub.add_response(
@@ -312,7 +312,7 @@ def add_cwa_installed_tag_response(ec2_client_stub, node_id):
 
 def get_head_node_config_hash_different(ec2_client_stub, config_type, cwh, node_id):
     hash_key_value = "-".join([CLOUDWATCH_CONFIG_HASH_TAG_BASE, config_type])
-    cur_hash_value = get_sha1_hash_of_cloudwatch_config_file(config_type, cwh)
+    cur_hash_value = get_sha256_hash_of_cloudwatch_config_file(config_type, cwh)
     filters = cwh._get_current_cluster_session_nodes(cwh.cluster_name)
     filters.append(
         {
@@ -497,8 +497,8 @@ def get_param_ssm_same(ssm_client_stub, ssm_param_name, cloudwatch_helper, confi
     return command_id
 
 
-def get_sha1_hash_of_cloudwatch_config_file(config_type, cloudwatch_helper):
-    cw_value_file = cloudwatch_helper._sha1_hash_file(config_type)
+def get_sha256_hash_of_cloudwatch_config_file(config_type, cloudwatch_helper):
+    cw_value_file = cloudwatch_helper._sha256_hash_file(config_type)
     return cw_value_file
 
 

@@ -1,8 +1,10 @@
 import asyncio
 import concurrent.futures
+import errno
 import functools
 import inspect
 import logging
+import math
 import os
 import pickle
 import threading
@@ -50,6 +52,7 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     ReplicaQueueLengthInfo,
     RequestMetadata,
+    RequestProtocol,
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
@@ -58,11 +61,18 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
+    HEALTHY_MESSAGE,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+    RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
+    RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
@@ -71,6 +81,9 @@ from ray.serve._private.constants import (
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
+    SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
+    SERVE_HTTP_REQUEST_ID_HEADER,
+    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_DEPLOYMENT,
@@ -84,13 +97,23 @@ from ray.serve._private.default_impl import (
     create_replica_impl,
     create_replica_metrics_manager,
 )
+from ray.serve._private.direct_ingress_http_util import ASGIDIReceiveProxy
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
+from ray.serve._private.grpc_util import (
+    get_grpc_response_status,
+    set_grpc_code_and_details,
+    start_grpc_server,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
     ASGIReceiveProxy,
     MessageQueue,
     Response,
+    configure_http_middlewares,
+    configure_http_options_with_defaults,
+    convert_object_to_asgi_messages,
+    start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -99,34 +122,45 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
+from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
+from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
     extract_route_patterns,
+    get_asgi_route_name,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
     asyncio_grpc_exception_handler,
+    generate_request_id,
     get_component_file_name,  # noqa: F401
+    is_grpc_enabled,
     parse_import_path,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve.config import AutoscalingConfig
-from ray.serve.context import _get_in_flight_requests
+from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
+from ray.serve.context import GangContext, _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
+    gRPCStatusError,
 )
 from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
     ASGIResponse,
+    HealthzResponse,
+    ListApplicationsResponse,
 )
 from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
+from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -226,6 +260,7 @@ ReplicaMetadata = Tuple[
     ReplicaRank,  # rank
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
+    bool,  # has_user_routing_stats_method
 ]
 
 
@@ -269,6 +304,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        max_ongoing_requests: int,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -279,6 +315,7 @@ class ReplicaMetricsManager:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
+        self._max_ongoing_requests = max_ongoing_requests
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
 
@@ -317,7 +354,7 @@ class ReplicaMetricsManager:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("route",),
+            tag_keys=("route", "exception_type"),
         )
         if self._cached_metrics_enabled:
             self._cached_error_counter = defaultdict(int)
@@ -354,15 +391,148 @@ class ReplicaMetricsManager:
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
         )
 
+        # Replica utilization tracking with rolling window.
+        # Tracks total user code execution time over a rolling window to calculate
+        # utilization as: user_code_time / (window_duration * max_ongoing_requests).
+        self._user_code_time_accumulator = RollingWindowAccumulator(
+            window_duration_s=RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
+            num_buckets=RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+        )
+        self._replica_utilization_gauge = metrics.Gauge(
+            "serve_replica_utilization_percent",
+            description=(
+                "Percentage of replica capacity utilized by user code execution "
+                "over a rolling window. Calculated as: "
+                "user_code_time / (window_duration * max_ongoing_requests)."
+            ),
+        )
+        self._utilization_report_interval_s = (
+            RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S
+        )
+        self._event_loop.create_task(self._report_utilization_forever())
+
         self.set_autoscaling_config(autoscaling_config)
+
+        if self._is_direct_ingress:
+            # TODO(alexyang): De-duplicate these metrics from those collected by
+            # the proxy.
+            self.ingress_http_request_counter = self._init_ingress_request_counter(
+                "HTTP"
+            )
+
+            self.ingress_http_request_error_counter = (
+                self._init_ingress_request_error_counter("HTTP")
+            )
+
+            self.deployment_http_request_error_counter = (
+                self._init_deployment_request_error_counter("HTTP")
+            )
+
+            logger.debug(f"REQUEST_LATENCY_BUCKETS_MS: {REQUEST_LATENCY_BUCKETS_MS}")
+            self.ingress_http_processing_latency_tracker = (
+                self._init_ingress_processing_latency_tracker("HTTP")
+            )
+
+            node_id = ray.get_runtime_context().get_node_id()
+            node_ip_address = ray.util.get_node_ip_address()
+            self.ingress_num_ongoing_http_requests_gauge = (
+                self._init_ingress_num_ongoing_requests_gauge(
+                    "HTTP", node_id, node_ip_address
+                )
+            )
+            self._ingress_ongoing_http_requests = 0
+
+            if self._cached_metrics_enabled:
+                self._cached_ingress_request_counter = defaultdict(
+                    lambda: defaultdict(int)
+                )
+                self._cached_ingress_request_error_counter = defaultdict(
+                    lambda: defaultdict(int)
+                )
+                self._cached_deployment_request_error_counter = defaultdict(
+                    lambda: defaultdict(int)
+                )
+                self._cached_ingress_processing_latencies = defaultdict(
+                    lambda: defaultdict(deque)
+                )
+
+    @property
+    def _is_direct_ingress(self) -> bool:
+        return self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS
+
+    def _init_ingress_request_counter(self, protocol: str):
+        return ray_metrics.Counter(
+            f"serve_num_{protocol.lower()}_requests",
+            description=f"The number of {protocol} requests processed.",
+            tag_keys=("route", "method", "application", "status_code"),
+        )
+
+    def _init_ingress_request_error_counter(self, protocol: str):
+        return ray_metrics.Counter(
+            f"serve_num_{protocol.lower()}_error_requests",
+            description=(f"The number of errored {protocol} responses."),
+            tag_keys=(
+                "route",
+                "error_code",
+                "method",
+                "application",
+            ),
+        )
+
+    def _init_deployment_request_error_counter(self, protocol: str):
+        return ray_metrics.Counter(
+            f"serve_num_deployment_{protocol.lower()}_error_requests",
+            description=(
+                f"The number of errored {protocol} responses returned by each deployment."
+            ),
+            tag_keys=(
+                "deployment",
+                "error_code",
+                "method",
+                "route",
+                "application",
+            ),
+        )
+
+    def _init_ingress_processing_latency_tracker(self, protocol: str):
+        return ray_metrics.Histogram(
+            f"serve_{protocol.lower()}_request_latency_ms",
+            description=(
+                f"The end-to-end latency of {protocol} requests "
+                f"(measured from the Serve ingress)."
+            ),
+            boundaries=REQUEST_LATENCY_BUCKETS_MS,
+            tag_keys=(
+                "method",
+                "route",
+                "application",
+                "status_code",
+            ),
+        )
+
+    def _init_ingress_num_ongoing_requests_gauge(
+        self, protocol: str, node_id: str, node_ip_address: str
+    ):
+        return ray_metrics.Gauge(
+            name=f"serve_num_ongoing_{protocol.lower()}_requests",
+            description=f"The number of ongoing requests in this {protocol} ingress.",
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags(
+            {
+                "node_id": node_id,
+                "node_ip_address": node_ip_address,
+            }
+        )
 
     def _report_cached_metrics(self):
         for route, count in self._cached_request_counter.items():
             self._request_counter.inc(count, tags={"route": route})
         self._cached_request_counter.clear()
 
-        for route, count in self._cached_error_counter.items():
-            self._error_counter.inc(count, tags={"route": route})
+        for (route, exception_type), count in self._cached_error_counter.items():
+            self._error_counter.inc(
+                count, tags={"route": route, "exception_type": exception_type}
+            )
         self._cached_error_counter.clear()
 
         for route, latencies in self._cached_latencies.items():
@@ -373,6 +543,54 @@ class ReplicaMetricsManager:
         self._cached_latencies.clear()
 
         self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+
+        if not self._is_direct_ingress:
+            return
+
+        for protocol in [RequestProtocol.HTTP]:
+            if protocol == RequestProtocol.HTTP:
+                ingress_request_counter = self.ingress_http_request_counter
+                ingress_request_error_counter = self.ingress_http_request_error_counter
+                deployment_request_error_counter = (
+                    self.deployment_http_request_error_counter
+                )
+                ingress_processing_latencies = (
+                    self.ingress_http_processing_latency_tracker
+                )
+                self.ingress_num_ongoing_http_requests_gauge.set(
+                    self._ingress_ongoing_http_requests
+                )
+            else:
+                # TODO(alexyang): Add metrics for gRPC.
+                continue
+
+            for request_tags, count in self._cached_ingress_request_counter[
+                protocol
+            ].items():
+                ingress_request_counter.inc(count, tags=dict(request_tags))
+
+            for request_tags, count in self._cached_ingress_request_error_counter[
+                protocol
+            ].items():
+                ingress_request_error_counter.inc(count, tags=dict(request_tags))
+
+            for request_tags, count in self._cached_deployment_request_error_counter[
+                protocol
+            ].items():
+                deployment_request_error_counter.inc(count, tags=dict(request_tags))
+
+            for latency_tags, latencies in self._cached_ingress_processing_latencies[
+                protocol
+            ].items():
+                for latency_ms in latencies:
+                    ingress_processing_latencies.observe(
+                        latency_ms, tags=dict(latency_tags)
+                    )
+
+        self._cached_ingress_request_counter.clear()
+        self._cached_ingress_request_error_counter.clear()
+        self._cached_deployment_request_error_counter.clear()
+        self._cached_ingress_processing_latencies.clear()
 
     async def _report_cached_metrics_forever(self):
         assert self._cached_metrics_interval_s > 0
@@ -449,7 +667,14 @@ class ReplicaMetricsManager:
         │                  └──────────────────────────────┘              │
         │                                                                │
         └────────────────────────────────────────────────────────────────┘
+
+        For direct ingress deployments, metrics must be collected from replicas regardless
+        of whether autoscaling metrics are being collected via handles. This is necessary
+        because direct ingress traffic bypasses deployment handles and goes directly to
+        the replicas.
         """
+        if self._is_direct_ingress and self._autoscaling_config:
+            return True
         return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 
     def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
@@ -472,35 +697,179 @@ class ReplicaMetricsManager:
             self.start_metrics_pusher()
 
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
-        """Increment the current total queue length of requests for this replica."""
         self._num_ongoing_requests += 1
+
+        if self._is_direct_ingress and request_metadata.is_direct_ingress:
+            self._ingress_ongoing_http_requests += 1
+
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
 
+            if self._is_direct_ingress and request_metadata.is_direct_ingress:
+                if request_metadata.is_http_request:
+                    self.ingress_num_ongoing_http_requests_gauge.set(
+                        self._ingress_ongoing_http_requests
+                    )
+
     def dec_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
-        """Decrement the current total queue length of requests for this replica."""
         self._num_ongoing_requests -= 1
+
+        if self._is_direct_ingress and request_metadata.is_direct_ingress:
+            self._ingress_ongoing_http_requests -= 1
+
         if not self._cached_metrics_enabled:
             self._num_ongoing_requests_gauge.set(self._num_ongoing_requests)
+
+            if self._is_direct_ingress and request_metadata.is_direct_ingress:
+                if request_metadata.is_http_request:
+                    self.ingress_num_ongoing_http_requests_gauge.set(
+                        self._ingress_ongoing_http_requests
+                    )
 
     def get_num_ongoing_requests(self) -> int:
         """Get current total queue length of requests for this replica."""
         return self._num_ongoing_requests
 
-    def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
+    def set_max_ongoing_requests(self, max_ongoing_requests: int) -> None:
+        """Update max_ongoing_requests when deployment config changes."""
+        self._max_ongoing_requests = max_ongoing_requests
+
+    async def _report_utilization_forever(self) -> None:
+        """Background task to emit utilization gauge continuously."""
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._utilization_report_interval_s)
+                utilization = self._calculate_utilization()
+                self._replica_utilization_gauge.set(utilization)
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting utilization metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
+
+    def _calculate_utilization(self) -> float:
+        """Calculate current utilization percentage based on rolling window.
+
+        Utilization is calculated as:
+            user_code_time / (window_duration * max_ongoing_requests)
+
+        This represents the percentage of the replica's theoretical maximum
+        capacity that was used for executing user code.
+        """
+        total_user_code_time_ms = self._user_code_time_accumulator.get_total()
+
+        # Max capacity = window_duration_ms * max_ongoing_requests
+        window_duration_ms = RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S * 1000
+        max_capacity_ms = window_duration_ms * self._max_ongoing_requests
+
+        if max_capacity_ms > 0:
+            utilization_percent = (total_user_code_time_ms / max_capacity_ms) * 100
+            # Cap at 100% (can theoretically exceed if requests overlap heavily)
+            utilization_percent = min(utilization_percent, 100.0)
+        else:
+            utilization_percent = 0.0
+
+        return utilization_percent
+
+    def record_request_metrics(
+        self,
+        *,
+        route: str,
+        latency_ms: float,
+        was_error: bool,
+        exception_type: Optional[str] = None,
+    ):
         """Records per-request metrics."""
+        # Track latency for utilization calculation (rolling window).
+        self._user_code_time_accumulator.add(latency_ms)
+
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
             if was_error:
-                self._cached_error_counter[route] += 1
+                exc_type = exception_type or "Unknown"
+                self._cached_error_counter[(route, exc_type)] += 1
             else:
                 self._cached_request_counter[route] += 1
         else:
             self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
             if was_error:
-                self._error_counter.inc(tags={"route": route})
+                exc_type = exception_type or "Unknown"
+                self._error_counter.inc(
+                    tags={"route": route, "exception_type": exc_type}
+                )
             else:
                 self._request_counter.inc(tags={"route": route})
+
+    def record_ingress_request_metrics(
+        self,
+        *,
+        protocol: RequestProtocol,
+        method: str,
+        route: str,
+        app_name: str,
+        deployment_name: str,
+        latency_ms: float,
+        was_error: bool,
+        status_code: str,
+    ):
+        """Record per-request metrics."""
+        if not self._is_direct_ingress:
+            return
+
+        if protocol == RequestProtocol.HTTP:
+            latency_tracker = self.ingress_http_processing_latency_tracker
+            request_error_counter = self.ingress_http_request_error_counter
+            deployment_error_counter = self.deployment_http_request_error_counter
+            request_counter = self.ingress_http_request_counter
+        else:
+            # TODO(alexyang): Add metrics for gRPC.
+            return
+
+        request_tags = {
+            "route": route,
+            "method": method,
+            "application": app_name,
+            "status_code": status_code,
+        }
+        latency_tags = request_tags
+        request_error_tags = {
+            "route": route,
+            "method": method,
+            "application": app_name,
+            "error_code": status_code,
+        }
+        deployment_error_tags = {
+            "route": route,
+            "method": method,
+            "application": app_name,
+            "error_code": status_code,
+            "deployment": deployment_name,
+        }
+
+        if self._cached_metrics_enabled:
+            self._cached_ingress_request_counter[protocol][
+                frozenset(request_tags.items())
+            ] += 1
+            self._cached_ingress_processing_latencies[protocol][
+                frozenset(latency_tags.items())
+            ].append(latency_ms)
+            if was_error:
+                self._cached_ingress_request_error_counter[protocol][
+                    frozenset(request_error_tags.items())
+                ] += 1
+                self._cached_deployment_request_error_counter[protocol][
+                    frozenset(deployment_error_tags.items())
+                ] += 1
+        else:
+            request_counter.inc(tags=request_tags)
+            latency_tracker.observe(latency_ms, tags=latency_tags)
+            if was_error:
+                request_error_counter.inc(tags=request_error_tags)
+                deployment_error_counter.inc(tags=deployment_error_tags)
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
@@ -635,6 +1004,7 @@ class ReplicaBase(ABC):
             local_testing_mode=False,
             deployment_config=deployment_config,
             actor_id=actor_id,
+            ray_actor_options=self._version.ray_actor_options,
         )
         self._semaphore = Semaphore(lambda: self.max_ongoing_requests)
 
@@ -652,6 +1022,8 @@ class ReplicaBase(ABC):
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
+        # Gang context for this replica.
+        self._gang_context: Optional[GangContext] = None
 
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
@@ -666,6 +1038,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
+            max_ongoing_requests=self._deployment_config.max_ongoing_requests,
         )
 
         # Start event loop monitoring for the replica's main event loop.
@@ -716,6 +1089,11 @@ class ReplicaBase(ABC):
             if hasattr(self._user_callable_asgi_app, "routes"):
                 route_patterns = extract_route_patterns(self._user_callable_asgi_app)
 
+        has_user_routing_stats_method = (
+            self._user_callable_wrapper is not None
+            and self._user_callable_wrapper.has_user_routing_stats_method
+        )
+
         return (
             self._version.deployment_config,
             self._version,
@@ -727,6 +1105,7 @@ class ReplicaBase(ABC):
             current_rank,
             route_patterns,
             self.list_outbound_deployments(),
+            has_user_routing_stats_method,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -788,6 +1167,7 @@ class ReplicaBase(ABC):
             rank=rank,
             world_size=world_size,
             handle_registration_callback=register_handle_callback,
+            gang_context=self._gang_context,
         )
 
     def _configure_logger_and_profilers(
@@ -874,7 +1254,7 @@ class ReplicaBase(ABC):
             user_exception, status_code, latency_ms, request_metadata
         )
 
-        if user_exception is not None:
+        if user_exception is not None and not request_metadata.is_direct_ingress:
             raise user_exception from None
 
     def _record_errors_and_metrics(
@@ -909,11 +1289,28 @@ class ReplicaBase(ABC):
             ),
             extra=self._access_log_context,
         )
+        exception_type = (
+            type(user_exception).__name__ if user_exception is not None else None
+        )
         self._metrics_manager.record_request_metrics(
             route=http_route,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
+            exception_type=exception_type,
         )
+
+        # Record ingress metrics for direct ingress HTTP requests
+        if request_metadata.is_direct_ingress and status_code is not None:
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.HTTP,
+                method=request_metadata._http_method,
+                route=self._route_prefix,
+                app_name=self._deployment_id.app_name,
+                deployment_name=self._deployment_id.name,
+                latency_ms=latency_ms,
+                was_error=status_code.startswith(("4", "5")),
+                status_code=status_code,
+            )
 
     def _unpack_proxy_args(
         self,
@@ -970,9 +1367,13 @@ class ReplicaBase(ABC):
         )
         with self._wrap_request(request_metadata, ray_trace_ctx):
             async with self._start_request(request_metadata):
-                return await self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
-                )
+                try:
+                    return await self._user_callable_wrapper.call_user_method(
+                        request_metadata, request_args, request_kwargs
+                    )
+                except Exception as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
 
     async def handle_request_streaming(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -985,22 +1386,45 @@ class ReplicaBase(ABC):
             request_metadata, ray_trace_ctx
         ) as status_code_callback:
             async with self._start_request(request_metadata):
-                if request_metadata.is_http_request:
-                    scope, receive = request_args
-                    async for msgs in self._user_callable_wrapper.call_http_entrypoint(
-                        request_metadata,
-                        status_code_callback,
-                        scope,
-                        receive,
-                    ):
-                        yield pickle.dumps(msgs)
-                else:
-                    async for result in self._user_callable_wrapper.call_user_generator(
-                        request_metadata,
-                        request_args,
-                        request_kwargs,
-                    ):
-                        yield result
+                try:
+                    if request_metadata.is_http_request:
+                        scope, receive = request_args
+                        async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                            request_metadata,
+                            status_code_callback,
+                            scope,
+                            receive,
+                        ):
+                            yield pickle.dumps(msgs)
+                    else:
+                        async for result in self._user_callable_wrapper.call_user_generator(
+                            request_metadata,
+                            request_args,
+                            request_kwargs,
+                        ):
+                            yield result
+                except Exception as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+
+    def _maybe_wrap_grpc_exception(
+        self, e: BaseException, request_metadata: RequestMetadata
+    ) -> BaseException:
+        """Wrap exception with gRPCStatusError if user set a status code.
+
+        For gRPC requests, if the user set a status code on the grpc_context before
+        raising an exception, we wrap the exception with gRPCStatusError to preserve
+        the user's intended status code through the error handling path.
+        """
+        if request_metadata.is_grpc_request:
+            grpc_context = request_metadata.grpc_context
+            if grpc_context and grpc_context.code():
+                return gRPCStatusError(
+                    original_exception=e,
+                    code=grpc_context.code(),
+                    details=grpc_context.details(),
+                )
+        return e
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1030,34 +1454,43 @@ class ReplicaBase(ABC):
                     num_ongoing_requests=self.get_num_ongoing_requests(),
                 )
 
-                if request_metadata.is_http_request:
-                    scope, receive = request_args
-                    async for msgs in self._user_callable_wrapper.call_http_entrypoint(
-                        request_metadata,
-                        status_code_callback,
-                        scope,
-                        receive,
-                    ):
-                        yield pickle.dumps(msgs)
-                elif request_metadata.is_streaming:
-                    async for result in self._user_callable_wrapper.call_user_generator(
-                        request_metadata,
-                        request_args,
-                        request_kwargs,
-                    ):
-                        yield result
-                else:
-                    yield await self._user_callable_wrapper.call_user_method(
-                        request_metadata, request_args, request_kwargs
-                    )
+                try:
+                    if request_metadata.is_http_request:
+                        scope, receive = request_args
+                        async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                            request_metadata,
+                            status_code_callback,
+                            scope,
+                            receive,
+                        ):
+                            yield pickle.dumps(msgs)
+                    elif request_metadata.is_streaming:
+                        async for result in self._user_callable_wrapper.call_user_generator(
+                            request_metadata,
+                            request_args,
+                            request_kwargs,
+                        ):
+                            yield result
+                    else:
+                        yield await self._user_callable_wrapper.call_user_method(
+                            request_metadata, request_args, request_kwargs
+                        )
+                except Exception as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
 
     @abstractmethod
     async def _on_initialized(self):
         raise NotImplementedError
 
     async def initialize(
-        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+        self,
+        deployment_config: Optional[DeploymentConfig],
+        rank: Optional[ReplicaRank],
+        gang_context: Optional[GangContext] = None,
     ):
+        if gang_context is not None:
+            self._gang_context = gang_context
         if rank is not None:
             self._rank = rank
             self._set_internal_replica_context(
@@ -1133,6 +1566,9 @@ class ReplicaBase(ABC):
 
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
+            )
+            self._metrics_manager.set_max_ongoing_requests(
+                deployment_config.max_ongoing_requests
             )
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
@@ -1258,9 +1694,154 @@ class ReplicaBase(ABC):
             raise e from None
 
 
+async def send_http_response(message, status_code, send):
+    for msg in convert_object_to_asgi_messages(
+        message,
+        status_code=status_code,
+    ):
+        await send(msg)
+
+
 class Replica(ReplicaBase):
+    def __init__(self, **kwargs):
+
+        super().__init__(**kwargs)
+
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+
+        # get node ID
+        self._node_id = ray.get_runtime_context().get_node_id()
+        self._http_options: Optional[HTTPOptions] = None
+        self._grpc_options: Optional[gRPCOptions] = None
+
+        self._direct_ingress_http_server_task: Optional[asyncio.Task] = None
+        self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
+
+        self._num_queued_requests = 0
+
+    @property
+    def max_queued_requests(self) -> int:
+        return self._deployment_config.max_queued_requests
+
+    async def _maybe_start_direct_ingress_servers(self):
+        if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            return
+
+        if not self._ingress:
+            return
+
+        async def allocate_and_start_server(start_server_fn, protocol):
+            """Attempt to allocate a port and start the server with retries."""
+            is_port_in_use = False
+            for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
+                port = await self._controller_handle.allocate_replica_port.remote(
+                    self._node_id, self._replica_id.unique_id, protocol
+                )
+                logger.info(f"Allocated port {port} for {protocol}")
+
+                try:
+                    server_task = await start_server_fn(port)
+                    logger.info(
+                        f"Successfully started {protocol} server on port {port}"
+                    )
+                    return port, server_task
+                except RuntimeError as e:
+                    logger.warning(
+                        f"Failed to start {protocol} server on port {port}: {e}. Retrying..."
+                    )
+
+                    # `start_asgi_http_server` raises a RuntimeError with the original OSError as the cause.
+                    if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
+                        errno.EADDRINUSE,
+                        errno.EADDRNOTAVAIL,
+                    ):
+                        is_port_in_use = True
+                    else:
+                        is_port_in_use = False
+
+                    # setting block_port to True because we are concluding that the port is
+                    # in use by another service on the same node. Blocking port here is a small
+                    # optimization to avoid trying to start the server on a the same port
+                    # multiple times by other replicas.
+                    await self._controller_handle.release_replica_port.remote(
+                        self._node_id,
+                        self._replica_id.unique_id,
+                        port,
+                        protocol,
+                        block_port=True,
+                    )
+
+            err_msg = f"Failed to allocate and start {protocol} server after retries"
+            if is_port_in_use:
+                err_msg = f"""
+                Failed to start {protocol} server: port already in use. Suggestion: Ensure that the Ray Serve direct ingress port ranges do not overlap with the Ray worker port range (min_worker_port to max_worker_port).
+                """
+
+            raise RuntimeError(err_msg)
+
+        # Fetch configs
+        self._http_options, self._grpc_options = ray.get(
+            [
+                self._controller_handle.get_http_config.remote(),
+                self._controller_handle.get_grpc_config.remote(),
+            ]
+        )
+
+        grpc_enabled = is_grpc_enabled(self._grpc_options)
+
+        # Allocate and start HTTP server
+        async def start_http_server(port):
+            options = configure_http_middlewares(
+                configure_http_options_with_defaults(
+                    HTTPOptions(**{**self._http_options.dict(), "port": port})
+                )
+            )
+
+            return await start_asgi_http_server(
+                self._direct_ingress_asgi,
+                options,
+                event_loop=self._event_loop,
+                enable_so_reuseport=False,
+            )
+
+        (
+            self._http_port,
+            self._direct_ingress_http_server_task,
+        ) = await allocate_and_start_server(
+            start_server_fn=start_http_server,
+            protocol=RequestProtocol.HTTP,
+        )
+
+        # Allocate and start gRPC server if enabled
+        if grpc_enabled:
+
+            async def start_grpc_server_fn(port):
+                options = gRPCOptions(**{**self._grpc_options.dict(), "port": port})
+                return await start_grpc_server(
+                    self._direct_ingress_service_handler_factory,
+                    options,
+                    event_loop=self._event_loop,
+                    enable_so_reuseport=False,
+                )
+
+            (
+                self._grpc_port,
+                self._direct_ingress_grpc_server_task,
+            ) = await allocate_and_start_server(
+                start_server_fn=start_grpc_server_fn,
+                protocol=RequestProtocol.GRPC,
+            )
+
+        logger.info(
+            f"Started HTTP server on port {self._http_port}"
+            + (f" and gRPC server on port {self._grpc_port}" if grpc_enabled else "")
+        )
+
     async def _on_initialized(self):
-        # Get current rank from replica context during initialization
+        await self._maybe_start_direct_ingress_servers()
+
         current_rank = ray.serve.context._get_internal_replica_context().rank
         self._set_internal_replica_context(
             servable_object=self._user_callable_wrapper.user_callable,
@@ -1283,7 +1864,12 @@ class Replica(ReplicaBase):
     def _on_request_cancelled(
         self, metadata: RequestMetadata, e: asyncio.CancelledError
     ):
-        """Recursively cancels child requests."""
+        """Recursively cancel child requests.
+
+        This includes all requests that are pending assignment, and gRPC
+        requests that have already been assigned.
+        """
+        # Cancel child requests pending assignment
         requests_pending_assignment = (
             ray.serve.context._get_requests_pending_assignment(
                 metadata.internal_request_id
@@ -1293,6 +1879,7 @@ class Replica(ReplicaBase):
             task.cancel()
 
         # Cancel child requests that have already been assigned.
+        # This is for gRPC requests and direct ingress requests.
         in_flight_requests = _get_in_flight_requests(metadata.internal_request_id)
         for replica_result in in_flight_requests.values():
             replica_result.cancel()
@@ -1300,6 +1887,16 @@ class Replica(ReplicaBase):
     def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
             ray.util.pdb._post_mortem()
+
+    def _can_accept_request(self, request_metadata: RequestMetadata):
+        if request_metadata.is_direct_ingress:
+            limit = self.max_queued_requests
+            if limit != -1 and self._num_queued_requests >= limit:
+                return False
+
+            return True
+        else:
+            return super()._can_accept_request(request_metadata)
 
     @contextmanager
     def _wrap_request(
@@ -1319,6 +1916,8 @@ class Replica(ReplicaBase):
                 app_name=self._deployment_id.app_name,
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
+                cancel_on_parent_request_cancel=self._ingress
+                and RAY_SERVE_ENABLE_DIRECT_INGRESS,
                 _ray_trace_ctx=ray_trace_ctx,
             )
         )
@@ -1441,6 +2040,422 @@ class Replica(ReplicaBase):
 
             yield result
 
+    async def _dataplane_health_check(self) -> Tuple[bool, str]:
+        healthy, message = True, HEALTHY_MESSAGE
+        if self._shutting_down:
+            healthy = False
+            message = "DRAINING"
+        elif not self._healthy:
+            healthy = False
+            message = "UNHEALTHY"
+
+        return healthy, message
+
+    async def _direct_ingress_unary_unary(
+        self,
+        service_method: str,
+        request_proto: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ) -> bytes:
+        if service_method == "/ray.serve.RayServeAPIService/Healthz":
+            healthy, message = await self._dataplane_health_check()
+            context.set_code(
+                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+            )
+            context.set_details(message)
+            return HealthzResponse(message=message).SerializeToString()
+
+        if service_method == "/ray.serve.RayServeAPIService/ListApplications":
+            # NOTE(edoakes): ListApplications may be used for health checking.
+            healthy, message = await self._dataplane_health_check()
+            context.set_code(
+                grpc.StatusCode.OK if healthy else grpc.StatusCode.UNAVAILABLE
+            )
+            context.set_details(message)
+            # ListApplications returns only the app name the replica is serving.
+            application_names = [self._deployment_id.app_name]
+            return ListApplicationsResponse(
+                application_names=application_names
+            ).SerializeToString()
+
+        request_id = generate_request_id()
+        c = RayServegRPCContext(context)
+        c.set_trailing_metadata([("request_id", request_id)])
+        request_metadata = RequestMetadata(
+            # TODO: pick up the request ID from gRPC initial metadata.
+            request_id=request_id,
+            internal_request_id=generate_request_id(),
+            call_method=service_method.split("/")[-1],
+            _request_protocol=RequestProtocol.GRPC,
+            grpc_context=c,
+            app_name=self._deployment_id.app_name,
+            # TODO(edoakes): populate this.
+            multiplexed_model_id="",
+            route=self._deployment_id.app_name,
+            tracing_context=None,
+            is_streaming=False,
+            is_direct_ingress=True,
+        )
+
+        if not self._can_accept_request(request_metadata):
+            status = ResponseStatus(
+                code=grpc.StatusCode.RESOURCE_EXHAUSTED,
+                message="Request dropped due to backpressure",
+            )
+            set_grpc_code_and_details(context, status)
+            return
+
+        method_info = self._user_callable_wrapper.get_user_method_info(
+            request_metadata.call_method
+        )
+        request_args = (request_proto,)
+        request_kwargs = (
+            {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+            if method_info.takes_grpc_context_kwarg
+            else {}
+        )
+
+        async def call_unary():
+            yield await self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
+            )
+
+        with self._wrap_request(request_metadata):
+            self._num_queued_requests += 1
+            async with self._start_request(request_metadata):
+                self._num_queued_requests -= 1
+
+                # Use the generic disconnect detecting wrapper
+                result_gen = call_unary()
+                replica_response_generator = ReplicaResponseGenerator(
+                    result_gen,
+                    timeout_s=self._grpc_options.request_timeout_s,
+                )
+                try:
+                    result = await replica_response_generator.__anext__()
+                    c._set_on_grpc_context(context)
+                    status = ResponseStatus(code=grpc.StatusCode.OK)
+
+                    # NOTE(edoakes): we need to fully consume the generator otherwise the
+                    # finalizers that run after the `yield` statement won't run. There might
+                    # be a cleaner way to structure this.
+                    try:
+                        await replica_response_generator.__anext__()
+                    except StopAsyncIteration:
+                        pass
+                except BaseException as e:
+                    # For gRPC requests, wrap exception with user-set status code
+                    e = self._maybe_wrap_grpc_exception(e, request_metadata)
+                    status = get_grpc_response_status(
+                        e,
+                        self._grpc_options.request_timeout_s,
+                        request_metadata.request_id,
+                    )
+                    return
+                finally:
+                    set_grpc_code_and_details(context, status)
+
+                return result.SerializeToString()
+
+    async def _direct_ingress_unary_stream(
+        self,
+        service_method: str,
+        request: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+    ):
+        raise NotImplementedError("unary_stream not implemented.")
+
+    def _direct_ingress_service_handler_factory(
+        self, service_method: str, streaming_type: gRPCStreamingType
+    ) -> Callable:
+        if streaming_type == gRPCStreamingType.UNARY_STREAM:
+
+            async def handler(*args, **kwargs):
+                return await self._direct_ingress_unary_stream(
+                    service_method, *args, **kwargs
+                )
+
+        elif streaming_type == gRPCStreamingType.UNARY_UNARY:
+
+            async def handler(*args, **kwargs):
+                return await self._direct_ingress_unary_unary(
+                    service_method, *args, **kwargs
+                )
+
+        elif streaming_type == gRPCStreamingType.STREAM_UNARY:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_unary not implemented.")
+
+        elif streaming_type == gRPCStreamingType.STREAM_STREAM:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_stream not implemented.")
+
+        else:
+            raise ValueError(f"Unsupported streaming type: {streaming_type}")
+
+        return handler
+
+    def _determine_http_route(self, scope: Scope) -> str:
+        # Default to route prefix for consistency with non-DI mode
+        route = self._route_prefix
+        if self._user_callable_asgi_app is not None:
+            try:
+                matched_route = get_asgi_route_name(self._user_callable_asgi_app, scope)
+                if matched_route is not None:
+                    route = matched_route
+            except Exception:
+                # If route matching fails, keep the route prefix
+                pass
+
+        return route
+
+    def _parse_request_timeout(self, headers: Dict[str, str]) -> Optional[float]:
+        """Gets the desired request timeout from the headers.
+        If the header is missing or invalid, returns the default request timeout
+        from HttpOptions. If the header is non-positive, timeout is disabled.
+        """
+        header_name = SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER.encode("utf-8")
+        if header_name not in headers:
+            return self._http_options.request_timeout_s
+
+        value = headers.get(header_name).decode("utf-8")
+        try:
+            timeout = float(value)
+            if timeout > 0:
+                return timeout
+            return None
+        except ValueError:
+            return self._http_options.request_timeout_s
+
+    async def _direct_ingress_asgi(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ):
+        # NOTE(edoakes): it's important to only start the replica server after the
+        # constructor runs because we are using SO_REUSEPORT. We don't want a new
+        # replica to start handling connections until it's ready to serve traffic.
+        #
+        # This can be loosened to listen on the port but fail health checks once we no
+        # longer rely on SO_REUSEPORT.
+        assert (
+            self._user_callable_initialized
+        ), "Replica server should only be started *after* the replica is initialized."
+
+        if self._route_prefix and self._route_prefix != "/":
+            scope["root_path"] = self._route_prefix
+
+        start_time = time.time()
+        method = scope.get("method", "WS").upper()
+        route = scope.get("path", "")
+
+        # Handle health check or routes request.
+        if route in ["/-/healthz", "/-/routes"]:
+            healthy, message = await self._dataplane_health_check()
+            status_code = 200 if healthy else 503
+            if route == "/-/routes" and healthy:
+                # routes endpoint returns only the route prefix andapp name the replica is serving.
+                message = {
+                    self._route_prefix: self._deployment_id.app_name,
+                }
+            for msg in convert_object_to_asgi_messages(
+                message,
+                status_code=status_code,
+            ):
+                await send(msg)
+
+            latency_ms = (time.time() - start_time) * 1000.0
+            self._metrics_manager.record_ingress_request_metrics(
+                protocol=RequestProtocol.HTTP,
+                method=method,
+                route=route,
+                app_name=self._deployment_id.app_name,
+                deployment_name=self._deployment_id.name,
+                latency_ms=latency_ms,
+                was_error=not healthy,
+                status_code=str(status_code),
+            )
+            return
+
+        # If the HTTP path does not match the deployment route prefix,
+        # it is invalid and we should not serve it.
+        if not route.startswith(self._route_prefix):
+            for msg in convert_object_to_asgi_messages(
+                f"Path '{route}' not found. "
+                "Ping http://.../-/routes for available routes.",
+                status_code=404,
+            ):
+                await send(msg)
+            return
+
+        headers = dict(scope["headers"])
+        request_id = (
+            headers.get(SERVE_HTTP_REQUEST_ID_HEADER.encode("utf-8")).decode("utf-8")
+            or generate_request_id()
+        )
+        request_disconnect_disabled = (
+            headers.get(
+                SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER.encode("utf-8"), b"?0"
+            ).decode("utf-8")
+        ) == "?1"
+        request_timeout_s = self._parse_request_timeout(headers)
+
+        request_metadata = RequestMetadata(
+            request_id=request_id,
+            internal_request_id=generate_request_id(),
+            call_method="__call__",
+            route=self._determine_http_route(scope),
+            app_name=self._deployment_id.app_name,
+            # TODO(edoakes): populate the multiplexed model ID.
+            multiplexed_model_id="",
+            is_streaming=True,
+            _request_protocol=RequestProtocol.HTTP,
+            tracing_context=None,
+            _http_method=scope.get("method", "WS"),
+            is_direct_ingress=True,
+        )
+
+        if not self._can_accept_request(request_metadata):
+            # NOTE(abrar): its possible that we drop more requests than actual max_queued_requests
+            # because between incrementing and decrementing the queued requests, we yield to the event loop.
+            for msg in convert_object_to_asgi_messages(
+                "Request dropped due to backpressure",
+                status_code=503,
+            ):
+                await send(msg)
+            return
+
+        # Optimization: we can avoid creating an async receive task if the client
+        # has disabled handling disconnects for this request.
+        if request_disconnect_disabled:
+            receive_proxy = receive
+            receive_task = None
+        else:
+            receive_proxy = ASGIDIReceiveProxy(
+                scope, receive, self._user_callable_wrapper.event_loop
+            )
+            receive_task = receive_proxy.fetch_until_disconnect_task()
+
+        response_started = False
+        response_finished = False
+        first_message_peeked = False
+
+        with self._wrap_request(request_metadata) as status_code_callback:
+            self._num_queued_requests += 1
+
+            async def send_user_message(msg: Dict):
+                nonlocal response_started
+                nonlocal response_finished
+                nonlocal first_message_peeked
+
+                if not first_message_peeked:
+                    first_message_peeked = True
+                    if msg["type"] == "http.response.start":
+                        status_code_callback(str(msg["status"]))
+
+                await send(msg)
+                response_started = True
+                if msg.get("more_body") is False:
+                    response_finished = True
+
+            async def call_asgi():
+                async with self._start_request(request_metadata):
+                    self._num_queued_requests -= 1
+
+                    if (
+                        not self._user_callable_wrapper._run_user_code_in_separate_thread
+                    ):
+                        user_method_info = (
+                            self._user_callable_wrapper.get_user_method_info(
+                                request_metadata.call_method
+                            )
+                        )
+                        # `_call_http_entrypoint` will have already called
+                        # `send_user_message`, so the ASGI messages will have
+                        # already been sent back to the client.
+                        await self._user_callable_wrapper._call_http_entrypoint(
+                            user_method_info, scope, receive_proxy, send_user_message
+                        )
+                    else:
+                        async for asgi_messages in self._user_callable_wrapper.call_http_entrypoint(
+                            request_metadata, status_code_callback, scope, receive_proxy
+                        ):
+                            for message in asgi_messages:
+                                await send_user_message(message)
+
+            # Optimization: if Serve doesn't need to handle disconnects and
+            # timeouts for this request, we can avoid event loop overhead by
+            # directly awaiting the user code.
+            if receive_task is None and request_timeout_s is None:
+                return await call_asgi()
+
+            # Otherwise, we'd always need the call_asgi() task.
+            request_task = asyncio.create_task(call_asgi())
+            tasks = [request_task]
+            if receive_task is not None:
+                tasks.append(receive_task)
+
+            done, _ = await asyncio.wait(
+                tasks,
+                timeout=request_timeout_s,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # NOTE(zcin): it's possible that the request task has finished sending
+            # all ASGI messages, but the task is suspended and before it can fully
+            # complete, the client has sent a disconnect message after the request
+            # is completed. That is why we check for `response_finished` here.
+            if request_task in done or response_finished:
+                if receive_task is not None:
+                    receive_task.cancel()
+                await request_task
+            elif receive_task in done:
+                request_task.cancel()
+                status_code_callback("499")
+                if not response_started:
+                    msg = (
+                        f"Client for request {request_id} disconnected, "
+                        "cancelling request."
+                    )
+                    await send_http_response(msg, 499, send)
+                raise asyncio.CancelledError
+            else:
+                request_task.cancel()
+                status_code_callback("408")
+                if not response_started:
+                    msg = (
+                        f"Request {request_id} timed out after "
+                        f"{self._http_options.request_timeout_s}s."
+                    )
+                    await send_http_response(msg, 408, send)
+                raise asyncio.CancelledError
+
+    async def perform_graceful_shutdown(self):
+        if (
+            RAY_SERVE_ENABLE_DIRECT_INGRESS
+            and self._ingress
+            and self._user_callable_initialized
+        ):
+            # In direct ingress mode, we need to wait at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
+            # balancers (e.g., ALB) time to deregister the replica, in addition to
+            # waiting for requests to drain.
+            await asyncio.gather(
+                asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S),
+                super().perform_graceful_shutdown(),
+            )
+        else:
+            await super().perform_graceful_shutdown()
+
+        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
+        if self._direct_ingress_http_server_task:
+            self._direct_ingress_http_server_task.cancel()
+        if self._direct_ingress_grpc_server_task:
+            self._direct_ingress_grpc_server_task.cancel()
+
 
 class ReplicaActor:
     """Actor definition for replicas of Ray Serve deployments.
@@ -1520,7 +2535,10 @@ class ReplicaActor:
         return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
+        self,
+        deployment_config: DeploymentConfig = None,
+        rank: ReplicaRank = None,
+        gang_context: GangContext = None,
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -1533,7 +2551,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config, rank)
+        await self._replica_impl.initialize(deployment_config, rank, gang_context)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
@@ -1692,6 +2710,7 @@ class UserCallableWrapper:
         local_testing_mode: bool,
         deployment_config: DeploymentConfig,
         actor_id: str,
+        ray_actor_options: Optional[Dict] = None,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1715,6 +2734,10 @@ class UserCallableWrapper:
         # Will be populated in `initialize_callable`.
         self._callable = None
         self._deployment_config = deployment_config
+        self._ray_actor_options = ray_actor_options or {}
+        self._user_code_threadpool: Optional[
+            concurrent.futures.ThreadPoolExecutor
+        ] = None
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -1740,6 +2763,7 @@ class UserCallableWrapper:
                 # Required so that calls to get the current running event loop work
                 # properly in user code.
                 asyncio.set_event_loop(self._user_code_event_loop)
+                self._configure_user_code_threadpool()
                 # Start monitoring before run_forever so the task is scheduled.
                 self._user_code_loop_monitor.start(self._user_code_event_loop)
                 self._user_code_event_loop.run_forever()
@@ -1752,10 +2776,27 @@ class UserCallableWrapper:
         else:
             self._user_code_event_loop = asyncio.get_running_loop()
             self._user_code_loop_monitor = None
+            self._configure_user_code_threadpool()
 
     @property
     def event_loop(self) -> asyncio.AbstractEventLoop:
         return self._user_code_event_loop
+
+    def _get_user_code_threadpool_max_workers(self) -> Optional[int]:
+        num_cpus = self._ray_actor_options.get("num_cpus")
+        if num_cpus is None:
+            return None
+        # Mirror ThreadPoolExecutor default behavior while respecting num_cpus.
+        return min(32, max(1, int(math.ceil(num_cpus))) + 4)
+
+    def _configure_user_code_threadpool(self) -> None:
+        max_workers = self._get_user_code_threadpool_max_workers()
+        if max_workers is None:
+            return
+        self._user_code_threadpool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_workers
+        )
+        self._user_code_event_loop.set_default_executor(self._user_code_threadpool)
 
     def _run_user_code(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
@@ -2025,6 +3066,11 @@ class UserCallableWrapper:
             return self._call_user_health_check()
 
         return None
+
+    @property
+    def has_user_routing_stats_method(self) -> bool:
+        """Whether the user has defined a record_routing_stats method."""
+        return self._user_record_routing_stats is not None
 
     def call_user_record_routing_stats(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_record_routing_stats")
@@ -2477,3 +3523,6 @@ class UserCallableWrapper:
 
         except Exception as e:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")
+        finally:
+            if self._user_code_threadpool is not None:
+                self._user_code_threadpool.shutdown(wait=False)

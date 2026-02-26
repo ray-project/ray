@@ -10,12 +10,13 @@ from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,
 )
 from ray.train.predictor import Predictor
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 TensorType = TypeVar("TensorType")
 TensorDtype = TypeVar("TensorDtype")
 
 
+@Deprecated
 class DLPredictor(Predictor):
     @abc.abstractmethod
     def _arrays_to_tensors(

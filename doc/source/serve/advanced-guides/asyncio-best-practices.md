@@ -93,6 +93,26 @@ Important differences:
 - FastAPI  always dispatches `def` endpoints to a threadpool.
 - In pure Serve, `def` methods run on the event loop unless you opt into threadpool behavior.
 
+## Threadpool sizing and overrides
+
+Serve sets a default threadpool size for user code that mirrors Python's
+`ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
+
+In most cases, the default is fine. If you need to tune it, you can override the default
+executor inside your deployment:
+
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __threadpool_override_begin__
+:end-before: __threadpool_override_end__
+:language: python
+```
+
+Guidance for choosing a size:
+
+- Default is fine in most cases.
+- For I/O-blocking code, consider a threadpool larger than `num_cpus`.
+- For GIL-releasing compute (NumPy/Pandas/SciPy, etc.), keep the threadpool at or below `num_cpus`.
+
 ## Blocking versus non-blocking in practice
 
 Blocking code keeps the event loop from processing other work. Non-blocking code yields control back to the loop when it's waiting on something.

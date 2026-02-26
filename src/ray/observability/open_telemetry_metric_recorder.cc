@@ -32,6 +32,7 @@
 #include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/rpc/common.h"
 #include "ray/util/logging.h"
 
 // Anonymous namespace that contains the private callback functions for the
@@ -39,8 +40,8 @@
 namespace {
 using ray::observability::OpenTelemetryMetricRecorder;
 
-static void _DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer,
-                                 void *state) {
+static void DoubleGaugeCallback(opentelemetry::metrics::ObserverResult observer,
+                                void *state) {
   const std::string *name_ptr = static_cast<const std::string *>(state);
   const std::string &name = *name_ptr;
   OpenTelemetryMetricRecorder &recorder = OpenTelemetryMetricRecorder::GetInstance();
@@ -88,23 +89,83 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
                                         std::chrono::milliseconds interval,
                                         std::chrono::milliseconds timeout) {
   // Create an OTLP exporter
-  opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
-  exporter_options.endpoint = endpoint;
+  exporter_options_.endpoint = endpoint;
   // This line ensures that only the delta values for count and sum are exported during
   // each collection interval. This is necessary because the dashboard agent already
   // accumulates these metrics—re-accumulating them during export would lead to double
   // counting.
-  exporter_options.aggregation_temporality =
+  exporter_options_.aggregation_temporality =
       opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
   // Add authentication token to metadata if auth is enabled
-  if (rpc::RequiresTokenAuthentication()) {
+  if (rpc::GetAuthenticationMode() == rpc::AuthenticationMode::TOKEN) {
     auto token = rpc::AuthenticationTokenLoader::instance().GetToken();
     if (token && !token->empty()) {
-      exporter_options.metadata.insert(
-          {std::string(kAuthTokenKey), token->ToAuthorizationHeaderValue()});
+      const std::string auth_key(kAuthTokenKey);
+      exporter_options_.metadata.erase(auth_key);
+      exporter_options_.metadata.insert({auth_key, token->ToAuthorizationHeaderValue()});
     }
   }
-  auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
+  // Configure TLS/SSL credentials to match how Ray's gRPC servers are configured.
+  // When USE_TLS is enabled, the dashboard agent's gRPC server uses SSL, so the
+  // OpenTelemetry exporter must also use SSL to connect successfully.
+  // See https://github.com/ray-project/ray/issues/59968
+  if (RayConfig::instance().USE_TLS()) {
+    exporter_options_.use_ssl_credentials = true;
+
+    // Load CA certificate for server verification.
+    // Reuse ReadCert from ray/rpc/common.h for consistency with other TLS code paths.
+    std::string ca_cert_file = std::string(RayConfig::instance().TLS_CA_CERT());
+    if (!ca_cert_file.empty()) {
+      std::string ca_cert = rpc::ReadCert(ca_cert_file);
+      RAY_CHECK(!ca_cert.empty())
+          << "Failed to read CA certificate file: " << ca_cert_file;
+      exporter_options_.ssl_credentials_cacert_as_string = std::move(ca_cert);
+    }
+
+#ifdef ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW
+    // Load client certificate and key for mutual TLS (mTLS).
+    // Ray's gRPC server requires client authentication when CA cert is configured.
+    // Note: mTLS support requires the OpenTelemetry SDK to be built with
+    // ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW defined.
+    //
+    // We reuse TLS_SERVER_CERT and TLS_SERVER_KEY for the client certificate because
+    // Ray components (raylet, gcs_server, etc.) act as both servers and clients,
+    // using the same certificate for bidirectional mTLS communication. This is
+    // consistent with how other Ray gRPC clients are configured.
+    std::string client_cert_file = std::string(RayConfig::instance().TLS_SERVER_CERT());
+    std::string client_key_file = std::string(RayConfig::instance().TLS_SERVER_KEY());
+    if (!client_cert_file.empty()) {
+      std::string client_cert = rpc::ReadCert(client_cert_file);
+      RAY_CHECK(!client_cert.empty())
+          << "Failed to read client certificate file: " << client_cert_file;
+      exporter_options_.ssl_client_cert_string = std::move(client_cert);
+    }
+    if (!client_key_file.empty()) {
+      std::string client_key = rpc::ReadCert(client_key_file);
+      RAY_CHECK(!client_key.empty())
+          << "Failed to read client key file: " << client_key_file;
+      exporter_options_.ssl_client_key_string = std::move(client_key);
+    }
+    RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS and mTLS enabled";
+#else
+    // Ray's gRPC server requires client certificates (mTLS) when TLS is enabled.
+    // Without mTLS support, the OpenTelemetry exporter will fail to connect.
+    // This is a fatal error because metric export will silently fail otherwise.
+    RAY_LOG(FATAL)
+        << "OpenTelemetry metric exporter cannot be configured: TLS is enabled "
+        << "but mTLS support is not available (SDK built without "
+        << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW). Ray's gRPC servers require "
+        << "client certificates when TLS is enabled.";
+#endif
+  } else {
+    exporter_options_.use_ssl_credentials = false;
+    exporter_options_.ssl_credentials_cacert_as_string.clear();
+#ifdef ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW
+    exporter_options_.ssl_client_cert_string.clear();
+    exporter_options_.ssl_client_key_string.clear();
+#endif
+  }
+  auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options_);
 
   // Initialize the OpenTelemetry SDK and create a Meter
   opentelemetry::sdk::metrics::PeriodicExportingMetricReaderOptions reader_options;
@@ -192,7 +253,7 @@ void OpenTelemetryMetricRecorder::RegisterGaugeMetric(const std::string &name,
   // a potential deadlock.
   //
   // To avoid this, ensure the callback is registered *after* releasing mutex_ (A).
-  instrument->AddCallback(&_DoubleGaugeCallback, static_cast<void *>(name_ptr));
+  instrument->AddCallback(&DoubleGaugeCallback, static_cast<void *>(name_ptr));
 }
 
 bool OpenTelemetryMetricRecorder::IsMetricRegistered(const std::string &name) {

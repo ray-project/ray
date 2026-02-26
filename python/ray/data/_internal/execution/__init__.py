@@ -1,4 +1,5 @@
 import enum
+import logging
 import os
 from typing import TYPE_CHECKING, Optional
 
@@ -8,6 +9,8 @@ if TYPE_CHECKING:
     from ... import DataContext
     from .resource_manager import OpResourceAllocator, ResourceManager
 
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_USE_OP_RESOURCE_ALLOCATOR_VERSION = os.environ.get(
     "RAY_DATA_USE_OP_RESOURCE_ALLOCATOR_VERSION", "V1"
@@ -28,6 +31,11 @@ def create_resource_allocator(
         # This is a historical kill-switch to disable resource allocator, that
         # will be soon deprecated and removed.
         return None
+
+    logger.debug(
+        f"Using op resource allocator version: "
+        f"{DEFAULT_USE_OP_RESOURCE_ALLOCATOR_VERSION!r}"
+    )
 
     if DEFAULT_USE_OP_RESOURCE_ALLOCATOR_VERSION == OpResourceAllocatorVersion.V1:
         from .resource_manager import ReservationOpResourceAllocator

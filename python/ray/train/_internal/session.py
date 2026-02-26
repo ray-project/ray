@@ -20,7 +20,6 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TIMESTAMP,
 )
-from ray.data import Dataset
 from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import StorageContext
@@ -46,7 +45,7 @@ from ray.util.scheduling_strategies import (
 )
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator
+    from ray.data import DataIterator, Dataset
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
@@ -122,7 +121,7 @@ class _TrainSession:
         local_world_size: Optional[int],
         world_size: Optional[int],
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Dict[str, Dataset]] = None,
+        dataset_shard: Optional[Dict[str, "Dataset"]] = None,
         metadata: Dict[str, Any] = None,
         checkpoint: Optional[Checkpoint] = None,
         detailed_autofilled_metrics: bool = False,

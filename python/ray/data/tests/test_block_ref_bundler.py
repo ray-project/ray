@@ -194,6 +194,46 @@ def test_block_ref_bundler_uniform(
     assert flat_out == list(range(n))
 
 
+def test_block_ref_bundler_get_next_regression():
+    """Test that all remaining bundles are appropriately preserved after `get_next_bundle`."""
+
+    # Create 4 blocks, each with 1 row
+    bundler = BlockRefBundler(min_rows_per_bundle=2)
+    bundles = _make_ref_bundles([[[1]], [[2]], [[3]], [[4]]])
+
+    # Add all bundles at once
+    for b in bundles:
+        bundler.add_bundle(b)
+
+    # Buffer now has 4 rows total
+    assert bundler.num_blocks() == 4
+
+    # First get_next_bundle should return bundles with 2 rows
+    assert bundler.has_bundle()
+    _, out_bundle = bundler.get_next_bundle()
+    assert out_bundle.num_rows() == 2
+    assert _get_bundles(out_bundle) == [[1], [2]]
+
+    # Remainder should have 2 bundles with 2 rows total
+    # BUG: Without the break statement, only 1 bundle (1 row) remains
+    assert bundler.num_blocks() == 2, (
+        f"Expected 2 rows remaining, got {bundler._bundle_buffer_size}. "
+        "This indicates the remainder was overwritten in the loop."
+    )
+
+    # Second get_next_bundle (after finalization) should return remaining bundles
+    bundler.done_adding_bundles()
+
+    assert bundler.has_bundle()
+    _, out_bundle = bundler.get_next_bundle()
+
+    assert out_bundle.num_rows() == 2
+    assert _get_bundles(out_bundle) == [[3], [4]]
+
+    # Buffer should now be empty
+    assert bundler.num_blocks() == 0
+
+
 if __name__ == "__main__":
     import sys
 

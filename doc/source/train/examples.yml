@@ -34,6 +34,14 @@ examples:
     use_cases:
       - computer vision
     link: examples/tf/tensorflow_mnist_example
+  - title: Train a GPT-2-style Transformer with JAX and Flax
+    frameworks:
+      - jax
+      - flax
+    skill_level: beginner
+    use_cases:
+      - natural language processing
+    link: examples/jax/intro_to_jax_trainer/README
   - title: Train with Horovod and PyTorch
     frameworks:
       - horovod
@@ -63,12 +71,20 @@ examples:
       - computer vision
     link: examples/pytorch/pytorch-profiling/README
   - title: Get started with PyTorch Fully Sharded Data Parallel (FSDP2) and Ray Train
-    skill_level: intermediate 
+    skill_level: intermediate
     frameworks:
       - pytorch
     use_cases:
       - computer vision
     link: examples/pytorch/pytorch-fsdp/README
+  - title: Get started with 2D Parallelism (Tensor + Data Parallelism) using FSDP2 and Ray Train
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/pytorch/tensor_parallel_dtensor/README
   - title: Fine-tune an LLM with Ray Train and DeepSpeed
     skill_level: intermediate
     frameworks:

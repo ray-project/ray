@@ -98,9 +98,9 @@ def _convert_pandas_to_batch_type(
     """
     if cast_tensor_columns:
         data = _cast_ndarray_columns_to_tensor_extension(data)
+
     if type == BatchFormat.PANDAS:
         return data
-
     elif type == BatchFormat.NUMPY:
         if len(data.columns) == 1:
             # If just a single column, return as a single numpy array.
@@ -111,7 +111,6 @@ def _convert_pandas_to_batch_type(
             for column in data:
                 output_dict[column] = data[column].to_numpy()
             return output_dict
-
     elif type == BatchFormat.ARROW:
         if not pyarrow:
             raise ValueError(

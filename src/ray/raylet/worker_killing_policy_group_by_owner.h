@@ -23,7 +23,7 @@
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet/worker_killing_policy.h"
 
@@ -89,12 +89,13 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicy {
   GroupByOwnerIdWorkerKillingPolicy();
   std::pair<std::shared_ptr<WorkerInterface>, bool> SelectWorkerToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
-      const MemorySnapshot &system_memory) const;
+      const ProcessesMemorySnapshot &process_memory_snapshot) const;
 
  private:
   /// Creates the debug string of the groups created by the policy.
-  static std::string PolicyDebugString(const std::vector<Group> &groups,
-                                       const MemorySnapshot &system_memory);
+  static std::string PolicyDebugString(
+      const std::vector<Group> &groups,
+      const ProcessesMemorySnapshot &process_memory_snapshot);
 };
 
 }  // namespace raylet

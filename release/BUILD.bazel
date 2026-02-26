@@ -2,6 +2,14 @@ load("@py_deps_py310//:requirements.bzl", bk_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
+exports_files(
+    [
+        "aws2gce_iam.json",
+        "azure_docker_login.sh",
+    ],
+    visibility = ["//ci/ray_ci/automation:__pkg__"],
+)
+
 compile_pip_requirements(
     name = "requirements_py310",
     data = [":requirements-doc.txt"],

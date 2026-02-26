@@ -356,12 +356,6 @@ message GcsNodeInfo {
 
   // The death info of this node.
   NodeDeathInfo death_info = 29;
-
-  // Temporary directory of this node.
-  string temp_dir = 32;
-
-  // Session directory of this node.
-  string session_dir = 33;
 }
 
 // A lighter version of GcsNodeInfo containing only essential fields.

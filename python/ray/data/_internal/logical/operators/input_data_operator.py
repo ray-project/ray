@@ -6,6 +6,10 @@ from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperato
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.block import BlockMetadata
 
+__all__ = [
+    "InputData",
+]
+
 
 class InputData(LogicalOperator, SourceOperator):
     """Logical operator for input data.
@@ -17,7 +21,7 @@ class InputData(LogicalOperator, SourceOperator):
         self,
         input_data: List[RefBundle],
     ):
-        super().__init__("InputData", [], len(input_data))
+        super().__init__(input_dependencies=[], num_outputs=len(input_data))
         self.input_data = input_data
 
     def output_data(self) -> Optional[List[RefBundle]]:

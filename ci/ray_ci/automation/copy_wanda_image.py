@@ -21,6 +21,7 @@ from datetime import datetime, timezone as tz
 import click
 
 from ci.ray_ci.automation.crane_lib import (
+    CraneError,
     call_crane_copy,
     call_crane_manifest,
 )
@@ -55,8 +56,11 @@ def _generate_destination_tag(commit: str, tag_suffix: str) -> str:
 
 def _image_exists(tag: str) -> bool:
     """Check if a container image manifest exists using crane."""
-    return_code, _ = call_crane_manifest(tag)
-    return return_code == 0
+    try:
+        call_crane_manifest(tag)
+        return True
+    except CraneError:
+        return False
 
 
 def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
@@ -66,9 +70,7 @@ def _copy_image(source: str, destination: str, dry_run: bool = False) -> None:
         return
 
     logger.info(f"Copying {source} -> {destination}")
-    return_code, output = call_crane_copy(source, destination)
-    if return_code != 0:
-        raise CopyWandaImageError(f"Crane copy failed: {output}")
+    call_crane_copy(source, destination)
     logger.info(f"Successfully copied to {destination}")
 
 

@@ -3,7 +3,17 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+)
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -12,7 +22,6 @@ from ray._private.accelerators.neuron import NEURON_RT_VISIBLE_CORES_ENV_VAR
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_integer
-from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.train import Checkpoint, DataConfig
 from ray.train._internal.session import (
@@ -37,6 +46,9 @@ from ray.train.constants import (
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
 
 T = TypeVar("T")
 
@@ -460,7 +472,7 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        datasets: Dict[str, Dataset],
+        datasets: Dict[str, "Dataset"],
         metadata: Dict[str, Any],
         data_config: DataConfig,
         storage: StorageContext,

@@ -53,8 +53,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
-        ray._common.utils.get_default_ray_temp_dir(),
-        "export_dir_%s" % alg_name,
+        ray._common.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
     algo.train()

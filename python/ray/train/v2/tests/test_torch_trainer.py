@@ -8,6 +8,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.torch import TorchConfig, TorchTrainer
+from ray.train.torch.config import _is_backend_nccl
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 
 
@@ -83,6 +84,16 @@ def test_torch_process_group_shutdown_timeout(ray_start_4_cpus, monkeypatch, tim
     # Even if shutdown times out (timeout_s=0),
     # the training should complete successfully.
     trainer.fit()
+
+
+def test_is_backend_nccl():
+    assert _is_backend_nccl("nccl")
+    assert _is_backend_nccl("cuda:nccl")
+    assert _is_backend_nccl("cpu:gloo,cuda:nccl")
+    assert not _is_backend_nccl("gloo")
+    assert not _is_backend_nccl("cpu:nccl")
+    assert not _is_backend_nccl("cuda:gloo")
+    assert not _is_backend_nccl("cpu:gloo,cuda:gloo")
 
 
 if __name__ == "__main__":

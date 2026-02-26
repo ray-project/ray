@@ -32,19 +32,12 @@ namespace raylet {
 std::string WorkerKillingPolicy::WorkersDebugString(
     const std::vector<std::shared_ptr<WorkerInterface>> &workers,
     int32_t num_workers,
-    const MemorySnapshot &system_memory) {
+    const ProcessesMemorySnapshot &process_memory_snapshot) {
   std::stringstream result;
   int64_t index = 1;
   for (auto &worker : workers) {
     auto pid = worker->GetProcess().GetId();
-    int64_t used_memory = 0;
-    const auto pid_entry = system_memory.process_used_bytes.find(pid);
-    if (pid_entry != system_memory.process_used_bytes.end()) {
-      used_memory = pid_entry->second;
-    } else {
-      RAY_LOG_EVERY_MS(INFO, 60000)
-          << "Can't find memory usage for PID, reporting zero. PID: " << pid;
-    }
+    int64_t used_memory = GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
     result << "Worker " << index << ": lease granted time "
            << absl::FormatTime(worker->GetGrantedLeaseTime(), absl::UTCTimeZone())
            << " worker id " << worker->WorkerId() << " memory used " << used_memory

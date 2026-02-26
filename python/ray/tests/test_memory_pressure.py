@@ -7,14 +7,17 @@ import numpy as np
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    wait_for_condition,
+)
 from ray._common.utils import get_system_memory
 from ray._private import (
     ray_constants,
 )
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import PrometheusTimeseries, has_metric_tagged_with_value
+from ray._private.test_utils import has_metric_tagged_with_value
 from ray._private.utils import get_used_memory
 from ray.util.state.state_manager import StateDataSourceClient
 
