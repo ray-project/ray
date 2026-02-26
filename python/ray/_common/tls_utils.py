@@ -40,9 +40,7 @@ def generate_self_signed_tls_certs() -> Tuple[str, str]:
         encryption_algorithm=serialization.NoEncryption(),
     ).decode()
 
-    subject = x509.Name(
-        [x509.NameAttribute(NameOID.COMMON_NAME, "ray-internal")]
-    )
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ray-internal")])
     altnames = x509.SubjectAlternativeName(
         [
             x509.DNSName(socket.gethostbyname(socket.gethostname())),

@@ -1,4 +1,4 @@
-"""Verify that python/ray/serve no longer imports from ray._private.
+r"""Verify that python/ray/serve no longer imports from ray._private.
 
 Run from repo root after migration:
   cd python && python -c "
