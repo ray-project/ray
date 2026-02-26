@@ -5,33 +5,33 @@
 VERSION_1.0 {
     global:
         # common
-        *ray*Language*;
-        *ray*RayObject*;
-        *ray*Status*;
-        *ray*RayFunction*;
-        *ray*FunctionDescriptorBuilder*;
-        *ray*TaskArg*;
-        *ray*TaskOptions*;
-        *ray*Buffer*;
-        *ray*LocalMemoryBuffer*;
+        *3ray*Language*;
+        *3ray*RayObject*;
+        *3ray*Status*;
+        *3ray*RayFunction*;
+        *3ray*FunctionDescriptorBuilder*;
+        *3ray*TaskArg*;
+        *3ray*TaskOptions*;
+        *3ray*Buffer*;
+        *3ray*LocalMemoryBuffer*;
         # util
-        *ray*RayLog*;
-        *ray*RayLogLevel*;
+        *3ray*RayLog*;
+        *3ray*RayLogLevel*;
         # id
-        *ray*MurmurHash64A*;
-        *ray*JobID*;
-        *ray*TaskID*;
-        *ray*ActorID*;
-        *ray*ObjectID*;
-        *ray*ObjectReference*;
+        *3ray*MurmurHash64A*;
+        *3ray*JobID*;
+        *3ray*TaskID*;
+        *3ray*ActorID*;
+        *3ray*ObjectID*;
+        *3ray*ObjectReference*;
         # Others
-        *ray7metrics*;
-        *ray3rpc*;
-        *ray3gcs*;
-        *ray5stats*;
-        *ray*CoreWorker*;
-        *ray*PeriodicalRunner*;
-        *ray8internal*;
+        *3ray*metrics*;
+        *3ray*rpc*;
+        *3ray*gcs*;
+        *3ray*stats*;
+        *3ray*CoreWorker*;
+        *3ray*PeriodicalRunner*;
+        *3ray8internal*;
         *PyInit*;
         *init_raylet*;
         *Java*;
