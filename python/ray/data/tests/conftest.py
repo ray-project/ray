@@ -1,5 +1,6 @@
 import copy
 import os
+import pathlib
 import posixpath
 import time
 from collections import defaultdict
@@ -39,9 +40,7 @@ def pytest_configure(config):
 
 @pytest.fixture(autouse=True)
 def warn_if_unit_in_integration(request):
-    import pathlib
-
-    """ this fixture is only applied to tests in the integration test directory."""
+    """this fixture is only applied to tests in the integration test directory."""
     integration_test_directory = pathlib.Path(__file__).parent
 
     if request.fspath.dirpath() != integration_test_directory:
