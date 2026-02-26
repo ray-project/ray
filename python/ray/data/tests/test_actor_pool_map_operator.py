@@ -8,7 +8,7 @@ import time
 import unittest
 from dataclasses import replace
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pytest
@@ -516,20 +516,17 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert pool.num_free_task_slots() == 0
 
-    def test_selector_locality_based_actor_ranking(self):
+    @patch.object(
+        RefBundle,
+        "get_preferred_object_locations",
+        # Node1 is higher in priority
+        return_value={"node1": 1024, "node2": 512},
+    )
+    def test_selector_locality_based_actor_ranking(self, _mock_locs):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
         bundles = make_ref_bundles([[0] for _ in range(5)])
-
-        # Patch all bundles to return mocked preferred locations
-        def _get_preferred_locs():
-            # Node1 is higher in priority
-            return {"node1": 1024, "node2": 512}
-
-        for b in bundles:
-            # monkeypatch the get_preferred_object_locations method
-            b.get_preferred_object_locations = _get_preferred_locs
 
         # Setup an actor on each node.
         actor1 = self._add_ready_actor(pool, node_id="node1")
@@ -573,16 +570,12 @@ class TestActorPool(unittest.TestCase):
             res5 = None
         assert res5 is None
 
-    def test_selector_locality_based_actor_ranking_no_locations(self):
+    @patch.object(RefBundle, "get_preferred_object_locations", return_value={})
+    def test_selector_locality_based_actor_ranking_no_locations(self, _mock_locs):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks
         bundles = make_ref_bundles([[0] for _ in range(10)])
-
-        # Patch all bundles to return mocked preferred locations
-        for b in bundles:
-            # monkeypatch the get_preferred_object_locations method
-            b.get_preferred_object_locations = lambda: {}
 
         # Create the mock bundle queue
         bundle_queue = HashLinkedQueue()
