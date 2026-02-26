@@ -177,6 +177,28 @@ py_test_module_list(
     ],
 )
 
+# Tracing tests (require fixture data and tracing env var for subprocesses).
+py_test_module_list(
+    size = "medium",
+    data = glob(["fixtures/*.*"]),
+    env = {
+        "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH": "ray.serve._private.tracing_utils:default_tracing_exporter",
+        "RAY_SERVE_TRACING_SAMPLING_RATIO": "1.0",
+    },
+    files = [
+        "test_tracing_utils.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Large tests.
 py_test_module_list(
     size = "enormous",
