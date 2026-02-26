@@ -15,8 +15,8 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 
-@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.concatenator")
 @PublicAPI(stability="alpha")
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.concatenator")
 class Concatenator(SerializablePreprocessorBase):
     """Combine numeric columns into a column of type
     :class:`~ray.data._internal.tensor_extensions.pandas.TensorDtype`. Only columns

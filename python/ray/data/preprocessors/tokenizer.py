@@ -13,8 +13,8 @@ from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
-@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.tokenizer")
 @PublicAPI(stability="alpha")
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.tokenizer")
 class Tokenizer(SerializablePreprocessorBase):
     """Replace each string with a list of tokens.
 
@@ -114,11 +114,9 @@ class Tokenizer(SerializablePreprocessorBase):
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "columns": getattr(self, "_columns", []),
-            "tokenization_fn": getattr(
-                self, "_tokenization_fn", simple_split_tokenizer
-            ),
-            "output_columns": getattr(self, "_output_columns", []),
+            "columns": self._columns,
+            "tokenization_fn": self._tokenization_fn,
+            "output_columns": self._output_columns,
         }
 
     def _set_serializable_fields(self, fields: Dict[str, Any], version: int):

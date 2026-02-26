@@ -293,9 +293,9 @@ def test_uniform_kbins_discretizer_serialization():
     assert deserialized.columns == ["A"]
     assert deserialized.bins == 3
 
-    # Verify stats are preserved
-    assert hasattr(deserialized, "stats_")
-    assert deserialized.stats_ is not None
+    # Verify stats are preserved: bin edges for 3 bins = 4 edge values
+    assert "A" in deserialized.stats_
+    assert len(deserialized.stats_["A"]) == 4
 
     # Verify it works correctly
     test_df = pd.DataFrame({"A": [1.5, 3.5, 5.5]})

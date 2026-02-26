@@ -13,10 +13,10 @@ if TYPE_CHECKING:
     import torch
 
 
+@PublicAPI(stability="alpha")
 @SerializablePreprocessor(
     version=1, identifier="io.ray.preprocessors.torchvision_preprocessor"
 )
-@PublicAPI(stability="alpha")
 class TorchVisionPreprocessor(SerializablePreprocessorBase):
     """Apply a `TorchVision transform <https://pytorch.org/vision/stable/transforms.html>`_
     to image columns.

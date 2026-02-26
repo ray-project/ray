@@ -9,10 +9,10 @@ from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 @SerializablePreprocessor(
     version=1, identifier="io.ray.preprocessors.power_transformer"
 )
-@PublicAPI(stability="alpha")
 class PowerTransformer(SerializablePreprocessorBase):
     """Apply a `power transform <https://en.wikipedia.org/wiki/Power_transform>`_ to
     make your data more normally distributed.

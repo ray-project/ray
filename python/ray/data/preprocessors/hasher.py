@@ -13,8 +13,8 @@ from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
-@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.feature_hasher")
 @PublicAPI(stability="alpha")
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.feature_hasher")
 class FeatureHasher(SerializablePreprocessorBase):
     r"""Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
     table that describes token frequencies.
@@ -137,9 +137,9 @@ class FeatureHasher(SerializablePreprocessorBase):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"num_features={self.num_features!r}, "
-            f"output_column={self.output_column!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"num_features={self._num_features!r}, "
+            f"output_column={self._output_column!r})"
         )
 
     def _get_serializable_fields(self) -> Dict[str, Any]:

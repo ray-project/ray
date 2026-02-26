@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-from ray.data.preprocessor import SerializablePreprocessorBase
+from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _PublicField,
     migrate_private_fields,
@@ -50,8 +50,6 @@ class Chain(SerializablePreprocessorBase):
     def fit_status(self):
         fittable_count = 0
         fitted_count = 0
-
-        from ray.data.preprocessor import Preprocessor
 
         for p in self._preprocessors:
             if p.fit_status() == Preprocessor.FitStatus.FITTED:
@@ -127,7 +125,7 @@ class Chain(SerializablePreprocessorBase):
         # For Chain preprocessor, we picked the first one as entry point.
         # TODO (jiaodong): We should revisit if our Chain preprocessor is
         # still optimal with context of lazy execution.
-        return self.preprocessors[0]._determine_transform_to_use()
+        return self._preprocessors[0]._determine_transform_to_use()
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
         return {

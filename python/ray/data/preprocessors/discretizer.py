@@ -64,11 +64,6 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                 "in it."
             )
 
-    def _get_attr_with_fallback(self, private_name: str, public_name: str):
-        if hasattr(self, private_name):
-            return getattr(self, private_name)
-        return getattr(self, public_name, None)
-
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
@@ -82,10 +77,10 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
         )
 
 
+@PublicAPI(stability="alpha")
 @SerializablePreprocessor(
     version=1, identifier="io.ray.preprocessors.custom_kbins_discretizer"
 )
-@PublicAPI(stability="alpha")
 class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals using custom bin edges.
 
@@ -287,10 +282,10 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
         )
 
 
+@PublicAPI(stability="alpha")
 @SerializablePreprocessor(
     version=1, identifier="io.ray.preprocessors.uniform_kbins_discretizer"
 )
-@PublicAPI(stability="alpha")
 class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals (bins) of uniform width.
 

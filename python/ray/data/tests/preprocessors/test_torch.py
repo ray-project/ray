@@ -143,7 +143,7 @@ def test_torchvision_preprocessor_serialization():
     # Verify type and field values
     assert isinstance(deserialized, TorchVisionPreprocessor)
     assert deserialized.columns == ["image"]
-    assert deserialized.transform is not None
+    assert isinstance(deserialized.torchvision_transform, type(transform))
 
     # Verify it works correctly
     test_data = {"image": np.zeros((32, 32, 3), dtype=np.uint8)}

@@ -9,8 +9,8 @@ from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
-@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.normalizer")
 @PublicAPI(stability="alpha")
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.normalizer")
 class Normalizer(SerializablePreprocessorBase):
     r"""Scales each sample to have unit norm.
 

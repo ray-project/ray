@@ -216,8 +216,7 @@ def test_count_vectorizer_serialization():
     assert deserialized.max_features == 5
 
     # Verify stats are preserved
-    assert hasattr(deserialized, "stats_")
-    assert deserialized.stats_ is not None
+    assert "token_counts(text)" in deserialized.stats_
 
     # Verify it works correctly
     test_df = pd.DataFrame({"text": ["hello world"]})

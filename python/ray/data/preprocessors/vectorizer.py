@@ -18,10 +18,10 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
+@PublicAPI(stability="alpha")
 @SerializablePreprocessor(
     version=1, identifier="io.ray.preprocessors.hashing_vectorizer"
 )
-@PublicAPI(stability="alpha")
 class HashingVectorizer(SerializablePreprocessorBase):
     """Count the frequency of tokens using the
     `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_.
@@ -227,8 +227,8 @@ class HashingVectorizer(SerializablePreprocessorBase):
         )
 
 
-@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.count_vectorizer")
 @PublicAPI(stability="alpha")
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.count_vectorizer")
 class CountVectorizer(SerializablePreprocessorBase):
     """Count the frequency of tokens in a column of strings.
 
