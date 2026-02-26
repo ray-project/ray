@@ -76,7 +76,6 @@ logger = logging.getLogger(__name__)
 class BlockType(Enum):
     ARROW = "arrow"
     PANDAS = "pandas"
-    CUDF = "cudf"
 
 
 @DeveloperAPI
@@ -528,9 +527,9 @@ class BlockAccessor:
                 assert block_type == BlockType.PANDAS
                 return cls.batch_to_pandas_block(batch)
 
-        # Handle cudf.DataFrame - keep as cuDF block for GPU-native pipelines
+        # Handle cudf.DataFrame - convert to Arrow for storage (cudf is batch-format only)
         if _is_cudf_dataframe(batch):
-            return batch
+            return batch.to_arrow()
 
         return batch
 

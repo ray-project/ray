@@ -1,6 +1,9 @@
-"""cuDF block implementation for Ray Data.
+"""cuDF accessor implementation for Ray Data.
 
-Enables cuDF DataFrames as first-class block types for GPU-native pipelines.
+Provides cuDF DataFrame support as a batch format for GPU-native UDF pipelines.
+cuDF is a batch-format only: blocks are always Arrow or Pandas in the object store,
+and cuDF DataFrames are created transiently within tasks when batch_format="cudf".
+
 Requires cudf to be installed. All cudf imports are lazy to avoid breaking
 CPU-only installations.
 """
@@ -17,21 +20,18 @@ from typing import (
     List,
     Mapping,
     Optional,
-    Tuple,
     TypeVar,
     Union,
 )
 
 import numpy as np
 
-from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import (
     Block,
     BlockAccessor,
     BlockColumn,
     BlockColumnAccessor,
-    BlockExecStats,
-    BlockMetadataWithSchema,
     BlockType,
     U,
 )
@@ -41,7 +41,6 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.expressions import Expr
 
 T = TypeVar("T")
@@ -195,40 +194,13 @@ class CudfBlockColumnAccessor(BlockColumnAccessor):
         raise NotImplementedError("flatten not implemented for cudf.Series")
 
 
-class CudfBlockBuilder(TableBlockBuilder):
-    """BlockBuilder for cuDF DataFrame blocks."""
-
-    def __init__(self):
-        cudf = _lazy_import_cudf()
-        super().__init__(cudf.DataFrame)
-
-    @staticmethod
-    def _table_from_pydict(columns: Dict[str, List[Any]]) -> "cudf.DataFrame":
-        cudf = _lazy_import_cudf()
-        return cudf.DataFrame(columns)
-
-    @staticmethod
-    def _combine_tables(tables: List["cudf.DataFrame"]) -> "cudf.DataFrame":
-        cudf = _lazy_import_cudf()
-        if len(tables) > 1:
-            return cudf.concat(tables, ignore_index=True)
-        return tables[0]
-
-    @staticmethod
-    def _concat_would_copy() -> bool:
-        return True
-
-    @staticmethod
-    def _empty_table() -> "cudf.DataFrame":
-        cudf = _lazy_import_cudf()
-        return cudf.DataFrame()
-
-    def block_type(self) -> BlockType:
-        return BlockType.CUDF
-
-
 class CudfBlockAccessor(TableBlockAccessor):
-    """BlockAccessor for cuDF DataFrame blocks."""
+    """BlockAccessor for cuDF DataFrame batches.
+
+    Used for in-task operations on cuDF DataFrames when batch_format="cudf".
+    cuDF is batch-format only: blocks are stored as Arrow or Pandas in the
+    Ray object store; cuDF DataFrames only exist transiently within tasks.
+    """
 
     ROW_TYPE = CudfRow
 
@@ -340,94 +312,29 @@ class CudfBlockAccessor(TableBlockAccessor):
         return r
 
     @staticmethod
-    def builder() -> CudfBlockBuilder:
-        return CudfBlockBuilder()
-
-    @staticmethod
     def _empty_table() -> "cudf.DataFrame":
-        return CudfBlockBuilder._empty_table()
+        cudf = _lazy_import_cudf()
+        return cudf.DataFrame()
 
-    def _sample(self, n_samples: int, sort_key: "SortKey") -> "cudf.DataFrame":
-        return self._table[sort_key.get_columns()].sample(
-            n=min(n_samples, len(self._table))
-        )
-
-    def sort(self, sort_key: "SortKey") -> "cudf.DataFrame":
-        assert (
-            sort_key.get_columns()
-        ), f"Sorting columns couldn't be empty (got {sort_key.get_columns()})"
+    def filter(self, predicate_expr: "Expr") -> "cudf.DataFrame":
+        """Filter rows based on a predicate expression (cuDF-native)."""
         if len(self._table) == 0:
-            return self._empty_table()
-        columns, ascending = sort_key.to_pandas_sort_args()
-        return self._table.sort_values(by=columns, ascending=ascending)
+            return self._table
 
-    def _find_partitions_sorted(
-        self,
-        boundaries: List[T],
-        sort_key: "SortKey",
-    ) -> List["cudf.DataFrame"]:
-        """GPU-native partition finding via cudf.DataFrame.searchsorted.
-
-        Avoids the col.to_numpy() calls in the base-class find_partition_index
-        which would pull data off the GPU for every sort column × boundary.
-        """
-        cudf = _lazy_import_cudf()
-        columns, ascending = sort_key.to_pandas_sort_args()
-
-        # Normalise boundaries: production code uses tuples (one value per
-        # sort column); single-column tests may pass plain scalars.
-        def _val(b, i):
-            return b[i] if isinstance(b, (tuple, list)) else b
-
-        boundary_df = cudf.DataFrame(
-            {col: [_val(b, i) for b in boundaries] for i, col in enumerate(columns)}
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            eval_expr,
         )
 
-        # cudf.DataFrame.searchsorted accepts ascending as bool or list[bool]
-        # and returns a cupy ndarray (stays on GPU).
-        # .tolist() converts only the tiny index array (n_boundaries ints) to CPU.
-        bounds = (
-            self._table[columns]
-            .searchsorted(boundary_df, side="left", ascending=ascending)
-            .tolist()
-        )
+        # eval_expr supports cuDF blocks natively - returns cudf.Series (boolean mask)
+        mask = eval_expr(predicate_expr, self._table)
 
-        partitions = []
-        last_idx = 0
-        for idx in bounds:
-            partitions.append(self._table[last_idx:idx])
-            last_idx = idx
-        partitions.append(self._table[last_idx:])
-        return partitions
-
-    def sort_and_partition(
-        self, boundaries: List[T], sort_key: "SortKey"
-    ) -> List[Block]:
-        table = self.sort(sort_key)
-        if len(table) == 0:
-            return [self._empty_table() for _ in range(len(boundaries) + 1)]
-        elif len(boundaries) == 0:
-            return [table]
-        return CudfBlockAccessor(table)._find_partitions_sorted(boundaries, sort_key)
-
-    @staticmethod
-    def merge_sorted_blocks(
-        blocks: List[Block], sort_key: "SortKey"
-    ) -> Tuple[Block, BlockMetadataWithSchema]:
-        cudf = _lazy_import_cudf()
-        stats = BlockExecStats.builder()
-        blocks = [b for b in blocks if len(b) > 0]
-        if len(blocks) == 0:
-            ret = CudfBlockAccessor._empty_table()
-        else:
-            blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.CUDF)
-            ret = cudf.concat(blocks, ignore_index=True)
-            columns, ascending = sort_key.to_pandas_sort_args()
-            ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
-
-    def block_type(self) -> BlockType:
-        return BlockType.CUDF
+        # Scalar result (e.g. literal True/False or pyarrow.Scalar)
+        if isinstance(mask, bool):
+            return self._table if mask else self._empty_table()
+        if hasattr(mask, "as_py"):
+            return self._table if mask.as_py() else self._empty_table()
+        # Boolean mask - apply directly to cuDF DataFrame
+        return self._table[mask]
 
     def iter_rows(
         self, public_row_format: bool
@@ -456,23 +363,3 @@ class CudfBlockAccessor(TableBlockAccessor):
         if should_be_single_ndarray:
             return result[columns[0]]
         return result
-
-    def filter(self, predicate_expr: "Expr") -> "cudf.DataFrame":
-        """Filter rows based on a predicate expression (cuDF-native)."""
-        if len(self._table) == 0:
-            return self._table
-
-        from ray.data._internal.planner.plan_expression.expression_evaluator import (
-            eval_expr,
-        )
-
-        # eval_expr supports cuDF blocks natively - returns cudf.Series (boolean mask)
-        mask = eval_expr(predicate_expr, self._table)
-
-        # Scalar result (e.g. literal True/False or pyarrow.Scalar)
-        if isinstance(mask, bool):
-            return self._table if mask else self._empty_table()
-        if hasattr(mask, "as_py"):
-            return self._table if mask.as_py() else self._empty_table()
-        # Boolean mask - apply directly to cuDF DataFrame
-        return self._table[mask]

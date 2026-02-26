@@ -16,13 +16,11 @@ import ray
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.cudf_block import (
     CudfBlockAccessor,
-    CudfBlockBuilder,
     CudfBlockColumnAccessor,
     CudfRow,
 )
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_null
-from ray.data.block import BlockAccessor, BlockColumnAccessor, BlockType
+from ray.data.block import BlockAccessor, BlockColumnAccessor
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 
@@ -262,7 +260,7 @@ class TestCudfAddColumn:
 
 # ---------------------------------------------------------------------------
 # Tests for cudf_block.py - CudfBlockColumnAccessor, CudfBlockAccessor,
-# CudfRow, CudfBlockBuilder, sort, merge_sorted_blocks, _zip
+# CudfRow, _zip
 # ---------------------------------------------------------------------------
 
 
@@ -522,11 +520,6 @@ class TestCudfBlockAccessor:
         acc = self._acc(df)
         assert acc.column_names() == ["x", "y", "z"]
 
-    def test_block_type(self):
-        df = cudf.DataFrame({"a": [1]})
-        acc = self._acc(df)
-        assert acc.block_type() == BlockType.CUDF
-
     def test_to_numpy_single_column(self):
         df = cudf.DataFrame({"a": [1, 2, 3]})
         acc = self._acc(df)
@@ -550,7 +543,7 @@ class TestCudfBlockAccessor:
 
     def test_filter_empty_table(self):
         """CudfBlockAccessor.filter on empty table returns empty."""
-        df = CudfBlockBuilder._empty_table()
+        df = cudf.DataFrame()
         acc = self._acc(df)
         result = acc.filter(col("a") > 0)
         assert len(result) == 0
@@ -579,83 +572,6 @@ class TestCudfRow:
         assert len(row0) == 2
         # Multi-key __getitem__
         assert row0[["a", "b"]] == (1, 10)
-
-
-class TestCudfBlockBuilder:
-    """Tests for CudfBlockBuilder (cudf_block.py)."""
-
-    def test_table_from_pydict(self):
-        result = CudfBlockBuilder._table_from_pydict({"a": [1, 2, 3], "b": [4, 5, 6]})
-        cudf.testing.assert_eq(result, cudf.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}))
-
-    def test_combine_tables(self):
-        t1 = cudf.DataFrame({"a": [1], "b": [2]})
-        t2 = cudf.DataFrame({"a": [3], "b": [4]})
-        result = CudfBlockBuilder._combine_tables([t1, t2])
-        cudf.testing.assert_eq(result, cudf.DataFrame({"a": [1, 3], "b": [2, 4]}))
-
-    def test_combine_single_table(self):
-        t = cudf.DataFrame({"a": [1, 2]})
-        result = CudfBlockBuilder._combine_tables([t])
-        assert result is t
-
-    def test_empty_table(self):
-        result = CudfBlockBuilder._empty_table()
-        assert isinstance(result, cudf.DataFrame)
-        assert len(result) == 0
-
-    def test_block_type(self):
-        builder = CudfBlockBuilder()
-        assert builder.block_type() == BlockType.CUDF
-
-    def test_add_block_and_build(self):
-        builder = CudfBlockBuilder()
-        block = cudf.DataFrame({"a": [1, 2], "b": [3, 4]})
-        builder.add_block(block)
-        result = builder.build()
-        cudf.testing.assert_eq(result, block)
-
-
-class TestCudfBlockSort:
-    """Tests for CudfBlockAccessor sort, sort_and_partition, merge_sorted_blocks."""
-
-    def test_sort(self):
-        df = cudf.DataFrame({"a": [3, 1, 2], "b": [30, 10, 20]})
-        sort_key = SortKey(key="a", descending=False)
-        result = CudfBlockAccessor(df).sort(sort_key)
-        cudf.testing.assert_eq(
-            result, cudf.DataFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
-        )
-
-    def test_sort_descending(self):
-        df = cudf.DataFrame({"a": [1, 2, 3]})
-        sort_key = SortKey(key="a", descending=True)
-        result = CudfBlockAccessor(df).sort(sort_key)
-        cudf.testing.assert_eq(result, cudf.DataFrame({"a": [3, 2, 1]}))
-
-    def test_sort_empty(self):
-        df = CudfBlockBuilder._empty_table()
-        sort_key = SortKey(key="a", descending=False)
-        result = CudfBlockAccessor(df).sort(sort_key)
-        assert len(result) == 0
-
-    def test_sort_and_partition(self):
-        df = cudf.DataFrame({"a": [5, 1, 3, 2, 4]})
-        sort_key = SortKey(key="a", descending=False)
-        boundaries = [2, 4]
-        result = CudfBlockAccessor(df).sort_and_partition(boundaries, sort_key)
-        assert len(result) == 3
-        # Partitions: a<2, 2<=a<4, a>=4
-        cudf.testing.assert_eq(result[0], cudf.DataFrame({"a": [1]}))
-        cudf.testing.assert_eq(result[1], cudf.DataFrame({"a": [2, 3]}))
-        cudf.testing.assert_eq(result[2], cudf.DataFrame({"a": [4, 5]}))
-
-    def test_merge_sorted_blocks(self):
-        b1 = cudf.DataFrame({"a": [1, 3, 5]})
-        b2 = cudf.DataFrame({"a": [2, 4, 6]})
-        sort_key = SortKey(key="a", descending=False)
-        merged, meta = CudfBlockAccessor.merge_sorted_blocks([b1, b2], sort_key)
-        cudf.testing.assert_eq(merged, cudf.DataFrame({"a": [1, 2, 3, 4, 5, 6]}))
 
 
 class TestCudfBlockZip:
