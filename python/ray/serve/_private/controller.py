@@ -295,7 +295,7 @@ class ServeController:
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
-        self._last_broadcasted_fallback_targets: Optional[List[Target]] = None
+        self._last_broadcasted_fallback_targets: List[Target] = []
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -748,11 +748,7 @@ class ServeController:
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""
-        fallback_targets = [
-            self.proxy_state_manager.get_fallback_proxy_target(protocol)
-            for protocol in RequestProtocol
-            if protocol != RequestProtocol.UNDEFINED
-        ]
+        fallback_targets = self.proxy_state_manager.get_fallback_proxy_targets()
 
         if self._last_broadcasted_fallback_targets == fallback_targets:
             return
