@@ -711,6 +711,24 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    files = [
+        "test_symmetric_run_e2e.py",
+    ],
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "ha_integration",
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
     files = ["test_memory_pressure.py"],
     tags = [
         "custom_setup",
