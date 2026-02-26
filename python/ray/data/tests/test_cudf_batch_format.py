@@ -100,10 +100,8 @@ class TestCudfTakeBatch:
         if data_source == "range":
             cudf.testing.assert_eq(batch["id"], cudf.Series([0, 1, 2], name="id"))
         else:
-            # Tensor column: compare via numpy (cudf.testing handles arrays)
-            np.testing.assert_array_equal(
-                batch["data"].values, np.array([[0], [1], [2]])
-            )
+            # Tensor columns are stored as list-type in cudf; compare via Arrow
+            assert batch["data"].to_arrow().to_pylist() == [[0], [1], [2]]
 
 
 class TestCudfBatchBlocks:
@@ -149,7 +147,9 @@ class TestCudfMapBatches:
             cudf_batch["id"] = cudf_batch["id"] + 1
             return cudf_batch
 
-        result = ds.map_batches(add_one, batch_format=batch_format).take()
+        result = ds.map_batches(
+            add_one, batch_format=batch_format, num_gpus=0.001
+        ).take()
         assert result == [{"id": i} for i in range(1, 11)]
 
     def test_map_batches_udf_returns_cudf(self, ray_start_regular_shared, batch_format):
@@ -167,7 +167,9 @@ class TestCudfMapBatches:
             cudf_batch["id"] = cudf_batch["id"] * 2
             return cudf_batch
 
-        result = ds.map_batches(to_cudf_and_double, batch_format=batch_format).take()
+        result = ds.map_batches(
+            to_cudf_and_double, batch_format=batch_format, num_gpus=0.001
+        ).take()
         assert result == [{"id": 0}, {"id": 2}, {"id": 4}, {"id": 6}, {"id": 8}]
 
 
@@ -209,12 +211,16 @@ class TestCudfFilterExpressions:
         """filter(expr=...) works on cuDF blocks from map_batches(batch_format='cudf')."""
         if test_data is not None:
             ds = ray.data.from_items(test_data)
-            ds = ds.map_batches(lambda x: x, batch_format="cudf", batch_size=None)
+            ds = ds.map_batches(
+                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+            )
             result = ds.filter(expr=predicate_expr).take()
             result_ids = [r.get("value", r.get("id", r)) for r in result]
         else:
             ds = ray.data.range(10, override_num_blocks=2)
-            ds = ds.map_batches(lambda x: x, batch_format="cudf", batch_size=None)
+            ds = ds.map_batches(
+                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+            )
             result = ds.filter(expr=predicate_expr).take()
             result_ids = [r["id"] for r in result]
 
@@ -227,13 +233,17 @@ class TestCudfFilterExpressions:
         if test_data is not None:
             ds = ray.data.from_items(test_data)
             ds = ds.filter(expr=predicate_expr)
-            ds = ds.map_batches(lambda x: x, batch_format="cudf", batch_size=None)
+            ds = ds.map_batches(
+                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+            )
             result = ds.take()
             result_ids = [r.get("value", r.get("id", r)) for r in result]
         else:
             ds = ray.data.range(10, override_num_blocks=2)
             ds = ds.filter(expr=predicate_expr)
-            ds = ds.map_batches(lambda x: x, batch_format="cudf", batch_size=None)
+            ds = ds.map_batches(
+                lambda x: x, batch_format="cudf", batch_size=None, num_gpus=0.001
+            )
             result = ds.take()
             result_ids = [r["id"] for r in result]
 
@@ -246,7 +256,7 @@ class TestCudfAddColumn:
     def test_add_column_cudf(self, ray_start_regular_shared):
         """add_column with batch_format='cudf' adds column to cudf batches."""
         ds = ray.data.range(5).add_column(
-            "doubled", lambda x: x["id"] * 2, batch_format="cudf"
+            "doubled", lambda x: x["id"] * 2, batch_format="cudf", num_gpus=0.001
         )
         result = ds.take()
         assert result == [
@@ -452,12 +462,14 @@ class TestCudfBlockAccessor:
         acc = self._acc(df)
         result = acc.slice(1, 4, copy=False)
         cudf.testing.assert_eq(result, cudf.DataFrame({"a": [1, 2, 3]}))
+        assert result.index.to_arrow().to_pylist() == [0, 1, 2], "index must be reset"
 
     def test_take(self):
         df = cudf.DataFrame({"a": [0, 1, 2, 3, 4]})
         acc = self._acc(df)
         result = acc.take([2, 0, 4])
         cudf.testing.assert_eq(result, cudf.DataFrame({"a": [2, 0, 4]}))
+        assert result.index.to_arrow().to_pylist() == [0, 1, 2], "index must be reset"
 
     def test_drop(self):
         df = cudf.DataFrame({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
@@ -494,7 +506,7 @@ class TestCudfBlockAccessor:
         acc = self._acc(df)
         result = acc.random_shuffle(random_seed=42)
         assert len(result) == 5
-        assert set(result["a"].to_pylist()) == {1, 2, 3, 4, 5}
+        assert set(result["a"].to_list()) == {1, 2, 3, 4, 5}
 
     def test_schema(self):
         df = cudf.DataFrame({"a": [1, 2], "b": [3.0, 4.0]})

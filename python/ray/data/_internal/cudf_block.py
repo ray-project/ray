@@ -230,13 +230,13 @@ class CudfBlockAccessor(TableBlockAccessor):
         return self._table.assign(**{name: value})
 
     def slice(self, start: int, end: int, copy: bool = False) -> "cudf.DataFrame":
-        view = self._table.iloc[start:end]
+        view = self._table.iloc[start:end].reset_index(drop=True)
         if copy:
             view = view.copy(deep=True)
         return view
 
     def take(self, indices: List[int]) -> "cudf.DataFrame":
-        return self._table.take(indices)
+        return self._table.take(indices).reset_index(drop=True)
 
     def drop(self, columns: List[str]) -> Block:
         return self._table.drop(columns, axis=1)
