@@ -80,7 +80,7 @@ class TestDataContextGpuFields:
     def test_gpu_shuffle_default_values(self):
         ctx = DataContext()
         assert ctx.gpu_shuffle_num_actors is None
-        assert ctx.gpu_shuffle_rmm_pool_size == "auto"
+        assert ctx.gpu_shuffle_rmm_pool_size is None
         assert ctx.gpu_shuffle_spill_memory_limit == "auto"
 
     def test_gpu_shuffle_fields_settable(self):

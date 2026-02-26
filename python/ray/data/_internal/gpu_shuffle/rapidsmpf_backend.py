@@ -29,7 +29,7 @@ from rapidsmpf.integrations.cudf.partition import (
 )
 from rapidsmpf.rmm_resource_adaptor import RmmResourceAdaptor
 from rapidsmpf.statistics import Statistics
-from rapidsmpf.utils.cudf import cudf_to_pylibcudf_table, pylibcudf_to_cudf_dataframe
+from rapidsmpf.utils.cudf import cudf_to_pylibcudf_table
 from rapidsmpf.utils.ray_utils import BaseShufflingActor
 
 
@@ -187,53 +187,6 @@ class BulkRapidsMPFShuffler(BaseShufflingActor):  # pragma: no cover
         if self.shuffler is not None:
             self.shuffler.shutdown()
 
-    def read_batch(self, paths: list[str]) -> tuple[cudf.DataFrame | None, list[str]]:
-        """
-        Read a single batch of Parquet files using cuDF.
-
-        Parameters
-        ----------
-        paths
-            List of file paths to the Parquet files.
-
-        Returns
-        -------
-            A tuple containing the DataFrame (or None if empty) and the column names.
-        """
-        df = cudf.read_parquet(paths, **self.read_kwargs)
-        column_names = list(df.columns)
-        return (df, column_names)
-
-    def write_table(
-        self,
-        table: plc.Table,
-        output_path: str,
-        partition_id: int | str,
-        column_names: list[str],
-    ) -> str:
-        """
-        Write a pylibcudf Table to a Parquet file using cuDF.
-
-        Parameters
-        ----------
-        table
-            The table to write.
-        output_path
-            The path to write the table to.
-        partition_id
-            Partition id used for naming the output file.
-        column_names
-            The column names of the table.
-        """
-        path = f"{output_path}/part.{partition_id}.parquet"
-        write_kwargs = self.write_kwargs.copy()
-        write_kwargs["index"] = write_kwargs.get("index", False)
-        pylibcudf_to_cudf_dataframe(
-            table,
-            column_names=column_names,
-        ).to_parquet(path, **write_kwargs)
-        return path
-
     def insert_chunk(
         self, table: plc.Table | cudf.DataFrame, column_names: list[str]
     ) -> None:
@@ -260,33 +213,6 @@ class BulkRapidsMPFShuffler(BaseShufflingActor):  # pragma: no cover
             stream=DEFAULT_STREAM,
         )
         self.shuffler.insert_chunks(packed_inputs)
-
-    def read_and_insert(
-        self, paths: list[str], batchsize: int | None = None
-    ) -> list[str]:
-        """
-        Read the list of parquet files every batchsize and insert the partitions into the shuffler.
-
-        Parameters
-        ----------
-        paths
-            List of file paths to the Parquet files.
-        batchsize
-            Number of files to read in each batch.
-
-        Returns
-        -------
-            The column names of the table.
-        """
-        column_names = None
-        if batchsize is None:
-            batchsize = len(paths)
-        for i in range(0, len(paths), batchsize):
-            df, batch_column_names = self.read_batch(paths[i : i + batchsize])
-            if not column_names:
-                column_names = batch_column_names
-            self.insert_chunk(df, column_names)
-        return column_names
 
     def insert_finished(self) -> None:
         """Tell the shuffler that we are done inserting data."""
@@ -318,20 +244,3 @@ class BulkRapidsMPFShuffler(BaseShufflingActor):  # pragma: no cover
                 stream=DEFAULT_STREAM,
             )
             yield partition_id, partition
-
-    def extract_and_write(self, column_names: list[str]) -> list[tuple[int, str]]:
-        """
-        Extract and write shuffled partitions.
-
-        Parameters
-        ----------
-        column_names
-            The column names of the table.
-        """
-        partition_paths = []
-        for partition_id, partition in self.extract():
-            path = self.write_table(
-                partition, self.output_path, partition_id, column_names
-            )
-            partition_paths.append((partition_id, path))
-        return partition_paths
