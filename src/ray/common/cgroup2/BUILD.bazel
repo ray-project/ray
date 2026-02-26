@@ -1,17 +1,12 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
-config_setting(
-    name = "is_linux",
-    constraint_values = ["@platforms//os:linux"],
-)
-
 # The module exposes only two public targets.
 # "cgroup_manager_factory" to create a CgroupManager
 # "cgroup_manager_interface" to use the public API of CgroupManager.
 ray_cc_library(
     name = "cgroup_manager_factory",
     srcs = select({
-        ":is_linux": [
+        "//bazel:is_linux": [
             "linux_cgroup_manager_factory.cc",
         ],
         "//conditions:default": [
@@ -27,10 +22,11 @@ ray_cc_library(
         ":noop_cgroup_manager",
         "//src/ray/util:logging",
     ] + select({
-        ":is_linux": [
+        "//bazel:is_linux": [
             ":cgroup_driver_interface",
             ":cgroup_manager",
             ":sysfs_cgroup_driver",
+            "//src/ray/common:memory_monitor_utils",
             "//src/ray/common:status",
             "//src/ray/common:status_or",
             "@com_google_absl//absl/strings",
@@ -66,6 +62,7 @@ ray_cc_library(
     deps = [
         ":cgroup_driver_interface",
         ":cgroup_manager_interface",
+        "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/util:logging",

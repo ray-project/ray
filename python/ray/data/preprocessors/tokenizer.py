@@ -1,9 +1,14 @@
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors.utils import simple_split_tokenizer
+from ray.data.preprocessors.utils import (
+    _Computed,
+    _PublicField,
+    migrate_private_fields,
+    simple_split_tokenizer,
+)
 from ray.util.annotations import PublicAPI
 
 
@@ -70,23 +75,51 @@ class Tokenizer(Preprocessor):
         output_columns: Optional[List[str]] = None,
     ):
         super().__init__()
-        self.columns = columns
+        self._columns = columns
         # TODO(matt): Add a more robust default tokenizer.
-        self.tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self.output_columns = Preprocessor._derive_and_validate_output_columns(
+        self._tokenization_fn = tokenization_fn or simple_split_tokenizer
+        self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
 
+    @property
+    def columns(self) -> List[str]:
+        return self._columns
+
+    @property
+    def tokenization_fn(self) -> Callable[[str], List[str]]:
+        return self._tokenization_fn
+
+    @property
+    def output_columns(self) -> List[str]:
+        return self._output_columns
+
     def _transform_pandas(self, df: pd.DataFrame):
         def column_tokenizer(s: pd.Series):
-            return s.map(self.tokenization_fn)
+            return s.map(self._tokenization_fn)
 
-        df[self.output_columns] = df.loc[:, self.columns].transform(column_tokenizer)
+        df[self._output_columns] = df.loc[:, self._columns].transform(column_tokenizer)
         return df
 
     def __repr__(self):
-        name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        name = getattr(self._tokenization_fn, "__name__", self._tokenization_fn)
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, "
-            f"tokenization_fn={name}, output_columns={self.output_columns!r})"
+            f"{self.__class__.__name__}(columns={self._columns!r}, "
+            f"tokenization_fn={name}, output_columns={self._output_columns!r})"
+        )
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_columns": _PublicField(public_field="columns"),
+                "_tokenization_fn": _PublicField(
+                    public_field="tokenization_fn", default=simple_split_tokenizer
+                ),
+                "_output_columns": _PublicField(
+                    public_field="output_columns",
+                    default=_Computed(lambda obj: obj._columns),
+                ),
+            },
         )
