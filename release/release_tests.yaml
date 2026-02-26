@@ -1487,6 +1487,14 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_tpl_single_node_gce.yaml
+
 - name: pytest_serve_microbenchmarks
   python: "3.10"
   group: Serve tests

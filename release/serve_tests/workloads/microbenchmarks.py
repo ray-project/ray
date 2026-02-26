@@ -18,6 +18,7 @@ import grpc
 import pandas as pd
 import requests
 from typing import Dict, List, Optional
+from collections import defaultdict
 
 from ray import serve
 from ray.serve._private.benchmarks.common import (
@@ -113,7 +114,6 @@ def convert_controller_samples_to_perf_metrics(
     samples: List[Dict],
 ) -> List[Dict]:
     """Convert controller benchmark raw samples to perf_metrics with std and sample_size."""
-    from collections import defaultdict
 
     def _mean(vals: List[float]) -> float:
         return sum(vals) / len(vals) if vals else 0.0

@@ -353,8 +353,6 @@ _SignalActorForController = _SignalActor.options(max_concurrency=100000)
     },
 )
 class ControllerBenchHelloWorld:
-    """Backend deployment that blocks on SignalActor. Fixed replicas."""
-
     def __init__(self, signal_actor):
         self.signal = signal_actor
 
@@ -388,14 +386,11 @@ async def _controller_get_replica_count(
     deployment_name: str = "ControllerBenchMetricsGenerator",
 ) -> int:
     """Get current number of running replicas for the specified deployment."""
-    try:
-        status = serve.status()
-        for app in status.applications.values():
-            for name, deployment in app.deployments.items():
-                if name == deployment_name:
-                    return deployment.replica_states.get("RUNNING", 0)
-    except Exception:
-        pass
+    status = serve.status()
+    for app in status.applications.values():
+        for name, deployment in app.deployments.items():
+            if name == deployment_name:
+                return deployment.replica_states.get("RUNNING", 0)
     return 0
 
 
@@ -510,7 +505,8 @@ async def _controller_wait_for_waiters(
         if num_waiters >= expected:
             return time.time() - start
         await asyncio.sleep(0.5)
-        logging.info(f"Waiting for {expected} waiters... {num_waiters}/{expected}")
+        if int(time.time() - start) % 10 == 0:
+            logging.info(f"Waiting for {expected} waiters... {num_waiters}/{expected}")
     num_waiters = await signal_actor.cur_num_waiters.remote()
     raise RuntimeError(
         f"Timeout: Only {num_waiters}/{expected} requests reached replicas after "
