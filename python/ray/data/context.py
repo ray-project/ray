@@ -628,7 +628,7 @@ class DataContext:
 
     # RMM GPU memory pool size for each rank.
     # "auto" = 90% of free device memory; None = expandable pool (no fixed size).
-    gpu_shuffle_rmm_pool_size: Union[int, str, None] = "auto"
+    gpu_shuffle_rmm_pool_size: Union[int, str, None] = None
 
     # Device→host spill threshold for each rank.
     # "auto" = 80% of rmm_pool_size; None = spilling disabled.

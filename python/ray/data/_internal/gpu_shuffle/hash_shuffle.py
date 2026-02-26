@@ -75,7 +75,7 @@ class GPUShuffleActor:
         nranks: int,
         total_nparts: int,
         key_columns: List[str],
-        rmm_pool_size: Union[int, str, None] = "auto",
+        rmm_pool_size: Union[int, str, None] = None,
         spill_memory_limit: Union[int, str, None] = "auto",
     ):
         from ray.data._internal.gpu_shuffle.rapidsmpf_backend import (
