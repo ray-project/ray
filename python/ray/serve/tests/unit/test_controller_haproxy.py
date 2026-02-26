@@ -6,9 +6,11 @@ from ray.serve._private.common import (
     RequestProtocol,
     RunningReplicaInfo,
 )
+from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve.schema import (
     Target,
     TargetGroup,
+    ProxyStatus,
 )
 from ray.serve.tests.unit.test_controller_direct_ingress import (
     FakeApplicationStateManager,
@@ -16,6 +18,7 @@ from ray.serve.tests.unit.test_controller_direct_ingress import (
     FakeDirectIngressController,
     FakeKVStore,
     FakeLongPollHost,
+    FakeProxyState,
     FakeProxyStateManager,
 )
 
@@ -183,8 +186,6 @@ def test_get_target_groups_app_with_no_running_replicas(
     """Tests get_target_groups returns the appropriate target groups when an app
     has no running replicas."""
 
-    haproxy_controller._ha_proxy_enabled = True
-
     # Setup test data with running applications
     app_statuses = {"app1": {}}
     route_prefixes = {"app1": "/app1"}
@@ -229,6 +230,49 @@ def test_get_target_groups_app_with_no_running_replicas(
         ),
     ]
 
+
+def test_broadcast_fallback_targets(
+    haproxy_controller: FakeHAProxyController,
+):
+    """Tests get_fallback_proxy_targets returns the appropriate fallback proxy targets."""
+
+    lph = haproxy_controller.long_poll_host
+    assert LongPollNamespace.FALLBACK_TARGETS not in lph.notified_changes
+
+    # Ensure there's no broadcast
+    haproxy_controller.broadcast_fallback_targets_if_changed()
+    assert LongPollNamespace.FALLBACK_TARGETS not in lph.notified_changes
+
+    # Add fallback proxy target
+    haproxy_controller.proxy_state_manager.add_fallback_proxy_target(
+        node_ip="10.0.0.1",
+        port=8500,
+        node_instance_id="instance1",
+        actor_name="proxy1",
+    )
+
+    # Ensure there is a broadcast
+    haproxy_controller.broadcast_fallback_targets_if_changed()
+    assert LongPollNamespace.FALLBACK_TARGETS in lph.notified_changes
+    assert lph.notified_changes[LongPollNamespace.FALLBACK_TARGETS] == [
+        Target(ip="10.0.0.1", port=8500, instance_id="instance1", name="proxy1"),
+    ]
+
+    # Add fallback proxy target
+    haproxy_controller.proxy_state_manager.add_fallback_proxy_target(
+        node_ip="10.0.0.2",
+        port=9500,
+        node_instance_id="instance2",
+        actor_name="proxy2",
+    )
+
+    # Ensure there's another broadcast
+    haproxy_controller.broadcast_fallback_targets_if_changed()
+    assert LongPollNamespace.FALLBACK_TARGETS in lph.notified_changes
+    assert lph.notified_changes[LongPollNamespace.FALLBACK_TARGETS] == [
+        Target(ip="10.0.0.1", port=8500, instance_id="instance1", name="proxy1"),
+        Target(ip="10.0.0.2", port=9500, instance_id="instance2", name="proxy2"),
+    ]
 
 if __name__ == "__main__":
     pytest.main()
