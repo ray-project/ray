@@ -59,6 +59,16 @@ steps:
       REQUIREMENTS_FILE: "datatfds_py3.12.lock"
     tags: cibase
 
+  # type check
+  - label: ":python: pyrefly type check"
+    tags:
+      - data
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci:run_in_docker -- --build-name data9build-py3.10
+          "pip install pyrefly==0.51.0 && pyrefly check $(tr '\n' ' ' < ci/lint/pyrefly-allowlist.txt)"
+    depends_on: data9build-multipy
+
   # tests
   - label: ":database: data: arrow v9 tests"
     tags:

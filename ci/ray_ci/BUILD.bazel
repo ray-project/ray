@@ -40,6 +40,7 @@ py_library(
             "test_in_docker.py",
             "build_in_docker.py",
             "build_in_docker_windows.py",
+            "run_in_docker.py",
         ],
     ),
     data = glob(["*.yaml"]),
@@ -73,6 +74,12 @@ py_binary(
     name = "build_in_docker",
     srcs = ["build_in_docker.py"],
     exec_compatible_with = ["//bazel:py3"],
+    deps = [":ray_ci_lib"],
+)
+
+py_binary(
+    name = "run_in_docker",
+    srcs = ["run_in_docker.py"],
     deps = [":ray_ci_lib"],
 )
 
