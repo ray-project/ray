@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -59,20 +60,38 @@ class AbstractOneToOne(LogicalOperator):
         return self.input_dependencies[0]
 
 
+@dataclass(frozen=True, repr=False, init=False)
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for limit."""
+
+    limit: int
+    can_modify_num_rows: bool = field(init=False, default=True)
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
         input_op: LogicalOperator,
         limit: int,
     ):
-        super().__init__(
-            input_op=input_op,
-            can_modify_num_rows=True,
-            name=f"limit={limit}",
-        )
-        self.limit = limit
+        assert isinstance(input_op, LogicalOperator), input_op
+        object.__setattr__(self, "_name", f"limit={limit}")
+        object.__setattr__(self, "_input_dependencies", [input_op])
+        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "can_modify_num_rows", True)
+        object.__setattr__(self, "limit", limit)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = Limit(transformed_input, self.limit)
+        return transform(target)
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -109,11 +128,21 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
+@dataclass(frozen=True, repr=False, init=False)
 class Download(AbstractOneToOne):
     """Logical operator for download operation.
 
     Supports downloading from multiple URI columns in a single operation.
     """
+
+    uri_column_names: List[str]
+    output_bytes_column_names: List[str]
+    ray_remote_args: Dict[str, Any]
+    filesystem: Optional["pyarrow.fs.FileSystem"]
+    can_modify_num_rows: bool = field(init=False, default=False)
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
@@ -123,13 +152,34 @@ class Download(AbstractOneToOne):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ):
-        super().__init__(input_op=input_op, can_modify_num_rows=False)
+        assert isinstance(input_op, LogicalOperator), input_op
         if len(uri_column_names) != len(output_bytes_column_names):
             raise ValueError(
                 f"Number of URI columns ({len(uri_column_names)}) must match "
                 f"number of output columns ({len(output_bytes_column_names)})"
             )
-        self.uri_column_names = uri_column_names
-        self.output_bytes_column_names = output_bytes_column_names
-        self.ray_remote_args = ray_remote_args or {}
-        self.filesystem = filesystem
+        object.__setattr__(self, "_name", "Download")
+        object.__setattr__(self, "_input_dependencies", [input_op])
+        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "can_modify_num_rows", False)
+        object.__setattr__(self, "uri_column_names", uri_column_names)
+        object.__setattr__(self, "output_bytes_column_names", output_bytes_column_names)
+        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
+        object.__setattr__(self, "filesystem", filesystem)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = Download(
+                transformed_input,
+                uri_column_names=self.uri_column_names,
+                output_bytes_column_names=self.output_bytes_column_names,
+                ray_remote_args=self.ray_remote_args,
+                filesystem=self.filesystem,
+            )
+        return transform(target)
