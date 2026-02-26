@@ -329,6 +329,10 @@ ray_cc_library(
 ray_cc_binary(
     name = "raylet",
     srcs = ["main.cc"],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":local_object_manager",
