@@ -1036,6 +1036,7 @@ class ActorMethod:
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
         tensor_transport: Optional[str] = None,
+        _labels: Optional[Dict[str, str]] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -1108,6 +1109,7 @@ class ActorMethod:
                 ),
                 enable_task_events=enable_task_events,
                 tensor_transport=tensor_transport,
+                labels=_labels,
             )
 
         # Apply the decorator if there is one.
@@ -2318,6 +2320,7 @@ class ActorHandle(Generic[T]):
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
         tensor_transport: Optional[str] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -2341,6 +2344,7 @@ class ActorHandle(Generic[T]):
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
+            labels: Optional key-value labels to attach to this actor method task.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -2405,6 +2409,7 @@ class ActorHandle(Generic[T]):
             generator_backpressure_num_objects,
             enable_task_events,
             tensor_transport,
+            labels,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
