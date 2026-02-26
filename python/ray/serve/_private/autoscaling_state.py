@@ -923,10 +923,12 @@ class ApplicationAutoscalingState:
         app-level autoscaling decision.
         """
         total_current = sum(
-            autoscaling_contexts[dep_id].current_num_replicas
-            for dep_id in autoscaling_contexts
+            ctx.current_num_replicas for ctx in autoscaling_contexts.values()
         )
-        total_target = sum(decisions.values())
+        total_target = sum(
+            decisions.get(dep_id, ctx.current_num_replicas)
+            for dep_id, ctx in autoscaling_contexts.items()
+        )
 
         scaling_status = AutoscalingStatus.get_formatted_status(
             total_target, total_current
@@ -939,7 +941,7 @@ class ApplicationAutoscalingState:
                 AUTOSCALING_LOG_TIMESTAMP_FORMAT, time.gmtime()
             ),
             app_name=self._app_name,
-            num_deployments=len(decisions),
+            num_deployments=len(autoscaling_contexts),
             total_current_replicas=total_current,
             total_target_replicas=total_target,
             scaling_status=scaling_status,
