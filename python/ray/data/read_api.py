@@ -4375,7 +4375,7 @@ def read_kafka(
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
-    timeout_ms: int = 10000,
+    timeout_ms: int = -1,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4437,9 +4437,10 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-            it has read so far.
+        timeout_ms: Timeout in milliseconds for the entire read task per partition.
+            Use -1 for no timeout (run until end_offset is reached).
+            The timeout applies to the whole task, not per message or per batch.
+            If the task does not reach end_offset within the timeout, raises TimeoutError.
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
@@ -4455,6 +4456,7 @@ def read_kafka(
     Raises:
         ValueError: If invalid parameters are provided.
         ImportError: If confluent-kafka is not installed.
+        TimeoutError: If the read task exceeds timeout_ms before reaching end_offset.
     """  # noqa: E501
     if trigger != "once":
         raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
