@@ -15,6 +15,7 @@ from build_image import (
     ImageBuildConfig,
     RayImage,
     RayImageError,
+    main,
 )
 
 
@@ -376,6 +377,16 @@ class TestSupportedImageTypes(unittest.TestCase):
     def test_wanda_spec_keys_use_valid_image_types(self):
         for image_type, _ in WANDA_SPEC_PATHS:
             self.assertIn(image_type, IMAGE_TYPE_CONFIG)
+
+
+class TestHelpOutput(unittest.TestCase):
+    """Test that --help prints without error."""
+
+    def test_no_args_prints_help_and_exits_zero(self):
+        with mock.patch("build_image.sys.argv", ["build_image"]):
+            with self.assertRaises(SystemExit) as ctx:
+                main()
+        self.assertEqual(ctx.exception.code, 0)
 
 
 if __name__ == "__main__":
