@@ -93,6 +93,19 @@ def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     assert num_bytes == expected_num_bytes
 
 
+def test_add_rows_with_different_column_names():
+    builder = ArrowBlockBuilder()
+
+    builder.add({"col1": "spam"})
+    builder.add({"col2": "foo"})
+    block = builder.build()
+
+    expected_table = pa.Table.from_pydict(
+        {"col1": ["spam", None], "col2": [None, "foo"]}
+    )
+    assert block.equals(expected_table)
+
+
 @pytest.fixture(scope="module")
 def binary_dataset_single_file_gt_2gb():
     total_size = int(2.1 * GiB)

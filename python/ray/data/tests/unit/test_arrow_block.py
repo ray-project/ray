@@ -219,19 +219,6 @@ def test_fill_column(input_block, fill_column_name, fill_value, expected_output_
     assert actual_output_block.equals(expected_output_block)
 
 
-def test_add_rows_with_different_column_names():
-    builder = ArrowBlockBuilder()
-
-    builder.add({"col1": "spam"})
-    builder.add({"col2": "foo"})
-    block = builder.build()
-
-    expected_table = pa.Table.from_pydict(
-        {"col1": ["spam", None], "col2": [None, "foo"]}
-    )
-    assert block.equals(expected_table)
-
-
 def test_add_blocks_with_different_column_names():
     builder = ArrowBlockBuilder()
 
