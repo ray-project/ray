@@ -540,8 +540,12 @@ class ReportHead(SubprocessModule):
             req: A request with the following query parameters:
                 pid: Required. The PID of the GPU training worker.
                 ip or node_id: Required. The IP address or hex ID of the node where the GPU training worker is running.
-                num_iterations: Number of training steps for profiling. Defaults to 4
+                num_iterations: Number of training steps for profiling. Defaults to 4.
                     This is the number of calls to the torch Optimizer.step().
+                    Mutually exclusive with duration_ms.
+                duration_ms: Duration in milliseconds for profiling.
+                    Useful for data loader processes without gradient computation.
+                    Mutually exclusive with num_iterations.
 
         Returns:
             A redirect to the log API to download the GPU profiling trace file.
@@ -582,18 +586,35 @@ class ReportHead(SubprocessModule):
         node_id, ip, http_port, grpc_port = addrs
         reporter_stub = self._make_stub(build_address(ip, grpc_port))
 
-        # Profile for num_iterations training steps (calls to optimizer.step())
-        num_iterations = int(req.query.get("num_iterations", 4))
+        # Get profiling mode: either iterations or duration
+        num_iterations_str = req.query.get("num_iterations")
+        duration_ms_str = req.query.get("duration_ms")
 
-        logger.info(
-            f"Sending GPU profiling request to {build_address(ip, grpc_port)}, pid {pid}. "
-            f"Profiling for {num_iterations} training steps."
-        )
+        if num_iterations_str and duration_ms_str:
+            return aiohttp.web.HTTPBadRequest(
+                text="Only one of num_iterations or duration_ms can be provided, not both."
+            )
+
+        # Build the request based on which parameter is provided
+        request_kwargs = {"pid": int(pid)}
+        if duration_ms_str:
+            duration_ms = int(duration_ms_str)
+            request_kwargs["duration_ms"] = duration_ms
+            logger.info(
+                f"Sending GPU profiling request to {build_address(ip, grpc_port)}, pid {pid}. "
+                f"Profiling for {duration_ms}ms duration."
+            )
+        else:
+            # Default to iterations mode with 4 iterations
+            num_iterations = int(num_iterations_str) if num_iterations_str else 4
+            request_kwargs["num_iterations"] = num_iterations
+            logger.info(
+                f"Sending GPU profiling request to {build_address(ip, grpc_port)}, pid {pid}. "
+                f"Profiling for {num_iterations} training steps."
+            )
 
         reply = await reporter_stub.GpuProfiling(
-            reporter_pb2.GpuProfilingRequest(
-                pid=int(pid), num_iterations=num_iterations
-            )
+            reporter_pb2.GpuProfilingRequest(**request_kwargs)
         )
 
         if not reply.success:

@@ -536,9 +536,11 @@ class ReporterAgent(
 
     async def GpuProfiling(self, request, context):
         pid = request.pid
-        num_iterations = request.num_iterations
+        # Extract optional fields - use None if not set
+        num_iterations = request.num_iterations if request.HasField("num_iterations") else None
+        duration_ms = request.duration_ms if request.HasField("duration_ms") else None
         success, output = await self._gpu_profiling_manager.gpu_profile(
-            pid=pid, num_iterations=num_iterations
+            pid=pid, num_iterations=num_iterations, duration_ms=duration_ms
         )
         return reporter_pb2.GpuProfilingReply(success=success, output=output)
 
@@ -1145,6 +1147,10 @@ class ReporterAgent(
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
             "tpus": self._get_tpu_usage(),
+            "gpuProfilingEnabled": (
+                self._gpu_profiling_manager.enabled
+                and self._gpu_profiling_manager.is_monitoring_daemon_running
+            ),
             "network": network_stats,
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.

@@ -46,6 +46,7 @@ message CpuProfilingReply {
 message GpuProfilingRequest {
   uint32 pid = 1;
   optional uint32 num_iterations = 2;
+  optional uint32 duration_ms = 3;  // Duration in milliseconds (alternative to iterations)
 }
 
 message GpuProfilingReply {
