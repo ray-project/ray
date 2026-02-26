@@ -214,6 +214,13 @@ class SplitCoordinator:
                     plan = self._base_dataset._plan
                     # Re-execute dataset
                     self._current_executor = plan.create_executor()
+                    # NOTE: We pass dataset.context (the original, uncopied context)
+                    #       rather than self._data_context (the deep copy used for
+                    #       process isolation) because the planner adds callbacks
+                    #       (e.g. checkpoint) to the original context during
+                    #       _get_execution_dag. Using self._data_context would cause
+                    #       those callbacks to be silently missed.
+                    # TODO: Fix this by having Planner.plan() return callbacks explicitly
                     self._output_iterator = execute_to_legacy_bundle_iterator(
                         self._current_executor, plan, self._base_dataset.context
                     )
