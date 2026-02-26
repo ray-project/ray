@@ -32,6 +32,20 @@ def test_logical_operator_defaults_name_to_class_name():
     assert op.dag_str == "LogicalOperator[LogicalOperator]"
 
 
+def test_logical_operator_does_not_track_output_dependencies():
+    source = LogicalOperator([], name="source")
+    sink = LogicalOperator([source], name="sink")
+
+    # Logical operators should not maintain reverse output-dependency state.
+    assert not hasattr(source, "_output_dependencies")
+    assert not hasattr(sink, "_output_dependencies")
+
+    transformed = sink._apply_transform(lambda op: op)
+    assert transformed is sink
+    assert not hasattr(source, "_output_dependencies")
+    assert not hasattr(sink, "_output_dependencies")
+
+
 if __name__ == "__main__":
     import sys
 

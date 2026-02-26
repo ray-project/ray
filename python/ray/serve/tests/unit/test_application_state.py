@@ -5,6 +5,7 @@ from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
 
+from ray._common.pydantic_compat import ValidationError
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
     ApplicationState,
@@ -36,7 +37,7 @@ from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, GangSchedulingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -1560,6 +1561,60 @@ class TestOverrideDeploymentInfo:
         assert updated_info.replica_config.placement_group_fallback_strategy == [
             {"bundles": [{"CPU": 1}]}
         ]
+
+    def test_override_gang_scheduling_config(self, info):
+        """Test gang_scheduling_config dict is converted to GangSchedulingConfig."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=4,
+                    gang_scheduling_config={
+                        "gang_size": 2,
+                        "gang_placement_strategy": "SPREAD",
+                    },
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+        gang_config = updated_info.deployment_config.gang_scheduling_config
+        assert isinstance(gang_config, GangSchedulingConfig)
+        assert gang_config.gang_size == 2
+        assert gang_config.gang_placement_strategy.value == "SPREAD"
+        assert updated_info.deployment_config.num_replicas == 4
+
+    def test_override_num_replicas_rejects_invalid_gang_multiple(self):
+        """Test that changing num_replicas to a value not divisible by the
+        existing gang_size is rejected."""
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=4,
+                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=5,
+                )
+            ],
+        )
+
+        with pytest.raises(ValidationError, match="must be a multiple of gang_size"):
+            override_deployment_info({"A": initial_info}, config)
 
 
 class TestAutoscale:
