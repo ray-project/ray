@@ -2919,6 +2919,45 @@ def test_ippr_max_limits_affect_new_node_capacity():
     assert reply.to_ippr == []
 
 
+def test_ippr_max_limits_apply_to_replacement_new_nodes():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=4 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 6,
+        ippr_specs=ippr_specs,
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    # Each launched node should be evaluated with IPPR max=4 CPU capacity:
+    # six 1-CPU bundles should require exactly two new nodes, not three.
+    assert to_launch == {"type_1": 2}
+    assert reply.to_ippr == []
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

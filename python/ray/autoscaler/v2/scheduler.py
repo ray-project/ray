@@ -1636,21 +1636,17 @@ class ResourceDemandScheduler(IResourceScheduler):
         # If there's any ippr candidates left, we will add to the target nodes
         target_nodes.extend(ippr_candidates)
 
-        # Try scheduling resource requests with new nodes.
-        node_pools = [
-            SchedulingNode.from_node_config(
+        ippr_specs = ctx.get_ippr_specs()
+
+        def _to_launch_node_with_ippr_caps(node_type: NodeType) -> SchedulingNode:
+            node = SchedulingNode.from_node_config(
                 ctx.get_node_type_configs()[node_type],
                 status=SchedulingNodeStatus.TO_LAUNCH,
                 node_kind=NodeKind.WORKER,
             )
-            for node_type, num_available in node_type_available.items()
-            if num_available > 0
-        ]
-        ippr_specs = ctx.get_ippr_specs()
-        for node in node_pools:
-            # if the new node can be resized, consider its maximum capacity in its IPPR spec.
-            if ippr_specs and node.node_type in ippr_specs.groups:
-                group = ippr_specs.groups[node.node_type]
+            # If the new node can be resized, consider its maximum IPPR capacity.
+            if ippr_specs and node_type in ippr_specs.groups:
+                group = ippr_specs.groups[node_type]
                 node.update_total_resources(
                     {
                         "CPU": float(
@@ -1661,6 +1657,14 @@ class ResourceDemandScheduler(IResourceScheduler):
                         ),
                     }
                 )
+            return node
+
+        # Try scheduling resource requests with new nodes.
+        node_pools = [
+            _to_launch_node_with_ippr_caps(node_type)
+            for node_type, num_available in node_type_available.items()
+            if num_available > 0
+        ]
 
         while len(requests_to_sched) > 0 and len(node_pools) > 0:
             # Max number of nodes reached.
@@ -1690,13 +1694,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             # added node can be launched.
             node_type_available[best_node.node_type] -= 1
             if node_type_available[best_node.node_type] > 0:
-                node_pools.append(
-                    SchedulingNode.from_node_config(
-                        ctx.get_node_type_configs()[best_node.node_type],
-                        status=SchedulingNodeStatus.TO_LAUNCH,
-                        node_kind=NodeKind.WORKER,
-                    )
-                )
+                node_pools.append(_to_launch_node_with_ippr_caps(best_node.node_type))
 
         return target_nodes, requests_to_sched
 
