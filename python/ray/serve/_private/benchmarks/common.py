@@ -478,24 +478,6 @@ async def _controller_wait_for_replicas_up(target: int, timeout: float = 300) ->
     )
 
 
-async def _controller_wait_for_replicas_down(
-    target: int, timeout: float = 600
-) -> float:
-    start = time.time()
-    while time.time() - start < timeout:
-        actual = await _controller_get_replica_count()
-        if actual <= target:
-            return time.time() - start
-        if int(time.time() - start) % 10 == 0:
-            logging.info(f"  Waiting for scale down... {actual} -> {target}")
-        await asyncio.sleep(1.0)
-    actual = await _controller_get_replica_count()
-    raise RuntimeError(
-        f"Timeout: Still {actual} replicas (target {target}) after {timeout}s. "
-        "Ending experiment."
-    )
-
-
 async def _controller_wait_for_waiters(
     signal_actor, expected: int, timeout: float = 300
 ) -> float:
