@@ -183,7 +183,6 @@ class TestConcatenator:
         assert isinstance(p2, Concatenator)
         assert p2.flatten is False
 
-
     def test_concatenator_serialization(self):
         """Test Concatenator serialization and deserialization functionality."""
         from ray.data.preprocessor import SerializablePreprocessorBase
