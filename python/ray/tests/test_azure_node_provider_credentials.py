@@ -10,10 +10,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers – lightweight Azure SDK stand-ins
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_azure_modules():
     """Build a dict of mock Azure modules for ``patch.dict(sys.modules, ...)``."""
@@ -198,8 +198,8 @@ class TestAzureNodeProviderCredentialErrors:
             )
 
             # Make the compute client list call raise a credential error.
-            provider.compute_client.virtual_machines.list.side_effect = (
-                ClientAuthErr("token expired")
+            provider.compute_client.virtual_machines.list.side_effect = ClientAuthErr(
+                "token expired"
             )
 
             with pytest.raises(RuntimeError, match="az login"):
@@ -232,8 +232,8 @@ class TestAzureNodeProviderCredentialErrors:
 
             # The stopped_nodes path calls _get_filtered_nodes which calls
             # compute_client.virtual_machines.list – make it fail.
-            provider.compute_client.virtual_machines.list.side_effect = (
-                ClientAuthErr("token expired")
+            provider.compute_client.virtual_machines.list.side_effect = ClientAuthErr(
+                "token expired"
             )
 
             node_config = {
@@ -270,8 +270,8 @@ class TestAzureNodeProviderCredentialErrors:
             # Simulate a "cache miss" so that external_ip calls _get_node
             # which calls _get_filtered_nodes → compute list → error.
             provider.cached_nodes = {}
-            provider.compute_client.virtual_machines.list.side_effect = (
-                ClientAuthErr("token expired")
+            provider.compute_client.virtual_machines.list.side_effect = ClientAuthErr(
+                "token expired"
             )
 
             with pytest.raises(RuntimeError, match="az login"):
@@ -325,8 +325,8 @@ class TestAzureNodeProviderCredentialErrors:
             # For this test, directly call the internal method.
             # We just confirm that _get_node path raises correctly.
             provider.cached_nodes = {}
-            provider.compute_client.virtual_machines.list.side_effect = (
-                ClientAuthErr("token expired")
+            provider.compute_client.virtual_machines.list.side_effect = ClientAuthErr(
+                "token expired"
             )
             with pytest.raises(RuntimeError, match="az login"):
                 provider.is_terminated("some-node")

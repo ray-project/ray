@@ -14,12 +14,12 @@ from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
+from ray._common.azure_utils import handle_azure_credential_error
 from ray.autoscaler._private.util import (
     generate_rsa_key_pair,
     generate_ssh_key_name,
     generate_ssh_key_paths,
 )
-from ray._common.azure_utils import handle_azure_credential_error
 
 # Built-in Azure Contributor role definition ID used for role assignments.
 CONTRIBUTOR_ROLE_DEFINITION_ID = "b24988ac-6180-42a0-ab88-20f7382dd24c"

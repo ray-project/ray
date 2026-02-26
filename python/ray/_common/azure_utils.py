@@ -6,6 +6,7 @@ Azure SDK authentication failures occur.
 
 import functools
 import logging
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,9 @@ _RECOVERY_STEPS = [
 ]
 
 
-def handle_azure_credential_error(exc, resource_type=None):
+def handle_azure_credential_error(
+    exc: BaseException, resource_type: Optional[str] = None
+) -> None:
     """Inspect *exc* and, if it is an Azure credential/auth error, raise a
     ``RuntimeError`` with actionable recovery instructions.
 
@@ -88,7 +91,9 @@ def validate_azure_credentials(credential=None):
         raise
 
 
-def catch_azure_credential_errors(resource_type=None):
+def catch_azure_credential_errors(
+    resource_type: Optional[str] = None,
+) -> Callable:
     """Decorator that wraps a function so that Azure credential errors are
     intercepted and re-raised as ``RuntimeError`` with recovery instructions.
 
@@ -97,6 +102,9 @@ def catch_azure_credential_errors(resource_type=None):
     Args:
         resource_type: Optional context string (e.g. ``'compute'``) forwarded
             to :func:`handle_azure_credential_error`.
+
+    Returns:
+        A decorator that intercepts Azure credential errors.
     """
 
     def decorator(func):

@@ -16,16 +16,16 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
+from ray._common.azure_utils import (
+    catch_azure_credential_errors,
+    handle_azure_credential_error,
+)
 from ray._common.usage.usage_lib import get_cloud_from_metadata_requests
 from ray.autoscaler._private._azure.config import (
     _delete_role_assignments_for_principal,
     _generate_arm_guid,
     bootstrap_azure,
     get_azure_sdk_function,
-)
-from ray._common.azure_utils import (
-    catch_azure_credential_errors,
-    handle_azure_credential_error,
 )
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_START_WAIT_S,
@@ -117,9 +117,7 @@ class AzureNodeProvider(NodeProvider):
             )
             self.compute_client = ComputeManagementClient(credential, subscription_id)
             self.network_client = NetworkManagementClient(credential, subscription_id)
-            self.resource_client = ResourceManagementClient(
-                credential, subscription_id
-            )
+            self.resource_client = ResourceManagementClient(credential, subscription_id)
         except Exception as e:
             handle_azure_credential_error(e, resource_type="management clients")
             raise

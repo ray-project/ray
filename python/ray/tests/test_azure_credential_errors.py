@@ -10,10 +10,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers – build mock Azure exception classes so the real SDK is NOT needed.
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_azure_modules():
     """Return a dict suitable for ``patch.dict(sys.modules, ...)`` that
@@ -83,6 +83,7 @@ class TestHandleAzureCredentialError:
             from ray._common.azure_utils import (
                 handle_azure_credential_error,
             )
+
             return handle_azure_credential_error
 
     def test_catches_client_authentication_error(self):
@@ -178,6 +179,7 @@ class TestHandleAzureCredentialError:
             from ray._common.azure_utils import (
                 handle_azure_credential_error,
             )
+
             # Should be a silent no-op for any exception.
             handle_azure_credential_error(RuntimeError("anything"))
 
@@ -264,6 +266,7 @@ class TestValidateAzureCredentials:
             from ray._common.azure_utils import (
                 validate_azure_credentials,
             )
+
             cred = MagicMock()
             cred.get_token.return_value = MagicMock()
             # Should not raise.
@@ -279,6 +282,7 @@ class TestValidateAzureCredentials:
             from ray._common.azure_utils import (
                 validate_azure_credentials,
             )
+
             cred = MagicMock()
             cred.get_token.side_effect = ClientAuthErr("token expired")
             with pytest.raises(RuntimeError, match="az login"):
@@ -291,6 +295,7 @@ class TestValidateAzureCredentials:
             from ray._common.azure_utils import (
                 validate_azure_credentials,
             )
+
             cred = MagicMock()
             cred.get_token.side_effect = ConnectionError("network down")
             with pytest.raises(ConnectionError, match="network down"):
