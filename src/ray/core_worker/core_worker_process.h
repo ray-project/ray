@@ -194,7 +194,10 @@ class CoreWorkerProcessImpl {
   std::unique_ptr<ray::stats::Gauge> total_lineage_bytes_gauge_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_counter_;
   std::unique_ptr<ray::stats::Gauge> owned_objects_size_counter_;
-  std::unique_ptr<ray::stats::PercentileMetric> scheduler_placement_time_percentile_ms_;
+  std::unique_ptr<ray::stats::PercentileMetric>
+      scheduler_task_placement_time_percentile_ms_;
+  std::unique_ptr<ray::stats::PercentileMetric>
+      scheduler_actor_placement_time_percentile_ms_;
 };
 }  // namespace core
 }  // namespace ray

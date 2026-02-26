@@ -364,8 +364,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
-  void EmitTaskMetrics(
-      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram) const;
+  void EmitTaskMetrics(ray::observability::MetricInterface &task_metric,
+                       ray::observability::MetricInterface &actor_metric) const;
 
   /// \return true if task events from this task should be reported.
   bool EnableTaskEvents() const;

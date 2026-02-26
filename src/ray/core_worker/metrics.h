@@ -76,12 +76,25 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
 }
 
 inline std::unique_ptr<ray::stats::PercentileMetric>
-GetSchedulerPlacementTimePercentileMsMetric() {
+GetSchedulerTaskPlacementTimePercentileMsMetric() {
   return std::make_unique<ray::stats::PercentileMetric>(
-      /*name=*/"scheduler_placement_time_ms",
+      /*name=*/"scheduler_task_placement_time_ms",
       /*description=*/
-      "The time it takes for a workload (task, actor, placement group) to be placed. "
-      "This is the time from when the tasks dependencies are resolved to when it "
+      "The time it takes for a task to be placed by the scheduler. "
+      "This is the time from when the task's dependencies are resolved to when it "
+      "actually reserves resources on a node to run.",
+      /*unit=*/"ms",
+      /*max_expected_value=*/10000.0,
+      /*num_buckets=*/128);
+}
+
+inline std::unique_ptr<ray::stats::PercentileMetric>
+GetSchedulerActorPlacementTimePercentileMsMetric() {
+  return std::make_unique<ray::stats::PercentileMetric>(
+      /*name=*/"scheduler_actor_placement_time_ms",
+      /*description=*/
+      "The time it takes for an actor creation task to be placed by the scheduler. "
+      "This is the time from when the actor's dependencies are resolved to when it "
       "actually reserves resources on a node to run.",
       /*unit=*/"ms",
       /*max_expected_value=*/10000.0,
