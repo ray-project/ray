@@ -873,24 +873,15 @@ def test_mixed_tensor_types_same_dtype(
 
     expected_tensors = mixed_tensor_types_same_dtype_expected["tensor_values"]
 
-    if preserve_order:
-        for i, (result_tensor, expected_tensor) in enumerate(
-            zip(result_tensors, expected_tensors)
-        ):
-            assert isinstance(result_tensor, np.ndarray)
-            assert result_tensor.shape == expected_tensor.shape
-            assert result_tensor.dtype == expected_tensor.dtype
-            np.testing.assert_array_equal(result_tensor, expected_tensor)
-    else:
-        # Order may differ; sort by flattened bytes for deterministic comparison.
-        for a, e in zip(
-            sorted(result_tensors, key=lambda arr: arr.tobytes()),
-            sorted(expected_tensors, key=lambda arr: arr.tobytes()),
-        ):
-            assert isinstance(a, np.ndarray)
-            assert a.shape == e.shape
-            assert a.dtype == e.dtype
-            np.testing.assert_array_equal(a, e)
+    if not preserve_order:
+        result_tensors = sorted(result_tensors, key=lambda arr: arr.tobytes())
+        expected_tensors = sorted(expected_tensors, key=lambda arr: arr.tobytes())
+
+    for result_tensor, expected_tensor in zip(result_tensors, expected_tensors):
+        assert isinstance(result_tensor, np.ndarray)
+        assert result_tensor.shape == expected_tensor.shape
+        assert result_tensor.dtype == expected_tensor.dtype
+        np.testing.assert_array_equal(result_tensor, expected_tensor)
 
 
 def test_mixed_tensor_types_fixed_shape_different(
