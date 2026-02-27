@@ -80,11 +80,55 @@ KAFKA_MSG_SCHEMA = pa.schema(
 
 @dataclass
 class KafkaAuthConfig:
-    """Authentication configuration for Kafka connections (kafka-python style).
+    """Authentication configuration for Kafka connections.
 
-    Deprecated: Prefer passing Confluent/librdkafka options via consumer_config.
+    Uses parameter names compatible with kafka-python for backward compatibility.
+    These are mapped to Confluent/librdkafka config when connecting.
+
+    Deprecated: Prefer passing Confluent/librdkafka options via ``consumer_config``.
     This class remains for backward compatibility and is mapped to Confluent
     configuration keys internally.
+
+    security_protocol: Protocol used to communicate with brokers.
+        Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
+        Default: PLAINTEXT.
+    sasl_mechanism: Authentication mechanism when ``security_protocol``
+        is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
+        PLAIN, GSSAPI, OAUTHBEARER, SCRAM-SHA-256, SCRAM-SHA-512.
+    sasl_plain_username: Username for SASL PLAIN and SCRAM authentication.
+        Required if ``sasl_mechanism`` is PLAIN or one of the SCRAM mechanisms.
+    sasl_plain_password: Password for SASL PLAIN and SCRAM authentication.
+        Required if ``sasl_mechanism`` is PLAIN or one of the SCRAM mechanisms.
+    sasl_kerberos_name: Constructed ``gssapi.Name`` for use with
+        SASL mechanism handshake. If provided, ``sasl_kerberos_service_name`` and
+        ``sasl_kerberos_domain_name`` are ignored.
+    sasl_kerberos_service_name: Service name to include in GSSAPI
+        SASL mechanism handshake. Default: 'kafka'.
+    sasl_kerberos_domain_name: Kerberos domain name to use in GSSAPI
+        SASL mechanism handshake. Note: This option is not supported by
+        Confluent/librdkafka and will be ignored when building the client
+        configuration. Prefer specifying an explicit principal via
+        ``sasl_kerberos_name`` or rely on broker defaults.
+    sasl_oauth_token_provider: OAuthBearer token provider instance.
+        Default: None. Confluent uses ``sasl.oauthbearer.*`` config instead.
+    ssl_context: Pre-configured ``SSLContext``. Not supported by Confluent;
+        use ``ssl_*`` file paths instead.
+    ssl_check_hostname: Whether to verify that the certificate's hostname
+        matches the broker's hostname. Note: kafka-python supports disabling
+        only hostname verification while still verifying the certificate chain.
+        Confluent/librdkafka does not expose an equivalent flag via
+        ``enable.ssl.certificate.verification`` (setting that to False disables
+        all certificate verification, not just hostname checks). To avoid
+        weakening security, Ray ignores this flag for Confluent-based reads.
+        If you need to disable only hostname verification, configure the client
+        directly (e.g., ``ssl.endpoint.identification.algorithm=none``) where
+        supported by your librdkafka version.
+    ssl_cafile: Optional filename of CA file to use in certificate verification.
+    ssl_certfile: Optional PEM file containing the client certificate.
+    ssl_keyfile: Optional filename containing the client private key.
+    ssl_password: Optional password to be used when loading the certificate chain.
+    ssl_crlfile: Optional filename containing the CRL to check for certificate expiration.
+    ssl_ciphers: Optionally set the available ciphers for SSL connections.
     """
 
     # Security protocol
