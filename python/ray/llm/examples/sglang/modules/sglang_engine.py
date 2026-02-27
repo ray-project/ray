@@ -417,7 +417,7 @@ class SGLangServer:
             # "assistant:" generation cue that _render_fallback_prompt adds.
             chat_messages = self._build_chat_messages(request.messages)
             prompt = "\n".join(
-                f"{m.get('role', 'user')}: {m.get('content', '')}"
+                f"{m.get('role', 'user')}: {m.get('content') or ''}"
                 for m in chat_messages
             )
 
