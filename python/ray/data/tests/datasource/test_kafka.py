@@ -6,8 +6,6 @@ import pytest
 
 import ray
 from ray.data._internal.datasource.kafka_datasource import (
-    KafkaAuthConfig,
-    _add_authentication_to_config,
     _build_consumer_config_for_read,
     _datetime_to_ms,
 )
@@ -57,64 +55,6 @@ def kafka_producer(bootstrap_server):
     print("Closing shared Kafka producer")
 
 
-def test_add_authentication_to_config():
-    """Test authentication config passthrough with Confluent/librdkafka parameter names."""
-    # Test empty authentication
-    config = {}
-    _add_authentication_to_config(config, None)
-    assert config == {}
-
-    _add_authentication_to_config(config, {})
-    assert config == {}
-
-    # Test all authentication parameters - mapped to Confluent names
-    config = {}
-    kafka_auth_config = KafkaAuthConfig(
-        # Security protocol
-        security_protocol="SASL_SSL",
-        # SASL configuration
-        sasl_mechanism="SCRAM-SHA-256",
-        sasl_plain_username="testuser",
-        sasl_plain_password="testpass",
-        sasl_kerberos_name="kafka/hostname@REALM",
-        sasl_kerberos_service_name="kafka",
-        # These three are explicitly unsupported by Confluent and should be skipped
-        sasl_kerberos_domain_name="example.com",
-        sasl_oauth_token_provider=object(),
-        ssl_context=object(),
-        # SSL configuration
-        ssl_check_hostname=False,
-        ssl_cafile="/path/to/ca.pem",
-        ssl_certfile="/path/to/cert.pem",
-        ssl_keyfile="/path/to/key.pem",
-        ssl_password="keypassword",
-        ssl_ciphers="HIGH:!aNULL",
-        ssl_crlfile="/path/to/crl.pem",
-    )
-
-    _add_authentication_to_config(config, kafka_auth_config)
-
-    # Verify Confluent parameter names mapped correctly
-    assert config["security.protocol"] == "SASL_SSL"
-    assert config["sasl.mechanism"] == "SCRAM-SHA-256"
-    assert config["sasl.username"] == "testuser"
-    assert config["sasl.password"] == "testpass"
-    assert config["sasl.kerberos.principal"] == "kafka/hostname@REALM"
-    assert config["sasl.kerberos.service.name"] == "kafka"
-    assert config["enable.ssl.certificate.verification"] is False
-    assert config["ssl.ca.location"] == "/path/to/ca.pem"
-    assert config["ssl.certificate.location"] == "/path/to/cert.pem"
-    assert config["ssl.key.location"] == "/path/to/key.pem"
-    assert config["ssl.key.password"] == "keypassword"
-    assert config["ssl.cipher.suites"] == "HIGH:!aNULL"
-    assert config["ssl.crl.location"] == "/path/to/crl.pem"
-
-    # Verify unsupported parameters were safely ignored and NOT added to the config dict
-    assert "sasl.kerberos.domain" not in config
-    assert "ssl.context" not in config
-    assert "sasl.oauthbearer.token.endpoint.url" not in config
-
-
 def test_build_consumer_config_for_read():
     """Test read config builder."""
     bootstrap_servers = ["localhost:9092"]
@@ -126,19 +66,39 @@ def test_build_consumer_config_for_read():
     assert "group.id" in config
 
     # Test with authentication
-    kafka_auth_config = KafkaAuthConfig(
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_plain_username="user",
-        sasl_plain_password="pass",
-    )
-    config_with_auth = _build_consumer_config_for_read(
-        bootstrap_servers, kafka_auth_config
-    )
+    user_conf = {
+        "security.protocol": "SASL_SSL",
+        "sasl.mechanism": "PLAIN",
+        "sasl.username": "user",
+        "sasl.password": "pass",
+    }
+    config_with_auth = _build_consumer_config_for_read(bootstrap_servers, user_conf)
     assert config_with_auth["security.protocol"] == "SASL_SSL"
     assert config_with_auth["sasl.mechanism"] == "PLAIN"
     assert config_with_auth["sasl.username"] == "user"
     assert config_with_auth["sasl.password"] == "pass"
+
+
+def test_build_consumer_config_with_pass_through():
+    """Test that extra consumer_config options pass through and cannot override bootstrap.servers."""
+    bootstrap_servers = ["localhost:9092"]
+
+    # Extra options should pass through
+    extra = {
+        "ssl.endpoint.identification.algorithm": "none",
+        "group.id": "custom-group",
+        "enable.auto.commit": True,
+    }
+    config = _build_consumer_config_for_read(bootstrap_servers, extra)
+    assert config["bootstrap.servers"] == "localhost:9092"
+    assert config["ssl.endpoint.identification.algorithm"] == "none"
+    assert config["group.id"] == "custom-group"
+    assert config["enable.auto.commit"] is True
+
+    # Attempt to override bootstrap.servers should be ignored
+    override = {"bootstrap.servers": "override:9092"}
+    config2 = _build_consumer_config_for_read(bootstrap_servers, override)
+    assert config2["bootstrap.servers"] == "localhost:9092"
 
 
 def test_datetime_to_ms_without_timezone():

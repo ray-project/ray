@@ -12,7 +12,6 @@ Requires:
 
 import logging
 import time
-from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -39,23 +38,7 @@ from ray.data.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
 
-# Mapping from kafka-python style KafkaAuthConfig fields to Confluent/librdkafka config.
-# KafkaAuthConfig keeps kafka-python names for backward compatibility.
-_KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
-    "security_protocol": "security.protocol",
-    "sasl_mechanism": "sasl.mechanism",
-    "sasl_plain_username": "sasl.username",
-    "sasl_plain_password": "sasl.password",
-    "sasl_kerberos_service_name": "sasl.kerberos.service.name",
-    "sasl_kerberos_name": "sasl.kerberos.principal",
-    "ssl_cafile": "ssl.ca.location",
-    "ssl_certfile": "ssl.certificate.location",
-    "ssl_keyfile": "ssl.key.location",
-    "ssl_password": "ssl.key.password",
-    "ssl_ciphers": "ssl.cipher.suites",
-    "ssl_crlfile": "ssl.crl.location",
-    "ssl_check_hostname": "enable.ssl.certificate.verification",
-}
+# All Kafka configuration is expected to use Confluent/librdkafka keys.
 
 KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
 KAFKA_QUERY_OFFSET_TIMEOUT_S = 10
@@ -77,133 +60,17 @@ KAFKA_MSG_SCHEMA = pa.schema(
 )
 
 
-@dataclass
-class KafkaAuthConfig:
-    """Authentication configuration for Kafka connections.
-
-    Uses parameter names compatible with kafka-python for backward compatibility.
-    These are mapped to Confluent/librdkafka config when connecting.
-
-    security_protocol: Protocol used to communicate with brokers.
-        Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
-        Default: PLAINTEXT.
-    sasl_mechanism: Authentication mechanism when security_protocol
-        is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
-        PLAIN, GSSAPI, OAUTHBEARER, SCRAM-SHA-256, SCRAM-SHA-512.
-    sasl_plain_username: username for sasl PLAIN and SCRAM authentication.
-        Required if sasl_mechanism is PLAIN or one of the SCRAM mechanisms.
-    sasl_plain_password: password for sasl PLAIN and SCRAM authentication.
-        Required if sasl_mechanism is PLAIN or one of the SCRAM mechanisms.
-    sasl_kerberos_name: Constructed gssapi.Name for use with
-        sasl mechanism handshake. If provided, sasl_kerberos_service_name and
-        sasl_kerberos_domain name are ignored. Default: None.
-    sasl_kerberos_service_name: Service name to include in GSSAPI
-        sasl mechanism handshake. Default: 'kafka'
-    sasl_kerberos_domain_name: Kerberos domain name to use in GSSAPI
-        sasl mechanism handshake. Note: This option is not supported by
-        Confluent/librdkafka and will be ignored when building the client
-        configuration. Prefer specifying an explicit principal via
-        `sasl_kerberos_name` or rely on broker defaults.
-    sasl_oauth_token_provider: OAuthBearer
-        token provider instance. Default: None (Confluent uses sasl.oauthbearer.* config)
-    ssl_context: Pre-configured SSLContext. Not supported by Confluent; use ssl_* file paths.
-    ssl_check_hostname: Flag to configure whether ssl handshake
-        should verify that the certificate matches the brokers hostname.
-        Default: True. Mapped to enable.ssl.certificate.verification.
-    ssl_cafile: Optional filename of ca file to use in certificate verification.
-    ssl_certfile: Optional filename of file in pem format containing the client certificate.
-    ssl_keyfile: Optional filename containing the client private key.
-    ssl_password: Optional password to be used when loading the certificate chain.
-    ssl_crlfile: Optional filename containing the CRL to check for certificate expiration.
-    ssl_ciphers: optionally set the available ciphers for ssl connections.
-    """
-
-    # Security protocol
-    security_protocol: Optional[str] = None
-
-    # SASL configuration
-    sasl_mechanism: Optional[str] = None
-    sasl_plain_username: Optional[str] = None
-    sasl_plain_password: Optional[str] = None
-    sasl_kerberos_name: Optional[str] = None
-    sasl_kerberos_service_name: Optional[str] = None
-    sasl_kerberos_domain_name: Optional[str] = None
-    sasl_oauth_token_provider: Optional[Any] = None
-
-    # SSL configuration
-    ssl_context: Optional[Any] = None
-    ssl_check_hostname: Optional[bool] = None
-    ssl_cafile: Optional[str] = None
-    ssl_certfile: Optional[str] = None
-    ssl_keyfile: Optional[str] = None
-    ssl_password: Optional[str] = None
-    ssl_ciphers: Optional[str] = None
-    ssl_crlfile: Optional[str] = None
-
-
-def _add_authentication_to_config(
-    config: Dict[str, Any], kafka_auth_config: Optional[KafkaAuthConfig]
-) -> None:
-    """Add authentication configuration to consumer config in-place.
-
-    Converts KafkaAuthConfig (kafka-python style) to Confluent/librdkafka
-    parameter names and updates the config dict.
-
-    TODO: Once backward compatibility with kafka-python-style names is no longer
-    needed, accept Confluent/librdkafka config directly (e.g. Dict or new dataclass)
-    and remove the KafkaAuthConfig mapping layer.
-
-    Args:
-        config: Consumer config dict to modify.
-        kafka_auth_config: Authentication configuration.
-    """
-    if not kafka_auth_config or not isinstance(kafka_auth_config, KafkaAuthConfig):
-        return
-
-    for field in fields(kafka_auth_config):
-        value = getattr(kafka_auth_config, field.name)
-        if value is None:
-            continue
-
-        # Skip ssl_context - Confluent doesn't support passing SSLContext directly
-        if field.name == "ssl_context":
-            logger.warning(
-                "ssl_context is not supported by Confluent. Skipping. "
-                "Use KafkaAuthConfig fields ssl_cafile, ssl_certfile, ssl_keyfile "
-                "instead. See https://github.com/confluentinc/librdkafka/wiki/Using-SSL-with-librdkafka"
-            )
-            continue
-
-        if field.name == "sasl_oauth_token_provider":
-            logger.warning(
-                "sasl_oauth_token_provider is not supported by Confluent. Skipping. "
-                "Use consumer_config with sasl.oauthbearer.* options instead."
-            )
-            continue
-
-        if field.name == "sasl_kerberos_domain_name":
-            logger.warning(
-                "sasl_kerberos_domain_name is not supported by Confluent and will be ignored. "
-                "Set sasl_kerberos_name (principal) or rely on defaults."
-            )
-            continue
-
-        confluent_key = _KAFKA_AUTH_TO_CONFLUENT.get(field.name)
-        if confluent_key:
-            config[confluent_key] = value
-
-
 def _build_confluent_config(
     bootstrap_servers: List[str],
-    kafka_auth_config: Optional[KafkaAuthConfig],
     extra: Optional[Dict[str, Any]] = None,
+    user_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build Confluent config with bootstrap servers and auth.
 
     Args:
         bootstrap_servers: List of Kafka broker addresses.
-        kafka_auth_config: Authentication configuration.
         extra: Additional config options.
+        user_config: User-provided config options.
 
     Returns:
         Confluent configuration dict.
@@ -211,25 +78,36 @@ def _build_confluent_config(
     config: Dict[str, Any] = {
         "bootstrap.servers": ",".join(bootstrap_servers),
     }
-    _add_authentication_to_config(config, kafka_auth_config)
     if extra:
         config.update(extra)
+    if user_config:
+        if (
+            "bootstrap.servers" in user_config
+            and user_config["bootstrap.servers"] != config["bootstrap.servers"]
+        ):
+            logger.warning(
+                "Ignoring 'bootstrap.servers' from consumer_config; use bootstrap_servers parameter instead."
+            )
+        for k, v in user_config.items():
+            if k == "bootstrap.servers":
+                continue
+            config[k] = v
     return config
 
 
 def _build_consumer_config_for_read(
     bootstrap_servers: List[str],
-    kafka_auth_config: Optional[KafkaAuthConfig],
+    consumer_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build Consumer config for reading messages (Confluent)."""
     return _build_confluent_config(
         bootstrap_servers,
-        kafka_auth_config,
         extra={
             "enable.auto.commit": False,
             # Confluent requires a group.id even when using manual assign.
             "group.id": "ray-data-kafka-reader",
         },
+        user_config=consumer_config,
     )
 
 
@@ -341,7 +219,7 @@ class KafkaDatasource(Datasource):
         bootstrap_servers: Union[str, List[str]],
         start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
         end_offset: Union[int, datetime, Literal["latest"]] = "latest",
-        kafka_auth_config: Optional[KafkaAuthConfig] = None,
+        consumer_config: Optional[Dict[str, Any]] = None,
         timeout_ms: int = 10000,
     ):
         """Initialize Kafka datasource.
@@ -359,7 +237,10 @@ class KafkaDatasource(Datasource):
                 - datetime: Read up to (but not including) the first message
                   at or after this time. datetimes with no timezone info are treated as UTC.
                 - str: "latest"
-            kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
+            consumer_config: Confluent/librdkafka consumer configuration dict.
+                Keys and values are passed through to the underlying client. The
+                `bootstrap.servers` option is derived from `bootstrap_servers` and
+                cannot be overridden here.
             timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
                 If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
                 it has read so far.
@@ -417,7 +298,7 @@ class KafkaDatasource(Datasource):
         )
         self._start_offset = start_offset
         self._end_offset = end_offset
-        self._kafka_auth_config = kafka_auth_config
+        self._consumer_config = consumer_config
         self._timeout_ms = timeout_ms
         self._target_max_block_size = DataContext.get_current().target_max_block_size
 
@@ -447,7 +328,7 @@ class KafkaDatasource(Datasource):
         from confluent_kafka import Consumer
 
         consumer_config = _build_consumer_config_for_read(
-            self._bootstrap_servers, self._kafka_auth_config
+            self._bootstrap_servers, self._consumer_config
         )
         discovery_consumer = Consumer(consumer_config)
         try:
@@ -475,7 +356,6 @@ class KafkaDatasource(Datasource):
         start_offset = self._start_offset
         end_offset = self._end_offset
         timeout_ms = self._timeout_ms
-        kafka_auth_config = self._kafka_auth_config
         target_max_block_size = self._target_max_block_size
 
         tasks = []
@@ -491,7 +371,7 @@ class KafkaDatasource(Datasource):
                 end_offset: Optional[
                     Union[int, datetime, Literal["latest"]]
                 ] = end_offset,
-                kafka_auth_config: Optional[KafkaAuthConfig] = kafka_auth_config,
+                user_consumer_config: Optional[Dict[str, Any]] = self._consumer_config,
                 timeout_ms: int = timeout_ms,
                 target_max_block_size: int = target_max_block_size,
             ):
@@ -501,14 +381,14 @@ class KafkaDatasource(Datasource):
                     """Read function for a single Kafka partition using confluent-kafka."""
                     from confluent_kafka import Consumer, TopicPartition
 
-                    consumer_config = _build_consumer_config_for_read(
-                        bootstrap_servers, kafka_auth_config
+                    built_consumer_config = _build_consumer_config_for_read(
+                        bootstrap_servers, user_consumer_config
                     )
 
-                    consumer = Consumer(consumer_config)
+                    consumer = Consumer(built_consumer_config)
                     try:
                         topic_partition = TopicPartition(topic_name, partition_id)
-                        start_off, end_off = _resolve_offsets(
+                        resolved_start, resolved_end = _resolve_offsets(
                             consumer, topic_partition, start_offset, end_offset
                         )
 
@@ -520,32 +400,38 @@ class KafkaDatasource(Datasource):
                             )
                         )
 
-                        if start_off < end_off:
-                            start_time = time.time()
+                        if resolved_start < resolved_end:
+                            start_time = time.perf_counter()
                             timeout_seconds = timeout_ms / 1000.0
                             # Assign with the desired starting offset to avoid seek state errors
                             tp_with_offset = TopicPartition(
-                                topic_name, partition_id, start_off
+                                topic_name, partition_id, resolved_start
                             )
                             consumer.assign([tp_with_offset])
+                            # Ensure assignment is made active before position checks.
+                            # In librdkafka, assign() is applied asynchronously and becomes
+                            # effective on the next poll/consume call. A non-blocking poll(0)
+                            # drives the internal event loop so that position() and reads
+                            # reflect the assigned start offset. This is not a wait; keep it 0.
+                            consumer.poll(0)
 
                             partition_done = False
                             while not partition_done:
                                 # Check if overall timeout has been reached
-                                elapsed_time = time.time() - start_time
+                                elapsed_time = time.perf_counter() - start_time
                                 if elapsed_time >= timeout_seconds:
                                     logger.warning(
                                         f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
-                                        f"end_offset {end_off} was not reached. Returning {len(records)} messages collected in this read task so far."
+                                        f"end_offset {resolved_end} was not reached. Returning {len(records)} messages collected in this read task so far."
                                     )
                                     break
 
                                 # Check if we've reached the end_offset before polling
                                 positions = consumer.position([topic_partition])
                                 current_position = (
-                                    positions[0].offset if positions else start_off
+                                    positions[0].offset if positions else resolved_start
                                 )
-                                if current_position >= end_off:
+                                if current_position >= resolved_end:
                                     break
 
                                 remaining_timeout_ms = int(
@@ -562,7 +448,7 @@ class KafkaDatasource(Datasource):
                                     continue
 
                                 # Stop once we reached the end offset (exclusive)
-                                if msg.offset() >= end_off:
+                                if msg.offset() >= resolved_end:
                                     partition_done = True
                                     break
 
