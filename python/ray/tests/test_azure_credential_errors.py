@@ -1,8 +1,7 @@
 """Unit tests for Azure credential error handling utilities.
 
-Tests the handle_azure_credential_error(), validate_azure_credentials(),
-and catch_azure_credential_errors() helpers from
-ray._common.azure_utils without requiring the Azure SDK.
+Tests the handle_azure_credential_error() and catch_azure_credential_errors()
+helpers from ray._common.azure_utils without requiring the Azure SDK.
 """
 
 import sys
@@ -249,57 +248,6 @@ class TestCatchAzureCredentialErrorsDecorator:
                 pass
 
             assert my_function.__name__ == "my_function"
-
-
-# ---------------------------------------------------------------------------
-# Tests – validate_azure_credentials
-# ---------------------------------------------------------------------------
-
-
-class TestValidateAzureCredentials:
-    """Tests for validate_azure_credentials()."""
-
-    def test_success_path(self):
-        mods, _, _, _, _ = _make_mock_azure_modules()
-
-        with patch.dict(sys.modules, mods):
-            from ray._common.azure_utils import (
-                validate_azure_credentials,
-            )
-
-            cred = MagicMock()
-            cred.get_token.return_value = MagicMock()
-            # Should not raise.
-            validate_azure_credentials(credential=cred)
-            cred.get_token.assert_called_once_with(
-                "https://management.azure.com/.default"
-            )
-
-    def test_failure_with_credential_error(self):
-        mods, ClientAuthErr, _, _, _ = _make_mock_azure_modules()
-
-        with patch.dict(sys.modules, mods):
-            from ray._common.azure_utils import (
-                validate_azure_credentials,
-            )
-
-            cred = MagicMock()
-            cred.get_token.side_effect = ClientAuthErr("token expired")
-            with pytest.raises(RuntimeError, match="az login"):
-                validate_azure_credentials(credential=cred)
-
-    def test_failure_with_non_credential_error(self):
-        mods, _, _, _, _ = _make_mock_azure_modules()
-
-        with patch.dict(sys.modules, mods):
-            from ray._common.azure_utils import (
-                validate_azure_credentials,
-            )
-
-            cred = MagicMock()
-            cred.get_token.side_effect = ConnectionError("network down")
-            with pytest.raises(ConnectionError, match="network down"):
-                validate_azure_credentials(credential=cred)
 
 
 if __name__ == "__main__":

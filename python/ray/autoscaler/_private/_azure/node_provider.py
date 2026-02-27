@@ -532,7 +532,6 @@ class AzureNodeProvider(NodeProvider):
         )
         self.cached_nodes[node_id]["tags"] = node_tags
 
-    @catch_azure_credential_errors(resource_type="compute")
     def terminate_node(self, node_id):
         """Terminates the specified node. This will delete the VM and
         associated resources (NIC, IP, Storage) for the specified node."""
@@ -554,6 +553,7 @@ class AzureNodeProvider(NodeProvider):
                 )
                 stop(resource_group_name=resource_group, vm_name=node_id)
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="compute")
                 logger.warning("Failed to stop VM: {}".format(e))
 
         # If node_id is in terminating nodes dict, it's already terminating
@@ -623,6 +623,7 @@ class AzureNodeProvider(NodeProvider):
                 timeout=AUTOSCALER_NODE_TERMINATE_WAIT_S
             )
         except Exception as e:
+            handle_azure_credential_error(e, resource_type="compute")
             logger.warning("Failed to delete VM: {}".format(e))
 
         # Delete disks (no need to wait for these, but gather the LROs for end)
@@ -639,6 +640,7 @@ class AzureNodeProvider(NodeProvider):
                     )
                 )
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="compute")
                 logger.warning("Failed to delete disk: {}".format(e))
 
         # Delete NICs
@@ -655,6 +657,7 @@ class AzureNodeProvider(NodeProvider):
                     )
                 )
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="network")
                 logger.warning("Failed to delete NIC: {}".format(e))
 
         while (
@@ -678,6 +681,7 @@ class AzureNodeProvider(NodeProvider):
                     )
                 )
             except Exception as e:
+                handle_azure_credential_error(e, resource_type="network")
                 logger.warning("Failed to delete public IP: {}".format(e))
 
         while (

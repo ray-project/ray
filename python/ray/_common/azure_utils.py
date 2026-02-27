@@ -74,23 +74,6 @@ def handle_azure_credential_error(
     ) from exc
 
 
-def validate_azure_credentials(credential=None):
-    """Proactively verify that Azure credentials can acquire a token.
-
-    Attempts to obtain an ARM management token via *credential* (defaulting to
-    ``DefaultAzureCredential``).  On failure the exception is routed through
-    :func:`handle_azure_credential_error` to provide recovery guidance.
-    """
-    from azure.identity import DefaultAzureCredential
-
-    cred = credential or DefaultAzureCredential()
-    try:
-        cred.get_token("https://management.azure.com/.default")
-    except Exception as e:
-        handle_azure_credential_error(e)
-        raise
-
-
 def catch_azure_credential_errors(
     resource_type: Optional[str] = None,
 ) -> Callable:
