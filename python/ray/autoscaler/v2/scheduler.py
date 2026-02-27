@@ -429,9 +429,21 @@ class SchedulingNode:
         # Track the resource requests that cannot be scheduled on this node.
         unschedulable_requests = []
 
+        # Track request shapes that have already failed to schedule on this node.
+        # This prevents O(N^2 * M) iteration by returning early for identical failing requests.
+        infeasible_shapes = set()
+
         # Sort the requests and try schedule them one by one.
         for r in requests:
+            # Use the serialized Protobuf representation as a deterministic, hashable key.
+            shape_key = r.SerializeToString(deterministic=True)
+
+            if shape_key in infeasible_shapes:
+                unschedulable_requests.append(r)
+                continue
+
             if not self._try_schedule_one(r, resource_request_source):
+                infeasible_shapes.add(shape_key)
                 unschedulable_requests.append(r)
 
         score = self._compute_score(resource_request_source)
