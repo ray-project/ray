@@ -6,6 +6,11 @@
 //
 //  http://www.apache.org/licenses/LICENSE-2.0
 
+// tonic::Status is inherently large; we can't Box it without changing the API contract.
+#![allow(clippy::result_large_err)]
+// &[u8] → &[u8; N] via try_into() is not useless, but clippy can't see past unwrap_or.
+#![allow(clippy::useless_conversion)]
+
 //! Global Control Service (GCS) server for Ray.
 //!
 //! Replaces `src/ray/gcs/gcs_server/` — the central cluster controller.
@@ -13,17 +18,18 @@
 //! WorkerInfo, PlacementGroupInfo, TaskInfo, InternalKV, RuntimeEnv,
 //! InternalPubSub, AutoscalerState, NodeResourceInfo.
 
+pub mod actor_manager;
+pub mod autoscaler_state_manager;
+pub mod grpc_services;
+pub mod health_check_manager;
+pub mod job_manager;
+pub mod kv_manager;
+pub mod node_manager;
+pub mod placement_group_manager;
+pub mod pubsub_handler;
+pub mod resource_manager;
 pub mod server;
-
-// Phase 7: Full GCS implementation including:
-// - GcsJobManager
-// - GcsNodeManager
-// - GcsResourceManager
-// - GcsActorManager + GcsActorScheduler
-// - GcsPlacementGroupManager + GcsPlacementGroupScheduler
-// - GcsWorkerManager
-// - GcsTaskManager
-// - GcsKvManager
-// - GcsHealthCheckManager
-// - GcsAutoscalerStateManager
-// - Store client (Redis + in-memory)
+pub mod store_client;
+pub mod table_storage;
+pub mod task_manager;
+pub mod worker_manager;

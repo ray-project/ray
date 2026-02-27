@@ -76,6 +76,7 @@ clap = { version = "4", features = ["derive"] }
 hex = "0.4"
 nix = { version = "0.29", features = ["process", "signal", "net", "mman", "fs", "hostname"] }
 libc = "0.2"
+async-trait = "0.1"
 
 # Testing
 proptest = "1"
