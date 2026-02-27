@@ -121,16 +121,20 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     col = batch.get(Columns.ACTIONS)
                     if col is None:
                         batch[Columns.ACTIONS] = {sub_key: [data]}
-                    else:
+                    elif sub_key in col:
                         col[sub_key].append(data)
+                    else:
+                        col[sub_key] = [data]
 
                 if need_rewards:
                     data = sa_episode.get_rewards(slice(0, n)).view(BatchedNdArray)
                     col = batch.get(Columns.REWARDS)
                     if col is None:
                         batch[Columns.REWARDS] = {sub_key: [data]}
-                    else:
+                    elif sub_key in col:
                         col[sub_key].append(data)
+                    else:
+                        col[sub_key] = [data]
 
                 if need_terminateds:
                     terminateds = np.zeros(n, dtype=np.bool_)
@@ -140,8 +144,10 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     col = batch.get(Columns.TERMINATEDS)
                     if col is None:
                         batch[Columns.TERMINATEDS] = {sub_key: [data]}
-                    else:
+                    elif sub_key in col:
                         col[sub_key].append(data)
+                    else:
+                        col[sub_key] = [data]
 
                 if need_truncateds:
                     truncateds = np.zeros(n, dtype=np.bool_)
@@ -151,8 +157,10 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     col = batch.get(Columns.TRUNCATEDS)
                     if col is None:
                         batch[Columns.TRUNCATEDS] = {sub_key: [data]}
-                    else:
+                    elif sub_key in col:
                         col[sub_key].append(data)
+                    else:
+                        col[sub_key] = [data]
 
                 for column in sa_episode.extra_model_outputs.keys():
                     if column not in skip_columns:
@@ -166,8 +174,10 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                         col = batch.get(column)
                         if col is None:
                             batch[column] = {sub_key: [data]}
-                        else:
+                        elif sub_key in col:
                             col[sub_key].append(data)
+                        else:
+                            col[sub_key] = [data]
 
             else:
                 # General (multi-agent) path: use the standard API.
