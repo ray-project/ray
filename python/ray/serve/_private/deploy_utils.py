@@ -9,7 +9,10 @@ import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
@@ -62,14 +65,15 @@ def get_deploy_args(
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
-    if ingress:
+    if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
         deployment_def = replica_config.deployment_def
         if _deployment_uses_multiplexed(deployment_def):
             raise ValueError(
                 "Model multiplexing (@serve.multiplexed) is not supported on "
-                "ingress deployments. Multiplexing should only be used on "
-                "downstream replicas composed via DeploymentHandle. The ingress "
-                "is the routing entry point, not a model-serving leaf."
+                "ingress deployments when direct ingress is enabled. "
+                "Multiplexing should only be used on downstream replicas composed "
+                "via DeploymentHandle. The ingress is the routing entry point, "
+                "not a model-serving leaf."
             )
 
     deployment_config.version = version
