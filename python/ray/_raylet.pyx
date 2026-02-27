@@ -4634,6 +4634,17 @@ cdef class CoreWorker:
 
         return ref_counts
 
+    def get_reference_counter_debug_json(self):
+        """Returns a JSON string of the internal state of the ReferenceCounter.
+
+        NOTE: This is NOT a stable API. It should only be used for debugging and
+        NEVER in tests or production code.
+        """
+        cdef:
+            c_string debug_json
+        debug_json = CCoreWorkerProcess.GetCoreWorker().GetReferenceCounterDebugJson()
+        return debug_json.decode('utf-8')
+
     def set_get_async_callback(self, ObjectRef object_ref, user_callback: Callable):
         # NOTE: we need to manually increment the Python reference count to avoid the
         # callback object being garbage collected before it's called by the core worker.

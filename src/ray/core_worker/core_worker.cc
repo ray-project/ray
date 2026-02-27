@@ -859,6 +859,10 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
+std::string CoreWorker::GetReferenceCounterDebugJson() const {
+  return reference_counter_->ToJsonString();
+}
+
 std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) const {
   return task_manager_->GetPendingChildrenTasks(task_id);
 }
