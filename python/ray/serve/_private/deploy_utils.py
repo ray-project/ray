@@ -30,16 +30,15 @@ def _deployment_uses_multiplexed(deployment_def) -> bool:
     if getattr(deployment_def, "_serve_multiplexed", False):
         return True
     if inspect.isclass(deployment_def):
-        for cls in inspect.getmro(deployment_def):
-            for name in dir(cls):
-                if name.startswith("__") and name.endswith("__"):
-                    continue
-                try:
-                    attr = getattr(cls, name)
-                    if getattr(attr, "_serve_multiplexed", False):
-                        return True
-                except (AttributeError, TypeError):
-                    continue
+        for name in dir(deployment_def):
+            if name.startswith("__") and name.endswith("__"):
+                continue
+            try:
+                attr = getattr(deployment_def, name)
+                if getattr(attr, "_serve_multiplexed", False):
+                    return True
+            except (AttributeError, TypeError):
+                continue
     return False
 
 
