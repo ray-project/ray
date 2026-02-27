@@ -1,11 +1,10 @@
 import logging
 import math
-from typing import Callable, Iterable, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data.block import (
     Block,
@@ -17,6 +16,46 @@ from ray.data.block import (
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 logger = logging.getLogger(__name__)
+
+
+def _partition_block(
+    block: BlockAccessor,
+    output_num_blocks: int,
+    random_shuffle: bool,
+    seed_i: Optional[int],
+) -> List[Block]:
+    """Partition a single block into ``output_num_blocks`` slices.
+
+    Shared by both the standalone shuffle path (``ShuffleTaskSpec.map``) and the
+    fused shuffle path (``ShuffleMapTransformFn``).
+
+    Args:
+        block: The block accessor wrapping the block to partition.
+        output_num_blocks: Number of output partitions.
+        random_shuffle: Whether to randomize the block before slicing and
+            shuffle the resulting slice order.
+        seed_i: Per-task random seed (``base_seed + task_idx``), or ``None``.
+
+    Returns:
+        A list of block slices.
+    """
+    if random_shuffle:
+        block = block.random_shuffle(seed_i)
+        block = BlockAccessor.for_block(block)
+
+    slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
+    slices = []
+    for i in range(output_num_blocks):
+        slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
+
+    if random_shuffle:
+        random = np.random.RandomState(seed_i)
+        random.shuffle(slices)
+
+    num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
+    assert num_rows == block.num_rows(), (num_rows, block.num_rows())
+
+    return slices
 
 
 class ShuffleTaskSpec(ExchangeTaskSpec):
@@ -33,12 +72,10 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         target_shuffle_max_block_size: int,
         random_shuffle: bool = False,
         random_seed: Optional[int] = None,
-        upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]] = None,
     ):
         super().__init__(
             map_args=[
                 target_shuffle_max_block_size,
-                upstream_map_fn,
                 random_shuffle,
                 random_seed,
             ],
@@ -51,29 +88,10 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         block: Block,
         output_num_blocks: int,
         target_shuffle_max_block_size: int,
-        upstream_map_fn: Optional[Callable[[Iterable[Block]], Iterable[Block]]],
         random_shuffle: bool,
         random_seed: Optional[int],
     ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
         stats = BlockExecStats.builder()
-        if upstream_map_fn:
-            # Create a local TaskContext for the upstream map function.
-            # May be used by expressions that depend on task-level state.
-            local_ctx = TaskContext(task_idx=idx, op_name="shuffle_map")
-            with TaskContext.current(local_ctx):
-                # TODO: Support dynamic block splitting in
-                # all-to-all ops, to avoid having to re-fuse
-                # upstream blocks together.
-                upstream_map_iter = upstream_map_fn([block])
-                mapped_block = next(upstream_map_iter)
-                builder = BlockAccessor.for_block(mapped_block).builder()
-                builder.add_block(mapped_block)
-                for mapped_block in upstream_map_iter:
-                    builder.add_block(mapped_block)
-                # Drop the upstream inputs to reduce memory usage.
-                del mapped_block
-                block = builder.build()
-
         block = BlockAccessor.for_block(block)
         if (
             block.size_bytes()
@@ -90,28 +108,9 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
                 "dataset before shuffling."
             )
 
-        # Randomize the distribution of records to blocks.
-        if random_shuffle:
-            seed_i = random_seed + idx if random_seed is not None else None
-            block = block.random_shuffle(seed_i)
-            block = BlockAccessor.for_block(block)
+        seed_i = random_seed + idx if random_seed is not None else None
+        slices = _partition_block(block, output_num_blocks, random_shuffle, seed_i)
 
-        # Build a list of slices to return. It's okay to put the results in a
-        # list instead of yielding them as a generator because slicing the
-        # ArrowBlock is zero-copy.
-        slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
-        slices = []
-        for i in range(output_num_blocks):
-            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
-
-        # Randomize the distribution order of the blocks (this prevents empty
-        # outputs when input blocks are very small).
-        if random_shuffle:
-            random = np.random.RandomState(seed_i)
-            random.shuffle(slices)
-
-        num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
-        assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         from ray.data.block import BlockMetadataWithSchema
 
         meta = block.get_metadata(exec_stats=stats.build())

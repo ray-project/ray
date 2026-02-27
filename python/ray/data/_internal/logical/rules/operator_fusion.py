@@ -1,5 +1,6 @@
 import itertools
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from ray.data._internal.compute import (
@@ -22,6 +23,10 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    MapTransformer,
+    ShuffleMapTransformFn,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -35,8 +40,13 @@ from ray.data._internal.logical.operators import (
     Repartition,
     StreamingRepartition,
 )
+from ray.data._internal.planner.exchange.map_shuffle_task_spec import (
+    MapTransformerShuffleTaskSpec,
+)
+from ray.data._internal.planner.random_shuffle import _execute_sort_shuffle
 from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.util.annotations import DeveloperAPI
+from ray.util.common import INT32_MAX
 
 __all__ = [
     "FuseOperators",
@@ -615,29 +625,65 @@ class FuseOperators(Rule):
         assert isinstance(up_logical_op, AbstractMap)
 
         # Fuse transformation functions.
+        # Fusion owns the composition: fuse via MapTransformer.fuse() and run shuffle.
         ray_remote_args = up_logical_op.ray_remote_args
-        down_transform_fn = down_op.get_transformation_fn()
         up_map_transformer = up_op.get_map_transformer()
+        data_context = down_op.data_context
+        target_max_block_size = self._get_merged_target_max_block_size(
+            up_op.target_max_block_size_override, down_op.target_max_block_size_override
+        )
+
+        is_random_shuffle = isinstance(down_logical_op, RandomShuffle)
+        shuffle_seed = down_logical_op.seed if is_random_shuffle else None
+
+        # Override target max-block sizing to avoid unnecessary block shaping.
+        up_map_transformer.override_target_max_block_size(None)
+
+        # Fuse via MapTransformer.fuse() for consistency with MapOp->MapOp fusion.
+        shuffle_map_transformer = MapTransformer([ShuffleMapTransformFn()])
+        fused_map_transformer = up_map_transformer.fuse(shuffle_map_transformer)
 
         def fused_all_to_all_transform_fn(
             blocks: List[RefBundle],
             ctx: TaskContext,
         ) -> AllToAllTransformFnResult:
-            """To fuse MapOperator->AllToAllOperator, we store the map function
-            in the TaskContext so that it may be used by the downstream
-            AllToAllOperator's transform function."""
-            ctx.upstream_map_transformer = up_map_transformer
-            ctx.upstream_map_ray_remote_args = ray_remote_args
-            return down_transform_fn(blocks, ctx)
+            num_input_blocks = sum(len(r.blocks) for r in blocks)
+            num_outputs = (
+                down_logical_op.num_outputs
+                if down_logical_op.num_outputs is not None
+                else num_input_blocks
+            )
+            target_size = (
+                ctx.target_max_block_size_override
+                or target_max_block_size
+                or data_context.target_max_block_size
+            )
+            # Pin timestamp-based seed when not specified (for retry safety)
+            effective_seed = (
+                shuffle_seed
+                if shuffle_seed is not None
+                else (time.time_ns() % INT32_MAX)
+            )
+            shuffle_spec = MapTransformerShuffleTaskSpec(
+                map_transformer=fused_map_transformer,
+                target_shuffle_max_block_size=target_size,
+                random_shuffle=is_random_shuffle,
+                random_seed=effective_seed,
+            )
+            return _execute_sort_shuffle(
+                blocks,
+                ctx,
+                shuffle_spec,
+                num_outputs,
+                data_context,
+                map_ray_remote_args=ray_remote_args,
+                reduce_ray_remote_args=ray_remote_args,
+            )
 
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
         input_op = input_deps[0]
-
-        target_max_block_size = self._get_merged_target_max_block_size(
-            up_op.target_max_block_size_override, down_op.target_max_block_size_override
-        )
 
         assert up_op.data_context is down_op.data_context
         op = AllToAllOperator(
