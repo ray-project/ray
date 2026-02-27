@@ -134,7 +134,12 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         f".{ext.lower()}" if not ext.startswith(".") else ext.lower()
         for ext in extensions
     ]
-    return any(path.lower().endswith(ext) for ext in extensions)
+    # For URI-style paths, ignore query and fragment components when checking
+    # the extension. This allows versioned object-store paths like
+    # `s3://bucket/file.parquet?versionId=...` to match `.parquet`.
+    parsed = urlparse(path)
+    parsed_path = parsed.path if parsed.scheme else path
+    return any(parsed_path.lower().endswith(ext) for ext in extensions)
 
 
 # Mapping from URI schemes to compatible filesystem type_name values.
