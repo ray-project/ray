@@ -192,6 +192,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        target_num_rows_per_block_override: Optional[int] = None,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -220,7 +221,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, data_context, target_max_block_size_override)
+        super().__init__(
+            name,
+            input_op,
+            data_context,
+            target_max_block_size_override,
+            target_num_rows_per_block_override,
+        )
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
@@ -331,6 +338,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         input_op: PhysicalOperator,
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
+        target_num_rows_per_block_override: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -358,6 +366,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             name: The name of this operator.
             compute_strategy: Customize the compute strategy for this op.
             target_max_block_size_override: Override for target max-block-size.
+            target_num_rows_per_block_override: Override for target num-rows-per-block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
@@ -406,6 +415,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 data_context,
                 name=name,
                 target_max_block_size_override=target_max_block_size_override,
+                target_num_rows_per_block_override=target_num_rows_per_block_override,
                 min_rows_per_bundle=min_rows_per_bundle,
                 ref_bundler=ref_bundler,
                 max_concurrency=compute_strategy.size,
@@ -425,6 +435,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 input_op,
                 data_context,
                 target_max_block_size_override=target_max_block_size_override,
+                target_num_rows_per_block_override=target_num_rows_per_block_override,
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
@@ -728,8 +739,9 @@ def _map_task(
 
     with (DataContext.current(data_context), TaskContext.current(ctx)):
         stats = BlockExecStats.builder()
-        map_transformer.override_target_max_block_size(
-            ctx.target_max_block_size_override
+        map_transformer.override_target_block_size(
+            target_max_block_size=ctx.target_max_block_size_override,
+            target_num_rows_per_block=ctx.target_num_rows_per_block_override,
         )
         block_iter: Iterable[Block]
         if slices:

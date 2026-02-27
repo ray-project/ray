@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
@@ -298,7 +299,79 @@ def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
     assert blocks_unlimited == 1
 
 
-if __name__ == "__main__":
-    import sys
+@pytest.mark.parametrize(
+    "compute,mode",
+    [
+        (ray.data.TaskPoolStrategy(), "tasks"),
+        (ray.data.ActorPoolStrategy(min_size=1, max_size=1), "actors"),
+    ],
+)
+def test_target_max_block_rows(shutdown_only, restore_data_context, compute, mode):
+    """Test that target_max_block_rows limits block size by row count."""
+    ray.init(num_cpus=2)
+    ctx = DataContext.get_current()
+    
+    # Disable byte-based blocking to isolate row-based blocking
+    ctx.target_max_block_size = None
+    
+    # Set a small row limit
+    rows_per_block = 10
+    ctx.target_max_block_rows = rows_per_block
+    
+    if mode == "tasks":
+        fn = lambda x: x
+    else:
+        class Identity:
+            def __call__(self, row):
+                return row
+        fn = Identity
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    total_rows = 100
+    # Create 1 block initially
+    ds = ray.data.range(total_rows, override_num_blocks=1)
+    
+    # Force materialization to trigger block splitting
+    ds = ds.materialize()
+    
+    # Check if we have approximately total_rows / rows_per_block blocks
+    # Note: range() might produce more blocks if it splits internally, 
+    # but materialize should respect the limit if it splits.
+    # However, Read ops might not fully respect target_max_block_rows if the reader doesn't support it,
+    # but the subsequent map/materialize should.
+    
+    # Let's verify with map to ensure we are testing the map transformer/block builder logic
+    ds = ray.data.range(total_rows, override_num_blocks=1).map(fn, compute=compute).materialize()
+    
+    expected_blocks = total_rows // rows_per_block
+    assert ds.num_blocks() >= expected_blocks
+    
+    for block_ref in ds.get_internal_block_refs():
+        block = ray.get(block_ref)
+        assert BlockAccessor.for_block(block).num_rows() <= rows_per_block
+
+
+def test_read_target_max_block_rows(ray_start_regular_shared, tmp_path, restore_data_context):
+    ctx = DataContext.get_current()
+    # Disable byte-based blocking
+    ctx.target_max_block_size = None
+    rows_per_block = 10
+    ctx.target_max_block_rows = rows_per_block
+
+    # Create a CSV file with 100 rows
+    path = str(tmp_path / "test.csv")
+    ds = ray.data.range(100, override_num_blocks=1)
+    ds.write_csv(path)
+
+    # Read back with limit
+    ds_read = ray.data.read_csv(path)
+    
+    # Materialize to trigger execution and block splitting
+    ds_read = ds_read.materialize()
+    
+    # Check if blocks are split correctly
+    expected_blocks = 100 // rows_per_block
+    assert ds_read.num_blocks() >= expected_blocks
+
+    for block_ref in ds_read.get_internal_block_refs():
+        block = ray.get(block_ref)
+        assert BlockAccessor.for_block(block).num_rows() <= rows_per_block

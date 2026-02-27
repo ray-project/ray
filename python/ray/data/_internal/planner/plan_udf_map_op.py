@@ -223,6 +223,7 @@ def plan_filter_op(
 
     output_block_size_option = OutputBlockSizeOption.of(
         target_max_block_size=data_context.target_max_block_size,
+        target_num_rows_per_block=data_context.target_max_block_rows,
     )
 
     predicate_expr = op.predicate_expr
@@ -288,6 +289,7 @@ def plan_udf_map_op(
 
     output_block_size_option = OutputBlockSizeOption.of(
         target_max_block_size=data_context.target_max_block_size,
+        target_num_rows_per_block=data_context.target_max_block_rows,
     )
 
     compute = get_compute(op.compute)

@@ -88,17 +88,26 @@ class MapTransformFn(ABC):
     def output_block_size_option(self):
         return self._output_block_size_option
 
-    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+    def override_target_block_size(
+        self,
+        target_max_block_size: Optional[int] = None,
+        target_num_rows_per_block: Optional[int] = None,
+    ):
         if self._output_block_size_option is not None and (
             self._output_block_size_option.disable_block_shaping
-            or self._output_block_size_option.target_num_rows_per_block is not None
         ):
             raise ValueError(
-                "Cannot override target_max_block_size if block shaping is disabled or target_num_rows_per_block is set"
+                "Cannot override target block size if block shaping is disabled"
             )
         self._output_block_size_option = OutputBlockSizeOption.of(
-            target_max_block_size=target_max_block_size
+            target_max_block_size=target_max_block_size,
+            target_num_rows_per_block=target_num_rows_per_block,
         )
+
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+        # This is kept for backward compatibility. We should migrate
+        # callers to use `override_target_block_size` instead.
+        self.override_target_block_size(target_max_block_size=target_max_block_size)
 
     @property
     def target_max_block_size(self):
@@ -178,10 +187,20 @@ class MapTransformer:
         """Get the transform functions."""
         return self._transform_fns
 
-    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+    def override_target_block_size(
+        self,
+        target_max_block_size: Optional[int] = None,
+        target_num_rows_per_block: Optional[int] = None,
+    ):
         self._output_block_size_option_override = OutputBlockSizeOption.of(
-            target_max_block_size=target_max_block_size
+            target_max_block_size=target_max_block_size,
+            target_num_rows_per_block=target_num_rows_per_block,
         )
+
+    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+        # This is kept for backward compatibility. We should migrate
+        # callers to use `override_target_block_size` instead.
+        self.override_target_block_size(target_max_block_size=target_max_block_size)
 
     @property
     def target_max_block_size_override(self) -> Optional[int]:
@@ -189,6 +208,13 @@ class MapTransformer:
             return None
         else:
             return self._output_block_size_option_override.target_max_block_size
+
+    @property
+    def target_num_rows_per_block_override(self) -> Optional[int]:
+        if self._output_block_size_option_override is None:
+            return None
+        else:
+            return self._output_block_size_option_override.target_num_rows_per_block
 
     def init(self) -> None:
         """Initialize the transformer.
@@ -208,9 +234,13 @@ class MapTransformer:
         #       appropriate block sizing
         last_transform = self._transform_fns[-1]
 
-        if self.target_max_block_size_override is not None:
-            last_transform.override_target_max_block_size(
-                self.target_max_block_size_override
+        if (
+            self.target_max_block_size_override is not None
+            or self.target_num_rows_per_block_override is not None
+        ):
+            last_transform.override_target_block_size(
+                target_max_block_size=self.target_max_block_size_override,
+                target_num_rows_per_block=self.target_num_rows_per_block_override,
             )
 
         iter = input_blocks
@@ -229,6 +259,14 @@ class MapTransformer:
             or (
                 self.target_max_block_size_override is None
                 or other.target_max_block_size_override is None
+            )
+        )
+        assert (
+            self.target_num_rows_per_block_override
+            == other.target_num_rows_per_block_override
+            or (
+                self.target_num_rows_per_block_override is None
+                or other.target_num_rows_per_block_override is None
             )
         )
         # Define them as standalone variables to avoid fused_init_fn capturing the
@@ -252,6 +290,10 @@ class MapTransformer:
                 target_max_block_size=(
                     self.target_max_block_size_override
                     or other.target_max_block_size_override
+                ),
+                target_num_rows_per_block=(
+                    self.target_num_rows_per_block_override
+                    or other.target_num_rows_per_block_override
                 ),
             ),
         )

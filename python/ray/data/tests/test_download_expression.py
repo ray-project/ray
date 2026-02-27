@@ -7,6 +7,8 @@ from PIL import Image
 
 import ray
 from ray.data.expressions import DownloadExpr, col, download
+from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 
 
 class TestDownloadExpressionStructure:
@@ -102,6 +104,36 @@ class TestDownloadExpressionFunctionality:
 
         results = ds_with_downloads.take_all()
         assert len(results) == 0
+
+    def test_download_expression_target_max_block_rows(
+        self, shutdown_only, tmp_path, restore_data_context
+    ):
+        ray.init(num_cpus=2, ignore_reinit_error=True)
+        ctx = DataContext.get_current()
+        ctx.target_max_block_size = 10**12
+        ctx.target_max_block_rows = 5
+
+        sample_data = [f"content-{i}".encode() for i in range(23)]
+        file_paths = []
+        for i, data in enumerate(sample_data):
+            file_path = tmp_path / f"test_file_{i}.txt"
+            file_path.write_bytes(data)
+            file_paths.append(str(file_path))
+
+        table = pa.Table.from_arrays(
+            [
+                pa.array([f"local://{path}" for path in file_paths]),
+                pa.array(list(range(len(file_paths)))),
+            ],
+            names=["file_uri", "index"],
+        )
+        ds = ray.data.from_arrow(table).with_column("file_bytes", download("file_uri"))
+        ds = ds.materialize()
+
+        assert ds.num_blocks() >= 5
+        for block_ref in ds.get_internal_block_refs():
+            block = ray.get(block_ref)
+            assert BlockAccessor.for_block(block).num_rows() <= 5
 
     def test_download_expression_with_different_file_types(self, tmp_path):
         """Test download expression with various file types including actual images."""

@@ -98,6 +98,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_remote_args: Optional[Dict[str, Any]] = None,
         ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
+        target_num_rows_per_block_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -128,6 +129,8 @@ class ActorPoolMapOperator(MapOperator):
             ray_actor_task_remote_args: Ray Core options passed to map actor tasks.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
+            target_num_rows_per_block_override: The target maximum number of rows to
+                include in an output block.
             on_start: Optional callback invoked with the schema from the first input
                 bundle before any tasks are submitted.
         """
@@ -144,6 +147,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
             on_start,
+            target_num_rows_per_block_override,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle

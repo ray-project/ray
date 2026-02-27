@@ -47,6 +47,9 @@ class TaskContext:
     # Override of the target max-block-size for the task
     target_max_block_size_override: Optional[int] = None
 
+    # Override of the target num-rows-per-block for the task
+    target_num_rows_per_block_override: Optional[int] = None
+
     # Additional keyword arguments passed to the task.
     kwargs: Dict[str, Any] = field(default_factory=dict)
 

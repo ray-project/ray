@@ -32,7 +32,8 @@ class AvroDatasource(FileBasedDatasource):
 
         ctx = DataContext.get_current()
         output_block_size_option = OutputBlockSizeOption.of(
-            target_max_block_size=ctx.target_max_block_size
+            target_max_block_size=ctx.target_max_block_size,
+            target_num_rows_per_block=ctx.target_max_block_rows,
         )
         output_buffer = BlockOutputBuffer(output_block_size_option)
         for record in reader:

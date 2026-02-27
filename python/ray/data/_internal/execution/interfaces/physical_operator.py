@@ -330,6 +330,7 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
+        target_num_rows_per_block_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
         self._output_dependencies: List["PhysicalOperator"] = []
@@ -339,7 +340,8 @@ class PhysicalOperator(Operator):
         self._wire_output_deps(input_dependencies)
         self._inputs_complete = not input_dependencies
         self._output_block_size_option_override = OutputBlockSizeOption.of(
-            target_max_block_size=target_max_block_size_override
+            target_max_block_size=target_max_block_size_override,
+            target_num_rows_per_block=target_num_rows_per_block_override,
         )
         self._started = False
         self._shutdown = False
@@ -481,9 +483,25 @@ class PhysicalOperator(Operator):
         else:
             return self._output_block_size_option_override.target_max_block_size
 
-    def override_target_max_block_size(self, target_max_block_size: Optional[int]):
+    @property
+    def target_num_rows_per_block_override(self) -> Optional[int]:
+        """
+        Target max number of rows per block output by this operator. If this returns
+        None, then the default from DataContext should be used.
+        """
+        if self._output_block_size_option_override is None:
+            return None
+        else:
+            return self._output_block_size_option_override.target_num_rows_per_block
+
+    def override_target_block_size(
+        self,
+        target_max_block_size: Optional[int] = None,
+        target_num_rows_per_block: Optional[int] = None,
+    ):
         self._output_block_size_option_override = OutputBlockSizeOption.of(
-            target_max_block_size=target_max_block_size
+            target_max_block_size=target_max_block_size,
+            target_num_rows_per_block=target_num_rows_per_block,
         )
 
     def mark_execution_finished(self):
