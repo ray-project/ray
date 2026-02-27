@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import check_apps_running
@@ -14,6 +14,36 @@ from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
+
+
+@ray.remote
+class Collector:
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self):
+        return self.items
+
+
+@ray.remote(num_cpus=0)
+class FailedReplicaStore:
+    """Stores the first replica ID that failed, for gang startup failure tests."""
+
+    def __init__(self):
+        self._failed_replica_id = None
+
+    def set_if_first(self, replica_id: str) -> bool:
+        """Atomically set failed replica if none set. Returns True if we're the first."""
+        if self._failed_replica_id is None:
+            self._failed_replica_id = replica_id
+            return True
+        return False
+
+    def get(self):
+        return self._failed_replica_id
 
 
 class TestGangScheduling:
@@ -761,177 +791,168 @@ class TestGangFailureRecovery:
         """Startup failure stops both replicas in the affected gang."""
         ray.init(num_cpus=1)
         serve.start()
+        failed_replica_store = FailedReplicaStore.remote()
+        recovery_signal = SignalActor.remote()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            failed_replica_file = os.path.join(tmpdir, "failed_replica_id.txt")
-            allow_recovery_file = os.path.join(tmpdir, "allow_recovery.txt")
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class StartupFailureDeployment:
+            def __init__(self, failed_replica_store, recovery_signal):
+                replica_id = serve.get_replica_context().replica_id.unique_id
+                is_first_failure = ray.get(
+                    failed_replica_store.set_if_first.remote(replica_id)
+                )
+                if is_first_failure:
+                    raise RuntimeError("Fail one startup to trigger gang cleanup.")
 
-            @serve.deployment(
-                num_replicas=4,
-                ray_actor_options={"num_cpus": 0.1},
-                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
-            )
-            class StartupFailureDeployment:
-                def __init__(self):
-                    replica_id = serve.get_replica_context().replica_id.unique_id
-                    if not os.path.exists(failed_replica_file):
-                        with open(failed_replica_file, "w") as f:
-                            f.write(replica_id)
-                        raise RuntimeError("Fail one startup to trigger gang cleanup.")
+                failed_replica_id = ray.get(failed_replica_store.get.remote())
+                if replica_id == failed_replica_id:
+                    # Hold failed replica retry until the intermediate state is asserted.
+                    ray.get(recovery_signal.wait.remote())
 
-                    with open(failed_replica_file) as f:
-                        failed_replica_id = f.read().strip()
-                    if replica_id == failed_replica_id and not os.path.exists(
-                        allow_recovery_file
-                    ):
-                        raise RuntimeError(
-                            "Hold failing replica until intermediate state is asserted."
-                        )
+            def __call__(self):
+                ctx = serve.get_replica_context()
+                gc = ctx.gang_context
+                return {
+                    "replica_id": ctx.replica_id.unique_id,
+                    "gang_id": gc.gang_id,
+                }
 
-                def __call__(self):
-                    ctx = serve.get_replica_context()
-                    gc = ctx.gang_context
-                    return {
-                        "replica_id": ctx.replica_id.unique_id,
-                        "gang_id": gc.gang_id,
-                    }
+        app_name = "gang_startup_cleanup_app"
+        deployment_name = "StartupFailureDeployment"
+        handle = serve._run(
+            StartupFailureDeployment.bind(failed_replica_store, recovery_signal),
+            name=app_name,
+            _blocking=False,
+        )
 
-            app_name = "gang_startup_cleanup_app"
-            deployment_name = "StartupFailureDeployment"
-            handle = serve._run(
-                StartupFailureDeployment.bind(),
-                name=app_name,
-                _blocking=False,
-            )
+        # The unaffected gang should reach 2 RUNNING while the failed
+        # gang is being cleaned up and retried.
+        wait_for_condition(
+            lambda: (
+                serve.status()
+                .applications[app_name]
+                .deployments[deployment_name]
+                .replica_states.get("RUNNING", 0)
+                == 2
+            ),
+            timeout=60,
+        )
 
-            # The unaffected gang should reach 2 RUNNING while the failed
-            # gang is being cleaned up and retried.
-            wait_for_condition(
-                lambda: (
-                    serve.status()
-                    .applications[app_name]
-                    .deployments[deployment_name]
-                    .replica_states.get("RUNNING", 0)
-                    == 2
-                ),
-                timeout=60,
-            )
+        # The 2 running replicas must belong to the SAME gang,
+        # proving no partial gang survived.
+        contexts = {}
+        for _ in range(50):
+            result = handle.remote().result()
+            contexts.setdefault(result["replica_id"], result)
+            if len(contexts) == 2:
+                break
+        assert len(contexts) == 2
+        assert len({ctx["gang_id"] for ctx in contexts.values()}) == 1
 
-            # The 2 running replicas must belong to the SAME gang,
-            # proving no partial gang survived.
-            contexts = {}
-            for _ in range(50):
-                result = handle.remote().result()
-                contexts.setdefault(result["replica_id"], result)
-                if len(contexts) == 2:
-                    break
-            assert len(contexts) == 2
-            assert len({ctx["gang_id"] for ctx in contexts.values()}) == 1
+        # Release constructor retry gate so the failed gang can recover.
+        ray.get(recovery_signal.send.remote())
 
-            # Release constructor retry gate so the failed gang can recover.
-            with open(allow_recovery_file, "w") as f:
-                f.write("allow")
+        # After retry, all 4 replicas should be RUNNING.
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        app_status = serve.status().applications[app_name]
+        dep_status = app_status.deployments[deployment_name]
+        assert dep_status.replica_states.get("RUNNING", 0) == 4
 
-            # After retry, all 4 replicas should be RUNNING.
-            wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
-            app_status = serve.status().applications[app_name]
-            dep_status = app_status.deployments[deployment_name]
-            assert dep_status.replica_states.get("RUNNING", 0) == 4
-
-            serve.delete(app_name)
-            serve.shutdown()
+        serve.delete(app_name)
+        serve.shutdown()
 
     def test_health_failure_restarts_gang(self, ray_shutdown):
         """Single health check failure tears down and restarts the entire gang."""
         ray.init(num_cpus=1)
         serve.start()
+        target_replica_collector = Collector.remote()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            target_replica_file = os.path.join(tmpdir, "target_replica.txt")
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            health_check_period_s=1,
+            health_check_timeout_s=1,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class HealthFailureDeployment:
+            def __call__(self):
+                ctx = serve.get_replica_context()
+                gc = ctx.gang_context
+                return {
+                    "replica_id": ctx.replica_id.unique_id,
+                    "gang_id": gc.gang_id,
+                }
 
-            @serve.deployment(
-                num_replicas=4,
-                ray_actor_options={"num_cpus": 0.1},
-                health_check_period_s=1,
-                health_check_timeout_s=1,
-                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
-            )
-            class HealthFailureDeployment:
-                def __call__(self):
-                    ctx = serve.get_replica_context()
-                    gc = ctx.gang_context
-                    return {
-                        "replica_id": ctx.replica_id.unique_id,
-                        "gang_id": gc.gang_id,
-                    }
+            def check_health(self):
+                targets = ray.get(target_replica_collector.get.remote())
+                if not targets:
+                    return
+                target_id = targets[-1]
+                # Only 1 replica fails; its sibling stays healthy.
+                # The gang-aware cleanup must stop the sibling too.
+                ctx = serve.get_replica_context()
+                if ctx.replica_id.unique_id == target_id:
+                    raise RuntimeError("Intentional health check failure.")
 
-                def check_health(self):
-                    if not os.path.exists(target_replica_file):
-                        return
-                    with open(target_replica_file) as f:
-                        target_id = f.read().strip()
-                    # Only 1 replica fails; its sibling stays healthy.
-                    # The gang-aware cleanup must stop the sibling too.
-                    ctx = serve.get_replica_context()
-                    if ctx.replica_id.unique_id == target_id:
-                        raise RuntimeError("Intentional health check failure.")
+        app_name = "gang_health_failure_app"
+        deployment_name = "HealthFailureDeployment"
+        handle = serve.run(HealthFailureDeployment.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
 
-            app_name = "gang_health_failure_app"
-            deployment_name = "HealthFailureDeployment"
-            handle = serve.run(HealthFailureDeployment.bind(), name=app_name)
-            wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        # Discover all 4 replica contexts.
+        contexts_by_replica = {}
+        for _ in range(120):
+            result = handle.remote().result()
+            contexts_by_replica.setdefault(result["replica_id"], result)
+            if len(contexts_by_replica) == 4:
+                break
+        assert len(contexts_by_replica) == 4
 
-            # Discover all 4 replica contexts.
-            contexts_by_replica = {}
-            for _ in range(120):
-                result = handle.remote().result()
-                contexts_by_replica.setdefault(result["replica_id"], result)
-                if len(contexts_by_replica) == 4:
-                    break
-            assert len(contexts_by_replica) == 4
+        # Pick 1 replica to fail health checks.
+        target_ctx = next(iter(contexts_by_replica.values()))
+        target_gang_id = target_ctx["gang_id"]
 
-            # Pick 1 replica to fail health checks.
-            target_ctx = next(iter(contexts_by_replica.values()))
-            target_gang_id = target_ctx["gang_id"]
+        target_gang_replica_ids = {
+            ctx["replica_id"]
+            for ctx in contexts_by_replica.values()
+            if ctx["gang_id"] == target_gang_id
+        }
+        unaffected_replica_ids = (
+            set(contexts_by_replica.keys()) - target_gang_replica_ids
+        )
+        assert len(target_gang_replica_ids) == 2
+        assert len(unaffected_replica_ids) == 2
 
-            target_gang_replica_ids = {
-                ctx["replica_id"]
-                for ctx in contexts_by_replica.values()
-                if ctx["gang_id"] == target_gang_id
-            }
-            unaffected_replica_ids = (
-                set(contexts_by_replica.keys()) - target_gang_replica_ids
-            )
-            assert len(target_gang_replica_ids) == 2
-            assert len(unaffected_replica_ids) == 2
+        # Trigger failure for only 1 replica in the target gang.
+        ray.get(target_replica_collector.add.remote(target_ctx["replica_id"]))
 
-            # Trigger failure for only 1 replica in the target gang.
-            with open(target_replica_file, "w") as f:
-                f.write(target_ctx["replica_id"])
+        client = serve.context._get_global_client()
+        deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
 
-            client = serve.context._get_global_client()
-            deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
-
-            def check_target_gang_restarted():
-                replicas = ray.get(
-                    client._controller._dump_replica_states_for_testing.remote(
-                        deployment_id
-                    )
+        def check_target_gang_restarted():
+            replicas = ray.get(
+                client._controller._dump_replica_states_for_testing.remote(
+                    deployment_id
                 )
-                running_replicas = replicas.get([ReplicaState.RUNNING])
-                running_ids = {r.replica_id.unique_id for r in running_replicas}
-                # Both old gang members must be gone (not just the one that
-                # failed), and the unaffected gang must be untouched.
-                return (
-                    len(running_ids) == 4
-                    and len(running_ids & target_gang_replica_ids) == 0
-                    and len(running_ids & unaffected_replica_ids) == 2
-                )
+            )
+            running_replicas = replicas.get([ReplicaState.RUNNING])
+            running_ids = {r.replica_id.unique_id for r in running_replicas}
+            # Both old gang members must be gone (not just the one that
+            # failed), and the unaffected gang must be untouched.
+            return (
+                len(running_ids) == 4
+                and len(running_ids & target_gang_replica_ids) == 0
+                and len(running_ids & unaffected_replica_ids) == 2
+            )
 
-            wait_for_condition(check_target_gang_restarted, timeout=90)
-            wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
-            serve.delete(app_name)
-            serve.shutdown()
+        wait_for_condition(check_target_gang_restarted, timeout=90)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        serve.delete(app_name)
+        serve.shutdown()
 
 
 if __name__ == "__main__":

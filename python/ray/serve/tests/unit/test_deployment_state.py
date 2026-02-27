@@ -6162,7 +6162,7 @@ def test_pending_migration_prevents_in_transition_clear(
 
 class TestScaleDeploymentGangReplicas:
     def test_stopping_replicas_skip_upscale(self, mock_deployment_state_manager):
-        """Skips upscale while gang replicas are stopping after startup failures."""
+        """Skips upscale while gang replicas are stopping after startup failures, then recovers to healthy."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm(
             create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
@@ -6205,17 +6205,41 @@ class TestScaleDeploymentGangReplicas:
         )
         assert ds.curr_status_info.status == DeploymentStatus.UPDATING
 
+        for replica in ds._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                deployment_id: GangReservationResult(
+                    success=True, gang_pgs=[Mock(name="pg-0")]
+                )
+            }
+        )
+        dsm.update()
+        check_counts(
+            ds, total=target_replicas, by_state=[(ReplicaState.STARTING, 2, version)]
+        )
+
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds, total=target_replicas, by_state=[(ReplicaState.RUNNING, 2, version)]
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
     def test_gang_reservation_failure_records_startup_failure(
         self, mock_deployment_state_manager
     ):
-        """Keeps upscale empty and records reservation failure details in deployment status."""
+        """Keeps upscale empty and records reservation failure details before recovering to healthy."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         deployment_id = DeploymentID(name="gang_reservation_fail", app_name="app")
         error_msg = "simulated gang placement reservation failure"
 
-        info, _ = deployment_info(
+        info, version = deployment_info(
             num_replicas=4,
+            version="v1",
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
         dsm.deploy(deployment_id, info)
@@ -6244,8 +6268,24 @@ class TestScaleDeploymentGangReplicas:
         assert "Gang scheduling failed" in ds.curr_status_info.message
         assert error_msg in ds.curr_status_info.message
 
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                deployment_id: GangReservationResult(
+                    success=True, gang_pgs=[Mock(name="pg-0"), Mock(name="pg-1")]
+                )
+            }
+        )
+        dsm.update()
+        check_counts(ds, total=4, by_state=[(ReplicaState.STARTING, 4, version)])
+
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, version)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
     def test_successful_gang_reservation(self, mock_deployment_state_manager):
-        """Creates expected gang scheduling requests and marks all replicas as starting."""
+        """Creates expected gang scheduling requests and reaches healthy when all replicas become ready."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         gang_size = 2
@@ -6309,10 +6349,20 @@ class TestScaleDeploymentGangReplicas:
                 assert gang_context.world_size == gang_size
                 assert set(gang_context.member_replica_ids) == member_ids
 
+        for replica in starting_replicas:
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=target_replicas,
+            by_state=[(ReplicaState.RUNNING, target_replicas, version)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
     def test_gang_sibling_cleanup_on_startup_failure(
         self, mock_deployment_state_manager
     ):
-        """Stops gang siblings when one member fails startup to avoid partial gangs."""
+        """Stops gang siblings when one member fails startup to avoid partial gangs, then recovers to healthy."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm(
             create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
@@ -6375,10 +6425,42 @@ class TestScaleDeploymentGangReplicas:
             ],
         )
 
+        for replica in ds._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                deployment_id: GangReservationResult(
+                    success=True, gang_pgs=[Mock(name="pg-2")]
+                )
+            }
+        )
+        dsm.update()
+        check_counts(
+            ds,
+            total=target_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, 2, version),
+                (ReplicaState.STARTING, 2, version),
+            ],
+        )
+
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=target_replicas,
+            by_state=[(ReplicaState.RUNNING, target_replicas, version)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
     def test_terminally_failed_deployment_skips_gang_reservation(
         self, mock_deployment_state_manager
     ):
-        """Does not reserve gang placement groups after deployment reaches terminal startup failure."""
+        """Does not reserve gang placement groups after terminal failure, and can recover on redeploy."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         deployment_id = DeploymentID(name="gang_terminal_failure", app_name="app")
@@ -6407,38 +6489,29 @@ class TestScaleDeploymentGangReplicas:
         dsm.update()
         dsm._deployment_scheduler.schedule_gang_placement_groups.assert_not_called()
 
-    def test_healthy_after_starting_replicas_ready(self, mock_deployment_state_manager):
-        """Transitions gang deployment to healthy once all starting replicas become ready."""
-        create_dsm, _, _, _ = mock_deployment_state_manager
-        dsm: DeploymentStateManager = create_dsm(
-            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        recovery_info, recovery_version = deployment_info(
+            num_replicas=2,
+            version="v2",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
-        gang_size = 2
-        target_replicas = 4
-        deployment_id = DeploymentID(name="gang_healthy", app_name="app")
-        info, version = deployment_info(
-            num_replicas=target_replicas,
-            version="v1",
-            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        dsm.deploy(deployment_id, recovery_info)
+        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+            return_value={
+                deployment_id: GangReservationResult(
+                    success=True, gang_pgs=[Mock(name="pg-recovery")]
+                )
+            }
         )
-        dsm.deploy(deployment_id, info)
-        ds = dsm._deployment_states[deployment_id]
 
         dsm.update()
         check_counts(
-            ds,
-            total=target_replicas,
-            by_state=[(ReplicaState.STARTING, target_replicas, version)],
+            ds, total=2, by_state=[(ReplicaState.STARTING, 2, recovery_version)]
         )
-
         for replica in ds._replicas.get([ReplicaState.STARTING]):
             replica._actor.set_ready()
         dsm.update()
-
         check_counts(
-            ds,
-            total=target_replicas,
-            by_state=[(ReplicaState.RUNNING, target_replicas, version)],
+            ds, total=2, by_state=[(ReplicaState.RUNNING, 2, recovery_version)]
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 

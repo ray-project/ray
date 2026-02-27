@@ -1017,10 +1017,6 @@ class ActorReplicaWrapper:
                     logger.debug(
                         f"Placement group for {self._replica_id} was already removed."
                     )
-                except Exception:
-                    logger.exception(
-                        f"Failed to remove placement group for {self._replica_id}."
-                    )
 
         return stopped
 
@@ -3136,38 +3132,9 @@ class DeploymentState:
 
         elif delta_replicas > 0:
             to_add = delta_replicas
-            if to_add > 0 and not self._terminally_failed():
-                gang_config = self.get_gang_config()
-                gang_reservation_result = (
-                    gang_placement_groups.get(self._id)
-                    if gang_placement_groups
-                    else None
-                )
-
-                if gang_config is not None:
-                    upscale = self._add_replicas_with_gang_scheduling(
-                        gang_config, gang_reservation_result
-                    )
-                else:
-                    logger.info(
-                        f"Adding {to_add} replica{'s' * (to_add > 1)} to {self._id}."
-                    )
-                    for _ in range(to_add):
-                        replica_id = ReplicaID(
-                            get_random_string(), deployment_id=self._id
-                        )
-                        new_deployment_replica = DeploymentReplica(
-                            replica_id,
-                            self._target_state.version,
-                        )
-                        scheduling_request = new_deployment_replica.start(
-                            self._target_state.info,
-                            assign_rank_callback=self._rank_manager.assign_rank,
-                        )
-                        upscale.append(scheduling_request)
-                        self._replicas.add(
-                            ReplicaState.STARTING, new_deployment_replica
-                        )
+            upscale = self._get_upscale_replicas(
+                to_add=to_add, gang_placement_groups=gang_placement_groups
+            )
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -3179,7 +3146,49 @@ class DeploymentState:
 
         return upscale, downscale
 
-    def _add_replicas_with_gang_scheduling(
+    def _get_upscale_replicas(
+        self,
+        to_add: int,
+        gang_placement_groups: Optional[
+            Dict[DeploymentID, GangReservationResult]
+        ] = None,
+    ) -> List[ReplicaSchedulingRequest]:
+        """Add replicas for this deployment, using gang scheduling when configured."""
+        upscale = []
+        if to_add <= 0 or self._terminally_failed():
+            return upscale
+
+        gang_config = self.get_gang_config()
+        if gang_config is None:
+            return self._add_upscale_replicas(to_add)
+
+        gang_reservation_result = (
+            gang_placement_groups.get(self._id) if gang_placement_groups else None
+        )
+        return self._add_upscale_gang_replicas(gang_config, gang_reservation_result)
+
+    def _add_upscale_replicas(self, to_add: int) -> List[ReplicaSchedulingRequest]:
+        """Add replicas for deployments that adopt single-replica (non-gang) scheduling."""
+        upscale = []
+        logger.info(f"Adding {to_add} replica{'s' * (to_add > 1)} to {self._id}.")
+        for _ in range(to_add):
+            replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
+
+            new_deployment_replica = DeploymentReplica(
+                replica_id,
+                self._target_state.version,
+            )
+            scheduling_request = new_deployment_replica.start(
+                self._target_state.info,
+                assign_rank_callback=self._rank_manager.assign_rank,
+            )
+            upscale.append(scheduling_request)
+
+            self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+
+        return upscale
+
+    def _add_upscale_gang_replicas(
         self,
         gang_config: GangSchedulingConfig,
         gang_reservation_result: Optional[GangReservationResult],
