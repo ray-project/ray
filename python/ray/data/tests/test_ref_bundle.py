@@ -478,6 +478,34 @@ def test_ref_bundle_eq_and_hash():
     assert bundle != diff_meta_bundle
 
 
+def test_ref_bundle_hash_with_unhashable_schema_types():
+    class DummySchema:
+        def __init__(self, names, types):
+            self.names = names
+            self.types = types
+
+        def __eq__(self, other):
+            return (
+                isinstance(other, DummySchema)
+                and self.names == other.names
+                and self.types == other.types
+            )
+
+    ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(num_rows=1, size_bytes=1, exec_stats=None, input_files=None)
+
+    # Mimics schemas where a field type carries nested dict metadata and isn't hashable.
+    schema_1 = DummySchema(names=["col"], types=[{"encoding": {"kind": "dict"}}])
+    schema_2 = DummySchema(names=["col"], types=[{"encoding": {"kind": "dict"}}])
+
+    bundle_1 = RefBundle(blocks=[(ref, meta)], owns_blocks=True, schema=schema_1)
+    bundle_2 = RefBundle(blocks=[(ref, meta)], owns_blocks=True, schema=schema_2)
+
+    assert bundle_1 == bundle_2
+    assert hash(bundle_1) == hash(bundle_2)
+    assert {bundle_1: "ok"}[bundle_2] == "ok"
+
+
 if __name__ == "__main__":
     import sys
 
