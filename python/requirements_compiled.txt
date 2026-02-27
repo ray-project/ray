@@ -17,7 +17,9 @@ absl-py==1.4.0
     #   tensorflow-metadata
     #   tensorflow-probability
 accelerate==0.28.0
-    # via -r python/requirements/ml/core-requirements.txt
+    # via
+    #   -r python/requirements/ml/core-requirements.txt
+    #   -r python/requirements/ml/train-requirements.txt
 adagio==0.2.4
     # via
     #   fugue
@@ -969,7 +971,9 @@ jupyterlab-server==2.28.0
 jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -r python/requirements/ml/train-test-requirements.txt
+    #   -r python/requirements/test-requirements.txt
 kafka-python==2.2.15
     # via -r python/requirements/ml/data-test-requirements.txt
 keras==2.15.0
@@ -1199,6 +1203,7 @@ numba==0.59.1
     #   statsforecast
 numexpr==2.8.4
     # via
+    #   -r python/requirements/ml/train-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pymars
 numpy==1.26.4
@@ -2180,6 +2185,7 @@ taskiq-dependencies==1.5.7
 tblib==3.0.0
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
+    #   -r python/requirements/ml/train-test-requirements.txt
     #   distributed
 tenacity==8.5.0
     # via
@@ -2563,6 +2569,7 @@ xlrd==2.0.1
     # via -r python/requirements/test-requirements.txt
 xmltodict==0.13.0
     # via
+    #   -r python/requirements/ml/train-test-requirements.txt
     #   moto
     #   yq
 xxhash==3.4.1

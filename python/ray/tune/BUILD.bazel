@@ -549,7 +549,10 @@ py_test(
     name = "test_tune_restore",
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "exclusive",
         "rllib",
@@ -1197,7 +1200,10 @@ py_test(
     size = "medium",
     srcs = ["examples/tf_mnist_example.py"],
     args = ["--smoke-test"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "example",
         "exclusive",
@@ -1235,7 +1241,10 @@ py_test(
     size = "medium",
     srcs = ["examples/tune_mnist_keras.py"],
     args = ["--smoke-test"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "1",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     tags = [
         "example",
         "exclusive",

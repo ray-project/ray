@@ -125,7 +125,7 @@ class TensorflowPredictor(DLPredictor):
 
                 # List outputs are not supported by default TensorflowPredictor.
                 def build_model() -> tf.keras.Model:
-                    input = tf.keras.layers.Input(shape=1)
+                    input = tf.keras.layers.Input(shape=(1,))
                     model = tf.keras.models.Model(inputs=input, outputs=[input, input])
                     return model
 
