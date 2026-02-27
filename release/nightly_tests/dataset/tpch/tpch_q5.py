@@ -43,16 +43,10 @@ def main(args):
             right_on=("n_regionkey",),
         )
 
-        # Keep only needed nation columns and construct small helper tables
-        # for supplier / customer so that join keys are consistently named
-        asia_for_supplier = (
-            nation_region.select_columns(["n_nationkey", "n_name"])
-            .rename_columns({"n_nationkey": "s_nationkey"})
-        )
-        asia_for_customer = (
-            nation_region.select_columns(["n_nationkey", "n_name"])
-            .rename_columns({"n_nationkey": "c_nationkey"})
-        )
+        # Keep only needed nation columns; avoid pre-join rename to prevent
+        # projection pushdown issues with Ray join
+        asia_for_supplier = nation_region.select_columns(["n_nationkey", "n_name"])
+        asia_for_customer = nation_region.select_columns(["n_nationkey", "n_name"])
 
         # supplier ⋈ asia_for_supplier (Ray join), get supplier nations
         supplier_nation = supplier.join(
@@ -60,6 +54,7 @@ def main(args):
             num_partitions=16,
             join_type="inner",
             on=("s_nationkey",),
+            right_on=("n_nationkey",),
         )
         supplier_nation = (
             supplier_nation.rename_columns({"n_name": "n_name_supp"})
@@ -72,6 +67,7 @@ def main(args):
             num_partitions=16,
             join_type="inner",
             on=("c_nationkey",),
+            right_on=("n_nationkey",),
         )
         customer_nation = (
             customer_nation.rename_columns({"n_name": "n_name_cust"})
