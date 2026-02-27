@@ -433,10 +433,20 @@ class SchedulingNode:
         # This prevents O(N^2 * M) iteration by returning early for identical failing requests.
         unavailable_shapes = set()
 
+        # Track the last serialization to bypass Protobuf overhead
+        last_r_id = None
+        last_shape_key = None
+
         # Sort the requests and try schedule them one by one.
         for r in requests:
-            # Use the serialized Protobuf representation as a deterministic, hashable key.
-            shape_key = r.SerializeToString(deterministic=True)
+            current_id = id(r)
+            if current_id == last_r_id:
+                shape_key = last_shape_key
+            else:
+                # Use the serialized Protobuf representation as a deterministic, hashable key.
+                shape_key = r.SerializeToString(deterministic=True)
+                last_r_id = current_id
+                last_shape_key = shape_key
 
             if shape_key in unavailable_shapes:
                 unschedulable_requests.append(r)
