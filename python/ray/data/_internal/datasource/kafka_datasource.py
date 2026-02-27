@@ -59,11 +59,6 @@ _KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
 
 KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
 KAFKA_QUERY_OFFSET_TIMEOUT_S = 10
-# Batch size for consume() - fewer round trips than poll()
-KAFKA_CONSUME_TIMEOUT_S = 10
-CONSUME_BATCH_SIZE = 256
-# Batch size for incremental block yielding to Ray Data
-BATCH_SIZE_FOR_YIELD = 1000
 
 KAFKA_MSG_SCHEMA = pa.schema(
     [
@@ -222,21 +217,33 @@ def _build_confluent_config(
     return config
 
 
-def _build_consumer_config(
-    bootstrap_servers: List[str],
-    kafka_auth_config: Optional[KafkaAuthConfig],
+def _build_consumer_config_for_discovery(
+    bootstrap_servers: List[str], kafka_auth_config: Optional[KafkaAuthConfig]
 ) -> Dict[str, Any]:
-    """Build Consumer config for reading messages.
-
-    Confluent Consumer returns raw bytes by default (no deserializers needed).
-    """
+    """Build minimal consumer config for partition discovery (Confluent)."""
     return _build_confluent_config(
         bootstrap_servers,
         kafka_auth_config,
         extra={
             "enable.auto.commit": False,
-            "group.id": "ray-data-kafka-reader",  # Required by Confluent but we use assign()
-            "enable.partition.eof": True,
+            # Confluent requires a group.id even when using manual assign.
+            "group.id": "ray-data-kafka-reader",
+        },
+    )
+
+
+def _build_consumer_config_for_read(
+    bootstrap_servers: List[str],
+    kafka_auth_config: Optional[KafkaAuthConfig],
+) -> Dict[str, Any]:
+    """Build Consumer config for reading messages (Confluent)."""
+    return _build_confluent_config(
+        bootstrap_servers,
+        kafka_auth_config,
+        extra={
+            "enable.auto.commit": False,
+            # Confluent requires a group.id even when using manual assign.
+            "group.id": "ray-data-kafka-reader",
         },
     )
 
@@ -259,18 +266,20 @@ def _datetime_to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def _resolve_offsets_with_consumer(
+def _resolve_offsets(
     consumer: "Consumer",
     topic_partition: "TopicPartition",
     start_offset: Union[int, datetime, Literal["earliest"]],
     end_offset: Union[int, datetime, Literal["latest"]],
 ) -> Tuple[int, int]:
-    """Resolve start and end offsets using Consumer.
+    """Resolve start and end offsets to actual integer offsets.
 
-    Uses get_watermark_offsets for earliest/latest and offsets_for_times for datetime.
+    Handles int offsets, "earliest"/"latest" strings, and datetime objects.
+    For datetime objects, uses ``consumer.offsets_for_times()`` to find the
+    earliest offset whose timestamp is >= the given datetime.
 
     Args:
-        consumer: Confluent Consumer instance (must have partition assigned).
+        consumer: Confluent Kafka consumer instance.
         topic_partition: TopicPartition to resolve offsets for.
         start_offset: Start offset (int, datetime, or "earliest").
         end_offset: End offset (int, datetime, or "latest").
@@ -278,7 +287,7 @@ def _resolve_offsets_with_consumer(
     Returns:
         Tuple of (resolved_start_offset, resolved_end_offset).
     """
-    from confluent_kafka import TopicPartition
+    from confluent_kafka import TopicPartition as _TP
 
     low, high = consumer.get_watermark_offsets(
         topic_partition, timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
@@ -286,16 +295,15 @@ def _resolve_offsets_with_consumer(
     earliest_offset = low
     latest_offset = high
 
-    original_start_offset = start_offset
-    original_end_offset = end_offset
+    # Keep original values for error messages
+    original_start = start_offset
+    original_end = end_offset
 
     if start_offset == "earliest" or start_offset is None:
         start_offset = earliest_offset
     elif isinstance(start_offset, datetime):
         timestamp_ms = _datetime_to_ms(start_offset)
-        tp_with_ts = TopicPartition(
-            topic_partition.topic, topic_partition.partition, timestamp_ms
-        )
+        tp_with_ts = _TP(topic_partition.topic, topic_partition.partition, timestamp_ms)
         result = consumer.offsets_for_times(
             [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
         )
@@ -303,18 +311,12 @@ def _resolve_offsets_with_consumer(
             start_offset = result[0].offset
         else:
             start_offset = latest_offset
-    elif isinstance(start_offset, int) and start_offset > latest_offset:
-        raise ValueError(
-            f"start_offset {start_offset} is greater than latest_offset {latest_offset} for partition {topic_partition.partition} in topic {topic_partition.topic}"
-        )
 
     if end_offset == "latest" or end_offset is None:
         end_offset = latest_offset
     elif isinstance(end_offset, datetime):
         timestamp_ms = _datetime_to_ms(end_offset)
-        tp_with_ts = TopicPartition(
-            topic_partition.topic, topic_partition.partition, timestamp_ms
-        )
+        tp_with_ts = _TP(topic_partition.topic, topic_partition.partition, timestamp_ms)
         result = consumer.offsets_for_times(
             [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
         )
@@ -322,27 +324,31 @@ def _resolve_offsets_with_consumer(
             end_offset = result[0].offset
         else:
             end_offset = latest_offset
-    elif isinstance(end_offset, int) and end_offset > latest_offset:
-        raise ValueError(
-            f"end_offset {end_offset} is greater than latest_offset {latest_offset} for partition {topic_partition.partition} in topic {topic_partition.topic}"
-        )
 
-    # Final post-resolution validation to catch mixed-type cases
-    # where the resolved start offset is greater than the resolved end offset.
-    if isinstance(start_offset, int) and isinstance(end_offset, int):
-        if start_offset > end_offset:
-            raise ValueError(
-                "Resolved offsets: start_offset="
-                f"{start_offset} end_offset={end_offset}; Original: start_offset="
-                f"{original_start_offset}, end_offset={original_end_offset}. "
-                "start_offset must be less than end_offset"
-            )
+    if start_offset > end_offset:
+        start_str = (
+            f"{original_start}"
+            if original_start == start_offset
+            else f"{original_start} (resolved to {start_offset})"
+        )
+        end_str = (
+            f"{original_end}"
+            if original_end == end_offset
+            else f"{original_end} (resolved to {end_offset})"
+        )
+        raise ValueError(
+            f"start_offset ({start_str}) > end_offset ({end_str}) "
+            f"for partition {topic_partition.partition} in topic {topic_partition.topic}"
+        )
 
     return start_offset, end_offset
 
 
 class KafkaDatasource(Datasource):
     """Kafka datasource for reading from Kafka topics with bounded reads."""
+
+    # Batch size for incremental block yielding
+    BATCH_SIZE_FOR_YIELD = 1000
 
     def __init__(
         self,
@@ -351,7 +357,7 @@ class KafkaDatasource(Datasource):
         start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
         end_offset: Union[int, datetime, Literal["latest"]] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
-        timeout_ms: int = -1,
+        timeout_ms: int = 10000,
     ):
         """Initialize Kafka datasource.
 
@@ -369,15 +375,13 @@ class KafkaDatasource(Datasource):
                   at or after this time. datetimes with no timezone info are treated as UTC.
                 - str: "latest"
             kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
-            timeout_ms: Timeout in milliseconds for the entire read task per partition.
-                Use -1 for no timeout (run until end_offset is reached).
-                The timeout applies to the whole task, not per message or per batch.
-                If the task does not reach end_offset within the timeout, raises TimeoutError.
+            timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
+                If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
+                it has read so far.
 
         Raises:
             ValueError: If required configuration is missing.
             ImportError: If confluent-kafka is not installed.
-            TimeoutError: If the read task exceeds timeout_ms before reaching end_offset.
         """
         _check_import(self, module="confluent_kafka", package="confluent-kafka")
 
@@ -387,8 +391,8 @@ class KafkaDatasource(Datasource):
         if not bootstrap_servers:
             raise ValueError("bootstrap_servers cannot be empty")
 
-        if timeout_ms != -1 and timeout_ms <= 0:
-            raise ValueError("timeout_ms must be positive, or -1 for no timeout")
+        if timeout_ms <= 0:
+            raise ValueError("timeout_ms must be positive")
 
         if isinstance(start_offset, int) and isinstance(end_offset, int):
             if start_offset > end_offset:
@@ -457,7 +461,7 @@ class KafkaDatasource(Datasource):
         """
         from confluent_kafka import Consumer
 
-        consumer_config = _build_consumer_config(
+        consumer_config = _build_consumer_config_for_discovery(
             self._bootstrap_servers, self._kafka_auth_config
         )
         discovery_consumer = Consumer(consumer_config)
@@ -503,36 +507,28 @@ class KafkaDatasource(Datasource):
                     Union[int, datetime, Literal["latest"]]
                 ] = end_offset,
                 kafka_auth_config: Optional[KafkaAuthConfig] = kafka_auth_config,
-                timeout_ms: Optional[int] = timeout_ms,
+                timeout_ms: int = timeout_ms,
                 target_max_block_size: int = target_max_block_size,
-                consume_batch_size: int = CONSUME_BATCH_SIZE,
             ):
                 """Create a Kafka read function with captured variables."""
 
                 def kafka_read_fn() -> Iterable[Block]:
                     """Read function for a single Kafka partition using confluent-kafka."""
-                    from confluent_kafka import (
-                        Consumer,
-                        KafkaError,
-                        KafkaException,
-                        TopicPartition,
-                    )
+                    from confluent_kafka import Consumer, TopicPartition
 
-                    consumer_config = _build_consumer_config(
+                    consumer_config = _build_consumer_config_for_read(
                         bootstrap_servers, kafka_auth_config
                     )
 
                     consumer = Consumer(consumer_config)
                     try:
                         topic_partition = TopicPartition(topic_name, partition_id)
-                        start_off, end_off = _resolve_offsets_with_consumer(
-                            consumer,
-                            topic_partition,
-                            start_offset,
-                            end_offset,
+                        start_off, end_off = _resolve_offsets(
+                            consumer, topic_partition, start_offset, end_offset
                         )
 
                         records = []
+
                         output_buffer = BlockOutputBuffer(
                             OutputBlockSizeOption.of(
                                 target_max_block_size=target_max_block_size
@@ -540,94 +536,75 @@ class KafkaDatasource(Datasource):
                         )
 
                         if start_off < end_off:
-                            messages_to_read = end_off - start_off
-                            total_read = 0
                             start_time = time.time()
+                            timeout_seconds = timeout_ms / 1000.0
+                            # Assign with the desired starting offset to avoid seek state errors
                             tp_with_offset = TopicPartition(
                                 topic_name, partition_id, start_off
                             )
                             consumer.assign([tp_with_offset])
-                            timeout_seconds = (
-                                timeout_ms / 1000.0
-                                if (timeout_ms is not None and timeout_ms > 0)
-                                else -1.0
-                            )
 
-                            while total_read < messages_to_read:
+                            partition_done = False
+                            while not partition_done:
+                                # Check if overall timeout has been reached
                                 elapsed_time = time.time() - start_time
-                                if (
-                                    timeout_seconds >= 0
-                                    and elapsed_time >= timeout_seconds
-                                ):
-                                    positions = consumer.position([topic_partition])
-                                    last_offset = (
-                                        positions[0].offset - 1 if positions else -1
+                                if elapsed_time >= timeout_seconds:
+                                    logger.warning(
+                                        f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
+                                        f"end_offset {end_off} was not reached. Returning {len(records)} messages collected in this read task so far."
                                     )
-                                    raise TimeoutError(
-                                        f"Kafka read task timed out after {timeout_ms}ms. "
-                                        f"topic={topic_name} partition={partition_id} "
-                                        f"last_offset_read={last_offset} end_offset={end_off} "
-                                        f"messages_returned={len(records)}"
-                                    )
-
-                                msgs = consumer.consume(
-                                    num_messages=min(
-                                        consume_batch_size,
-                                        messages_to_read - total_read,
-                                    ),
-                                    timeout=KAFKA_CONSUME_TIMEOUT_S,
-                                )
-
-                                partition_done = False
-                                for msg in msgs:
-                                    if msg.error():
-                                        if (
-                                            msg.error().code()
-                                            == KafkaError._PARTITION_EOF
-                                        ):
-                                            partition_done = True
-                                            break
-                                        raise KafkaException(msg.error())
-
-                                    if msg.offset() >= end_off:
-                                        partition_done = True
-                                        break
-
-                                    ts_type, ts_ms = msg.timestamp()
-                                    headers_list = msg.headers() or []
-                                    headers_dict = {
-                                        k
-                                        if isinstance(k, str)
-                                        else k.decode("utf-8"): v
-                                        for k, v in headers_list
-                                    }
-                                    records.append(
-                                        {
-                                            "offset": msg.offset(),
-                                            "key": msg.key(),
-                                            "value": msg.value(),
-                                            "topic": msg.topic(),
-                                            "partition": msg.partition(),
-                                            "timestamp": ts_ms,
-                                            "timestamp_type": ts_type,
-                                            "headers": headers_dict,
-                                        }
-                                    )
-                                    total_read += 1
-                                    if total_read >= messages_to_read:
-                                        partition_done = True
-                                        break
-
-                                if partition_done:
                                     break
 
-                                if len(records) >= BATCH_SIZE_FOR_YIELD:
+                                # Check if we've reached the end_offset before polling
+                                positions = consumer.position([topic_partition])
+                                current_position = (
+                                    positions[0].offset if positions else start_off
+                                )
+                                if current_position >= end_off:
+                                    break
+
+                                remaining_timeout_ms = int(
+                                    max(0, timeout_seconds - elapsed_time) * 1000
+                                )
+                                poll_timeout_s = remaining_timeout_ms / 1000.0
+
+                                msg = consumer.poll(timeout=poll_timeout_s)
+                                if msg is None:
+                                    continue
+                                if msg.error():
+                                    # Preserve old semantics: skip errors
+                                    continue
+
+                                # Stop once we reached the end offset (exclusive)
+                                if msg.offset() >= end_off:
+                                    partition_done = True
+                                    break
+
+                                ts_type, ts_ms = msg.timestamp()
+                                headers_list = msg.headers() or []
+                                headers_dict = dict(headers_list)
+                                records.append(
+                                    {
+                                        "offset": msg.offset(),
+                                        "key": msg.key(),
+                                        "value": msg.value(),
+                                        "topic": msg.topic(),
+                                        "partition": msg.partition(),
+                                        "timestamp": ts_ms,
+                                        "timestamp_type": ts_type,
+                                        "headers": headers_dict,
+                                    }
+                                )
+
+                                # Yield incrementally when we hit batch size
+                                if len(records) >= KafkaDatasource.BATCH_SIZE_FOR_YIELD:
                                     table = pa.Table.from_pylist(records)
                                     output_buffer.add_block(table)
                                     while output_buffer.has_next():
                                         yield output_buffer.next()
-                                    records = []
+                                    records = []  # Clear for next batch
 
+                        # Yield any remaining records
                         if records:
                             table = pa.Table.from_pylist(records)
                             output_buffer.add_block(table)
@@ -650,11 +627,23 @@ class KafkaDatasource(Datasource):
             )
 
             kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
-
+            # Create read task
+            schema = pa.schema(
+                [
+                    ("offset", pa.int64()),
+                    ("key", pa.binary()),
+                    ("value", pa.binary()),
+                    ("topic", pa.string()),
+                    ("partition", pa.int32()),
+                    ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
+                    ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
+                    ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
+                ]
+            )
             task = ReadTask(
                 read_fn=kafka_read_fn,
                 metadata=metadata,
-                schema=KAFKA_MSG_SCHEMA,
+                schema=schema,
                 per_task_row_limit=per_task_row_limit,
             )
             tasks.append(task)

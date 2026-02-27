@@ -8,7 +8,7 @@ import ray
 from ray.data._internal.datasource.kafka_datasource import (
     KafkaAuthConfig,
     _add_authentication_to_config,
-    _build_consumer_config,
+    _build_consumer_config_for_read,
     _datetime_to_ms,
 )
 
@@ -115,12 +115,12 @@ def test_add_authentication_to_config():
     assert "sasl.oauthbearer.token.endpoint.url" not in config
 
 
-def test_build_consumer_config():
+def test_build_consumer_config_for_read():
     """Test read config builder."""
     bootstrap_servers = ["localhost:9092"]
 
     # Test basic config
-    config = _build_consumer_config(bootstrap_servers, None)
+    config = _build_consumer_config_for_read(bootstrap_servers, None)
     assert config["bootstrap.servers"] == "localhost:9092"
     assert config["enable.auto.commit"] is False
     assert "group.id" in config
@@ -132,7 +132,9 @@ def test_build_consumer_config():
         sasl_plain_username="user",
         sasl_plain_password="pass",
     )
-    config_with_auth = _build_consumer_config(bootstrap_servers, kafka_auth_config)
+    config_with_auth = _build_consumer_config_for_read(
+        bootstrap_servers, kafka_auth_config
+    )
     assert config_with_auth["security.protocol"] == "SASL_SSL"
     assert config_with_auth["sasl.mechanism"] == "PLAIN"
     assert config_with_auth["sasl.username"] == "user"
@@ -359,26 +361,8 @@ def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
         (
             150,
             "latest",
-            r"start_offset 150 is greater than latest_offset 100 for partition 0 in topic test-invalid-offsets-3",
+            r"start_offset \(150\) > end_offset \(latest \(resolved to 100\)\) for partition 0 in topic test-invalid-offsets-3",
             "test-invalid-offsets-3",
-        ),
-        (
-            150,
-            200,
-            r"start_offset 150 is greater than latest_offset 100 for partition 0 in topic test-invalid-offsets-4",
-            "test-invalid-offsets-4",
-        ),
-        (
-            0,
-            150,
-            r"end_offset 150 is greater than latest_offset 100 for partition 0 in topic test-invalid-offsets-5",
-            "test-invalid-offsets-5",
-        ),
-        (
-            "earliest",
-            150,
-            r"end_offset 150 is greater than latest_offset 100 for partition 0 in topic test-invalid-offsets-6",
-            "test-invalid-offsets-6",
         ),
     ],
 )
@@ -403,55 +387,6 @@ def test_read_kafka_invalid_offsets(
             bootstrap_servers=[bootstrap_server],
             start_offset=start_offset,
             end_offset=end_offset,
-        )
-        ds.take_all()
-
-
-def test_read_kafka_timeout(bootstrap_server, kafka_producer, ray_start_regular_shared):
-    """Test that TimeoutError is raised when read exceeds timeout_ms."""
-    topic = "test-timeout"
-
-    num_messages = 100
-    for i in range(num_messages):
-        kafka_producer.produce(topic, value={"id": i, "value": f"msg-{i}"})
-    kafka_producer.flush()
-    time.sleep(0.3)
-
-    with pytest.raises(TimeoutError, match="Kafka read task timed out"):
-        ds = ray.data.read_kafka(
-            topics=[topic],
-            bootstrap_servers=[bootstrap_server],
-            start_offset=0,
-            end_offset=num_messages,
-            timeout_ms=0.0001,
-        )
-        ds.take_all()
-
-
-def test_read_kafka_mixed_type_offsets_validation(
-    bootstrap_server, kafka_producer, ray_start_regular_shared
-):
-    """Mixed-type offsets where resolved start > end should raise ValueError.
-
-    Use a future datetime for start_offset so it resolves to latest,
-    and an integer end_offset smaller than latest.
-    """
-    topic = "test-mixed-type-offsets-validation"
-
-    num_messages = 30
-    for i in range(num_messages):
-        kafka_producer.produce(topic, value={"id": i})
-    kafka_producer.flush()
-    time.sleep(0.3)
-
-    future_time = datetime(2099, 1, 1)
-
-    with pytest.raises(ValueError, match="start_offset must be less than end_offset"):
-        ds = ray.data.read_kafka(
-            topics=[topic],
-            bootstrap_servers=[bootstrap_server],
-            start_offset=future_time,
-            end_offset=20,
         )
         ds.take_all()
 
