@@ -343,6 +343,60 @@ def test_read_kafka_with_message_headers(
     assert first_record["headers"]["header1"].decode("utf-8") == "value1"
 
 
+@pytest.mark.parametrize(
+    "start_offset,end_offset,expected_count, test_id",
+    [
+        (150, 200, 0, "start-offset-exceeds-available-messages"),
+        (0, 150, 100, "end-offset-exceeds-available-messages"),
+        (
+            "earliest",
+            150,
+            100,
+            "earliest-start-offset-end-offset-exceeds-available-messages",
+        ),
+    ],
+)
+def test_read_kafka_offset_exceeds_available_messages(
+    bootstrap_server,
+    kafka_producer,
+    ray_start_regular_shared,
+    start_offset,
+    end_offset,
+    expected_count,
+    test_id,
+):
+    import time
+
+    topic = f"test-offset-timeout-{test_id}"
+
+    for i in range(100):
+        message = {"id": i, "value": f"message-{i}"}
+        kafka_producer.produce(topic, value=message)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # Try to read up to offset 200 (way beyond available messages)
+    # This should timeout and only return the 50 available messages
+
+    start_time = time.time()
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=start_offset,
+        end_offset=end_offset,
+        timeout_ms=3000,  # 3 second timeout
+    )
+
+    records = ds.take_all()
+
+    elapsed_time = time.time() - start_time
+
+    # Should get all 50 available messages
+    assert len(records) == expected_count
+
+    assert elapsed_time >= 3, f"Expected timeout wait, but only took {elapsed_time}s"
+
+
 def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
     with pytest.raises(ValueError, match="has no partitions or doesn't exist"):
         ds = ray.data.read_kafka(
