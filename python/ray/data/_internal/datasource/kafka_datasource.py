@@ -40,7 +40,9 @@ from ray.data.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
 
+
 # Mapping from kafka-python style KafkaAuthConfig fields to Confluent/librdkafka config.
+# TODO(youcheng): Remove this mapping and use consumer_config directly.
 _KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
     "security_protocol": "security.protocol",
     "sasl_mechanism": "sasl.mechanism",
@@ -164,26 +166,7 @@ class KafkaAuthConfig:
     ssl_crlfile: Optional[str] = None
 
 
-def _add_authentication_to_config(
-    config: Dict[str, Any], kafka_auth_config: Optional[KafkaAuthConfig]
-) -> None:
-    """Map KafkaAuthConfig (kafka-python style) into Confluent/librdkafka config.
-
-    Special cases:
-      - ssl_context: unsupported; warn and ignore
-      - sasl_oauth_token_provider: unsupported; warn and ignore
-      - sasl_kerberos_domain_name: unsupported; warn and ignore
-      - ssl_check_hostname: not mapped due to semantics; if False, warn and ignore
-    """
-    if not kafka_auth_config:
-        return
-    warnings.warn(
-        "kafka_auth_config (kafka-python style) is deprecated and will be removed in a future release. "
-        "Please provide Confluent/librdkafka options via consumer_config instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
+def _handle_deprecated_configs(kafka_auth_config: KafkaAuthConfig) -> None:
     # Handle special fields with warnings
     if kafka_auth_config.ssl_context is not None:
         logger.warning(
@@ -207,6 +190,29 @@ def _add_authentication_to_config(
             "Ignoring ssl_check_hostname. If you need to disable only hostname verification, "
             "configure the client directly via consumer_config (e.g., ssl.endpoint.identification.algorithm=none)."
         )
+
+
+def _add_authentication_to_config(
+    config: Dict[str, Any], kafka_auth_config: Optional[KafkaAuthConfig]
+) -> None:
+    """Map KafkaAuthConfig (kafka-python style) into Confluent/librdkafka config.
+
+    Special cases:
+      - ssl_context: unsupported; warn and ignore
+      - sasl_oauth_token_provider: unsupported; warn and ignore
+      - sasl_kerberos_domain_name: unsupported; warn and ignore
+      - ssl_check_hostname: not mapped due to semantics; if False, warn and ignore
+    """
+    if not kafka_auth_config:
+        return
+    warnings.warn(
+        "kafka_auth_config (kafka-python style) is deprecated and will be removed in a future release. "
+        "Please provide Confluent/librdkafka options via consumer_config instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    _handle_deprecated_configs(kafka_auth_config)
 
     # Map directly compatible fields
     for key, confluent_key in _KAFKA_AUTH_TO_CONFLUENT.items():
@@ -290,6 +296,31 @@ def _datetime_to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def _resolve_datetime_to_offset(
+    consumer: "Consumer",
+    topic_partition: "TopicPartition",
+    dt: datetime,
+    fallback_offset: int,
+) -> int:
+    """Resolve a datetime to an integer offset via offsets_for_times.
+
+    Returns fallback_offset when offsets_for_times returns empty or offset < 0
+    (e.g., datetime in future or no messages at that time).
+    """
+    from confluent_kafka import TopicPartition
+
+    timestamp_ms = _datetime_to_ms(dt)
+    tp_with_ts = TopicPartition(
+        topic_partition.topic, topic_partition.partition, timestamp_ms
+    )
+    result = consumer.offsets_for_times(
+        [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
+    )
+    if result and result[0].offset >= 0:
+        return result[0].offset
+    return fallback_offset
+
+
 def _resolve_offsets(
     consumer: "Consumer",
     topic_partition: "TopicPartition",
@@ -311,8 +342,7 @@ def _resolve_offsets(
     Returns:
         Tuple of (resolved_start_offset, resolved_end_offset).
     """
-    from confluent_kafka import TopicPartition
-
+    # TODO(youcheng): add retry logic for this call.
     low, high = consumer.get_watermark_offsets(
         topic_partition, timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
     )
@@ -326,32 +356,16 @@ def _resolve_offsets(
     if start_offset == "earliest" or start_offset is None:
         start_offset = earliest_offset
     elif isinstance(start_offset, datetime):
-        timestamp_ms = _datetime_to_ms(start_offset)
-        tp_with_ts = TopicPartition(
-            topic_partition.topic, topic_partition.partition, timestamp_ms
+        start_offset = _resolve_datetime_to_offset(
+            consumer, topic_partition, start_offset, latest_offset
         )
-        result = consumer.offsets_for_times(
-            [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
-        )
-        if result and result[0].offset >= 0:
-            start_offset = result[0].offset
-        else:
-            start_offset = latest_offset
 
     if end_offset == "latest" or end_offset is None:
         end_offset = latest_offset
     elif isinstance(end_offset, datetime):
-        timestamp_ms = _datetime_to_ms(end_offset)
-        tp_with_ts = TopicPartition(
-            topic_partition.topic, topic_partition.partition, timestamp_ms
+        end_offset = _resolve_datetime_to_offset(
+            consumer, topic_partition, end_offset, latest_offset
         )
-        result = consumer.offsets_for_times(
-            [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
-        )
-        if result and result[0].offset >= 0:
-            end_offset = result[0].offset
-        else:
-            end_offset = latest_offset
 
     if start_offset > end_offset:
         start_str = (
@@ -591,8 +605,8 @@ class KafkaDatasource(Datasource):
                                 if next_offset >= resolved_end:
                                     break
 
-                                elapsed_time = time.perf_counter() - start_time
-                                if elapsed_time >= timeout_seconds:
+                                elapsed_time_s = time.perf_counter() - start_time
+                                if elapsed_time_s >= timeout_seconds:
                                     logger.warning(
                                         f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
                                         f"end_offset {resolved_end} was not reached. Returning {len(records)} messages collected in this read task so far."
@@ -600,7 +614,7 @@ class KafkaDatasource(Datasource):
                                     break
 
                                 remaining_timeout_ms = int(
-                                    max(0, timeout_seconds - elapsed_time) * 1000
+                                    max(0, timeout_seconds - elapsed_time_s) * 1000
                                 )
                                 poll_timeout_ms = min(
                                     remaining_timeout_ms, KAFKA_POLL_MAX_MS
