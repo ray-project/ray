@@ -722,7 +722,9 @@ def pandas_df_to_arrow_block(
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(
+        block, block_exec_stats=stats.build()
+    )
 
 
 def ndarray_to_block(
@@ -734,7 +736,9 @@ def ndarray_to_block(
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(
+        block, block_exec_stats=stats.build()
+    )
 
 
 def get_table_block_metadata_schema(
@@ -743,7 +747,7 @@ def get_table_block_metadata_schema(
     from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
     stats = BlockExecStats.builder()
-    return BlockMetadataWithSchema.from_block(table, stats=stats.build())
+    return BlockMetadataWithSchema.from_block(table, block_exec_stats=stats.build())
 
 
 def unify_block_metadata_schema(
