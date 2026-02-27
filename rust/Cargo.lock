@@ -1550,6 +1550,7 @@ dependencies = [
  "ray-proto",
  "ray-rpc",
  "ray-util",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
