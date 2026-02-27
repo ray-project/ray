@@ -514,14 +514,6 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const c_vector[CNodeSelector] &node_selectors,
             optional[int64_t] limit) const
 
-        void AsyncGetAllNodeInfoReply(
-            const OptionalItemPyCallback[CGetAllNodeInfoReply] &callback,
-            int64_t timeout_ms,
-            optional[CGcsNodeState] state_filter,
-            const c_vector[CNodeSelector] &node_selectors,
-            optional[int64_t] limit
-        ) const
-
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,
@@ -802,13 +794,6 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
         const c_string& SerializeAsString() const
-
-    cdef cppclass CGetAllNodeInfoReply "ray::rpc::GetAllNodeInfoReply":
-        const c_vector[CGcsNodeInfo]& node_info_list() const
-        int64_t total() const
-        int64_t num_filtered() const
-        void ParseFromString(const c_string &serialized)
-        const c_string &SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)

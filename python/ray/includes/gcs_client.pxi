@@ -20,11 +20,10 @@ from ray._common.utils import get_or_create_event_loop
 from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
-from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply, GetAllNodeInfoReply
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
-    CGetAllNodeInfoReply,
     ConnectOnSingletonIoContext,
     MultiItemPyCallback,
     OptionalItemPyCallback,
