@@ -1105,7 +1105,10 @@ class TestGangChildSpawnPlacementGroup:
 
 class TestGangControllerRecovery:
     def test_gang_context_recovery(self, ray_cluster):
-        """Verifies that the controller recovers gang_context after a crash."""
+        """Verifies that the controller recovers all app and deployment states
+        after a crash, including gang_context for gang deployments and normal
+        replicas for non-gang deployments.
+        """
         cluster = ray_cluster
         cluster.add_node(num_cpus=1)
         cluster.wait_for_nodes()
@@ -1117,48 +1120,99 @@ class TestGangControllerRecovery:
             ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
-        class D:
+        class Gang1:
             def __call__(self):
                 return "ok"
 
-        serve.run(D.bind(), name="app")
-        wait_for_condition(check_apps_running, apps=["app"])
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class Gang2:
+            def __call__(self):
+                return "ok"
 
-        deployment_id = DeploymentID(name="D", app_name="app")
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+        )
+        class NoGang:
+            def __call__(self):
+                return "ok"
+
+        app_names = ["gang_app1", "gang_app2", "no_gang_app"]
+        serve.run(Gang1.bind(), name="gang_app1", route_prefix="/gang1")
+        serve.run(Gang2.bind(), name="gang_app2", route_prefix="/gang2")
+        serve.run(NoGang.bind(), name="no_gang_app", route_prefix="/no_gang")
+        wait_for_condition(check_apps_running, apps=app_names)
+
+        gang_deployment_ids = [
+            DeploymentID(name="Gang1", app_name="gang_app1"),
+            DeploymentID(name="Gang2", app_name="gang_app2"),
+        ]
+        no_gang_deployment_id = DeploymentID(name="NoGang", app_name="no_gang_app")
         controller = _get_global_client()._controller
 
         # Record controller-side gang_context before crash
-        replicas = ray.get(
-            controller._dump_replica_states_for_testing.remote(deployment_id)
-        )
-        running = replicas.get([ReplicaState.RUNNING])
-        assert len(running) == 4
-        gang_ctx_before = {r.replica_id.unique_id: r.gang_context for r in running}
-        assert all(gc is not None for gc in gang_ctx_before.values())
-
-        # Kill the controller and wait for its recovery
-        ray.kill(controller, no_restart=False)
-        wait_for_condition(check_apps_running, apps=["app"], timeout=60)
-
-        # Verify the new controller recovered gang_context for all replicas
-        new_controller = _get_global_client()._controller
-
-        def controller_recovered_gang_context():
+        gang_ctx_before = {}
+        for dep_id in gang_deployment_ids:
             replicas = ray.get(
-                new_controller._dump_replica_states_for_testing.remote(deployment_id)
+                controller._dump_replica_states_for_testing.remote(dep_id)
             )
             running = replicas.get([ReplicaState.RUNNING])
-            if len(running) != 4:
-                return False
             for r in running:
-                before = gang_ctx_before.get(r.replica_id.unique_id)
-                if r.gang_context is None or r.gang_context != before:
-                    return False
+                assert r.gang_context is not None
+                gang_ctx_before[r.replica_id.unique_id] = r.gang_context
+
+        # Record non-gang replica count
+        no_gang_replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(no_gang_deployment_id)
+        )
+        no_gang_count_before = len(no_gang_replicas.get([ReplicaState.RUNNING]))
+        assert no_gang_count_before == 2
+
+        # Kill the controller and wait for recovery of all apps
+        ray.kill(controller, no_restart=False)
+        wait_for_condition(check_apps_running, apps=app_names, timeout=60)
+
+        new_controller = _get_global_client()._controller
+
+        def all_states_recovered():
+            # Verify gang_context recovered for all gang deployments
+            for dep_id in gang_deployment_ids:
+                replicas = ray.get(
+                    new_controller._dump_replica_states_for_testing.remote(dep_id)
+                )
+                running = replicas.get([ReplicaState.RUNNING])
+                for r in running:
+                    before = gang_ctx_before.get(r.replica_id.unique_id)
+                    if r.gang_context is None or r.gang_context != before:
+                        return False
+
+            # Verify non-gang deployment recovered
+            replicas = ray.get(
+                new_controller._dump_replica_states_for_testing.remote(
+                    no_gang_deployment_id
+                )
+            )
+            if len(replicas.get([ReplicaState.RUNNING])) != no_gang_count_before:
+                return False
+
             return True
 
-        wait_for_condition(controller_recovered_gang_context, timeout=60)
+        wait_for_condition(all_states_recovered, timeout=60)
 
-        serve.delete("app")
+        # Verify application and deployment statuses after recovery
+        status = serve.status()
+        for app_name in app_names:
+            app_status = status.applications[app_name]
+            assert app_status.status == "RUNNING"
+            for dep_name, dep_status in app_status.deployments.items():
+                assert dep_status.status == "HEALTHY"
+
+        for app_name in app_names:
+            serve.delete(app_name)
         serve.shutdown()
 
 
