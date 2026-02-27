@@ -3,7 +3,7 @@ import inspect
 import json
 import logging
 from functools import wraps
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 import grpc
@@ -24,7 +24,6 @@ from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
-    GetAllNodeInfoReply,
     GetAllNodeInfoRequest,
     GetAllPlacementGroupReply,
     GetAllPlacementGroupRequest,
@@ -306,8 +305,8 @@ class StateDataSourceClient:
         timeout: int = None,
         limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
-    ) -> Optional[GetAllNodeInfoReply]:
-        """Returns GetAllNodeInfoReply protobuf object.
+    ) -> Optional[Tuple[Dict[NodeID, GcsNodeInfo], int]]:
+        """Returns node info and the number of filtered nodes.
 
         Args:
             timeout: Timeout in seconds
@@ -318,10 +317,9 @@ class StateDataSourceClient:
                 - "node_name": Filter by node name
 
         Returns:
-            GetAllNodeInfoReply protobuf object with:
-                - node_info_list: List of GcsNodeInfo
-                - total: Total number of nodes (without limit applied)
-                - num_filtered: Number of nodes filtered out
+            A tuple of (node_infos, num_filtered) where:
+                - node_infos: Dict[NodeID, GcsNodeInfo] mapping node IDs to their info
+                - num_filtered: Number of nodes filtered out by the query
         """
         if filters is None:
             filters = []
@@ -350,7 +348,7 @@ class StateDataSourceClient:
             else:
                 continue
 
-        reply = await self._gcs_client.async_get_all_node_info_reply(
+        reply = await self._gcs_client.async_get_all_node_info(
             timeout=timeout,
             node_selectors=node_selectors,
             state_filter=state_filter,

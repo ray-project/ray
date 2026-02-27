@@ -508,9 +508,11 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const c_vector[CNodeSelector] &node_selectors)
 
         void AsyncGetAll(
-            const MultiItemPyCallback[CGcsNodeInfo] &callback,
+            const OptionalItemPyCallback[c_pair[c_vector[CGcsNodeInfo], int64_t]] &callback,
             int64_t timeout_ms,
-            c_vector[CNodeID] node_ids)
+            optional[CGcsNodeState] state_filter,
+            const c_vector[CNodeSelector] &node_selectors,
+            optional[int64_t] limit) const
 
         void AsyncGetAllNodeInfoReply(
             const OptionalItemPyCallback[CGetAllNodeInfoReply] &callback,

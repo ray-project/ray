@@ -56,7 +56,6 @@ from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
     GcsStatus,
     GetAllActorInfoReply,
-    GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
     GetTaskEventsReply,
@@ -751,10 +750,14 @@ async def test_api_manager_list_pgs(state_api_manager):
 async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id), generate_node_data(b"12345")],
-        total=2,
-        num_filtered=0,
+    node_1 = generate_node_data(id)
+    node_2 = generate_node_data(b"12345")
+    data_source_client.get_all_node_info.return_value = (
+        {
+            node_1.node_id: node_1,
+            node_2.node_id: node_2,
+        },
+        0,
     )
     result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
@@ -774,10 +777,11 @@ async def test_api_manager_list_nodes(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id)],
-        total=2,
-        num_filtered=1,
+    data_source_client.get_all_node_info.return_value = (
+        {
+            node_1.node_id: node_1,
+        },
+        1,
     )
     result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
@@ -792,10 +796,11 @@ async def test_api_manager_list_nodes(state_api_manager):
         result = await state_api_manager.list_nodes(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id)],
-        total=2,
-        num_filtered=1,
+    data_source_client.get_all_node_info.return_value = (
+        {
+            node_1.node_id: node_1,
+        },
+        1,
     )
     result = await state_api_manager.list_nodes(
         option=create_api_options(filters=[("node_id", "=", bytearray(id).hex())])
@@ -1325,21 +1330,22 @@ async def test_api_manager_list_objects(state_api_manager):
     obj_1_id = b"1" * 28
     obj_2_id = b"2" * 28
     data_source_client.get_all_node_info = AsyncMock()
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[
-            GcsNodeInfo(
+    data_source_client.get_all_node_info.return_value = (
+        {
+            NodeID.from_binary(b"1" * 28): GcsNodeInfo(
                 node_id=b"1" * 28,
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 node_manager_address="192.168.1.1",
                 node_manager_port=10001,
             ),
-            GcsNodeInfo(
+            NodeID.from_binary(b"2" * 28): GcsNodeInfo(
                 node_id=b"2" * 28,
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 node_manager_address="192.168.1.2",
                 node_manager_port=10002,
             ),
-        ]
+        },
+        0,
     )
 
     data_source_client.get_object_info = AsyncMock()
@@ -1446,27 +1452,28 @@ async def test_api_manager_list_objects(state_api_manager):
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     data_source_client.get_all_node_info = AsyncMock()
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[
-            GcsNodeInfo(
+    data_source_client.get_all_node_info.return_value = (
+        {
+            NodeID.from_binary(b"1" * 28): GcsNodeInfo(
                 node_id=b"1" * 28,
                 node_manager_address="192.168.1.1",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10000,
             ),
-            GcsNodeInfo(
+            NodeID.from_binary(b"2" * 28): GcsNodeInfo(
                 node_id=b"2" * 28,
                 node_manager_address="192.168.1.2",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10001,
             ),
-            GcsNodeInfo(
+            NodeID.from_binary(b"3" * 28): GcsNodeInfo(
                 node_id=b"3" * 28,
                 node_manager_address="192.168.1.3",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10002,
             ),
-        ]
+        },
+        0,
     )
 
     data_source_client.get_runtime_envs_info = AsyncMock()
@@ -1676,7 +1683,10 @@ async def test_state_data_source_client(ray_start_cluster):
     Test node
     """
     result = await client.get_all_node_info()
-    assert isinstance(result, GetAllNodeInfoReply)
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert isinstance(result[0], dict)  # node_infos
+    assert isinstance(result[1], int)  # num_filtered
 
     """
     Test worker info
@@ -2265,10 +2275,9 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
     client = state_source_client(cluster.address)
 
     async def verify():
-        reply = await client.get_all_node_info()
-        print(reply)
-        assert len(reply.node_info_list) == 2
-        for node_info in reply.node_info_list:
+        node_infos, _ = await client.get_all_node_info()
+        assert len(node_infos) == 2
+        for node_info in node_infos.values():
             if node_info.node_name == "worker_node":
                 assert node_info.instance_id == "test_cloud_id"
                 assert node_info.node_type_name == "test-node-type"
@@ -2304,13 +2313,13 @@ async def test_get_all_node_info_with_filters(ray_start_cluster):
     result = {}
 
     async def verify_all_nodes():
-        all_nodes_reply = await client.get_all_node_info()
-        assert len(all_nodes_reply.node_info_list) == 3
-        assert all_nodes_reply.total == 3
-        assert all_nodes_reply.num_filtered == 0
-        node_names = {node.node_name for node in all_nodes_reply.node_info_list}
+        node_infos, num_filtered = await client.get_all_node_info()
+        assert len(node_infos) == 3
+        assert len(node_infos) + num_filtered == 3
+        assert num_filtered == 0
+        node_names = {node.node_name for node in node_infos.values()}
         assert node_names == {"head_node", "worker_node_1", "worker_node_2"}
-        result["all_nodes_reply"] = all_nodes_reply
+        result["all_node_infos"] = node_infos
         return True
 
     await async_wait_for_condition(
@@ -2318,34 +2327,34 @@ async def test_get_all_node_info_with_filters(ray_start_cluster):
     )
 
     node_name_to_id = {
-        node.node_name: node.node_id.hex()
-        for node in result["all_nodes_reply"].node_info_list
+        node.node_name: node.node_id.hex() for node in result["all_node_infos"].values()
     }
 
     # Get a specific node using node_id filter
     head_node_id = node_name_to_id["head_node"]
 
     async def verify_single_node():
-        single_node_reply = await client.get_all_node_info(
+        node_infos, _ = await client.get_all_node_info(
             filters=[("node_id", "=", head_node_id)]
         )
-        assert len(single_node_reply.node_info_list) == 1
-        assert single_node_reply.node_info_list[0].node_name == "head_node"
-        assert single_node_reply.node_info_list[0].node_id.hex() == head_node_id
+        assert len(node_infos) == 1
+        node_info = list(node_infos.values())[0]
+        assert node_info.node_name == "head_node"
+        assert node_info.node_id.hex() == head_node_id
         return True
 
     await async_wait_for_condition(verify_single_node)
 
     # Get multiple nodes using node_name filters
     async def verify_multi_node():
-        multi_node_reply = await client.get_all_node_info(
+        node_infos, _ = await client.get_all_node_info(
             filters=[
                 ("node_name", "=", "worker_node_1"),
                 ("node_name", "=", "worker_node_2"),
             ]
         )
-        assert len(multi_node_reply.node_info_list) == 2
-        returned_names = {node.node_name for node in multi_node_reply.node_info_list}
+        assert len(node_infos) == 2
+        returned_names = {node.node_name for node in node_infos.values()}
         assert returned_names == {"worker_node_1", "worker_node_2"}
         return True
 

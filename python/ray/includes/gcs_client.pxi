@@ -17,7 +17,7 @@ Binding of C++ ray::gcs::GcsClient.
 # For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
 from ray._common.utils import get_or_create_event_loop
-from typing import List, Sequence
+from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply, GetAllNodeInfoReply
@@ -376,31 +376,12 @@ cdef class InnerGcsClient:
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, node_id: Optional[NodeID] = None, timeout: Optional[int | float] = None
-    ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[CNodeID] c_node_ids
-            fut = incremented_fut()
-        if node_id:
-            c_node_ids.push_back((<NodeID>node_id).native())
-        with nogil:
-            self.inner.get().Nodes().AsyncGetAll(
-                MultiItemPyCallback[CGcsNodeInfo](
-                    convert_get_all_node_info,
-                    assign_and_decrement_fut,
-                    fut),
-                timeout_ms,
-                c_node_ids)
-        return asyncio.wrap_future(fut)
-
-    def async_get_all_node_info_reply(
         self, timeout: Optional[int | float] = None,
         node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
         limit: Optional[int] = None,
-    ) -> Future[GetAllNodeInfoReply]:
-        """Async get all node info with optional filters.
+    ) -> Future[Tuple[Dict[NodeID, gcs_pb2.GcsNodeInfo], int]]:
+        """Asynchronously get all node info with filter metrics
 
         Args:
             timeout: Timeout in seconds
@@ -411,7 +392,9 @@ cdef class InnerGcsClient:
             limit: Maximum number of nodes to return
 
         Returns:
-            Future that resolves to GetAllNodeInfoReply protobuf object
+            A tuple of (node_infos, num_filtered) where:
+            - node_infos: Dict[NodeID, GcsNodeInfo] mapping node IDs to their info
+            - num_filtered: int, the number of nodes filtered out by the query
         """
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -437,9 +420,9 @@ cdef class InnerGcsClient:
             c_limit = <int64_t>limit
 
         with nogil:
-            self.inner.get().Nodes().AsyncGetAllNodeInfoReply(
-                OptionalItemPyCallback[CGetAllNodeInfoReply](
-                    convert_get_all_node_info_reply,
+            self.inner.get().Nodes().AsyncGetAll(
+                OptionalItemPyCallback[c_pair[c_vector[CGcsNodeInfo], int64_t]](
+                    convert_get_all_node_info_results,
                     assign_and_decrement_fut,
                     fut),
                 timeout_ms,
@@ -791,27 +774,6 @@ cdef class InnerGcsClient:
 # Must not raise exceptions, or it crashes the process.
 #############################################################
 
-cdef convert_get_all_node_info_reply(
-        CRayStatus status, optional[CGetAllNodeInfoReply] c_reply) with gil:
-    # -> GetAllNodeInfoReply protobuf object
-    cdef c_string serialized_reply
-    try:
-        check_status_timeout_as_rpc_error(status)
-        if not c_reply.has_value():
-            raise ValueError("Reply is empty")
-
-        # Serialize the entire reply
-        with nogil:
-            serialized_reply = c_reply.value().SerializeAsString()
-
-        # Deserialize into Python protobuf object
-        from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoReply
-        proto = GetAllNodeInfoReply()
-        proto.ParseFromString(serialized_reply)
-        return proto, None
-    except Exception as e:
-        return None, e
-
 cdef convert_get_all_node_info(
         CRayStatus status, c_vector[CGcsNodeInfo] c_data) with gil:
     # -> Dict[NodeID, gcs_pb2.GcsNodeInfo]
@@ -831,6 +793,21 @@ cdef convert_get_all_node_info(
             proto.ParseFromString(b)
             node_table_data[NodeID.from_binary(proto.node_id)] = proto
         return node_table_data, None
+    except Exception as e:
+        return None, e
+
+cdef convert_get_all_node_info_results(
+        CRayStatus status, optional[c_pair[c_vector[CGcsNodeInfo], int64_t]] c_data) with gil:
+    # -> Tuple[Dict[NodeID, GcsNodeInfo], int], Exception
+    try:
+        check_status_timeout_as_rpc_error(status)
+        if not c_data.has_value():
+            raise ValueError("Reply is empty")
+        node_table_data, exc = convert_get_all_node_info(
+            status, c_data.value().first)
+        if exc is not None:
+            return None, exc
+        return (node_table_data, c_data.value().second), None
     except Exception as e:
         return None, e
 

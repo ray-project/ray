@@ -199,7 +199,7 @@ class NodeHead(SubprocessModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.gcs_client.async_get_all_node_info(timeout=None)
+        node_infos, _ = await self.gcs_client.async_get_all_node_info(timeout=None)
 
         def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
             return [_gcs_node_info_to_dict(m) for m in messages]
@@ -207,7 +207,7 @@ class NodeHead(SubprocessModule):
         all_node_infos = await self._loop.run_in_executor(
             self._node_executor,
             _convert_to_dict,
-            all_node_info.values(),
+            node_infos.values(),
         )
 
         for node in all_node_infos:

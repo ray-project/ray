@@ -157,31 +157,24 @@ class NodeInfoAccessor {
                                int64_t timeout_ms,
                                const rpc::MultiItemCallback<bool> &callback);
 
-  /// Get information of all nodes from GCS asynchronously.
-  ///
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \param timeout_ms The timeout for this request.
-  /// \param node_ids If this is not empty, only return the node info of the specified
-  /// nodes.
-  virtual void AsyncGetAll(const rpc::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                           int64_t timeout_ms,
-                           const std::vector<NodeID> &node_ids = {});
-
   /**
    * Asynchronously get information of all nodes that matches the given filters.
    *
-   * @param callback Callback that will be called after lookup finishes.
+   * @param callback Callback to invoke when the node infos are available.
+   * The callback will be invoked with a pair consisting of a vector of matching
+   * node infos and the number of nodes filtered out by the query.
    * @param timeout_ms The timeout for this request.
    * @param state_filter The state filter to apply to the nodes.
    * @param node_selectors The node selectors to apply to the nodes.
    * @param limit The limit on the number of nodes to return.
    */
-  virtual void AsyncGetAllNodeInfoReply(
-      const rpc::OptionalItemCallback<rpc::GetAllNodeInfoReply> &callback,
+  virtual void AsyncGetAll(
+      const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+          &callback,
       int64_t timeout_ms,
-      const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
-      const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
-      const std::optional<int64_t> &limit) const;
+      const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter = std::nullopt,
+      const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors = {},
+      const std::optional<int64_t> &limit = std::nullopt) const;
 
   virtual void AsyncGetAllNodeAddressAndLiveness(
       const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,

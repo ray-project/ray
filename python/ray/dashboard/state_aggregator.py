@@ -189,8 +189,9 @@ class StateAPIManager:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         def transform(reply) -> ListApiResponse:
+            node_infos, num_filtered = reply
             result = []
-            for node_info in reply.node_info_list:
+            for node_info in node_infos.values():
                 data = protobuf_message_to_dict(
                     message=node_info, fields_to_decode=["node_id"]
                 )
@@ -205,7 +206,8 @@ class StateAPIManager:
 
                 result.append(data)
 
-            num_after_truncation = len(result) + reply.num_filtered
+            total = len(result) + num_filtered
+            num_after_truncation = len(result) + num_filtered
             result = do_filter(result, option.filters, NodeState, option.detail)
             num_filtered = len(result)
 
@@ -214,7 +216,7 @@ class StateAPIManager:
             result = list(islice(result, option.limit))
             return ListApiResponse(
                 result=result,
-                total=reply.total,
+                total=total,
                 num_after_truncation=num_after_truncation,
                 num_filtered=num_filtered,
             )
@@ -362,7 +364,7 @@ class StateAPIManager:
             {object_id -> object_data_in_dict}
             object_data_in_dict's schema is in ObjectState
         """
-        all_node_info_reply = await self._client.get_all_node_info(
+        all_node_infos, _ = await self._client.get_all_node_info(
             timeout=option.timeout,
             limit=None,
             filters=[("state", "=", "ALIVE")],
@@ -373,7 +375,7 @@ class StateAPIManager:
                 node_info.node_manager_port,
                 timeout=option.timeout,
             )
-            for node_info in all_node_info_reply.node_info_list
+            for node_info in all_node_infos.values()
         ]
 
         replies = await asyncio.gather(
@@ -477,14 +479,14 @@ class StateAPIManager:
             We don't have id -> data mapping like other API because runtime env
             doesn't have unique ids.
         """
-        live_node_info_reply = await self._client.get_all_node_info(
+        live_node_infos, _ = await self._client.get_all_node_info(
             timeout=option.timeout,
             limit=None,
             filters=[("state", "=", "ALIVE")],
         )
         node_infos = [
             node_info
-            for node_info in live_node_info_reply.node_info_list
+            for node_info in live_node_infos.values()
             if node_info.runtime_env_agent_port is not None
         ]
         tasks = [

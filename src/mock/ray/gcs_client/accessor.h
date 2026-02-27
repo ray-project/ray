@@ -71,20 +71,13 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
                int64_t timeout_ms,
                const rpc::MultiItemCallback<bool> &callback),
               (override));
-  MOCK_METHOD(void,
-              AsyncGetAll,
-              (const rpc::MultiItemCallback<rpc::GcsNodeInfo> &callback,
-               int64_t timeout_ms,
-               const std::vector<NodeID> &node_ids),
-              (override));
   MOCK_METHOD(
       void,
-      AsyncGetAllNodeInfoReply,
-      (const rpc::OptionalItemCallback<rpc::GetAllNodeInfoReply> &callback,
+      AsyncGetAll,
+      (const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+           &callback,
        int64_t timeout_ms,
-       const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
-       const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
-       const std::optional<int64_t> &limit),
+       const std::vector<NodeID> &node_ids),
       (const, override));
   MOCK_METHOD(void,
               AsyncGetAllNodeAddressAndLiveness,
