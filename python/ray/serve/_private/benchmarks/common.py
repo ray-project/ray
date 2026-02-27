@@ -18,6 +18,7 @@ from tqdm import tqdm
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor as _SignalActor
+from ray.serve._private.common import DeploymentStatus
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import DeploymentHandle
 
@@ -365,7 +366,7 @@ class ControllerBenchHelloWorld:
     autoscaling_config=_CONTROLLER_AUTOSCALING_CONFIG,
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=1,
-    ray_actor_options={"num_cpus": 0.2},
+    ray_actor_options={"num_cpus": 0.4},
 )
 class ControllerBenchMetricsGenerator:
     """Autoscaling deployment that generates handle metrics to stress the controller."""
@@ -471,6 +472,8 @@ async def _controller_wait_for_replicas_up(target: int, timeout: float = 300) ->
         actual = await _controller_get_replica_count()
         if actual >= target:
             return time.time() - start
+        if int(time.time() - start) % 10 == 0:
+            logging.info(f"Waiting for {target} replicas... {actual}/{target}")
         await asyncio.sleep(0.5)
     actual = await _controller_get_replica_count()
     raise RuntimeError(
@@ -496,6 +499,40 @@ async def _controller_wait_for_waiters(
     )
 
 
+async def _controller_wait_for_deployment_healthy(
+    deployment_name: str = "ControllerBenchMetricsGenerator",
+    app_name: str = "default",
+    timeout: float = 60,
+) -> None:
+    """Wait for the deployment to enter HEALTHY status via serve.status()."""
+    start = time.time()
+    while time.time() - start < timeout:
+        status = serve.status()
+        app = status.applications.get(app_name)
+        dep_status = None
+        if app and deployment_name in app.deployments:
+            dep = app.deployments[deployment_name]
+            dep_status = dep.status
+            if dep_status == DeploymentStatus.HEALTHY:
+                return
+            if dep_status == DeploymentStatus.UNHEALTHY:
+                raise RuntimeError(
+                    f"Deployment {deployment_name} is UNHEALTHY: {getattr(dep, 'message', '')}"
+                )
+        if int(time.time() - start) % 10 == 0:
+            logging.info(
+                f"Waiting for {deployment_name} to be healthy, current: {dep_status}."
+            )
+        await asyncio.sleep(0.5)
+
+    raise RuntimeError(
+        f"Deployment {deployment_name} did not become HEALTHY after {timeout}s."
+    )
+
+
+_BATCH_SIZE = 64
+
+
 async def _controller_run_checkpoint(
     handle: DeploymentHandle,
     signal_actor,
@@ -508,14 +545,28 @@ async def _controller_run_checkpoint(
     start_time = time.time()
     num_requests = int(target_replicas)
 
-    pending_requests = [handle.remote() for _ in range(num_requests)]
-
+    pending_requests: List[Any] = []
+    pending_requests.extend([handle.remote() for _ in range(num_requests)])
+    logging.info(f"Waiting for {num_requests} requests to be up...")
     await _controller_wait_for_waiters(
-        signal_actor, num_requests, timeout=_CONTROLLER_WAITER_TIMEOUT_S
+        signal_actor, len(pending_requests), timeout=_CONTROLLER_WAITER_TIMEOUT_S
     )
+    logging.info(f"Waiting for {target_replicas} replicas to be up...")
+    # TODO: This is a hack to allow for some tolerance in the number of replicas.
+    # This is because the controller may not scale exactly to the target number of replicas.
+    # This is a bug in the controller autoscaling metrics aggregation logic, needs
+    # to be investigated further.
+    # This has the potential to introduce noise in the results from this benchmark.
+    replica_tolerance = 0.8
     await _controller_wait_for_replicas_up(
-        target_replicas, timeout=_CONTROLLER_WAITER_TIMEOUT_S
+        int(target_replicas * replica_tolerance), timeout=_CONTROLLER_WAITER_TIMEOUT_S
     )
+    logging.info(f"All {target_replicas} replicas are up.")
+    logging.info("Waiting for deployment to be healthy...")
+    await _controller_wait_for_deployment_healthy(timeout=_CONTROLLER_WAITER_TIMEOUT_S)
+    logging.info("Deployment is healthy.")
+    logging.info(f"Waiting for {marination_period_s} seconds to collect metrics...")
+
     autoscale_duration_s = time.time() - start_time
 
     samples = []

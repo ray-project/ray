@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.serve._private.benchmarks.common import run_controller_benchmark
@@ -45,3 +47,7 @@ async def test_run_controller_benchmark(ray_start_stop):
         assert sample["loops_per_second"] >= 0
         assert sample["process_memory_mb"] >= 0
         assert sample["autoscale_duration_s"] >= 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

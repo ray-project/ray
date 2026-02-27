@@ -159,6 +159,11 @@ def convert_controller_samples_to_perf_metrics(
             "LATENCY",
         )
         _add_metric(
+            f"controller_actual_replicas{suffix}",
+            "actual_replicas",
+            "THROUGHPUT",
+        )
+        _add_metric(
             f"controller_loops_per_second{suffix}",
             "loops_per_second",
             "THROUGHPUT",
