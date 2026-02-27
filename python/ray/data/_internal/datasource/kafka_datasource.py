@@ -150,7 +150,7 @@ def _resolve_offsets(
     Returns:
         Tuple of (resolved_start_offset, resolved_end_offset).
     """
-    from confluent_kafka import TopicPartition as _TP
+    from confluent_kafka import TopicPartition
 
     low, high = consumer.get_watermark_offsets(
         topic_partition, timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
@@ -166,7 +166,9 @@ def _resolve_offsets(
         start_offset = earliest_offset
     elif isinstance(start_offset, datetime):
         timestamp_ms = _datetime_to_ms(start_offset)
-        tp_with_ts = _TP(topic_partition.topic, topic_partition.partition, timestamp_ms)
+        tp_with_ts = TopicPartition(
+            topic_partition.topic, topic_partition.partition, timestamp_ms
+        )
         result = consumer.offsets_for_times(
             [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
         )
@@ -179,7 +181,9 @@ def _resolve_offsets(
         end_offset = latest_offset
     elif isinstance(end_offset, datetime):
         timestamp_ms = _datetime_to_ms(end_offset)
-        tp_with_ts = _TP(topic_partition.topic, topic_partition.partition, timestamp_ms)
+        tp_with_ts = TopicPartition(
+            topic_partition.topic, topic_partition.partition, timestamp_ms
+        )
         result = consumer.offsets_for_times(
             [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
         )
