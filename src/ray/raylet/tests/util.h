@@ -32,12 +32,12 @@ namespace raylet {
 
 class MockWorker : public WorkerInterface {
  public:
-  MockWorker(WorkerID worker_id, int port, int runtime_env_hash = 0)
+  MockWorker(WorkerID worker_id, int port, int runtime_env_hash = 0, pid_t pid = -1)
       : worker_id_(worker_id),
         port_(port),
         runtime_env_hash_(runtime_env_hash),
         job_id_(JobID::FromInt(859)),
-        proc_(std::make_unique<FakeProcess>()) {}
+        proc_(std::make_unique<FakeProcess>(pid)) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -218,7 +218,8 @@ class MockWorker : public WorkerInterface {
 inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
                                                          int32_t max_retries,
                                                          int32_t port,
-                                                         rpc::TaskType task_type) {
+                                                         rpc::TaskType task_type,
+                                                         pid_t pid = -1) {
   rpc::LeaseSpec message;
   message.set_lease_id(LeaseID::FromRandom().Binary());
   message.set_parent_task_id(owner_id.Binary());
@@ -235,8 +236,14 @@ inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
   }
   LeaseSpecification lease_spec(message);
   RayLease lease(lease_spec);
-  auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port);
+  auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, 0, pid);
   worker->GrantLease(lease);
+  return worker;
+}
+
+inline std::shared_ptr<WorkerInterface> CreateWorkerWithNoLease(int32_t port,
+                                                                pid_t pid = -1) {
+  auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, 0, pid);
   return worker;
 }
 

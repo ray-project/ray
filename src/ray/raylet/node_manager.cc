@@ -3156,7 +3156,6 @@ std::string NodeManager::CreateOomKillMessageDetails(
   std::vector<std::string> worker_details;
   for (const auto &[worker, should_retry] : workers_to_kill) {
     auto pid = worker->GetProcess().GetId();
-    bool is_idle_worker = worker->GetGrantedLeaseId().IsNil();
     int64_t used_bytes = GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
     std::string process_used_bytes_gb =
         absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
@@ -3164,7 +3163,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
     std::string worker_type_str = "";
     std::string lease_and_task_str = "";
     if (worker->GetGrantedLeaseId().IsNil()) {
-      worker_type_str = "Idle worker: ";
+      worker_type_str = "Worker with no lease granted: ";
     } else {
       if (worker->GetActorId().IsNil()) {
         worker_type_str = "Task: ";
@@ -3225,7 +3224,7 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
 
   for (const auto &[worker, should_retry] : workers_to_kill) {
     if (worker->GetGrantedLeaseId().IsNil()) {
-      // Idle workers doesn't count as non-retriable tasks or actors.
+      // Workers with no lease granted doesn't count as non-retriable tasks or actors.
       continue;
     }
     if (!worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {

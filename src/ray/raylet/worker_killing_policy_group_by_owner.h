@@ -21,6 +21,7 @@
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "ray/common/ray_config.h"
 #include "ray/raylet/worker_killing_policy_interface.h"
 
 namespace ray {
@@ -89,6 +90,16 @@ struct Group {
  */
 class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
+  // Constructor only used in tests.
+  explicit GroupByOwnerIdWorkerKillingPolicy(
+      int64_t idle_worker_killing_memory_threshold_bytes)
+      : idle_worker_killing_memory_threshold_bytes_(
+            idle_worker_killing_memory_threshold_bytes) {}
+
+  GroupByOwnerIdWorkerKillingPolicy()
+      : GroupByOwnerIdWorkerKillingPolicy(
+            RayConfig::instance().idle_worker_killing_memory_threshold_bytes()) {}
+
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
       const ProcessesMemorySnapshot &process_memory_snapshot,
@@ -126,6 +137,9 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   // The current selected workers being killed and whether the task on each worker
   // should be retried.
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_being_killed_;
+
+  // The memory threshold for idle workers to be considered for killing.
+  int64_t idle_worker_killing_memory_threshold_bytes_;
 };
 
 }  // namespace raylet

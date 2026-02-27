@@ -1,4 +1,3 @@
-import operator
 import sys
 import time
 from math import ceil
@@ -17,20 +16,15 @@ from ray._private import (
 )
 from ray._private.grpc_utils import init_grpc_channel
 from ray._private.state_api_test_utils import verify_failed_task
-from ray._private.test_utils import has_metric_tagged_with_value
+from ray._private.test_utils import raw_metric_timeseries
 from ray._private.utils import get_used_memory
 from ray.util.state.state_manager import StateDataSourceClient
-
-import psutil
 
 memory_usage_threshold = 0.5
 task_oom_retries = 1
 memory_monitor_refresh_ms = 100
 expected_worker_eviction_message = (
     "Task was killed due to the node running low on memory"
-)
-ray_memory_manager_worker_eviction_total_metric_name = (
-    "ray_memory_manager_worker_eviction_total"
 )
 
 
@@ -76,25 +70,6 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
             "task_oom_retries": 0,
             "min_memory_free_bytes": -1,
             "task_oom_retry_delay_base_ms": 0,
-        },
-    ) as addr:
-        yield addr
-
-
-@pytest.fixture
-def ray_with_memory_monitor_and_10_cpus(shutdown_only):
-    with ray.init(
-        num_cpus=10,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold": memory_usage_threshold,
-            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
-            "metrics_report_interval_ms": 100,
-            "task_failure_entry_ttl_ms": 2 * 60 * 1000,
-            "task_oom_retries": 0,
-            "min_memory_free_bytes": -1,
-            "task_oom_retry_delay_base_ms": 0,
-            "idle_worker_killing_memory_threshold_bytes": 512 * 1024 * 1024,  # 512MB
         },
     ) as addr:
         yield addr
@@ -146,80 +121,20 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> int:
     return bytes_needed
 
 
-# TODO: This test should be updated or removed when we revamped the memory monitor.
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
-)
-def test_idle_worker_terminate_first(ray_with_memory_monitor_and_10_cpus):
-    # check the current number of idle workers and their memory usage
-    addr = ray_with_memory_monitor_and_10_cpus
-
-    # obtains the current idle workers
-    num_idle_workers = 0
-    for proc in psutil.process_iter(["pid", "cmdline"]):
-        cmdline_list = proc.info.get("cmdline") or []
-        cmdline = " ".join(cmdline_list)
-        if "ray::IDLE" in cmdline:
-            num_idle_workers += 1
-
-    assert (
-        num_idle_workers == 10
-    ), f"Expected 10 idle workers, but got {num_idle_workers}"
-
-    # allocate tasks for idle workers to increate the memory usage of the idle workers
-    ray.get(
-        [
-            allocate_memory.remote(2 * 1024 * 1024 * 1024, num_chunks=1024 * 1024)
-            for _ in range(10)
-        ]
-    )
-
-    # run a task to reach the memory usage threshold
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold + 0.1
-    )
-    ray.get(allocate_memory.remote(bytes_to_alloc))
-
-    # verify that only the idle workers are terminated
-    timeseries = PrometheusTimeseries()
-    wait_for_condition(
-        has_metric_tagged_with_value,
-        timeout=10,
-        retry_interval_ms=1000,
-        addr=addr,
-        tag="MemoryManager.IdleWorkerEviction.Total",
-        value=1.0,
-        timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
-        comparison_operator=operator.ge,
-    )
-
-    assert (
-        has_metric_tagged_with_value(
-            addr,
-            "MemoryManager.TaskEviction.Total",
-            0.0,
-            timeseries,
-            ray_memory_manager_worker_eviction_total_metric_name,
-        )
-        is None
-    )
-    assert (
-        has_metric_tagged_with_value(
-            addr,
-            "MemoryManager.ActorEviction.Total",
-            0.0,
-            timeseries,
-            ray_memory_manager_worker_eviction_total_metric_name,
-        )
-        is None
-    )
+def has_metric_tagged_with_value(
+    addr, tag, value, timeseries: PrometheusTimeseries
+) -> bool:
+    metrics = raw_metric_timeseries(addr, timeseries)
+    for name, samples in metrics.items():
+        for sample in samples:
+            if tag in set(sample.labels.values()) and sample.value == value:
+                return True
+    return False
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 @pytest.mark.parametrize("restartable", [False, True])
 def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable: bool):
@@ -244,7 +159,6 @@ def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable
         tag="MemoryManager.ActorEviction.Total",
         value=2.0 if restartable else 1.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
 
     wait_for_condition(
@@ -255,13 +169,12 @@ def test_restartable_actor_throws_oom_error(ray_with_memory_monitor, restartable
         tag="Leaker.__init__",
         value=2.0 if restartable else 1.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_restartable_actor_oom_retry_off_throws_oom_error(
     ray_with_memory_monitor_no_oom_retry,
@@ -284,7 +197,6 @@ def test_restartable_actor_oom_retry_off_throws_oom_error(
         tag="MemoryManager.ActorEviction.Total",
         value=2.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -294,13 +206,12 @@ def test_restartable_actor_oom_retry_off_throws_oom_error(
         tag="Leaker.__init__",
         value=2.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
     ray_with_memory_monitor,
@@ -319,7 +230,6 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -329,13 +239,12 @@ def test_non_retryable_task_killed_by_memory_monitor_with_oom_error(
         tag="allocate_memory",
         value=1.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
@@ -357,7 +266,7 @@ def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_memory_pressure_kill_task_if_actor_submitted_task_first(
     ray_with_memory_monitor,
@@ -384,7 +293,7 @@ def test_memory_pressure_kill_task_if_actor_submitted_task_first(
 @pytest.mark.asyncio
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 async def test_actor_oom_logs_error(ray_with_memory_monitor):
     first_actor = Leaker.options(name="first_random_actor", max_restarts=0).remote()
@@ -428,7 +337,7 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
 @pytest.mark.asyncio
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 async def test_task_oom_logs_error(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
@@ -462,7 +371,7 @@ async def test_task_oom_logs_error(ray_with_memory_monitor):
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_task_oom_no_oom_retry_fails_immediately(
     ray_with_memory_monitor_no_oom_retry,
@@ -486,7 +395,6 @@ def test_task_oom_no_oom_retry_fails_immediately(
         tag="MemoryManager.TaskEviction.Total",
         value=1.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -496,13 +404,12 @@ def test_task_oom_no_oom_retry_fails_immediately(
         tag="allocate_memory",
         value=1.0,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_task_oom_only_uses_oom_retry(
     ray_with_memory_monitor,
@@ -530,7 +437,6 @@ def test_task_oom_only_uses_oom_retry(
         tag="MemoryManager.TaskEviction.Total",
         value=task_oom_retries + 1,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
     wait_for_condition(
         has_metric_tagged_with_value,
@@ -540,13 +446,12 @@ def test_task_oom_only_uses_oom_retry(
         tag="allocate_memory",
         value=task_oom_retries + 1,
         timeseries=timeseries,
-        metric_name=ray_memory_manager_worker_eviction_total_metric_name,
     )
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_newer_task_not_retriable_kill_older_retriable_task_first(
     ray_with_memory_monitor,
@@ -569,7 +474,7 @@ def test_newer_task_not_retriable_kill_older_retriable_task_first(
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_put_object_task_usage_slightly_below_limit_does_not_crash():
     with ray.init(
@@ -603,7 +508,7 @@ def test_put_object_task_usage_slightly_below_limit_does_not_crash():
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_last_task_of_the_group_fail_immediately():
     @ray.remote(max_retries=-1)
@@ -624,7 +529,6 @@ def test_last_task_of_the_group_fail_immediately():
             timeout=10,
             retry_interval_ms=100,
             addr=addr,
-            metric_name=ray_memory_manager_worker_eviction_total_metric_name,
             tag="MemoryManager.TaskEviction.Total",
             value=1.0,
             timeseries=timeseries,
@@ -633,7 +537,7 @@ def test_last_task_of_the_group_fail_immediately():
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "linux2",
-    reason="memory monitor only on linux currently",
+    reason="memory monitor is currently only supported on Linux",
 )
 def test_one_actor_max_lifo_kill_next_actor(shutdown_only):
     with ray.init(

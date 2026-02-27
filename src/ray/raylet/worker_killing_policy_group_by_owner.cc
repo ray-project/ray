@@ -71,17 +71,16 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
-  // Prioritize killing IDLE workers that don't have any lease granted and occupy
+  // Prioritize killing workers that don't have any lease granted and occupy
   // a large amount of memory first.
-  int64_t memory_threshold =
-      RayConfig::instance().idle_worker_killing_memory_threshold_bytes();
   std::shared_ptr<WorkerInterface> idle_worker_to_kill = nullptr;
   int64_t max_idle_worker_used_memory = 0;
-  for (auto worker : workers) {
+  for (const auto &worker : workers) {
     if (worker->GetGrantedLeaseId().IsNil()) {
       int64_t used_memory = GetProcessUsedMemoryBytes(process_memory_snapshot,
                                                       worker->GetProcess().GetId());
-      if (used_memory > memory_threshold && used_memory > max_idle_worker_used_memory) {
+      if (used_memory > idle_worker_killing_memory_threshold_bytes_ &&
+          used_memory > max_idle_worker_used_memory) {
         max_idle_worker_used_memory = used_memory;
         idle_worker_to_kill = worker;
       }
@@ -93,7 +92,7 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
             .WithField("worker_id", idle_worker_to_kill->WorkerId())
             .WithField("worker_pid", idle_worker_to_kill->GetProcess().GetId())
             .WithField("worker_used_memory", max_idle_worker_used_memory)
-            .WithField("memory_threshold", memory_threshold)
+            .WithField("memory_threshold", idle_worker_killing_memory_threshold_bytes_)
         << "Selected a worker that doesn't have any lease granted and occupies large "
            "amount of memory to kill. ";
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>{
@@ -108,6 +107,10 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   TaskID non_retriable_owner_id = TaskID::Nil();
   std::unordered_map<TaskID, Group> group_map;
   for (auto worker : workers) {
+    // Skip workers that don't have any lease granted.
+    if (worker->GetGrantedLeaseId().IsNil()) {
+      continue;
+    }
     bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
     TaskID owner_id =
         retriable ? worker->GetGrantedLease().GetLeaseSpecification().ParentTaskId()
@@ -123,6 +126,10 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
       auto &group = it->second;
       group.AddToGroup(worker);
     }
+  }
+
+  if (group_map.empty()) {
+    return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
   std::vector<Group> sorted;
