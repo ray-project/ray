@@ -8,7 +8,6 @@ import threading
 import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.logging import update_dataset_logger_for_worker
@@ -914,7 +913,6 @@ class DataContext:
         classes.extend(self.custom_execution_callback_classes)
 
         return classes
-
 
     def get_config(self, key: str, default: Any = None) -> Any:
         """Get the value for a key-value style config.
