@@ -96,19 +96,24 @@ class ElasticScalingPolicy(ScalingPolicy):
                 )
 
                 if workers_per_slice > 0:
-                    num_complete_slices = total_num_workers // workers_per_slice
+                    num_available_slices = total_num_workers // workers_per_slice
 
                     # If there are enough TPU workers in the cluster for a full slice,
-                    # check the cluster state for a ready TPU slice.
-                    if num_complete_slices > 0:
-                        num_ready_slices = get_num_ready_tpu_slices(
+                    # check the cluster to validate there are alive, complete TPU
+                    # slices available.
+                    if num_available_slices > 0:
+                        num_alive_slices = get_num_ready_tpu_slices(
                             topology=self.scaling_config.topology,
                             accelerator_type=self.scaling_config.accelerator_type,
                             resources_per_worker=single_worker_resources,
                         )
-                        num_complete_slices = min(num_complete_slices, num_ready_slices)
+                        num_available_slices = min(
+                            num_available_slices, num_alive_slices
+                        )
 
-                    total_num_workers = num_complete_slices * workers_per_slice
+                    # The number of workers scaled should be a multiple of the number of
+                    # workers that fit on a TPU slice.
+                    total_num_workers = num_available_slices * workers_per_slice
 
             except Exception as e:
                 logger.warning(
