@@ -35,7 +35,7 @@ pub fn kill_process(pid: u32) -> std::io::Result<()> {
         use nix::sys::signal::{self, Signal};
         use nix::unistd::Pid;
         signal::kill(Pid::from_raw(pid as i32), Signal::SIGKILL)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .map_err(std::io::Error::other)
     }
     #[cfg(not(unix))]
     {

@@ -6,6 +6,10 @@
 //
 //  http://www.apache.org/licenses/LICENSE-2.0
 
+#![allow(clippy::large_enum_variant)]
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::doc_overindented_list_items)]
+
 //! Generated protobuf and gRPC types for Ray.
 //!
 //! This crate contains all protobuf message types and tonic gRPC service

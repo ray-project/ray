@@ -7,8 +7,22 @@
 //  http://www.apache.org/licenses/LICENSE-2.0
 
 //! Node manager — the central raylet class.
+//!
+//! Replaces `src/ray/raylet/node_manager.h/cc`.
+
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use ray_common::config::RayConfig;
+use ray_common::scheduling::{FixedPoint, ResourceSet};
+
+use crate::cluster_resource_manager::ClusterResourceManager;
+use crate::cluster_resource_scheduler::ClusterResourceScheduler;
+use crate::lease_manager::ClusterLeaseManager;
+use crate::local_resource_manager::LocalResourceManager;
+use crate::placement_group_resource_manager::PlacementGroupResourceManager;
+use crate::wait_manager::WaitManager;
+use crate::worker_pool::WorkerPool;
 
 /// Configuration for starting the raylet.
 #[derive(Debug, Clone)]
@@ -19,32 +33,112 @@ pub struct RayletConfig {
     pub gcs_address: String,
     pub log_dir: Option<String>,
     pub ray_config: RayConfig,
+    pub node_id: String,
+    pub resources: HashMap<String, f64>,
+    pub labels: HashMap<String, String>,
+    pub session_name: String,
 }
 
 /// The main raylet node manager.
 pub struct NodeManager {
     config: RayletConfig,
+    scheduler: Arc<ClusterResourceScheduler>,
+    worker_pool: Arc<WorkerPool>,
+    lease_manager: Arc<ClusterLeaseManager>,
+    wait_manager: Arc<WaitManager>,
+    placement_group_resource_manager: Arc<PlacementGroupResourceManager>,
 }
 
 impl NodeManager {
     pub fn new(config: RayletConfig) -> Self {
-        Self { config }
+        // Build a ResourceSet from the config's resource map.
+        let mut total_resources = ResourceSet::new();
+        for (name, amount) in &config.resources {
+            total_resources.set(name.clone(), FixedPoint::from_f64(*amount));
+        }
+
+        let local_resource_manager = Arc::new(LocalResourceManager::new(
+            config.node_id.clone(),
+            total_resources,
+            config.labels.clone(),
+        ));
+        let cluster_resource_manager = Arc::new(ClusterResourceManager::new());
+
+        let scheduler = Arc::new(ClusterResourceScheduler::new(
+            config.node_id.clone(),
+            local_resource_manager.clone(),
+            cluster_resource_manager,
+        ));
+
+        let lease_manager = Arc::new(ClusterLeaseManager::new(scheduler.clone()));
+
+        let worker_pool = Arc::new(WorkerPool::new(
+            10,  // maximum_startup_concurrency (default)
+            200, // num_workers_soft_limit (default)
+        ));
+
+        let wait_manager = Arc::new(WaitManager::new());
+
+        let placement_group_resource_manager =
+            Arc::new(PlacementGroupResourceManager::new(local_resource_manager));
+
+        Self {
+            config,
+            scheduler,
+            worker_pool,
+            lease_manager,
+            wait_manager,
+            placement_group_resource_manager,
+        }
     }
 
     pub fn config(&self) -> &RayletConfig {
         &self.config
     }
 
-    /// Start the raylet (Phase 8: full implementation).
+    pub fn scheduler(&self) -> &Arc<ClusterResourceScheduler> {
+        &self.scheduler
+    }
+
+    pub fn worker_pool(&self) -> &Arc<WorkerPool> {
+        &self.worker_pool
+    }
+
+    pub fn lease_manager(&self) -> &Arc<ClusterLeaseManager> {
+        &self.lease_manager
+    }
+
+    pub fn wait_manager(&self) -> &Arc<WaitManager> {
+        &self.wait_manager
+    }
+
+    pub fn placement_group_resource_manager(&self) -> &Arc<PlacementGroupResourceManager> {
+        &self.placement_group_resource_manager
+    }
+
+    /// Handle a drain request.
+    pub fn handle_drain(&self, deadline_ms: u64) {
+        tracing::info!(deadline_ms, "Node drain requested");
+        self.scheduler
+            .local_resource_manager()
+            .set_local_node_draining(deadline_ms);
+    }
+
+    /// Start the raylet (full server).
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(
             port = self.config.port,
             node_ip = %self.config.node_ip_address,
+            node_id = %self.config.node_id,
+            session = %self.config.session_name,
             "Starting Rust raylet"
         );
 
-        // Phase 8: Initialize worker pool, scheduling, object manager,
-        // register with GCS, start gRPC server, handle heartbeats.
+        // TODO: Phase 8+
+        // - Register with GCS
+        // - Start gRPC server (NodeManagerService)
+        // - Start heartbeat reporting
+        // - Start worker pool management
 
         tokio::signal::ctrl_c().await?;
         tracing::info!("Raylet shutting down");

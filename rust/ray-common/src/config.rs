@@ -44,7 +44,7 @@ pub fn initialize_config(config_str: Option<&str>) -> Result<(), String> {
 /// Each field corresponds to a `RAY_CONFIG(type, name, default)` entry
 /// in the C++ `ray_config_def.h`. Only the most commonly used ones are
 /// included here; the full set will be populated incrementally.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RayConfig {
     // ─── Debug / Metrics ──────────────────────────────────────
     pub debug_dump_period_milliseconds: u64,
@@ -121,6 +121,11 @@ impl Default for RayConfig {
 }
 
 impl RayConfig {
+    /// Serialize to a JSON string.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
     /// Parse from base64-encoded JSON (as sent by Python launcher).
     pub fn from_base64_json(b64: &str) -> Result<Self, String> {
         let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)

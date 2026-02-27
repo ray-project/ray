@@ -10,6 +10,8 @@
 //!
 //! This binary replaces the C++ `raylet` when `RAY_USE_RUST_RAYLET=1`.
 
+use std::collections::HashMap;
+
 use clap::Parser;
 use ray_common::config::RayConfig;
 use ray_raylet::node_manager::{NodeManager, RayletConfig};
@@ -40,6 +42,50 @@ struct Args {
     /// Base64-encoded Ray config
     #[arg(long)]
     ray_config: Option<String>,
+
+    /// Node ID (hex string)
+    #[arg(long, default_value = "")]
+    node_id: String,
+
+    /// Resources as comma-separated key:value pairs (e.g. "CPU:4,GPU:2")
+    #[arg(long, default_value = "")]
+    resources: String,
+
+    /// Labels as comma-separated key:value pairs
+    #[arg(long, default_value = "")]
+    labels: String,
+
+    /// Session name
+    #[arg(long, default_value = "")]
+    session_name: String,
+}
+
+fn parse_kv_pairs(s: &str) -> HashMap<String, f64> {
+    if s.is_empty() {
+        return HashMap::new();
+    }
+    s.split(',')
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, ':');
+            let key = parts.next()?.trim().to_string();
+            let value: f64 = parts.next()?.trim().parse().ok()?;
+            Some((key, value))
+        })
+        .collect()
+}
+
+fn parse_label_pairs(s: &str) -> HashMap<String, String> {
+    if s.is_empty() {
+        return HashMap::new();
+    }
+    s.split(',')
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, ':');
+            let key = parts.next()?.trim().to_string();
+            let value = parts.next()?.trim().to_string();
+            Some((key, value))
+        })
+        .collect()
 }
 
 #[tokio::main]
@@ -57,6 +103,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => RayConfig::default(),
     };
 
+    let resources = parse_kv_pairs(&args.resources);
+    let labels = parse_label_pairs(&args.labels);
+
     let config = RayletConfig {
         node_ip_address: args.node_ip_address,
         port: args.port,
@@ -64,6 +113,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         gcs_address: args.gcs_address,
         log_dir: args.log_dir,
         ray_config,
+        node_id: args.node_id,
+        resources,
+        labels,
+        session_name: args.session_name,
     };
 
     let node_manager = NodeManager::new(config);

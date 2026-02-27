@@ -6,6 +6,8 @@
 //
 //  http://www.apache.org/licenses/LICENSE-2.0
 
+#![allow(clippy::result_large_err)]
+
 //! gRPC server/client framework for Ray.
 //!
 //! Replaces `src/ray/rpc/` — provides tonic-based server/client wrappers,

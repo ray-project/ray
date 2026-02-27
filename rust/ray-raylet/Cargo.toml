@@ -26,6 +26,12 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 dashmap = { workspace = true }
+parking_lot = { workspace = true }
 clap = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+rand = "0.8"
+hex = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

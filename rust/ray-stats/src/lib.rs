@@ -6,6 +6,8 @@
 //
 //  http://www.apache.org/licenses/LICENSE-2.0
 
+#![allow(clippy::type_complexity)]
+
 //! Metrics collection for Ray.
 //!
 //! Replaces `src/ray/stats/` (7 files).
