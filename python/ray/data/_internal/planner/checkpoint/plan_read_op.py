@@ -1,5 +1,6 @@
 from typing import Iterable, List
 
+import numpy
 import pyarrow.fs as fs
 
 from ray.data._internal.compute import ActorPoolStrategy
@@ -88,7 +89,7 @@ def plan_read_op_with_checkpoint_filter(
 
 
 def _get_checkpoint_map_transformer(
-    data_context: DataContext, checkpointed_ids_ref: ObjectRef
+    data_context: DataContext, checkpointed_ids_ref: ObjectRef[numpy.ndarray]
 ) -> MapTransformer:
     """Get the MapTransformer that performs checkpoint filtering.
 
@@ -113,9 +114,8 @@ def _get_checkpoint_map_transformer(
     # the read operator, filters the blocks, and then outputs them.
     def transform_logic(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         assert checkpoint_filter, "checkpoint filter was not initialized!"
-        filter = checkpoint_filter[0]
         for block in blocks:
-            filtered_block = filter.filter_rows_for_block(block)
+            filtered_block = checkpoint_filter[0].filter_rows_for_block(block)
             if filtered_block.num_rows > 0:
                 yield filtered_block
 

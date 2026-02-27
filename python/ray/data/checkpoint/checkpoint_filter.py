@@ -1,5 +1,6 @@
 import abc
 import logging
+import sys
 import time
 from typing import List, Optional, Tuple
 
@@ -7,12 +8,9 @@ import numpy
 import pyarrow
 
 import ray
-from ray.data._internal.arrow_ops import transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunks
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
-from ray.data.checkpoint.util import numpy_size
 from ray.data.datasource import PathPartitionFilter
 from ray.types import ObjectRef
 
@@ -25,27 +23,29 @@ class CheckpointHolder:
 
     def __init__(self):
         self.checkpointed_ids_ndarray: numpy.ndarray = numpy.array([])
-        self.checkpointed_ids_size: int = -1
+        self.checkpointed_ids_size: Optional[int] = None
 
     def get_checkpointed_ids_ndarray(
         self, checkpointed_ids_arrow: Block, id_column: str
     ) -> numpy.ndarray:
         """Convert checkpointed IDs from pyarrow.Table to numpy.ndarray."""
         if checkpointed_ids_arrow.num_rows != 0:
-            combined_checkpointed_ids = combine_chunks(checkpointed_ids_arrow)
-            ckpt_chunks = combined_checkpointed_ids[id_column].chunks
-
-            checkpointed_ids_ndarray = []
-            for ckpt_chunk in ckpt_chunks:
-                checkpointed_ids_ndarray.append(
-                    transform_pyarrow.to_numpy(ckpt_chunk, zero_copy_only=False)
-                )
-            self.checkpointed_ids_ndarray = numpy.concatenate(checkpointed_ids_ndarray)
+            self.checkpointed_ids_ndarray = checkpointed_ids_arrow[id_column].to_numpy(
+                zero_copy_only=False
+            )
         return self.checkpointed_ids_ndarray
 
+    def numpy_size(self, array: numpy.ndarray) -> int:
+        """Calculate the size of a numpy ndarray."""
+        total_size = array.nbytes
+        if array.dtype == object:
+            for item in array.flat:
+                total_size += sys.getsizeof(item)
+        return total_size
+
     def get_checkpointed_ids_size(self) -> int:
-        if self.checkpointed_ids_size == -1:
-            self.checkpointed_ids_size = numpy_size(self.checkpointed_ids_ndarray)
+        if not self.checkpointed_ids_size:
+            self.checkpointed_ids_size = self.numpy_size(self.checkpointed_ids_ndarray)
         return self.checkpointed_ids_size
 
 
