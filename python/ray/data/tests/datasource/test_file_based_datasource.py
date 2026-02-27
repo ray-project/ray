@@ -10,7 +10,10 @@ import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data.datasource.file_based_datasource import (
+    FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
+    FileBasedDatasource,
+)
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -468,6 +471,59 @@ def test_read_s3_file_error(shutdown_only, s3_path):
             "Error [code 15]: No response body.. Is this a 'parquet' file?"
         )
         _handle_read_os_error(error, dummy_path)
+
+
+def test_read_many_files_basic(ray_start_regular_shared, tmp_path):
+
+    # Use 4x the threshold to trigger parallel file size fetching
+    num_files = 4 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+
+    for i in range(num_files):
+        path = tmp_path / f"test_{i}.txt"
+        path.write_bytes(f"file_{i}".encode())
+
+    datasource = MockFileBasedDatasource(str(tmp_path))
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert len(rows) == num_files
+
+    # Verify actual content - rows are dicts with "data" key containing bytes
+    expected_content = {f"file_{i}".encode() for i in range(num_files)}
+    actual_content = {row["data"] for row in rows}
+    assert actual_content == expected_content
+
+
+def test_read_many_files_diff_dirs(ray_start_regular_shared, tmp_path):
+
+    dir1 = tmp_path / "dir1"
+    dir2 = tmp_path / "dir2"
+    dir1.mkdir()
+    dir2.mkdir()
+
+    # Use 2x per directory (2 directories = 4x total) to trigger parallel file size fetching
+    num_files_per_dir = 2 * FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
+    total_files = 0
+
+    for dir_path in [dir1, dir2]:
+        for i in range(num_files_per_dir):
+            path = dir_path / f"test_{i}.txt"
+            path.write_bytes(f"data_from_{dir_path.name}_{i}".encode())
+            total_files += 1
+
+    datasource = MockFileBasedDatasource([str(dir1), str(dir2)])
+    tasks = datasource.get_read_tasks(1)
+    rows = execute_read_tasks(tasks)
+
+    assert len(rows) == total_files
+
+    # Verify actual content - files from both directories should be read
+    expected_content = set()
+    for dir_name in ["dir1", "dir2"]:
+        for i in range(num_files_per_dir):
+            expected_content.add(f"data_from_{dir_name}_{i}".encode())
+    actual_content = {row["data"] for row in rows}
+    assert actual_content == expected_content
 
 
 if __name__ == "__main__":
