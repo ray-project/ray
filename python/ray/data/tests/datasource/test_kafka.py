@@ -1,6 +1,6 @@
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -468,9 +468,10 @@ def test_read_kafka_with_datetime_offsets(
     """Test reading Kafka messages using datetime-based start and end offsets."""
     topic = "test-datetime-offsets"
 
-    msg_ts = _datetime_to_ms(datetime(2025, 1, 15))
-    time_before = datetime(2025, 1, 1)
-    time_after = datetime(2025, 2, 1)
+    now = datetime.now(timezone.utc)
+    time_before = now - timedelta(hours=1)
+    time_after = now + timedelta(hours=1)
+    msg_ts = _datetime_to_ms(now)
 
     for i in range(3):
         kafka_producer.produce(topic, value={"id": i}, timestamp=msg_ts)

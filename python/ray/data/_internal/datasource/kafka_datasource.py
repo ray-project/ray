@@ -578,30 +578,25 @@ class KafkaDatasource(Datasource):
                         if resolved_start < resolved_end:
                             start_time = time.perf_counter()
                             timeout_seconds = timeout_ms / 1000.0
-                            # Assign with the desired starting offset to avoid seek state errors
+
                             tp_with_offset = TopicPartition(
                                 topic_name, partition_id, resolved_start
                             )
                             consumer.assign([tp_with_offset])
-                            consumer.seek(tp_with_offset)
+
+                            next_offset = resolved_start
 
                             partition_done = False
                             while not partition_done:
-                                # Check if overall timeout has been reached
+                                if next_offset >= resolved_end:
+                                    break
+
                                 elapsed_time = time.perf_counter() - start_time
                                 if elapsed_time >= timeout_seconds:
                                     logger.warning(
                                         f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
                                         f"end_offset {resolved_end} was not reached. Returning {len(records)} messages collected in this read task so far."
                                     )
-                                    break
-
-                                # Check if we've reached the end_offset before polling
-                                positions = consumer.position([topic_partition])
-                                current_position = (
-                                    positions[0].offset if positions else resolved_start
-                                )
-                                if current_position >= resolved_end:
                                     break
 
                                 remaining_timeout_ms = int(
@@ -612,8 +607,8 @@ class KafkaDatasource(Datasource):
                                 )
                                 poll_timeout_s = poll_timeout_ms / 1000.0
 
-                                # TODO: Use consume() instead of poll() to reduce round trips.
                                 msg = consumer.poll(timeout=poll_timeout_s)
+
                                 if msg is None:
                                     continue
                                 if msg.error():
@@ -641,7 +636,8 @@ class KafkaDatasource(Datasource):
                                     }
                                 )
 
-                                # Yield incrementally when we hit batch size
+                                next_offset = msg.offset() + 1
+
                                 if len(records) >= KafkaDatasource.BATCH_SIZE_FOR_YIELD:
                                     table = pa.Table.from_pylist(records)
                                     output_buffer.add_block(table)
