@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
+import tree  # pip install dm_tree
 
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.connectors.connector_v2 import ConnectorV2
@@ -70,6 +71,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         rl_module: MultiRLModule,
         episodes: List[EpisodeType],
         batch: Dict[str, Any],
+        shared_data: Optional[dict] = None,
         **kwargs,
     ):
         # Device to place all GAE result tensors (advantages and value targets) on.
@@ -116,16 +118,25 @@ class GeneralAdvantageEstimation(ConnectorV2):
             eps_for_module = [
                 e for e in sa_episodes_list if e.module_id in [None, module_id]
             ]
+            stacked_bootstrap_obs = (shared_data or {}).get("stacked_bootstrap_obs", {})
             obs_list = []
             mask = []
             for ep in eps_for_module:
                 if not ep.is_terminated:
-                    obs_list.append(ep.get_observations(-1))
+                    # Use the frame-stacked bootstrap obs pre-computed by
+                    # FrameStackingLearner if available; otherwise fall back to
+                    # the raw last observation (correct for non-frame-stacked setups).
+                    stacked = stacked_bootstrap_obs.get(ep.id_)
+                    obs_list.append(
+                        stacked if stacked is not None else ep.get_observations(-1)
+                    )
                     mask.append(True)
                 else:
                     mask.append(False)
             bootstrap_obs_per_module[module_id] = (
-                np.stack(obs_list, axis=0) if obs_list else None
+                tree.map_structure(lambda *s: np.stack(s, axis=0), *obs_list)
+                if obs_list
+                else None
             )
             bootstrap_mask_per_module[module_id] = mask
 
