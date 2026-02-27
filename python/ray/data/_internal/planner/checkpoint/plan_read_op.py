@@ -1,5 +1,6 @@
 from typing import Iterable, List
 
+import numpy
 import pyarrow.fs as fs
 
 from ray.data._internal.compute import ActorPoolStrategy
@@ -49,18 +50,18 @@ def plan_read_op_with_checkpoint_filter(
     # the directory is not existed
     if info.type == fs.FileType.NotFound:
         return physical_read_op
-    else:
-        loader = IdColumnCheckpointLoader(
-            checkpoint_path=checkpoint_config.checkpoint_path,
-            filesystem=checkpoint_config.filesystem,
-            id_column=checkpoint_config.id_column,
-            checkpoint_path_partition_filter=checkpoint_config.checkpoint_path_partition_filter,
-        )
-        # load checkpointed IDs as a numpy ndarray and store it to object store.
-        checkpointed_ids_ref, checkpointed_ids_size = loader.load_checkpoint()
-        # no valid files under checkpoint_path
-        if not checkpointed_ids_ref:
-            return physical_read_op
+
+    loader = IdColumnCheckpointLoader(
+        checkpoint_path=checkpoint_config.checkpoint_path,
+        filesystem=checkpoint_config.filesystem,
+        id_column=checkpoint_config.id_column,
+        checkpoint_path_partition_filter=checkpoint_config.checkpoint_path_partition_filter,
+    )
+    # load checkpointed IDs as a numpy ndarray and store it to object store.
+    checkpointed_ids_ref, checkpointed_ids_size = loader.load_checkpoint()
+    # no valid files under checkpoint_path
+    if not checkpointed_ids_ref:
+        return physical_read_op
 
     # generate checkpoint op
     map_transformer = _get_checkpoint_map_transformer(
@@ -73,13 +74,13 @@ def plan_read_op_with_checkpoint_filter(
         data_context=data_context,
         name="CheckpointFilter",
         compute_strategy=ActorPoolStrategy(
-            min_size=checkpoint_config.checkpoint_actor_pool_min_size,
-            max_size=checkpoint_config.checkpoint_actor_pool_max_size,
-            max_tasks_in_flight_per_actor=checkpoint_config.checkpoint_actor_max_tasks_in_flight_per_actor,
+            min_size=data_context.checkpoint_actor_pool_min_size,
+            max_size=data_context.checkpoint_actor_pool_max_size,
+            max_tasks_in_flight_per_actor=data_context.checkpoint_actor_max_tasks_in_flight_per_actor,
         ),
         ray_remote_args={
             "memory": max(
-                checkpoint_config.checkpoint_actor_memory_bytes,
+                data_context.checkpoint_actor_memory_bytes,
                 int(checkpointed_ids_size * 1.5),
             )
         },
@@ -88,7 +89,7 @@ def plan_read_op_with_checkpoint_filter(
 
 
 def _get_checkpoint_map_transformer(
-    data_context: DataContext, checkpointed_ids_ref: ObjectRef
+    data_context: DataContext, checkpointed_ids_ref: ObjectRef[numpy.ndarray]
 ) -> MapTransformer:
     """Get the MapTransformer that performs checkpoint filtering.
 
@@ -99,9 +100,15 @@ def _get_checkpoint_map_transformer(
     Returns:
         MapTransformer: A MapTransformer that performs checkpoint filtering.
     """
+
+    # To make `init_checkpoint_filter` and `transform_logic` use the same `checkpoint_filter`,
+    # we declare `checkpoint_filter` as a list. Note: nonlocal cannot be used here,
+    # because after serialization/deserialization, the two methods would hold pointers
+    # that refer to different `checkpoint_filter` instances.
     checkpoint_filter = []
 
     # The initialization method of the checkpoint-actor; Each actor has a checkpoint_filter.
+    # This method will run only once for on single actor.
     def init_checkpoint_filter():
         checkpoint_filter.append(
             BatchBasedCheckpointFilter(
@@ -111,11 +118,11 @@ def _get_checkpoint_map_transformer(
 
     # The transform logic of the checkpoint-actor. The actor receives blocks from
     # the read operator, filters the blocks, and then outputs them.
+    # This method will run multiple times on each actor.
     def transform_logic(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         assert checkpoint_filter, "checkpoint filter was not initialized!"
-        filter = checkpoint_filter[0]
         for block in blocks:
-            filtered_block = filter.filter_rows_for_block(block)
+            filtered_block = checkpoint_filter[0].filter_rows_for_block(block)
             if filtered_block.num_rows > 0:
                 yield filtered_block
 
