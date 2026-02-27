@@ -295,7 +295,7 @@ class ServeController:
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
-        self._last_broadcasted_fallback_targets: List[Target] = []
+        self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (

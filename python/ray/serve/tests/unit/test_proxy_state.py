@@ -927,10 +927,12 @@ class TestFallbackProxy:
         state.try_update_status(ProxyStatus.HEALTHY)
         targets = manager.get_fallback_proxy_targets()
         assert len(targets) == 1
-        assert targets[0].ip == state.actor_details.node_ip
-        assert targets[0].port == 8500
-        assert targets[0].instance_id == state.actor_details.node_instance_id
-        assert targets[0].name == state.actor_name
+
+        target = targets[RequestProtocol.HTTP]
+        assert target.ip == state.actor_details.node_ip
+        assert target.port == 8500
+        assert target.instance_id == state.actor_details.node_instance_id
+        assert target.name == state.actor_name
 
 
 if __name__ == "__main__":
