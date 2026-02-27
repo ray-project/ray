@@ -21,7 +21,7 @@ struct Args {
     #[arg(long, default_value_t = 6379)]
     gcs_server_port: u16,
 
-    /// Redis address (host:port)
+    /// Redis address (e.g., redis://host:port)
     #[arg(long)]
     redis_address: Option<String>,
 
@@ -29,17 +29,33 @@ struct Args {
     #[arg(long)]
     redis_password: Option<String>,
 
+    /// Redis username
+    #[arg(long)]
+    redis_username: Option<String>,
+
+    /// Enable Redis SSL
+    #[arg(long, default_value_t = false)]
+    redis_enable_ssl: bool,
+
     /// Log directory
     #[arg(long)]
     log_dir: Option<String>,
 
     /// Base64-encoded Ray config
     #[arg(long)]
-    ray_config: Option<String>,
+    config_list: Option<String>,
 
     /// Node IP address
     #[arg(long)]
     node_ip_address: Option<String>,
+
+    /// Node ID
+    #[arg(long)]
+    node_id: Option<String>,
+
+    /// Session name
+    #[arg(long)]
+    session_name: Option<String>,
 }
 
 #[tokio::main]
@@ -54,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Initialize config
-    let ray_config = match &args.ray_config {
+    let ray_config = match &args.config_list {
         Some(b64) => RayConfig::from_base64_json(b64).unwrap_or_default(),
         None => RayConfig::default(),
     };
@@ -63,10 +79,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         port: args.gcs_server_port,
         redis_address: args.redis_address,
         redis_password: args.redis_password,
+        redis_username: args.redis_username,
+        enable_redis_ssl: args.redis_enable_ssl,
+        node_ip_address: args.node_ip_address,
+        node_id: args.node_id,
         log_dir: args.log_dir,
+        session_name: args.session_name,
+        raylet_config_list: args.config_list,
         ray_config,
     };
 
-    let server = GcsServer::new(config);
+    let mut server = GcsServer::new(config);
     server.run().await
 }
