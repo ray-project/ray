@@ -356,6 +356,7 @@ def _resolve_offsets(
     if start_offset == "earliest" or start_offset is None:
         start_offset = earliest_offset
     elif isinstance(start_offset, datetime):
+        # fallback to latest_offset if the start_offset is in the future, so the read range is empty (start == end).
         start_offset = _resolve_datetime_to_offset(
             consumer, topic_partition, start_offset, latest_offset
         )
