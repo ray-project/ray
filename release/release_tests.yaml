@@ -2073,6 +2073,28 @@
     timeout: 1500  # expected 1000 seconds
     script: python example_algorithms/appo/pong_appo.py --num-learners=1 --num-env-runners=12 --as-release-test
 
+# -----------------------------
+# RLlib - EnvRunner Performance
+# -----------------------------
+- name: rllib_performance_env_runner_cpu
+  python: "3.10"
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: weekly
+  team: rllib
+
+  cluster:
+    byod:
+      post_build_script: byod_rllib.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+    cluster_compute: 0gpu_8cpus.yaml
+
+  run:
+    timeout: 1500  # expected 1000 seconds
+    script: python rllib_benchmarks/env_runner/env_runner_sample_cpu.py
+
 ########################
 # Core Nightly Tests
 ########################
