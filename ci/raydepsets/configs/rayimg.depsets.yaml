@@ -150,6 +150,27 @@ depsets:
       - py313
     include_setuptools: true
 
+  # TPU base deps: extends CPU base deps with jax[tpu] dependencies
+  - name: ray_base_deps_tpu_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - docker/base-deps/requirements.in
+      - docker/base-deps/requirements_tpu.in
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: python/deplocks/base_deps/ray_base_deps_tpu_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --index https://storage.googleapis.com/libtpu-releases/index.html
+    build_arg_sets:
+      - py310
+      - py311
+      - py312
+      - py313
+    include_setuptools: true
+
     # Second layer of the ray release images. Contains anyscale cli deps (and others)
     # and is a subset of the base extra test deps defined above (release image depset)
   - name: ray_base_extra_${PYTHON_SHORT}

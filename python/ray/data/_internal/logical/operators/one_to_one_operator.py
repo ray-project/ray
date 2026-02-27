@@ -51,6 +51,10 @@ class AbstractOneToOne(LogicalOperator):
         self.can_modify_num_rows = can_modify_num_rows
 
     @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
+
+    @property
     def input_dependency(self) -> LogicalOperator:
         return self.input_dependencies[0]
 
