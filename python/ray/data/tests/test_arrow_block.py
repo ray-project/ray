@@ -12,6 +12,7 @@ from pyarrow import ArrowInvalid
 
 import ray
 from ray._common.test_utils import run_string_as_driver
+from ray.data import ExecutionResources
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
@@ -300,6 +301,9 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
 
 
 def test_arrow_nan_element(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+    ctx.execution_options.resource_limits = ExecutionResources.for_limits(cpu=1)
+
     ds = ray.data.from_items(
         [
             1.0,
