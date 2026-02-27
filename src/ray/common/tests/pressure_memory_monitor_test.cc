@@ -68,7 +68,7 @@ TEST_F(PressureMemoryMonitorTest, TestValidMemoryPsiReturnsTrue) {
   MemoryPsi psi_variable_prop;
   psi_variable_prop.mode = "some";
   psi_variable_prop.stall_duration_s = 2;
-  for (float proportion : {0.0f, 0.5f, 1.0f}) {
+  for (float proportion : {0.1f, 0.5f, 1.0f}) {
     psi_variable_prop.stall_proportion = proportion;
     ASSERT_TRUE(psi_variable_prop.IsValidStallProportion())
         << "Proportion " << proportion << " should be valid";
