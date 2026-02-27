@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.datasource.kafka_datasource import (
+    KafkaAuthConfig,
     _build_consumer_config_for_read,
     _datetime_to_ms,
 )
@@ -65,14 +66,16 @@ def test_build_consumer_config_for_read():
     assert config["enable.auto.commit"] is False
     assert "group.id" in config
 
-    # Test with authentication
+    # Test with authentication via consumer_config
     user_conf = {
         "security.protocol": "SASL_SSL",
         "sasl.mechanism": "PLAIN",
         "sasl.username": "user",
         "sasl.password": "pass",
     }
-    config_with_auth = _build_consumer_config_for_read(bootstrap_servers, user_conf)
+    config_with_auth = _build_consumer_config_for_read(
+        bootstrap_servers, None, user_conf
+    )
     assert config_with_auth["security.protocol"] == "SASL_SSL"
     assert config_with_auth["sasl.mechanism"] == "PLAIN"
     assert config_with_auth["sasl.username"] == "user"
@@ -89,7 +92,7 @@ def test_build_consumer_config_with_pass_through():
         "group.id": "custom-group",
         "enable.auto.commit": True,
     }
-    config = _build_consumer_config_for_read(bootstrap_servers, extra)
+    config = _build_consumer_config_for_read(bootstrap_servers, None, extra)
     assert config["bootstrap.servers"] == "localhost:9092"
     assert config["ssl.endpoint.identification.algorithm"] == "none"
     assert config["group.id"] == "custom-group"
@@ -97,8 +100,62 @@ def test_build_consumer_config_with_pass_through():
 
     # Attempt to override bootstrap.servers should be ignored
     override = {"bootstrap.servers": "override:9092"}
-    config2 = _build_consumer_config_for_read(bootstrap_servers, override)
+    config2 = _build_consumer_config_for_read(bootstrap_servers, None, override)
     assert config2["bootstrap.servers"] == "localhost:9092"
+
+
+def test_read_kafka_config_conflict_raises():
+    """Specifying both kafka_auth_config and consumer_config should error."""
+    with pytest.raises(
+        ValueError, match="Provide only one of kafka_auth_config.* or consumer_config"
+    ):
+        ray.data.read_kafka(
+            topics="t",
+            bootstrap_servers="localhost:9092",
+            kafka_auth_config=KafkaAuthConfig(security_protocol="SSL"),
+            consumer_config={"security.protocol": "SSL"},
+        )
+
+
+def test_build_consumer_config_with_kafka_auth_config_deprecated():
+    """Test kafka-python style KafkaAuthConfig mapping (deprecated path)."""
+    bootstrap_servers = ["localhost:9092"]
+    auth = KafkaAuthConfig(
+        security_protocol="SASL_SSL",
+        sasl_mechanism="SCRAM-SHA-256",
+        sasl_plain_username="testuser",
+        sasl_plain_password="testpass",
+        sasl_kerberos_name="kafka/hostname@REALM",
+        sasl_kerberos_service_name="kafka",
+        # These are unsupported and should be ignored with warnings
+        sasl_kerberos_domain_name="example.com",
+        sasl_oauth_token_provider=object(),
+        ssl_context=object(),
+        # ssl_check_hostname False is unsafe to map; ensure not weakening
+        ssl_check_hostname=False,
+        # SSL files
+        ssl_cafile="/path/to/ca.pem",
+        ssl_certfile="/path/to/cert.pem",
+        ssl_keyfile="/path/to/key.pem",
+        ssl_password="keypassword",
+        ssl_ciphers="HIGH:!aNULL",
+        ssl_crlfile="/path/to/crl.pem",
+    )
+    config = _build_consumer_config_for_read(bootstrap_servers, auth, None)
+    assert config["security.protocol"] == "SASL_SSL"
+    assert config["sasl.mechanism"] == "SCRAM-SHA-256"
+    assert config["sasl.username"] == "testuser"
+    assert config["sasl.password"] == "testpass"
+    assert config["sasl.kerberos.principal"] == "kafka/hostname@REALM"
+    assert config["sasl.kerberos.service.name"] == "kafka"
+    # No weakening of TLS verification
+    assert "enable.ssl.certificate.verification" not in config
+    assert config["ssl.ca.location"] == "/path/to/ca.pem"
+    assert config["ssl.certificate.location"] == "/path/to/cert.pem"
+    assert config["ssl.key.location"] == "/path/to/key.pem"
+    assert config["ssl.key.password"] == "keypassword"
+    assert config["ssl.cipher.suites"] == "HIGH:!aNULL"
+    assert config["ssl.crl.location"] == "/path/to/crl.pem"
 
 
 def test_datetime_to_ms_without_timezone():

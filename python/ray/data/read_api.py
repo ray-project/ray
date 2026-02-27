@@ -44,7 +44,10 @@ from ray.data._internal.datasource.json_datasource import (
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
-from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
+from ray.data._internal.datasource.kafka_datasource import (
+    KafkaAuthConfig,
+    KafkaDatasource,
+)
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
@@ -4366,6 +4369,7 @@ def read_kafka(
     trigger: Literal["once"] = "once",
     start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
     end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
     consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4425,9 +4429,10 @@ def read_kafka(
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
 
+        kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
         consumer_config: Confluent/librdkafka consumer configuration dict to
             pass through directly to the underlying client. These options override
-            defaults. The `bootstrap.servers` option is derived from `bootstrap_servers` and cannot be overridden here.
+            defaults and any mapped values from `kafka_auth_config`. The `bootstrap.servers` option is derived from `bootstrap_servers` and cannot be overridden here.
             See https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html#pythonclient-configuration for more details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
@@ -4465,6 +4470,7 @@ def read_kafka(
             bootstrap_servers=bootstrap_servers,
             start_offset=start_offset,
             end_offset=end_offset,
+            kafka_auth_config=kafka_auth_config,
             consumer_config=consumer_config,
             timeout_ms=timeout_ms,
         ),

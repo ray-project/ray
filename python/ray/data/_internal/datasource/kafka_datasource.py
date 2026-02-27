@@ -12,6 +12,8 @@ Requires:
 
 import logging
 import time
+import warnings
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -38,7 +40,23 @@ from ray.data.datasource import Datasource, ReadTask
 
 logger = logging.getLogger(__name__)
 
-# All Kafka configuration is expected to use Confluent/librdkafka keys.
+# Mapping from kafka-python style KafkaAuthConfig fields to Confluent/librdkafka config.
+_KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
+    "security_protocol": "security.protocol",
+    "sasl_mechanism": "sasl.mechanism",
+    "sasl_plain_username": "sasl.username",
+    "sasl_plain_password": "sasl.password",
+    "sasl_kerberos_service_name": "sasl.kerberos.service.name",
+    "sasl_kerberos_name": "sasl.kerberos.principal",
+    "ssl_cafile": "ssl.ca.location",
+    "ssl_certfile": "ssl.certificate.location",
+    "ssl_keyfile": "ssl.key.location",
+    "ssl_password": "ssl.key.password",
+    "ssl_ciphers": "ssl.cipher.suites",
+    "ssl_crlfile": "ssl.crl.location",
+    # Note: ssl_check_hostname is intentionally NOT mapped due to semantics mismatch.
+}
+
 
 KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
 KAFKA_QUERY_OFFSET_TIMEOUT_S = 10
@@ -60,8 +78,92 @@ KAFKA_MSG_SCHEMA = pa.schema(
 )
 
 
+@dataclass
+class KafkaAuthConfig:
+    """Authentication configuration for Kafka connections (kafka-python style).
+
+    Deprecated: Prefer passing Confluent/librdkafka options via consumer_config.
+    This class remains for backward compatibility and is mapped to Confluent
+    configuration keys internally.
+    """
+
+    # Security protocol
+    security_protocol: Optional[str] = None
+
+    # SASL configuration
+    sasl_mechanism: Optional[str] = None
+    sasl_plain_username: Optional[str] = None
+    sasl_plain_password: Optional[str] = None
+    sasl_kerberos_name: Optional[str] = None
+    sasl_kerberos_service_name: Optional[str] = None
+    sasl_kerberos_domain_name: Optional[str] = None
+    sasl_oauth_token_provider: Optional[Any] = None
+
+    # SSL configuration
+    ssl_context: Optional[Any] = None
+    ssl_check_hostname: Optional[bool] = None
+    ssl_cafile: Optional[str] = None
+    ssl_certfile: Optional[str] = None
+    ssl_keyfile: Optional[str] = None
+    ssl_password: Optional[str] = None
+    ssl_ciphers: Optional[str] = None
+    ssl_crlfile: Optional[str] = None
+
+
+def _add_authentication_to_config(
+    config: Dict[str, Any], kafka_auth_config: Optional[KafkaAuthConfig]
+) -> None:
+    """Map KafkaAuthConfig (kafka-python style) into Confluent/librdkafka config.
+
+    Special cases:
+      - ssl_context: unsupported; warn and ignore
+      - sasl_oauth_token_provider: unsupported; warn and ignore
+      - sasl_kerberos_domain_name: unsupported; warn and ignore
+      - ssl_check_hostname: not mapped due to semantics; if False, warn and ignore
+    """
+    if not kafka_auth_config:
+        return
+    warnings.warn(
+        "kafka_auth_config (kafka-python style) is deprecated and will be removed in a future release. "
+        "Please provide Confluent/librdkafka options via consumer_config instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    # Handle special fields with warnings
+    if kafka_auth_config.ssl_context is not None:
+        logger.warning(
+            "ssl_context is not supported by Confluent. Skipping. "
+            "Use KafkaAuthConfig fields ssl_cafile, ssl_certfile, ssl_keyfile instead."
+        )
+    if kafka_auth_config.sasl_oauth_token_provider is not None:
+        logger.warning(
+            "sasl_oauth_token_provider is not supported by Confluent. Skipping. "
+            "Use consumer_config with sasl.oauthbearer.* options instead."
+        )
+    if kafka_auth_config.sasl_kerberos_domain_name is not None:
+        logger.warning(
+            "sasl_kerberos_domain_name is not supported by Confluent and will be ignored. "
+            "Set sasl_kerberos_name (principal) or rely on defaults."
+        )
+    if kafka_auth_config.ssl_check_hostname is False:
+        logger.warning(
+            "ssl_check_hostname=False cannot be mapped safely to Confluent; "
+            "setting enable.ssl.certificate.verification=False would disable all certificate verification. "
+            "Ignoring ssl_check_hostname. If you need to disable only hostname verification, "
+            "configure the client directly via consumer_config (e.g., ssl.endpoint.identification.algorithm=none)."
+        )
+
+    # Map directly compatible fields
+    for key, confluent_key in _KAFKA_AUTH_TO_CONFLUENT.items():
+        val = getattr(kafka_auth_config, key, None)
+        if val is not None:
+            config[confluent_key] = val
+
+
 def _build_confluent_config(
     bootstrap_servers: List[str],
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
     extra: Optional[Dict[str, Any]] = None,
     user_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -69,6 +171,7 @@ def _build_confluent_config(
 
     Args:
         bootstrap_servers: List of Kafka broker addresses.
+        kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
         extra: Additional config options.
         user_config: User-provided config options.
 
@@ -78,6 +181,8 @@ def _build_confluent_config(
     config: Dict[str, Any] = {
         "bootstrap.servers": ",".join(bootstrap_servers),
     }
+    # Map kafka-python-style auth if provided
+    _add_authentication_to_config(config, kafka_auth_config)
     if extra:
         config.update(extra)
     if user_config:
@@ -97,6 +202,7 @@ def _build_confluent_config(
 
 def _build_consumer_config_for_read(
     bootstrap_servers: List[str],
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
     consumer_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build Consumer config for reading messages (Confluent)."""
@@ -108,6 +214,7 @@ def _build_consumer_config_for_read(
             "group.id": "ray-data-kafka-reader",
         },
         user_config=consumer_config,
+        kafka_auth_config=kafka_auth_config,
     )
 
 
@@ -223,6 +330,7 @@ class KafkaDatasource(Datasource):
         bootstrap_servers: Union[str, List[str]],
         start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
         end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+        kafka_auth_config: Optional[KafkaAuthConfig] = None,
         consumer_config: Optional[Dict[str, Any]] = None,
         timeout_ms: int = 10000,
     ):
@@ -241,6 +349,7 @@ class KafkaDatasource(Datasource):
                 - datetime: Read up to (but not including) the first message
                   at or after this time. datetimes with no timezone info are treated as UTC.
                 - str: "latest"
+            kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
             consumer_config: Confluent/librdkafka consumer configuration dict.
                 Keys and values are passed through to the underlying client. The
                 `bootstrap.servers` option is derived from `bootstrap_servers` and
@@ -294,6 +403,12 @@ class KafkaDatasource(Datasource):
                         "Expected 'host:port' string."
                     )
 
+        # Disallow specifying both config styles at once to avoid ambiguity.
+        if kafka_auth_config is not None and consumer_config is not None:
+            raise ValueError(
+                "Provide only one of kafka_auth_config (deprecated) or consumer_config, not both."
+            )
+
         self._topics = topics if isinstance(topics, list) else [topics]
         self._bootstrap_servers = (
             bootstrap_servers
@@ -302,6 +417,7 @@ class KafkaDatasource(Datasource):
         )
         self._start_offset = start_offset
         self._end_offset = end_offset
+        self._kafka_auth_config = kafka_auth_config
         self._consumer_config = consumer_config
         self._timeout_ms = timeout_ms
         self._target_max_block_size = DataContext.get_current().target_max_block_size
@@ -332,7 +448,7 @@ class KafkaDatasource(Datasource):
         from confluent_kafka import Consumer
 
         consumer_config = _build_consumer_config_for_read(
-            self._bootstrap_servers, self._consumer_config
+            self._bootstrap_servers, self._kafka_auth_config, self._consumer_config
         )
         discovery_consumer = Consumer(consumer_config)
         try:
@@ -375,6 +491,7 @@ class KafkaDatasource(Datasource):
                 end_offset: Optional[
                     Union[int, datetime, Literal["latest"]]
                 ] = end_offset,
+                kafka_auth_config: Optional[KafkaAuthConfig] = self._kafka_auth_config,
                 user_consumer_config: Optional[Dict[str, Any]] = self._consumer_config,
                 timeout_ms: int = timeout_ms,
                 target_max_block_size: int = target_max_block_size,
@@ -386,7 +503,7 @@ class KafkaDatasource(Datasource):
                     from confluent_kafka import Consumer, TopicPartition
 
                     built_consumer_config = _build_consumer_config_for_read(
-                        bootstrap_servers, user_consumer_config
+                        bootstrap_servers, kafka_auth_config, user_consumer_config
                     )
 
                     consumer = Consumer(built_consumer_config)
