@@ -212,48 +212,6 @@ When HAProxy mode is enabled:
 
 HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The official Ray Docker images (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
 
-If you are building a custom image or running on bare metal, you need to install HAProxy 2.8+ from source. The following is an example Dockerfile — adapt it to your base image and environment:
-
-```dockerfile
-# --- Build stage ---
-FROM ubuntu:22.04 AS haproxy-builder
-
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    build-essential ca-certificates curl libc6-dev \
-    liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
-
-RUN HAPROXY_VERSION="2.8.12" && \
-    BUILD_DIR=$(mktemp -d) && \
-    curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" \
-      "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz" && \
-    tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1 && \
-    make -C "${BUILD_DIR}" TARGET=linux-glibc \
-      USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc) && \
-    make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin && \
-    rm -rf "${BUILD_DIR}"
-
-# --- Runtime stage ---
-FROM ubuntu:22.04
-
-# Copy HAProxy binary from build stage
-COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
-
-# Install runtime dependencies
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    socat liblua5.3-0 && \
-    mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
-    rm -rf /var/lib/apt/lists/*
-```
-
-The key build flags are:
-- `USE_PROMEX=1` — enables the built-in Prometheus exporter for metrics.
-- `USE_LUA=1` — enables Lua scripting support.
-- `USE_OPENSSL=1` — enables TLS support.
-
-Runtime dependencies:
-- `socat` — used for sending commands to the HAProxy admin socket.
-- `liblua5.3-0` — Lua runtime library (required when HAProxy is built with `USE_LUA=1`).
-
 #### Enabling HAProxy
 
 Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes **before** starting Ray:
@@ -336,6 +294,35 @@ echo "show stat" | socat stdio /tmp/haproxy-serve/admin.sock
 # Show HAProxy general info
 echo "show info" | socat stdio /tmp/haproxy-serve/admin.sock
 ```
+
+#### Installing HAProxy manually
+
+If you are not using the official Ray Docker images, install HAProxy 2.8+ from source on every node. The following steps are for Ubuntu/Debian — adapt them to your OS:
+
+```bash
+# Install build dependencies
+apt-get update -y && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl libc6-dev \
+    liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
+
+# Build HAProxy from source
+export HAPROXY_VERSION="2.8.12"
+curl -sSfL -o /tmp/haproxy.tar.gz \
+  "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
+make -C /tmp/haproxy-build TARGET=linux-glibc \
+  USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
+rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
+
+# Install runtime dependencies
+apt-get install -y --no-install-recommends socat liblua5.3-0
+
+# Create required directories
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+```
+
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependencies are `socat` (for the admin socket) and `liblua5.3-0` (Lua runtime library).
 
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication
