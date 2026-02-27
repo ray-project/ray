@@ -79,9 +79,8 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
         print(f"Creating symbolic link from \n {local_home} to \n {package_home}")
 
         if os.path.exists(package_home) and os.path.realpath(
-            package_home) == os.path.realpath(
-            local_home
-        ):
+            package_home
+        ) == os.path.realpath(local_home):
             print(f"{package} is already linked to source. Skipping.")
             return
 
