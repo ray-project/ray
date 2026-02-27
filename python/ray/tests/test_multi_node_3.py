@@ -157,7 +157,7 @@ for i in range(0, 5):
     try:
         ray.init(address='auto')
         break
-    except:
+    except Exception:
         sleep(1)
 """
     )
@@ -171,7 +171,7 @@ for i in range(0, 5):
     try:
         ray.init(address='auto')
         break
-    except:
+    except Exception:
         sleep(1)
 """
     )

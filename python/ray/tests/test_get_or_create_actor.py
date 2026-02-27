@@ -79,7 +79,7 @@ def do_run(name):
     ray.get(tasks)
     try:
         ray.kill(ray.get_actor(name, namespace="n"))  # Cleanup
-    except:
+    except Exception:
         pass
 
 

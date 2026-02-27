@@ -87,7 +87,7 @@ def dashboard_available():
     try:
         requests.get("http://"+url).status_code == 200
         return True
-    except:
+    except Exception:
         return False
 wait_for_condition(dashboard_available)
 ray.shutdown()
