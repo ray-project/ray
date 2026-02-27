@@ -510,6 +510,12 @@ class BlockAccessor:
                 "e.g., `{'data': array}` instead of `array`."
             )
 
+        # Handle cudf.DataFrame before Mapping check, since cudf.DataFrame
+        # implements the Mapping protocol. Use bulk GPU->CPU transfer via
+        # to_arrow() instead of the slow column-by-column Mapping path.
+        elif _is_cudf_dataframe(batch):
+            return batch.to_arrow()
+
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
                 from ray.data._internal.tensor_extensions.arrow import (
@@ -532,10 +538,6 @@ class BlockAccessor:
             else:
                 assert block_type == BlockType.PANDAS
                 return cls.batch_to_pandas_block(batch)
-
-        # Handle cudf.DataFrame - convert to Arrow for storage (cudf is batch-format only)
-        if _is_cudf_dataframe(batch):
-            return batch.to_arrow()
 
         return batch
 
