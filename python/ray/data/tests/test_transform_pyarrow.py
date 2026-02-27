@@ -11,9 +11,9 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 )
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
+    FixedShapeTensorFormat,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowPythonObjectType,
     ArrowTensorArray,
@@ -172,16 +172,15 @@ def test_pyarrow_conversion_error_handling(
         ]
 
 
-@pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
+@pytest.mark.parametrize(
+    "tensor_format", [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
+)
 @pytest.mark.skipif(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
     reason="Requires Arrow version of at least 14.0.0",
 )
-def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
-    use_arrow_tensor_v2, restore_data_context
-):
-    DataContext.get_current().use_arrow_tensor_v2 = use_arrow_tensor_v2
-
+def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(tensor_format_context):
+    tensor_format = tensor_format_context
     num_rows = 1024
 
     # Block A: int is uint64; tensor = Ray tensor extension
@@ -217,7 +216,7 @@ def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
 
     # Ensure that the result is correct
     # Determine expected tensor type based on current DataContext setting
-    if use_arrow_tensor_v2:
+    if tensor_format == FixedShapeTensorFormat.V2:
         expected_tensor_type = ArrowTensorTypeV2((3, 3), pa.float32())
     else:
         expected_tensor_type = ArrowTensorType((3, 3), pa.float32())

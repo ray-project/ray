@@ -6,6 +6,9 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.tensor_extensions.arrow import (
+    create_arrow_fixed_shape_tensor_type,
+)
 from ray.data._internal.tensor_extensions.pandas import TensorDtype
 from ray.data.context import DataContext
 from ray.data.dataset import Schema
@@ -185,7 +188,7 @@ def test_strict_compute(ray_start_regular_shared_2_cpus):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 
 
-def test_strict_schema(ray_start_regular_shared_2_cpus):
+def test_strict_schema(ray_start_regular_shared_2_cpus, tensor_format_context):
     import pyarrow as pa
 
     from ray.data._internal.pandas_block import PandasBlockSchema
@@ -193,7 +196,6 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
         ArrowPythonObjectType,
         _object_extension_type_allowed,
     )
-    from ray.data.extensions.tensor_extension import ArrowTensorType
 
     ds = ray.data.from_items([{"x": 2}])
     schema = ds.schema()
@@ -230,13 +232,9 @@ def test_strict_schema(ray_start_regular_shared_2_cpus):
     assert isinstance(schema.base_schema, pa.lib.Schema)
     assert schema.names == ["data"]
 
-    from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
-    from ray.data.context import DataContext
-
-    if DataContext.get_current().use_arrow_tensor_v2:
-        expected_arrow_ext_type = ArrowTensorTypeV2(shape=(10,), dtype=pa.float64())
-    else:
-        expected_arrow_ext_type = ArrowTensorType(shape=(10,), dtype=pa.float64())
+    expected_arrow_ext_type = create_arrow_fixed_shape_tensor_type(
+        shape=(10,), dtype=pa.float64()
+    )
 
     assert schema.types == [expected_arrow_ext_type]
 

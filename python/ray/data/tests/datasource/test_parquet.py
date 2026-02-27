@@ -25,7 +25,6 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import rows_same
@@ -1154,12 +1153,13 @@ def test_partitioning_in_dataset_kwargs_raises_error(
 def test_tensors_in_tables_parquet(
     ray_start_regular_shared,
     tmp_path,
-    restore_data_context,
+    tensor_format_context,
     target_max_block_size_infinite_or_default,
 ):
     """This test verifies both V1 and V2 Tensor Type extensions of
     Arrow Array types
     """
+    new_tensor_format = tensor_format_context
 
     num_rows = 10_000
     num_groups = 10
@@ -1218,12 +1218,12 @@ def test_tensors_in_tables_parquet(
     _assert_equal(ds.take_all(), expected_tuples)
 
     #
-    # Test #2: Verify writing tensors as ArrowTensorTypeV2
+    # Test #2: Verify writing tensors as either
+    #   - ArrowTensorTypeV2 or
+    #   - (Arrow-native) FixedShapeTensorType
     #
 
-    DataContext.get_current().use_arrow_tensor_v2 = True
-
-    tensor_v2_path = f"{tmp_path}/tensor_v2"
+    tensor_v2_path = f"{tmp_path}/tensor_new_{new_tensor_format}"
 
     ds = ray.data.from_pandas([df])
     ds.write_parquet(tensor_v2_path)
@@ -1234,11 +1234,14 @@ def test_tensors_in_tables_parquet(
         override_num_blocks=10,
     )
 
-    assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
-    )
-
     _assert_equal(ds.take_all(), expected_tuples)
+
+    # With tensor_format_context, ARROW_NATIVE only runs when supported,
+    # so to_type() is safe to use without fallback
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        new_tensor_format.to_type(),
+    )
 
 
 def test_multiple_files_with_ragged_arrays(

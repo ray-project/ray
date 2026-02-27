@@ -6,21 +6,11 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.data.context import DataContext
 from ray.data.dataset import Schema
-from ray.data.extensions.tensor_extension import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
-
-
-def _get_tensor_type():
-    return (
-        ArrowTensorTypeV2
-        if DataContext.get_current().use_arrow_tensor_v2
-        else ArrowTensorType
-    )
 
 
 @pytest.mark.parametrize("from_ref", [False, True])
@@ -89,8 +79,21 @@ def test_to_numpy_refs(ray_start_regular_shared):
     )
 
 
-def test_numpy_read(ray_start_regular_shared, tmp_path):
-    tensor_type = _get_tensor_type()
+def test_numpy_roundtrip(ray_start_regular_shared, tmp_path):
+    tensor_type = DataContext.get_current().arrow_fixed_shape_tensor_format.to_type()
+
+    ds = ray.data.range_tensor(10, override_num_blocks=2)
+    ds.write_numpy(tmp_path, column="data")
+    ds = ray.data.read_numpy(tmp_path)
+    assert ds.count() == 10
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
+    assert sorted(ds.take_all(), key=lambda row: row["data"]) == [
+        {"data": np.array([i])} for i in range(10)
+    ]
+
+
+def test_numpy_read_x(ray_start_regular_shared, tmp_path):
+    tensor_type = DataContext.get_current().arrow_fixed_shape_tensor_format.to_type()
 
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)

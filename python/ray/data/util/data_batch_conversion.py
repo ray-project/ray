@@ -258,8 +258,22 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     return df
 
 
-def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
-    """Cast all tensor extension columns in df to NumPy ndarrays."""
+def _cast_tensor_columns_to_ndarrays(
+    df: "pd.DataFrame",
+    arrow_schema: "pyarrow.Schema" = None,
+) -> "pd.DataFrame":
+    """Cast all tensor extension columns in df to NumPy ndarrays.
+
+    Args:
+        df: The DataFrame whose tensor columns should be converted.
+        arrow_schema: If provided, used to reshape columns that were native
+            ``FixedShapeTensorType`` in Arrow.  PyArrow's ``to_pandas()``
+            flattens these to 1-D ndarrays; passing the original schema
+            lets us restore the correct shape.
+
+    Returns:
+        The DataFrame with tensor columns converted to NumPy ndarrays.
+    """
     # Get the SettingWithCopyWarning class if available
     SettingWithCopyWarning = _get_setting_with_copy_warning()
     from ray.data._internal.tensor_extensions.pandas import TensorDtype
@@ -268,6 +282,21 @@ def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
     # TODO(Clark): Optimize this with propagated DataFrame metadata containing a list of
     # column names containing tensor columns, to make this an O(# of tensor columns)
     # check rather than the current O(# of columns) check.
+
+    # Reshape native FixedShapeTensorType columns that were flattened by
+    # to_pandas(). Must happen before the TensorDtype check below so that
+    # _cast_ndarray_columns_to_tensor_extension later sees the right shape.
+
+    if arrow_schema is not None:
+        from ray.data._internal.utils.transform_pyarrow import (
+            _is_native_tensor_type,
+        )
+
+        for field in arrow_schema:
+            if _is_native_tensor_type(field.type) and field.name in df.columns:
+                shape = tuple(field.type.shape)
+                df[field.name] = [arr.reshape(shape) for arr in df[field.name]]
+
     for col_name, col in df.items():
         if isinstance(col.dtype, TensorDtype):
             # Suppress Pandas warnings:

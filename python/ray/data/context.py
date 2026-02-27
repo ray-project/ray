@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from ray.data._internal.issue_detection.issue_detector_configuration import (
         IssueDetectorsConfiguration,
     )
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,8 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = env_bool(
 #       total cumulative size (due to it internally utilizing int32 offsets)
 #
 #       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
+# DEPRECATED: use_arrow_tensor_v2 is deprecated and no longer used.
+# arrow_fixed_shape_tensor_format defaults to V2.
 DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 
 DEFAULT_AUTO_LOG_STATS = False
@@ -381,6 +384,13 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
         return DEFAULT_SHUFFLE_STRATEGY
 
 
+def _default_fixed_shape_tensor_format():
+    """Factory function to avoid circular import."""
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
+
+    return FixedShapeTensorFormat.V2
+
+
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
     # Lazily import to avoid circular dependencies.
     from ray.data._internal.issue_detection.issue_detector_configuration import (
@@ -438,8 +448,11 @@ class DataContext:
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
-        use_arrow_tensor_v2: Config enabling V2 version of ArrowTensorArray supporting
-            tensors > 2Gb in size (off by default)
+        arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
+            Options are FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2, and FixedShapeTensorFormat.ARROW_NATIVE.
+            Default is V2. NOTE: For ARROW_NATIVE, only numbers (integers, floats) are currently supported.
+        use_arrow_tensor_v2: [Deprecated] This setting is no longer used.
+            Use ``arrow_fixed_shape_tensor_format`` instead.
         enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
             values not suppported by Arrow natively (like user-defined custom Python
             classes for ex, etc) using `ArrowPythonObjectType` (simply serializing
@@ -623,6 +636,9 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
+        default_factory=_default_fixed_shape_tensor_format
+    )
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
@@ -764,6 +780,21 @@ class DataContext:
                 DeprecationWarning,
             )
             self.use_polars_sort = value
+
+        elif name == "use_arrow_tensor_v2":
+            warnings.warn(
+                "`use_arrow_tensor_v2` is deprecated. "
+                "Configure `arrow_fixed_shape_tensor_format` instead. ",
+                DeprecationWarning,
+            )
+            from ray.data._internal.tensor_extensions.arrow import (
+                FixedShapeTensorFormat,
+            )
+
+            if isinstance(value, bool) and value:
+                self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V2
+            else:
+                self.arrow_fixed_shape_tensor_format = FixedShapeTensorFormat.V1
 
         super().__setattr__(name, value)
 
