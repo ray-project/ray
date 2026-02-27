@@ -1717,6 +1717,56 @@ def validate_socket_filepath(filepath: str):
         )
 
 
+def is_nfs_mount(path: str) -> bool:
+    """
+    Check if the given path is on an NFS (Network File System) mount.
+
+    Unix domain sockets cannot be created on NFS mounts, so we need to detect
+    this and use TCP sockets instead.
+
+    Uses psutil for cross-platform filesystem type detection.
+
+    Args:
+        path: The path to check.
+
+    Returns:
+        True if the path is on an NFS mount, False otherwise.
+    """
+    # Ensure the path exists; use parent if path doesn't exist yet
+    check_path = path
+    while not os.path.exists(check_path):
+        parent = os.path.dirname(check_path)
+        if parent == check_path:
+            # Reached root, give up
+            return False
+        check_path = parent
+
+    check_path = os.path.realpath(check_path)
+
+    try:
+        # Get all disk partitions with their filesystem types
+        partitions = psutil.disk_partitions(all=True)
+
+        # Find the mount point for our path (longest matching prefix)
+        best_match = ""
+        best_fstype = ""
+        for part in partitions:
+            mount_point = part.mountpoint
+            if check_path.startswith(mount_point) and len(mount_point) > len(
+                best_match
+            ):
+                best_match = mount_point
+                best_fstype = part.fstype.lower()
+
+        # Check if filesystem type contains "nfs"
+        return "nfs" in best_fstype
+
+    except Exception as e:
+        # If detection fails, assume it's not NFS to avoid breaking existing setups
+        logger.debug(f"Failed to detect NFS mount for {path}: {e}")
+        return False
+
+
 # Whether we're currently running in a test, either local or CI.
 in_test = None
 
