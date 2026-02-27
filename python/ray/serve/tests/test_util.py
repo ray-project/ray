@@ -10,9 +10,11 @@ from fastapi.encoders import jsonable_encoder
 import ray
 from ray import serve
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import (
     Semaphore,
     calculate_remaining_timeout,
+    get_active_placement_group_ids,
     get_all_live_placement_group_names,
     get_current_actor_id,
     get_head_node_id,
@@ -449,6 +451,76 @@ def test_get_all_live_placement_group_names(ray_instance):
     assert pg8.wait()
 
     assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
+
+
+def test_get_active_placement_group_ids(ray_instance):
+    """Test that get_active_placement_group_ids returns PG IDs for alive actors only.
+
+    Cases covered:
+    - A PG with a live Serve actor scheduled on it (should be returned).
+    - A PG with no actors (should NOT be returned).
+    - An actor without a PG (should NOT cause its absence to break anything).
+    - A PG whose actor has been killed (should NOT be returned).
+    - A PG with a live non-Serve actor (should NOT be returned).
+    """
+
+    # PG with a live actor scheduled on it
+    pg_with_actor = ray.util.placement_group([{"CPU": 0.1}], name="pg_with_actor")
+    assert pg_with_actor.wait()
+
+    @ray.remote(num_cpus=0.1)
+    class DummyActor:
+        def ready(self):
+            return True
+
+    actor_on_pg = DummyActor.options(
+        namespace=SERVE_NAMESPACE,
+        placement_group=pg_with_actor,
+    ).remote()
+    ray.get(actor_on_pg.ready.remote())
+
+    # PG with no actors scheduled on it
+    pg_no_actor = ray.util.placement_group([{"CPU": 0.1}], name="pg_no_actor")
+    assert pg_no_actor.wait()
+
+    # Actor without any PG
+    actor_no_pg = DummyActor.options(namespace=SERVE_NAMESPACE).remote()
+    ray.get(actor_no_pg.ready.remote())
+
+    # PG whose actor will be killed
+    pg_killed = ray.util.placement_group([{"CPU": 0.1}], name="pg_killed")
+    assert pg_killed.wait()
+    actor_killed = DummyActor.options(
+        namespace=SERVE_NAMESPACE,
+        placement_group=pg_killed,
+    ).remote()
+    ray.get(actor_killed.ready.remote())
+    ray.kill(actor_killed)
+
+    # PG with a live actor in a non-Serve namespace (should be excluded)
+    pg_non_serve = ray.util.placement_group([{"CPU": 0.1}], name="pg_non_serve")
+    assert pg_non_serve.wait()
+    actor_non_serve = DummyActor.options(
+        namespace="non_serve",
+        placement_group=pg_non_serve,
+    ).remote()
+    ray.get(actor_non_serve.ready.remote())
+
+    active_ids = get_active_placement_group_ids()
+
+    # Should contain the PG ID for the live Serve actor's PG
+    pg_with_actor_id = pg_with_actor.id.hex()
+    assert pg_with_actor_id in active_ids
+
+    # Should NOT contain the PG with no actor or the PG whose actor was killed
+    pg_no_actor_id = pg_no_actor.id.hex()
+    pg_killed_id = pg_killed.id.hex()
+    assert pg_no_actor_id not in active_ids
+    assert pg_killed_id not in active_ids
+
+    # Should NOT contain the PG for the non-Serve actor
+    pg_non_serve_id = pg_non_serve.id.hex()
+    assert pg_non_serve_id not in active_ids
 
 
 def test_is_running_in_asyncio_loop_false():

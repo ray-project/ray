@@ -244,7 +244,7 @@ def from_items(
         block = builder.build()
         blocks.append(ray.put(block))
         meta_with_schema.append(
-            BlockMetadataWithSchema.from_block(block, stats=stats.build())
+            BlockMetadataWithSchema.from_block(block, block_exec_stats=stats.build())
         )
 
     from_items_op = FromItems(blocks, meta_with_schema)
