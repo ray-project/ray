@@ -217,21 +217,6 @@ def _build_confluent_config(
     return config
 
 
-def _build_consumer_config_for_discovery(
-    bootstrap_servers: List[str], kafka_auth_config: Optional[KafkaAuthConfig]
-) -> Dict[str, Any]:
-    """Build minimal consumer config for partition discovery (Confluent)."""
-    return _build_confluent_config(
-        bootstrap_servers,
-        kafka_auth_config,
-        extra={
-            "enable.auto.commit": False,
-            # Confluent requires a group.id even when using manual assign.
-            "group.id": "ray-data-kafka-reader",
-        },
-    )
-
-
 def _build_consumer_config_for_read(
     bootstrap_servers: List[str],
     kafka_auth_config: Optional[KafkaAuthConfig],
@@ -461,7 +446,7 @@ class KafkaDatasource(Datasource):
         """
         from confluent_kafka import Consumer
 
-        consumer_config = _build_consumer_config_for_discovery(
+        consumer_config = _build_consumer_config_for_read(
             self._bootstrap_servers, self._kafka_auth_config
         )
         discovery_consumer = Consumer(consumer_config)
@@ -568,6 +553,7 @@ class KafkaDatasource(Datasource):
                                 )
                                 poll_timeout_s = remaining_timeout_ms / 1000.0
 
+                                # TODO: Use consume() instead of poll() to reduce round trips.
                                 msg = consumer.poll(timeout=poll_timeout_s)
                                 if msg is None:
                                     continue
@@ -628,22 +614,10 @@ class KafkaDatasource(Datasource):
 
             kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
             # Create read task
-            schema = pa.schema(
-                [
-                    ("offset", pa.int64()),
-                    ("key", pa.binary()),
-                    ("value", pa.binary()),
-                    ("topic", pa.string()),
-                    ("partition", pa.int32()),
-                    ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
-                    ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
-                    ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
-                ]
-            )
             task = ReadTask(
                 read_fn=kafka_read_fn,
                 metadata=metadata,
-                schema=schema,
+                schema=KAFKA_MSG_SCHEMA,
                 per_task_row_limit=per_task_row_limit,
             )
             tasks.append(task)
