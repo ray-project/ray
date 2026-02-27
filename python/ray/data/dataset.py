@@ -642,8 +642,9 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``batch_format`` is set to ``None`` input
-                block format will be used.
+                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``
+                (requires cudf to be installed). If ``batch_format`` is set to
+                ``None`` input block format will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -968,8 +969,8 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"numpy"``, batches are
-                ``Dict[str, numpy.ndarray]``.
+                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``.
+                If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
             **ray_remote_args: Additional resource requirements to request from
@@ -980,7 +981,7 @@ class Dataset:
             A new :class:`Dataset` with the specified column added or overwritten.
         """
         # Check that batch_format
-        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy", "cudf"]
         if batch_format not in accepted_batch_formats:
             raise ValueError(
                 f"batch_format argument must be on of {accepted_batch_formats}, "
@@ -1016,6 +1017,15 @@ class Dataset:
                 if column_idx == -1:
                     return batch.append_column(col, column)
                 return batch.set_column(column_idx, col, column)
+
+            elif batch_format == "cudf":
+                import cudf
+
+                # cuDF uses pandas-like API: batch[col] = column
+                if isinstance(column, (cudf.DataFrame, cudf.Index, cudf.Series)):
+                    column.index = batch.index
+                batch[col] = column
+                return batch
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -3675,7 +3685,8 @@ class Dataset:
             batch_size: The maximum number of rows to return.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``.
 
         Returns:
             A batch of up to ``batch_size`` rows from the dataset.
@@ -5679,7 +5690,8 @@ class Dataset:
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the

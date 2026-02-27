@@ -178,8 +178,9 @@ class GroupedData:
                 * Use ``ray.data.ActorPoolStrategy(min_size=m, max_size=n, initial_size=initial)`` to use an autoscaling actor pool from ``m`` to ``n`` workers, with an initial size of ``initial``.
 
             batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, ``"pyarrow"`` to
+                select ``pyarrow.Table``, ``"cudf"`` to select ``cudf.DataFrame``, or
+                ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.

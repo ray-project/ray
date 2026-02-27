@@ -28,6 +28,7 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import cudf
     import pandas
     import pyarrow
 
@@ -55,7 +56,11 @@ Block = Union["pyarrow.Table", "pandas.DataFrame"]
 Schema = Union[type, "PandasBlockSchema", "pyarrow.lib.Schema"]
 
 # Represents a single column of the ``Block``
-BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
+BlockColumn = Union[
+    "pyarrow.ChunkedArray",
+    "pyarrow.Array",
+    "pandas.Series",
+]
 
 # Represents a single column of the ``Batch``
 BatchColumn = Union[
@@ -78,11 +83,17 @@ class BatchFormat(str, Enum):
     ARROW = "pyarrow"
     PANDAS = "pandas"
     NUMPY = "numpy"
+    CUDF = "cudf"
 
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+DataBatch = Union[
+    "pyarrow.Table",
+    "pandas.DataFrame",
+    Dict[str, np.ndarray],
+    "cudf.DataFrame",
+]
 
 # User-facing data column type. This is the data type for data that is supplied to and
 # returned from column UDFs.
@@ -113,18 +124,27 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
+VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", "cudf", None]
 DEFAULT_BATCH_FORMAT = "numpy"
 
 
-def _is_empty_schema(schema: Optional[Schema]) -> bool:
-    from ray.data._internal.pandas_block import PandasBlockSchema
+def _is_cudf_dataframe(obj: Any) -> bool:
+    """Check if the object is a cudf.DataFrame (lazy import)."""
+    try:
+        import cudf
 
-    return schema is None or (
-        not schema.names
-        if isinstance(schema, PandasBlockSchema)
-        else not schema  # pyarrow schema check
-    )
+        return isinstance(obj, cudf.DataFrame)
+    except ImportError:
+        return False
+
+
+def _is_empty_schema(schema: Optional[Schema]) -> bool:
+    if schema is None:
+        return True
+    # PandasBlockSchema is table-like and has .names.
+    if hasattr(schema, "names"):
+        return not schema.names
+    return not schema  # pyarrow schema check
 
 
 def _take_first_non_empty_schema(schemas: Iterator["Schema"]) -> Optional["Schema"]:
@@ -434,6 +454,8 @@ class BlockAccessor:
             return self.to_arrow()
         elif batch_format == "numpy":
             return self.to_numpy()
+        elif batch_format == "cudf":
+            return self.to_cudf()
         else:
             raise ValueError(
                 f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
@@ -488,6 +510,12 @@ class BlockAccessor:
                 "e.g., `{'data': array}` instead of `array`."
             )
 
+        # Handle cudf.DataFrame before Mapping check, since cudf.DataFrame
+        # implements the Mapping protocol. Use bulk GPU->CPU transfer via
+        # to_arrow() instead of the slow column-by-column Mapping path.
+        elif _is_cudf_dataframe(batch):
+            return batch.to_arrow()
+
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
                 from ray.data._internal.tensor_extensions.arrow import (
@@ -510,6 +538,7 @@ class BlockAccessor:
             else:
                 assert block_type == BlockType.PANDAS
                 return cls.batch_to_pandas_block(batch)
+
         return batch
 
     @classmethod
@@ -541,6 +570,10 @@ class BlockAccessor:
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
+        elif _is_cudf_dataframe(block):
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+            return ArrowBlockAccessor(block.to_arrow())
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
@@ -812,8 +845,8 @@ class BlockColumnAccessor:
             return PandasBlockColumnAccessor(col)
         else:
             raise TypeError(
-                f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
-                f"(got {type(col)})"
+                f"Expected either a pandas.Series or pyarrow.Array "
+                f"(ChunkedArray) (got {type(col)})"
             )
 
 

@@ -181,6 +181,12 @@ class TableBlockAccessor(BlockAccessor):
 
         return default
 
+    def to_cudf(self) -> Any:
+        """Convert this block to a cudf.DataFrame (requires cudf to be installed)."""
+        import cudf
+
+        return cudf.DataFrame.from_arrow(self.to_arrow())
+
     def column_names(self) -> List[str]:
         raise NotImplementedError
 

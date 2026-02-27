@@ -650,7 +650,8 @@ class NativeExpressionEvaluator(_ExprVisitor[Union[BlockColumn, ScalarType]]):
             function_name = expr.fn.__name__
             raise TypeError(
                 f"UDF '{function_name}' returned invalid type {type(result).__name__}. "
-                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, or pyarrow.ChunkedArray)"
+                f"Expected type (pandas.Series, numpy.ndarray, pyarrow.Array, "
+                f"pyarrow.ChunkedArray)"
             )
 
         return result

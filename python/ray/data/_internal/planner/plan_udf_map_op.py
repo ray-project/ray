@@ -60,6 +60,7 @@ from ray.data.block import (
     CallableClass,
     DataBatch,
     UserDefinedFunction,
+    _is_cudf_dataframe,
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
@@ -484,7 +485,7 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
 
 
 def _validate_batch_output(batch: Block) -> None:
-    if not isinstance(
+    allowed = isinstance(
         batch,
         (
             list,
@@ -494,12 +495,14 @@ def _validate_batch_output(batch: Block) -> None:
             pd.core.frame.DataFrame,
             dict,
         ),
-    ):
+    ) or _is_cudf_dataframe(batch)
+    if not allowed:
         raise ValueError(
             "The `fn` you passed to `map_batches` returned a value of type "
             f"{type(batch)}. This isn't allowed -- `map_batches` expects "
             "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
-            "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
+            "`cudf.DataFrame`, `numpy.ndarray`, `list`, or "
+            "`dict[str, numpy.ndarray]`."
         )
 
     if isinstance(batch, list):

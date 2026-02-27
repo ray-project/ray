@@ -295,6 +295,20 @@ steps:
         --python-version 3.10
     depends_on: docgpubuild
 
+  - label: ":database: data: cuDF batch format tests"
+    tags:
+      - data
+      - gpu
+      - cudf
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
+        --build-name docgpubuild-py3.10
+        --only-tags cudf
+        --gpus 1
+        --python-version 3.10
+    depends_on: docgpubuild
+
   - label: ":database: data: integration tests"
     tags:
       - python
