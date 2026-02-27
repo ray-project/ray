@@ -1,0 +1,23 @@
+[package]
+name = "ray-util"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Utility library for Ray (logging, filesystem, process, networking)"
+
+[dependencies]
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+rand = { workspace = true }
+tempfile = { workspace = true }
+clap = { workspace = true }
+nix = { workspace = true }
+libc = { workspace = true }
+parking_lot = { workspace = true }
+lru = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

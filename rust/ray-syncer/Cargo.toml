@@ -1,0 +1,17 @@
+[package]
+name = "ray-syncer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "State synchronization for Ray"
+
+[dependencies]
+ray-proto = { workspace = true }
+ray-common = { workspace = true }
+ray-util = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+thiserror = { workspace = true }

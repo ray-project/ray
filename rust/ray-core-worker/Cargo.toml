@@ -1,0 +1,26 @@
+[package]
+name = "ray-core-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core worker logic for Ray"
+
+[dependencies]
+ray-proto = { workspace = true }
+ray-common = { workspace = true }
+ray-util = { workspace = true }
+ray-rpc = { workspace = true }
+ray-stats = { workspace = true }
+ray-observability = { workspace = true }
+ray-pubsub = { workspace = true }
+ray-object-manager = { workspace = true }
+ray-gcs-rpc-client = { workspace = true }
+ray-raylet-rpc-client = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

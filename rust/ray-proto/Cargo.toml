@@ -1,0 +1,19 @@
+[package]
+name = "ray-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Generated protobuf/gRPC types for Ray"
+
+[dependencies]
+prost = { workspace = true }
+prost-types = { workspace = true }
+tonic = { workspace = true }
+serde = { workspace = true }
+bytes = { workspace = true }
+
+[lib]
+doctest = false
+
+[build-dependencies]
+tonic-build = { workspace = true }

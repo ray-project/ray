@@ -1,0 +1,19 @@
+[package]
+name = "ray-rpc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "gRPC server/client framework for Ray"
+
+[dependencies]
+ray-proto = { workspace = true }
+ray-common = { workspace = true }
+ray-util = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+hyper = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
