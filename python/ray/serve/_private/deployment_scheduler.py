@@ -20,6 +20,7 @@ from ray.serve._private.common import (
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
+    RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
@@ -159,6 +160,9 @@ class ReplicaSchedulingRequest:
     placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None
     max_replicas_per_node: Optional[int] = None
+    # Whether this replica is being scheduled to recover to min_replicas.
+    # Used by the scheduler to prioritize min_replicas recovery over scale-up.
+    is_min_replica_recovery: bool = False
 
     @property
     def required_resources(self) -> Resources:
@@ -712,14 +716,41 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         return deployment_to_replicas_to_stop
 
     def _schedule_with_pack_strategy(self):
-        """Tries to schedule pending replicas using PACK strategy."""
-        # Flatten dict of deployment replicas into all replicas,
-        # then sort by decreasing resource size
-        all_scheduling_requests = sorted(
-            _flatten(self._pending_replicas).values(),
-            key=lambda r: r.required_resources,
-            reverse=True,
-        )
+        """Tries to schedule pending replicas using PACK strategy.
+
+        When RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY is enabled (default),
+        scheduling order is:
+        1. First, schedule min_replica recovery requests (sorted by resource size)
+        2. Then, schedule scale-up requests (sorted by resource size)
+
+        This ensures deployments that have fallen below their min_replicas are
+        prioritized over deployments that want to scale up beyond their minimum.
+        """
+        all_requests = list(_flatten(self._pending_replicas).values())
+
+        if RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY:
+            # Partition requests: min_replica recovery vs scale-up
+            min_replica_requests = []
+            scale_up_requests = []
+            for req in all_requests:
+                if req.is_min_replica_recovery:
+                    min_replica_requests.append(req)
+                else:
+                    scale_up_requests.append(req)
+
+            # Sort each partition by decreasing resource size (larger first)
+            min_replica_requests.sort(key=lambda r: r.required_resources, reverse=True)
+            scale_up_requests.sort(key=lambda r: r.required_resources, reverse=True)
+
+            # Combine: recovery requests first, then scale-up requests
+            all_scheduling_requests = min_replica_requests + scale_up_requests
+        else:
+            # Original behavior: sort all requests by resource size only
+            all_scheduling_requests = sorted(
+                all_requests,
+                key=lambda r: r.required_resources,
+                reverse=True,
+            )
 
         # Fetch node labels for active nodes.
         active_nodes = self._cluster_node_info_cache.get_active_node_ids()
@@ -732,16 +763,43 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             self._pack_schedule_replica(scheduling_request, all_node_labels)
 
     def _schedule_with_spread_strategy(self):
-        """Tries to schedule pending replicas using the SPREAD strategy."""
-        for pending_replicas in self._pending_replicas.values():
-            if not pending_replicas:
-                continue
+        """Tries to schedule pending replicas using the SPREAD strategy.
 
-            for scheduling_request in list(pending_replicas.values()):
-                self._schedule_replica(
-                    scheduling_request=scheduling_request,
-                    default_scheduling_strategy="SPREAD",
-                )
+        When RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY is enabled (default),
+        scheduling order is:
+        1. First, schedule min_replica recovery requests
+        2. Then, schedule scale-up requests
+
+        This ensures deployments that have fallen below their min_replicas are
+        prioritized over deployments that want to scale up beyond their minimum.
+        """
+        if RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY:
+            # Collect all pending requests and partition by priority
+            min_replica_requests = []
+            scale_up_requests = []
+
+            for pending_replicas in self._pending_replicas.values():
+                for scheduling_request in pending_replicas.values():
+                    if scheduling_request.is_min_replica_recovery:
+                        min_replica_requests.append(scheduling_request)
+                    else:
+                        scale_up_requests.append(scheduling_request)
+
+            # Schedule recovery requests first, then scale-up requests
+            all_scheduling_requests = min_replica_requests + scale_up_requests
+        else:
+            # Original behavior: iterate through deployments in dict order
+            all_scheduling_requests = [
+                req
+                for pending_replicas in self._pending_replicas.values()
+                for req in pending_replicas.values()
+            ]
+
+        for scheduling_request in all_scheduling_requests:
+            self._schedule_replica(
+                scheduling_request=scheduling_request,
+                default_scheduling_strategy="SPREAD",
+            )
 
     def _pack_schedule_replica(
         self,

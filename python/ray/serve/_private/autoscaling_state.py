@@ -1291,3 +1291,19 @@ class AutoscalingStateManager:
             return None
         dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
         return dep_state.get_deployment_snapshot() if dep_state else None
+
+    def get_num_replicas_lower_bound(
+        self, deployment_id: DeploymentID
+    ) -> Optional[int]:
+        """Get the lower bound (min_replicas) for a deployment.
+
+        Returns the capacity-adjusted min_replicas for autoscaling deployments.
+        Returns None if the deployment is not registered for autoscaling.
+        """
+        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
+        if not app_state:
+            return None
+        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
+        if not dep_state:
+            return None
+        return dep_state.get_num_replicas_lower_bound()

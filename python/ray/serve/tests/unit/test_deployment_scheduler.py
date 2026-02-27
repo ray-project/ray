@@ -1425,5 +1425,438 @@ class TestPackScheduling:
         )
 
 
+class TestMinReplicasPriorityScheduling:
+    """Tests for RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY feature.
+
+    This feature ensures that when multiple deployments compete for limited
+    resources, replicas recovering to min_replicas are scheduled before
+    replicas scaling up beyond the minimum.
+    """
+
+    @pytest.mark.parametrize("use_pack_strategy", [True, False])
+    def test_recovery_replicas_scheduled_before_scale_up(self, use_pack_strategy):
+        """Test that min_replica recovery requests are prioritized over scale-up.
+
+        Scenario:
+        - Deployment A: needs 1 replica to recover to min_replicas (is_min_replica_recovery=True)
+        - Deployment B: needs 1 replica to scale up beyond min (is_min_replica_recovery=False)
+        - Only 1 resource slot available
+
+        Expected: Deployment A's replica gets scheduled first.
+        """
+        d_id_a = DeploymentID(name="deployment_a")
+        d_id_b = DeploymentID(name="deployment_b")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(node_id, {"CPU": 1})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id_a, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id_b, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id_a, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1})
+        )
+        scheduler.on_deployment_deployed(
+            d_id_b, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduled_replicas = []
+
+        def on_scheduled_a(actor_handle, placement_group=None):
+            scheduled_replicas.append("a")
+
+        def on_scheduled_b(actor_handle, placement_group=None):
+            scheduled_replicas.append("b")
+
+        with mock.patch(
+            "ray.serve._private.deployment_scheduler.RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+            use_pack_strategy,
+        ):
+            scheduler.schedule(
+                upscales={
+                    d_id_a: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id="r_a", deployment_id=d_id_a),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 1},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_a,
+                            is_min_replica_recovery=True,
+                        )
+                    ],
+                    d_id_b: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id="r_b", deployment_id=d_id_b),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 1},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_b,
+                            is_min_replica_recovery=False,
+                        )
+                    ],
+                },
+                downscales={},
+            )
+
+        # Only deployment A's replica should be scheduled (it has priority)
+        assert scheduled_replicas == ["a"]
+
+    def test_recovery_replicas_sorted_by_resource_size_pack_strategy(self):
+        """Test that among recovery replicas, larger resource requests are scheduled first.
+
+        This test is specific to PACK strategy which sorts by resource size.
+
+        Scenario:
+        - Deployment A: recovery replica needing 2 CPU
+        - Deployment B: recovery replica needing 1 CPU
+        - Node with 3 CPU available
+
+        Expected: Both scheduled, but A (larger) scheduled first.
+        """
+        d_id_a = DeploymentID(name="deployment_a")
+        d_id_b = DeploymentID(name="deployment_b")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(node_id, {"CPU": 3})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id_a, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id_b, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id_a, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 2})
+        )
+        scheduler.on_deployment_deployed(
+            d_id_b, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduled_order = []
+
+        def on_scheduled_a(actor_handle, placement_group=None):
+            scheduled_order.append("a")
+
+        def on_scheduled_b(actor_handle, placement_group=None):
+            scheduled_order.append("b")
+
+        # Force PACK strategy to verify resource-size ordering within priority group
+        with mock.patch(
+            "ray.serve._private.deployment_scheduler.RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+            True,
+        ):
+            scheduler.schedule(
+                upscales={
+                    # Intentionally put B first to verify sorting overrides dict order
+                    d_id_b: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id="r_b", deployment_id=d_id_b),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 1},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_b,
+                            is_min_replica_recovery=True,
+                        )
+                    ],
+                    d_id_a: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id="r_a", deployment_id=d_id_a),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 2},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_a,
+                            is_min_replica_recovery=True,
+                        )
+                    ],
+                },
+                downscales={},
+            )
+
+        # A (larger resources) should be scheduled first, then B
+        assert scheduled_order == ["a", "b"]
+
+    @pytest.mark.parametrize("use_pack_strategy", [True, False])
+    def test_mixed_recovery_and_scale_up_with_limited_resources(self, use_pack_strategy):
+        """Test realistic scenario with multiple deployments and limited resources.
+
+        Scenario:
+        - Deployment A: 2 recovery replicas (1 CPU each)
+        - Deployment B: 1 recovery replica (1 CPU)
+        - Deployment C: 2 scale-up replicas (1 CPU each)
+        - Only 3 CPU slots available
+
+        Expected: All 3 recovery replicas scheduled, 0 scale-up replicas.
+        """
+        d_id_a = DeploymentID(name="deployment_a")
+        d_id_b = DeploymentID(name="deployment_b")
+        d_id_c = DeploymentID(name="deployment_c")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(node_id, {"CPU": 3})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        for d_id in [d_id_a, d_id_b, d_id_c]:
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1})
+            )
+
+        scheduled = {"recovery": 0, "scale_up": 0}
+
+        def on_scheduled_recovery(actor_handle, placement_group=None):
+            scheduled["recovery"] += 1
+
+        def on_scheduled_scale_up(actor_handle, placement_group=None):
+            scheduled["scale_up"] += 1
+
+        with mock.patch(
+            "ray.serve._private.deployment_scheduler.RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+            use_pack_strategy,
+        ):
+            scheduler.schedule(
+                upscales={
+                    d_id_a: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(
+                                unique_id=f"r_a_{i}", deployment_id=d_id_a
+                            ),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 1},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_recovery,
+                            is_min_replica_recovery=True,
+                        )
+                        for i in range(2)
+                    ],
+                    d_id_b: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id="r_b", deployment_id=d_id_b),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 1},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_recovery,
+                            is_min_replica_recovery=True,
+                        )
+                    ],
+                    d_id_c: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(
+                                unique_id=f"r_c_{i}", deployment_id=d_id_c
+                            ),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 1},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_scale_up,
+                            is_min_replica_recovery=False,
+                        )
+                        for i in range(2)
+                    ],
+                },
+                downscales={},
+            )
+
+        # All 3 recovery replicas should be scheduled, no scale-up replicas
+        assert scheduled["recovery"] == 3
+        assert scheduled["scale_up"] == 0
+
+    @pytest.mark.parametrize("use_pack_strategy", [True, False])
+    def test_feature_flag_disabled(self, use_pack_strategy):
+        """Test that when feature flag is disabled, original behavior is preserved.
+
+        When RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY=0, scheduling should
+        not prioritize recovery status. With PACK strategy, larger resources
+        are scheduled first regardless of recovery status.
+        """
+        d_id_a = DeploymentID(name="deployment_a")
+        d_id_b = DeploymentID(name="deployment_b")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        # 2 CPU available - only one replica can be scheduled
+        cluster_node_info_cache.add_node(node_id, {"CPU": 2})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id_a, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id_b, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id_a, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1})
+        )
+        scheduler.on_deployment_deployed(
+            d_id_b, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 2})
+        )
+
+        scheduled_order = []
+
+        def on_scheduled_a(actor_handle, placement_group=None):
+            scheduled_order.append("a")
+
+        def on_scheduled_b(actor_handle, placement_group=None):
+            scheduled_order.append("b")
+
+        # Disable the priority feature flag
+        with mock.patch(
+            "ray.serve._private.deployment_scheduler.RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY",
+            False,
+        ), mock.patch(
+            "ray.serve._private.deployment_scheduler.RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+            use_pack_strategy,
+        ):
+            scheduler.schedule(
+                upscales={
+                    d_id_a: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id="r_a", deployment_id=d_id_a),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 1},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_a,
+                            is_min_replica_recovery=True,
+                        )
+                    ],
+                    d_id_b: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id="r_b", deployment_id=d_id_b),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 2},
+                            actor_options={},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled_b,
+                            is_min_replica_recovery=False,
+                        )
+                    ],
+                },
+                downscales={},
+            )
+
+        if use_pack_strategy:
+            # With PACK + feature disabled, B (larger resources) is tried first
+            # and consumes all 2 CPU, so only B is scheduled
+            assert scheduled_order == ["b"]
+        else:
+            # With SPREAD + feature disabled, order depends on dict iteration
+            # Both could potentially be scheduled, but B takes 2 CPU leaving 0
+            # So whichever is processed first wins. We just verify no priority.
+            assert len(scheduled_order) == 1  # Only one can fit
+
+    def test_same_deployment_mixed_recovery_and_scale_up(self):
+        """Test when a single deployment has both recovery and scale-up replicas.
+
+        Scenario:
+        - Deployment A: 1 recovery replica + 1 scale-up replica (1 CPU each)
+        - Deployment B: 1 scale-up replica (1 CPU)
+        - Only 2 CPU slots available
+
+        Expected: A's recovery replica and one other (A's scale-up or B's) scheduled.
+        The recovery replica must be scheduled.
+        """
+        d_id_a = DeploymentID(name="deployment_a")
+        d_id_b = DeploymentID(name="deployment_b")
+        node_id = NodeID.from_random().hex()
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(node_id, {"CPU": 2})
+
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+
+        scheduler.on_deployment_created(d_id_a, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id_b, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id_a, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1})
+        )
+        scheduler.on_deployment_deployed(
+            d_id_b, ReplicaConfig.create(dummy, ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduled = {"a_recovery": False, "a_scale_up": False, "b_scale_up": False}
+
+        def on_scheduled_a_recovery(actor_handle, placement_group=None):
+            scheduled["a_recovery"] = True
+
+        def on_scheduled_a_scale_up(actor_handle, placement_group=None):
+            scheduled["a_scale_up"] = True
+
+        def on_scheduled_b_scale_up(actor_handle, placement_group=None):
+            scheduled["b_scale_up"] = True
+
+        scheduler.schedule(
+            upscales={
+                d_id_a: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(
+                            unique_id="r_a_recovery", deployment_id=d_id_a
+                        ),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_a_recovery,
+                        is_min_replica_recovery=True,
+                    ),
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(
+                            unique_id="r_a_scale_up", deployment_id=d_id_a
+                        ),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_a_scale_up,
+                        is_min_replica_recovery=False,
+                    ),
+                ],
+                d_id_b: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="r_b", deployment_id=d_id_b),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_b_scale_up,
+                        is_min_replica_recovery=False,
+                    )
+                ],
+            },
+            downscales={},
+        )
+
+        # Recovery replica must be scheduled
+        assert scheduled["a_recovery"] is True
+        # Exactly 2 replicas scheduled total (2 CPU available)
+        total_scheduled = sum(1 for v in scheduled.values() if v)
+        assert total_scheduled == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
