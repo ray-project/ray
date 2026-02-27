@@ -23,6 +23,8 @@ from ray.data.datasource.path_util import (
         ("foo.parquet.crc", ["crc"], True),
         ("s3://bucket/foo.parquet?versionId=abc123", ["parquet"], True),
         ("s3://bucket/foo.parquet?versionId=abc123", ["csv"], False),
+        ("C:\\data\\test.parquet", ["parquet"], True),
+        ("C:\\data\\parquet", ["parquet"], False),
         ("foo.csv", None, True),
     ],
 )
