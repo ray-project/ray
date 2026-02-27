@@ -416,7 +416,7 @@ def test_full_dataset_executed_for_non_write(
         ),
     ],
 )
-def test_recovery_skips_checkpointed_rows(
+def test_recovery_no_missing_rows(
     ray_start_10_cpus_shared,
     ds_factory,
     backend,
@@ -424,8 +424,7 @@ def test_recovery_skips_checkpointed_rows(
     data_path,
     data_output_path,
 ):
-    """Tests that for a Dataset which fails partway and is recovered,
-    it skips rows which have already been checkpointed."""
+    """Tests that recovery is at_least_once: no missing rows after retry."""
 
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.preserve_order = True
