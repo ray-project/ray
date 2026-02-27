@@ -360,9 +360,13 @@ class RefBundle:
             (
                 *self.blocks,
                 *self.slices,
-                # NOTE: Pyarrow < 23 schemas metadata contains dicts and therefore
-                #       isn't hashable
-                (tuple(self.schema.names), tuple(self.schema.types)) if self.schema is not None else None,
+                (
+                    # NOTE: Pyarrow < 23 schemas metadata contains dicts and therefore
+                    #       isn't hashable
+                    (tuple(self.schema.names), tuple(self.schema.types))
+                    if self.schema is not None
+                    else None
+                ),
                 self.owns_blocks,
                 self.output_split_idx,
             )
