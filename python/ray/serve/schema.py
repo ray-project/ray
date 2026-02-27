@@ -6,7 +6,6 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
-from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
 from ray._common.pydantic_compat import (
     BaseModel,
     Extra,
@@ -17,7 +16,8 @@ from ray._common.pydantic_compat import (
     root_validator,
     validator,
 )
-from ray._common.runtime_env_uri import parse_uri
+from ray._private.ray_logging.constants import LOGRECORD_STANDARD_ATTRS
+from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -162,7 +162,8 @@ class LoggingConfig(BaseModel):
     def valid_encoding_format(cls, v):
         if v not in list(EncodingType):
             raise ValueError(
-                f"Got '{v}' for encoding. Encoding must be one of {set(EncodingType)}."
+                f"Got '{v}' for encoding. Encoding must be one "
+                f"of {set(EncodingType)}."
             )
 
         return v
@@ -190,7 +191,7 @@ class LoggingConfig(BaseModel):
             if attr not in LOGRECORD_STANDARD_ATTRS:
                 raise ValueError(
                     f"Unknown attribute '{attr}'. "
-                    f"Additional log standard attributes must be one of {set(LOGRECORD_STANDARD_ATTRS)}."
+                    f"Additional log standard attributes must be one of {LOGRECORD_STANDARD_ATTRS}."
                 )
         return list(set(v))
 

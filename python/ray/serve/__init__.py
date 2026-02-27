@@ -1,4 +1,4 @@
-from ray._common.worker_compat import set_blocking_get_inside_async_warned
+import ray._private.worker
 
 try:
     from ray.serve._private.logging_utils import configure_default_serve_logger
@@ -39,7 +39,7 @@ configure_default_serve_logger()
 
 # Mute the warning because Serve sometimes intentionally calls
 # ray.get inside async actors.
-set_blocking_get_inside_async_warned(True)
+ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
     "_run",

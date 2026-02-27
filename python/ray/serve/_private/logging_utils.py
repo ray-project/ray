@@ -9,11 +9,6 @@ import ray
 from ray._common.filters import CoreContextFilter
 from ray._common.formatters import JSONFormatter, TextFormatter
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
-from ray._common.worker_compat import (
-    get_global_node_log_rotation_config,
-    get_global_node_logs_dir_path,
-    has_global_node,
-)
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
@@ -216,8 +211,8 @@ def get_component_logger_file_path() -> Optional[str]:
     for handler in logger.handlers:
         if isinstance(handler, logging.handlers.MemoryHandler):
             absolute_path = handler.target.baseFilename
-            ray_logs_dir = get_global_node_logs_dir_path()
-            if ray_logs_dir and absolute_path.startswith(ray_logs_dir):
+            ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+            if absolute_path.startswith(ray_logs_dir):
                 return absolute_path[len(ray_logs_dir) :]
 
 
@@ -359,12 +354,10 @@ def configure_component_logger(
         logs_dir = get_serve_logs_dir()
     os.makedirs(logs_dir, exist_ok=True)
 
-    if max_bytes is None or backup_count is None:
-        default_max_bytes, default_backup_count = get_global_node_log_rotation_config()
-        if max_bytes is None:
-            max_bytes = default_max_bytes
-        if backup_count is None:
-            backup_count = default_backup_count
+    if max_bytes is None:
+        max_bytes = ray._private.worker._global_node.max_bytes
+    if backup_count is None:
+        backup_count = ray._private.worker._global_node.backup_count
 
     log_file_name = get_component_file_name(
         component_name=component_name,
@@ -431,7 +424,8 @@ def configure_autoscaling_snapshot_logger(
     logs_dir = logging_config.logs_dir or get_serve_logs_dir()
     os.makedirs(logs_dir, exist_ok=True)
 
-    max_bytes, backup_count = get_global_node_log_rotation_config()
+    max_bytes = ray._private.worker._global_node.max_bytes
+    backup_count = ray._private.worker._global_node.backup_count
 
     file_name = get_component_file_name(
         component_name="autoscaling_snapshot",
@@ -524,17 +518,15 @@ def configure_component_memory_profiler(
 def get_serve_logs_dir() -> str:
     """Get the directory that stores Serve log files.
 
-    If the global node is unavailable (running outside the context of Ray),
+    If `ray._private.worker._global_node` is None (running outside the context of Ray),
     then the current working directory with subdirectory of serve is used as the logs
     directory. Otherwise, the logs directory is determined by the global node's logs
     directory path.
     """
-    if not has_global_node():
+    if ray._private.worker._global_node is None:
         return os.path.join(os.getcwd(), "serve")
 
-    logs_dir = get_global_node_logs_dir_path()
-    assert logs_dir is not None
-    return os.path.join(logs_dir, "serve")
+    return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
 
 
 class LoggingContext:

@@ -20,7 +20,6 @@ import ray
 import ray.util.serialization_addons
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._common.worker_compat import get_serialization_context
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
@@ -230,7 +229,7 @@ def ensure_serialization_context():
 
 
 def msgpack_serialize(obj):
-    ctx = get_serialization_context()
+    ctx = ray._private.worker.global_worker.get_serialization_context()
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized
@@ -658,7 +657,8 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
 
     if route_prefix != "/" and route_prefix.endswith("/"):
         raise ValueError(
-            f"Invalid route_prefix '{route_prefix}', may not end with a trailing '/'."
+            f"Invalid route_prefix '{route_prefix}', "
+            "may not end with a trailing '/'."
         )
 
     if "{" in route_prefix or "}" in route_prefix:

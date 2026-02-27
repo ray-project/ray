@@ -15,7 +15,6 @@ from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
-from ray._common.worker_compat import get_current_session_name
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 from ray.serve._private.test_utils import (
     get_application_url,
@@ -757,7 +756,9 @@ class TestHandleMetrics:
             expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
-            expected_tags={"SessionName": get_current_session_name()},
+            expected_tags={
+                "SessionName": ray._private.worker.global_worker.node.session_name
+            },
             timeseries=timeseries,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
@@ -770,7 +771,9 @@ class TestHandleMetrics:
             expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
-            expected_tags={"SessionName": get_current_session_name()},
+            expected_tags={
+                "SessionName": ray._private.worker.global_worker.node.session_name
+            },
             timeseries=timeseries,
         )
         print("serve_num_scheduling_tasks_in_backoff updated successfully.")

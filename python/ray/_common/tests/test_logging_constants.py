@@ -1,5 +1,3 @@
-"""Tests for ray._common.logging_constants."""
-
 import sys
 
 import pytest

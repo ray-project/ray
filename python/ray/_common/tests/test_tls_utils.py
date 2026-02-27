@@ -1,5 +1,3 @@
-"""Tests for ray._common.tls_utils."""
-
 import sys
 
 import pytest
