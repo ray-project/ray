@@ -1,8 +1,6 @@
-import functools
 import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
-from ray import ObjectRef
 from ray.data._internal.execution.execution_callback import add_execution_callback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -185,13 +183,10 @@ class Planner:
 
             checkpoint_callback = self._create_checkpoint_callback(checkpoint_config)
             add_execution_callback(checkpoint_callback, logical_plan.context)
-            load_checkpoint = checkpoint_callback.load_checkpoint
 
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
-            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                load_checkpoint
-            )
+            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing()
 
         elif checkpoint_config is not None:
             assert not self._check_supports_checkpointing(logical_plan)
@@ -275,13 +270,9 @@ class Planner:
 
     def _get_plan_fns_for_checkpointing(
         self,
-        load_checkpoint: Callable[[], ObjectRef],
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
         plan_fns = {
-            Read: functools.partial(
-                plan_read_op_with_checkpoint_filter,
-                load_checkpoint=load_checkpoint,
-            ),
+            Read: plan_read_op_with_checkpoint_filter,
             Write: plan_write_op_with_checkpoint_writer,
         }
         return plan_fns

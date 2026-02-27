@@ -3,6 +3,7 @@ import os
 import random
 from typing import List, Union
 
+import numpy as np
 import pandas as pd
 import pyarrow
 import pyarrow as pa
@@ -14,9 +15,15 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators import Read, Write
 from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.planner.checkpoint.plan_read_op import (
+    _get_checkpoint_map_transformer,
+    plan_read_op_with_checkpoint_filter,
+)
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import (
@@ -274,7 +281,7 @@ class TestCheckpointConfig:
         ),
     ],
 )
-def test_checkpoint(
+def test_checkpoint_end_to_end(
     ray_start_10_cpus_shared,
     generate_sample_data_csv,
     backend,
@@ -282,6 +289,8 @@ def test_checkpoint(
     data_path,
     data_output_path,
 ):
+    """The end-to-end test for checkpoint."""
+
     class TestActor:
         def __init__(self):
             pass
@@ -301,17 +310,31 @@ def test_checkpoint(
 
     csv_file = generate_sample_data_csv()
 
+    # Generate checkpoint file
+    checkpointed_ids = list(range(SAMPLE_DATA_NUM_ROWS // 2))
+    expected_remaining_ids = sorted(
+        set(range(SAMPLE_DATA_NUM_ROWS)) - set(checkpointed_ids)
+    )
+
+    ckpt_unwrapped = _unwrap_protocol(ckpt_path)
+    if fs is None:
+        os.makedirs(ckpt_unwrapped, exist_ok=True)
+        ckpt_table = pa.table({ID_COL: checkpointed_ids})
+        pq.write_table(
+            ckpt_table, os.path.join(ckpt_unwrapped, "pre_checkpoint.parquet")
+        )
+    else:
+        fs.create_dir(ckpt_unwrapped)
+        ckpt_table = pa.table({ID_COL: checkpointed_ids})
+        ckpt_file_path = os.path.join(ckpt_unwrapped, "pre_checkpoint.parquet")
+        with fs.open_output_stream(ckpt_file_path) as f:
+            pq.write_table(ckpt_table, f)
+
     ds = ray.data.read_csv(csv_file)
 
     # Execute the dataset with checkpointing enabled.
     ds = ds.map_batches(TestActor, concurrency=1)
     ds.write_parquet(data_output_path, filesystem=fs)
-
-    # Ensure that the written data is correct.
-    ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)
-    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
-    expected_output = sorted([row[ID_COL] for row in ds.iter_rows()])
-    assert actual_output == expected_output
 
     # When execution succeeds, checkpoint data should be automatically deleted.
     # Check that the checkpoint directory is empty or doesn't exist
@@ -329,6 +352,16 @@ def test_checkpoint(
         except (FileNotFoundError, OSError):
             # If directory doesn't exist, that's also fine (cleanup worked)
             pass
+
+    # Ensure that the written data only contains the non-checkpointed rows.
+    # Disable checkpointing before reading back to avoid filtering.
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    assert actual_output == expected_remaining_ids, (
+        f"Expected only non-checkpointed IDs {expected_remaining_ids}, "
+        f"but got {actual_output}"
+    )
 
 
 @pytest.mark.parametrize(
@@ -684,6 +717,9 @@ def test_filter_rows_for_block():
     checkpointed_ids = pyarrow.concat_tables([chunk1, chunk2, chunk3])
     assert len(checkpointed_ids[ID_COL].chunks) == 3
 
+    checkpointed_ids_ndarray = checkpointed_ids[ID_COL].to_numpy(zero_copy_only=False)
+    checkpointed_ids_ref = ray.put(checkpointed_ids_ndarray)
+
     expected_block = pyarrow.table(
         {
             ID_COL: [0, 3, 5, 7],
@@ -691,10 +727,9 @@ def test_filter_rows_for_block():
         }
     )
 
-    filter_instance = BatchBasedCheckpointFilter(config)
+    filter_instance = BatchBasedCheckpointFilter(config, checkpointed_ids_ref)
     filtered_block = filter_instance.filter_rows_for_block(
         block=block,
-        checkpointed_ids=checkpointed_ids,
     )
 
     assert filtered_block.equals(expected_block)
@@ -766,6 +801,167 @@ def test_checkpoint_restore_after_full_execution(
     assert (
         num_rows_second == 0  # No rows should be written
     ), f"Expected 0 rows, got {num_rows_second}"
+
+
+@pytest.mark.parametrize(
+    "data_path",
+    [
+        (lazy_fixture("local_path")),
+    ],
+)
+def test_checkpoint_map_transformer(
+    ray_start_10_cpus_shared,
+    data_path,
+):
+    """Test checkpoint map transformer."""
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL, checkpoint_path=ckpt_path
+    )
+
+    checkpointed_ids_ndarray = np.array([1, 3, 5, 7, 9], dtype=np.int64)
+    checkpointed_ids_ref = ray.put(checkpointed_ids_ndarray)
+
+    map_transformer = _get_checkpoint_map_transformer(ctx, checkpointed_ids_ref)
+    map_transformer.init()
+
+    block = pyarrow.table(
+        {
+            ID_COL: list(range(10)),
+            "data": [str(i) for i in range(10)],
+        }
+    )
+    filtered_blocks = map_transformer.apply_transform(
+        input_blocks=[block],
+        ctx=TaskContext(task_idx=0, op_name="test_checkpoint"),
+    )
+
+    filtered_block = next(iter(filtered_blocks))
+    expected_block = pyarrow.table(
+        {
+            ID_COL: [0, 2, 4, 6, 8],
+            "data": ["0", "2", "4", "6", "8"],
+        }
+    )
+    assert filtered_block.equals(expected_block)
+
+
+@pytest.mark.parametrize(
+    "data_path",
+    [
+        (lazy_fixture("local_path")),
+    ],
+)
+def test_plan_read_op_with_checkpoint_filter_no_checkpoint_dir(
+    ray_start_10_cpus_shared, generate_sample_data_csv, data_path
+):
+    """Test that when checkpoint directory does not exist,
+    plan_read_op_with_checkpoint_filter returns the original read physical operator."""
+    ctx = ray.data.DataContext.get_current()
+
+    csv_file = generate_sample_data_csv()
+    datasource = CSVDatasource(csv_file)
+
+    # checkpoint_path points to a non-existent directory
+    ckpt_path = os.path.join(str(data_path), "non_existent_ckpt_dir")
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    read_op = Read(datasource, datasource, -1, None)
+    physical_op = plan_read_op_with_checkpoint_filter(
+        op=read_op,
+        physical_children=[],
+        data_context=ctx,
+    )
+
+    # Should return the original ReadCSV op
+    assert physical_op.name == "ReadCSV"
+
+
+@pytest.mark.parametrize(
+    "data_path",
+    [
+        (lazy_fixture("local_path")),
+    ],
+)
+def test_plan_read_op_with_checkpoint_filter_empty_checkpoint_dir(
+    ray_start_10_cpus_shared, generate_sample_data_csv, data_path
+):
+    """Test that when checkpoint directory exists but is empty,
+    plan_read_op_with_checkpoint_filter returns the original read physical operator."""
+    ctx = ray.data.DataContext.get_current()
+
+    csv_file = generate_sample_data_csv()
+    datasource = CSVDatasource(csv_file)
+
+    # Create an empty checkpoint directory
+    ckpt_path = os.path.join(str(data_path), "empty_ckpt_dir")
+    os.makedirs(ckpt_path, exist_ok=True)
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    read_op = Read(datasource, datasource, -1, None)
+    physical_op = plan_read_op_with_checkpoint_filter(
+        op=read_op,
+        physical_children=[],
+        data_context=ctx,
+    )
+
+    # Should return the original ReadCSV op
+    assert physical_op.name == "ReadCSV"
+
+
+@pytest.mark.parametrize(
+    "data_path",
+    [
+        (lazy_fixture("local_path")),
+    ],
+)
+def test_plan_read_op_with_checkpoint_filter_with_valid_checkpoint(
+    ray_start_10_cpus_shared,
+    generate_sample_data_csv,
+    data_path,
+):
+    """Test that when a valid checkpoint exists,
+    plan_read_op_with_checkpoint_filter returns a CheckpointFilter MapOperator."""
+    ctx = ray.data.DataContext.get_current()
+
+    csv_file = generate_sample_data_csv()
+    datasource = CSVDatasource(csv_file)
+
+    # Create a checkpoint directory with valid checkpoint data
+    ckpt_path = os.path.join(str(data_path), "valid_ckpt_dir")
+    os.makedirs(ckpt_path, exist_ok=True)
+
+    # Write some checkpoint IDs (e.g., IDs 0-4 are already processed)
+    checkpointed_ids = pa.table({ID_COL: list(range(5))})
+    pq.write_table(checkpointed_ids, os.path.join(ckpt_path, "ckpt_0.parquet"))
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        delete_checkpoint_on_success=False,
+    )
+
+    read_op = Read(datasource, datasource, -1, None)
+    physical_op = plan_read_op_with_checkpoint_filter(
+        op=read_op,
+        physical_children=[],
+        data_context=ctx,
+    )
+
+    # Should return a CheckpointFilter MapOperator
+    assert isinstance(physical_op, MapOperator)
+    assert physical_op.name == "CheckpointFilter"
 
 
 if __name__ == "__main__":

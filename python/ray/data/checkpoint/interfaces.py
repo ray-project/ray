@@ -62,7 +62,15 @@ class CheckpointConfig:
             read/write checkpoint data. Use this when you want to use custom credentials.
         override_backend: Override the :class:`CheckpointBackend` object used to
             access the checkpoint backend storage.
-        filter_num_threads: Number of threads used to filter checkpointed rows.
+        checkpoint_actor_pool_min_size: The minimum number of checkpoint-actor used to
+            filter the input.
+        checkpoint_actor_pool_max_size: The maximum number of checkpoint-actor used to
+            filter the input.
+        checkpoint_actor_memory_bytes: The amount of memory (in bytes) for each
+            checkpoint-actor. This value is used by ray_remote_args when creating the actor.
+        checkpoint_actor_max_tasks_in_flight_per_actor: The length of the task queue for
+            each checkpoint actor. When the task queues of every actor are full, the actor
+            pool will scale up.
         write_num_threads: Number of threads used to write checkpoint files for
             completed rows.
         checkpoint_path_partition_filter: Filter for checkpoint files to load during
@@ -80,7 +88,10 @@ class CheckpointConfig:
         delete_checkpoint_on_success: bool = True,
         override_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         override_backend: Optional[CheckpointBackend] = None,
-        filter_num_threads: int = 3,
+        checkpoint_actor_pool_min_size: int = 1,
+        checkpoint_actor_pool_max_size: int = 10,
+        checkpoint_actor_memory_bytes: int = 1 * 1024**3,
+        checkpoint_actor_max_tasks_in_flight_per_actor: int = 10,
         write_num_threads: int = 3,
         checkpoint_path_partition_filter: Optional["PathPartitionFilter"] = None,
     ):
@@ -110,7 +121,12 @@ class CheckpointConfig:
         self.filesystem: "pyarrow.fs.FileSystem" = inferred_fs
         self.backend: CheckpointBackend = inferred_backend
         self.delete_checkpoint_on_success: bool = delete_checkpoint_on_success
-        self.filter_num_threads: int = filter_num_threads
+        self.checkpoint_actor_pool_min_size = checkpoint_actor_pool_min_size
+        self.checkpoint_actor_pool_max_size = checkpoint_actor_pool_max_size
+        self.checkpoint_actor_memory_bytes = checkpoint_actor_memory_bytes
+        self.checkpoint_actor_max_tasks_in_flight_per_actor = (
+            checkpoint_actor_max_tasks_in_flight_per_actor
+        )
         self.write_num_threads: int = write_num_threads
         self.checkpoint_path_partition_filter = checkpoint_path_partition_filter
 
