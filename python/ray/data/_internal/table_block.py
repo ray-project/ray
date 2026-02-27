@@ -493,7 +493,9 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def _find_partitions_sorted(
         self,
