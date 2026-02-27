@@ -1,5 +1,9 @@
 import os
 
+from ray._common.tls_utils import (
+    generate_self_signed_tls_certs,  # noqa: F401 (backward-compatible re-export)
+)
+
 
 def add_port_to_grpc_server(server, address):
     import grpc
