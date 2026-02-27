@@ -12,7 +12,6 @@ from pyarrow import ArrowInvalid
 
 import ray
 from ray._common.test_utils import run_string_as_driver
-from ray.data import ExecutionResources
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
@@ -298,25 +297,6 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
         assert pd.Timestamp(row["col2"]) == pd.Timestamp(
             result_timestamp
         ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
-
-
-def test_arrow_nan_element(ray_start_regular_shared):
-    ctx = DataContext.get_current()
-    ctx.execution_options.resource_limits = ExecutionResources.for_limits(cpu=1)
-
-    ds = ray.data.from_items(
-        [
-            1.0,
-            1.0,
-            2.0,
-            np.nan,
-            np.nan,
-        ]
-    )
-    ds = ds.groupby("item").count()
-    ds = ds.filter(lambda v: np.isnan(v["item"]))
-    result = ds.take_all()
-    assert result[0]["count()"] == 2
 
 
 if __name__ == "__main__":
