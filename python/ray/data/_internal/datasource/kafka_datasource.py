@@ -82,53 +82,61 @@ KAFKA_MSG_SCHEMA = pa.schema(
 class KafkaAuthConfig:
     """Authentication configuration for Kafka connections.
 
-    Uses parameter names compatible with kafka-python for backward compatibility.
-    These are mapped to Confluent/librdkafka config when connecting.
+    Uses standard kafka-python parameter names. See kafka-python documentation
+    for full details: https://kafka-python.readthedocs.io/
 
-    Deprecated: Prefer passing Confluent/librdkafka options via ``consumer_config``.
-    This class remains for backward compatibility and is mapped to Confluent
-    configuration keys internally.
+    Note: Ray Data maps these options to Confluent/librdkafka config under the hood.
+    Some options have different semantics or are unsupported by the Confluent client;
+    see notes below for those fields. Prefer passing Confluent options directly via
+    ``consumer_config`` where possible.
 
     security_protocol: Protocol used to communicate with brokers.
         Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
         Default: PLAINTEXT.
-    sasl_mechanism: Authentication mechanism when ``security_protocol``
+    sasl_mechanism: Authentication mechanism when security_protocol
         is configured for SASL_PLAINTEXT or SASL_SSL. Valid values are:
         PLAIN, GSSAPI, OAUTHBEARER, SCRAM-SHA-256, SCRAM-SHA-512.
-    sasl_plain_username: Username for SASL PLAIN and SCRAM authentication.
-        Required if ``sasl_mechanism`` is PLAIN or one of the SCRAM mechanisms.
-    sasl_plain_password: Password for SASL PLAIN and SCRAM authentication.
-        Required if ``sasl_mechanism`` is PLAIN or one of the SCRAM mechanisms.
-    sasl_kerberos_name: Constructed ``gssapi.Name`` for use with
-        SASL mechanism handshake. If provided, ``sasl_kerberos_service_name`` and
-        ``sasl_kerberos_domain_name`` are ignored.
+    sasl_plain_username: username for sasl PLAIN and SCRAM authentication.
+        Required if sasl_mechanism is PLAIN or one of the SCRAM mechanisms.
+    sasl_plain_password: password for sasl PLAIN and SCRAM authentication.
+        Required if sasl_mechanism is PLAIN or one of the SCRAM mechanisms.
+    sasl_kerberos_name: Constructed gssapi.Name for use with
+        sasl mechanism handshake. If provided, sasl_kerberos_service_name and
+        sasl_kerberos_domain name are ignored. Default: None.
     sasl_kerberos_service_name: Service name to include in GSSAPI
-        SASL mechanism handshake. Default: 'kafka'.
-    sasl_kerberos_domain_name: Kerberos domain name to use in GSSAPI
-        SASL mechanism handshake. Note: This option is not supported by
-        Confluent/librdkafka and will be ignored when building the client
-        configuration. Prefer specifying an explicit principal via
-        ``sasl_kerberos_name`` or rely on broker defaults.
-    sasl_oauth_token_provider: OAuthBearer token provider instance.
-        Default: None. Confluent uses ``sasl.oauthbearer.*`` config instead.
-    ssl_context: Pre-configured ``SSLContext``. Not supported by Confluent;
-        use ``ssl_*`` file paths instead.
-    ssl_check_hostname: Whether to verify that the certificate's hostname
-        matches the broker's hostname. Note: kafka-python supports disabling
-        only hostname verification while still verifying the certificate chain.
-        Confluent/librdkafka does not expose an equivalent flag via
-        ``enable.ssl.certificate.verification`` (setting that to False disables
-        all certificate verification, not just hostname checks). To avoid
-        weakening security, Ray ignores this flag for Confluent-based reads.
-        If you need to disable only hostname verification, configure the client
-        directly (e.g., ``ssl.endpoint.identification.algorithm=none``) where
-        supported by your librdkafka version.
-    ssl_cafile: Optional filename of CA file to use in certificate verification.
-    ssl_certfile: Optional PEM file containing the client certificate.
-    ssl_keyfile: Optional filename containing the client private key.
-    ssl_password: Optional password to be used when loading the certificate chain.
-    ssl_crlfile: Optional filename containing the CRL to check for certificate expiration.
-    ssl_ciphers: Optionally set the available ciphers for SSL connections.
+        sasl mechanism handshake. Default: 'kafka'
+    sasl_kerberos_domain_name: kerberos domain name to use in GSSAPI
+        sasl mechanism handshake. Default: one of bootstrap servers.
+        Note (Confluent): This option is not supported by Confluent/librdkafka
+        and will be ignored when building the client configuration. Prefer specifying
+        an explicit principal via ``sasl_kerberos_name`` or rely on defaults.
+    sasl_oauth_token_provider: OAuthBearer token provider instance. Default: None.
+        Note (Confluent): Not supported directly; use ``consumer_config`` with
+        ``sasl.oauthbearer.*`` options instead.
+    ssl_context: Pre-configured SSLContext for wrapping socket connections. If provided,
+        all other ssl_* configurations will be ignored. Default: None.
+        Note (Confluent): Passing an SSLContext object is not supported and will be
+        ignored. Use ``ssl_cafile``, ``ssl_certfile``, and ``ssl_keyfile`` instead.
+    ssl_check_hostname: Flag to configure whether ssl handshake should verify that the
+        certificate matches the broker's hostname. Default: True.
+        Note (Confluent): There is no 1:1 equivalent; disabling hostname verification
+        via ``enable.ssl.certificate.verification=False`` would also disable the entire
+        certificate chain verification. To avoid weakening security, this flag is not
+        mapped when False. If you need to disable only hostname verification, set
+        ``ssl.endpoint.identification.algorithm=none`` via ``consumer_config`` (if supported
+        by your librdkafka version).
+    ssl_cafile: Optional filename of ca file to use in certificate verification. Default: None.
+    ssl_certfile: Optional filename of file in pem format containing the client certificate,
+        as well as any ca certificates needed to establish the certificate's authenticity. Default: None.
+    ssl_keyfile: Optional filename containing the client private key. Default: None.
+    ssl_password: Optional password to be used when loading the certificate chain. Default: None.
+    ssl_crlfile: Optional filename containing the CRL to check for certificate expiration. By default,
+        no CRL check is done. When providing a file, only the leaf certificate will be checked against
+        this CRL. The CRL can only be checked with Python 3.4+ or 2.7.9+. Default: None.
+    ssl_ciphers: optionally set the available ciphers for ssl connections. It should be a string in the
+        OpenSSL cipher list format. If no cipher can be selected (because compile-time options or other
+        configuration forbids use of all the specified ciphers), an ssl.SSLError will be raised.
+        See ssl.SSLContext.set_ciphers.
     """
 
     # Security protocol
