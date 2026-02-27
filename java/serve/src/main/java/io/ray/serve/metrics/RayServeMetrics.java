@@ -10,9 +10,14 @@ public enum RayServeMetrics {
   SERVE_NUM_ROUTER_REQUESTS(
       "serve_num_router_requests", "The number of requests processed by the router."),
 
-  SERVE_DEPLOYMENT_QUEUED_QUERIES(
-      "serve_deployment_queued_queries",
+  SERVE_ROUTER_NUM_QUEUED_REQUESTS(
+      "serve_router_num_queued_requests",
       "The current number of queries to this deployment waiting to be assigned to a replica."),
+
+  // Deprecated: Will be removed in Ray 3.0.
+  SERVE_DEPLOYMENT_QUEUED_QUERIES_DEPRECATED(
+      "serve_deployment_queued_queries",
+      "(Deprecated, use serve_router_num_queued_requests) The current number of queries to this deployment waiting to be assigned to a replica."),
 
   SERVE_DEPLOYMENT_REQUEST_COUNTER(
       "serve_deployment_request_counter",
@@ -29,8 +34,13 @@ public enum RayServeMetrics {
   SERVE_DEPLOYMENT_PROCESSING_LATENCY_MS(
       "serve_deployment_processing_latency_ms", "The latency for queries to be processed."),
 
-  SERVE_REPLICA_PROCESSING_QUERIES(
-      "serve_replica_processing_queries", "The current number of queries being processed."),
+  SERVE_REPLICA_NUM_ONGOING_REQUESTS(
+      "serve_replica_num_ongoing_requests", "The current number of queries being processed."),
+
+  // Deprecated: Will be removed in Ray 3.0.
+  SERVE_REPLICA_PROCESSING_QUERIES_DEPRECATED(
+      "serve_replica_processing_queries",
+      "(Deprecated, use serve_replica_num_ongoing_requests) The current number of queries being processed."),
   ;
 
   public static final String TAG_HANDLE = "handle";

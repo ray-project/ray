@@ -600,15 +600,15 @@ The following diagram shows where metrics are captured along the request path:
   │   │                           ROUTER                                    │   │
   │   │                                                                     │   │
   │   │  ○ ray_serve_num_router_requests_total      (on request routed)     │   │
-  │   │  ○ ray_serve_deployment_queued_queries      (while in queue)        │   │
-  │   │  ○ ray_serve_num_ongoing_requests_at_replicas (assigned to replica) │   │
+  │   │  ○ ray_serve_router_num_queued_requests     (while in queue)        │   │
+  │   │  ○ ray_serve_router_num_ongoing_requests_at_replicas (assigned to replica) │   │
   │   └──────────────────────────────┬──────────────────────────────────────┘   │
   │                                  │                                          │
   │                                  ▼                                          │
   │   ┌─────────────────────────────────────────────────────────────────────┐   │
   │   │                          REPLICA                                    │   │
   │   │                                                                     │   │
-  │   │  ○ ray_serve_replica_processing_queries     (while processing)      │   │
+  │   │  ○ ray_serve_replica_num_ongoing_requests     (while processing)    │   │
   │   │  ○ ray_serve_deployment_processing_latency_ms (on completion)       │   │
   │   │  ○ ray_serve_deployment_request_counter_total (on completion)       │   │
   │   │  ○ ray_serve_deployment_error_counter_total   (on exception)        │   │
@@ -648,8 +648,10 @@ These metrics track request routing and queueing behavior.
 |--------|------|------|-------------|
 | `ray_serve_handle_request_counter_total` **[D]** | Counter | `handle`, `deployment`, `route`, `application` | Total number of requests processed by this `DeploymentHandle`. |
 | `ray_serve_num_router_requests_total` **[H]** | Counter | `deployment`, `route`, `application`, `handle`, `actor_id` | Total number of requests routed to a deployment. |
-| `ray_serve_deployment_queued_queries` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
-| `ray_serve_num_ongoing_requests_at_replicas` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests assigned and sent to replicas but not yet completed. |
+| `ray_serve_router_num_queued_requests` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
+| `ray_serve_deployment_queued_queries` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | (Deprecated: Will be removed in Ray 3.0. Use `ray_serve_router_num_queued_requests`) Current number of requests waiting to be assigned to a replica. High values indicate backpressure. |
+| `ray_serve_router_num_ongoing_requests_at_replicas` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | Current number of requests assigned and sent to replicas but not yet completed. |
+| `ray_serve_num_ongoing_requests_at_replicas` **[H]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | (Deprecated: Will be removed in Ray 3.0. Use `ray_serve_router_num_ongoing_requests_at_replicas`) Current number of requests assigned and sent to replicas but not yet completed. |
 | `ray_serve_request_router_fulfillment_time_ms` **[H][D]** | Histogram | `deployment`, `actor_id`, `application`, `handle_source` | Histogram of time in milliseconds that a request spent waiting in the router queue before being assigned to a replica. This includes the time to resolve the pending request's arguments. |
 | `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
 | `ray_serve_num_scheduling_tasks` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
@@ -661,7 +663,8 @@ These metrics track request throughput, errors, and latency at the replica level
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
-| `ray_serve_replica_processing_queries` **[D]** | Gauge | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
+| `ray_serve_replica_num_ongoing_requests` **[D]** | Gauge | `deployment`, `replica`, `application` | Current number of requests being processed by the replica. |
+| `ray_serve_replica_processing_queries` **[D]** | Gauge | `deployment`, `replica`, `application` | (Deprecated: Will be removed in Ray 3.0. Use `ray_serve_replica_num_ongoing_requests`) Current number of requests being processed by the replica. |
 | `ray_serve_replica_utilization_percent` **[D]** | Gauge | `deployment`, `replica`, `application` | Percentage of replica capacity used over a rolling window. Calculated as total user code execution time divided by maximum capacity (`window_duration × max_ongoing_requests`). Useful for capacity planning and identifying underutilized or overloaded replicas. Configure with `RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S` (default: 600s), `RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S` (default: 10s), and `RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS` (default: 60). |
 | `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
 | `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |

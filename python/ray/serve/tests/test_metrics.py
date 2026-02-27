@@ -135,7 +135,8 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
             "serve_num_router_requests",
             "serve_num_http_requests",
             "serve_num_grpc_requests",
-            "serve_deployment_queued_queries",
+            "serve_router_num_queued_requests",
+            "serve_deployment_queued_queries",  # Deprecated: Will be removed in Ray 3.0.
             "serve_deployment_request_counter",
             "serve_deployment_replica_starts",
             # histogram
@@ -144,7 +145,8 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
             "serve_deployment_processing_latency_ms_sum",
             "serve_deployment_processing_latency_ms",
             # gauge
-            "serve_replica_processing_queries",
+            "serve_replica_num_ongoing_requests",
+            "serve_replica_processing_queries",  # Deprecated: Will be removed in Ray 3.0.
             "serve_deployment_replica_healthy",
             # handle
             "serve_handle_request_counter",
@@ -178,6 +180,15 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     handle = serve.run(A.bind(), name="app1")
     _ = handle.remote()
 
+    ongoing_requests = get_metric_dictionaries(
+        "ray_serve_replica_num_ongoing_requests", timeout=5
+    )
+    assert len(ongoing_requests) == 1
+    assert ongoing_requests[0]["deployment"] == "A"
+    assert ongoing_requests[0]["application"] == "app1"
+    print("serve_replica_num_ongoing_requests exists.")
+
+    # Deprecated metric 'serve_replica_processing_queries' will be removed in Ray 3.0.
     processing_requests = get_metric_dictionaries(
         "ray_serve_replica_processing_queries", timeout=5
     )
@@ -192,6 +203,9 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
+            if "serve_replica_num_ongoing_requests" in metrics:
+                assert "1.0" in metrics
+            # Deprecated metric 'serve_replica_processing_queries' will be removed in Ray 3.0.
             if "serve_replica_processing_queries" in metrics:
                 assert "1.0" in metrics
         return True
@@ -858,6 +872,18 @@ def test_replica_metrics_fields(metrics_start_shutdown):
             for latency_metric in latency_metrics
         } == expected_output
 
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("ray_serve_replica_num_ongoing_requests"))
+        == 2
+    )
+    ongoing_requests = get_metric_dictionaries("ray_serve_replica_num_ongoing_requests")
+    expected_output = {("f", "app1"), ("g", "app2")}
+    assert {
+        (ongoing_request["deployment"], ongoing_request["application"])
+        for ongoing_request in ongoing_requests
+    } == expected_output
+
+    # Deprecated metric 'serve_replica_processing_queries' will be removed in Ray 3.0.
     wait_for_condition(
         lambda: len(get_metric_dictionaries("ray_serve_replica_processing_queries"))
         == 2
