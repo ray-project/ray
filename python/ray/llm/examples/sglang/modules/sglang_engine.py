@@ -1,4 +1,3 @@
-import asyncio
 import copy
 import signal
 import time
@@ -7,6 +6,7 @@ from typing import (
     AsyncGenerator,
     List,
     Optional,
+    Union,
 )
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -209,13 +209,27 @@ class SGLangServer:
     async def _generate_and_extract_metadata(
         self,
         request: Any,
-        prompt: Any,
-    ) -> dict[str, Any]:
+        prompt: Union[str, List[str]],
+    ) -> Union[dict[str, Any], List[dict[str, Any]]]:
         """
         Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
+
+        Accepts either a single prompt string or a list of prompts. When a list
+        is provided, all prompts are sent to SGLang in one batched call, letting
+        SGLang's scheduler handle concurrency natively via async_generate.
         """
         raw = await self._generate_raw(request, prompt)
+
+        # Batch case — SGLang returns a list of results, one per prompt
+        if isinstance(prompt, list):
+            if not raw:
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during generation."
+                )
+            return [self._extract_generation_metadata(r) for r in raw]
+
+        # Single prompt case
         if isinstance(raw, list):
             if not raw:
                 raise RuntimeError(
@@ -280,22 +294,7 @@ class SGLangServer:
             # Single string prompt: wrap it in a list for iteration
             prompts_to_process = [prompt_input]
 
-        tasks = [
-            asyncio.ensure_future(self._generate_and_extract_metadata(request, prompt))
-            for prompt in prompts_to_process
-        ]
-        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # If any task failed, cancel remaining in-flight tasks and re-raise
-        first_error = next(
-            (r for r in raw_results if isinstance(r, BaseException)), None
-        )
-        if first_error is not None:
-            for task in tasks:
-                task.cancel()
-            raise first_error
-
-        results = raw_results
+        results = await self._generate_and_extract_metadata(request, prompts_to_process)
 
         all_choices = []
         total_prompt_tokens = 0
@@ -342,7 +341,9 @@ class SGLangServer:
             prompt = request.input
         else:
             # Chat embedding request - convert messages to prompt
-            prompt = format_messages_to_prompt(request.messages)
+            prompt = self._render_fallback_prompt(
+                self._build_chat_messages(request.messages)
+            )
 
         # async_encode handles both single strings and lists of strings
         results = await self.engine.async_encode(prompt)
