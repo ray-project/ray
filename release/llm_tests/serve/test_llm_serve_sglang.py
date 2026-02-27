@@ -164,6 +164,8 @@ def test_sglang_serve_e2e_multi_gpu():
     )
     assert comp_resp.choices[0].text.strip()
     serve.shutdown()
+
+
 def test_sglang_embeddings(sglang_embedding_client):
     """Verify embeddings endpoint works with single and batch inputs."""
     # Single input
