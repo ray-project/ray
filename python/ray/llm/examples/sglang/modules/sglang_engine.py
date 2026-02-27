@@ -19,44 +19,10 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingRequest,
     EmbeddingResponse,
 )
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import (
     _merge_replica_actor_and_child_actor_bundles,
 )
-
-
-class ChatRole(str, Enum):
-    user = "user"
-    assistant = "assistant"
-    system = "system"
-
-
-def format_messages_to_prompt(messages: List[Any]) -> str:
-    prompt = "A conversation between a user and an assistant.\n"
-
-    for message in messages:
-        # Handle dicts (standard OpenAI format) or objects (if Ray passes wrappers)
-        if isinstance(message, dict):
-            role = message.get("role")
-            content = message.get("content")
-            if content is None:
-                content = ""
-        else:
-            # Fallback for object access if it's a Pydantic model
-            role = getattr(message, "role", "user")
-            content = getattr(message, "content", "") or ""
-
-        role_str = str(role)
-
-        if role_str == ChatRole.system.value:
-            prompt += f"### System: {content.strip()}\n"
-        elif role_str == ChatRole.user.value:
-            prompt += f"### User: {content.strip()}\n"
-        elif role_str == ChatRole.assistant.value:
-            prompt += f"### Assistant: {content.strip()}\n"
-
-    prompt += "### Assistant:"
-    return prompt
-from ray.llm._internal.serve.core.protocol import RawRequestInfo
 
 
 class SGLangServer:
