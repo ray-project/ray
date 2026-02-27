@@ -590,9 +590,7 @@ class ActorPoolMapOperator(MapOperator):
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         return [self._actor_pool]
 
-    def per_task_resource_allocation(
-        self: "PhysicalOperator",
-    ) -> ExecutionResources:
+    def per_task_resource_allocation(self) -> ExecutionResources:
         # For Actor tasks resource allocation is determined as:
         #   - Per actor resource allocation divided by
         #   - Actor's max task concurrency
@@ -600,9 +598,7 @@ class ActorPoolMapOperator(MapOperator):
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
 
-    def min_scheduling_resources(
-        self: "PhysicalOperator",
-    ) -> ExecutionResources:
+    def min_scheduling_resources(self) -> ExecutionResources:
         return self._actor_pool.per_actor_resource_usage()
 
     def update_resource_usage(self) -> None:
