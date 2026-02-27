@@ -18,6 +18,7 @@ from ray.tune.logger import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    import ray.tune.progress_reporter
     from ray.tune.experimental.output import AirVerbosity
 
 DEFAULT_CALLBACK_CLASSES = (
@@ -45,6 +46,7 @@ def _create_default_callbacks(
     mode: Optional[str] = None,
     config: Optional[dict] = None,
     progress_metrics: Optional[Collection[str]] = None,
+    progress_reporter: Optional["ray.tune.progress_reporter.ProgressReporter"] = None,
 ) -> List[Callback]:
     """Create default callbacks for `Tuner.fit()`.
 
@@ -94,19 +96,27 @@ def _create_default_callbacks(
         ]
         callbacks = new_callbacks
     if air_verbosity is not None:  # new flow
-        from ray.tune.experimental.output import (
-            _detect_reporter as _detect_air_reporter,
-        )
+        if progress_reporter is not None:
+            from ray.tune.experimental.output import LegacyProgressReporterAdapter
 
-        air_progress_reporter = _detect_air_reporter(
-            air_verbosity,
-            num_samples=1,  # Update later with setup()
-            entrypoint=entrypoint,
-            metric=metric,
-            mode=mode,
-            config=config,
-            progress_metrics=progress_metrics,
-        )
+            air_progress_reporter = LegacyProgressReporterAdapter(
+                legacy_reporter=progress_reporter,
+                verbosity=air_verbosity,
+            )
+        else:
+            from ray.tune.experimental.output import (
+                _detect_reporter as _detect_air_reporter,
+            )
+
+            air_progress_reporter = _detect_air_reporter(
+                air_verbosity,
+                num_samples=1,  # Update later with setup()
+                entrypoint=entrypoint,
+                metric=metric,
+                mode=mode,
+                config=config,
+                progress_metrics=progress_metrics,
+            )
         callbacks.append(air_progress_reporter)
     elif not has_trial_progress_callback:  # old flow
         trial_progress_callback = TrialProgressCallback(

@@ -865,6 +865,7 @@ def run(
         metric=metric,
         mode=mode,
         progress_metrics=progress_metrics,
+        progress_reporter=progress_reporter,
     )
 
     # User Warning for GPUs
@@ -891,10 +892,16 @@ def run(
     experiment_interrupted_event = _setup_signal_catching()
 
     if progress_reporter and air_verbosity is not None:
-        logger.warning(
-            "AIR_VERBOSITY is set, ignoring passed-in ProgressReporter for now."
+        warnings.warn(
+            "`RunConfig(progress_reporter=...)` is deprecated when using the "
+            "new output engine. Your reporter will be wrapped in an adapter "
+            "for backwards compatibility. For full control over output, pass "
+            "a custom `Callback` via `RunConfig(callbacks=[...])` instead. "
+            "See `ray.tune.experimental.output.ProgressReporter` for the "
+            "new reporter interface.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-        progress_reporter = None
 
     if air_verbosity is None:
         is_trainer = _entrypoint == AirEntrypoint.TRAINER
