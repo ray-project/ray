@@ -60,7 +60,6 @@ BlockColumn = Union[
     "pyarrow.ChunkedArray",
     "pyarrow.Array",
     "pandas.Series",
-    "cudf.Series",
 ]
 
 # Represents a single column of the ``Batch``
@@ -139,20 +138,10 @@ def _is_cudf_dataframe(obj: Any) -> bool:
         return False
 
 
-def _is_cudf_series(obj: Any) -> bool:
-    """Check if the object is a cudf.Series (lazy import)."""
-    try:
-        import cudf
-
-        return isinstance(obj, cudf.Series)
-    except ImportError:
-        return False
-
-
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
     if schema is None:
         return True
-    # PandasBlockSchema and CudfBlockSchema are table-like and have .names.
+    # PandasBlockSchema is table-like and has .names.
     if hasattr(schema, "names"):
         return not schema.names
     return not schema  # pyarrow schema check
@@ -562,10 +551,6 @@ class BlockAccessor:
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
-        elif _is_cudf_dataframe(block):
-            from ray.data._internal.cudf_block import CudfBlockAccessor
-
-            return CudfBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
@@ -835,13 +820,9 @@ class BlockColumnAccessor:
             from ray.data._internal.pandas_block import PandasBlockColumnAccessor
 
             return PandasBlockColumnAccessor(col)
-        elif _is_cudf_series(col):
-            from ray.data._internal.cudf_block import CudfBlockColumnAccessor
-
-            return CudfBlockColumnAccessor(col)
         else:
             raise TypeError(
-                f"Expected either a pandas.Series, cudf.Series, or pyarrow.Array "
+                f"Expected either a pandas.Series or pyarrow.Array "
                 f"(ChunkedArray) (got {type(col)})"
             )
 
