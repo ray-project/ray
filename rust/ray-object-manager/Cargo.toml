@@ -1,0 +1,21 @@
+[package]
+name = "ray-object-manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Object store and plasma for Ray"
+
+[dependencies]
+ray-proto = { workspace = true }
+ray-common = { workspace = true }
+ray-util = { workspace = true }
+ray-rpc = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+nix = { workspace = true }
+libc = { workspace = true }
+tracing = { workspace = true }
+lru = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+parking_lot = { workspace = true }

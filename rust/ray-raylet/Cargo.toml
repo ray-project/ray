@@ -1,0 +1,31 @@
+[package]
+name = "ray-raylet"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Raylet (per-node scheduler/resource manager) for Ray"
+
+[[bin]]
+name = "raylet"
+path = "src/main.rs"
+
+[dependencies]
+ray-proto = { workspace = true }
+ray-common = { workspace = true }
+ray-util = { workspace = true }
+ray-rpc = { workspace = true }
+ray-stats = { workspace = true }
+ray-observability = { workspace = true }
+ray-pubsub = { workspace = true }
+ray-object-manager = { workspace = true }
+ray-gcs-rpc-client = { workspace = true }
+ray-raylet-rpc-client = { workspace = true }
+ray-syncer = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dashmap = { workspace = true }
+clap = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

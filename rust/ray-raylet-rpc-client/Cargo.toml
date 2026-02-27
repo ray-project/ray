@@ -1,0 +1,16 @@
+[package]
+name = "ray-raylet-rpc-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Raylet RPC client library for Ray"
+
+[dependencies]
+ray-proto = { workspace = true }
+ray-common = { workspace = true }
+ray-rpc = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

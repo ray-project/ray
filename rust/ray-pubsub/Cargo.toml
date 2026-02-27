@@ -1,0 +1,17 @@
+[package]
+name = "ray-pubsub"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pub/sub messaging for Ray"
+
+[dependencies]
+ray-proto = { workspace = true }
+ray-common = { workspace = true }
+ray-util = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+thiserror = { workspace = true }

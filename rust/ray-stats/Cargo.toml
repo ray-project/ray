@@ -1,0 +1,14 @@
+[package]
+name = "ray-stats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Metrics collection for Ray"
+
+[dependencies]
+ray-util = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
