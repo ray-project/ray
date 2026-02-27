@@ -108,39 +108,14 @@ def sglang_embedding_client():
     serve.shutdown()
 
 
-def test_sglang_batched_completions():
+def test_sglang_batched_completions(sglang_client):
     """Verify that batched completions (multiple prompts) return one choice per prompt."""
-    llm_config = LLMConfig(
-        model_loading_config={
-            "model_id": RAY_MODEL_ID,
-            "model_source": MODEL_ID,
-        },
-        deployment_config={
-            "autoscaling_config": {
-                "min_replicas": 1,
-                "max_replicas": 1,
-            }
-        },
-        server_cls=SGLangServer,
-        engine_kwargs={
-            "model_path": MODEL_ID,
-            "tp_size": 1,
-            "mem_fraction_static": 0.8,
-        },
-    )
-
-    app = build_openai_app({"llm_configs": [llm_config]})
-    serve.run(app, blocking=False)
-
-    wait_for_condition(_app_is_running, timeout=300)
-    client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
-
     prompts = [
         "The capital of France is",
         "The capital of Germany is",
         "The capital of Japan is",
     ]
-    batch_resp = client.completions.create(
+    batch_resp = sglang_client.completions.create(
         model=RAY_MODEL_ID,
         prompt=prompts,
         max_tokens=16,
@@ -156,8 +131,7 @@ def test_sglang_batched_completions():
     # Usage should reflect all prompts combined
     assert batch_resp.usage.total_tokens > 0
 
-    serve.shutdown()
-    
+
 def test_sglang_embeddings(sglang_embedding_client):
     """Verify embeddings endpoint works with single and batch inputs."""
     # Single input
