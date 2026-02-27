@@ -1,5 +1,6 @@
 import abc
 import logging
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -29,7 +30,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -94,6 +95,19 @@ class OpTask(ABC):
         return object_ref.task_id()
 
 
+@dataclass(frozen=True)
+class TaskExecDriverStats:
+    """Task's execution stats reported from the driver"""
+
+    task_output_backpressure_s: float
+
+
+TaskDoneCallbackType = Callable[
+    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    None,
+]
+
+
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
 
@@ -102,7 +116,7 @@ class DataOpTask(OpTask):
         task_index: int,
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
-        task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
+        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
         block_ready_callback: Callable[
             [ray.ObjectRef[Block]], None
         ] = lambda block_ref: None,
@@ -146,7 +160,11 @@ class DataOpTask(OpTask):
         self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
         self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
 
+        self._last_block_meta: Optional[BlockMetadata] = None
         self._has_finished = False
+
+        self._start_output_backpressure_s: Optional[float] = None
+        self._total_output_backpressure_s: float = 0
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -160,6 +178,9 @@ class DataOpTask(OpTask):
         Returns: The number of blocks read.
         """
         bytes_read = 0
+
+        self._track_task_output_backpressure(max_bytes_to_read)
+
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             if self._pending_block_ref.is_nil():
                 assert self._pending_meta_ref.is_nil(), (
@@ -173,7 +194,16 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    self._task_done_callback(None)
+                    self._task_done_callback(
+                        None,  # exception
+                        self._last_block_meta.task_exec_stats
+                        if self._last_block_meta is not None
+                        else None,
+                        TaskExecDriverStats(
+                            task_output_backpressure_s=self._total_output_backpressure_s,
+                        ),
+                    )
+
                     self._has_finished = True
                     break
 
@@ -200,7 +230,12 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        self._task_done_callback(ex)
+                        self._task_done_callback(
+                            ex,
+                            None,  # TaskExecStats
+                            None,  # TaskExecDriverStats
+                        )
+
                         self._has_finished = True
                         raise ex from None
 
@@ -240,12 +275,32 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
+
+            self._last_block_meta = meta
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
+        if max_bytes_to_read == 0:
+            # Whenever provided `max_bytes_to_read == 0` we treat as task
+            # being in output backpressure, therefore correspondingly starting
+            # the timer (if necessary)
+            if self._start_output_backpressure_s is None:
+                self._start_output_backpressure_s = time.perf_counter()
+
+        elif (
+            max_bytes_to_read is None or max_bytes_to_read > 0
+        ) and self._start_output_backpressure_s is not None:
+            # Increment cumulative duration of task being in output
+            # backpressure
+            self._total_output_backpressure_s += (
+                time.perf_counter() - self._start_output_backpressure_s
+            )
+            self._start_output_backpressure_s = None
 
     @property
     def has_finished(self) -> bool:
@@ -337,9 +392,11 @@ class PhysicalOperator(Operator):
         target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
+        self._output_dependencies: List["PhysicalOperator"] = []
 
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
+        self._wire_output_deps(input_dependencies)
         self._inputs_complete = not input_dependencies
         self._output_block_size_option_override = OutputBlockSizeOption.of(
             target_max_block_size=target_max_block_size_override
@@ -373,7 +430,7 @@ class PhysicalOperator(Operator):
     def data_context(self) -> DataContext:
         return self._data_context
 
-    # Override the following 3 methods to correct type hints.
+    # Override the following methods to correct type hints.
 
     @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
@@ -381,10 +438,91 @@ class PhysicalOperator(Operator):
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
-        return super().output_dependencies  # type: ignore
+        return self._output_dependencies
 
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def _apply_transform(
+        self, transform: Callable[["PhysicalOperator"], "PhysicalOperator"]
+    ) -> "PhysicalOperator":
+        # 1) Recursively transform input operators first.
+        transformed_input_ops = []
+        has_changes = False
+
+        for input_op in self.input_dependencies:
+            transformed_input_op = input_op._apply_transform(transform)
+            transformed_input_ops.append(transformed_input_op)
+            if transformed_input_op is not input_op:
+                has_changes = True
+
+        # 2) If any input changed, create a shallow copy of the current node,
+        # rebind its inputs, and rewire reverse dependencies from old inputs
+        # to transformed inputs.
+        if has_changes:
+            target = self._copy_for_transform()
+            for input_op in self.input_dependencies:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not self
+                ]
+            target._input_dependencies = transformed_input_ops
+            target._wire_output_deps(transformed_input_ops)
+        else:
+            target = self
+
+        # 3) Apply transform on the current node itself. If transform replaces
+        # the current node, rewire reverse dependencies from old node inputs
+        # to the returned replacement node inputs.
+        # Returning the same node must not mutate inputs in-place.
+        original_inputs = tuple(target.input_dependencies)
+        transformed_target = transform(target)
+        if transformed_target is not target:
+            for input_op in original_inputs:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not target
+                ]
+            transformed_target._rewire_output_deps(
+                target, transformed_target.input_dependencies
+            )
+        else:
+            assert (
+                tuple(transformed_target.input_dependencies) == original_inputs
+            ), "In-place input mutation is not supported; return a new node instead."
+        return transformed_target
+
+    def _copy_for_transform(self) -> "PhysicalOperator":
+        # copy.copy() is not safe here because PhysicalOperator.__reduce__()
+        # intentionally raises. Use a side-effect-free shallow copy to avoid
+        # re-running __init__ wiring/ID/metrics initialization during transform.
+        target = object.__new__(type(self))
+        target.__dict__ = self.__dict__.copy()
+        # The transformed node should have a distinct identity and metrics owner.
+        target._id = str(uuid.uuid4())
+        target._metrics = OpRuntimeMetrics(target)
+        # The copied node belongs to a new transformed DAG. Reverse edges are
+        # rewired by parents, so avoid carrying stale downstream references.
+        target._output_dependencies = []
+        return target
+
+    def _rewire_output_deps(
+        self,
+        source_op: "PhysicalOperator",
+        input_dependencies: List["PhysicalOperator"],
+    ) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies = [
+                dep for dep in input_op._output_dependencies if dep is not source_op
+            ]
+            if self not in input_op._output_dependencies:
+                input_op._output_dependencies.append(self)
+
+    def _wire_output_deps(self, input_dependencies: List["PhysicalOperator"]) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies.append(self)
 
     def set_logical_operators(
         self,
