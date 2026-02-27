@@ -1,5 +1,6 @@
 import abc
 import logging
+import sys
 import time
 from typing import List, Optional, Tuple
 
@@ -12,7 +13,6 @@ from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunks
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.checkpoint import CheckpointConfig
-from ray.data.checkpoint.util import numpy_size
 from ray.data.datasource import PathPartitionFilter
 from ray.types import ObjectRef
 
@@ -25,27 +25,42 @@ class CheckpointHolder:
 
     def __init__(self):
         self.checkpointed_ids_ndarray: numpy.ndarray = numpy.array([])
-        self.checkpointed_ids_size: int = -1
+        self.checkpointed_ids_size: Optional[int] = None
 
-    def get_checkpointed_ids_ndarray(
+    def set_checkpointed_ids_ndarray(
         self, checkpointed_ids_arrow: Block, id_column: str
-    ) -> numpy.ndarray:
+    ) -> None:
         """Convert checkpointed IDs from pyarrow.Table to numpy.ndarray."""
-        if checkpointed_ids_arrow.num_rows != 0:
-            combined_checkpointed_ids = combine_chunks(checkpointed_ids_arrow)
-            ckpt_chunks = combined_checkpointed_ids[id_column].chunks
+        try:
+            if checkpointed_ids_arrow.num_rows != 0:
+                combined_checkpointed_ids = combine_chunks(checkpointed_ids_arrow)
+                ckpt_chunks = combined_checkpointed_ids[id_column].chunks
 
-            checkpointed_ids_ndarray = []
-            for ckpt_chunk in ckpt_chunks:
-                checkpointed_ids_ndarray.append(
-                    transform_pyarrow.to_numpy(ckpt_chunk, zero_copy_only=False)
+                checkpointed_ids_ndarray = []
+                for ckpt_chunk in ckpt_chunks:
+                    checkpointed_ids_ndarray.append(
+                        transform_pyarrow.to_numpy(ckpt_chunk, zero_copy_only=False)
+                    )
+                self.checkpointed_ids_ndarray = numpy.concatenate(
+                    checkpointed_ids_ndarray
                 )
-            self.checkpointed_ids_ndarray = numpy.concatenate(checkpointed_ids_ndarray)
+        except Exception as e:
+            raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
+
+    def numpy_size(self, array: numpy.ndarray) -> int:
+        """Calculate the size of a numpy ndarray."""
+        total_size = array.nbytes
+        if array.dtype == object:
+            for item in array.flat:
+                total_size += sys.getsizeof(item)
+        return total_size
+
+    def get_checkpointed_ids_ndarray(self) -> numpy.ndarray:
         return self.checkpointed_ids_ndarray
 
     def get_checkpointed_ids_size(self) -> int:
-        if self.checkpointed_ids_size == -1:
-            self.checkpointed_ids_size = numpy_size(self.checkpointed_ids_ndarray)
+        if self.checkpointed_ids_size is None:
+            self.checkpointed_ids_size = self.numpy_size(self.checkpointed_ids_ndarray)
         return self.checkpointed_ids_size
 
 
@@ -123,10 +138,13 @@ class CheckpointLoader:
         # Use an actor to hold the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
         checkpoint_holder = CheckpointHolder.remote()
-        checkpointed_ids_ref = checkpoint_holder.get_checkpointed_ids_ndarray.remote(
-            block_ref, self.id_column
+        ray.get(
+            checkpoint_holder.set_checkpointed_ids_ndarray.remote(
+                block_ref, self.id_column
+            )
         )
-        ray.wait([checkpointed_ids_ref])
+
+        checkpointed_ids_ref = checkpoint_holder.get_checkpointed_ids_ndarray.remote()
         checkpoint_size = ray.get(checkpoint_holder.get_checkpointed_ids_size.remote())
         logger.info(
             "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",

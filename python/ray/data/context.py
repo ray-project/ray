@@ -282,6 +282,22 @@ DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
     "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 10.0
 )
 
+DEFAULT_CHECKPOINT_ACTOR_POOL_MIN_SIZE: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_POOL_MIN_SIZE", 1
+)
+
+DEFAULT_CHECKPOINT_ACTOR_POOL_MAX_SIZE: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_POOL_MAX_SIZE", 10
+)
+
+DEFAULT_CHECKPOINT_ACTOR_MEMORY_BYTES: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_MEMORY_BYTES", 1 * 1024**3
+)
+
+DEFAULT_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR: int = env_integer(
+    "RAY_DATA_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR", 10
+)
+
 
 @DeveloperAPI
 @dataclass
@@ -547,6 +563,15 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        checkpoint_actor_pool_min_size: The minimum number of checkpoint-actor used to
+            filter the input.
+        checkpoint_actor_pool_max_size: The maximum number of checkpoint-actor used to
+            filter the input.
+        checkpoint_actor_memory_bytes: The amount of memory (in bytes) for each
+            checkpoint-actor. This value is used by ray_remote_args when creating the actor.
+        checkpoint_actor_max_tasks_in_flight_per_actor: The length of the task queue for
+            each checkpoint actor. When the task queues of every actor are full, the actor
+            pool will scale up.
     """
 
     # `None` means the block size is infinite.
@@ -694,6 +719,16 @@ class DataContext:
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
 
     _checkpoint_config: Optional[CheckpointConfig] = None
+
+    checkpoint_actor_pool_min_size: int = DEFAULT_CHECKPOINT_ACTOR_POOL_MIN_SIZE
+
+    checkpoint_actor_pool_max_size: int = DEFAULT_CHECKPOINT_ACTOR_POOL_MAX_SIZE
+
+    checkpoint_actor_memory_bytes: int = DEFAULT_CHECKPOINT_ACTOR_MEMORY_BYTES
+
+    checkpoint_actor_max_tasks_in_flight_per_actor: int = (
+        DEFAULT_CHECKPOINT_ACTOR_MAX_TASKS_IN_FLIGHT_PER_ACTOR
+    )
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
