@@ -22,3 +22,4 @@ ray-proto = { workspace = true }
 pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+bytes = { workspace = true }
