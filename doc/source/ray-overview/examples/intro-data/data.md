@@ -57,11 +57,11 @@ To understand why this matters, consider the difference between traditional batc
 
 **Traditional batch processing** completes one stage fully before starting the next, leading to idle resources:
 
-<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/cko-2025-q1/batch-processing.png" width="800" alt="Traditional Batch Processing">
+<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/cko-2025-q1/batch-processing.png" width="80%" alt="Traditional Batch Processing">
 
 **Streaming pipelining** overlaps stages, keeping all hardware (CPUs and GPUs) busy simultaneously:
 
-<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/cko-2025-q1/pipelining.png" width="800" alt="Streaming Model Pipelining">
+<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/cko-2025-q1/pipelining.png" width="80%" alt="Streaming Model Pipelining">
 
 This is critical for GPU-heavy workloads: while the GPU runs inference on one batch, the CPU can preprocess the next batch.
 
@@ -100,6 +100,7 @@ In Ray Data, most transformations are **lazy** — they build an execution plan 
 | Full materialization | `materialize()` |
 | Write to storage | `write_parquet()`, `write_csv()`, etc. |
 | Aggregations | `count()`, `mean()`, `min()`, `max()`, `sum()`, `std()` |
+| Joins and shuffles | `union()`, `random_shuffle()`, `sort()` |
 
 To materialize a small subset for inspection, use `take`:
 
@@ -169,7 +170,7 @@ print(f"Max value: {normalized_batch['image'][0].max():.4f}")
 
 ## Part 5: Stateful Transformations and Batch Inference
 
-For operations like batch inference, you want to load a model once and reuse it across many batches. Ray Data supports this via **callable classes** passed to `map_batches`:
+In the previous section, we specified a normalization step where individual tasks did not require maintaining any state — a stateless operation. It is however common that operations require some pre-stored state. For example, in batch inference, you want to load a model once and reuse it across many batches. Ray Data supports this via **callable classes** passed to `map_batches`:
 
 - `__init__`: Initialize expensive state (load model, set up connections)
 - `__call__`: Process each batch using the initialized state
@@ -195,7 +196,7 @@ class MNISTClassifier:
 Download the model to shared storage, then apply the classifier:
 
 ```python
-!aws s3 cp s3://anyscale-public-materials/ray-ai-libraries/mnist/model/model.pt /mnt/cluster_storage/model.pt
+!aws s3 cp --no-sign-request s3://anyscale-public-materials/ray-ai-libraries/mnist/model/model.pt /mnt/cluster_storage/model.pt
 ```
 
 ```python
@@ -331,11 +332,11 @@ ds_preds.set_name("mnist_predictions")
 
 The **Ray Workloads** view shows each operator in your pipeline, its status, row counts, and throughput — so you can quickly identify which stage is the bottleneck:
 
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/intro-ai-libraries/ray-data-workloads.png" width="900" alt="Ray Data Workloads view showing per-operator status and throughput">
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/intro-ai-libraries/ray-data-workloads.png" width="90%" alt="Ray Data Workloads view showing per-operator status and throughput">
 
 The **Ray Dashboard Metrics** tab gives you time-series charts for bytes and blocks generated per second, rows processed per second, object store memory usage and more — useful for spotting throughput drops or memory pressure over time:
 
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/intro-ai-libraries/ray-data-dashboard.png" width="900" alt="Ray Dashboard Metrics showing throughput and object store memory">
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/intro-ai-libraries/ray-data-dashboard.png" width="90%" alt="Ray Dashboard Metrics showing throughput and object store memory">
 
 For detailed guidance, see the [Anyscale monitoring and debugging guide](https://docs.anyscale.com/monitoring).
 
@@ -482,11 +483,11 @@ For recovering from driver failures, head node crashes, or job pre-emptions, Ray
 
 - Checkpoints are written after each block reaches the sink:
 
-<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/ray-data-deep-dive/ray_data_checkpointing_storing.png" alt="Ray Data Checkpoint Storing Flow" width="800">
+<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/ray-data-deep-dive/ray_data_checkpointing_storing.png" alt="Ray Data Checkpoint Storing Flow" width="80%">
 
 - On restart, the pipeline skips already-processed rows by matching an ID column:
 
-<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/ray-data-deep-dive/ray_data_checkpointing_restore.png" alt="Ray Data Checkpoint Restore Flow" width="800">
+<img src="https://anyscale-materials.s3.us-west-2.amazonaws.com/ray-data-deep-dive/ray_data_checkpointing_restore.png" alt="Ray Data Checkpoint Restore Flow" width="80%">
 
 ```python
 from ray.anyscale.data.checkpoint import CheckpointConfig
