@@ -313,7 +313,6 @@ class ActorPoolMapOperator(MapOperator):
             A tuple of the actor handle and the object ref to the actor's location.
         """
         assert self._actor_cls is not None
-        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         # Cache data context and map transformer to avoid serialization overhead.
