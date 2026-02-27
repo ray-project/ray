@@ -446,7 +446,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
         super().__init__()
         self._columns = columns
         self._max_categories = max_categories or {}
-        self.drop = drop
+        self._drop = drop
         self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
@@ -462,6 +462,10 @@ class OneHotEncoder(SerializablePreprocessorBase):
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
+
+    @property
+    def drop(self) -> Optional[Literal["first", "if_binary"]]:
+        return self._drop
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_callable_stat(
@@ -620,7 +624,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
             "columns": self._columns,
             "output_columns": self._output_columns,
             "max_categories": self._max_categories,
-            "drop": self.drop,
+            "drop": self._drop,
             "_fitted": getattr(self, "_fitted", None),
         }
 
@@ -630,7 +634,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
         self._output_columns = fields["output_columns"]
         self._max_categories = fields["max_categories"]
         # optional fields
-        self.drop = fields.get("drop")
+        self._drop = fields.get("drop")
         self._fitted = fields.get("_fitted")
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
@@ -649,8 +653,11 @@ class OneHotEncoder(SerializablePreprocessorBase):
                 ),
             },
         )
-        if not hasattr(self, "drop"):
-            self.drop = None
+        if "_drop" not in self.__dict__:
+            if "drop" in self.__dict__:
+                self._drop = self.__dict__.pop("drop")
+            else:
+                self._drop = None
 
     def __repr__(self):
         return (
@@ -762,7 +769,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         super().__init__()
         self._columns = columns
         self._max_categories = max_categories or {}
-        self.drop = drop
+        self._drop = drop
         self._output_columns = Preprocessor._derive_and_validate_output_columns(
             columns, output_columns
         )
@@ -778,6 +785,10 @@ class MultiHotEncoder(SerializablePreprocessorBase):
     @property
     def output_columns(self) -> List[str]:
         return self._output_columns
+
+    @property
+    def drop(self) -> Optional[Literal["first", "if_binary"]]:
+        return self._drop
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
         self._stat_computation_plan.add_callable_stat(
@@ -831,7 +842,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             "columns": self._columns,
             "output_columns": self._output_columns,
             "max_categories": self._max_categories,
-            "drop": self.drop,
+            "drop": self._drop,
             "_fitted": getattr(self, "_fitted", None),
         }
 
@@ -841,7 +852,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
         self._output_columns = fields["output_columns"]
         self._max_categories = fields["max_categories"]
         # optional fields
-        self.drop = fields.get("drop")
+        self._drop = fields.get("drop")
         self._fitted = fields.get("_fitted")
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
@@ -860,8 +871,11 @@ class MultiHotEncoder(SerializablePreprocessorBase):
                 ),
             },
         )
-        if not hasattr(self, "drop"):
-            self.drop = None
+        if "_drop" not in self.__dict__:
+            if "drop" in self.__dict__:
+                self._drop = self.__dict__.pop("drop")
+            else:
+                self._drop = None
 
     def __repr__(self):
         return (
