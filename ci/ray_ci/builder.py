@@ -2,7 +2,6 @@ from typing import List
 
 import click
 
-from ci.ray_ci.anyscale_docker_container import AnyscaleDockerContainer
 from ci.ray_ci.builder_container import BuilderContainer
 from ci.ray_ci.configs import (
     ARCHITECTURE,
@@ -21,7 +20,7 @@ from ci.ray_ci.windows_builder_container import WindowsBuilderContainer
 @click.argument(
     "artifact_type",
     required=True,
-    type=click.Choice(["wheel", "docker", "anyscale"]),
+    type=click.Choice(["wheel", "docker"]),
 )
 @click.option(
     "--image-type",
@@ -104,21 +103,6 @@ def main(
         )
         return
 
-    if artifact_type == "anyscale":
-        logger.info(
-            f"Building {image_type} anyscale for {python_version} on {platform}"
-        )
-        build_anyscale(
-            image_type,
-            python_version,
-            build_type,
-            platform,
-            architecture,
-            canonical_tag,
-            upload,
-        )
-        return
-
     raise ValueError(f"Invalid artifact type {artifact_type}")
 
 
@@ -152,27 +136,5 @@ def build_docker(
     BuilderContainer(python_version, build_type, architecture, upload=False).run()
     for p in platform:
         RayDockerContainer(
-            python_version, p, image_type, architecture, canonical_tag, upload
-        ).run()
-
-
-def build_anyscale(
-    image_type: str,
-    python_version: str,
-    build_type: str,
-    platform: List[str],
-    architecture: str,
-    canonical_tag: str,
-    upload: bool,
-) -> None:
-    """
-    Build an anyscale container artifact.
-    """
-    BuilderContainer(python_version, build_type, architecture, upload=False).run()
-    for p in platform:
-        RayDockerContainer(
-            python_version, p, image_type, architecture, canonical_tag, upload=False
-        ).run(base="base-extra-testdeps")
-        AnyscaleDockerContainer(
             python_version, p, image_type, architecture, canonical_tag, upload
         ).run()
