@@ -57,7 +57,7 @@ struct MemoryPsi {
    * @return true if the stall proportion is between 0.0 and 1.0, false otherwise.
    */
   bool IsValidStallProportion() const {
-    return stall_proportion >= 0.0f && stall_proportion <= 1.0f;
+    return stall_proportion > 0.0f && stall_proportion <= 1.0f;
   }
 
   /**
@@ -69,7 +69,7 @@ struct MemoryPsi {
 };
 
 inline std::string to_string(const MemoryPsi &psi) {
-  return absl::StrFormat("MemoryPsi{mode=%s, stall_percentage=%f, stall_duration=%ds}",
+  return absl::StrFormat("MemoryPsi{mode=%s, stall proportion=%f, stall duration=%ds}",
                          psi.mode,
                          psi.stall_proportion,
                          psi.stall_duration_s);
