@@ -133,10 +133,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_normal_task() {
+    fn test_build_normal_task_all_common_fields() {
         let tid = TaskID::from_random();
         let jid = JobID::from_int(1);
         let parent = TaskID::from_random();
+        let caller_id = vec![1u8, 2, 3];
+        let caller_addr = Address {
+            node_id: vec![0u8; 28],
+            ip_address: "10.0.0.1".to_string(),
+            port: 9999,
+            worker_id: vec![0u8; 28],
+        };
         let mut builder = TaskSpecBuilder::new();
         builder
             .set_common_task_spec(
@@ -146,9 +153,9 @@ mod tests {
                 FunctionDescriptor::default(),
                 &jid,
                 &parent,
-                0,
-                vec![],
-                Address::default(),
+                7,
+                caller_id.clone(),
+                caller_addr.clone(),
                 1,
             )
             .set_normal_task_spec();
@@ -156,8 +163,15 @@ mod tests {
         let spec = builder.build();
         assert_eq!(spec.task_id, tid.binary());
         assert_eq!(spec.name, "my_func");
-        assert_eq!(spec.r#type, rpc::TaskType::NormalTask as i32);
+        assert_eq!(spec.language, 0);
+        assert_eq!(spec.job_id, jid.binary());
+        assert_eq!(spec.parent_task_id, parent.binary());
+        assert_eq!(spec.parent_counter, 7);
+        assert_eq!(spec.caller_id, caller_id);
+        assert_eq!(spec.caller_address.as_ref().unwrap().ip_address, "10.0.0.1");
+        assert_eq!(spec.caller_address.as_ref().unwrap().port, 9999);
         assert_eq!(spec.num_returns, 1);
+        assert_eq!(spec.r#type, rpc::TaskType::NormalTask as i32);
     }
 
     #[test]
@@ -179,13 +193,74 @@ mod tests {
                 Address::default(),
                 1,
             )
-            .set_actor_creation_task_spec(&aid, 3, 0, 1, false, "MyActor".into(), "default".into());
+            .set_actor_creation_task_spec(&aid, 3, 5, 4, false, "MyActor".into(), "default".into());
 
         let spec = builder.build();
         assert_eq!(spec.r#type, rpc::TaskType::ActorCreationTask as i32);
         let creation = spec.actor_creation_task_spec.unwrap();
         assert_eq!(creation.actor_id, aid.binary());
         assert_eq!(creation.max_actor_restarts, 3);
+        assert_eq!(creation.max_task_retries, 5);
+        assert_eq!(creation.max_concurrency, 4);
+        assert_eq!(creation.name, "MyActor");
+        assert_eq!(creation.ray_namespace, "default");
         assert!(!creation.is_detached);
+    }
+
+    #[test]
+    fn test_build_actor_task() {
+        let tid = TaskID::from_random();
+        let jid = JobID::from_int(3);
+        let aid = ActorID::from_random();
+        let dummy_oid = ObjectID::from_random();
+        let mut builder = TaskSpecBuilder::new();
+        builder
+            .set_common_task_spec(
+                &tid,
+                "actor_method".into(),
+                0,
+                FunctionDescriptor::default(),
+                &jid,
+                &TaskID::nil(),
+                0,
+                vec![],
+                Address::default(),
+                1,
+            )
+            .set_actor_task_spec(&aid, &dummy_oid, 42);
+
+        let spec = builder.build();
+        assert_eq!(spec.r#type, rpc::TaskType::ActorTask as i32);
+        let actor_spec = spec.actor_task_spec.unwrap();
+        assert_eq!(actor_spec.actor_id, aid.binary());
+        assert_eq!(actor_spec.actor_creation_dummy_object_id, dummy_oid.binary());
+        assert_eq!(actor_spec.sequence_number, 42);
+    }
+
+    #[test]
+    fn test_add_arg() {
+        let mut builder = TaskSpecBuilder::new();
+        let arg = TaskArg {
+            data: vec![1, 2, 3],
+            metadata: vec![4, 5],
+            ..Default::default()
+        };
+        builder.add_arg(arg.clone());
+        builder.add_arg(TaskArg::default());
+        let spec = builder.build();
+        assert_eq!(spec.args.len(), 2);
+        assert_eq!(spec.args[0].data, vec![1, 2, 3]);
+        assert_eq!(spec.args[0].metadata, vec![4, 5]);
+    }
+
+    #[test]
+    fn test_add_return_id_increments_num_returns() {
+        let mut builder = TaskSpecBuilder::new();
+        assert_eq!(builder.spec.num_returns, 0);
+        let oid = ObjectID::from_random();
+        builder.add_return_id(&oid);
+        builder.add_return_id(&ObjectID::from_random());
+        let spec = builder.build();
+        assert_eq!(spec.num_returns, 2);
     }
 }

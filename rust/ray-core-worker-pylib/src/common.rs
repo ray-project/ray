@@ -99,25 +99,79 @@ mod tests {
     }
 
     #[test]
-    fn test_py_worker_type_roundtrip() {
-        assert_eq!(PyWorkerType::from_i32(0), Some(PyWorkerType::Worker));
-        assert_eq!(PyWorkerType::from_i32(1), Some(PyWorkerType::Driver));
-        assert_eq!(PyWorkerType::from_i32(3), Some(PyWorkerType::RestoreWorker));
-        assert_eq!(PyWorkerType::from_i32(-1), None);
+    fn test_py_language_to_core() {
+        use ray_core_worker::Language;
+        assert_eq!(PyLanguage::Python.to_core(), Language::Python);
+        assert_eq!(PyLanguage::Java.to_core(), Language::Java);
+        assert_eq!(PyLanguage::Cpp.to_core(), Language::Cpp);
     }
 
     #[test]
-    fn test_classify_error() {
-        let (ty, _) = classify_error(&CoreWorkerError::ObjectNotFound("x".into()));
+    fn test_py_worker_type_roundtrip() {
+        assert_eq!(PyWorkerType::from_i32(0), Some(PyWorkerType::Worker));
+        assert_eq!(PyWorkerType::from_i32(1), Some(PyWorkerType::Driver));
+        assert_eq!(PyWorkerType::from_i32(2), Some(PyWorkerType::SpillWorker));
+        assert_eq!(PyWorkerType::from_i32(3), Some(PyWorkerType::RestoreWorker));
+        assert_eq!(PyWorkerType::from_i32(-1), None);
+        assert_eq!(PyWorkerType::from_i32(4), None);
+    }
+
+    #[test]
+    fn test_py_worker_type_to_core() {
+        use ray_core_worker::WorkerType;
+        assert_eq!(PyWorkerType::Worker.to_core(), WorkerType::Worker);
+        assert_eq!(PyWorkerType::Driver.to_core(), WorkerType::Driver);
+        assert_eq!(PyWorkerType::SpillWorker.to_core(), WorkerType::SpillWorker);
+        assert_eq!(
+            PyWorkerType::RestoreWorker.to_core(),
+            WorkerType::RestoreWorker
+        );
+    }
+
+    #[test]
+    fn test_classify_error_all_variants() {
+        // KeyError variants
+        let (ty, msg) = classify_error(&CoreWorkerError::ObjectNotFound("obj1".into()));
         assert_eq!(ty, "KeyError");
+        assert_eq!(msg, "obj1");
 
-        let (ty, _) = classify_error(&CoreWorkerError::TimedOut("t".into()));
-        assert_eq!(ty, "TimeoutError");
+        let (ty, msg) = classify_error(&CoreWorkerError::ActorNotFound("act1".into()));
+        assert_eq!(ty, "KeyError");
+        assert_eq!(msg, "act1");
 
-        let (ty, _) = classify_error(&CoreWorkerError::InvalidArgument("a".into()));
+        // ValueError variants
+        let (ty, msg) = classify_error(&CoreWorkerError::ObjectAlreadyExists("dup".into()));
         assert_eq!(ty, "ValueError");
+        assert_eq!(msg, "dup");
 
+        let (ty, msg) = classify_error(&CoreWorkerError::InvalidArgument("bad".into()));
+        assert_eq!(ty, "ValueError");
+        assert_eq!(msg, "bad");
+
+        // TimeoutError
+        let (ty, msg) = classify_error(&CoreWorkerError::TimedOut("slow".into()));
+        assert_eq!(ty, "TimeoutError");
+        assert_eq!(msg, "slow");
+
+        // RuntimeError variants
         let (ty, _) = classify_error(&CoreWorkerError::NotInitialized);
+        assert_eq!(ty, "RuntimeError");
+
+        let (ty, msg) = classify_error(&CoreWorkerError::TaskSubmissionFailed("fail".into()));
+        assert_eq!(ty, "RuntimeError");
+        assert_eq!(msg, "fail");
+
+        let (ty, msg) = classify_error(&CoreWorkerError::Internal("crash".into()));
+        assert_eq!(ty, "RuntimeError");
+        assert_eq!(msg, "crash");
+
+        let (ty, msg) = classify_error(&CoreWorkerError::Other("misc".into()));
+        assert_eq!(ty, "RuntimeError");
+        assert_eq!(msg, "misc");
+
+        // RayStatus
+        let ray_err = ray_common::status::RayError::not_found("gone");
+        let (ty, _) = classify_error(&CoreWorkerError::RayStatus(ray_err));
         assert_eq!(ty, "RuntimeError");
     }
 }

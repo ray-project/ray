@@ -132,12 +132,38 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_deserialize() {
+    fn test_serialize_deserialize_all_fields() {
         let handle = ActorHandle::from_proto(make_proto_handle());
+        // Advance the counter before serialization.
+        handle.next_task_sequence_number();
+        handle.next_task_sequence_number();
+
         let data = handle.serialize();
         let handle2 = ActorHandle::deserialize(&data).unwrap();
+        // All protobuf fields must survive roundtrip.
         assert_eq!(handle.actor_id(), handle2.actor_id());
         assert_eq!(handle.name(), handle2.name());
+        assert_eq!(handle.ray_namespace(), handle2.ray_namespace());
+        assert_eq!(handle.max_task_retries(), handle2.max_task_retries());
         assert_eq!(handle.is_detached(), handle2.is_detached());
+        let addr1 = handle.owner_address().unwrap();
+        let addr2 = handle2.owner_address().unwrap();
+        assert_eq!(addr1.ip_address, addr2.ip_address);
+        assert_eq!(addr1.port, addr2.port);
+        // task_counter is NOT serialized — deserialized handle should start at 0.
+        assert_eq!(handle2.next_task_sequence_number(), 0);
+    }
+
+    #[test]
+    fn test_deserialize_invalid_bytes() {
+        let result = ActorHandle::deserialize(b"not valid protobuf");
+        assert!(result.is_err());
+        // Use match instead of unwrap_err (ActorHandle doesn't impl Debug).
+        match result {
+            Err(CoreWorkerError::Internal(msg)) => {
+                assert!(msg.contains("failed to decode"), "unexpected message: {msg}");
+            }
+            _ => panic!("expected CoreWorkerError::Internal"),
+        }
     }
 }

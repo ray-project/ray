@@ -170,4 +170,54 @@ mod tests {
         set.insert(oid.clone());
         assert!(set.contains(&oid2));
     }
+
+    #[test]
+    fn test_different_ids_not_equal() {
+        let a = PyObjectID::from_random();
+        let b = PyObjectID::from_random();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_actor_id_roundtrip() {
+        let aid = PyActorID::from_random();
+        assert!(!aid.is_nil());
+        let aid2 = PyActorID::new(&aid.binary());
+        assert_eq!(aid, aid2);
+        assert_eq!(aid.hex(), aid2.hex());
+        assert_eq!(aid.size(), id::ActorID::SIZE);
+    }
+
+    #[test]
+    fn test_worker_id_roundtrip() {
+        let wid = PyWorkerID::from_random();
+        let wid2 = PyWorkerID::from_hex(&wid.hex());
+        assert_eq!(wid, wid2);
+        assert_eq!(wid.size(), id::WorkerID::SIZE);
+    }
+
+    #[test]
+    fn test_node_id_nil_and_random() {
+        let nil = PyNodeID::nil();
+        assert!(nil.is_nil());
+        let rnd = PyNodeID::from_random();
+        assert!(!rnd.is_nil());
+        assert_ne!(nil, rnd);
+    }
+
+    #[test]
+    fn test_placement_group_id_roundtrip() {
+        let pgid = PyPlacementGroupID::from_random();
+        let pgid2 = PyPlacementGroupID::new(&pgid.binary());
+        assert_eq!(pgid, pgid2);
+        assert_eq!(pgid.size(), id::PlacementGroupID::SIZE);
+    }
+
+    #[test]
+    fn test_inner_and_from_inner() {
+        let oid = PyObjectID::from_random();
+        let inner = oid.inner().clone();
+        let oid2 = PyObjectID::from_inner(inner);
+        assert_eq!(oid, oid2);
+    }
 }
