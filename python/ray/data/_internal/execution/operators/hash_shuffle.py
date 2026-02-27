@@ -1472,14 +1472,17 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
             shuffle_progress_bar_name="Shuffle",
         )
 
-        # Buffer for deterministic output ordering: partition_id -> bundle
-        self._ordered_output_buffer: Dict[int, RefBundle] = {}
+        # Buffer for deterministic output ordering: partition_id -> list of bundles
+        # (a single partition can produce multiple bundles via _shape_blocks)
+        self._ordered_output_buffer: DefaultDict[int, List[RefBundle]] = defaultdict(
+            list
+        )
         self._ordered_output_flushed: bool = False
 
     def _on_finalized_bundle_ready(self, partition_id: int, bundle: RefBundle) -> None:
         # Buffer outputs until all partitions are finalized, then flush
         # in partition order for deterministic output
-        self._ordered_output_buffer[partition_id] = bundle
+        self._ordered_output_buffer[partition_id].append(bundle)
 
     def has_next(self) -> bool:
         self._try_finalize()
@@ -1491,7 +1494,7 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
             and len(self._finalizing_tasks) == 0
         ):
             for pid in sorted(self._ordered_output_buffer.keys()):
-                self._output_queue.append(self._ordered_output_buffer[pid])
+                self._output_queue.extend(self._ordered_output_buffer[pid])
             self._ordered_output_buffer.clear()
             self._ordered_output_flushed = True
         return len(self._output_queue) > 0
