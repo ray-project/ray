@@ -52,8 +52,8 @@ from ray.rllib.examples.utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_timesteps=20000,
-    default_reward=-250.0,
+    default_timesteps=200_000,
+    default_reward=-200.0,
 )
 parser.set_defaults(
     num_env_runners=4,
@@ -73,8 +73,8 @@ config = (
     )
     .learners(
         num_learners=args.num_learners,
-        num_gpus_per_learner=1,
-        num_aggregator_actors_per_learner=2,
+        # RLlib's off-policy algorithms don't support distributed aggregator actors
+        num_aggregator_actors_per_learner=0,
     )
     .training(
         initial_alpha=1.001,
@@ -87,14 +87,14 @@ config = (
         n_step=(2, 5),
         tau=0.005,
         train_batch_size_per_learner=256,
-        target_network_update_freq=1,
+        target_network_update_freq=4,
         # TQC-specific parameters
         n_quantiles=25,
         n_critics=2,
         top_quantiles_to_drop_per_net=2,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 100000,
+            "capacity": 10_000,
             "alpha": 1.0,
             "beta": 0.0,
         },

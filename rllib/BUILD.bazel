@@ -1574,6 +1574,52 @@ py_test(
     ],
 )
 
+# | TQC (2 total tests)      |         |                Number of Learners (Device)                 |
+# | Environment              | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/D) Pendulm           | -250    | ✅          | ❌              | ❌          | ❌         |
+# | (MA/D) Mujoco (Humanoid) | 400.0   | ❌          | ❌              | ❌          | ✅         |
+
+# py_test(
+#     name = "learning_tests_tqc_pendulum_local",
+#     size = "large",
+#     srcs = ["examples/algorithms/tqc/pendulum_tqc.py"],
+#     args = [
+#         "--as-test",
+#         "--num-cpus=5",
+#         "--num-env-runners=4",
+#         "--num-learners=0",
+#         "--stop-reward=-250",
+#     ],
+#     main = "examples/algorithms/tqc/pendulum_tqc.py",
+#     tags = [
+#         "exclusive",
+#         "learning_tests",
+#         "team:rllib",
+#     ],
+# )
+
+# py_test(
+#     name = "learning_tests_tqc_mujoco_multi_gpu",
+#     size = "large",
+#     srcs = ["examples/algorithms/tqc/mujoco_tqc.py"],
+#     args = [
+#         "--as-test",
+#         "--num-cpus=11",
+#         "--num-env-runners=8",
+#         "--num-gpus-per-learner=1",
+#         "--num-learners=2",
+#         "--stop-reward=400.0",
+#     ],
+#     main = "examples/algorithms/tqc/mujoco_tqc.py",
+#     tags = [
+#         "exclusive",
+#         "learning_tests",
+#         "multi_gpu",
+#         "team:rllib",
+#     ],
+# )
+
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
