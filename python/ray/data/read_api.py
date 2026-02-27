@@ -2955,6 +2955,11 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
+    Examples:
+        >>> import dask.dataframe as dd  # doctest: +SKIP
+        >>> df = dd.from_dict({"a": [1, 2, 3], "b": [4, 5, 6]}, npartitions=2)  # doctest: +SKIP
+        >>> ray.data.from_dask(df)  # doctest: +SKIP
+
     Args:
         df: A `Dask DataFrame`_.
 
@@ -2991,6 +2996,11 @@ def from_mars(df: "mars.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
+    Examples:
+        >>> import mars.dataframe as md  # doctest: +SKIP
+        >>> df = md.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})  # doctest: +SKIP
+        >>> ray.data.from_mars(df)  # doctest: +SKIP
+
     Args:
         df: A `Mars DataFrame`_, which must be executed by Mars-on-Ray.
 
@@ -3008,11 +3018,16 @@ def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
     `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
+    Examples:
+        >>> import modin.pandas as mpd  # doctest: +SKIP
+        >>> df = mpd.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})  # doctest: +SKIP
+        >>> ray.data.from_modin(df)  # doctest: +SKIP
+
     Args:
         df: A `Modin DataFrame`_, which must be using the Ray backend.
 
     Returns:
-        A :class:`~ray.data.MaterializedDataset` rows read from the DataFrame.
+        A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
