@@ -242,9 +242,14 @@ mod tests {
     fn test_owned_object() {
         let rc = ReferenceCounter::new();
         let oid = ObjectID::from_random();
-        rc.add_owned_object(oid, make_address(), vec![]);
+        let addr = make_address();
+        rc.add_owned_object(oid, addr.clone(), vec![]);
         assert!(rc.owned_by_us(&oid));
-        assert!(rc.get_owner(&oid).is_some());
+        let owner = rc.get_owner(&oid).unwrap();
+        assert_eq!(owner.ip_address, addr.ip_address);
+        assert_eq!(owner.port, addr.port);
+        assert_eq!(owner.node_id, addr.node_id);
+        assert_eq!(owner.worker_id, addr.worker_id);
     }
 
     #[test]
@@ -256,6 +261,45 @@ mod tests {
         assert!(!rc.owned_by_us(&oid));
         let owner = rc.get_owner(&oid).unwrap();
         assert_eq!(owner.ip_address, addr.ip_address);
+        assert_eq!(owner.port, addr.port);
+    }
+
+    #[test]
+    fn test_contained_in_relationship() {
+        let rc = ReferenceCounter::new();
+        let parent = ObjectID::from_random();
+        let child = ObjectID::from_random();
+        // Parent must exist for the contains relationship to be set.
+        rc.add_owned_object(parent, make_address(), vec![]);
+        rc.add_owned_object(child, make_address(), vec![parent]);
+        // The child's contained_in is set internally; verify via the parent's contains.
+        // We can test this indirectly: the parent and child both have references.
+        assert!(rc.has_reference(&parent));
+        assert!(rc.has_reference(&child));
+    }
+
+    #[test]
+    fn test_over_remove_saturating() {
+        // Removing more times than adding should not underflow or panic.
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        rc.add_local_reference(oid);
+        // Remove once — frees.
+        let deleted = rc.remove_local_reference(&oid);
+        assert_eq!(deleted, vec![oid]);
+        // Remove again — entry no longer exists, should be a no-op.
+        let deleted = rc.remove_local_reference(&oid);
+        assert!(deleted.is_empty());
+        assert!(!rc.has_reference(&oid));
+    }
+
+    #[test]
+    fn test_finished_task_refs_nonexistent() {
+        let rc = ReferenceCounter::new();
+        let oid = ObjectID::from_random();
+        // Finishing tasks for a non-existent object should not panic.
+        let deleted = rc.update_finished_task_references(&[oid]);
+        assert!(deleted.is_empty());
     }
 
     #[test]

@@ -162,6 +162,51 @@ mod tests {
     }
 
     #[test]
+    fn test_put_and_get_with_metadata_and_refs() {
+        let store = CoreWorkerMemoryStore::new();
+        let oid = ObjectID::from_random();
+        let nested = ObjectID::from_random();
+        let obj = RayObject::new(
+            Bytes::from("payload"),
+            Bytes::from("msgpack"),
+            vec![nested],
+        );
+        store.put(oid, obj).unwrap();
+        let got = store.get(&oid).unwrap();
+        assert_eq!(got.data.as_ref(), b"payload");
+        assert_eq!(got.metadata.as_ref(), b"msgpack");
+        assert_eq!(got.nested_refs.len(), 1);
+        assert_eq!(got.nested_refs[0], nested);
+    }
+
+    #[test]
+    fn test_get_nonexistent_returns_none() {
+        let store = CoreWorkerMemoryStore::new();
+        assert!(store.get(&ObjectID::from_random()).is_none());
+    }
+
+    #[test]
+    fn test_distinct_objects_not_confused() {
+        let store = CoreWorkerMemoryStore::new();
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        store.put(oid1, make_object(b"first")).unwrap();
+        store.put(oid2, make_object(b"second")).unwrap();
+        assert_eq!(store.get(&oid1).unwrap().data.as_ref(), b"first");
+        assert_eq!(store.get(&oid2).unwrap().data.as_ref(), b"second");
+    }
+
+    #[test]
+    fn test_size_after_delete() {
+        let store = CoreWorkerMemoryStore::new();
+        let oid = ObjectID::from_random();
+        store.put(oid, make_object(b"x")).unwrap();
+        assert_eq!(store.size(), 1);
+        store.delete(&oid);
+        assert_eq!(store.size(), 0);
+    }
+
+    #[test]
     fn test_duplicate_put_errors() {
         let store = CoreWorkerMemoryStore::new();
         let oid = ObjectID::from_random();

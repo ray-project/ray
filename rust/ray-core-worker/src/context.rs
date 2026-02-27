@@ -115,21 +115,30 @@ mod tests {
 
     #[test]
     fn test_worker_context_basic() {
-        let ctx = make_ctx();
+        let wid = WorkerID::from_random();
+        let jid = JobID::from_int(1);
+        let ctx = WorkerContext::new(WorkerType::Worker, wid, jid);
         assert_eq!(ctx.worker_type(), WorkerType::Worker);
+        assert_eq!(ctx.worker_id(), wid);
         assert_eq!(ctx.current_job_id(), JobID::from_int(1));
         assert!(ctx.current_task_id().is_nil());
         assert!(ctx.current_actor_id().is_nil());
     }
 
     #[test]
-    fn test_set_current_task_resets_counters() {
+    fn test_set_current_task_resets_both_counters() {
         let ctx = make_ctx();
+        // Advance both counters.
         assert_eq!(ctx.get_next_task_index(), 0);
         assert_eq!(ctx.get_next_task_index(), 1);
-        // Setting a new task ID resets the counters.
-        ctx.set_current_task_id(TaskID::from_random());
+        assert_eq!(ctx.get_next_put_index(), 0);
+        assert_eq!(ctx.get_next_put_index(), 1);
+        // Setting a new task ID resets BOTH counters.
+        let new_tid = TaskID::from_random();
+        ctx.set_current_task_id(new_tid);
+        assert_eq!(ctx.current_task_id(), new_tid);
         assert_eq!(ctx.get_next_task_index(), 0);
+        assert_eq!(ctx.get_next_put_index(), 0);
     }
 
     #[test]

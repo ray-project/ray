@@ -255,6 +255,8 @@ impl CoreWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actor_handle::ActorHandle;
+    use ray_proto::ray::rpc;
 
     fn make_worker() -> CoreWorker {
         CoreWorker::new(CoreWorkerOptions {
@@ -274,6 +276,32 @@ mod tests {
         assert!(worker.contains_object(&oid));
     }
 
+    #[test]
+    fn test_put_registers_ownership() {
+        let worker = make_worker();
+        let oid = ObjectID::from_random();
+        worker
+            .put_object(oid, Bytes::from("owned"), Bytes::new())
+            .unwrap();
+        // put_object must register the object as owned in the reference counter.
+        assert!(worker.reference_counter().owned_by_us(&oid));
+        let owner = worker.reference_counter().get_owner(&oid).unwrap();
+        assert_eq!(owner.ip_address, worker.worker_address().ip_address);
+    }
+
+    #[test]
+    fn test_put_duplicate_errors() {
+        let worker = make_worker();
+        let oid = ObjectID::from_random();
+        worker
+            .put_object(oid, Bytes::from("first"), Bytes::new())
+            .unwrap();
+        let err = worker
+            .put_object(oid, Bytes::from("second"), Bytes::new())
+            .unwrap_err();
+        assert!(matches!(err, CoreWorkerError::ObjectAlreadyExists(_)));
+    }
+
     #[tokio::test]
     async fn test_get_objects() {
         let worker = make_worker();
@@ -287,5 +315,130 @@ mod tests {
             .unwrap();
         assert!(results[0].is_some());
         assert_eq!(results[0].as_ref().unwrap().data.as_ref(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn test_get_objects_timeout_returns_none() {
+        let worker = make_worker();
+        let oid = ObjectID::from_random();
+        let results = worker
+            .get_objects(&[oid], Duration::from_millis(10))
+            .await
+            .unwrap();
+        assert!(results[0].is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_objects_multiple() {
+        let worker = make_worker();
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        worker
+            .put_object(oid1, Bytes::from("aaa"), Bytes::new())
+            .unwrap();
+        worker
+            .put_object(oid2, Bytes::from("bbb"), Bytes::new())
+            .unwrap();
+        let results = worker
+            .get_objects(&[oid1, oid2], Duration::from_millis(100))
+            .await
+            .unwrap();
+        assert_eq!(results[0].as_ref().unwrap().data.as_ref(), b"aaa");
+        assert_eq!(results[1].as_ref().unwrap().data.as_ref(), b"bbb");
+    }
+
+    #[test]
+    fn test_delete_objects() {
+        let worker = make_worker();
+        let oid = ObjectID::from_random();
+        worker
+            .put_object(oid, Bytes::from("del"), Bytes::new())
+            .unwrap();
+        assert!(worker.contains_object(&oid));
+        worker.delete_objects(&[oid]);
+        assert!(!worker.contains_object(&oid));
+    }
+
+    #[tokio::test]
+    async fn test_wait_objects() {
+        let worker = make_worker();
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        worker
+            .put_object(oid1, Bytes::from("w"), Bytes::new())
+            .unwrap();
+        // Wait for 1 of 2 objects. oid1 is ready, oid2 is not.
+        let ready = worker
+            .wait(&[oid1, oid2], 1, Duration::from_millis(50))
+            .await
+            .unwrap();
+        assert!(ready[0]); // oid1 is ready
+        assert!(!ready[1]); // oid2 is not
+    }
+
+    #[test]
+    fn test_create_and_kill_actor() {
+        let worker = make_worker();
+        let aid = ActorID::from_random();
+        let handle = ActorHandle::from_proto(rpc::ActorHandle {
+            actor_id: aid.binary(),
+            name: "test_actor".to_string(),
+            ..Default::default()
+        });
+        worker.create_actor(aid, handle).unwrap();
+        // Actor should be registered.
+        assert!(worker.actor_manager().get_actor_handle(&aid).is_some());
+        assert_eq!(worker.actor_manager().get_actor_handle(&aid).unwrap().name(), "test_actor");
+
+        worker.kill_actor(&aid, false, false).unwrap();
+        // Actor should be removed.
+        assert!(worker.actor_manager().get_actor_handle(&aid).is_none());
+    }
+
+    #[test]
+    fn test_add_remove_local_reference() {
+        let worker = make_worker();
+        let oid = ObjectID::from_random();
+        worker.add_local_reference(oid);
+        assert!(worker.reference_counter().has_reference(&oid));
+        let deleted = worker.remove_local_reference(&oid);
+        assert_eq!(deleted, vec![oid]);
+        assert!(!worker.reference_counter().has_reference(&oid));
+    }
+
+    #[test]
+    fn test_context_accessors() {
+        let opts = CoreWorkerOptions {
+            job_id: JobID::from_int(42),
+            ..CoreWorkerOptions::default()
+        };
+        let wid = opts.worker_id;
+        let worker = CoreWorker::new(opts);
+        assert_eq!(worker.current_job_id(), JobID::from_int(42));
+        assert!(worker.current_task_id().is_nil());
+        assert_eq!(worker.worker_id(), wid);
+    }
+
+    #[tokio::test]
+    async fn test_submit_normal_task() {
+        let worker = make_worker();
+        assert_eq!(worker.num_pending_normal_tasks(), 0);
+        let spec = rpc::TaskSpec {
+            task_id: TaskID::from_random().binary(),
+            name: "test_task".to_string(),
+            ..Default::default()
+        };
+        worker.submit_task(&spec).await.unwrap();
+        assert_eq!(worker.num_pending_normal_tasks(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_submit_actor_task_requires_registration() {
+        let worker = make_worker();
+        let aid = ActorID::from_random();
+        let spec = rpc::TaskSpec::default();
+        // Submitting to unregistered actor should fail.
+        let err = worker.submit_actor_task(&aid, spec).await.unwrap_err();
+        assert!(matches!(err, CoreWorkerError::ActorNotFound(_)));
     }
 }
