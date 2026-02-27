@@ -4346,15 +4346,13 @@ class Dataset:
         self,
         path: str,
         *,
-        mode: str = "append",
-        partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         **write_kwargs,
     ) -> None:
-        """Write the dataset to a Delta Lake table.
+        """Write the dataset to a Delta Lake table in append mode.
 
         Writes the dataset to a Delta Lake table with ACID guarantees using
         a two-phase commit protocol. All files are written first, then committed
@@ -4367,23 +4365,9 @@ class Dataset:
             >>> ds = ray.data.range(100)
             >>> ds.write_delta("/tmp/my-delta-table") # doctest: +SKIP
 
-            Write with partitioning:
+            Append to an existing table:
 
-            >>> ds = ray.data.from_items([
-            ...     {"year": 2024, "month": 1, "value": 100},
-            ...     {"year": 2024, "month": 2, "value": 200},
-            ... ])
-            >>> ds.write_delta( # doctest: +SKIP
-            ...     "/tmp/partitioned-table",
-            ...     partition_cols=["year", "month"]
-            ... )
-
-            Overwrite existing table:
-
-            >>> ds.write_delta( # doctest: +SKIP
-            ...     "/tmp/my-delta-table",
-            ...     mode="overwrite"
-            ... )
+            >>> ds.write_delta("/tmp/my-delta-table") # doctest: +SKIP
 
             Write to cloud storage (S3):
 
@@ -4404,15 +4388,10 @@ class Dataset:
                 * GCS: gs://bucket/path/to/table
                 * Azure: abfss://container@account.dfs.core.windows.net/path
 
-            mode: Write mode. **PR 1: Only "append" is supported.**
-                Other modes (overwrite, ignore, error, upsert) will be added in subsequent PRs.
-
-            partition_cols: **PR 1: Not supported.** Partitioning will be added in PR 3.
             filesystem: PyArrow filesystem to use for writing. If None, automatically
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
-                Schema inference may fail for complex types; provide explicit schema
-                if needed. **PR 1: Schema evolution not supported.** Will be added in PR 4.
+                Required when writing an empty dataset to a new table.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
                 Use to configure resources such as ``num_cpus`` or ``num_gpus``.
             concurrency: Maximum number of concurrent write tasks. By default,
@@ -4423,43 +4402,16 @@ class Dataset:
                 * name: Table name for Delta metadata
                 * description: Table description for Delta metadata
                 * configuration: Delta table configuration options (dict)
-                * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
-
-                Note: Other write_kwargs (schema_mode, upsert_kwargs, partition_overwrite_mode,
-                target_file_size_bytes) will be added in subsequent PRs.
+                * compression: Parquet compression codec ("snappy", "gzip",
+                  "zstd", etc.)
 
         Raises:
-            ImportError: If the deltalake package is not installed. Install with
-                ``pip install deltalake``.
-            ValueError: If mode is not "append", or if partition_cols is provided,
-                or if unsupported write_kwargs are provided (PR 1 limitations).
+            ImportError: If the ``deltalake`` package is not installed. Install
+                with ``pip install deltalake``.
+            ValueError: If schema validation fails or the table cannot be created.
 
         Note:
-            **PR 1 Features:**
-
-            * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
-              Either all files become visible or none do.
-
-            The two-phase commit protocol:
-
-            1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
-               Parquet files and returns AddAction metadata (files not yet visible).
-            2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
-               them atomically in a single Delta transaction.
-
-            If the write fails partway through, uncommitted files can be removed
-            by running Delta's VACUUM command.
-
-            **Future PRs will add:**
-            * Write modes: overwrite, ignore, error (PR 2)
-            * Partitioning (PR 3)
-            * Schema evolution (PR 4)
-            * Time travel reads (PR 5)
-            * Upsert mode (PR 6)
-            * Partition overwrite modes (PR 7)
-            * Advanced optimizations (PR 8)
-
-            The two-phase commit protocol:
+            This method uses a two-phase commit protocol for ACID guarantees:
 
             1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
                Parquet files and returns AddAction metadata (files not yet visible).
@@ -4481,15 +4433,8 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # Upsert support is added in a later stage.
-        if "upsert_kwargs" in write_kwargs:
-            raise ValueError(
-                "upsert_kwargs can only be specified with SaveMode.UPSERT"
-            )
         datasink = DeltaDatasink(
             path,
-            mode=mode,
-            partition_cols=partition_cols,
             filesystem=filesystem,
             schema=schema,
             **write_kwargs,

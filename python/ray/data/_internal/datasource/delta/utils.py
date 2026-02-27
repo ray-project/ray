@@ -1,6 +1,6 @@
 """Utility functions for Delta Lake datasource operations.
 
-This module consolidates file, partition, schema, and storage utilities for
+This module consolidates file, schema, and storage utilities for
 Delta Lake integration with Ray Data.
 
 Delta Lake: https://delta.io/
@@ -12,9 +12,8 @@ import json
 import math
 import os
 import posixpath
-import urllib.parse
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -24,10 +23,6 @@ if TYPE_CHECKING:
     from deltalake import DeltaTable
     from deltalake.transaction import AddAction, CommitProperties, Transaction
 
-UPSERT_JOIN_COLS = "join_cols"
-MAX_PARTITION_PATH_LENGTH = 200
-MAX_PARTITION_COLUMNS = 10
-
 
 @dataclass
 class DeltaWriteResult:
@@ -35,14 +30,12 @@ class DeltaWriteResult:
 
     Attributes:
         add_actions: File metadata for Delta transaction log.
-        upsert_keys: Key columns for upsert operations.
         schemas: Schemas from written blocks.
         written_files: List of full file paths written by this worker.
         write_uuid: Unique identifier for this write operation (for app_transactions).
     """
 
     add_actions: List["AddAction"] = field(default_factory=list)
-    upsert_keys: Optional[pa.Table] = None
     schemas: List[pa.Schema] = field(default_factory=list)
     written_files: List[str] = field(default_factory=list)
     write_uuid: Optional[str] = None
@@ -82,7 +75,6 @@ def get_file_info_with_retry(
     def _get_file_info():
         return fs.get_file_info(path)
 
-    # Calculate max_backoff_s: base_delay * 2^(max_retries-1) to match exponential backoff
     max_backoff_s = (
         base_delay * (2 ** (max_retries - 1)) if max_retries > 1 else base_delay
     )
@@ -115,91 +107,6 @@ def validate_file_path(path: str, max_length: int = 500) -> None:
             raise ValueError(f"Path contains invalid character '{char}': {path}")
 
 
-def build_partition_path(
-    cols: List[str], values: tuple
-) -> Tuple[str, Dict[str, Optional[str]]]:
-    """Build Hive-style partition path (col1=val1/col2=val2/)."""
-    if not cols or not values:
-        return "", {}
-
-    parts = []
-    part_dict: Dict[str, Optional[str]] = {}
-
-    for col, val in zip(cols, values):
-        if val is None:
-            # NULL values use default partition
-            parts.append(f"{col}=__HIVE_DEFAULT_PARTITION__")
-            part_dict[col] = None
-        elif isinstance(val, float) and math.isnan(val):
-            # NaN values use "NaN" string (distinct from NULL)
-            # Delta/Spark convention: NaN is encoded as string "NaN" in partition paths
-            parts.append(f"{col}=NaN")
-            part_dict[col] = "NaN"
-        else:
-            validate_partition_value(val)
-            encoded_val = urllib.parse.quote(str(val), safe="")
-            parts.append(f"{col}={encoded_val}")
-            part_dict[col] = str(val)
-
-    path = "/".join(parts) + "/"
-    if len(path) > MAX_PARTITION_PATH_LENGTH:
-        raise ValueError(f"Partition path too long: {len(path)} chars")
-
-    return path, part_dict
-
-
-def validate_partition_value(value: Any) -> None:
-    """Validate partition value is safe for use in paths."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        return
-
-    val_str = str(value)
-    if not val_str:
-        raise ValueError("Partition value cannot be empty string")
-    if ".." in val_str or "/" in val_str or "\\" in val_str:
-        raise ValueError(f"Partition value contains invalid characters: {value}")
-    if "\x00" in val_str:
-        raise ValueError(f"Partition value contains null byte: {value}")
-    if len(val_str) > MAX_PARTITION_PATH_LENGTH:
-        raise ValueError(f"Partition value too long ({len(val_str)} chars)")
-
-
-def validate_partition_column_names(cols: List[str]) -> List[str]:
-    """Validate partition column names."""
-    if not isinstance(cols, list):
-        raise ValueError(f"Partition columns must be a list, got {type(cols).__name__}")
-    if len(cols) > MAX_PARTITION_COLUMNS:
-        raise ValueError(f"Too many partition columns ({len(cols)})")
-
-    seen = set()
-    for col in cols:
-        if not isinstance(col, str) or not col.strip():
-            raise ValueError(f"Invalid partition column name: {col}")
-        if "/" in col or "\\" in col or ".." in col or "=" in col:
-            raise ValueError(f"Invalid characters in partition column name: {col}")
-        if col in seen:
-            raise ValueError(f"Duplicate partition column: {col}")
-        seen.add(col)
-    return cols
-
-
-def validate_partition_columns_in_table(cols: List[str], table: pa.Table) -> None:
-    """Validate partition columns exist in table with valid types."""
-    if not cols:
-        return
-
-    missing = [c for c in cols if c not in table.column_names]
-    if missing:
-        raise ValueError(f"Missing partition columns: {missing}")
-
-    for col in cols:
-        col_type = table.schema.field(col).type
-        if pa.types.is_nested(col_type):
-            raise ValueError(f"Partition column '{col}' has nested type {col_type}")
-        if pa.types.is_dictionary(col_type):
-            raise ValueError(f"Partition column '{col}' has dictionary type")
-
-
 def _safe_type_check(t: pa.DataType, check_func) -> bool:
     """Safely check type, handling arro3 types that don't have 'id' attribute."""
     try:
@@ -208,11 +115,9 @@ def _safe_type_check(t: pa.DataType, check_func) -> bool:
         # arro3 types don't have 'id' attribute - convert to pyarrow type first
         if not hasattr(t, "id"):
             try:
-                # Convert arro3 type to pyarrow by reconstructing
                 pa_type = pa.DataType._import_from_c(t._export_to_c())
                 return check_func(pa_type)
             except (AttributeError, TypeError):
-                # If conversion fails, return False
                 return False
         raise
 
@@ -221,7 +126,6 @@ def types_compatible(expected: pa.DataType, actual: pa.DataType) -> bool:
     """Check if actual type can be written to expected type column."""
     if expected == actual:
         return True
-    # Handle arro3 types that don't have 'id' attribute
     if _safe_type_check(expected, pa.types.is_integer) and _safe_type_check(
         actual, pa.types.is_integer
     ):
@@ -271,7 +175,6 @@ def normalize_commit_properties(
 
     from deltalake.transaction import CommitProperties
 
-    # Handle both dict and CommitProperties input
     if isinstance(commit_properties, CommitProperties):
         return commit_properties
 
@@ -281,8 +184,6 @@ def normalize_commit_properties(
             "a deltalake.transaction.CommitProperties object"
         )
 
-    # Extract max_commit_retries if present (special handling)
-    # Make a copy to avoid mutating the caller's dictionary
     commit_properties = commit_properties.copy()
     max_commit_retries = commit_properties.pop("max_commit_retries", None)
     if max_commit_retries is not None:
@@ -293,7 +194,6 @@ def normalize_commit_properties(
                 "commit_properties['max_commit_retries'] must be an integer"
             )
 
-    # Validate remaining keys are strings
     custom_metadata = {}
     for key, value in commit_properties.items():
         if not isinstance(key, str) or not isinstance(value, str):
@@ -302,7 +202,6 @@ def normalize_commit_properties(
             )
         custom_metadata[key] = value
 
-    # Convert dict to CommitProperties
     return CommitProperties(
         custom_metadata=custom_metadata if custom_metadata else None,
         max_commit_retries=max_commit_retries,
@@ -315,8 +214,8 @@ def validate_schema_type_compatibility(
 ) -> None:
     """Validate that incoming schema is compatible with existing schema.
 
-    Checks for type mismatches in existing columns. New columns are allowed
-    (schema evolution), and missing columns are OK (partial writes).
+    Checks for type mismatches in existing columns. New columns in incoming
+    data are not validated (only overlapping columns are checked).
 
     Args:
         existing_schema: Schema from existing Delta table.
@@ -347,13 +246,11 @@ def convert_schema_to_delta(schema: pa.Schema) -> Any:
     if schema is None:
         raise ValueError("Cannot convert None schema to Delta Lake schema")
 
-    # Convert timestamp[s] to timestamp[us] since Delta Lake doesn't support second precision
-    # Delta Lake supports timestamp[us] (microsecond) and timestamp[ns] (nanosecond)
+    # Convert timestamp[s] to timestamp[us] since Delta Lake doesn't support
+    # second precision. Delta Lake supports timestamp[us] and timestamp[ns].
     converted_fields = []
     for schema_field in schema:
         field_type = schema_field.type
-        # Convert timestamp[s] to timestamp[us] for Delta Lake compatibility
-        # Preserve timezone information if present
         if pa.types.is_timestamp(field_type) and field_type.unit == "s":
             tz = field_type.tz if hasattr(field_type, "tz") else None
             field_type = pa.timestamp("us", tz=tz)
@@ -380,7 +277,9 @@ def convert_schema_to_delta(schema: pa.Schema) -> Any:
             }
             for f in converted_schema
         ]
-        return DeltaSchema.from_json(json.dumps({"type": "struct", "fields": fields}))
+        return DeltaSchema.from_json(
+            json.dumps({"type": "struct", "fields": fields})
+        )
 
 
 def pyarrow_type_to_delta_type(pa_type: pa.DataType) -> str:
@@ -424,33 +323,6 @@ def pyarrow_type_to_delta_type(pa_type: pa.DataType) -> str:
     raise ValueError(f"Unsupported PyArrow type for Delta Lake: {pa_type}")
 
 
-def infer_partition_type(value: Any) -> pa.DataType:
-    """Infer PyArrow type from partition value."""
-    if value is None:
-        return pa.string()
-    if isinstance(value, bool):
-        return pa.bool_()
-    if isinstance(value, int):
-        return pa.int64()
-    if isinstance(value, float):
-        return pa.float64()
-    if isinstance(value, str):
-        if value.lower() in ("true", "false"):
-            return pa.bool_()
-        try:
-            int(value)
-            if "." not in value and "e" not in value.lower():
-                return pa.int64()
-        except ValueError:
-            pass
-        try:
-            float(value)
-            return pa.float64()
-        except ValueError:
-            pass
-    return pa.string()
-
-
 # Type checking helpers
 def is_string_type(t: pa.DataType) -> bool:
     """Check if type is a string type (including string_view)."""
@@ -462,7 +334,7 @@ def is_string_type(t: pa.DataType) -> bool:
 
 
 def is_binary_type(t: pa.DataType) -> bool:
-    """Check if type is a binary type (including binary_view and fixed_size_binary)."""
+    """Check if type is a binary type."""
     return (
         pa.types.is_binary(t)
         or pa.types.is_large_binary(t)
@@ -483,103 +355,10 @@ def is_temporal_type(t: pa.DataType) -> bool:
     return pa.types.is_date(t) or pa.types.is_timestamp(t)
 
 
-def pyarrow_type_to_partition_python_type(pa_type: pa.DataType) -> Optional[Type]:
-    """Convert PyArrow type to Python type for Partitioning.field_types.
-
-    Converts PyArrow DataTypes to Python types (int, float, bool, str) that can be
-    used in Partitioning.field_types to ensure partition columns maintain their
-    original types when reading from path-based partitions.
-
-    Reference: https://arrow.apache.org/docs/python/api/datatypes.html
-
-    Args:
-        pa_type: PyArrow DataType to convert.
-
-    Returns:
-        Python type (int, float, bool, str) or None if type should default to string.
-    """
-    if pa.types.is_integer(pa_type):
-        return int
-    elif pa.types.is_floating(pa_type):
-        return float
-    elif pa.types.is_boolean(pa_type):
-        return bool
-    elif pa.types.is_string(pa_type) or pa.types.is_large_string(pa_type):
-        return str
-    # Default to string for other types (date, timestamp, etc.)
-    return None
-
-
-def normalize_partition_filters(
-    partition_filters: Optional[List[tuple]],
-) -> Optional[List[tuple]]:
-    """Normalize partition filter values to strings per delta-rs requirements.
-
-    delta-rs (Delta Lake Rust implementation) requires partition filter values
-    to be strings. This method converts various Python types to the expected
-    string format.
-
-    Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.file_uris
-
-    Args:
-        partition_filters: List of (column, op, value) tuples where:
-            - column: Partition column name
-            - op: Operator ("=", "!=", "in", "not in")
-            - value: Filter value (will be converted to string)
-
-    Returns:
-        Normalized partition filters with string values, or None if input is None.
-
-    Raises:
-        ValueError: If partition filter format is invalid.
-    """
-    if partition_filters is None:
-        return None
-
-    normalized = []
-    for filter_tuple in partition_filters:
-        if len(filter_tuple) != 3:
-            raise ValueError(
-                f"Partition filter must be (column, op, value) tuple, got: {filter_tuple}"
-            )
-        column, op, value = filter_tuple
-
-        # Validate operator
-        valid_ops = {"=", "!=", "in", "not in"}
-        if op not in valid_ops:
-            raise ValueError(
-                f"Invalid partition filter operator '{op}'. Valid: {valid_ops}"
-            )
-
-        # Validate that "in" and "not in" operators receive list/tuple
-        if op in {"in", "not in"}:
-            if not isinstance(value, (list, tuple)):
-                raise ValueError(
-                    f"Operator '{op}' requires a list or tuple value, got {type(value).__name__}: {value}"
-                )
-
-        # Normalize value to string
-        if value is None:
-            normalized_value = ""  # NULL represented as empty string in delta-rs
-        elif isinstance(value, (list, tuple)):
-            # For "in" and "not in" operators
-            normalized_value = ["" if v is None else str(v) for v in value]
-        else:
-            normalized_value = str(value)
-
-        normalized.append((column, op, normalized_value))
-
-    return normalized
-
-
 def create_filesystem_from_storage_options(
     path: str, storage_options: Optional[Dict[str, str]] = None
 ) -> Optional[pa_fs.FileSystem]:
     """Create PyArrow filesystem from storage options if credentials are provided.
-
-    This is used when Delta Lake storage_options need to be converted to PyArrow
-    filesystem objects for reading Parquet files. If no storage_options are provided
-    or credentials are missing, returns None to let PyArrow use default resolution.
 
     Args:
         path: Path to determine filesystem type (S3, Azure, GCS).
@@ -607,29 +386,18 @@ def create_filesystem_from_storage_options(
     elif path_lower.startswith(("abfss://", "abfs://")):
         account_name = storage_options.get("AZURE_STORAGE_ACCOUNT_NAME")
         token = storage_options.get("AZURE_STORAGE_TOKEN")
-        # AzureFileSystem accepts sas_token, not bearer_token
-        # If token is provided, treat it as a SAS token
         if account_name and token:
             return pa_fs.AzureFileSystem(
                 account_name=account_name,
                 sas_token=token,
             )
-        # If only account_name is provided, use DefaultAzureCredential
         elif account_name:
             return pa_fs.AzureFileSystem(account_name=account_name)
     elif path_lower.startswith(("gs://", "gcs://")):
-        # Check for GCS-specific credentials in storage_options
-        # GOOGLE_SERVICE_ACCOUNT can be a path to service account JSON file
         service_account = storage_options.get("GOOGLE_SERVICE_ACCOUNT")
         anonymous = storage_options.get("GOOGLE_ANONYMOUS", "").lower() == "true"
-        # GcsFileSystem doesn't accept service_account file path directly
-        # Set GOOGLE_APPLICATION_CREDENTIALS env var if service_account path is provided
         if service_account:
-            import os
-            # Set environment variable for PyArrow to pick up
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account
-        # Only create filesystem if explicit credentials are provided
-        # Otherwise return None to let PyArrow use Application Default Credentials
         if service_account or anonymous:
             return pa_fs.GcsFileSystem(anonymous=anonymous)
 
@@ -646,14 +414,9 @@ def try_get_deltatable(
     """
     from deltalake import DeltaTable
 
-    # Narrow exception handling: only catch "not found" exceptions
-    # This avoids hiding auth/permission errors, corrupt logs, etc.
     not_found_exceptions = []
-
-    # FileNotFoundError: path doesn't exist
     not_found_exceptions.append(FileNotFoundError)
 
-    # Try to import delta-rs specific "not found" exceptions
     try:
         from deltalake.exceptions import TableNotFoundError
 
@@ -661,20 +424,10 @@ def try_get_deltatable(
     except ImportError:
         pass
 
-    # Note: PyDeltaTableError is NOT included because it's a broad exception
-    # that covers authentication failures, S3 configuration errors, corrupt delta logs,
-    # protocol violations, and network issues - not just "table not found".
-    # Catching it would silently hide real errors.
-
     try:
         return DeltaTable(table_uri, storage_options=storage_options)
     except tuple(not_found_exceptions):
-        # Table doesn't exist - return None
         return None
-    except Exception:
-        # Re-raise all other exceptions (auth errors, corrupt logs, etc.)
-        # These are real errors that should not be silently ignored
-        raise
 
 
 def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
@@ -682,60 +435,46 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
 
     Handles both PyArrow schemas and arro3 Schema objects from deltalake.
     Ensures all DataType objects are PyArrow types, not arro3 types.
-    arro3 types don't have 'id' attribute that pyarrow.types functions expect.
     """
     if delta_schema is None:
         raise ValueError("Cannot convert None to PyArrow schema")
     if isinstance(delta_schema, pa.Schema):
-        # Check if schema contains arro3 types and convert if needed
-        # arro3 types don't have 'id' attribute that pyarrow.types functions expect
         needs_conversion = False
         fields = []
-        for field in delta_schema:
-            field_type = field.type
-            # Check if this is an arro3 type (doesn't have 'id' attribute)
+        for f in delta_schema:
+            field_type = f.type
             if not hasattr(field_type, "id"):
-                # Convert arro3 type to pyarrow type
                 try:
-                    # Use pyarrow's C API to convert arro3 type to pyarrow type
                     pa_type = pa.DataType._import_from_c(field_type._export_to_c())
                     fields.append(
-                        pa.field(field.name, pa_type, nullable=field.nullable)
+                        pa.field(f.name, pa_type, nullable=f.nullable)
                     )
                     needs_conversion = True
                 except (AttributeError, TypeError):
-                    # If conversion fails, keep original field
-                    # The _safe_type_check wrapper will handle it
-                    fields.append(field)
+                    fields.append(f)
             else:
-                fields.append(field)
+                fields.append(f)
         if needs_conversion:
             return pa.schema(fields)
         return delta_schema
 
-    # Handle deltalake Schema objects (deltalake._internal.Schema)
-    # Check by type name and module to identify deltalake schemas
     schema_type_name = type(delta_schema).__name__
     schema_module = getattr(type(delta_schema), "__module__", "")
 
     if schema_type_name == "Schema" and "deltalake" in schema_module:
-        # deltalake Schema - use fields directly (easier than arro3 conversion)
         if hasattr(delta_schema, "fields"):
             fields = []
-            for field in delta_schema.fields:
-                field_name = getattr(field, "name", None)
-                field_nullable = getattr(field, "nullable", True)
-                field_type = getattr(field, "type", None)
+            for f in delta_schema.fields:
+                field_name = getattr(f, "name", None)
+                field_nullable = getattr(f, "nullable", True)
+                field_type = getattr(f, "type", None)
 
                 if field_name is None or field_type is None:
                     continue
 
-                # Convert deltalake field type to PyArrow type
-                # deltalake types have string representations like PrimitiveType("long")
                 type_str = str(field_type).lower()
                 pa_type = None
 
-                # Map deltalake types to PyArrow types
                 if "long" in type_str or "int64" in type_str:
                     pa_type = pa.int64()
                 elif "integer" in type_str or "int32" in type_str:
@@ -763,10 +502,8 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
                     elif "millisecond" in type_str or "ms" in type_str:
                         pa_type = pa.timestamp("ms")
                     else:
-                        pa_type = pa.timestamp("us")  # Default to microseconds
+                        pa_type = pa.timestamp("us")
                 elif "decimal" in type_str:
-                    # Extract precision and scale from string if possible
-                    # Default to DECIMAL128(38, 18) if not parseable
                     pa_type = pa.decimal128(38, 18)
 
                 if pa_type is None:
@@ -775,27 +512,26 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
                         f"to PyArrow type for field '{field_name}'"
                     )
 
-                fields.append(pa.field(field_name, pa_type, nullable=field_nullable))
+                fields.append(
+                    pa.field(field_name, pa_type, nullable=field_nullable)
+                )
 
             if fields:
                 return pa.schema(fields)
 
-    # Handle arro3 Schema objects (from arro3.core._core.Schema)
-    # These come from schema.to_arrow() which returns arro3 Schema
-    if schema_type_name == "Schema" and ("arro3" in schema_module or not schema_module):
-        # arro3 Schema - iterate and convert fields
+    if schema_type_name == "Schema" and (
+        "arro3" in schema_module or not schema_module
+    ):
         fields = []
         try:
-            # arro3 Schema can be iterated directly
-            for field in delta_schema:
-                field_name = getattr(field, "name", None)
-                field_nullable = getattr(field, "nullable", True)
-                field_type = getattr(field, "type", None)
+            for f in delta_schema:
+                field_name = getattr(f, "name", None)
+                field_nullable = getattr(f, "nullable", True)
+                field_type = getattr(f, "type", None)
 
                 if field_name is None or field_type is None:
                     continue
 
-                # Convert arro3 type to pyarrow type using C API
                 try:
                     pa_type = pa.DataType._import_from_c(field_type._export_to_c())
                     fields.append(
@@ -803,28 +539,31 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
                     )
                 except (AttributeError, TypeError) as e:
                     raise AttributeError(
-                        f"Cannot convert arro3 field type {type(field_type).__name__} "
+                        f"Cannot convert arro3 field type "
+                        f"{type(field_type).__name__} "
                         f"to PyArrow type for field '{field_name}': {e}"
                     )
         except (TypeError, AttributeError):
-            # If iteration fails, try fields attribute
             if hasattr(delta_schema, "fields"):
-                for field in delta_schema.fields:
-                    field_name = getattr(field, "name", None)
-                    field_nullable = getattr(field, "nullable", True)
-                    field_type = getattr(field, "type", None)
+                for f in delta_schema.fields:
+                    field_name = getattr(f, "name", None)
+                    field_nullable = getattr(f, "nullable", True)
+                    field_type = getattr(f, "type", None)
 
                     if field_name is None or field_type is None:
                         continue
 
                     try:
-                        pa_type = pa.DataType._import_from_c(field_type._export_to_c())
+                        pa_type = pa.DataType._import_from_c(
+                            field_type._export_to_c()
+                        )
                         fields.append(
                             pa.field(field_name, pa_type, nullable=field_nullable)
                         )
                     except (AttributeError, TypeError) as e:
                         raise AttributeError(
-                            f"Cannot convert arro3 field type {type(field_type).__name__} "
+                            f"Cannot convert arro3 field type "
+                            f"{type(field_type).__name__} "
                             f"to PyArrow type for field '{field_name}': {e}"
                         )
 
@@ -833,7 +572,6 @@ def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
 
     if hasattr(delta_schema, "to_pyarrow"):
         schema = delta_schema.to_pyarrow()
-        # Recursively check and fix arro3 types
         return to_pyarrow_schema(schema)
     raise AttributeError(
         f"Cannot convert {type(delta_schema).__name__} to PyArrow schema"
@@ -909,30 +647,22 @@ def _get_gcs_credentials() -> Dict[str, str]:
 def create_app_transaction_id(write_uuid: Optional[str]) -> "Transaction":
     """Create app_transaction for idempotent commits.
 
-    Uses write_uuid to generate a deterministic transaction ID that can be
-    checked after commit failures to determine if commit succeeded.
-
     Args:
         write_uuid: Unique identifier for this write operation.
 
     Returns:
         Transaction object for app_transactions in CommitProperties.
     """
-
     from deltalake.transaction import Transaction
 
     if write_uuid is None:
-        # Fallback: generate from timestamp (less ideal but better than nothing)
         import time
 
         write_uuid = f"ray_data_write_{int(time.time() * 1000000)}"
 
-    # Use unique app_id per write to avoid monotonic version requirements.
-    # Each write gets its own app_id, so version=1 is sufficient for idempotence.
     app_id = f"ray.data.write_delta:{write_uuid}"
     version = 1
 
-    # Return Transaction object as required by delta-rs
     return Transaction(
         app_id=app_id,
         version=version,
@@ -947,7 +677,7 @@ def _to_json_serializable(val: Any) -> Any:
     if val is None:
         return None
     if isinstance(val, Decimal):
-        return str(val)  # Preserve precision as string
+        return str(val)
     if isinstance(val, float) and not math.isfinite(val):
         return None
     if hasattr(val, "isoformat"):
@@ -966,8 +696,6 @@ def compute_parquet_statistics(table: pa.Table) -> str:
         name = table.schema.field(i).name
         col_type = col.type
 
-        # Delta expects nested nullCount entries to be objects by child field;
-        # emit nullCount only for non-nested columns to avoid malformed stats.
         if not pa.types.is_nested(col_type):
             null_count = pc.sum(pc.is_null(col)).as_py()
             if null_count is not None and null_count >= 0:
