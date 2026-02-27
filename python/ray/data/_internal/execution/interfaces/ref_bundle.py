@@ -12,54 +12,6 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-def _to_hashable(value):
-    """Convert a potentially unhashable object into a stable hashable form."""
-    try:
-        hash(value)
-        return value
-    except TypeError:
-        if isinstance(value, dict):
-            items = (
-                (_to_hashable(key), _to_hashable(item_value))
-                for key, item_value in value.items()
-            )
-            return tuple(sorted(items, key=repr))
-        if isinstance(value, (list, tuple)):
-            return tuple(_to_hashable(item) for item in value)
-        if isinstance(value, set):
-            return tuple(sorted((_to_hashable(item) for item in value), key=repr))
-        return repr(value)
-
-
-def _schema_hash_key(schema: Optional["Schema"]):
-    if schema is None:
-        return None
-
-    try:
-        hash(schema)
-        return schema
-    except TypeError:
-        pass
-
-    # Handle both PandasBlockSchema-like and pyarrow.Schema-like objects.
-    names = getattr(schema, "names", None)
-    types = getattr(schema, "types", None)
-    if names is not None and types is not None:
-        try:
-            return (tuple(names), tuple(_to_hashable(type_) for type_ in types))
-        except Exception:
-            pass
-
-    to_string = getattr(schema, "to_string", None)
-    if callable(to_string):
-        try:
-            return to_string()
-        except Exception:
-            pass
-
-    return repr(schema)
-
-
 @dataclass(frozen=True)
 class BlockSlice:
     """A slice of a block."""
@@ -408,7 +360,7 @@ class RefBundle:
             (
                 *self.blocks,
                 *self.slices,
-                _schema_hash_key(self.schema),
+                self.schema,
                 self.owns_blocks,
                 self.output_split_idx,
             )
