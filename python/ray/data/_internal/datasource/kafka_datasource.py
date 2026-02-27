@@ -583,12 +583,7 @@ class KafkaDatasource(Datasource):
                                 topic_name, partition_id, resolved_start
                             )
                             consumer.assign([tp_with_offset])
-                            # Ensure assignment is made active before position checks.
-                            # In librdkafka, assign() is applied asynchronously and becomes
-                            # effective on the next poll/consume call. A non-blocking poll(0)
-                            # drives the internal event loop so that position() and reads
-                            # reflect the assigned start offset. This is not a wait; keep it 0.
-                            consumer.poll(0)
+                            consumer.seek(tp_with_offset)
 
                             partition_done = False
                             while not partition_done:
