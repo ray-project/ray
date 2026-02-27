@@ -247,30 +247,56 @@ def test_broadcast_fallback_targets(
         port=8500,
         node_instance_id="instance1",
         actor_name="proxy1",
+        protocol=RequestProtocol.HTTP,
     )
 
     # Ensure there is a broadcast
     haproxy_controller.broadcast_fallback_targets_if_changed()
     assert LongPollNamespace.FALLBACK_TARGETS in lph.notified_changes
-    assert lph.notified_changes[LongPollNamespace.FALLBACK_TARGETS] == [
-        Target(ip="10.0.0.1", port=8500, instance_id="instance1", name="proxy1"),
-    ]
+    assert lph.notified_changes[LongPollNamespace.FALLBACK_TARGETS] == {
+        RequestProtocol.HTTP: Target(
+            ip="10.0.0.1", port=8500, instance_id="instance1", name="proxy1"
+        ),
+    }
+
+    # Change the fallback proxy target
+    haproxy_controller.proxy_state_manager.add_fallback_proxy_target(
+        node_ip="10.0.0.2",
+        port=8500,
+        node_instance_id="instance1",
+        actor_name="proxy1",
+        protocol=RequestProtocol.HTTP,
+    )
+
+    # Ensure there is a broadcast
+    haproxy_controller.broadcast_fallback_targets_if_changed()
+    assert LongPollNamespace.FALLBACK_TARGETS in lph.notified_changes
+    assert lph.notified_changes[LongPollNamespace.FALLBACK_TARGETS] == {
+        RequestProtocol.HTTP: Target(
+            ip="10.0.0.2", port=8500, instance_id="instance1", name="proxy1"
+        ),
+    }
 
     # Add fallback proxy target
     haproxy_controller.proxy_state_manager.add_fallback_proxy_target(
-        node_ip="10.0.0.2",
+        node_ip="10.0.0.1",
         port=9500,
-        node_instance_id="instance2",
-        actor_name="proxy2",
+        node_instance_id="instance1",
+        actor_name="proxy1",
+        protocol=RequestProtocol.GRPC,
     )
 
     # Ensure there's another broadcast
     haproxy_controller.broadcast_fallback_targets_if_changed()
     assert LongPollNamespace.FALLBACK_TARGETS in lph.notified_changes
-    assert lph.notified_changes[LongPollNamespace.FALLBACK_TARGETS] == [
-        Target(ip="10.0.0.1", port=8500, instance_id="instance1", name="proxy1"),
-        Target(ip="10.0.0.2", port=9500, instance_id="instance2", name="proxy2"),
-    ]
+    assert lph.notified_changes[LongPollNamespace.FALLBACK_TARGETS] == {
+        RequestProtocol.HTTP: Target(
+            ip="10.0.0.2", port=8500, instance_id="instance1", name="proxy1"
+        ),
+        RequestProtocol.GRPC: Target(
+            ip="10.0.0.1", port=9500, instance_id="instance1", name="proxy1"
+        ),
+    }
 
 
 if __name__ == "__main__":
