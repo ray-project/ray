@@ -189,7 +189,7 @@ class StateAPIManager:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
         def transform(reply) -> ListApiResponse:
-            node_infos, num_filtered = reply
+            node_infos, num_after_truncation = reply
             result = []
             for node_info in node_infos.values():
                 data = protobuf_message_to_dict(
@@ -206,8 +206,7 @@ class StateAPIManager:
 
                 result.append(data)
 
-            total = len(result) + num_filtered
-            num_after_truncation = len(result) + num_filtered
+            total = len(result) + num_after_truncation
             result = do_filter(result, option.filters, NodeState, option.detail)
             num_filtered = len(result)
 
