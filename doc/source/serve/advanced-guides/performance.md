@@ -198,6 +198,207 @@ You can also configure each option individually. The following table details the
 
 You may want to enable throughput-optimized serving while customizing the options above. You can do this by setting `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and overriding the specific options. For example, to enable throughput-optimized serving and continue logging to stderr, you should set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override with `RAY_SERVE_LOG_TO_STDERR=1`.
 
+(serve-haproxy)=
+### Use HAProxy load balancing
+
+By default, Ray Serve uses a Python-based HTTP proxy to route requests to replicas. You can replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
+
+When HAProxy mode is enabled:
+- An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
+- Each replica opens a direct ingress port, and HAProxy routes traffic directly to replicas — replacing the Python proxy entirely.
+- Live traffic flows through the HAProxy subprocess, not through any Python actor.
+
+#### Prerequisites
+
+HAProxy must be installed and available on `$PATH` as `haproxy` on every node that runs a Serve proxy. The official Ray Docker images (2.55+) include HAProxy pre-built. No additional installation is needed when using `rayproject/ray` images.
+
+If you are building a custom image or running on bare metal, you need to install HAProxy 2.8+ from source. The following is an example Dockerfile — adapt it to your base image and environment:
+
+```dockerfile
+# --- Build stage ---
+FROM ubuntu:22.04 AS haproxy-builder
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl libc6-dev \
+    liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
+
+RUN HAPROXY_VERSION="2.8.12" && \
+    BUILD_DIR=$(mktemp -d) && \
+    curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" \
+      "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz" && \
+    tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1 && \
+    make -C "${BUILD_DIR}" TARGET=linux-glibc \
+      USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc) && \
+    make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin && \
+    rm -rf "${BUILD_DIR}"
+
+# --- Runtime stage ---
+FROM ubuntu:22.04
+
+# Copy HAProxy binary from build stage
+COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+
+# Install runtime dependencies
+RUN apt-get update -y && apt-get install -y --no-install-recommends \
+    socat liblua5.3-0 && \
+    mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy && \
+    rm -rf /var/lib/apt/lists/*
+```
+
+The key build flags are:
+- `USE_PROMEX=1` — enables the built-in Prometheus exporter for metrics.
+- `USE_LUA=1` — enables Lua scripting support.
+- `USE_OPENSSL=1` — enables TLS support.
+
+Runtime dependencies:
+- `socat` — used for sending commands to the HAProxy admin socket.
+- `liblua5.3-0` — Lua runtime library (required when HAProxy is built with `USE_LUA=1`).
+
+#### Enabling HAProxy
+
+Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes **before** starting Ray:
+
+```bash
+export RAY_SERVE_ENABLE_HA_PROXY=1
+```
+
+This single variable is all that is required. It implicitly enables direct ingress (replicas listen on individual ports that HAProxy routes to).
+
+:::{note}
+On multi-node clusters, you must also set `RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0` so that replica direct ingress servers bind to all interfaces. Without this, replicas bind to `127.0.0.1` (the default) and HAProxy on other nodes cannot connect to them.
+:::
+
+::::{tab-set}
+
+:::{tab-item} KubeRay
+```yaml
+# In the Ray container spec for head and worker groups:
+env:
+  - name: RAY_SERVE_ENABLE_HA_PROXY
+    value: "1"
+  - name: RAY_SERVE_DEFAULT_HTTP_HOST
+    value: "0.0.0.0"
+```
+:::
+
+:::{tab-item} VM cluster
+```bash
+# On every node (head and workers)
+export RAY_SERVE_ENABLE_HA_PROXY=1
+export RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+ray start --head  # or ray start --address=<head-ip>:6379 on workers
+```
+:::
+
+::::
+
+#### Configuration
+
+All HAProxy settings are configured through environment variables. The defaults work well for most deployments; only override them if you have specific requirements.
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `RAY_SERVE_ENABLE_HA_PROXY` | `0` | Set to `1` to enable HAProxy mode. |
+| `RAY_SERVE_HAPROXY_MAXCONN` | `20000` | Maximum concurrent connections. |
+| `RAY_SERVE_HAPROXY_NBTHREAD` | `4` | Number of HAProxy threads. |
+| `RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S` | `3600` | Client inactivity timeout in seconds. |
+| `RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S` | None (no timeout) | Backend server inactivity timeout in seconds. |
+| `RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S` | None (no timeout) | TCP connection establishment timeout in seconds. |
+| `RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S` | `120` | Maximum time in seconds for a graceful HAProxy shutdown. |
+| `RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL` | `2` | Consecutive failures before marking a backend as DOWN. |
+| `RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE` | `2` | Consecutive successes before marking a backend as UP. |
+| `RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER` | `5s` | Interval between health checks. |
+| `RAY_SERVE_HAPROXY_METRICS_PORT` | `9101` | Port for the built-in Prometheus metrics exporter. |
+
+When HAProxy is enabled, each replica listens on its own port. These variables control the port ranges:
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT` | `30000` | Minimum HTTP port for replica direct ingress. |
+| `RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT` | `31000` | Maximum HTTP port for replica direct ingress. |
+| `RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT` | `40000` | Minimum gRPC port for replica direct ingress. |
+| `RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT` | `41000` | Maximum gRPC port for replica direct ingress. |
+
+:::{note}
+Ensure that the direct ingress port ranges (30000-31000 for HTTP, 40000-41000 for gRPC by default) are open in your firewall and security group rules across all nodes.
+:::
+
+#### Monitoring
+
+Each node running HAProxy serves Prometheus metrics at `http://<node-ip>:9101/metrics` (configurable via `RAY_SERVE_HAPROXY_METRICS_PORT`).
+
+You can also inspect HAProxy's state through its admin socket using `socat`:
+
+```bash
+# Show backend server status
+echo "show stat" | socat stdio /tmp/haproxy-serve/admin.sock
+
+# Show HAProxy general info
+echo "show info" | socat stdio /tmp/haproxy-serve/admin.sock
+```
+
+(serve-interdeployment-grpc)=
+### Use gRPC for interdeployment communication
+
+By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system ("by reference"). You can switch this internal transport to gRPC, which serializes requests and sends them directly to the target replica's gRPC server.
+
+This is separate from the [gRPC ingress proxy](serve-set-up-grpc-service), which handles external gRPC clients. Interdeployment gRPC controls how deployments talk to *each other* internally.
+
+#### When to use gRPC transport
+
+gRPC transport bypasses Ray's actor scheduler and object store, reducing per-request overhead. It is most beneficial for **high-throughput workloads with small payloads** — requests and responses under ~1 MB typically show a benefit. Pairing it with a fast serializer like `msgpack` or `orjson` further reduces overhead when data is JSON-serializable.
+
+**Keep the default (by-reference) transport when:**
+- Payloads are large. By-reference mode uses Ray's actor RPC, which can pass data without serialization overhead for co-located replicas.
+- Deployments are chained. By-reference mode passes `DeploymentResponse` objects through the pipeline without materializing intermediate results.
+- You need `_to_object_ref()` for custom async patterns.
+
+#### Enabling gRPC transport
+
+**Per-handle:** Use `handle.options(_by_reference=False)` to enable gRPC transport for a specific handle:
+
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __begin_per_handle__
+:end-before: __end_per_handle__
+:language: python
+```
+
+**Globally:** Set the `RAY_SERVE_USE_GRPC_BY_DEFAULT` environment variable to `1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport by default. Individual handles can still override with `handle.options(_by_reference=True)`.
+
+:::{note}
+When `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` is set, proxy-to-replica communication also uses gRPC by default. You can control this independently with `RAY_SERVE_PROXY_USE_GRPC=0` or `RAY_SERVE_PROXY_USE_GRPC=1`.
+:::
+
+#### Serialization options
+
+The gRPC transport supports multiple serialization formats. Configure them per-handle:
+
+```{literalinclude} ../doc_code/interdeployment_grpc.py
+:start-after: __begin_serialization_options__
+:end-before: __end_serialization_options__
+:language: python
+```
+
+Available formats:
+- `"cloudpickle"` (default) — most flexible, supports arbitrary Python objects.
+- `"pickle"` — standard library pickle.
+- `"msgpack"` — fast binary format, requires data to be msgpack-serializable.
+- `"orjson"` — fast JSON format, requires data to be JSON-serializable.
+
+#### Configuration
+
+| Environment variable | Default | Description |
+|---|---|---|
+| `RAY_SERVE_USE_GRPC_BY_DEFAULT` | `0` | Set to `1` to use gRPC transport for all interdeployment calls. |
+| `RAY_SERVE_PROXY_USE_GRPC` | Inherits from above | Set to `1` or `0` to independently control proxy-to-replica transport. |
+| `RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH` | `4194304` (4 MB) | Maximum gRPC message size for interdeployment calls. Increase if you send large payloads between deployments. |
+
+#### Limitations
+
+- **No `_to_object_ref` support.** Handles using gRPC transport (`_by_reference=False`) cannot call `._to_object_ref()` or `._to_object_ref_sync()`. These methods require Ray actor RPC.
+- **Java deployments not supported.** gRPC transport is only available for Python deployments.
+- **Data must be serializable.** While `cloudpickle` can serialize most Python objects, other formats like `msgpack` or `orjson` are more restrictive. Ensure your data is compatible with the chosen serializer.
+
 ## Debugging performance issues in controller
 
 The Serve Controller runs on the Ray head node and is responsible for a variety of tasks,
