@@ -19,3 +19,6 @@ lru = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 parking_lot = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

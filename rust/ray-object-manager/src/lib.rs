@@ -9,19 +9,16 @@
 //! Object store and plasma for Ray.
 //!
 //! Replaces `src/ray/object_manager/` (22 files) and `plasma/` (25 files).
+//!
+//! Three-layer model:
+//! 1. **ObjectManager** — coordinates inter-node object transfers via gRPC
+//! 2. **PullManager/PushManager** — fetch strategy + rate-limited sends
+//! 3. **PlasmaStore** — local shared-memory object store (mmap-based)
 
-// Phase 6: These modules will be implemented with full plasma store,
-// shared memory (mmap/shm_open), and object transfer protocols.
-
-/// Plasma object store (shared memory).
-pub mod plasma {
-    // Placeholder for plasma store implementation.
-    // Will use nix::sys::mman for mmap, shm_open for shared memory,
-    // and nix::sys::socket SCM_RIGHTS for FD passing.
-}
-
-/// Object manager for inter-node object transfers.
-pub mod manager {
-    // Placeholder for object manager, pull/push managers,
-    // and buffer pool.
-}
+pub mod common;
+pub mod object_buffer_pool;
+pub mod object_manager;
+pub mod plasma;
+pub mod pull_manager;
+pub mod push_manager;
+pub mod readers;
