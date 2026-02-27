@@ -1466,6 +1466,9 @@ dependencies = [
  "bytes",
  "dashmap",
  "futures",
+ "hex",
+ "parking_lot",
+ "prost",
  "ray-common",
  "ray-gcs-rpc-client",
  "ray-object-manager",
@@ -1475,7 +1478,9 @@ dependencies = [
  "ray-raylet-rpc-client",
  "ray-rpc",
  "ray-stats",
+ "ray-test-utils",
  "ray-util",
+ "serde",
  "thiserror 2.0.18",
  "tokio",
  "tonic",
@@ -1486,6 +1491,7 @@ dependencies = [
 name = "ray-core-worker-pylib"
 version = "3.0.0-dev"
 dependencies = [
+ "bytes",
  "pyo3",
  "ray-common",
  "ray-core-worker",

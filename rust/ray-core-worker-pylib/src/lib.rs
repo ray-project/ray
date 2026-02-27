@@ -11,9 +11,21 @@
 //! Replaces `python/ray/_raylet.pyx` (Cython).
 //! Will be built with maturin to produce `_raylet.so`.
 
-// Phase 9: PyO3 bindings for IDs, GcsClient, CoreWorker, etc.
+pub mod common;
+pub mod ids;
+pub mod object_ref;
+pub mod core_worker;
+pub mod gcs_client;
 
-/// Placeholder module — will be populated incrementally.
+// Re-export primary types for Rust consumers.
+pub use common::{PyLanguage, PyWorkerType};
+pub use core_worker::PyCoreWorker;
+pub use gcs_client::PyGcsClient;
+pub use ids::*;
+pub use object_ref::PyObjectRef;
+
+// ─── PyO3 module (only when the "python" feature is enabled) ─────────
+
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 

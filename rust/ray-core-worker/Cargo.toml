@@ -24,3 +24,10 @@ dashmap = { workspace = true }
 bytes = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+prost = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+ray-test-utils = { workspace = true }
