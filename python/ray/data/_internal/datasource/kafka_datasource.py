@@ -60,6 +60,8 @@ _KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
 
 KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
 KAFKA_QUERY_OFFSET_TIMEOUT_S = 10
+# Cap each poll interval to keep responsiveness of timeout/position checks.
+KAFKA_POLL_MAX_MS = 10_000  # 10 seconds per poll
 
 KAFKA_MSG_SCHEMA = pa.schema(
     [
@@ -610,7 +612,10 @@ class KafkaDatasource(Datasource):
                                 remaining_timeout_ms = int(
                                     max(0, timeout_seconds - elapsed_time) * 1000
                                 )
-                                poll_timeout_s = remaining_timeout_ms / 1000.0
+                                poll_timeout_ms = min(
+                                    remaining_timeout_ms, KAFKA_POLL_MAX_MS
+                                )
+                                poll_timeout_s = poll_timeout_ms / 1000.0
 
                                 # TODO: Use consume() instead of poll() to reduce round trips.
                                 msg = consumer.poll(timeout=poll_timeout_s)
