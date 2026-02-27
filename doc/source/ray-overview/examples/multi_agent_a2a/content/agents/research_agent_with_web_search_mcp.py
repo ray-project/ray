@@ -50,7 +50,7 @@ async def build_agent():
     Build the research agent with web search MCP tools.
 
     Returns:
-        A LangGraph agent configured with web search MCP tools.
+        A LangChain agent configured with web search MCP tools.
     """
     return await build_mcp_agent(
         system_prompt=PROMPT,

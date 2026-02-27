@@ -18,6 +18,8 @@ from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 
+_REWARDS_BOX_SPACE = gym.spaces.Box(float("-inf"), float("inf"), (), np.float32)
+
 
 @PublicAPI(stability="alpha")
 class SingleAgentEpisode:
@@ -312,7 +314,7 @@ class SingleAgentEpisode:
             self.rewards = InfiniteLookbackBuffer(
                 data=rewards,
                 lookback=len_lookback_buffer,
-                space=gym.spaces.Box(float("-inf"), float("inf"), (), np.float32),
+                space=_REWARDS_BOX_SPACE,
             )
 
         # obs[-1] is the final observation in the episode.
