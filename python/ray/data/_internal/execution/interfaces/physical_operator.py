@@ -224,11 +224,11 @@ class DataOpTask(OpTask):
                 # object isn't available. This can happen if the node dies.
                 operator_name = self._operator_name or self.__class__.__name__
                 logger.warning(
-                    f"Block metadata unavailable after {METADATA_GET_TIMEOUT_S}s timeout "
-                    f"(ref={self._pending_meta_ref.hex()}, operator='{operator_name}'). "
-                    f"This usually means the worker is slow or has failed. "
-                    f"Ray is reconstructing the metadata. Will retry in the next iteration. "
-                    f"If this persists, check for worker failures or resource constraints."
+                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for "
+                    f"operator '{operator_name}' (ref={self._pending_meta_ref.hex()}). "
+                    f"Possible causes: slow task, worker crashed, or cluster overloaded. "
+                    f"Will retry next iteration. "
+                    f"If this repeats, check task/worker logs and cluster resources."
                 )
                 break
 
