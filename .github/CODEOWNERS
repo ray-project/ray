@@ -29,7 +29,7 @@
 /doc/source/ray-core/ @ray-project/ray-core
 
 # Public protobuf files.
-/src/ray/protobuf/public/ @edoakes @jjyao
+/src/ray/protobuf/public/ @edoakes @israbbani @MengjinYan
 
 # Azure autoscaler
 /python/ray/autoscaler/azure/ @ray-project/ray-core @marosset @jackfrancis @alimaazamat
@@ -41,8 +41,8 @@
 /python/setup.py @richardliaw @edoakes @aslonnie
 
 # Common directory shared by core and the libraries.
-# @edoakes is the czar for now because the pattern is new.
-/python/ray/_common/ @edoakes @jjyao
+# Stricter enforcement because this defines the public boundary supported by core.
+/python/ray/_common/ @edoakes @israbbani @MengjinYan
 
 # Ray data.
 /python/ray/data/ @ray-project/ray-data
@@ -91,8 +91,8 @@
 /src/ray/ray_exported_symbols.lds @ray-project/ray-core
 
 # Ray usage stats
-/python/ray/_private/usage/ @edoakes @richardliaw @jjyao
-/python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw @jjyao
+/python/ray/_private/usage/ @edoakes @richardliaw
+/python/ray/dashboard/modules/usage_stats/ @edoakes @richardliaw
 /src/ray/protobuf/usage.proto @pcmoritz @thomasdesr
 
 
@@ -110,6 +110,7 @@
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 /ci/ray_ci/serve_di_test_names.txt @ray-project/ray-serve
+/ci/ray_ci/serve_hap_test_names.txt @ray-project/ray-serve
 
 /.rayciversion @ray-project/ray-ci
 

@@ -67,7 +67,6 @@ target mix size, indicating the policy learned to beat increasingly skilled
 opponents.
 """
 import functools
-import platform
 from pathlib import Path
 
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -85,6 +84,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.utils import (
     Matchup,
     MetricsLoggerCallback,
     MixManagerCallback,
+    platform_for_binary_to_download,
 )
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
     LSTMContainingRLModule,
@@ -173,19 +173,7 @@ args = parser.parse_args()
 register_env(name="FootsiesEnv", env_creator=env_creator)
 
 # Detect platform and choose appropriate binary
-if platform.system() == "Darwin":
-    if args.render:
-        binary_to_download = "mac_windowed"
-    else:
-        binary_to_download = "mac_headless"
-elif platform.system() == "Linux":
-    if args.render:
-        binary_to_download = "linux_windowed"
-    else:
-        binary_to_download = "linux_server"
-else:
-    raise RuntimeError(f"Unsupported platform: {platform.system()}")
-
+binary_to_download = platform_for_binary_to_download(args.render)
 
 config = (
     PPOConfig()

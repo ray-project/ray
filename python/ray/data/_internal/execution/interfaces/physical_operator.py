@@ -332,9 +332,11 @@ class PhysicalOperator(Operator):
         target_max_block_size_override: Optional[int] = None,
     ):
         super().__init__(name, input_dependencies)
+        self._output_dependencies: List["PhysicalOperator"] = []
 
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
+        self._wire_output_deps(input_dependencies)
         self._inputs_complete = not input_dependencies
         self._output_block_size_option_override = OutputBlockSizeOption.of(
             target_max_block_size=target_max_block_size_override
@@ -368,7 +370,7 @@ class PhysicalOperator(Operator):
     def data_context(self) -> DataContext:
         return self._data_context
 
-    # Override the following 3 methods to correct type hints.
+    # Override the following methods to correct type hints.
 
     @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
@@ -376,10 +378,91 @@ class PhysicalOperator(Operator):
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
-        return super().output_dependencies  # type: ignore
+        return self._output_dependencies
 
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def _apply_transform(
+        self, transform: Callable[["PhysicalOperator"], "PhysicalOperator"]
+    ) -> "PhysicalOperator":
+        # 1) Recursively transform input operators first.
+        transformed_input_ops = []
+        has_changes = False
+
+        for input_op in self.input_dependencies:
+            transformed_input_op = input_op._apply_transform(transform)
+            transformed_input_ops.append(transformed_input_op)
+            if transformed_input_op is not input_op:
+                has_changes = True
+
+        # 2) If any input changed, create a shallow copy of the current node,
+        # rebind its inputs, and rewire reverse dependencies from old inputs
+        # to transformed inputs.
+        if has_changes:
+            target = self._copy_for_transform()
+            for input_op in self.input_dependencies:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not self
+                ]
+            target._input_dependencies = transformed_input_ops
+            target._wire_output_deps(transformed_input_ops)
+        else:
+            target = self
+
+        # 3) Apply transform on the current node itself. If transform replaces
+        # the current node, rewire reverse dependencies from old node inputs
+        # to the returned replacement node inputs.
+        # Returning the same node must not mutate inputs in-place.
+        original_inputs = tuple(target.input_dependencies)
+        transformed_target = transform(target)
+        if transformed_target is not target:
+            for input_op in original_inputs:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not target
+                ]
+            transformed_target._rewire_output_deps(
+                target, transformed_target.input_dependencies
+            )
+        else:
+            assert (
+                tuple(transformed_target.input_dependencies) == original_inputs
+            ), "In-place input mutation is not supported; return a new node instead."
+        return transformed_target
+
+    def _copy_for_transform(self) -> "PhysicalOperator":
+        # copy.copy() is not safe here because PhysicalOperator.__reduce__()
+        # intentionally raises. Use a side-effect-free shallow copy to avoid
+        # re-running __init__ wiring/ID/metrics initialization during transform.
+        target = object.__new__(type(self))
+        target.__dict__ = self.__dict__.copy()
+        # The transformed node should have a distinct identity and metrics owner.
+        target._id = str(uuid.uuid4())
+        target._metrics = OpRuntimeMetrics(target)
+        # The copied node belongs to a new transformed DAG. Reverse edges are
+        # rewired by parents, so avoid carrying stale downstream references.
+        target._output_dependencies = []
+        return target
+
+    def _rewire_output_deps(
+        self,
+        source_op: "PhysicalOperator",
+        input_dependencies: List["PhysicalOperator"],
+    ) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies = [
+                dep for dep in input_op._output_dependencies if dep is not source_op
+            ]
+            if self not in input_op._output_dependencies:
+                input_op._output_dependencies.append(self)
+
+    def _wire_output_deps(self, input_dependencies: List["PhysicalOperator"]) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies.append(self)
 
     def set_logical_operators(
         self,
@@ -510,7 +593,7 @@ class PhysicalOperator(Operator):
         For regular tasks, this is the resources required to schedule a task. For actor
         tasks, this is the resources required to schedule an actor.
         """
-        return ExecutionResources.zero()
+        return self.incremental_resource_usage()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -679,40 +762,40 @@ class PhysicalOperator(Operator):
         # Default implementation simply cancels any outstanding active task
         self._cancel_active_tasks(force=force)
 
-    def current_processor_usage(self) -> ExecutionResources:
-        """Returns the current estimated CPU and GPU usage of this operator, excluding
-        object store memory.
+    def current_logical_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
-        This method is called by the executor to decide how to allocate processors
+        This method is called by the executor to decide how to allocate resources
         between different operators.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
-    def running_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated running CPU and GPU usage of this operator, excluding
-        object store memory.
+    def running_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated running CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
-        executor to display the number of currently running CPUs and GPUs in the
-        progress bar.
+        executor to display the number of currently running CPUs, GPUs, and memory in
+        the progress bar.
 
-        Note, this method returns `current_processor_usage() -
-        pending_processor_usage()` by default. Subclasses should only override
-        `pending_processor_usage()` if needed.
+        Note, this method returns `current_logical_usage() -
+        pending_logical_usage()` by default. Subclasses should only override
+        `pending_logical_usage()` if needed.
         """
-        usage = self.current_processor_usage()
-        usage = usage.subtract(self.pending_processor_usage())
+        usage = self.current_logical_usage()
+        usage = usage.subtract(self.pending_logical_usage())
         return usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated pending CPU and GPU usage of this operator, excluding
-        object store memory.
+    def pending_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
         executor to display the number of currently pending actors in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
     def min_max_resource_requirements(
         self,

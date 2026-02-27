@@ -36,7 +36,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
         input_metadata: List[BlockMetadataWithSchema],
     ):
         super().__init__(
-            name=self.__class__.__name__,
             input_dependencies=[],
             num_outputs=len(input_blocks),
         )
@@ -58,6 +57,10 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
 
     @functools.cached_property
     def _cached_output_metadata(self) -> BlockMetadata:

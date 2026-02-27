@@ -27,7 +27,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/core_worker/common.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 namespace core {
