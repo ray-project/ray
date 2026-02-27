@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data.block import Schema
 
 
-class LogicalOperator(Operator):
+class LogicalOperator(Operator, ABC):
     """Abstract class for logical operators.
 
     A logical operator describes transformation, and later is converted into
@@ -33,7 +33,13 @@ class LogicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
 
-        self.num_outputs: Optional[int] = num_outputs
+        self._num_outputs: Optional[int] = num_outputs
+
+    @property
+    @abstractmethod
+    def num_outputs(self) -> Optional[int]:
+        """Expected number of output blocks, if known."""
+        ...
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that

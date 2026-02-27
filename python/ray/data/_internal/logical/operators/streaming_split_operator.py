@@ -24,3 +24,7 @@ class StreamingSplit(LogicalOperator):
         self.num_splits = num_splits
         self.equal = equal
         self.locality_hints = locality_hints
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
