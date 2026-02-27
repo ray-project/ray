@@ -42,15 +42,20 @@ class BatchFormat(str, Enum):
 
 
 _cudf = None
+_cudf_imported = False
 
 
 def _lazy_import_cudf():
-    """Lazy import cudf to avoid import failures when cudf is not installed."""
-    global _cudf
-    if _cudf is None:
-        import cudf
+    """Lazy import cudf, returning the module or None if not installed."""
+    global _cudf, _cudf_imported
+    if not _cudf_imported:
+        _cudf_imported = True
+        try:
+            import cudf
 
-        _cudf = cudf
+            _cudf = cudf
+        except ImportError:
+            pass
     return _cudf
 
 
@@ -87,12 +92,9 @@ def _convert_batch_type_to_pandas(
         data = data.to_pandas()
     else:
         # Handle cudf.DataFrame (lazy check to avoid import when not used)
-        try:
-            cudf_mod = _lazy_import_cudf()
-            if isinstance(data, cudf_mod.DataFrame):
-                data = data.to_pandas()
-        except ImportError:
-            pass
+        cudf_mod = _lazy_import_cudf()
+        if cudf_mod is not None and isinstance(data, cudf_mod.DataFrame):
+            data = data.to_pandas()
         if not isinstance(data, pd.DataFrame):
             raise ValueError(
                 f"Received data of type: {type(data)}, but expected it to be one "
@@ -143,15 +145,14 @@ def _convert_pandas_to_batch_type(
             )
         return pyarrow.Table.from_pandas(data)
     elif type == BatchFormat.CUDF:
-        try:
-            cudf_mod = _lazy_import_cudf()
-            return cudf_mod.from_pandas(data)
-        except ImportError:
+        cudf_mod = _lazy_import_cudf()
+        if cudf_mod is None:
             raise ValueError(
                 "Attempted to convert data to cuDF DataFrame but cuDF "
                 "is not installed. Please do `pip install cudf-cu12` to "
                 "install cuDF (GPU required)."
             )
+        return cudf_mod.from_pandas(data)
     else:
         raise ValueError(
             f"Received type {type}, but expected it to be one of {DataBatchType}"
@@ -212,14 +213,9 @@ def _convert_batch_type_to_numpy(
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
         # Handle cudf.DataFrame via pandas path
-        try:
-            cudf_mod = _lazy_import_cudf()
-            if isinstance(data, cudf_mod.DataFrame):
-                return _convert_pandas_to_batch_type(
-                    data.to_pandas(), BatchFormat.NUMPY
-                )
-        except ImportError:
-            pass
+        cudf_mod = _lazy_import_cudf()
+        if cudf_mod is not None and isinstance(data, cudf_mod.DataFrame):
+            return _convert_pandas_to_batch_type(data.to_pandas(), BatchFormat.NUMPY)
         raise ValueError(
             f"Received data of type: {type(data)}, but expected it to be one "
             f"of {DataBatchType}"

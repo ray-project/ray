@@ -568,6 +568,10 @@ class BlockAccessor:
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
+        elif _is_cudf_dataframe(block):
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+            return ArrowBlockAccessor(block.to_arrow())
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
