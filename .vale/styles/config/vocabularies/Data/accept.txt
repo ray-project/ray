@@ -51,6 +51,7 @@ UDF(s)?
 VLM(s)?
 XGBoost
 YOLO
+[Zz]arr
 [Ss]harding
 [Ss]harded
 [Pp]arameterization(s)?

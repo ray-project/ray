@@ -79,6 +79,7 @@ from ray.data.read_api import (  # noqa: F401
     read_unity_catalog,
     read_videos,
     read_webdataset,
+    read_zarr,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
@@ -187,6 +188,7 @@ __all__ = [
     "read_unity_catalog",
     "read_videos",
     "read_webdataset",
+    "read_zarr",
     "Preprocessor",
     "TFXReadOptions",
 ]
