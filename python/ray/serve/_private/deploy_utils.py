@@ -29,7 +29,7 @@ def _deployment_uses_multiplexed(deployment_def) -> bool:
     if inspect.isclass(deployment_def):
         for cls in inspect.getmro(deployment_def):
             for name in dir(cls):
-                if name.startswith("_"):
+                if name.startswith("__") and name.endswith("__"):
                     continue
                 try:
                     attr = getattr(cls, name)

@@ -109,7 +109,7 @@ class BatchedMultiplexModel:
 
     async def __call__(self, input_text: str):
         # Called from ingress with multiplexed_model_id set
-        return await self.batched_predict([input_text])
+        return await self.batched_predict(input_text)
 
 
 @serve.deployment
