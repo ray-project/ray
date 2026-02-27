@@ -572,11 +572,19 @@ class ActorReplicaWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        is_min_replica_recovery: bool = False,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
         The replica will be in the STARTING and PENDING_ALLOCATION states
         until the deployment scheduler schedules the underlying actor.
+
+        Args:
+            deployment_info: The deployment info.
+            assign_rank_callback: Callback to assign rank to the replica.
+            is_min_replica_recovery: Whether this replica is being scheduled
+                to recover to min_replicas. Used by the scheduler to prioritize
+                min_replicas recovery over scale-up requests.
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
@@ -697,6 +705,7 @@ class ActorReplicaWrapper:
             max_replicas_per_node=(
                 deployment_info.replica_config.max_replicas_per_node
             ),
+            is_min_replica_recovery=is_min_replica_recovery,
             on_scheduled=self.on_scheduled,
         )
 
@@ -1359,12 +1368,22 @@ class DeploymentReplica:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        is_min_replica_recovery: bool = False,
     ) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
+
+        Args:
+            deployment_info: The deployment info.
+            assign_rank_callback: Callback to assign rank to the replica.
+            is_min_replica_recovery: Whether this replica is being scheduled
+                to recover to min_replicas. Used by the scheduler to prioritize
+                min_replicas recovery over scale-up requests.
         """
         replica_scheduling_request = self._actor.start(
-            deployment_info, assign_rank_callback=assign_rank_callback
+            deployment_info,
+            assign_rank_callback=assign_rank_callback,
+            is_min_replica_recovery=is_min_replica_recovery,
         )
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
@@ -3054,16 +3073,37 @@ class DeploymentState:
             to_add = delta_replicas
             if to_add > 0 and not self._terminally_failed():
                 logger.info(f"Adding {to_add} replica{'s' * (to_add>1)} to {self._id}.")
-                for _ in range(to_add):
+
+                # Determine the effective min_replicas for this deployment.
+                # For autoscaling deployments, use the capacity-adjusted min_replicas.
+                # For non-autoscaling deployments, num_replicas is effectively the min.
+                min_replicas = self._autoscaling_state_manager.get_num_replicas_lower_bound(
+                    self._id
+                )
+                if min_replicas is None:
+                    # Non-autoscaling deployment: num_replicas is the fixed target,
+                    # so all replicas below target are effectively "recovery" replicas.
+                    min_replicas = self._target_state.target_num_replicas
+
+                # Total replicas that will exist after recovery (current + recovering)
+                total_existing = current_replicas + recovering_replicas
+
+                for i in range(to_add):
                     replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
 
                     new_deployment_replica = DeploymentReplica(
                         replica_id,
                         self._target_state.version,
                     )
+
+                    # A replica is a "min_replica recovery" if adding it brings us
+                    # closer to min_replicas (i.e., we're still below min_replicas).
+                    is_min_replica_recovery = (total_existing + i) < min_replicas
+
                     scheduling_request = new_deployment_replica.start(
                         self._target_state.info,
                         assign_rank_callback=self._rank_manager.assign_rank,
+                        is_min_replica_recovery=is_min_replica_recovery,
                     )
 
                     upscale.append(scheduling_request)

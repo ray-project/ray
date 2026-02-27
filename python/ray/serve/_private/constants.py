@@ -502,6 +502,14 @@ RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
 
+# Prioritize scheduling replicas that recover deployments to min_replicas
+# over replicas that scale up beyond the minimum. When enabled, if multiple
+# deployments are competing for limited resources, deployments that have
+# fallen below their min_replicas will be scheduled first.
+RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY = get_env_bool(
+    "RAY_SERVE_PRIORITIZE_MIN_REPLICAS_RECOVERY", "1"
+)
+
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
 RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
