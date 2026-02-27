@@ -144,7 +144,7 @@ def binary_dataset_single_file_gt_2gb():
     ],
 )
 def test_single_row_gt_2gb(
-    ray_start_regular,
+    ray_start_regular_shared,
     restore_data_context,
     binary_dataset_single_file_gt_2gb,
     col_name,
