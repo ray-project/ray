@@ -13,12 +13,12 @@ import time
 from abc import ABC, abstractmethod
 from inspect import signature
 from types import ModuleType
-from typing import Any, Coroutine, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Coroutine, Dict, Optional, Tuple
+
+if TYPE_CHECKING:
+    from ray._raylet import GcsClient
 
 import ray
-from ray._raylet import GcsClient, NodeID
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
-from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
 import psutil
 
@@ -269,7 +269,7 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
-def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
+def resolve_user_ray_temp_dir(gcs_client: "GcsClient", node_id: str):
     """
     Get the ray temp directory.
 
@@ -286,6 +286,10 @@ def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
     Returns:
         The path to the ray temp directory.
     """
+    from ray._raylet import NodeID
+    from ray.core.generated.gcs_pb2 import GcsNodeInfo
+    from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+
     # check if temp dir is available from runtime context
     if ray.is_initialized() and ray.get_runtime_context().get_node_id() == node_id:
         return ray.get_runtime_context().get_temp_dir()

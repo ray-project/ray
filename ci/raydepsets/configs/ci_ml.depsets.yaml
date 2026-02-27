@@ -1,0 +1,77 @@
+build_arg_sets:
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+
+depsets:
+  - name: ci_ml_build_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/dl-cpu-requirements.txt
+      - python/requirements/ml/train-requirements.txt
+      - python/requirements/ml/train-test-requirements.txt
+      - python/requirements/ml/tune-requirements.txt
+      - python/requirements/ml/tune-test-requirements.txt
+      - python/requirements/ml/rllib-requirements.txt
+      - python/requirements/ml/rllib-test-requirements.txt
+    output: python/deplocks/ci/ml-build-ci_depset_py${PYTHON_VERSION}.lock
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py312
+
+  - name: ci_ml_gpubuild_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/dl-gpu-requirements.txt
+      - python/requirements/ml/train-requirements.txt
+      - python/requirements/ml/train-test-requirements.txt
+      - python/requirements/ml/tune-requirements.txt
+      - python/requirements/ml/tune-test-requirements.txt
+      - python/requirements/ml/rllib-requirements.txt
+      - python/requirements/ml/rllib-test-requirements.txt
+    output: python/deplocks/ci/ml-gpubuild-ci_depset_py${PYTHON_VERSION}.lock
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+    append_flags:
+      - --index https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py312
+
+  - name: ci_ml_lightninggpubuild_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ci_ml_gpubuild_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/ml/lightning.txt
+    output: python/deplocks/ci/ml-lightninggpubuild-ci_depset_py${PYTHON_VERSION}.lock
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+    append_flags:
+      - --index https://download.pytorch.org/whl/cu128
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py312

@@ -983,7 +983,7 @@ def get_ray_doc_version():
 # don't wish to spam the caller.
 def get_wheel_filename(
     sys_platform: str = sys.platform,
-    ray_version: str = ray.__version__,
+    ray_version: Optional[str] = None,
     py_version: Tuple[int, int] = (sys.version_info.major, sys.version_info.minor),
     architecture: Optional[str] = None,
 ) -> str:
@@ -1003,6 +1003,8 @@ def get_wheel_filename(
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
+    if ray_version is None:
+        ray_version = ray.__version__
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
@@ -1034,12 +1036,16 @@ def get_wheel_filename(
 
 
 def get_master_wheel_url(
-    ray_commit: str = ray.__commit__,
+    ray_commit: Optional[str] = None,
     sys_platform: str = sys.platform,
-    ray_version: str = ray.__version__,
+    ray_version: Optional[str] = None,
     py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
+    if ray_commit is None:
+        ray_commit = ray.__commit__
+    if ray_version is None:
+        ray_version = ray.__version__
     filename = get_wheel_filename(
         sys_platform=sys_platform, ray_version=ray_version, py_version=py_version
     )
@@ -1050,12 +1056,16 @@ def get_master_wheel_url(
 
 
 def get_release_wheel_url(
-    ray_commit: str = ray.__commit__,
+    ray_commit: Optional[str] = None,
     sys_platform: str = sys.platform,
-    ray_version: str = ray.__version__,
+    ray_version: Optional[str] = None,
     py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel for a specific release."""
+    if ray_commit is None:
+        ray_commit = ray.__commit__
+    if ray_version is None:
+        ray_version = ray.__version__
     filename = get_wheel_filename(
         sys_platform=sys_platform, ray_version=ray_version, py_version=py_version
     )

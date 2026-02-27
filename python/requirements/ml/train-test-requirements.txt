@@ -1,4 +1,7 @@
 evaluate==0.4.3
+jupytext>1.13.6
 mosaicml; python_version < "3.12"
 sentencepiece==0.1.96
 s3torchconnector==1.4.3
+tblib==3.0.0
+xmltodict==0.13.0
