@@ -1,8 +1,34 @@
 from enum import Enum
 
-from ray._common.logging_constants import (
-    LOGRECORD_STANDARD_ATTRS,  # noqa: F401 (re-export)
-)
+# A set containing the standard attributes of a LogRecord. This is used to
+# help us determine which attributes constitute Ray or user-provided context. It is
+# also be used to determine whether a attribute is a standard python logging attribute.
+# http://docs.python.org/library/logging.html#logrecord-attributes
+LOGRECORD_STANDARD_ATTRS = {
+    "args",
+    "asctime",
+    "created",
+    "exc_info",
+    "exc_text",
+    "filename",
+    "funcName",
+    "levelname",
+    "levelno",
+    "lineno",
+    "message",
+    "module",
+    "msecs",
+    "msg",
+    "name",
+    "pathname",
+    "process",
+    "processName",
+    "relativeCreated",
+    "stack_info",
+    "thread",
+    "threadName",
+    "taskName",
+}
 
 LOGGER_FLATTEN_KEYS = {
     "ray_serve_extra_fields",

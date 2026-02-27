@@ -85,7 +85,7 @@ class LoggingConfig:
                 raise ValueError(
                     f"Unknown python logging standard attribute: {attr}. "
                     "The valid attributes are: "
-                    f"{set(LOGRECORD_STANDARD_ATTRS)}"
+                    f"{LOGRECORD_STANDARD_ATTRS}"
                 )
 
     def _configure_logging(self):

@@ -10,7 +10,7 @@ import websockets
 
 import ray
 from ray import serve
-from ray._common.tls_utils import generate_self_signed_tls_certs
+from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.serve.config import HTTPOptions
 
 

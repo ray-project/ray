@@ -37,13 +37,13 @@ from ray._common.test_utils import (
     fetch_prometheus_timeseries,
     wait_for_condition,
 )
-from ray._common.tls_utils import generate_self_signed_tls_certs
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.services import ProcessInfo
+from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._private.worker import RayContext
 from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
