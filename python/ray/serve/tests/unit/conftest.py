@@ -10,10 +10,8 @@ from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
     MockClusterNodeInfoCache,
     MockKVStore,
-    MockTimer,
-)
-from ray.serve.tests.unit.common.mock_replica_actor_wrapper import (
     MockReplicaActorWrapper,
+    MockTimer,
     dead_replicas_context,
     replica_rank_context,
 )
