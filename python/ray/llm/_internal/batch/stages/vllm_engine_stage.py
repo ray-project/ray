@@ -532,10 +532,6 @@ class vLLMEngineWrapper:
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 pooling_params=request.params,
-                # vLLM 0.12.0 ignores truncate_prompt_tokens in the pooling_params.
-                # TODO (jeffreywang): Remove the following line once
-                # https://github.com/vllm-project/vllm/issues/31012 is fixed.
-                truncate_prompt_tokens=request.params.truncate_prompt_tokens,
             )
         else:
             stream = self.engine.generate(
