@@ -11,13 +11,16 @@
 //! Replaces `src/ray/raylet/` — the per-node process that manages
 //! workers, resources, and scheduling.
 
-pub mod node_manager;
+#![allow(clippy::result_large_err)]
 
-// Phase 8: Full raylet implementation including:
-// - NodeManager (central class)
-// - WorkerPool
-// - LocalObjectManager
-// - WaitManager
-// - All scheduling policies (hybrid, random, spread, etc.)
-// - ClusterResourceScheduler
-// - NodeManagerService gRPC implementation
+pub mod cluster_resource_manager;
+pub mod cluster_resource_scheduler;
+pub mod grpc_service;
+pub mod lease_manager;
+pub mod local_resource_manager;
+pub mod node_manager;
+pub mod placement_group_resource_manager;
+pub mod scheduling_policy;
+pub mod scheduling_resources;
+pub mod wait_manager;
+pub mod worker_pool;
