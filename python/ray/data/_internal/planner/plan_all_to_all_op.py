@@ -68,6 +68,31 @@ def _plan_hash_shuffle_aggregate(
     )
 
 
+def _plan_hash_shuffle_random_shuffle(
+    data_context: DataContext,
+    logical_op: RandomShuffle,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    import time
+
+    from ray.data._internal.execution.operators.hash_shuffle import (
+        RandomShuffleOperator,
+    )
+    from ray.util.common import INT32_MAX
+
+    # Pin seed for retry determinism (same pattern as random_shuffle.py)
+    seed = (
+        logical_op.seed if logical_op.seed is not None else (time.time_ns() % INT32_MAX)
+    )
+
+    return RandomShuffleOperator(
+        input_physical_op,
+        data_context,
+        seed=seed,
+        num_partitions=logical_op.num_outputs,
+    )
+
+
 def plan_all_to_all_op(
     op: AbstractAllToAll,
     physical_children: List[PhysicalOperator],
@@ -87,6 +112,11 @@ def plan_all_to_all_op(
         # want to inherit the upstream op's target max block size.
 
     elif isinstance(op, RandomShuffle):
+        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            return _plan_hash_shuffle_random_shuffle(
+                data_context, op, input_physical_dag
+            )
+
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
         )

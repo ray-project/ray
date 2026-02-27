@@ -1055,7 +1055,7 @@ python/ray/data/_internal/execution/operators/base_physical_operator.py
 --------------------
 python/ray/data/_internal/execution/operators/hash_shuffle.py
     DOC104: Function `_shuffle_block`: Arguments are the same in the docstring and the function signature, but are in a different order.
-    DOC105: Function `_shuffle_block`: Argument names match, but type hints in these args do not match: block, input_index, key_columns, pool, block_transformer, send_empty_blocks, override_partition_id
+    DOC105: Function `_shuffle_block`: Argument names match, but type hints in these args do not match: block, input_index, key_columns, pool, block_transformer, send_empty_blocks, override_partition_id, random_partition_seed
 --------------------
 python/ray/data/_internal/execution/operators/map_operator.py
     DOC103: Method `MapOperator.create`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [data_context: DataContext, map_transformer: MapTransformer]. Arguments in the docstring but not in the function signature: [init_fn: , transform_fn: ].
