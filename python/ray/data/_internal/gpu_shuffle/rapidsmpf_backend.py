@@ -43,12 +43,15 @@ def get_device_free_memory() -> int | None:
 
         import ray
 
+        pynvml.nvmlInit()
         index = int(ray.get_gpu_ids()[0]) if ray.is_initialized() else 0
         handle = pynvml.nvmlDeviceGetHandleByIndex(index)
         info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         return int(info.free)
     except Exception:
         return None
+    finally:
+        pynvml.nvmlShutdown()
 
 
 if TYPE_CHECKING:

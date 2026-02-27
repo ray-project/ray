@@ -158,11 +158,11 @@ class GPUShuffleActor:
         columns = self._columns or []
         for _, partition in self._shuffler.extract():
             exec_stats_builder = BlockExecStats.builder()
-            exec_stats = exec_stats_builder.build()
             cdf = pylibcudf_to_cudf_dataframe(partition, column_names=columns).copy(
                 deep=True
             )
             block = cdf.to_arrow(preserve_index=False)
+            exec_stats = exec_stats_builder.build()
             stats = yield block
             if stats:
                 exec_stats.block_ser_time_s = stats.object_creation_dur_s
