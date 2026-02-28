@@ -87,6 +87,7 @@ class FakeProxyStateManager:
         self._grpc_options = gRPCOptions(
             grpc_servicer_functions=["f1"],
         )
+        self._fallback_proxy_targets = {}
 
     def add_proxy_details(self, node_id, node_ip, name):
 
@@ -94,6 +95,21 @@ class FakeProxyStateManager:
             node_id=node_id,
             node_ip=node_ip,
             name=name,
+        )
+
+    def add_fallback_proxy_target(
+        self,
+        node_ip,
+        port,
+        node_instance_id,
+        actor_name,
+        protocol,
+    ):
+        self._fallback_proxy_targets[protocol] = Target(
+            ip=node_ip,
+            port=port,
+            instance_id=node_instance_id,
+            name=actor_name,
         )
 
     def get_proxy_details(self):
@@ -117,8 +133,8 @@ class FakeProxyStateManager:
     def get_grpc_config(self):
         return self._grpc_options
 
-    def get_fallback_proxy_details(self):
-        return None
+    def get_fallback_proxy_targets(self):
+        return self._fallback_proxy_targets
 
 
 class FakeReplicaStateContainer:
@@ -212,6 +228,7 @@ class FakeDirectIngressController(ServeController):
         self.done_recovering_event.set()
 
         self.node_update_duration_gauge_s = mock.Mock()
+        self._last_broadcasted_fallback_targets = {}
 
     def _update_proxy_nodes(self):
         pass

@@ -49,6 +49,7 @@ class LongPollNamespace(Enum):
     GLOBAL_LOGGING_CONFIG = auto()
     DEPLOYMENT_CONFIG = auto()
     TARGET_GROUPS = auto()
+    FALLBACK_TARGETS = auto()
 
 
 @dataclass
