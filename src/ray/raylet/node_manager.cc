@@ -3040,7 +3040,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           std::vector<std::shared_ptr<WorkerInterface>> workers =
-              worker_pool_.GetAllRegisteredWorkers();
+              worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
+                                                   /* filter_io_workers */ true);
           if (workers.empty()) {
             RAY_LOG_EVERY_MS(WARNING, 5000)
                 << "Memory usage above threshold but no workers are available for "
