@@ -94,6 +94,8 @@ class RouterMetricsManager:
         router_requests_counter: metrics.Counter,
         queued_requests_gauge: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
+        max_queued_requests_gauge: metrics.Gauge,
+        max_ongoing_requests_gauge: metrics.Gauge,
         event_loop: asyncio.BaseEventLoop,
     ):
         self._handle_id = handle_id
@@ -138,6 +140,28 @@ class RouterMetricsManager:
                 "actor_id": self._self_actor_id,
             }
         )
+
+        # Gauges for max configured values
+        self.max_queued_requests_gauge = max_queued_requests_gauge
+        self.max_queued_requests_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
+
+        self.max_ongoing_requests_gauge = max_ongoing_requests_gauge
+        self.max_ongoing_requests_gauge.set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": self._handle_id,
+                "actor_id": self._self_actor_id,
+            }
+        )
+
         # We use Ray object ref callbacks to update state when tracking
         # number of requests running on replicas. The callbacks will be
         # called from a C++ thread into the router's async event loop,
@@ -261,6 +285,10 @@ class RouterMetricsManager:
             return
 
         self._deployment_config = deployment_config
+
+        # Update max config value metrics
+        self.max_queued_requests_gauge.set(deployment_config.max_queued_requests)
+        self.max_ongoing_requests_gauge.set(deployment_config.max_ongoing_requests)
 
         # Start the metrics pusher if autoscaling is enabled.
         autoscaling_config = self.autoscaling_config
@@ -590,6 +618,22 @@ class AsyncioRouter:
                 description=(
                     "The current number of requests to this deployment that "
                     "have been submitted to a replica."
+                ),
+                tag_keys=("deployment", "application", "handle", "actor_id"),
+            ),
+            metrics.Gauge(
+                "serve_deployment_max_queued_requests",
+                description=(
+                    "The configured maximum number of requests that can be queued "
+                    "for this deployment. -1 indicates no limit."
+                ),
+                tag_keys=("deployment", "application", "handle", "actor_id"),
+            ),
+            metrics.Gauge(
+                "serve_deployment_max_ongoing_requests",
+                description=(
+                    "The configured maximum number of ongoing requests allowed "
+                    "per replica for this deployment."
                 ),
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),

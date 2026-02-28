@@ -236,6 +236,36 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         ],
         grid_pos=GridPos(0, 5, 8, 8),
     ),
+    Panel(
+        id=16,
+        title="Max Queued Requests",
+        description="Configured maximum number of requests that can be queued per deployment. -1 indicates no limit and is not displayed.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_deployment_max_queued_requests{{{global_filters}}} != -1) by (application, deployment)",
+                legend="{{application}}#{{deployment}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 5, 8, 8),
+    ),
+    Panel(
+        id=17,
+        title="Max Ongoing Requests",
+        description="Configured maximum number of ongoing requests allowed per replica.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_deployment_max_ongoing_requests{{{global_filters}}}) by (application, deployment)",
+                legend="{{application}}#{{deployment}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(16, 5, 8, 8),
+    ),
 ]
 
 ids = []

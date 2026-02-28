@@ -654,6 +654,8 @@ These metrics track request routing and queueing behavior.
 | `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
 | `ray_serve_num_scheduling_tasks` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
 | `ray_serve_num_scheduling_tasks_in_backoff` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of scheduling tasks in exponential backoff (waiting before retry). |
+| `ray_serve_deployment_max_queued_requests` **[H][†]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | The configured maximum number of requests that can be queued for the deployment. |
+| `ray_serve_deployment_max_ongoing_requests` **[H][†]** | Gauge | `deployment`, `application`, `handle`, `actor_id` | The configured maximum number of ongoing requests allowed for the deployment. |
 
 ### Request processing metrics
 
