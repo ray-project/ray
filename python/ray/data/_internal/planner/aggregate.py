@@ -39,8 +39,7 @@ def _local_aggregate(
     This avoids the overhead of spawning a distributed actor pool when the
     total input data size is below the configured threshold.
     """
-    all_block_refs = [ref for bundle in refs for ref in bundle.block_refs]
-    blocks = ray.get(all_block_refs)
+    blocks = ray.get(ref for bundle in refs for ref in bundle.block_refs)
 
     # Partially aggregate each block (map step): sort by key, then aggregate
     # within a single partition (boundaries=[]).
