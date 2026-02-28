@@ -10,6 +10,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
 )
 from ray.train.v2._internal.exceptions import BroadcastCollectiveTimeoutError
+from ray.train.v2._internal.util import wait_with_logging
 
 T = TypeVar("T", bound=Optional[object])
 logger = logging.getLogger(__name__)
@@ -116,33 +117,17 @@ class SynchronizationActor:
         """Returns the ranks that have not entered the synchronization barrier."""
         return [i for i, t in enumerate(self._sync_start_times) if t is None]
 
-    async def _wait_with_logging(
-        self, condition, world_rank: int, caller_method_name: str
-    ):
-        """Waits for the condition to be notified, logging an warning every
-        `log_interval` seconds, and raises a timeout error if `timeout` is reached.
-        """
-        current_time = asyncio.get_event_loop().time()
-        self._sync_start_times[world_rank] = current_time
-        while True:
-            try:
-                await asyncio.wait_for(condition.wait(), timeout=self._warn_interval_s)
-                return
-            # asyncio.wait_for() raises `asyncio.TimeoutError` for asyncio<=3.10
-            # and raises `TimeoutError` for asyncio>=3.11
-            # https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for
-            # TODO: (hpguo) Make only one worker log the warning message.
-            except (asyncio.TimeoutError, TimeoutError):
-                logger.warning(
-                    BROADCAST_PERIODIC_WARNING.format(
-                        caller_method_name=caller_method_name,
-                        world_size=self._world_size,
-                        max_time_elapsed_s=self._get_time_elapsed(),
-                        missing_ranks=self._get_missing_ranks(),
-                        warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
-                        warn_interval_s=self._warn_interval_s,
-                    ),
-                )
+    def _generate_broadcast_periodic_warning(self, caller_method_name: str) -> str:
+        """Generates the warning message for the broadcast periodic warning."""
+
+        return BROADCAST_PERIODIC_WARNING.format(
+            caller_method_name=caller_method_name,
+            world_size=self._world_size,
+            max_time_elapsed_s=self._get_time_elapsed(),
+            missing_ranks=self._get_missing_ranks(),
+            warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+            warn_interval_s=self._warn_interval_s,
+        )
 
     async def broadcast_from_rank_zero(
         self,
@@ -185,11 +170,20 @@ class SynchronizationActor:
                 # If the counter is less than the world size, the actor waits for the
                 # other workers to call the broadcast_from_rank_zero method.
                 try:
-                    await asyncio.wait_for(
-                        self._wait_with_logging(
-                            self._condition, world_rank, caller_method_name
-                        ),
-                        timeout=self._timeout_s if self._timeout_s >= 0 else None,
+                    current_time = asyncio.get_event_loop().time()
+                    self._sync_start_times[world_rank] = current_time
+                    await wait_with_logging(
+                        self._condition,
+                        predicate=None,
+                        generate_warning_message=(
+                            lambda: self._generate_broadcast_periodic_warning(
+                                caller_method_name
+                            )
+                        )
+                        if world_rank == 0
+                        else None,
+                        warn_interval_s=self._warn_interval_s,
+                        timeout_s=self._timeout_s,
                     )
                     return self._reduced_data
                 except (asyncio.TimeoutError, TimeoutError) as e:
