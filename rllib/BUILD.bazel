@@ -10,12 +10,13 @@
 
 # Currently we have the following categories:
 
-# - Learning tests/regression, tagged:
-# -- "learning_tests": Tests for an algorithms expected return
-# -- "learning_tests_with_all_core":
+# - Learning tests (for regression), are tagged: "learning_tests" or "learning_tests_use_all_core".
 
 # - Folder-bound tests, tagged with the name of the top-level dir:
 #   - `env` directory tests.
+#   - `examples` directory tests are tagged: "examples" or "examples_use_all_core".
+#      Note that examples under `rllib/examples/...` are also used as learning tests
+#      and tagged "learning_tests" or "learning_tests_use_all_core".
 #   - `evaluation` directory tests.
 #   - `models` directory tests.
 #   - `offline` directory tests.
@@ -24,8 +25,6 @@
 #   - `algorithms` directory tests.
 #   - `callbacks` directory tests.
 #   - `core` directory tests
-
-# - Examples directory (everything in rllib/examples/...), tagged: "examples" or "examples_use_all_core"
 
 # Note: There is a special directory in examples: "documentation" which contains
 # all code that is linked to from within the RLlib docs. This code is tested
@@ -3428,6 +3427,18 @@ py_test(
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
     tags = [
         "examples",
+        "examples_use_all_core",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+py_test(
+    name = "examples/checkpoints/checkpointable_guide",
+    size = "large",
+    srcs = ["examples/checkpoints/checkpointable_guide.py"],
+    main = "examples/checkpoints/checkpointable_guide.py",
+    tags = [
         "examples_use_all_core",
         "exclusive",
         "team:rllib",
