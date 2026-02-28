@@ -2484,7 +2484,14 @@ class Replica(ReplicaBase):
 
                 await send(msg)
                 response_started = True
-                if msg.get("more_body") is False:
+                # more_body: "Signifies if there is additional content to come (as part
+                # of a Response Body message). If False, and the server is not expecting
+                # Response Trailers, response will be taken as complete and closed.
+                # Optional; if missing defaults to False."
+                # https://asgi.readthedocs.io/en/latest/specs/www.html#response-body-send-event
+                if msg["type"] == "http.response.body" and not msg.get(
+                    "more_body", False
+                ):
                     response_finished = True
 
             async def call_asgi():
