@@ -371,6 +371,7 @@ class AlgorithmConfig(_Config):
         self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 3
         self.local_gpu_idx = 0
+        self.custom_resources_per_learner = {}
         # TODO (sven): This probably works even without any restriction
         #  (allowing for any arbitrary number of requests in-flight). Test with
         #  3 first, then with unlimited, and if both show the same behavior on
@@ -2277,6 +2278,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
+        custom_resources_per_learner: Optional[Dict[str, Any]] = NotProvided,
     ) -> Self:
         """Sets LearnerGroup and Learner worker related configurations.
 
@@ -2344,6 +2346,8 @@ class AlgorithmConfig(_Config):
                 Learner subclasses and in case the user doesn't want to write an extra
                 `AlgorithmConfig` subclass just to add a few settings to the base Algo's
                 own config class.
+            custom_resources_per_learner: Any custom Ray resources to allocate per
+                Learner.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2374,6 +2378,8 @@ class AlgorithmConfig(_Config):
             )
         if learner_config_dict is not NotProvided:
             self.learner_config_dict.update(learner_config_dict)
+        if custom_resources_per_learner is not NotProvided:
+            self.custom_resources_per_learner = custom_resources_per_learner
 
         return self
 
