@@ -342,6 +342,7 @@ FunctionDescriptor_constructor_map[<int>CppFunctionDescriptorType] = \
 cdef class CppFunctionDescriptor(FunctionDescriptor):
     cdef:
         CCppFunctionDescriptor *typed_descriptor
+        object _function_id
 
     def __cinit__(self,
                   function_name, caller, class_name=""):
@@ -349,6 +350,7 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
             function_name, caller, class_name)
         self.typed_descriptor = <CCppFunctionDescriptor*>(
             self.descriptor.get())
+        self._function_id = None
 
     def __reduce__(self):
         return CppFunctionDescriptor, (self.typed_descriptor.FunctionName(),
@@ -390,6 +392,26 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
             The class name of the function descriptor.
         """
         return <str>self.typed_descriptor.ClassName()
+
+    @property
+    def function_id(self):
+        """Get the function id calculated from this descriptor."""
+        if not self._function_id:
+            self._function_id = self._get_function_id()
+        return self._function_id
+
+    def _get_function_id(self):
+        """Calculate the function id for a C++ descriptor."""
+        function_id_hash = hashlib.shake_128()
+        function_id_hash.update(self.typed_descriptor.FunctionName())
+        function_id_hash.update(self.typed_descriptor.ClassName())
+        function_id_hash.update(self.typed_descriptor.Caller())
+        function_id = function_id_hash.digest(ray_constants.ID_SIZE)
+        return ray.FunctionID(function_id)
+
+    def is_actor_method(self):
+        """Check if this function descriptor refers to an actor method."""
+        return self.class_name != ""
 
     @property
     def repr(self):
