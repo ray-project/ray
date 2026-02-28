@@ -108,6 +108,30 @@ def sglang_embedding_client():
     serve.shutdown()
 
 
+def test_sglang_batched_completions(sglang_client):
+    """Verify that batched completions (multiple prompts) return one choice per prompt."""
+    prompts = [
+        "The capital of France is",
+        "The capital of Germany is",
+        "The capital of Japan is",
+    ]
+    batch_resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt=prompts,
+        max_tokens=16,
+        temperature=0.0,
+    )
+
+    # Each prompt should have a corresponding choice
+    assert len(batch_resp.choices) == len(prompts)
+    # Choices should be ordered correctly
+    for i, choice in enumerate(batch_resp.choices):
+        assert choice.index == i
+        assert choice.text.strip()
+    # Usage should reflect all prompts combined
+    assert batch_resp.usage.total_tokens > 0
+
+
 def test_sglang_embeddings(sglang_embedding_client):
     """Verify embeddings endpoint works with single and batch inputs."""
     # Single input

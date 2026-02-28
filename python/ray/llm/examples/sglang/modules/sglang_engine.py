@@ -6,6 +6,7 @@ from typing import (
     AsyncGenerator,
     List,
     Optional,
+    Union,
 )
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -208,13 +209,27 @@ class SGLangServer:
     async def _generate_and_extract_metadata(
         self,
         request: Any,
-        prompt: Any,
-    ) -> dict[str, Any]:
+        prompt: Union[str, List[str]],
+    ) -> Union[dict[str, Any], List[dict[str, Any]]]:
         """
         Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
+
+        Accepts either a single prompt string or a list of prompts. When a list
+        is provided, all prompts are sent to SGLang in one batched call, letting
+        SGLang's scheduler handle concurrency natively via async_generate.
         """
         raw = await self._generate_raw(request, prompt)
+
+        # Batch case — SGLang returns a list of results, one per prompt
+        if isinstance(prompt, list):
+            if not raw:
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during generation."
+                )
+            return [self._extract_generation_metadata(r) for r in raw]
+
+        # Single prompt case
         if isinstance(raw, list):
             if not raw:
                 raise RuntimeError(
@@ -279,16 +294,13 @@ class SGLangServer:
             # Single string prompt: wrap it in a list for iteration
             prompts_to_process = [prompt_input]
 
+        results = await self._generate_and_extract_metadata(request, prompts_to_process)
+
         all_choices = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
-        last_metadata = {}
 
-        # 2. Loop through all prompts in the batch
-        for index, prompt_string in enumerate(prompts_to_process):
-            metadata = await self._generate_and_extract_metadata(request, prompt_string)
-            last_metadata = metadata  # Keep track of the metadata from the last run
-
+        for index, metadata in enumerate(results):
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
 
@@ -305,6 +317,8 @@ class SGLangServer:
             "completion_tokens": total_completion_tokens,
             "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
+
+        last_metadata = results[-1]
 
         # Use metadata from the last generation for shared fields (id, created)
         resp = CompletionResponse(
