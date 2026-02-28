@@ -1,13 +1,18 @@
 import logging
 import os
 import re
+import uuid
 from datetime import datetime
 
 import pytest
 import yaml
 
 import ray
-from ray.data._internal.logging import configure_logging, get_log_directory
+from ray.data._internal.logging import (
+    SessionFileHandler,
+    configure_logging,
+    get_log_directory,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -17,6 +22,24 @@ def configure_logging_fixture():
 
     configure_logging()
     yield
+
+
+@pytest.fixture(name="tmp_logger")
+def tmp_logger_fixture():
+    # 1. Unique name for total isolation
+    name = f"test_{uuid.uuid4().hex}"
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+
+    yield logger
+
+    # 2. Close resources and clear references
+    for handler in logger.handlers[:]:  # Slice copy to avoid mutation issues
+        handler.close()
+        logger.removeHandler(handler)
+
+    # 3. Reset level to prevent any weird propagation
+    logger.setLevel(logging.NOTSET)
 
 
 @pytest.fixture(name="reset_logging")
@@ -91,6 +114,44 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
     assert logged_level == logging.getLevelName(logging.INFO)
     assert re.match(r"test_logging.py:\d+", logged_filepath)
     assert logged_msg == "ham"
+
+
+def test_file_handler_uses_utf8_on_windows(monkeypatch, tmp_path, tmp_logger):
+    monkeypatch.setattr("ray.data._internal.logging.os.name", "nt")
+    handler = SessionFileHandler(
+        "ray-data.log", get_log_directory=lambda: str(tmp_path)
+    )
+
+    tmp_logger.addHandler(handler)
+    tmp_logger.info("ham")
+
+    assert handler._handler is not None
+    assert handler._handler.encoding.lower() == "utf-8"
+    handler.close()
+
+
+def test_session_file_handler_reinitializes_after_close(tmp_path, tmp_logger):
+    handler = SessionFileHandler(
+        "ray-data.log", get_log_directory=lambda: str(tmp_path)
+    )
+    tmp_logger.addHandler(handler)
+
+    # 1. Initial emit
+    tmp_logger.info("first")
+    assert handler._handler is not None
+    original_handler = handler._handler
+
+    # 2. Close
+    handler.close()
+    assert handler._handler is None
+
+    # 3. Emit after close (should re-initialize)
+    tmp_logger.info("second")
+    assert handler._handler is not None
+    assert handler._handler is not original_handler
+
+    # Clean up
+    handler.close()
 
 
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
