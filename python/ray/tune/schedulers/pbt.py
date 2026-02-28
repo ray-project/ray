@@ -7,7 +7,7 @@ import random
 import shutil
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
@@ -28,6 +28,8 @@ if TYPE_CHECKING:
     from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
+
+CustomExploreFn = Callable[[Dict[str, Any]], Dict[str, Any]]
 
 
 class _PBTTrialState:
@@ -68,7 +70,7 @@ def _explore(
     mutations: Dict,
     resample_probability: float,
     perturbation_factors: Tuple[float],
-    custom_explore_fn: Optional[Callable],
+    custom_explore_fn: Optional[CustomExploreFn],
 ) -> Tuple[Dict, Dict]:
     """Return a perturbed config and string descriptors of the operations performed
     on the original config to produce the new config.
@@ -367,7 +369,7 @@ class PopulationBasedTraining(FIFOScheduler):
         quantile_fraction: float = 0.25,
         resample_probability: float = 0.25,
         perturbation_factors: Tuple[float, float] = (1.2, 0.8),
-        custom_explore_fn: Optional[Callable] = None,
+        custom_explore_fn: Optional[CustomExploreFn] = None,
         log_config: bool = True,
         require_attrs: bool = True,
         synch: bool = False,
