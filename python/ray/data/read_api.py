@@ -4009,6 +4009,7 @@ def read_lance(
             only the rows matching the filter. See
             `Lance filter push-down <https://lance.org/guide/read_and_write/#filter-push-down>`_
             for valid SQL expressions. By default, no filter is applied.
+            **Deprecated**. Use `dataset.filter(expr=expr)` instead to filter rows.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https://lance.org/guide/object_store/>`_.
@@ -4033,6 +4034,16 @@ def read_lance(
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
     """  # noqa: E501
+
+    # Check for deprecated filter parameter
+    if filter is not None:
+        warnings.warn(
+            "The `filter` argument is deprecated and will not supported in a future release. "
+            "Use `dataset.filter(expr=expr)` instead to filter rows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     datasource = LanceDatasource(
         uri=uri,
         version=version,
