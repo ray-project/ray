@@ -160,7 +160,6 @@ py_test_module_list(
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
     },
     files = [
-        "test_fastapi.py",
         "test_gcs_failure.py",
         "test_gradio.py",
         "test_replica_ranks.py",
@@ -177,12 +176,35 @@ py_test_module_list(
     ],
 )
 
+# Tracing tests (require fixture data and tracing env var for subprocesses).
+py_test_module_list(
+    size = "medium",
+    data = glob(["fixtures/*.*"]),
+    env = {
+        "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH": "ray.serve._private.tracing_utils:default_tracing_exporter",
+        "RAY_SERVE_TRACING_SAMPLING_RATIO": "1.0",
+    },
+    files = [
+        "test_tracing_utils.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Large tests.
 py_test_module_list(
     size = "enormous",
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
+        "test_fastapi.py",
         "test_grpc.py",
         "test_logging.py",
         "test_logging_2.py",

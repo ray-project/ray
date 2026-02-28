@@ -400,14 +400,15 @@ def test_execute_to_legacy_block_list(
 ):
     ds = ray.data.range(10)
     # Stats not initialized until `ds.iter_rows()` is called
-    assert ds._plan._snapshot_stats is None
+    assert ds._plan._cache.get_stats() is None
 
     for i, row in enumerate(ds.iter_rows()):
         assert row["id"] == i
 
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.metadata
-    assert ds._plan._snapshot_stats.time_total_s > 0
+    stats = ds._plan._cache.get_stats()
+    assert stats is not None
+    assert "ReadRange" in stats.metadata
+    assert stats.time_total_s > 0
 
 
 def test_streaming_executor(

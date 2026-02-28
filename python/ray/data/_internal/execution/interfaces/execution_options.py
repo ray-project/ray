@@ -1,5 +1,6 @@
 import math
 import os
+import warnings
 from typing import Any, Dict, List, Optional, Union
 
 from .common import NodeIdStr
@@ -301,9 +302,6 @@ class ExecutionOptions:
             automatically excluded.
             - For each resource type, resource_limits and exclude_resources can
             not be both set.
-        locality_with_output: Set this to prefer running tasks on the same node as the
-            output node (node driving the execution). It can also be set to a list of
-            node ids to spread the outputs across those nodes. Off by default.
         preserve_order: Set this to preserve the ordering between blocks processed by
             operators. Off by default.
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
@@ -318,18 +316,28 @@ class ExecutionOptions:
         self,
         resource_limits: Optional[ExecutionResources] = None,
         exclude_resources: Optional[ExecutionResources] = None,
-        locality_with_output: Union[bool, List[NodeIdStr]] = False,
         preserve_order: bool = False,
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
     ):
+        """Initialize execution options.
+
+        Args:
+            resource_limits: Limit on logical resources a Dataset can use.
+                Defaults to auto-detected limits.
+            exclude_resources: Resources to exclude from Ray Data.
+            preserve_order: Whether to preserve block processing order.
+            actor_locality_enabled: Whether to enable locality-aware dispatch for
+                stateful map and streaming split operations.
+            verbose_progress: Whether to report progress per operator. If None,
+                read from ``RAY_DATA_VERBOSE_PROGRESS``.
+        """
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
         self.resource_limits = resource_limits
         if exclude_resources is None:
             exclude_resources = ExecutionResources.zero()
         self.exclude_resources = exclude_resources
-        self.locality_with_output = locality_with_output
         self.preserve_order = preserve_order
         self.actor_locality_enabled = actor_locality_enabled
         if verbose_progress is None:
@@ -342,7 +350,6 @@ class ExecutionOptions:
         return (
             f"ExecutionOptions(resource_limits={self.resource_limits}, "
             f"exclude_resources={self.exclude_resources}, "
-            f"locality_with_output={self.locality_with_output}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
             f"verbose_progress={self.verbose_progress})"
@@ -376,6 +383,22 @@ class ExecutionOptions:
                     "resource_limits and exclude_resources cannot "
                     f" both be set for {attr} resource."
                 )
+
+    @property
+    def locality_with_output(self) -> bool:
+        return False
+
+    @locality_with_output.setter
+    def locality_with_output(self, value: Union[bool, List[NodeIdStr]]) -> None:
+        if value:
+            warnings.warn(
+                "`ExecutionOptions.locality_with_output` has been removed and is now "
+                "a no-op. We don't recommend using it anymore, but if you still want "
+                "to replicate its behavior, follow the instructions in this gist: "
+                "https://gist.github.com/bveeramani/51e0383bb3680dd78fdfb92d76ea22a8.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
 
 def safe_or(value: Optional[Any], alt: Any) -> Any:
