@@ -15,6 +15,7 @@ from ray.rllib.core import (
     Columns,
 )
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
@@ -23,7 +24,12 @@ from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_CONNECTOR
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LEARNER_CONNECTOR,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+)
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
@@ -564,6 +570,52 @@ def _check_multi_worker_weights(learner_group, results):
         )[COMPONENT_LEARNER][COMPONENT_RL_MODULE][module_id]
         actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
         check(reported_mean_weights, actual_mean_weights, rtol=0.02)
+
+
+class TestLearnerGroupShardObjectRefIterator(unittest.TestCase):
+    """Test ShardObjectRefIterator behavior with learner groups."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
+    def test_shard_object_ref_iterator_fewer_refs_than_shards(self):
+        """Test that LearnerGroup correctly handles incoming training data if fewer refs than learners are available."""
+        BATCH_SIZE = 8
+        NUM_LEARNERS = 2
+        list_of_list_of_episodes = [[FAKE_EPISODES] * BATCH_SIZE] * NUM_LEARNERS
+        training_data = TrainingData(batch_refs=list_of_list_of_episodes)
+
+        scaling_modes = ["remote-cpu", "multi-cpu-ddp"]
+
+        timesteps = {
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: 1,
+            NUM_ENV_STEPS_TRAINED_LIFETIME: 1,
+        }
+
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
+            env = gym.make("CartPole-v1")
+            print(env)
+
+            config_overrides = REMOTE_CONFIGS[scaling_mode]
+            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+            learner_group = config.build()
+            learner_results = learner_group.update(
+                training_data=training_data,
+                async_update=config.num_learners > 1,
+                return_state=True,
+                timesteps=timesteps,
+                num_epochs=self.config.num_epochs,
+                minibatch_size=self.config.minibatch_size,
+                shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                defer_solve_refs_to_learner=True,
+            )
+            print(learner_results)
 
 
 if __name__ == "__main__":

@@ -385,7 +385,8 @@ class ShardObjectRefIterator:
         for i in range(self._num_shards):
             # Determine the end index for the current sublist
             end = start + sublist_size + (1 if i < remaining_elements else 0)
-            # Append the sublist to the result
-            yield self._object_refs[start:end]
+            # Only yield non-empty shards
+            if end > start:
+                yield self._object_refs[start:end]
             # Update the start index for the next sublist
             start = end
