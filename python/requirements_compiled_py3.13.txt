@@ -2582,7 +2582,7 @@ websockets==15.0.1
     # via
     #   aim
     #   gradio-client
-werkzeug==2.3.8
+werkzeug==3.1.6
     # via
     #   -r python/requirements/test-requirements.txt
     #   flask
