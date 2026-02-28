@@ -118,6 +118,8 @@ array-record==0.5.1 ; python_version < "3.12" and sys_platform != "darwin" and p
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   tensorflow-datasets
+arro3-core==0.6.5
+    # via deltalake
 arrow==1.3.0
     # via isoduration
 asgiref==3.9.2
@@ -442,8 +444,10 @@ defusedxml==0.7.1
     #   semgrep
 delta-sharing==1.0.5
     # via -r python/requirements/ml/data-test-requirements.txt
-deltalake==0.9.0
+deltalake==1.4.1
     # via -r python/requirements/ml/data-test-requirements.txt
+deprecated==1.3.1
+    # via deltalake
 dill==0.3.7
     # via
     #   datasets
@@ -1597,7 +1601,6 @@ pyarrow==19.0.1
     #   dask
     #   datasets
     #   delta-sharing
-    #   deltalake
     #   feather-format
     #   getdaft
     #   hudi
@@ -2390,6 +2393,7 @@ typing-extensions==4.15.0
     #   aiosignal
     #   alembic
     #   anyio
+    #   arro3-core
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
@@ -2551,6 +2555,7 @@ wrapt==1.14.1
     #   aiobotocore
     #   aws-xray-sdk
     #   comet-ml
+    #   deprecated
     #   opentelemetry-instrumentation
     #   tensorflow
     #   tensorflow-datasets

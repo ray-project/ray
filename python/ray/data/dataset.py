@@ -4400,6 +4400,111 @@ class Dataset:
 
     @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
+    def write_delta(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        schema: Optional["pyarrow.Schema"] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        **write_kwargs,
+    ) -> None:
+        """Write the dataset to a Delta Lake table in append mode.
+
+        Writes the dataset to a Delta Lake table with ACID guarantees using
+        a two-phase commit protocol. All files are written first, then committed
+        atomically in a single Delta transaction.
+
+        Examples:
+            Write to a local Delta table:
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_delta("/tmp/my-delta-table") # doctest: +SKIP
+
+            Append to an existing table:
+
+            >>> ds.write_delta("/tmp/my-delta-table") # doctest: +SKIP
+
+            Write to cloud storage (S3):
+
+            >>> ds.write_delta( # doctest: +SKIP
+            ...     "s3://bucket/path/to/table",
+            ...     storage_options={
+            ...         "AWS_REGION": "us-west-2",
+            ...         "AWS_ACCESS_KEY_ID": "...",
+            ...         "AWS_SECRET_ACCESS_KEY": "...",
+            ...     }
+            ... )
+
+        Args:
+            path: Path to the Delta table. Supports:
+
+                * Local filesystem: /path/to/table
+                * S3: s3://bucket/path/to/table
+                * GCS: gs://bucket/path/to/table
+                * Azure: abfss://container@account.dfs.core.windows.net/path
+
+            filesystem: PyArrow filesystem to use for writing. If None, automatically
+                detected based on the path scheme (s3://, gs://, etc.).
+            schema: PyArrow schema for the table. If None, inferred from the data.
+                Required when writing an empty dataset to a new table.
+            ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
+                Use to configure resources such as ``num_cpus`` or ``num_gpus``.
+            concurrency: Maximum number of concurrent write tasks. By default,
+                concurrency is dynamically determined based on available resources.
+            **write_kwargs: Additional arguments passed to the Delta writer:
+
+                * storage_options: Cloud storage credentials (dict)
+                * name: Table name for Delta metadata
+                * description: Table description for Delta metadata
+                * configuration: Delta table configuration options (dict)
+                * compression: Parquet compression codec ("snappy", "gzip",
+                  "zstd", etc.)
+
+        Raises:
+            ImportError: If the ``deltalake`` package is not installed. Install
+                with ``pip install deltalake``.
+            ValueError: If schema validation fails or the table cannot be created.
+
+        Note:
+            This method uses a two-phase commit protocol for ACID guarantees:
+
+            1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
+               Parquet files and returns AddAction metadata (files not yet visible).
+            2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
+               them atomically in a single Delta transaction.
+
+            If the write fails partway through, uncommitted files can be removed
+            by running Delta's VACUUM command.
+
+        Note:
+            For cloud storage, provide authentication via ``storage_options``:
+
+            * **AWS S3**: ``{"AWS_REGION": "...", "AWS_ACCESS_KEY_ID": "...", "AWS_SECRET_ACCESS_KEY": "..."}``
+            * **GCS**: ``{"GOOGLE_SERVICE_ACCOUNT": "path/to/key.json"}``
+            * **Azure**: ``{"AZURE_STORAGE_ACCOUNT_KEY": "..."}``
+
+            Alternatively, use environment variables or cloud-native authentication
+            (IAM roles, service accounts, etc.).
+        """
+        from ray.data._internal.datasource.delta import DeltaDatasink
+
+        datasink = DeltaDatasink(
+            path,
+            filesystem=filesystem,
+            schema=schema,
+            **write_kwargs,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    @ConsumptionAPI
     def write_images(
         self,
         path: str,

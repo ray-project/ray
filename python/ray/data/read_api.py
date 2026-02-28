@@ -123,6 +123,7 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
+    from deltalake import DeltaTable
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
@@ -4248,11 +4249,11 @@ def read_unity_catalog(
 
 @PublicAPI(stability="alpha")
 def read_delta(
-    path: Union[str, List[str]],
-    version: Optional[int] = None,
+    path: str,
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
+    storage_options: Optional[Dict[str, str]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4266,7 +4267,7 @@ def read_delta(
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ):
-    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+    """Creates a :class:`~ray.data.Dataset` from a Delta Lake table.
 
     Examples:
 
@@ -4276,7 +4277,6 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
-        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4287,6 +4287,7 @@ def read_delta(
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
+        storage_options: Cloud storage authentication options passed to delta-rs.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4317,12 +4318,17 @@ def read_delta(
                     #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
-        :class:`~ray.data.Dataset` producing records read from the specified parquet
-        files.
+        :class:`~ray.data.Dataset` producing records read from the specified Delta
+        Lake table.
+
+    Note:
+        This connector reads the latest version of a Delta Lake table and delegates
+        to :func:`~ray.data.read_parquet` for efficient parallel reads. It supports
+        all primitive and complex types (maps, structs, arrays).
+
+        Reads are consistent with Delta Lake's ACID transaction model.
 
     """
-    # Modified from ray.data._internal.util._check_import, which is meant for objects,
-    # not functions. Move to _check_import if moved to a DataSource object.
     import importlib
 
     package = "deltalake"
@@ -4337,19 +4343,50 @@ def read_delta(
 
     from deltalake import DeltaTable
 
-    # This seems reasonable to keep it at one table, even Spark doesn't really support
-    # multi-table reads, it's usually up to the developer to keep it in one table.
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
-    # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path, version=version).file_uris()
+    dt_kwargs = {}
+    if storage_options:
+        dt_kwargs["storage_options"] = storage_options
+
+    dt = DeltaTable(path, **dt_kwargs)
+
+    paths = dt.file_uris()
+
+    # Handle empty Delta table (no files to read)
+    if not paths:
+        import pyarrow as pa
+
+        from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
+
+        arrow_schema = to_pyarrow_schema(dt.schema())
+        if columns:
+            arrow_schema = pa.schema(
+                [f for f in arrow_schema if f.name in columns]
+            )
+        empty_table = pa.table(
+            {f.name: pa.array([], type=f.type) for f in arrow_schema}
+        )
+        return from_arrow(empty_table)
+
+    # If no filesystem was supplied, try to construct one from storage options
+    # so that Parquet reads use the same credentials as Delta metadata access.
+    if filesystem is None and storage_options:
+        from ray.data._internal.datasource.delta.utils import (
+            create_filesystem_from_storage_options,
+        )
+
+        filesystem = create_filesystem_from_storage_options(path, storage_options)
 
     return read_parquet(
         paths,
         filesystem=filesystem,
         columns=columns,
         parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
         ray_remote_args=ray_remote_args,
         partition_filter=partition_filter,
         partitioning=partitioning,
