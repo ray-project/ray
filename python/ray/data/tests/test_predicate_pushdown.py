@@ -1,9 +1,13 @@
+import os
 import re
 from typing import Any, List
 
+import lance
 import pandas as pd
+import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Dataset
@@ -16,6 +20,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
@@ -150,6 +155,34 @@ def test_chained_filter_with_expressions(parquet_ds):
         filtered_expr_chained_ds,
         "",  # All filters combined and pushed down to read
         filtered_udf_data,
+    )
+
+
+@pytest.mark.parametrize(
+    "data_path",
+    [
+        (lazy_fixture("local_path")),
+        (lazy_fixture("s3_path")),
+    ],
+)
+def test_pushdown_filter_lance(data_path):
+    """Test that Lance predicate pushdown absorbs expression filters into Read."""
+
+    df1 = pa.table({"a": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    lance.write_dataset(df1, path)
+    # Both filters specified on read_lance() and .filter() should be applied
+    lance_ds = ray.data.read_lance(path, filter="a <= 5")
+    filtered_expr_ds = lance_ds.filter(expr=col("a") >= 1.0)
+
+    filtered_expr_data = lance_ds.filter(
+        lambda r: r["a"] <= 5.0 and r["a"] >= 1.0
+    ).take_all()
+    _check_plan_with_flexible_read(
+        filtered_expr_ds,
+        "",  # Pushed down to read, no additional Filter operator
+        filtered_expr_data,
     )
 
 
