@@ -1,4 +1,3 @@
-python/ray/data/__init__.py
 python/ray/data/_internal/__init__.py
 python/ray/data/_internal/actor_autoscaler/__init__.py
 python/ray/data/_internal/actor_autoscaler/actor_pool_resizing_policy.py
@@ -7,7 +6,6 @@ python/ray/data/_internal/actor_autoscaler/base_actor_autoscaler.py
 python/ray/data/_internal/actor_autoscaler/default_actor_autoscaler.py
 python/ray/data/_internal/aggregate.py
 python/ray/data/_internal/arrow_ops/__init__.py
-python/ray/data/_internal/arrow_utils.py
 python/ray/data/_internal/average_calculator.py
 python/ray/data/_internal/block_batching/__init__.py
 python/ray/data/_internal/block_batching/block_batching.py
@@ -26,17 +24,14 @@ python/ray/data/_internal/datasource/audio_datasource.py
 python/ray/data/_internal/datasource/avro_datasource.py
 python/ray/data/_internal/datasource/bigquery_datasink.py
 python/ray/data/_internal/datasource/clickhouse_datasource.py
-python/ray/data/_internal/datasource/csv_datasource.py
 python/ray/data/_internal/datasource/databricks_credentials.py
 python/ray/data/_internal/datasource/databricks_uc_datasource.py
-python/ray/data/_internal/datasource/iceberg_datasink.py
 python/ray/data/_internal/datasource/mcap_datasource.py
 python/ray/data/_internal/datasource/mongo_datasink.py
 python/ray/data/_internal/datasource/numpy_datasource.py
 python/ray/data/_internal/datasource/sql_datasink.py
 python/ray/data/_internal/datasource/text_datasource.py
 python/ray/data/_internal/datasource/uc_datasource.py
-python/ray/data/_internal/datasource/video_datasource.py
 python/ray/data/_internal/delegating_block_builder.py
 python/ray/data/_internal/execution/__init__.py
 python/ray/data/_internal/execution/backpressure_policy/__init__.py
@@ -73,7 +68,6 @@ python/ray/data/_internal/logical/operators/all_to_all_operator.py
 python/ray/data/_internal/logical/operators/count_operator.py
 python/ray/data/_internal/logical/operators/join_operator.py
 python/ray/data/_internal/logical/operators/n_ary_operator.py
-python/ray/data/_internal/logical/operators/one_to_one_operator.py
 python/ray/data/_internal/logical/operators/streaming_split_operator.py
 python/ray/data/_internal/logical/operators/write_operator.py
 python/ray/data/_internal/logical/rules/__init__.py
@@ -94,10 +88,8 @@ python/ray/data/_internal/torch_iterable_dataset.py
 python/ray/data/_internal/utils/__init__.py
 python/ray/data/checkpoint/__init__.py
 python/ray/data/checkpoint/checkpoint_writer.py
-python/ray/data/checkpoint/interfaces.py
 python/ray/data/checkpoint/load_checkpoint_callback.py
 python/ray/data/checkpoint/util.py
-python/ray/data/collate_fn.py
 python/ray/data/constants.py
 python/ray/data/datasource/__init__.py
 python/ray/data/datasource/filename_provider.py
@@ -121,11 +113,9 @@ python/ray/data/tests/datasource/databricks_test_utils.py
 python/ray/data/tests/datasource/test_audio.py
 python/ray/data/tests/datasource/test_avro.py
 python/ray/data/tests/datasource/test_binary.py
-python/ray/data/tests/datasource/test_daft.py
 python/ray/data/tests/datasource/test_datasink.py
 python/ray/data/tests/datasource/test_delta.py
 python/ray/data/tests/datasource/test_hudi.py
-python/ray/data/tests/datasource/test_huggingface.py
 python/ray/data/tests/datasource/test_json.py
 python/ray/data/tests/datasource/test_lance.py
 python/ray/data/tests/datasource/test_mcap.py
@@ -133,13 +123,10 @@ python/ray/data/tests/datasource/test_mongo.py
 python/ray/data/tests/datasource/test_raydp.py
 python/ray/data/tests/datasource/test_sql.py
 python/ray/data/tests/datasource/test_tensorflow_datasets.py
-python/ray/data/tests/datasource/test_torch.py
 python/ray/data/tests/datasource/test_video.py
 python/ray/data/tests/doctest_pytest_plugin.py
-python/ray/data/tests/expressions/test_namespace_datetime.py
 python/ray/data/tests/mock_http_server.py
 python/ray/data/tests/preprocessors/__init__.py
-python/ray/data/tests/preprocessors/test_backwards_compatibility.py
 python/ray/data/tests/preprocessors/test_normalizer.py
 python/ray/data/tests/preprocessors/test_tokenizer.py
 python/ray/data/tests/preprocessors/test_transformer.py
@@ -151,7 +138,6 @@ python/ray/data/tests/test_context.py
 python/ray/data/tests/test_dataset_validation.py
 python/ray/data/tests/test_download_expression.py
 python/ray/data/tests/test_downstream_capacity_backpressure_policy.py
-python/ray/data/tests/test_ecosystem_dask.py
 python/ray/data/tests/test_ecosystem_modin.py
 python/ray/data/tests/test_import.py
 python/ray/data/tests/test_preserve_hash_shuffle_blocks.py
@@ -173,7 +159,6 @@ python/ray/data/tests/unit/__init__.py
 python/ray/data/tests/unit/conftest.py
 python/ray/data/tests/unit/expressions/test_boolean.py
 python/ray/data/tests/unit/expressions/test_comparison.py
-python/ray/data/tests/unit/expressions/test_conversion.py
 python/ray/data/tests/unit/expressions/test_predicate.py
 python/ray/data/tests/unit/test_average_calculator.py
 python/ray/data/tests/unit/test_block_boundaries.py
@@ -181,6 +166,5 @@ python/ray/data/tests/unit/test_dataset_repr.py
 python/ray/data/tests/unit/test_filename_provider.py
 python/ray/data/tests/unit/test_logical_plan.py
 python/ray/data/tests/unit/test_parquet_predicate_split.py
-python/ray/data/tests/unit/test_path_util.py
 python/ray/data/tests/unit/test_ruleset.py
 python/ray/data/util/__init__.py
