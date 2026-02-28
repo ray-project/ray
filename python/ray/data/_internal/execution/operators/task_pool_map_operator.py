@@ -132,18 +132,36 @@ class TaskPoolMapOperator(MapOperator):
             **self.get_map_task_kwargs(),
         )
 
-        self._submit_data_task(gen, bundle)
+        self._submit_data_task(
+            gen,
+            bundle,
+            task_resource_bundle=ExecutionResources(
+                cpu=dynamic_ray_remote_args.get("num_cpus", 0),
+                gpu=dynamic_ray_remote_args.get("num_gpus", 0),
+                memory=dynamic_ray_remote_args.get("memory", 0),
+            ),
+        )
 
     def progress_str(self) -> str:
         return ""
 
     def current_logical_usage(self) -> ExecutionResources:
-        num_active_workers = self.num_active_tasks()
-        return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-            memory=self._ray_remote_args.get("memory", 0) * num_active_workers,
+        cpu = sum(
+            t.get_requested_resource_bundle().cpu or 0
+            for t in self._data_tasks.values()
+            if t.get_requested_resource_bundle() is not None
         )
+        gpu = sum(
+            t.get_requested_resource_bundle().gpu or 0
+            for t in self._data_tasks.values()
+            if t.get_requested_resource_bundle() is not None
+        )
+        memory = sum(
+            t.get_requested_resource_bundle().memory or 0
+            for t in self._data_tasks.values()
+            if t.get_requested_resource_bundle() is not None
+        )
+        return ExecutionResources(cpu=cpu, gpu=gpu, memory=memory)
 
     def pending_logical_usage(self) -> ExecutionResources:
         return ExecutionResources()
