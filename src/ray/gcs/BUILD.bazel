@@ -170,12 +170,14 @@ ray_cc_library(
     srcs = ["gcs_worker_manager.cc"],
     hdrs = ["gcs_worker_manager.h"],
     deps = [
+        ":gcs_init_data",
         ":gcs_kv_manager",
         ":gcs_table_storage",
         ":gcs_usage_stats_client",
         ":grpc_service_interfaces",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/stats:stats_metric",
+        "//src/ray/util:counter_map",
     ],
 )
 
