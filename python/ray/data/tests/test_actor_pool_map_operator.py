@@ -120,11 +120,11 @@ class TestActorPool(unittest.TestCase):
         self,
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
-        return actor, ready_ref
+        return actor, ready_ref, ExecutionResources(cpu=1)
 
     def _create_actor_pool(
         self,
@@ -807,9 +807,9 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
     def create_actor_fn(
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote("node1")
-        return actor, actor.get_location.remote()
+        return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
 
     pool = _ActorPool(
         create_actor_fn,
