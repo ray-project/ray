@@ -189,7 +189,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   void AddNestedObjectIds(const ObjectID &object_id,
                           const std::vector<ObjectID> &inner_ids,
-                          const rpc::Address &owner_address) override
+                          const rpc::Address &owner_address,
+                          const ObjectID &generator_id = ObjectID::Nil()) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
@@ -569,9 +570,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
+  /// \param generator_id When it's set, this means that `object_id` is a
+  /// dynamically ObjectID, so we need to notify the owner of the outer ObjectID
   void AddNestedObjectIdsInternal(const ObjectID &object_id,
                                   const std::vector<ObjectID> &inner_ids,
-                                  const rpc::Address &owner_address)
+                                  const rpc::Address &owner_address,
+                                  const ObjectID &generator_id = ObjectID::Nil())
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Populates the table with the ObjectID that we were or are still
@@ -638,9 +642,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// ID. This is used in cases where we return an object ID that we own inside
   /// an object that we do not own. Then, we must notify the owner of the outer
   /// object that they are borrowing the inner.
+  /// \param generator_id When it's set, this means that `contained_in_id` is a
+  /// dynamically ObjectID, so we need to notify the owner of the outer ObjectID
   void WaitForRefRemoved(const ReferenceTable::iterator &reference_it,
                          const rpc::Address &addr,
-                         const ObjectID &contained_in_id = ObjectID::Nil())
+                         const ObjectID &contained_in_id = ObjectID::Nil(),
+                         const ObjectID &generator_id = ObjectID::Nil())
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to add an object that we are borrowing. This is used when

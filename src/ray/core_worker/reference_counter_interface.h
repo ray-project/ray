@@ -429,9 +429,12 @@ class ReferenceCounterInterface {
   /// outer object ID is not owned by us, then this is used to contact the
   /// outer object's owner, since it is considered a borrower for the inner
   /// IDs.
+  /// \param generator_id When it's set, this means that `object_id` is a
+  /// dynamically ObjectID, so we need to notify the owner of the outer ObjectID
   virtual void AddNestedObjectIds(const ObjectID &object_id,
                                   const std::vector<ObjectID> &inner_ids,
-                                  const rpc::Address &owner_address) = 0;
+                                  const rpc::Address &owner_address,
+                                  const ObjectID &generator_id = ObjectID::Nil()) = 0;
 
   /// Update the pinned location of an object stored in plasma.
   ///

@@ -183,6 +183,8 @@ message WorkerRefRemovedSubMessage {
   bytes contained_in_id = 3;
   // The ID of the worker that waits for the ref removed message.
   bytes subscriber_worker_id = 4;
+  // The GeneratorID of `contained_in_id`
+  optional bytes generator_id = 5;
 }
 
 message WorkerObjectLocationsSubMessage {

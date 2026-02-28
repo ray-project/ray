@@ -1052,6 +1052,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// To avoid deadlock, the caller should allocate and seal a single object at a time.
   ///
   /// \param[in] object_id Object ID of the return value.
+  /// \param[in] generator_id For dynamically created objects, this is the ID
+  /// of the object that wraps the dynamically created ObjectRefs in a
+  /// generator.
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
   /// \param[in] owner_address The address of the owner of the return object (i.e., the
@@ -1063,6 +1066,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
   Status AllocateReturnObject(const ObjectID &object_id,
+                              const ObjectID &generator_id,
                               const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,

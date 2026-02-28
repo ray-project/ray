@@ -4181,8 +4181,8 @@ cdef class CoreWorker:
             # the object doesn't already exist in plasma.
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
-                    return_id, data_size, metadata, contained_id, caller_address,
-                    task_output_inlined_bytes, return_ptr))
+                    return_id, generator_id, data_size, metadata, contained_id,
+                    caller_address, task_output_inlined_bytes, return_ptr))
 
         if return_ptr.get() != NULL:
             if return_ptr.get().HasData():

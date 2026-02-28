@@ -234,6 +234,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
                 result_id,
+                /*generator_id=*/ObjectID::Nil(),
                 data_size,
                 metadata,
                 contained_object_ids,
