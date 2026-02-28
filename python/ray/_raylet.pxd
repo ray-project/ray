@@ -141,6 +141,7 @@ cdef class CoreWorker:
         dict _task_id_to_future
         object event_loop_executor
         object _gc_thread
+        object _task_prepare_time_ms_histogram
 
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef put_serialized_object_and_increment_local_ref(

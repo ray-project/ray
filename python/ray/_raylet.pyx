@@ -2854,6 +2854,21 @@ cdef class CoreWorker:
             self._gc_thread = PythonGCThread()
             self._gc_thread.start()
 
+        # Initialize task preparation time histogram for drivers only.
+        # This metric tracks the Python-side time spent preparing a task
+        # before submitting it to the C++ core worker, including argument
+        # serialization and other preprocessing.
+        # TODO(zac): Remove the driver-only condition once worker metric
+        # aggregation is enabled by default in Ray.
+        if self.is_driver:
+            self._task_prepare_time_ms_histogram = Histogram(
+                "task_prepare_time_ms",
+                "Time spent in Python preparing a task before C++ submission in ms.",
+                [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000],
+                [])
+        else:
+            self._task_prepare_time_ms_histogram = None
+
     def shutdown_driver(self):
         # If it's a worker, the core worker process should have been
         # shutdown. So we can't call
@@ -3539,6 +3554,9 @@ cdef class CoreWorker:
             call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
+            if self._task_prepare_time_ms_histogram is not None:
+                _prepare_start_time = time.perf_counter()
+
             prepare_resources(resources, &c_resources)
             prepare_labels(labels, &c_labels)
             prepare_label_selector(label_selector, &c_label_selector)
@@ -3562,6 +3580,10 @@ cdef class CoreWorker:
                 c_fallback_strategy)
 
             current_c_task_id = current_task.native()
+
+            if self._task_prepare_time_ms_histogram is not None:
+                _prepare_time_ms = (time.perf_counter() - _prepare_start_time) * 1000
+                self._task_prepare_time_ms_histogram.record(_prepare_time_ms, {})
 
             with nogil:
                 return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
@@ -3636,6 +3658,9 @@ cdef class CoreWorker:
             call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
+            if self._task_prepare_time_ms_histogram is not None:
+                _prepare_start_time = time.perf_counter()
+
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             prepare_labels(labels, &c_labels)
@@ -3652,6 +3677,10 @@ cdef class CoreWorker:
             if is_detached is not None:
                 is_detached_optional = make_optional[c_bool](
                     True if is_detached else False)
+
+            if self._task_prepare_time_ms_histogram is not None:
+                _prepare_time_ms = (time.perf_counter() - _prepare_start_time) * 1000
+                self._task_prepare_time_ms_histogram.record(_prepare_time_ms, {})
 
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().CreateActor(
@@ -3820,6 +3849,9 @@ cdef class CoreWorker:
             call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
+            if self._task_prepare_time_ms_histogram is not None:
+                _prepare_start_time = time.perf_counter()
+
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
             ray_function = CRayFunction(
@@ -3829,6 +3861,10 @@ cdef class CoreWorker:
                 &incremented_put_arg_ids)
 
             current_c_task_id = current_task.native()
+
+            if self._task_prepare_time_ms_histogram is not None:
+                _prepare_time_ms = (time.perf_counter() - _prepare_start_time) * 1000
+                self._task_prepare_time_ms_histogram.record(_prepare_time_ms, {})
 
             with nogil:
                 status = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(

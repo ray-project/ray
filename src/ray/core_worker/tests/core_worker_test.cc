@@ -231,7 +231,10 @@ class CoreWorkerTest : public ::testing::Test {
         lease_request_rate_limiter,
         [](const ObjectID &object_id) { return std::nullopt; },
         io_service_,
-        fake_scheduler_placement_time_ms_histogram_);
+        fake_scheduler_placement_time_ms_histogram_,
+        fake_task_total_submitter_preprocessing_time_ms_histogram_,
+        fake_task_dependency_resolution_time_ms_histogram_,
+        fake_task_push_time_ms_histogram_);
 
     auto actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *core_worker_client_pool,
@@ -310,6 +313,10 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
   ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
+  ray::observability::FakeHistogram
+      fake_task_total_submitter_preprocessing_time_ms_histogram_;
+  ray::observability::FakeHistogram fake_task_dependency_resolution_time_ms_histogram_;
+  ray::observability::FakeHistogram fake_task_push_time_ms_histogram_;
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;

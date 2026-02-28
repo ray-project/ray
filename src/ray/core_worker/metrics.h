@@ -72,5 +72,49 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
   };
 }
 
+inline ray::stats::Histogram GetTaskTotalSubmitterPreprocessingTimeMsHistogramMetric() {
+  /// Tracks the total submitter-side time from task submission to task being pushed.
+  /// This includes dependency resolution, worker lease acquisition, and task push setup.
+  /// Does not include network transmission time or worker-side processing.
+  /// Only recorded on driver workers to limit metric cardinality.
+  return ray::stats::Histogram{
+      /*name=*/"task_total_submitter_preprocessing_time_ms",
+      /*description=*/
+      "Total submitter-side time from task submission to task being pushed to the "
+      "worker, including dependency resolution and scheduling.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Histogram GetTaskDependencyResolutionTimeMsHistogramMetric() {
+  /// Tracks the time from task submission to dependency resolution completion.
+  /// This includes resolving all ObjectRef dependencies and inlining small objects.
+  /// Only recorded on driver workers to limit metric cardinality.
+  return ray::stats::Histogram{
+      /*name=*/"task_dependency_resolution_time_ms",
+      /*description=*/
+      "Time from task submission to dependency resolution completion.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
+inline ray::stats::Histogram GetTaskPushTimeMsHistogramMetric() {
+  /// Tracks the time from worker lease granted to task being pushed to the worker.
+  /// This includes task push setup and queueing in the client.
+  /// Only recorded on driver workers to limit metric cardinality.
+  return ray::stats::Histogram{
+      /*name=*/"task_push_time_ms",
+      /*description=*/
+      "Time from worker lease granted to task being pushed to the worker.",
+      /*unit=*/"ms",
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
+      /*tag_keys=*/{},
+  };
+}
+
 }  // namespace core
 }  // namespace ray

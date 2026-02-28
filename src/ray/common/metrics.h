@@ -81,7 +81,7 @@ inline ray::stats::Histogram GetSchedulerPlacementTimeMsHistogramMetric() {
       "be placed. This is the time from when the tasks dependencies are "
       "resolved to when it actually reserves resources on a node to run.",
       /*unit=*/"ms",
-      /*boundaries=*/{1, 10, 100, 1000, 10000},
+      /*boundaries=*/{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000},
       /*tag_keys=*/{"WorkloadType"},
   };
 }
