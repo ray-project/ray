@@ -1,5 +1,14 @@
+import asyncio
+import concurrent.futures
 import logging
+import threading
+import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional
+
+from taskiq import AsyncTaskiqTask
+from taskiq.message import TaskiqMessage
+from taskiq.receiver.receiver import Receiver
 
 from ray._common.pydantic_compat import BaseModel, Field
 from ray._common.utils import import_attr
@@ -226,6 +235,13 @@ class TaskiqAdapterConfig(BaseModel):
             "of the broker type."
         ),
     )
+    operation_timeout: Optional[float] = Field(
+        default=30.0,
+        description=(
+            "Timeout in seconds for enqueue and status operations. "
+            "Set to None to wait indefinitely."
+        ),
+    )
 
 
 @PublicAPI(stability="beta")
@@ -236,6 +252,9 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
     Supports multiple brokers (Redis Streams, RabbitMQ, NATS, Kafka) via
     the ``broker_type`` field in ``TaskiqAdapterConfig``. Broker-specific
     options are passed through ``broker_kwargs``.
+
+    Uses a persistent background event loop thread for all async taskiq
+    operations. This keeps broker connections alive across sync method calls.
     """
 
     def __init__(self, config: TaskProcessorConfig, *args, **kwargs):
@@ -250,20 +269,71 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
         self._config = config
         self._broker = None
         self._result_backend = None
+        self._broker_started = False
+        self._consumer_concurrency = DEFAULT_CONSUMER_CONCURRENCY
+
+        # Background event loop for async taskiq operations.
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop_thread: Optional[threading.Thread] = None
+        self._loop_lock = threading.Lock()
+
+        # Consumer state.
+        self._receiver = None
+        self._finish_event: Optional[asyncio.Event] = None
+        self._consumer_task: Optional[concurrent.futures.Future] = None
+
+    # ------------------------------------------------------------------
+    # Background event loop helpers
+    # ------------------------------------------------------------------
+
+    def _start_event_loop(self):
+        """Thread target: run the event loop forever until stopped."""
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    def _ensure_loop(self):
+        """Start the background event loop thread if not already running."""
+        with self._loop_lock:
+            if self._loop_thread is not None and self._loop_thread.is_alive():
+                return
+
+            self._loop = asyncio.new_event_loop()
+            self._loop_thread = threading.Thread(
+                target=self._start_event_loop,
+                daemon=True,
+                name="taskiq-event-loop",
+            )
+            self._loop_thread.start()
+
+    def _run_async(self, coro, timeout: Optional[float] = None):
+        """Schedule a coroutine on the background loop and block for its result."""
+        self._ensure_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=timeout)
+
+    def _ensure_broker_started(self):
+        """Start the broker if not already started (sync wrapper)."""
+        if not self._broker_started:
+            self._run_async(self._broker.startup())
+            self._broker_started = True
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
-        """Initialize the taskiq broker and result backend."""
+        """Initialize the taskiq broker, result backend, and background loop."""
         self._consumer_concurrency = consumer_concurrency
         adapter_config: TaskiqAdapterConfig = self._config.adapter_config
 
-        # Create the broker using the factory function
+        # Create the broker using the factory function.
         self._broker = _create_broker(
             broker_type=adapter_config.broker_type,
             queue_name=self._config.queue_name,
             broker_kwargs=adapter_config.broker_kwargs,
         )
 
-        # Create result backend only if explicitly configured
+        # Create result backend only if explicitly configured.
         if adapter_config.result_backend_url:
             from taskiq_redis import RedisAsyncResultBackend
 
@@ -272,34 +342,198 @@ class TaskiqTaskProcessorAdapter(TaskProcessorAdapter):
             )
             self._broker = self._broker.with_result_backend(self._result_backend)
 
+        # Start the background event loop thread.
+        self._ensure_loop()
+
         logger.info(
             f"Taskiq adapter initialized with broker_type={adapter_config.broker_type!r}, "
             f"queue: {self._config.queue_name}"
         )
 
     # ------------------------------------------------------------------
-    # Abstract method stubs — full implementations in a follow-up PR.
+    # Task registration
     # ------------------------------------------------------------------
 
     def register_task_handle(self, func: Callable, name: Optional[str] = None):
-        raise NotImplementedError
+        """Register a callable as a taskiq task.
+
+        Taskiq natively supports both sync and async handlers.
+
+        Bound methods are wrapped in a plain function because taskiq's
+        decorator internals set ``__name__`` on the callable, which
+        fails on bound method objects.
+        """
+        task_name = name or func.__name__
+
+        # Wrap bound methods so taskiq can set __name__ on the wrapper.
+        if hasattr(func, "__self__"):
+            original = func
+
+            def wrapper(*args, **kwargs):
+                return original(*args, **kwargs)
+
+            wrapper.__name__ = task_name
+            wrapper.__qualname__ = task_name
+            func = wrapper
+
+        self._broker.register_task(func, task_name=task_name)
+        logger.info(f"Registered task: {task_name!r}")
+
+    # ------------------------------------------------------------------
+    # Task enqueueing
+    # ------------------------------------------------------------------
 
     def enqueue_task_sync(
         self, task_name: str, args=None, kwargs=None, **options
     ) -> TaskResult:
-        raise NotImplementedError
+        """Enqueue a task by name. Returns immediately with PENDING status."""
+        self._ensure_broker_started()
+        return self._run_async(
+            self._enqueue_task_async(task_name, args, kwargs, **options),
+            timeout=self._config.adapter_config.operation_timeout,
+        )
+
+    async def _enqueue_task_async(
+        self, task_name: str, args=None, kwargs=None, **options
+    ) -> TaskResult:
+        task_id = uuid.uuid4().hex
+        message = TaskiqMessage(
+            task_id=task_id,
+            task_name=task_name,
+            labels={},
+            args=args or [],
+            kwargs=kwargs or {},
+        )
+        broker_message = self._broker.formatter.dumps(message)
+        await self._broker.kick(broker_message)
+
+        return TaskResult(
+            id=task_id,
+            status="PENDING",
+            created_at=time.time(),
+            result=None,
+        )
+
+    # ------------------------------------------------------------------
+    # Task status
+    # ------------------------------------------------------------------
 
     def get_task_status_sync(self, task_id: str) -> TaskResult:
-        raise NotImplementedError
+        """Retrieve the current status of a task from the result backend."""
+        return self._run_async(
+            self._get_task_status_async(task_id),
+            timeout=self._config.adapter_config.operation_timeout,
+        )
+
+    async def _get_task_status_async(self, task_id: str) -> TaskResult:
+        if self._result_backend is None:
+            raise RuntimeError(
+                "Cannot query task status: no result_backend_url configured "
+                "in TaskiqAdapterConfig."
+            )
+
+        task_handle = AsyncTaskiqTask(
+            task_id=task_id,
+            result_backend=self._result_backend,
+        )
+
+        if await task_handle.is_ready():
+            result = await task_handle.get_result()
+            if result.is_err:
+                return TaskResult(
+                    id=task_id,
+                    status="ERROR",
+                    result=str(result.error),
+                )
+            return TaskResult(
+                id=task_id,
+                status="SUCCESS",
+                result=result.return_value,
+            )
+
+        return TaskResult(id=task_id, status="PENDING", result=None)
+
+    # ------------------------------------------------------------------
+    # Consumer management
+    # ------------------------------------------------------------------
 
     def start_consumer(self, **kwargs):
-        raise NotImplementedError
+        """Start consuming tasks from the broker.
 
-    def stop_consumer(self, timeout: float = 10.0):
-        raise NotImplementedError
+        Launches the taskiq ``Receiver`` on the background event loop.
+        The receiver resolves task names via the broker's internal registry
+        (populated by ``register_task_handle``).
+        """
+        if self._consumer_task is not None:
+            logger.info("Taskiq consumer is already running.")
+            return
+
+        self._ensure_broker_started()
+
+        # Python 3.10+ asyncio.Event is not loop-bound, so creating it here
+        # on the main thread and using it on the background loop is safe.
+        self._finish_event = asyncio.Event()
+        self._receiver = Receiver(
+            broker=self._broker,
+            max_async_tasks=self._consumer_concurrency,
+            run_startup=False,  # We already called broker.startup().
+        )
+
+        # Schedule listen() on the background loop. It runs until
+        # finish_event is set (by stop_consumer).
+        self._consumer_task = asyncio.run_coroutine_threadsafe(
+            self._receiver.listen(self._finish_event),
+            self._loop,
+        )
+        logger.info(
+            f"Taskiq consumer started (concurrency={self._consumer_concurrency})"
+        )
+
+    def stop_consumer(self, timeout: float = 60.0):
+        """Gracefully stop the consumer and shut down the broker."""
+        if self._consumer_task is None:
+            logger.info("Taskiq consumer is not running.")
+            return
+
+        # Signal the receiver to stop.
+        self._loop.call_soon_threadsafe(self._finish_event.set)
+
+        # Wait for the consumer task to finish.
+        try:
+            self._consumer_task.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            logger.warning(f"Taskiq consumer did not stop within {timeout}s.")
+        except Exception as e:
+            logger.warning(f"Taskiq consumer task exited with an exception: {e}")
+
+        # Shut down the broker connections.
+        if self._broker_started:
+            try:
+                self._run_async(self._broker.shutdown())
+            except Exception as e:
+                logger.warning(f"Failed to shut down taskiq broker: {e}")
+            finally:
+                self._broker_started = False
+
+        self._consumer_task = None
+        self._finish_event = None
+        self._receiver = None
+        logger.info("Taskiq consumer stopped.")
+
+    # ------------------------------------------------------------------
+    # Cancellation
+    # ------------------------------------------------------------------
 
     def cancel_task_sync(self, task_id: str):
-        raise NotImplementedError
+        """Cancel a task. Taskiq does not provide built-in task cancellation."""
+        raise NotImplementedError(
+            "Task cancellation is not supported by Taskiq. "
+            "See: https://github.com/taskiq-python/taskiq/issues/305"
+        )
+
+    # ------------------------------------------------------------------
+    # Observability
+    # ------------------------------------------------------------------
 
     def get_metrics_sync(self) -> Dict[str, Any]:
         raise NotImplementedError
