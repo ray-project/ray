@@ -230,7 +230,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter_total{{{global_filters}}}[5m])))",
+                expr="(1 - sum by (application, deployment, replica)(rate(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}[5m]))/sum by (application, deployment, replica)(rate(ray_serve_multiplexed_get_model_requests_counter_total{{{global_filters}}}[5m]))) * 100",
                 legend="{{application}}#{{deployment}}#{{replica}}",
             ),
         ],
