@@ -328,8 +328,12 @@ class ParquetDatasource(Datasource):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
-        # Need this property for lineage tracking
-        self._source_paths = paths
+
+        # Need this property for lineage tracking. We should not directly assign paths
+        # to self since it is captured every read_task_fn during serialization and
+        # causing this data being duplicated and excessive object store spilling.
+        self._source_paths_ref = ray.put(paths)
+
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
             self._filesystem,
@@ -464,6 +468,10 @@ class ParquetDatasource(Datasource):
         self._default_batch_size = _estimate_reader_batch_size(
             sampled_file_infos, DataContext.get_current().target_max_block_size
         )
+
+    @property
+    def _source_paths(self) -> List[str]:
+        return ray.get(self._source_paths_ref)
 
     def estimate_inmemory_data_size(self) -> int:
         # In case of empty projections no data will be read

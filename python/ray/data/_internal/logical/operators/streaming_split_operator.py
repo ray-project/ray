@@ -20,7 +20,11 @@ class StreamingSplit(LogicalOperator):
         equal: bool,
         locality_hints: Optional[List["NodeIdStr"]] = None,
     ):
-        super().__init__("StreamingSplit", [input_op])
-        self._num_splits = num_splits
-        self._equal = equal
-        self._locality_hints = locality_hints
+        super().__init__(input_dependencies=[input_op])
+        self.num_splits = num_splits
+        self.equal = equal
+        self.locality_hints = locality_hints
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs

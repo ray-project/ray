@@ -1,21 +1,33 @@
 build_arg_sets:
   cpu:
     PYTHON_VERSION: py311
+    PYTHON_VERSION_STR: "3.11"
     CUDA_CODE: cpu
   cu128:
     PYTHON_VERSION: py311
+    PYTHON_VERSION_STR: "3.11"
     CUDA_CODE: cu128
+  cpu_py312:
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
+    CUDA_CODE: cpu
+  cu129_py312:
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
+    CUDA_CODE: cu129
 
 
 .common_settings: &common_settings
   append_flags:
-    - --python-version=3.11
+    - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
-    - --python-platform=linux
-    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    - --python-platform=x86_64-manylinux_2_31
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
     - cu128
+    - cpu_py312
+    - cu129_py312
 
 depsets:
 # First, extract base test dependencies from the current compiled mono repo one.
@@ -28,10 +40,10 @@ depsets:
       - python/requirements/cloud-requirements.txt
       - python/requirements/base-test-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled.txt
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/llm/ray_test_${PYTHON_VERSION}_${CUDA_CODE}.lock
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
 # Second, expand it into LLM test dependencies.
   - name: compiled_ray_llm_test_depset_${PYTHON_VERSION}_${CUDA_CODE}

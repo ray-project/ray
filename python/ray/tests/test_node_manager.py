@@ -11,13 +11,15 @@ from typing import List, Optional
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
     get_load_metrics_report,
     get_resource_usage,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
 from ray._private.utils import get_num_cpus

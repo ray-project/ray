@@ -48,6 +48,9 @@ class BaseBundleQueue:
         """Return the total # of blocks across all bundles."""
         return self._num_blocks
 
+    def num_bundles(self) -> int:
+        return self._num_bundles
+
     def num_rows(self) -> int:
         """Return the total # of rows across all bundles."""
         return self._num_rows

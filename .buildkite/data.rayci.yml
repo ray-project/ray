@@ -97,6 +97,7 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name data9build-py3.10 --python-version 3.10
         --only-tags data_non_parallel
+        --except-tags data_non_parallel_postmerge_only
     depends_on: data9build-multipy
 
   - label: ":database: data: arrow v23 tests"
@@ -126,6 +127,7 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name datalbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
+        --except-tags data_non_parallel_postmerge_only
     depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v23 py{{matrix.python}} tests ({{matrix.worker_id}})"
@@ -155,6 +157,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name datalbuild-py{{matrix.python}} --python-version {{matrix.python}}
         --only-tags data_non_parallel
+        --except-tags data_non_parallel_postmerge_only
     depends_on: datalbuild-multipy
     matrix:
       setup:
@@ -188,8 +191,31 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name datanbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
+        --except-tags data_non_parallel_postmerge_only
     depends_on: datanbuild-multipy
     soft_fail: true
+
+  - label: ":database: data: postmerge arrow v9 tests"
+    tags:
+      - data
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --build-name data9build-py3.10 --python-version 3.10
+        --only-tags data_non_parallel_postmerge_only
+    depends_on: data9build-multipy
+
+  - label: ":database: data: postmerge arrow v23 tests"
+    tags:
+      - data
+      - skip-on-premerge
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
+        --build-name datalbuild-py3.10 --python-version 3.10
+        --only-tags data_non_parallel_postmerge_only
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: dask tests"
     tags:

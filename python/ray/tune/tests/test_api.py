@@ -1430,7 +1430,7 @@ def test_with_resources_and_parameters_fn(ray_start_2_cpus_2_gpus, num_gpus):
 class SerializabilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -1699,7 +1699,7 @@ class ApiTestFast(unittest.TestCase):
 class MaxConcurrentTrialsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, local_mode=False, include_dashboard=False)
+        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):

@@ -1,5 +1,6 @@
 # isort: off
 from .scaling_policy import ScalingDecision, ScalingPolicy, NoopDecision, ResizeDecision
+from .elastic import ElasticScalingPolicy
 from .fixed import FixedScalingPolicy
 from .factory import create_scaling_policy
 
@@ -8,6 +9,7 @@ from .factory import create_scaling_policy
 
 __all__ = [
     "ScalingPolicy",
+    "ElasticScalingPolicy",
     "FixedScalingPolicy",
     "ScalingDecision",
     "NoopDecision",

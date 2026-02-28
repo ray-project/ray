@@ -8,6 +8,7 @@ from ray.data._internal.logical.interfaces import (
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
+    import pyarrow
 
     from ray.data.block import Schema
 
@@ -25,37 +26,37 @@ class AbstractOneToOne(LogicalOperator):
 
     def __init__(
         self,
-        name: str,
         input_op: Optional[LogicalOperator],
         can_modify_num_rows: bool,
         num_outputs: Optional[int] = None,
+        *,
+        name: Optional[str] = None,
     ):
         """Initialize an AbstractOneToOne operator.
 
         Args:
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             can_modify_num_rows: Whether the UDF can change the row count. False if
                 # of input rows = # of output rows. True otherwise.
             num_outputs: If known, the number of blocks produced by this operator.
+            name: Name for this operator. This is the name that will appear when
+                inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            name=name,
             input_dependencies=[input_op] if input_op else [],
             num_outputs=num_outputs,
+            name=name,
         )
-        self._can_modify_num_rows = can_modify_num_rows
+        self.can_modify_num_rows = can_modify_num_rows
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
 
     @property
     def input_dependency(self) -> LogicalOperator:
         return self.input_dependencies[0]
-
-    def can_modify_num_rows(self) -> bool:
-        """Whether this operator can modify the number of rows,
-        i.e. number of input rows != number of output rows."""
-        return self._can_modify_num_rows
 
 
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
@@ -67,11 +68,11 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         limit: int,
     ):
         super().__init__(
-            f"limit={limit}",
             input_op=input_op,
             can_modify_num_rows=True,
+            name=f"limit={limit}",
         )
-        self._limit = limit
+        self.limit = limit
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -93,7 +94,7 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         assert isinstance(self.input_dependencies[0], LogicalOperator)
         input_rows = self.input_dependencies[0].infer_metadata().num_rows
         if input_rows is not None:
-            return min(input_rows, self._limit)
+            return min(input_rows, self.limit)
         else:
             return None
 
@@ -120,25 +121,15 @@ class Download(AbstractOneToOne):
         uri_column_names: List[str],
         output_bytes_column_names: List[str],
         ray_remote_args: Optional[Dict[str, Any]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ):
-        super().__init__("Download", input_op, can_modify_num_rows=False)
+        super().__init__(input_op=input_op, can_modify_num_rows=False)
         if len(uri_column_names) != len(output_bytes_column_names):
             raise ValueError(
                 f"Number of URI columns ({len(uri_column_names)}) must match "
                 f"number of output columns ({len(output_bytes_column_names)})"
             )
-        self._uri_column_names = uri_column_names
-        self._output_bytes_column_names = output_bytes_column_names
-        self._ray_remote_args = ray_remote_args or {}
-
-    @property
-    def uri_column_names(self) -> List[str]:
-        return self._uri_column_names
-
-    @property
-    def output_bytes_column_names(self) -> List[str]:
-        return self._output_bytes_column_names
-
-    @property
-    def ray_remote_args(self) -> Dict[str, Any]:
-        return self._ray_remote_args
+        self.uri_column_names = uri_column_names
+        self.output_bytes_column_names = output_bytes_column_names
+        self.ray_remote_args = ray_remote_args or {}
+        self.filesystem = filesystem

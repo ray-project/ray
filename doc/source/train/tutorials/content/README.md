@@ -18,6 +18,11 @@ The tutorials walk through common ML workload patterns—vision, tabular, time s
 
 ## Tutorial index
 
+Pre-install all requirements
+```bash
+!pip install -r requirements.txt
+```
+
 ### 1. Getting started
 - [**Introduction to Ray Train**](https://docs.ray.io/en/latest/train/tutorials/content/getting-started/01_02_03_intro_to_ray_train.html)  
   Your starting point. Learn the basics of distributed training with PyTorch and Ray Train:

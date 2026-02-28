@@ -16,13 +16,14 @@ ARG RAY_WHEEL_IMAGE=cr.ray.io/rayproject/ray-wheel-py${PYTHON_VERSION}${ARCH_SUF
 FROM ${RAY_WHEEL_IMAGE} AS wheel-source
 FROM ${BASE_IMAGE}
 
+ARG IMAGE_TYPE=ray
 ARG RAY_COMMIT=unknown-commit
 ARG RAY_VERSION=3.0.0.dev0
 
 LABEL io.ray.ray-commit="${RAY_COMMIT}"
 LABEL io.ray.ray-version="${RAY_VERSION}"
 
-COPY --from=wheel-source /*.whl /home/ray/
+COPY --from=wheel-source /opt/artifacts/*.whl /home/ray/
 
 # Install Ray wheel with all extras
 # Uses requirements_compiled.txt from base image (already at /home/ray/)
@@ -40,9 +41,15 @@ WHEEL_FILE="${WHEEL_FILES[0]}"
 
 echo "Installing wheel: $WHEEL_FILE"
 
+if [[ "${IMAGE_TYPE}" == "ray-llm" ]]; then
+  RAY_EXTRAS="default,data,serve"
+else
+  RAY_EXTRAS="all"
+fi
+
 $HOME/anaconda3/bin/pip --no-cache-dir install \
     -c /home/ray/requirements_compiled.txt \
-    "${WHEEL_FILE}[all]"
+    "${WHEEL_FILE}[${RAY_EXTRAS}]"
 
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 

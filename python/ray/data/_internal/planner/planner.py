@@ -97,7 +97,7 @@ def plan_union_op(_, physical_children, data_context):
 
 def plan_limit_op(logical_op, physical_children, data_context):
     assert len(physical_children) == 1
-    return LimitOperator(logical_op._limit, physical_children[0], data_context)
+    return LimitOperator(logical_op.limit, physical_children[0], data_context)
 
 
 def plan_count_op(logical_op, physical_children, data_context):
@@ -117,14 +117,14 @@ def plan_join_op(
         data_context=data_context,
         left_input_op=physical_children[0],
         right_input_op=physical_children[1],
-        join_type=logical_op._join_type,
-        left_key_columns=logical_op._left_key_columns,
-        right_key_columns=logical_op._right_key_columns,
-        left_columns_suffix=logical_op._left_columns_suffix,
-        right_columns_suffix=logical_op._right_columns_suffix,
-        num_partitions=logical_op._num_outputs,
-        partition_size_hint=logical_op._partition_size_hint,
-        aggregator_ray_remote_args_override=logical_op._aggregator_ray_remote_args,
+        join_type=logical_op.join_type,
+        left_key_columns=logical_op.left_key_columns,
+        right_key_columns=logical_op.right_key_columns,
+        left_columns_suffix=logical_op.left_columns_suffix,
+        right_columns_suffix=logical_op.right_columns_suffix,
+        num_partitions=logical_op.num_outputs,
+        partition_size_hint=logical_op.partition_size_hint,
+        aggregator_ray_remote_args_override=logical_op.aggregator_ray_remote_args,
     )
 
 
@@ -136,10 +136,10 @@ def plan_streaming_split_op(
     assert len(physical_children) == 1
     return OutputSplitter(
         physical_children[0],
-        n=logical_op._num_splits,
-        equal=logical_op._equal,
+        n=logical_op.num_splits,
+        equal=logical_op.equal,
         data_context=data_context,
-        locality_hints=logical_op._locality_hints,
+        locality_hints=logical_op.locality_hints,
     )
 
 

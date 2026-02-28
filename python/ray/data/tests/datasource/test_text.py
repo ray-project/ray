@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from fsspec.implementations.http import HTTPFileSystem
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -83,6 +84,14 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {bar_node_id}, locations
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "world"]
+
+
+def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
+    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
+    assert ds.count() > 0
+    # Test auto-resolve of HTTP file system when it is not provided.
+    ds = ray.data.read_text(http_file)
+    assert ds.count() > 0
 
 
 if __name__ == "__main__":

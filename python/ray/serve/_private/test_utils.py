@@ -16,12 +16,12 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._common.network_utils import build_address
-from ray._common.test_utils import wait_for_condition
-from ray._common.utils import TimerBase
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
     fetch_prometheus_metric_timeseries,
+    wait_for_condition,
 )
+from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
@@ -44,6 +44,7 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
+PROMETHEUS_METRICS_TIMEOUT_S = 5
 
 
 class MockTimer(TimerBase):
@@ -879,6 +880,7 @@ def get_metric_float(
     metric: str,
     expected_tags: Optional[Dict[str, str]],
     timeseries: Optional[PrometheusTimeseries] = None,
+    timeout: float = 20,
 ) -> float:
     """Gets the float value of metric.
 
@@ -889,7 +891,9 @@ def get_metric_float(
     if timeseries is None:
         timeseries = PrometheusTimeseries()
     samples = fetch_prometheus_metric_timeseries(
-        [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=timeout,
     ).get(metric, [])
     for sample in samples:
         if expected_tags.items() <= sample.labels.items():
@@ -902,26 +906,33 @@ def check_metric_float_eq(
     expected: float,
     expected_tags: Optional[Dict[str, str]],
     timeseries: Optional[PrometheusTimeseries] = None,
+    timeout: float = 20,
 ) -> bool:
     """Check if a metric's float value equals the expected value."""
-    metric_value = get_metric_float(metric, expected_tags, timeseries)
+    metric_value = get_metric_float(metric, expected_tags, timeseries, timeout=timeout)
     assert float(metric_value) == expected
     return True
 
 
 def get_metric_dictionaries(
-    name: str, timeout: float = 20, timeseries: Optional[PrometheusTimeseries] = None
+    name: str,
+    timeout: float = 20,
+    timeseries: Optional[PrometheusTimeseries] = None,
 ) -> List[Dict]:
     if timeseries is None:
         timeseries = PrometheusTimeseries()
 
     def metric_available() -> bool:
         assert name in fetch_prometheus_metric_timeseries(
-            [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+            timeseries,
+            # pass timeout to fetch_prometheus_metric_timeseries
+            # so the test doesn't hang on requests.get
+            timeout=timeout,
         )
         return True
 
-    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
+    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout * 4)
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
         if sample.name == name:

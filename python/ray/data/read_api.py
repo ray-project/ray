@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from datetime import datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -103,6 +104,9 @@ from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.util import (
+    _validate_head_node_resources_for_local_scheduling,
+)
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -240,7 +244,7 @@ def from_items(
         block = builder.build()
         blocks.append(ray.put(block))
         meta_with_schema.append(
-            BlockMetadataWithSchema.from_block(block, stats=stats.build())
+            BlockMetadataWithSchema.from_block(block, block_exec_stats=stats.build())
         )
 
     from_items_op = FromItems(blocks, meta_with_schema)
@@ -439,6 +443,12 @@ def read_datasource(
         memory,
         ray_remote_args,
     )
+
+    if not datasource.supports_distributed_reads:
+        _validate_head_node_resources_for_local_scheduling(
+            ray_remote_args,
+            op_description="Reading from a local:// path",
+        )
 
     datasource_or_legacy_reader = _get_datasource_or_legacy_reader(
         datasource,
@@ -4357,8 +4367,8 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, Literal["earliest"]] = "earliest",
-    end_offset: Union[int, Literal["latest"]] = "latest",
+    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
+    end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4389,6 +4399,15 @@ def read_kafka(
                 end_offset=1000,
             )
 
+            # Read from a topic using datetime range
+            from datetime import datetime
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset=datetime(2025, 1, 1),
+                end_offset=datetime(2025, 1, 2),
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4398,11 +4417,17 @@ def read_kafka(
         trigger: Trigger mode for reading. Only "once" is supported, which
             performs a single bounded read.
         start_offset: Starting position for reading. Can be:
+
             - int: Offset number
+            - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "earliest"
+
         end_offset: Ending position for reading (exclusive). Can be:
+
             - int: Offset number
+            - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
+
         kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.

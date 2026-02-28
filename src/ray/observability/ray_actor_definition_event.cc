@@ -41,6 +41,10 @@ RayActorDefinitionEvent::RayActorDefinitionEvent(const rpc::ActorTableData &data
   }
   data_.mutable_label_selector()->insert(data.label_selector().begin(),
                                          data.label_selector().end());
+  if (data.has_call_site()) {
+    data_.set_call_site(data.call_site());
+  }
+  data_.set_parent_id(data.parent_id());
 }
 
 std::string RayActorDefinitionEvent::GetEntityId() const { return data_.actor_id(); }

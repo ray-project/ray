@@ -210,7 +210,7 @@ def test_spread_hint_inherit(ray_start_regular_shared):
 
     shuffle_op = ds._plan._logical_plan.dag
     read_op = shuffle_op.input_dependencies[0].input_dependencies[0]
-    assert read_op._ray_remote_args == {"scheduling_strategy": "SPREAD"}
+    assert read_op.ray_remote_args == {"scheduling_strategy": "SPREAD"}
 
 
 def test_optimize_randomize_block_order(ray_start_regular_shared):

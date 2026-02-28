@@ -220,7 +220,7 @@ class CustomArrowCollateFn(ArrowBatchCollateFn):
         Returns:
             Tuple of (image_tensor, label_tensor)
         """
-        from ray.air._internal.torch_utils import (
+        from ray.data.util.torch_utils import (
             arrow_batch_to_tensors,
         )
 
