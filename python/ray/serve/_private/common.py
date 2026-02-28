@@ -20,6 +20,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
+AUTOSCALING_LOG_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 GANG_PG_NAME_PREFIX = "SERVE_GANG::"
 
 
@@ -934,12 +935,22 @@ class AutoscalingStatus(str, Enum):
         }
         return mapping.get(trigger, str(trigger).lower())
 
+    @classmethod
+    def get_formatted_status(cls, target: int, current: int) -> str:
+        if target > current:
+            status = cls.UPSCALE
+        elif target < current:
+            status = cls.DOWNSCALE
+        else:
+            status = cls.STABLE
+        return cls.format_scaling_status(status)
+
 
 class DeploymentSnapshot(BaseModel):
     snapshot_type: str = "deployment"
     timestamp_str: str
-    app: str
-    deployment: str
+    app_name: str
+    deployment_name: str
     current_replicas: int
     target_replicas: int
     min_replicas: Optional[int]
@@ -978,12 +989,41 @@ class DeploymentSnapshot(BaseModel):
         if not isinstance(other, DeploymentSnapshot):
             return False
         return (
-            self.app == other.app
-            and self.deployment == other.deployment
+            self.app_name == other.app_name
+            and self.deployment_name == other.deployment_name
             and self.target_replicas == other.target_replicas
             and self.min_replicas == other.min_replicas
             and self.max_replicas == other.max_replicas
             and self.scaling_status == other.scaling_status
+        )
+
+
+class ApplicationSnapshot(BaseModel):
+    """Application-level autoscaling snapshot for observability."""
+
+    snapshot_type: str = "application"
+    timestamp_str: str
+    app_name: str
+    num_deployments: int
+    total_current_replicas: int
+    total_target_replicas: int
+    scaling_status: str
+    policy_name: str
+
+    def is_scaling_equivalent(self, other: "ApplicationSnapshot") -> bool:
+        """Return True if scaling-related fields are equal.
+
+        Used for autoscaling snapshot log deduplication. Compares only:
+        app, total_target_replicas, scaling_status, num_deployments
+        """
+        if not isinstance(other, ApplicationSnapshot):
+            return False
+        return (
+            self.app_name == other.app_name
+            and self.total_target_replicas == other.total_target_replicas
+            and self.scaling_status == other.scaling_status
+            and self.num_deployments == other.num_deployments
+            and self.policy_name == other.policy_name
         )
 
 

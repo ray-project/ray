@@ -23,6 +23,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    ApplicationSnapshot,
     AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     DeploymentSnapshot,
@@ -285,10 +286,12 @@ class ServeController:
 
         # Caches for autoscaling observability
         self._last_autoscaling_snapshots: Dict[DeploymentID, DeploymentSnapshot] = {}
+        self._last_application_snapshots: Dict[str, ApplicationSnapshot] = {}
         self._autoscaling_enabled_deployments_cache: List[
             Tuple[str, str, DeploymentDetails, Any]
         ] = []
-        self._refresh_autoscaling_deployments_cache()
+        self._autoscaling_enabled_apps_cache: List[str] = []
+        self._refresh_autoscaling_cache()
 
         # Initialize to None (not []) to ensure the first broadcast always happens,
         # even if target_groups is empty (e.g., route_prefix=None deployments).
@@ -503,26 +506,40 @@ class ServeController:
         new_proxy_nodes.add(self._controller_node_id)
         self._proxy_nodes = new_proxy_nodes
 
-    def _refresh_autoscaling_deployments_cache(self) -> None:
+    def _refresh_autoscaling_cache(self) -> None:
         result = []
         active_dep_ids = set()
+        apps_with_app_level_policy = []
+
         for app_name in self.application_state_manager.list_app_names():
             deployment_details = self.application_state_manager.list_deployment_details(
                 app_name
             )
+            if self.autoscaling_state_manager._application_has_policy(app_name):
+                apps_with_app_level_policy.append(app_name)
+
             for dep_name, details in deployment_details.items():
                 active_dep_ids.add(DeploymentID(name=dep_name, app_name=app_name))
                 autoscaling_config = details.deployment_config.autoscaling_config
                 if autoscaling_config:
                     result.append((app_name, dep_name, details, autoscaling_config))
         self._autoscaling_enabled_deployments_cache = result
+
+        self._autoscaling_enabled_apps_cache = apps_with_app_level_policy
+
         self._last_autoscaling_snapshots = {
             k: v
             for k, v in self._last_autoscaling_snapshots.items()
             if k in active_dep_ids
         }
 
-    def _emit_deployment_autoscaling_snapshots(self) -> None:
+        self._last_application_snapshots = {
+            k: v
+            for k, v in self._last_application_snapshots.items()
+            if k in apps_with_app_level_policy
+        }
+
+    def _emit_autoscaling_snapshots(self) -> None:
         """Emit structured autoscaling snapshot logs in a single batch per loop."""
         if self._autoscaling_logger is None:
             return
@@ -548,6 +565,20 @@ class ServeController:
 
             snapshots_to_log.append(deployment_snapshot.dict(exclude_none=True))
             self._last_autoscaling_snapshots[dep_id] = deployment_snapshot
+
+        for app_name in self._autoscaling_enabled_apps_cache:
+            app_snapshot = self.autoscaling_state_manager.get_application_snapshot(
+                app_name
+            )
+            if app_snapshot is None:
+                continue
+
+            last_app = self._last_application_snapshots.get(app_name)
+            if last_app is not None and last_app.is_scaling_equivalent(app_snapshot):
+                continue
+
+            snapshots_to_log.append(app_snapshot.dict(exclude_none=True))
+            self._last_application_snapshots[app_name] = app_snapshot
 
         if snapshots_to_log:
             # Single write per control-loop iteration
@@ -644,7 +675,7 @@ class ServeController:
             asm_update_start_time = time.time()
             any_target_state_changed = self.application_state_manager.update()
             if any_recovering or any_target_state_changed:
-                self._refresh_autoscaling_deployments_cache()
+                self._refresh_autoscaling_cache()
             asm_duration = time.time() - asm_update_start_time
             self.asm_update_duration_gauge_s.set(asm_duration)
             self._health_metrics_tracker.record_asm_update_duration(asm_duration)
@@ -652,10 +683,10 @@ class ServeController:
             logger.exception("Exception updating application state.")
 
         try:
-            # Emit one autoscaling snapshot per deployment per loop using existing state.
-            self._emit_deployment_autoscaling_snapshots()
+            # Emit one autoscaling snapshot per loop using existing state.
+            self._emit_autoscaling_snapshots()
         except Exception:
-            logger.exception("Exception emitting deployment autoscaling snapshots.")
+            logger.exception("Exception emitting autoscaling snapshots.")
         # Update the proxy nodes set before updating the proxy states,
         # so they are more consistent.
         node_update_start_time = time.time()
