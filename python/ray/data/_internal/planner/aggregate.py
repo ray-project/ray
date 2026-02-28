@@ -91,11 +91,6 @@ def generate_aggregate_fn(
     """Generate function to aggregate blocks by the specified key column or key
     function.
     """
-    assert data_context.shuffle_strategy in [
-        ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
-        ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED,
-    ]
-
     if len(aggs) == 0:
         raise ValueError("Aggregate requires at least one aggregation")
 
@@ -154,12 +149,10 @@ def generate_aggregate_fn(
 
         if data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED:
             scheduler = PushBasedShuffleTaskScheduler(agg_spec)
-        elif data_context.shuffle_strategy == ShuffleStrategy.SORT_SHUFFLE_PULL_BASED:
-            scheduler = PullBasedShuffleTaskScheduler(agg_spec)
         else:
-            raise ValueError(
-                f"Invalid shuffle strategy '{data_context.shuffle_strategy}'"
-            )
+            # Covers SORT_SHUFFLE_PULL_BASED and HASH_SHUFFLE (when used as the
+            # large-data fallback from the local fast-path AllToAllOperator path).
+            scheduler = PullBasedShuffleTaskScheduler(agg_spec)
 
         return scheduler.execute(
             refs,
