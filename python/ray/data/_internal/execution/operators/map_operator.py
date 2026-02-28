@@ -73,7 +73,7 @@ from ray.data.block import (
     _take_first_non_empty_schema,
     to_stats,
 )
-from ray.data.context import DataContext
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -453,20 +453,82 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Apply additional block split if needed.
         if self.get_additional_split_factor() > 1:
             split_factor = self.get_additional_split_factor()
-            split_transformer = MapTransformer(
-                [
-                    BlockMapTransformFn(
-                        lambda blocks, ctx: _split_blocks(blocks, split_factor),
-                        # NOTE: Disable block-shaping to avoid it overriding
-                        #       splitting
-                        disable_block_shaping=True,
+            # Prefer folding the split into block shaping when possible to avoid
+            # splitting already-shaped blocks again.
+            folded_split = False
+            if self._should_fold_additional_split():
+
+                def _fold_target_max_block_size(target_max_block_size: int) -> int:
+                    # Only apply the safety factor for larger split factors to avoid
+                    # overshooting small override_num_blocks requests.
+                    safety = MAX_SAFE_BLOCK_SIZE_FACTOR if split_factor > 2 else 1.0
+                    divisor = split_factor * safety
+                    return max(1, int(target_max_block_size / divisor))
+
+                target_max_block_size_override = self.target_max_block_size_override
+                if target_max_block_size_override is not None:
+                    # Apply split via the override so runtime override doesn't undo it.
+                    effective_target_max_block_size = _fold_target_max_block_size(
+                        target_max_block_size_override
                     )
-                ]
-            )
-            map_transformer = map_transformer.fuse(split_transformer)
+                    self.override_target_max_block_size(effective_target_max_block_size)
+                    folded_split = True
+                else:
+                    # Fall back to updating the only shaping fn when there is no override.
+                    target_fns = [
+                        fn
+                        for fn in map_transformer.get_transform_fns()
+                        if fn.target_max_block_size is not None
+                        and fn.target_num_rows_per_block is None
+                        and not getattr(
+                            fn.output_block_size_option, "disable_block_shaping", False
+                        )
+                    ]
+                    if len(target_fns) == 1:
+                        target_fn = target_fns[0]
+                        effective_target_max_block_size = _fold_target_max_block_size(
+                            target_fn.target_max_block_size
+                        )
+                        target_fn.override_target_max_block_size(
+                            effective_target_max_block_size
+                        )
+                        folded_split = True
+
+            if not folded_split:
+                # Append a split transform when not folded into block shaping.
+                split_transformer = MapTransformer(
+                    [
+                        BlockMapTransformFn(
+                            lambda blocks, ctx: _split_blocks(blocks, split_factor),
+                            # NOTE: Disable block-shaping to avoid it overriding
+                            #       splitting
+                            disable_block_shaping=True,
+                        )
+                    ]
+                )
+                map_transformer = map_transformer.fuse(split_transformer)
 
         # Store the potentially modified map_transformer for later use
         self._map_transformer = map_transformer
+
+    def _should_fold_additional_split(self) -> bool:
+        """Return True if block shaping would already split blocks by size."""
+        target_max_block_size = (
+            self.target_max_block_size_override
+            if self.target_max_block_size_override is not None
+            else self.data_context.target_max_block_size
+        )
+        if target_max_block_size is None or target_max_block_size <= 0:
+            return False
+
+        expected_block_size = getattr(self, "_expected_block_size", None)
+        if expected_block_size is None or expected_block_size <= 0:
+            return False
+
+        size_based_splits = round(max(1, expected_block_size / target_max_block_size))
+        # Only fold when block shaping would already split blocks by size.
+        # This preserves override_num_blocks for small files that need explicit splits.
+        return size_based_splits > 1
 
     def _warn_large_udf(self):
         """Print a warning if the UDF is too large."""
