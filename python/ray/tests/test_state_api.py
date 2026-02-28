@@ -3422,16 +3422,28 @@ def test_filter(shutdown_only):
 
     def verify():
         workers = list_workers()
-        live_workers = list_workers(filters=[("is_alive", "=", "true")])
-        non_alive_workers = list_workers(filters=[("is_alive", "!=", "true")])
+        live_workers = list_workers(
+            filters=[("is_alive", "=", "true")], raise_on_missing_output=False
+        )
+        non_alive_workers = list_workers(
+            filters=[("is_alive", "!=", "true")], raise_on_missing_output=False
+        )
         assert len(live_workers) + len(non_alive_workers) == len(workers)
 
-        live_workers = list_workers(filters=[("is_alive", "=", "1")])
-        non_alive_workers = list_workers(filters=[("is_alive", "!=", "1")])
+        live_workers = list_workers(
+            filters=[("is_alive", "=", "1")], raise_on_missing_output=False
+        )
+        non_alive_workers = list_workers(
+            filters=[("is_alive", "!=", "1")], raise_on_missing_output=False
+        )
         assert len(live_workers) + len(non_alive_workers) == len(workers)
 
-        live_workers = list_workers(filters=[("is_alive", "=", "True")])
-        non_alive_workers = list_workers(filters=[("is_alive", "!=", "True")])
+        live_workers = list_workers(
+            filters=[("is_alive", "=", "True")], raise_on_missing_output=False
+        )
+        non_alive_workers = list_workers(
+            filters=[("is_alive", "!=", "True")], raise_on_missing_output=False
+        )
         assert len(live_workers) + len(non_alive_workers) == len(workers)
 
         return True
