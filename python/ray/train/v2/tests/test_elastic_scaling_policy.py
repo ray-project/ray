@@ -419,5 +419,41 @@ def test_request_and_clear():
     mock_coordinator.cancel_request.remote.assert_called_once()
 
 
+@pytest.mark.parametrize(
+    "num_autoscaler_nodes, mock_gcs_ready_slices, expected_workers",
+    [
+        # No resources -> 0 workers
+        (0, 0, 0),
+        # Autoscaler sees 3 nodes but slice requires 4 -> rounds to 0 workers
+        (3, 0, 0),
+        # Autoscaler sees 4 nodes and determines 1 full slice is ready -> 4 workers
+        (4, 1, 4),
+    ],
+)
+@patch("ray.util.tpu.get_num_ready_tpu_slices")
+def test_count_possible_workers_tpu_slice_rounding(
+    mock_get_ready_slices, num_autoscaler_nodes, mock_gcs_ready_slices, expected_workers
+):
+    """
+    Test that TPU scaling correctly floors to the nearest complete TPU slice.
+    """
+    mock_get_ready_slices.return_value = mock_gcs_ready_slices
+
+    # Scaling config for TPU v6e 4x4 between 1 and 3 slices.
+    scaling_config = ScalingConfig(
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        topology="4x4",
+        num_workers=(4, 12),
+        resources_per_worker={"TPU": 4, "CPU": 1},
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+
+    tpu_node = {"TPU": 4, "CPU": 1, "accelerator_type:TPU-V6E": 1}
+    allocated_resources = [tpu_node] * num_autoscaler_nodes
+
+    assert policy._count_possible_workers(allocated_resources) == expected_workers
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

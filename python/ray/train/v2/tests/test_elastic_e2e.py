@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 from pathlib import Path
@@ -11,6 +12,7 @@ from ray.cluster_utils import Cluster
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.jax import JaxTrainer
 
 
 @pytest.fixture
@@ -198,6 +200,155 @@ def test_elastic_training(monkeypatch, tmp_path, cluster):
     assert result.metrics["min_world_size"] >= 4
     assert result.metrics["max_world_size"] <= 32
     assert result.metrics["max_world_size"] >= result.metrics["min_world_size"]
+    assert result.checkpoint
+    assert Path(result.checkpoint.path).name == f"checkpoint-epoch={num_epochs}"
+
+
+def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
+    """End to end test for TPU elastic training with the JaxTrainer."""
+    unit_time_s = 1.0
+    health_check_interval_s = unit_time_s
+    elastic_resize_monitor_interval_s = unit_time_s * 5
+    num_epochs = 30
+
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, str(health_check_interval_s))
+    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
+
+    @ray.remote(num_cpus=0)
+    def run_training():
+        trainer = JaxTrainer(
+            train_fn,
+            train_loop_config={
+                "num_epochs": num_epochs,
+                "health_check_interval_s": health_check_interval_s,
+            },
+            scaling_config=ray.train.ScalingConfig(
+                use_tpu=True,
+                accelerator_type="TPU-V6E",
+                topology="2x4",
+                resources_per_worker={"TPU": 4, "CPU": 1},
+                num_workers=(2, 6),
+                elastic_resize_monitor_interval_s=elastic_resize_monitor_interval_s,
+            ),
+            run_config=ray.train.RunConfig(
+                storage_path=str(tmp_path),
+                checkpoint_config=ray.train.CheckpointConfig(num_to_keep=2),
+                failure_config=ray.train.FailureConfig(max_failures=3),
+            ),
+        )
+        return trainer.fit()
+
+    run_training_future = run_training.remote()
+
+    start = time.time()
+    ALL_NODES = []
+
+    def print_status(message):
+        elapsed = time.time() - start
+        print(f"\n{'-' * 80}")
+        cluster_resources = {
+            resource: value
+            for resource, value in ray.cluster_resources().items()
+            if "TPU" in resource or "CPU" in resource
+        }
+        print(f"[elapsed={elapsed:.1f}s] {cluster_resources=}")
+        print(message)
+        print(f"{'-' * 80}\n")
+
+    def wait_for_tpus(expected_tpus: int, timeout_s=45):
+        start_wait = time.time()
+        while time.time() - start_wait < timeout_s:
+            current_tpus = ray.cluster_resources().get("TPU", 0)
+            if current_tpus == expected_tpus:
+                print_status(
+                    f"Successfully registered {expected_tpus} TPUs in cluster."
+                )
+                return
+            time.sleep(0.5)
+        raise TimeoutError(
+            f"Cluster failed to reach {expected_tpus} TPUs within {timeout_s}s."
+        )
+
+    def provision_tpu_node(slice_name: str, worker_id: int, is_head: bool = False):
+        pod_type = "v6e-8"
+        topology = "2x4"
+
+        node_env = os.environ.copy()
+        node_env["TPU_NAME"] = slice_name
+        node_env["TPU_WORKER_ID"] = str(worker_id)
+        node_env["TPU_ACCELERATOR_TYPE"] = pod_type
+        node_env["TPU_TOPOLOGY"] = topology
+
+        labels = {
+            "ray.io/tpu-slice-name": slice_name,
+            "ray.io/tpu-worker-id": str(worker_id),
+            "ray.io/tpu-pod-type": pod_type,
+        }
+
+        resources = {"TPU": 4, "accelerator_type:TPU-V6E": 1}
+
+        if is_head:
+            resources[f"TPU-{pod_type}-head"] = 1
+
+        node = cluster.add_node(
+            num_cpus=8,
+            resources=resources,
+            labels=labels,
+            env_vars=node_env,
+            wait=False,
+        )
+        return node
+
+    def remove_nodes(nodes: List):
+        for node in nodes:
+            cluster.remove_node(node)
+        cluster.wait_for_nodes()
+        print_status(f"Removed {len(nodes)} node(s).")
+
+    print_status(
+        "Adding 1 TPU node. Waiting for training to ignore it since it's not a full slice."
+    )
+    ALL_NODES.append(
+        provision_tpu_node(slice_name="slice-A", worker_id=0, is_head=True)
+    )
+    wait_for_tpus(4)
+    time.sleep(2)
+
+    print_status("Adding 2nd TPU node to complete slice-A. Training should start.")
+    ALL_NODES.append(
+        provision_tpu_node(slice_name="slice-A", worker_id=1, is_head=False)
+    )
+    wait_for_tpus(8)
+
+    time.sleep(12)
+
+    print_status("Adding full second TPU slice. Policy should upscale.")
+    ALL_NODES.append(
+        provision_tpu_node(slice_name="slice-B", worker_id=0, is_head=True)
+    )
+    ALL_NODES.append(
+        provision_tpu_node(slice_name="slice-B", worker_id=1, is_head=False)
+    )
+    wait_for_tpus(16)
+
+    time.sleep(12)
+
+    # Multi-host TPUs on GKE with KubeRay are scaled atomically in slices.
+    print_status("Killing second TPU slice to simulate full slice preemption.")
+    node_b_worker = ALL_NODES.pop()
+    node_b_head = ALL_NODES.pop()
+    remove_nodes([node_b_worker, node_b_head])
+    wait_for_tpus(8)
+
+    # Wait for policy to scale down to group with 2 workers.
+    time.sleep(12)
+
+    result: ray.train.Result = ray.get(run_training_future)
+
+    print_status(f"Training finished with result: {result}")
+    assert not result.error
+    assert result.metrics["min_world_size"] == 2
+    assert result.metrics["max_world_size"] == 4
     assert result.checkpoint
     assert Path(result.checkpoint.path).name == f"checkpoint-epoch={num_epochs}"
 

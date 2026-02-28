@@ -76,7 +76,52 @@ class ElasticScalingPolicy(ScalingPolicy):
             )
             total_num_workers += num_workers
 
-        return min(int(total_num_workers), self.scaling_config.max_workers)
+        total_num_workers = min(int(total_num_workers), self.scaling_config.max_workers)
+
+        # Multi-host TPUs are scheduled atomically in interconnected slices defined by a topology.
+        # Floor the total available workers to the nearest multiple of the slice size.
+        if (
+            self.scaling_config.use_tpu
+            and self.scaling_config.topology
+            and self.scaling_config.accelerator_type
+        ):
+            from ray.util.tpu import get_num_ready_tpu_slices, get_tpu_worker_resources
+
+            try:
+                workers_per_slice, _ = get_tpu_worker_resources(
+                    topology=self.scaling_config.topology,
+                    accelerator_type=self.scaling_config.accelerator_type,
+                    resources_per_unit=single_worker_resources,
+                    num_slices=1,
+                )
+
+                if workers_per_slice > 0:
+                    num_available_slices = total_num_workers // workers_per_slice
+
+                    # If there are enough TPU workers in the cluster for a full slice,
+                    # check the cluster to validate there are alive, complete TPU
+                    # slices available.
+                    if num_available_slices > 0:
+                        num_alive_slices = get_num_ready_tpu_slices(
+                            topology=self.scaling_config.topology,
+                            accelerator_type=self.scaling_config.accelerator_type,
+                            resources_per_worker=single_worker_resources,
+                        )
+                        num_available_slices = min(
+                            num_available_slices, num_alive_slices
+                        )
+
+                    # The number of workers scaled should be a multiple of the number of
+                    # workers that fit on a TPU slice.
+                    total_num_workers = num_available_slices * workers_per_slice
+
+            except Exception as e:
+                logger.warning(
+                    f"Could not calculate TPU slice boundaries for elastic scaling: {e}. "
+                    "Worker counts may not align with TPU topology."
+                )
+
+        return total_num_workers
 
     def _get_resize_decision(self, num_workers: int) -> ResizeDecision:
         return ResizeDecision(
