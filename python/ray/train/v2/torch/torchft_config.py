@@ -94,7 +94,7 @@ class _TorchftBackend(_TorchBackend):
         # Push the lighthouse address to all workers.
         # Necessary because workers were already started before on_start runs.
         def _set_lighthouse_address(addr: str):
-            os.environ[TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR] = lighthouse_address
+            os.environ[TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR] = addr
 
         worker_group.execute(_set_lighthouse_address, lighthouse_address)
 
