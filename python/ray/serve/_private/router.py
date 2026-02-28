@@ -42,6 +42,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import (
@@ -563,6 +564,10 @@ class AsyncioRouter:
         # replica set at least once.
         self._running_replicas_populated: bool = False
 
+        self._initial_backoff_s: Optional[float] = None
+        self._backoff_multiplier: Optional[float] = None
+        self._max_backoff_s: Optional[float] = None
+
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
         # might be called before `self._metrics_manager` instance is created.
@@ -635,6 +640,14 @@ class AsyncioRouter:
         router is initialized.
         """
         if not self._request_router and self._request_router_class:
+            backoff_kwargs = {}
+            if self._initial_backoff_s is not None:
+                backoff_kwargs["initial_backoff_s"] = self._initial_backoff_s
+            if self._backoff_multiplier is not None:
+                backoff_kwargs["backoff_multiplier"] = self._backoff_multiplier
+            if self._max_backoff_s is not None:
+                backoff_kwargs["max_backoff_s"] = self._max_backoff_s
+
             request_router = self._request_router_class(
                 deployment_id=self.deployment_id,
                 handle_source=self._handle_source,
@@ -649,6 +662,7 @@ class AsyncioRouter:
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
+                **backoff_kwargs,
             )
             request_router.initialize_state(**(self._request_router_kwargs))
 
@@ -694,6 +708,25 @@ class AsyncioRouter:
         self._request_router_kwargs = (
             deployment_config.request_router_config.request_router_kwargs
         )
+
+        # Warn if deprecated env vars are set
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S")
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER")
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S")
+
+        self._initial_backoff_s = (
+            deployment_config.request_router_config.initial_backoff_s
+        )
+        self._backoff_multiplier = (
+            deployment_config.request_router_config.backoff_multiplier
+        )
+        self._max_backoff_s = deployment_config.request_router_config.max_backoff_s
+
+        if self._request_router:
+            self._request_router.initial_backoff_s = self._initial_backoff_s
+            self._request_router.backoff_multiplier = self._backoff_multiplier
+            self._request_router.max_backoff_s = self._max_backoff_s
+
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),

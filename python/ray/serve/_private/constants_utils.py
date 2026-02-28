@@ -259,6 +259,9 @@ def get_env_bool(name: str, default: str) -> bool:
 # Environment variables that are fully deprecated and will be ignored.
 _fully_deprecated_env_vars = {
     "RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "http_options.keep_alive_timeout_s",
+    "RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S": "request_router_config.initial_backoff_s",
+    "RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER": "request_router_config.backoff_multiplier",
+    "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S": "request_router_config.max_backoff_s",
 }
 
 
