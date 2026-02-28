@@ -46,9 +46,9 @@
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, model_name)",
+        "definition": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, model_name)",
         "query": {
-          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, model_name)",
+          "query": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, model_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -71,38 +71,13 @@
         "type": "query",
         "hide": 0,
         "datasource": "${datasource}",
-        "definition": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+        "definition": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
         "query": {
-          "query": "label_values(ray_vllm:request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
+          "query": "label_values(ray_vllm_request_prompt_tokens_sum{{{global_filters}}}, WorkerId)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
         "includeAll": true,
-        "multi": false,
-        "allValue": ".*",
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        }
-      },
-      {
-        "name": "deployment",
-        "label": "Deployment",
-        "type": "query",
-        "hide": 0,
-        "datasource": "${datasource}",
-        "definition": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
-        "query": {
-          "query": "label_values(ray_serve_deployment_request_counter_total{{{global_filters}}}, deployment)",
-          "refId": "StandardVariableQuery"
-        },
-        "refresh": 1,
-        "includeAll": false,
         "multi": false,
         "allValue": ".*",
         "current": {
@@ -157,14 +132,13 @@
       }
     ]
   },
-  "rayMeta": ["excludesSystemRoutes"],
   "time": {
     "from": "now-30m",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
-  "title": "LLM Dashboard",
-  "uid": "rayLlmDashboard",
+  "title": "Data LLM Dashboard",
+  "uid": "rayDataLlmDashboard",
   "version": 1
 }
