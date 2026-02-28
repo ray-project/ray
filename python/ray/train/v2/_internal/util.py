@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import functools
 import logging
@@ -288,3 +289,48 @@ def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
         return _wrapped_fn
 
     return _wrap
+
+
+async def wait_with_logging(
+    condition: asyncio.Condition,
+    predicate: Optional[Callable[[], bool]] = None,
+    generate_warning_message: Optional[Callable[[], str]] = None,
+    warn_interval_s: float = 60,
+    timeout_s: float = -1,
+):
+    """Waits for condition to be notified, logging warnings and eventually timing out.
+
+    You must acquire the condition before calling this function.
+
+    Args:
+        condition: The condition to wait for.
+        predicate: Wait until this predicate is True. If None, wait until the condition
+            is notified.
+        generate_warning_message: A function that generates the warning message to log.
+            If None, no warning is logged.
+        warn_interval_s: The interval in seconds to log a warning.
+        timeout_s: The timeout in seconds.
+    """
+
+    async def _wait_loop():
+        while True:
+            try:
+                await asyncio.wait_for(
+                    condition.wait()
+                    if predicate is None
+                    else condition.wait_for(predicate),
+                    timeout=warn_interval_s,
+                )
+                return
+            # asyncio.wait_for() raises `asyncio.TimeoutError` for asyncio<=3.10
+            # and raises `TimeoutError` for asyncio>=3.11
+            # https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for
+            except (asyncio.TimeoutError, TimeoutError):
+                if generate_warning_message is not None:
+                    warning_message = generate_warning_message()
+                    logger.warning(warning_message)
+
+    await asyncio.wait_for(
+        _wait_loop(),
+        timeout=timeout_s if timeout_s >= 0 else None,
+    )
