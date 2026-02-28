@@ -4,10 +4,14 @@
 
 
 # __model_dl_start__
-import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+
+try:
+    import lightning.pytorch as pl
+except ModuleNotFoundError:
+    import pytorch_lightning as pl
 
 # Create dummy data
 X = torch.randn(128, 3)  # 128 samples, 3 features
