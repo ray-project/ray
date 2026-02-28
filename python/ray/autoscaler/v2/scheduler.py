@@ -1594,7 +1594,11 @@ class ResourceDemandScheduler(IResourceScheduler):
         ippr_candidates = []
 
         for node in existing_nodes:
-            if node.ippr_status is not None and node.ippr_status.can_resize_up():
+            if (
+                node.ippr_status is not None
+                and node.ray_node_id
+                and node.ippr_status.can_resize_up()
+            ):
                 ippr_candidates.append(node)
             else:
                 target_nodes.append(node)

@@ -3020,6 +3020,64 @@ def test_ippr_in_progress_exposes_desired_capacity_avoids_launch():
     assert reply.to_ippr == []  # already in progress, no new IPPR action
 
 
+def test_ippr_does_not_resize_pending_node_without_ray_node_id():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing pending node has no ray_node_id yet.
+    instance = make_autoscaler_instance(
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.ALLOCATED,
+            instance_id="i-1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=1 * 1024 * 1024 * 1024,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Pending nodes without a ray_node_id should not be selected for IPPR.
+    assert reply.to_ippr == []
+    # Scheduler should launch a new node instead of overestimating pending capacity.
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {"type_1": 1}
+
+
 def test_ippr_max_limits_affect_new_node_capacity():
     scheduler = ResourceDemandScheduler(event_logger)
 
