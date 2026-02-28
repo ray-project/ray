@@ -688,15 +688,31 @@ class _MapWorker:
         return f"MapWorker({getattr(self, 'src_fn_name', '<initializing>')})"
 
     def on_exit(self):
-        """Called when the actor is about to exist.
-        This enables performing cleanup operations via `UDF.__del__`.
+        """Called when the actor is about to exit.
+        This enables performing cleanup operations via `UDF.__ray_shutdown__` and
+        `UDF.__del__`.
 
-        Note, this only ensures cleanup is performed when the job exists gracefully.
-        If the driver or the actor is forcefully killed, `__del__` will not be called.
+        Note, this only ensures cleanup is performed when the job exits gracefully.
+        If the driver or the actor is forcefully killed, these methods will not be
+        called.
         """
-        # `_map_actor_context` is a global variable that references the UDF object.
-        # Delete it to trigger `UDF.__del__`.
-        del ray.data._map_actor_context
+        # Call __ray_shutdown__ on all UDF instances if the method exists.
+        # This is the standard Ray shutdown hook that users can implement for cleanup.
+        # See: https://docs.ray.io/en/latest/ray-core/actors/terminating-actors.html
+        if ray.data._map_actor_context is not None:
+            for udf_instance in ray.data._map_actor_context.udf_instances.values():
+                if hasattr(udf_instance, "__ray_shutdown__"):
+                    try:
+                        udf_instance.__ray_shutdown__()
+                    except Exception:
+                        # Log but don't fail - we want to continue cleanup
+                        logging.getLogger(__name__).exception(
+                            f"Error calling __ray_shutdown__ on {udf_instance}"
+                        )
+
+            # `_map_actor_context` is a global variable that references the UDF object.
+            # Delete it to trigger `UDF.__del__`.
+            del ray.data._map_actor_context
         ray.data._map_actor_context = None
 
 

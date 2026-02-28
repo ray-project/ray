@@ -914,6 +914,61 @@ def test_actor_udf_cleanup(
     wait_for_condition(lambda: not os.path.exists(test_file))
 
 
+def test_actor_udf_ray_shutdown_hook(
+    shutdown_only,
+    tmp_path,
+    restore_data_context,
+    target_max_block_size_infinite_or_default,
+):
+    """Test that __ray_shutdown__ is called on UDFs when actors exit gracefully.
+
+    This tests the fix for https://github.com/ray-project/ray/issues/60453
+    """
+    ray.shutdown()
+    ray.init(num_cpus=2)
+    ctx = DataContext.get_current()
+    ctx._enable_actor_pool_on_exit_hook = True
+
+    shutdown_file = tmp_path / "shutdown.txt"
+    del_file = tmp_path / "del.txt"
+
+    class StatefulUDF:
+        def __init__(self, shutdown_path, del_path):
+            self.shutdown_path = shutdown_path
+            self.del_path = del_path
+
+        def __call__(self, row):
+            return row
+
+        def __ray_shutdown__(self):
+            # Write to file when __ray_shutdown__ is called
+            with open(self.shutdown_path, "w") as f:
+                f.write("shutdown called")
+
+        def __del__(self):
+            # Write to file when __del__ is called
+            with open(self.del_path, "w") as f:
+                f.write("del called")
+
+    ds = ray.data.range(10)
+    ds = ds.map(
+        StatefulUDF,
+        concurrency=1,
+        fn_constructor_kwargs={
+            "shutdown_path": str(shutdown_file),
+            "del_path": str(del_file),
+        },
+    )
+    assert sorted(extract_values("id", ds.take_all())) == list(range(10))
+
+    # Both __ray_shutdown__ and __del__ should be called
+    wait_for_condition(lambda: shutdown_file.exists())
+    wait_for_condition(lambda: del_file.exists())
+
+    assert shutdown_file.read_text() == "shutdown called"
+    assert del_file.read_text() == "del called"
+
+
 def test_actor_pool_strategy_default_num_actors(
     shutdown_only, target_max_block_size_infinite_or_default
 ):
