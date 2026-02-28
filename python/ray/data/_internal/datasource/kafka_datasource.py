@@ -636,7 +636,6 @@ class KafkaDatasource(Datasource):
                                     # Only skip on partition EOF events, raise others.
                                     err = msg.error()
                                     if err.code() == KafkaError._PARTITION_EOF:
-                                        print(f"skipping partition EOF error: {err}")
                                         continue
                                     raise KafkaException(err)
 
