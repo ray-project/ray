@@ -31,26 +31,30 @@ def test_random_expression_creation():
 
 
 @pytest.mark.parametrize(
-    "seed1,seed2,reseed1,reseed2,expected_equal",
+    "seed1,seed2,reseed1,reseed2",
     [
-        (42, 42, True, True, True),
-        (42, 123, True, True, False),
-        (None, None, True, True, True),
-        (None, None, True, False, False),
-        (42, None, True, True, False),
-        (42, 42, True, False, False),
-        (42, 42, False, False, True),
+        (42, 42, True, True),
+        (42, 123, True, True),
+        (None, None, True, True),
+        (None, None, True, False),
+        (42, None, True, True),
+        (42, 42, True, False),
+        (42, 42, False, False),
     ],
 )
-def test_random_expression_structural_equality(
-    seed1, seed2, reseed1, reseed2, expected_equal
-):
-    """Test structural equality comparison for random expressions."""
+def test_random_expression_structural_equality(seed1, seed2, reseed1, reseed2):
+    """Test that random expressions are never structurally equal.
+
+    RandomExpr is always treated as non-deterministic: unseeded expressions use
+    system randomness, and seeded expressions with reseed_after_execution=True
+    depend on execution index / block ordering which is not captured in the
+    expression itself.
+    """
     expr1 = random(seed=seed1, reseed_after_execution=reseed1)
     expr2 = random(seed=seed2, reseed_after_execution=reseed2)
 
-    assert expr1.structurally_equals(expr2) == expected_equal
-    assert expr2.structurally_equals(expr1) == expected_equal
+    assert not expr1.structurally_equals(expr2)
+    assert not expr2.structurally_equals(expr1)
 
 
 def test_random_expression_structural_equality_with_non_random_expr():

@@ -1528,12 +1528,10 @@ class RandomExpr(Expr):
     _instance_id: str = field(default_factory=lambda: str(builtin_uuid.uuid4()))
 
     def structurally_equals(self, other: Any) -> bool:
-        return (
-            isinstance(other, RandomExpr)
-            and self.data_type == other.data_type
-            and self.seed == other.seed
-            and self.reseed_after_execution == other.reseed_after_execution
-        )
+        # Always non-deterministic: unseeded expressions use system randomness,
+        # and seeded expressions with reseed_after_execution=True depend on
+        # execution index / block ordering which is not captured here.
+        return False
 
 
 @DeveloperAPI
