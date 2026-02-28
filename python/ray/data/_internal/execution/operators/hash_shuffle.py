@@ -1165,6 +1165,33 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION,
             )
 
+            is_cluster_memory_constrained = (
+                modest_memory_per_aggregator
+                < DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION
+            )
+
+            if is_cluster_memory_constrained:
+                logger.warning(
+                    f"Unable to estimate dataset size for {self.name}: "
+                    f"input operator(s) returned unknown size_bytes from "
+                    f"infer_metadata(). Falling back to "
+                    f"{estimated_aggregator_memory_required / GiB:.1f}GiB "
+                    f"per aggregator (50% of available cluster memory / "
+                    f"{num_aggregators} aggregators). This may lead to OOMs "
+                    f"if the actual dataset is larger. Consider scaling up "
+                    f"the cluster or increasing num_partitions."
+                )
+            else:
+                logger.warning(
+                    f"Unable to estimate dataset size for {self.name}: "
+                    f"input operator(s) returned unknown size_bytes from "
+                    f"infer_metadata(). Falling back to default cap of "
+                    f"{estimated_aggregator_memory_required / GiB:.1f}GiB "
+                    f"per aggregator. This may lead to OOMs if the actual "
+                    f"dataset is large. Consider increasing num_partitions "
+                    f"to reduce per-partition memory pressure."
+                )
+
         remote_args = {
             "num_cpus": self._get_aggregator_num_cpus(
                 total_available_cluster_resources,
