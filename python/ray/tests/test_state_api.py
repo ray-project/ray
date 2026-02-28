@@ -2521,7 +2521,11 @@ def test_list_get_workers(shutdown_only):
     os.kill(workers[-1]["pid"], signal.SIGKILL)
 
     def verify():
-        workers = list_workers(detail=True, filters=[("is_alive", "=", "False")])
+        workers = list_workers(
+            detail=True,
+            filters=[("is_alive", "=", "False")],
+            raise_on_missing_output=False,
+        )
         assert len(workers) == 1
         assert workers[0]["end_time_ms"] != 0
         return True
@@ -2859,7 +2863,9 @@ def test_pg_worker_id_tasks(shutdown_only):
 
     def verify():
         tasks = list_tasks(detail=True)
-        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        workers = list_workers(
+            filters=[("worker_type", "=", "WORKER")], raise_on_missing_output=False
+        )
         assert len(tasks) == 1
         assert len(workers) == 1
 
@@ -2879,7 +2885,9 @@ def test_pg_worker_id_tasks(shutdown_only):
 
     def verify():
         actors = list_actors(detail=True)
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )
         assert len(actors) == 1
         assert len(workers) == 1
 
