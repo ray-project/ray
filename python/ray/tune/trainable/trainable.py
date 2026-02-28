@@ -9,7 +9,7 @@ import time
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 import ray.cloudpickle as ray_pickle
@@ -18,8 +18,9 @@ from ray.air._internal.util import exception_cause, skip_exceptions
 from ray.air.constants import TIME_THIS_ITER_S, TIMESTAMP, TRAINING_ITERATION
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.train.constants import DEFAULT_STORAGE_PATH
+from ray.train.constants import DEFAULT_STORAGE_PATH, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.logger import NoopLogger
 from ray.tune.result import (
     DEBUG_METRICS,
     DONE,
@@ -42,9 +43,6 @@ from ray.tune.utils import UtilMonitor
 from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.annotations import DeveloperAPI, PublicAPI
-
-if TYPE_CHECKING:
-    from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +93,6 @@ class Trainable:
     def __init__(
         self,
         config: Dict[str, Any] = None,
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         storage: Optional[StorageContext] = None,
     ):
         """Initialize a Trainable.
@@ -109,8 +106,6 @@ class Trainable:
         Args:
             config: Trainable-specific configuration data. By default
                 will be saved as ``self.config``.
-            logger_creator: (Deprecated) Function that creates a ray.tune.Logger
-                object. If unspecified, a default logger is created.
             storage: StorageContext object that contains persistent storage paths
         """
 
@@ -120,10 +115,12 @@ class Trainable:
         if self.is_actor():
             disable_ipython()
 
-        # TODO(ml-team): Remove `logger_creator` in 2.7.
+        self._storage = storage
+
         # TODO(justinvyu): Rename/remove logdir.
         self._result_logger = self._logdir = None
-        self._create_logger(self.config, logger_creator)
+        logdir = storage.trial_working_directory if storage else None
+        self._create_logger(self.config, logdir)
 
         self._stdout_context = self._stdout_fp = self._stdout_stream = None
         self._stderr_context = self._stderr_fp = self._stderr_stream = None
@@ -148,7 +145,6 @@ class Trainable:
         self._start_time = time.time()
         self._local_ip = ray.util.get_node_ip_address()
 
-        self._storage = storage
         if storage:
             assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
@@ -599,7 +595,7 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None, storage=None):
+    def reset(self, new_config, storage=None):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
@@ -615,14 +611,12 @@ class Trainable:
         self._result_logger.flush()
         self._result_logger.close()
 
-        if logger_creator:
+        if storage:
             logger.debug("Logger reset.")
-            self._create_logger(new_config.copy(), logger_creator)
+            logdir = storage.trial_working_directory
+            self._create_logger(new_config.copy(), logdir)
         else:
-            logger.debug(
-                "Did not reset logger. Got: "
-                f"trainable.reset(logger_creator={logger_creator})."
-            )
+            logger.debug("Did not reset logger. No storage context provided.")
 
         stdout_file = new_config.pop(STDOUT_FILE, None)
         stderr_file = new_config.pop(STDERR_FILE, None)
@@ -666,17 +660,32 @@ class Trainable:
     def _create_logger(
         self,
         config: Dict[str, Any],
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
+        logdir: Optional[str] = None,
     ):
-        """Create logger from logger creator.
+        """Create logger for this Trainable.
 
         Sets _logdir and _result_logger.
 
         `_logdir` is the **per trial** directory for the Trainable.
+
+        If `logdir` is provided (i.e. running within Tune), sets up the
+        working directory and creates a NoopLogger. Otherwise (standalone
+        usage), creates a temp directory with a UnifiedLogger.
         """
-        if logger_creator:
-            self._result_logger = logger_creator(config)
-            self._logdir = self._result_logger.logdir
+        if logdir:
+            # Record the actor's original working dir before changing
+            # to the Tune logdir
+            os.environ.setdefault("TUNE_ORIG_WORKING_DIR", os.getcwd())
+
+            os.makedirs(logdir, exist_ok=True)
+
+            if bool(int(os.environ.get(RAY_CHDIR_TO_TRIAL_DIR, "1"))):
+                # Set the working dir to the trial directory in the remote
+                # process, for user file writes
+                os.chdir(logdir)
+
+            self._logdir = logdir
+            self._result_logger = NoopLogger(config, logdir)
         else:
             from ray.tune.logger import UnifiedLogger
 

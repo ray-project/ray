@@ -7,7 +7,6 @@ import traceback
 import warnings
 from collections import defaultdict, deque
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -35,7 +34,6 @@ from ray.tune.experiment import Experiment, Trial
 from ray.tune.experiment.trial import (
     _get_trainable_kwargs,
     _Location,
-    _noop_logger_creator,
     _TrialInfo,
 )
 from ray.tune.result import (
@@ -1908,17 +1906,12 @@ class TuneController:
         extra_config[STDOUT_FILE] = stdout_file
         extra_config[STDERR_FILE] = stderr_file
 
-        logger_creator = partial(
-            _noop_logger_creator, logdir=trial.storage.trial_working_directory
-        )
-
         self._resetting_trials.add(trial)
         self._schedule_trial_task(
             trial=trial,
             method_name="reset",
             args=(extra_config,),
             kwargs={
-                "logger_creator": logger_creator,
                 "storage": trial.storage,
             },
             on_result=self._on_trial_reset,

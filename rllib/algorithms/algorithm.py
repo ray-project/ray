@@ -492,8 +492,11 @@ class Algorithm(Checkpointable, Trainable):
             root=True, stats_cls_lookup=config.stats_cls_lookup
         )
 
-        # Create a default logger creator if no logger_creator is specified
-        if logger_creator is None:
+        # Create a default logger creator if no logger_creator is specified.
+        # Skip when running under Tune (storage in kwargs): Trainable will pass
+        # logdir from storage and _create_logger will use NoopLogger, so creating
+        # a temp dir here would leak an unused directory in ~/ray_results/.
+        if logger_creator is None and not kwargs.get("storage"):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -527,6 +530,9 @@ class Algorithm(Checkpointable, Trainable):
                     return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
+
+        # Stash for use in _create_logger override (called by Trainable.__init__).
+        self._rllib_logger_creator = logger_creator
 
         # Metrics-related properties.
         self._timers = defaultdict(_Timer)
@@ -582,9 +588,24 @@ class Algorithm(Checkpointable, Trainable):
 
         super().__init__(
             config=config,
-            logger_creator=logger_creator,
             **kwargs,
         )
+
+    def _create_logger(self, config, logdir=None):
+        """Override Trainable._create_logger to support RLlib's logger_creator.
+
+        When running standalone (no storage/logdir), use the RLlib-specific
+        logger_creator that was set up in __init__. When running under Tune
+        (logdir provided via storage), defer to the parent implementation.
+        """
+        if logdir:
+            # Running under Tune — use standard Trainable behavior.
+            super()._create_logger(config, logdir)
+        elif hasattr(self, "_rllib_logger_creator") and self._rllib_logger_creator:
+            self._result_logger = self._rllib_logger_creator(config)
+            self._logdir = self._result_logger.logdir
+        else:
+            super()._create_logger(config, logdir)
 
     def _set_up_metrics(self):
         self._metrics_step_time = Histogram(

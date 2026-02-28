@@ -11,33 +11,14 @@ from ray.rllib import _register_all
 from ray.train.tests.util import mock_storage_context
 from ray.tune import Checkpoint, CheckpointConfig
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.logger import NoopLogger
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers import ResourceChangingScheduler
 from ray.tune.trainable import with_parameters, wrap_function
 
 
-def creator_generator(logdir):
-    def logger_creator(config):
-        return NoopLogger(config, logdir)
-
-    return logger_creator
-
-
 class FunctionCheckpointingTest(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.TemporaryDirectory()
-        self.logger_creator = creator_generator(
-            os.path.join(self.tmpdir.name, "logdir")
-        )
-
     def create_trainable(self, train_fn):
-        return wrap_function(train_fn)(
-            logger_creator=self.logger_creator, storage=mock_storage_context()
-        )
-
-    def tearDown(self):
-        self.tmpdir.cleanup()
+        return wrap_function(train_fn)(storage=mock_storage_context())
 
     def testCheckpointReuse(self):
         """Test that repeated save/restore never reuses same checkpoint dir."""
