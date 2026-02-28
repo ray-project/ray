@@ -4096,6 +4096,27 @@
     long_running: false
     script: pytest -vs test_llm_serve_pause_resume.py
 
+- name: llm_serve_cpu_mode
+  frequency: nightly
+  python: "3.11"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: cpu
+      post_build_script: byod_llm_cpu.sh
+    cluster_compute: llm_cpu_only.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: pytest -vs test_llm_serve_cpu_mode.py
+
 - name: llm_serve_rlhf
   frequency: nightly
   python: "3.11"
