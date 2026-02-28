@@ -1,5 +1,5 @@
 import os
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import numpy as np
 import torch
@@ -108,50 +108,28 @@ class TorchGLOOGroup(BaseGroup):
         """The backend of this collective group."""
         return Backend.GLOO
 
-    def _check_tensor_input(self, tensor: List["torch.Tensor"]) -> "torch.Tensor":
-        """ray.util.collective wraps tensor arguments in a list.
-        Accept a single torch.Tensor or numpy.ndarray and unwrap/convert it.
-        """
-        assert isinstance(tensor, list) and len(tensor) == 1
-        t = tensor[0]
-        if isinstance(t, torch.Tensor):
-            return t
-        if isinstance(t, np.ndarray):
-            return torch.from_numpy(t)
+    @staticmethod
+    def _to_torch_tensor(tensor) -> torch.Tensor:
+        if isinstance(tensor, torch.Tensor):
+            return tensor
+        if isinstance(tensor, np.ndarray):
+            return torch.from_numpy(tensor)
         raise ValueError(
-            f"torch_gloo group only accepts torch.Tensor or numpy.ndarray, received {type(t)}"
+            f"torch_gloo group only accepts torch.Tensor or numpy.ndarray, received {type(tensor)}"
         )
 
-    def _check_tensor_list_input(
-        self, tensor_list: List[List["torch.Tensor"]]
-    ) -> List["torch.Tensor"]:
-        """ray.util.collective wraps tensor arguments in a list.
-        Accept a single list containing torch.Tensors or numpy.ndarrays and
-        unwrap/convert items as needed.
-        """
-        assert isinstance(tensor_list, list) and len(tensor_list) == 1
-        tensor_list = tensor_list[0]
-        converted_tensor_list = []
-        for tensor in tensor_list:
-            if isinstance(tensor, np.ndarray):
-                tensor = torch.from_numpy(tensor)
-                converted_tensor_list.append(tensor)
-            elif isinstance(tensor, torch.Tensor):
-                converted_tensor_list.append(tensor)
-            else:
-                raise ValueError(
-                    f"torch_gloo group only accepts torch.Tensor or numpy.ndarray types, received tensor list with value {tensor}"
-                )
-        return converted_tensor_list
+    @staticmethod
+    def _to_torch_tensor_list(tensor_list: List) -> List[torch.Tensor]:
+        return [TorchGLOOGroup._to_torch_tensor(t) for t in tensor_list]
 
     def allreduce(
         self,
-        tensor: List["torch.Tensor"],
+        tensor: Union[torch.Tensor, np.ndarray],
         allreduce_options: Optional[AllReduceOptions] = None,
     ) -> None:
         if allreduce_options is None:
             allreduce_options = AllReduceOptions()
-        tensor = self._check_tensor_input(tensor)
+        tensor = self._to_torch_tensor(tensor)
         torch_reduce_op = TORCH_REDUCE_OP_MAP[allreduce_options.reduceOp]
         dist.all_reduce(tensor, op=torch_reduce_op, group=self._pg)
 
@@ -160,12 +138,12 @@ class TorchGLOOGroup(BaseGroup):
 
     def reduce(
         self,
-        tensor: List["torch.Tensor"],
+        tensor: Union[torch.Tensor, np.ndarray],
         reduce_options: Optional[ReduceOptions] = None,
     ) -> None:
         if reduce_options is None:
             reduce_options = ReduceOptions()
-        t = self._check_tensor_input(tensor)
+        t = self._to_torch_tensor(tensor)
         torch_reduce_op = TORCH_REDUCE_OP_MAP[reduce_options.reduceOp]
         # Avoid mutating non-root ranks' user tensors to match util.collective semantics.
         if self._rank == reduce_options.root_rank:
@@ -180,35 +158,39 @@ class TorchGLOOGroup(BaseGroup):
 
     def allgather(
         self,
-        tensor_list: List[List["torch.Tensor"]],
-        tensor: List["torch.Tensor"],
+        tensor_list: List[Union[torch.Tensor, np.ndarray]],
+        tensor: Union[torch.Tensor, np.ndarray],
         allgather_options: Optional[AllGatherOptions] = None,
     ) -> None:
         if allgather_options is None:
             allgather_options = AllGatherOptions()
-        tensor_list = self._check_tensor_list_input(tensor_list)
-        tensor = self._check_tensor_input(tensor)
-        dist.all_gather(tensor_list, tensor, group=self._pg)
+        output_list = self._to_torch_tensor_list(tensor_list)
+        tensor = self._to_torch_tensor(tensor)
+        dist.all_gather(output_list, tensor, group=self._pg)
+        # If the caller passed numpy arrays, they won't be updated in place.
+        # For strict torch-only semantics, we don't copy back.
 
     def broadcast(
-        self, tensor: List["torch.Tensor"], broadcast_options=BroadcastOptions()
+        self,
+        tensor: Union[torch.Tensor, np.ndarray],
+        broadcast_options: BroadcastOptions = BroadcastOptions(),
     ) -> None:
-        tensor = self._check_tensor_input(tensor)
+        tensor = self._to_torch_tensor(tensor)
         dist.broadcast(tensor, src=broadcast_options.root_rank, group=self._pg)
 
     def reducescatter(
         self,
-        output_tensor: List["torch.Tensor"],
-        tensor_list: List[List["torch.Tensor"]],
+        output_tensor: Union[torch.Tensor, np.ndarray],
+        tensor_list: List[Union[torch.Tensor, np.ndarray]],
         reducescatter_options: Optional[ReduceScatterOptions] = None,
     ) -> None:
         if reducescatter_options is None:
             reducescatter_options = ReduceScatterOptions()
-        tensor_list = self._check_tensor_list_input(tensor_list)
-        output_tensor = self._check_tensor_input(output_tensor)
+        tensor_list = self._to_torch_tensor_list(tensor_list)
+        output_tensor = self._to_torch_tensor(output_tensor)
         if output_tensor.shape != tensor_list[self._rank].shape:
             raise ValueError(
-                "Output tensor has wrong shape {output_tensor.shape}, expected {tensor_list[self._rank].shape}"
+                f"Output tensor has wrong shape {output_tensor.shape}, expected {tensor_list[self._rank].shape}"
             )
         torch_reduce_op = TORCH_REDUCE_OP_MAP[reducescatter_options.reduceOp]
 
@@ -220,10 +202,14 @@ class TorchGLOOGroup(BaseGroup):
         if output_tensor.data_ptr() != tensor_list[self._rank].data_ptr():
             output_tensor.copy_(tensor_list[self._rank])
 
-    def send(self, tensor: List["torch.Tensor"], send_options: SendOptions) -> None:
-        tensor = self._check_tensor_input(tensor)
+    def send(
+        self, tensor: Union[torch.Tensor, np.ndarray], send_options: SendOptions
+    ) -> None:
+        tensor = self._to_torch_tensor(tensor)
         dist.send(tensor, dst=send_options.dst_rank)
 
-    def recv(self, tensor: List["torch.Tensor"], recv_options: RecvOptions) -> None:
-        tensor = self._check_tensor_input(tensor)
+    def recv(
+        self, tensor: Union[torch.Tensor, np.ndarray], recv_options: RecvOptions
+    ) -> None:
+        tensor = self._to_torch_tensor(tensor)
         dist.recv(tensor, src=recv_options.src_rank)

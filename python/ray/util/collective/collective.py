@@ -2,6 +2,7 @@
 
 import logging
 import os
+import pickle
 import socket
 import threading
 import time
@@ -11,8 +12,10 @@ import numpy as np
 
 import ray
 import ray.experimental.internal_kv as _internal_kv
+import ray.util.collective
 from . import types
 from ray._common.network_utils import find_free_port, is_ipv6
+from ray.util.annotations import Deprecated
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
     get_master_address_metadata_key as _get_master_addr_key,
 )
@@ -20,7 +23,10 @@ from ray.util.collective.collective_group.torch_gloo_collective_group import (
 logger = logging.getLogger(__name__)
 
 try:
-    from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
+    from ray.util.collective.collective_group.nccl_collective_group import (
+        MultiGPUNCCLGroup,
+        NCCLGroup,
+    )
 
     _NCCL_AVAILABLE = True
     _LOG_NCCL_WARNING = False
@@ -68,6 +74,27 @@ def get_address_and_port() -> Tuple[str, int]:
     return addr, port
 
 
+def get_uniqueness_key(group_name: str) -> str:
+    """Get the uniqueness key for a collective group."""
+    return f"collective_group_{group_name}"
+
+
+def _kv_put(key: str, value: str) -> None:
+    _internal_kv._internal_kv_put(key, value)
+
+
+def _kv_get(key: str) -> str:
+    return _internal_kv._internal_kv_get(key)
+
+
+def _kv_del(key: str) -> None:
+    _internal_kv._internal_kv_del(key)
+
+
+def _kv_exists(key: str) -> bool:
+    return _kv_get(key) is not None
+
+
 class GroupManager(object):
     """Use this class to manage the collective groups we created so far.
 
@@ -93,14 +120,14 @@ class GroupManager(object):
             metadata_key = _get_master_addr_key(group_name)
             if rank == 0:
                 addr, port = get_address_and_port()
-                _internal_kv._internal_kv_put(metadata_key, f"{addr}:{port}")
+                _kv_put(metadata_key, f"{addr}:{port}")
             else:
                 # Wait until rank 0 publishes the metadata or timeout.
                 deadline_s = time.time() + (
                     gloo_timeout / 1000.0 if gloo_timeout else 30.0
                 )
                 while True:
-                    meta = _internal_kv._internal_kv_get(metadata_key)
+                    meta = _kv_get(metadata_key)
                     if meta is not None:
                         break
                     if time.time() > deadline_s:
@@ -121,7 +148,22 @@ class GroupManager(object):
             raise RuntimeError(f"Unexpected backend: {backend}")
 
         self._name_group_map[group_name] = g
-        return self._name_group_map[group_name]
+
+    # TODO(tianyi): remove it when multigpu is deprecated
+    def create_multigpu_nccl_group(self, world_size, rank, base_group_name):
+        """Create only the MultiGPUNCCLGroup for a given base group name.
+
+        This does not create a single-tensor NCCLGroup and is used by the
+        multigpu lazy path when needed.
+        """
+        if not nccl_available():
+            raise RuntimeError("NCCL is not available for multigpu collectives.")
+        group_name_multigpu = f"{base_group_name}_multigpu"
+        if group_name_multigpu in self._name_group_map:
+            return
+        self._name_group_map[group_name_multigpu] = MultiGPUNCCLGroup(
+            world_size, rank, group_name_multigpu
+        )
 
     def is_group_exist(self, group_name):
         return group_name in self._name_group_map
@@ -146,13 +188,25 @@ class GroupManager(object):
         # Release the communicator resources
         g.destroy_group()
 
-        # Release the detached actors spawned by `create_collective_group()`
-        name = "info_" + group_name
-        try:
-            store = ray.get_actor(name)
-            ray.kill(store)
-        except ValueError:
-            pass
+        # Clear uniqueness flag for this group.
+        uniqueness_key = get_uniqueness_key(group_name)
+        if _kv_exists(uniqueness_key):
+            _kv_del(uniqueness_key)
+
+        metadata_key = _get_master_addr_key(group_name)
+        if _kv_exists(metadata_key):
+            _kv_del(metadata_key)
+
+        # Also try to tear down the paired multigpu group if present.
+        # TODO(tianyi): remove it when multigpu is deprecated
+        group_name_multigpu = f"{group_name}_multigpu"
+        if group_name_multigpu in self._name_group_map:
+            g = self._name_group_map[group_name_multigpu]
+            del self._name_group_map[group_name_multigpu]
+            g.destroy_group()
+        uniqueness_key = get_uniqueness_key(group_name_multigpu)
+        if _kv_exists(uniqueness_key):
+            _kv_del(uniqueness_key)
 
 
 _group_mgr = GroupManager()
@@ -206,6 +260,9 @@ def init_collective_group(
         _group_mgr.create_collective_group(
             backend, world_size, rank, group_name, gloo_timeout
         )
+        # TODO(tianyi): remove it when multigpu is deprecated.
+        if backend == types.Backend.NCCL:
+            _group_mgr.create_multigpu_nccl_group(world_size, rank, group_name)
 
 
 def create_collective_group(
@@ -233,13 +290,6 @@ def create_collective_group(
     backend = types.Backend(backend)
     _check_backend_availability(backend)
 
-    name = "info_" + group_name
-    try:
-        ray.get_actor(name)
-        raise RuntimeError("Trying to initialize a group twice.")
-    except ValueError:
-        pass
-
     if len(ranks) != len(actors):
         raise RuntimeError(
             "Each actor should correspond to one rank. Got '{}' "
@@ -262,15 +312,45 @@ def create_collective_group(
     if not all(ranks) < world_size:
         raise RuntimeError("Ranks cannot be greater than world_size.")
 
-    # avoid a circular dependency
-    from ray.util.collective.util import Info
+    uniqueness_key = get_uniqueness_key(group_name)
+    if _kv_exists(uniqueness_key):
+        raise RuntimeError("Trying to initialize a group twice.")
+    # Mark the group as being created.
+    _kv_put(uniqueness_key, "1")
 
-    # store the information into a NamedActor that can be accessed later.
-    name = "info_" + group_name
-    actors_id = [a._ray_actor_id for a in actors]
-    # TODO (Dacheng): how do we recycle this name actor?
-    info = Info.options(name=name, lifetime="detached").remote()
-    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend, gloo_timeout)])
+    # For multigpu, store rendezvous info only for NCCL backend so that
+    # workers can lazily initialize the multigpu group if needed.
+    # TODO(tianyi): remove it when multigpu is deprecated
+    uniqueness_key_multigpu = None
+    if backend == types.Backend.NCCL:
+        uniqueness_key_multigpu = get_uniqueness_key(f"{group_name}_multigpu")
+        actors_id = [a._ray_actor_id for a in actors]
+        group_info = pickle.dumps((actors_id, world_size, ranks, backend, gloo_timeout))
+        _kv_put(uniqueness_key_multigpu, group_info)
+
+    # Eagerly initialize the collective group on each actor.
+    def _do_init_collective_group(self, rank: int):
+        ray.util.collective.init_collective_group(
+            world_size=world_size,
+            rank=rank,
+            backend=backend,
+            group_name=group_name,
+            gloo_timeout=gloo_timeout,
+        )
+
+    try:
+        init_tasks = [
+            actor.__ray_call__.remote(_do_init_collective_group, rank)
+            for actor, rank in zip(actors, ranks)
+        ]
+        ray.get(init_tasks)
+    except Exception:
+        # On failure, clear the uniqueness flag(s).
+        _kv_del(uniqueness_key)
+        # TODO(tianyi): remove it when multigpu is deprecated
+        if uniqueness_key_multigpu is not None:
+            _kv_del(uniqueness_key_multigpu)
+        raise
 
 
 # TODO (we need a declarative destroy() API here.)
@@ -338,11 +418,12 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     """
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
-    opts = types.AllReduceOptions
+    opts = types.AllReduceOptions()
     opts.reduceOp = op
-    g.allreduce([tensor], opts)
+    g.allreduce(tensor, opts)
 
 
+@Deprecated(message="allreduce_multigpu will no longer be supported.")
 def allreduce_multigpu(
     tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM
 ):
@@ -359,8 +440,9 @@ def allreduce_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = get_group_handle(group_name)
-    opts = types.AllReduceOptions
+    _ensure_group_backend_nccl(group_name)
+    g = get_group_handle_multigpu(group_name)
+    opts = types.AllReduceOptions()
     opts.reduceOp = op
     g.allreduce(tensor_list, opts)
 
@@ -401,9 +483,10 @@ def reduce(
     opts.reduceOp = op
     opts.root_rank = dst_rank
     opts.root_tensor = 0
-    g.reduce([tensor], opts)
+    g.reduce(tensor, opts)
 
 
+@Deprecated(message="reduce_multigpu will no longer be supported.")
 def reduce_multigpu(
     tensor_list: list,
     dst_rank: int = 0,
@@ -428,7 +511,8 @@ def reduce_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = get_group_handle(group_name)
+    _ensure_group_backend_nccl(group_name)
+    g = get_group_handle_multigpu(group_name)
 
     # check dst rank
     _check_rank_valid(g, dst_rank)
@@ -459,9 +543,10 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     opts = types.BroadcastOptions()
     opts.root_rank = src_rank
     opts.root_tensor = 0
-    g.broadcast([tensor], opts)
+    g.broadcast(tensor, opts)
 
 
+@Deprecated(message="broadcast_multigpu will no longer be supported.")
 def broadcast_multigpu(
     tensor_list, src_rank: int = 0, src_tensor: int = 0, group_name: str = "default"
 ):
@@ -479,7 +564,8 @@ def broadcast_multigpu(
     if not types.cupy_available():
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
-    g = get_group_handle(group_name)
+    _ensure_group_backend_nccl(group_name)
+    g = get_group_handle_multigpu(group_name)
 
     # check src rank
     _check_rank_valid(g, src_rank)
@@ -505,16 +591,17 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     _check_tensor_list_input(tensor_list)
     g = get_group_handle(group_name)
     if len(tensor_list) != g.world_size:
-        # Typically CLL lib requires len(tensor_list) >= world_size;
+        # Typically CCL lib requires len(tensor_list) >= world_size;
         # Here we make it more strict: len(tensor_list) == world_size.
         raise RuntimeError(
             "The length of the tensor list operands to allgather "
             "must be equal to world_size."
         )
     opts = types.AllGatherOptions()
-    g.allgather([tensor_list], [tensor], opts)
+    g.allgather(tensor_list, tensor, opts)
 
 
+@Deprecated(message="allgather_multigpu will no longer be supported.")
 def allgather_multigpu(
     output_tensor_lists: list, input_tensor_list: list, group_name: str = "default"
 ):
@@ -534,7 +621,8 @@ def allgather_multigpu(
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(output_tensor_lists)
     _check_tensor_list_input(input_tensor_list)
-    g = get_group_handle(group_name)
+    _ensure_group_backend_nccl(group_name)
+    g = get_group_handle_multigpu(group_name)
     opts = types.AllGatherOptions()
     g.allgather(output_tensor_lists, input_tensor_list, opts)
 
@@ -564,11 +652,12 @@ def reducescatter(
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "
-            "must not be equal to world_size."
+            "must be equal to world_size."
         )
-    g.reducescatter([tensor], [tensor_list], opts)
+    g.reducescatter(tensor, tensor_list, opts)
 
 
+@Deprecated(message="reducescatter_multigpu will no longer be supported.")
 def reducescatter_multigpu(
     output_tensor_list,
     input_tensor_lists,
@@ -592,7 +681,8 @@ def reducescatter_multigpu(
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_lists_input(input_tensor_lists)
     _check_tensor_list_input(output_tensor_list)
-    g = get_group_handle(group_name)
+    _ensure_group_backend_nccl(group_name)
+    g = get_group_handle_multigpu(group_name)
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
     g.reducescatter(output_tensor_list, input_tensor_lists, opts)
@@ -616,9 +706,10 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
-    g.send([tensor], opts)
+    g.send(tensor, opts)
 
 
+@Deprecated(message="send_multigpu will no longer be supported.")
 def send_multigpu(
     tensor,
     dst_rank: int,
@@ -645,7 +736,8 @@ def send_multigpu(
     if not types.cupy_available():
         raise RuntimeError("send_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
-    g = get_group_handle(group_name)
+    _ensure_group_backend_nccl(group_name)
+    g = get_group_handle_multigpu(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError(
@@ -676,12 +768,13 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g = get_group_handle(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
-        raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
+        raise RuntimeError("The source rank '{}' is self.".format(src_rank))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
-    g.recv([tensor], opts)
+    g.recv(tensor, opts)
 
 
+@Deprecated(message="recv_multigpu will no longer be supported.")
 def recv_multigpu(
     tensor,
     src_rank: int,
@@ -706,7 +799,8 @@ def recv_multigpu(
     if not types.cupy_available():
         raise RuntimeError("recv_multigpu call requires NCCL.")
     _check_single_tensor_input(tensor)
-    g = get_group_handle(group_name)
+    _ensure_group_backend_nccl(group_name)
+    g = get_group_handle_multigpu(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError(
@@ -722,6 +816,7 @@ def recv_multigpu(
     g.recv([tensor], opts)
 
 
+@Deprecated(message="synchronize will no longer be supported.")
 def synchronize(gpu_id: int):
     """Synchronize the current process to a give device.
 
@@ -738,6 +833,59 @@ def synchronize(gpu_id: int):
     cp.cuda.Device(gpu_id).synchronize()
 
 
+# TODO(tianyi): remove multigpu when it's deprecated
+def get_group_handle_multigpu(group_name: str = "default"):
+    """Check if the group is initialized and return the group handle.
+
+    Args:
+        group_name: the name of the collective group.
+
+    Returns:
+        The collective group handle.
+    """
+    _check_inside_actor()
+    global _group_mgr
+    global _group_mgr_lock
+    group_name_multigpu = f"{group_name}_multigpu"
+    with _group_mgr_lock:
+        if not _group_mgr.is_group_exist(group_name_multigpu):
+            # try loading from remote info store
+            try:
+                # if the information is stored in an Info object,
+                # get and create the group.
+                group_info = _kv_get(get_uniqueness_key(group_name_multigpu))
+                if group_info is None:
+                    logger.info(
+                        "Group info for '{}' not found.".format(group_name_multigpu)
+                    )
+                    raise ValueError(
+                        "Group info for '{}' not found.".format(group_name_multigpu)
+                    )
+                ids, world_size, rank, _, _ = pickle.loads(group_info)
+                worker = ray._private.worker.global_worker
+                id_ = worker.core_worker.get_actor_id()
+                r = rank[ids.index(id_)]
+                # Create only the multigpu NCCL group locally.
+                _group_mgr.create_multigpu_nccl_group(world_size, r, group_name)
+            except ValueError as exc:
+                # check if this group is initialized using options()
+                if (
+                    "collective_group_name" in os.environ
+                    and os.environ["collective_group_name"] == group_name
+                ):
+                    rank = int(os.environ["collective_rank"])
+                    world_size = int(os.environ["collective_world_size"])
+                    # Create only the multigpu NCCL group locally.
+                    _group_mgr.create_multigpu_nccl_group(world_size, rank, group_name)
+                else:
+                    raise RuntimeError(
+                        "The collective group '{}' is not "
+                        "initialized in the process.".format(group_name)
+                    ) from exc
+        g = _group_mgr.get_group_by_name(group_name_multigpu)
+        return g
+
+
 def get_group_handle(group_name: str = "default"):
     """Check if the group is initialized and return the group handle.
 
@@ -752,41 +900,39 @@ def get_group_handle(group_name: str = "default"):
     global _group_mgr_lock
     with _group_mgr_lock:
         if not _group_mgr.is_group_exist(group_name):
-            # try loading from remote info store
-            try:
-                # if the information is stored in an Info object,
-                # get and create the group.
-                name = "info_" + group_name
-                mgr = ray.get_actor(name=name)
-                ids, world_size, rank, backend, gloo_timeout = ray.get(
-                    mgr.get_info.remote()
-                )
-                worker = ray._private.worker.global_worker
-                id_ = worker.core_worker.get_actor_id()
-                r = rank[ids.index(id_)]
-                _group_mgr.create_collective_group(
-                    backend, world_size, r, group_name, gloo_timeout
-                )
-            except ValueError as exc:
+            if (
+                "collective_group_name" in os.environ
+                and os.environ["collective_group_name"] == group_name
+            ):
                 # check if this group is initialized using options()
-                if (
-                    "collective_group_name" in os.environ
-                    and os.environ["collective_group_name"] == group_name
-                ):
-                    rank = int(os.environ["collective_rank"])
-                    world_size = int(os.environ["collective_world_size"])
-                    backend = os.environ["collective_backend"]
-                    gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
-                    _group_mgr.create_collective_group(
-                        backend, world_size, rank, group_name, gloo_timeout
-                    )
-                else:
-                    raise RuntimeError(
-                        "The collective group '{}' is not "
-                        "initialized in the process.".format(group_name)
-                    ) from exc
+                rank = int(os.environ["collective_rank"])
+                world_size = int(os.environ["collective_world_size"])
+                backend = os.environ["collective_backend"]
+                gloo_timeout = int(os.getenv("collective_gloo_timeout", 30000))
+                _group_mgr.create_collective_group(
+                    backend, world_size, rank, group_name, gloo_timeout
+                )
+            else:
+                raise RuntimeError(
+                    "The collective group '{}' is not "
+                    "initialized in the process.".format(group_name)
+                )
         g = _group_mgr.get_group_by_name(group_name)
         return g
+
+
+# TODO(tianyi): remove multigpu when it's deprecated
+def _ensure_group_backend_nccl(group_name: str) -> None:
+    """Ensure the base group exists and uses NCCL backend.
+
+    Returns the base group handle if OK.
+    """
+    g = get_group_handle(group_name)
+    if g.backend() != types.Backend.NCCL:
+        raise RuntimeError(
+            f"Group '{group_name}' does not use NCCL backend. "
+            "MultiGPU APIs require NCCL."
+        )
 
 
 def _check_single_tensor_input(tensor):
@@ -850,6 +996,7 @@ def _check_tensor_list_input(tensor_list):
         _check_single_tensor_input(t)
 
 
+# TODO(tianyi): remove it when multigpu is deprecated
 def _check_tensor_lists_input(tensor_lists):
     """Check if the input is a list of lists of supported tensor types."""
     if not isinstance(tensor_lists, list):
@@ -863,6 +1010,7 @@ def _check_tensor_lists_input(tensor_lists):
         _check_tensor_list_input(t)
 
 
+# TODO(tianyi): remove it when multigpu is deprecated
 def _check_root_tensor_valid(length, root_tensor):
     """Check the root_tensor device is 0 <= root_tensor < length"""
     if root_tensor < 0:

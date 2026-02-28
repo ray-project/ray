@@ -157,7 +157,7 @@ remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions o
           return self.send
 
       def destroy(self):
-          collective.destroy_group()
+          collective.destroy_collective_group("default")
 
    # imperative
    num_workers = 2
@@ -250,11 +250,11 @@ and must successfully rendezvous with each other to proceed. See the code exampl
 
        def do_send(self, target_rank=0):
            # this call is blocking
-           col.send(target_rank)
+           col.send(self.buffer, target_rank)
 
        def do_recv(self, src_rank=0):
            # this call is blocking
-           col.recv(src_rank)
+           col.recv(self.buffer, src_rank)
 
        def do_allreduce(self):
            # this call is blocking as well
@@ -266,7 +266,7 @@ and must successfully rendezvous with each other to proceed. See the code exampl
    B = Worker.remote()
 
    # Put A and B in a collective group
-   col.create_collective_group([A, B], options={rank=[0, 1], ...})
+   col.create_collective_group([A, B], backend="nccl")
 
    # let A to send a message to B; a send/recv has to be specified once at each worker
    ray.get([A.do_send.remote(target_rank=1), B.do_recv.remote(src_rank=0)])
