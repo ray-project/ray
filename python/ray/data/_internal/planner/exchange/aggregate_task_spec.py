@@ -66,7 +66,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         from ray.data.block import BlockMetadataWithSchema
 
         meta_with_schema = BlockMetadataWithSchema.from_block(
-            block, stats=stats.build()
+            block, block_exec_stats=stats.build()
         )
         return parts + [meta_with_schema]
 
