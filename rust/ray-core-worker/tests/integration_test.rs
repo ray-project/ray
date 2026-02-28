@@ -13,7 +13,7 @@ use std::sync::Arc;
 use ray_core_worker::core_worker::CoreWorker;
 use ray_core_worker::grpc_service::CoreWorkerServiceImpl;
 use ray_core_worker::options::{CoreWorkerOptions, Language, WorkerType};
-use ray_common::id::{ClusterID, JobID, NodeID, WorkerID};
+use ray_common::id::{ClusterID, JobID, NodeID, TaskID, WorkerID};
 use ray_proto::ray::rpc;
 
 fn make_test_core_worker() -> Arc<CoreWorker> {
@@ -33,12 +33,17 @@ fn make_test_core_worker() -> Arc<CoreWorker> {
     }))
 }
 
+/// NOTE: handle_exit is currently a stub that always returns success: true.
+/// This test verifies the handler can be called without error and exercises
+/// both force_exit paths. Update when exit logic is implemented.
 #[tokio::test]
 async fn test_core_worker_service_exit() {
     let core_worker = make_test_core_worker();
-    let svc = CoreWorkerServiceImpl { core_worker };
+    let svc = CoreWorkerServiceImpl {
+        core_worker: Arc::clone(&core_worker),
+    };
 
-    // Use the tonic trait method via the handler
+    // Graceful exit
     let reply = svc
         .handle_exit(rpc::ExitRequest {
             force_exit: false,
@@ -46,16 +51,45 @@ async fn test_core_worker_service_exit() {
         })
         .await
         .unwrap();
-    assert!(reply.success);
+    assert!(reply.success, "graceful exit should succeed");
+
+    // Force exit
+    let reply = svc
+        .handle_exit(rpc::ExitRequest {
+            force_exit: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(reply.success, "force exit should succeed");
 }
 
 #[tokio::test]
 async fn test_core_worker_service_num_pending_tasks() {
     let core_worker = make_test_core_worker();
-    let svc = CoreWorkerServiceImpl { core_worker };
+    let svc = CoreWorkerServiceImpl {
+        core_worker: Arc::clone(&core_worker),
+    };
+
+    // Initially zero pending tasks
+    let reply = svc
+        .handle_num_pending_tasks(rpc::NumPendingTasksRequest::default())
+        .unwrap();
+    assert_eq!(reply.num_pending_tasks, 0, "fresh worker should have 0 pending tasks");
+
+    // Submit a task, then verify the count changes
+    let task_spec = rpc::TaskSpec {
+        task_id: TaskID::from_random().binary(),
+        name: "test_task".to_string(),
+        ..Default::default()
+    };
+    core_worker.submit_task(&task_spec).await.unwrap();
 
     let reply = svc
         .handle_num_pending_tasks(rpc::NumPendingTasksRequest::default())
         .unwrap();
-    assert_eq!(reply.num_pending_tasks, 0);
+    assert_eq!(
+        reply.num_pending_tasks, 1,
+        "should have 1 pending task after submission"
+    );
 }

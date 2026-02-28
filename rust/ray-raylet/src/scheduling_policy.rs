@@ -718,8 +718,28 @@ mod tests {
         let mut req = ResourceSet::new();
         req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
 
+        // Without preferred_node_id, any feasible node may be chosen (nondeterministic
+        // among tied scores). Verify a valid node is returned.
         let result = policy.schedule(&req, &SchedulingOptions::hybrid(), &nodes, "n1");
-        assert!(result.is_some());
+        assert!(
+            result.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            "hybrid policy should return a valid node, got {:?}",
+            result
+        );
+
+        // With preferred_node_id set and sufficient top-k, the local node should be
+        // preferred when it has the lowest (tied) utilization score.
+        let opts = SchedulingOptions {
+            preferred_node_id: Some("n1".to_string()),
+            schedule_top_k_absolute: 10,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "n1");
+        assert_eq!(
+            result,
+            Some("n1".to_string()),
+            "hybrid policy should prefer local node when preferred_node_id is set with sufficient top-k"
+        );
     }
 
     #[test]
@@ -776,10 +796,14 @@ mod tests {
         let mut req = ResourceSet::new();
         req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
 
-        // Target a non-existent node with soft=true
+        // Target a non-existent node with soft=true — should fall back to any valid node
         let opts = SchedulingOptions::node_affinity("nonexistent".to_string(), true, true, false);
         let result = policy.schedule(&req, &opts, &nodes, "n1");
-        assert!(result.is_some()); // should fall back to hybrid
+        assert!(
+            result.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            "soft fallback should return a valid node from the cluster, got {:?}",
+            result
+        );
     }
 
     #[test]
@@ -790,18 +814,27 @@ mod tests {
         let mut req = ResourceSet::new();
         req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
 
-        // Hybrid
-        assert!(policy
-            .schedule(&req, &SchedulingOptions::hybrid(), &nodes, "n1")
-            .is_some());
-        // Spread
-        assert!(policy
-            .schedule(&req, &SchedulingOptions::spread(), &nodes, "n1")
-            .is_some());
-        // Random
-        assert!(policy
-            .schedule(&req, &SchedulingOptions::random(), &nodes, "n1")
-            .is_some());
+        // Hybrid — should return a valid node
+        let hybrid = policy.schedule(&req, &SchedulingOptions::hybrid(), &nodes, "n1");
+        assert!(
+            hybrid.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            "hybrid should return a valid node, got {:?}",
+            hybrid
+        );
+        // Spread — should return a valid node
+        let spread = policy.schedule(&req, &SchedulingOptions::spread(), &nodes, "n1");
+        assert!(
+            spread.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            "spread should return a valid node, got {:?}",
+            spread
+        );
+        // Random — should return a valid node
+        let random = policy.schedule(&req, &SchedulingOptions::random(), &nodes, "n1");
+        assert!(
+            random.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            "random should return a valid node, got {:?}",
+            random
+        );
     }
 
     #[test]
@@ -874,6 +907,10 @@ mod tests {
         };
 
         let result = BundleStrictSpreadSchedulingPolicy.schedule(&requests, &opts, &nodes);
-        matches!(result, BundleSchedulingResult::Infeasible);
+        assert!(
+            matches!(result, BundleSchedulingResult::Infeasible),
+            "expected Infeasible for 4 bundles on 3 nodes, got {:?}",
+            result
+        );
     }
 }

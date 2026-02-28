@@ -272,10 +272,21 @@ mod tests {
         // Parent must exist for the contains relationship to be set.
         rc.add_owned_object(parent, make_address(), vec![]);
         rc.add_owned_object(child, make_address(), vec![parent]);
-        // The child's contained_in is set internally; verify via the parent's contains.
-        // We can test this indirectly: the parent and child both have references.
         assert!(rc.has_reference(&parent));
         assert!(rc.has_reference(&child));
+
+        // Verify the internal graph: parent.contains has child, child.contained_in has parent
+        let refs = rc.refs.lock();
+        let parent_ref = refs.get(&parent).expect("parent should exist");
+        assert!(
+            parent_ref.contains.contains(&child),
+            "parent.contains should include the child"
+        );
+        let child_ref = refs.get(&child).expect("child should exist");
+        assert!(
+            child_ref.contained_in.contains(&parent),
+            "child.contained_in should include the parent"
+        );
     }
 
     #[test]
