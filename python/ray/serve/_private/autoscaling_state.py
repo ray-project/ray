@@ -521,7 +521,7 @@ class DeploymentAutoscalingState:
             non_empty_series = [ts for ts in timeseries_list if ts]
             if len(non_empty_series) > 1:
                 aligned_start = max(ts[0].timestamp for ts in non_empty_series)
-                if aligned_start < merged_timeseries[-1].timestamp:
+                if aligned_start <= merged_timeseries[-1].timestamp:
                     window_start = aligned_start
 
             # Calculate the aggregated metric value
