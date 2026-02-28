@@ -18,6 +18,9 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.dataset import Dataset, MaterializedDataset
+from ray.data.datasource.util import (
+    _validate_head_node_resources_for_local_scheduling,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
@@ -269,7 +272,7 @@ def test_range(ray_start_regular_shared):
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(0)
     assert ds.count() == 0
-    assert ds.size_bytes() is None
+    assert ds.size_bytes() == 0
     assert ds.schema() is None
 
     ds = ray.data.range(1)
@@ -741,6 +744,21 @@ def test_read_write_local_node(ray_start_cluster):
         ds = ray.data.read_parquet(
             ["example://iris.parquet", local_path + "/test1.parquet"]
         ).materialize()
+
+
+def test_validate_head_node_resources_zero_head_cpu(ray_start_cluster):
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.wait_for_nodes()
+
+    ray.shutdown()
+    ray.init(address=cluster.address)
+
+    with pytest.raises(ValueError, match=r"head node doesn't have enough resources"):
+        _validate_head_node_resources_for_local_scheduling(
+            {}, op_description="read local"
+        )
 
 
 class FlakyCSVDatasource(CSVDatasource):

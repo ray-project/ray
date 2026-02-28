@@ -1,7 +1,7 @@
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
@@ -11,14 +11,6 @@ from ray.experimental.gpu_object_manager.util import (
     device_match_transport,
     get_tensor_transport_manager,
 )
-
-try:
-    import torch
-except ImportError:
-    raise ImportError(
-        "`tensor_transport` requires PyTorch. "
-        "Please install torch with 'pip install torch' to use this feature."
-    )
 
 
 def __ray_send__(
@@ -38,11 +30,15 @@ def __ray_send__(
 
     tensors = gpu_object_store.get_object(obj_id)
 
-    tensor_transport_manager = get_tensor_transport_manager(backend)
-    if tensors and not device_match_transport(tensors[0].device, backend):
+    device = tensor_transport_meta.tensor_device
+    tensor_meta = tensor_transport_meta.tensor_meta
+
+    if tensor_meta and not device_match_transport(device, backend):
         raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {tensors[0].device}."
+            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
         )
+
+    tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.send_multiple_tensors(
         tensors,
         tensor_transport_meta,
@@ -103,10 +99,14 @@ def __ray_free__(
         tensor_transport_manager = get_tensor_transport_manager(
             tensor_transport_backend
         )
-        tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta)
-
         gpu_object_manager = global_worker.gpu_object_manager
         gpu_object_store = gpu_object_manager.gpu_object_store
+
+        if not gpu_object_store.has_object(obj_id):
+            return
+        tensors = gpu_object_store.get_object(obj_id)
+        tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta, tensors)
+
         gpu_object_store.pop_object(obj_id)
     except AssertionError:
         # This could fail if this is a retry and it's already been freed.
@@ -125,7 +125,7 @@ def __ray_fetch_gpu_object__(self, obj_id: str):
 @dataclass
 class _GPUObject:
     # A list of tensors representing the GPU object.
-    data: List["torch.Tensor"]
+    data: List[Any]
     # Whether the GPU object is the primary copy.
     is_primary: bool
     # If a recv failed, we store the error here.
@@ -167,11 +167,12 @@ class GPUObjectStore:
                 return len(self._gpu_object_store[obj_id]) > 0
             return existed
 
-    def has_tensor(self, tensor: "torch.Tensor") -> bool:
+    def has_tensor(self, tensor: Any) -> bool:
+        # Method only used for testing.
         with self._lock:
-            return tensor.data_ptr() in self._tensor_to_object_ids
+            return id(tensor) in self._tensor_to_object_ids
 
-    def get_object(self, obj_id: str) -> Optional[List["torch.Tensor"]]:
+    def get_object(self, obj_id: str) -> Optional[List[Any]]:
         with self._lock:
             if self._gpu_object_store[obj_id][0].error:
                 raise self._gpu_object_store[obj_id][0].error
@@ -180,7 +181,7 @@ class GPUObjectStore:
     def add_object(
         self,
         obj_id: str,
-        gpu_object: Union[List["torch.Tensor"], Exception],
+        gpu_object: Union[List[Any], Exception],
         is_primary: bool = False,
     ):
         """
@@ -198,7 +199,7 @@ class GPUObjectStore:
                 )
             else:
                 for tensor in gpu_object:
-                    self._tensor_to_object_ids[tensor.data_ptr()].add(obj_id)
+                    self._tensor_to_object_ids[id(tensor)].add(obj_id)
                 # Append to the queue instead of overwriting
                 self._gpu_object_store[obj_id].append(
                     _GPUObject(
@@ -209,7 +210,7 @@ class GPUObjectStore:
             self._object_present_cv.notify_all()
 
     def add_object_primary(
-        self, obj_id: str, tensors: List["torch.Tensor"], tensor_transport: str
+        self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> TensorTransportMetadata:
         self.add_object(obj_id, tensors, is_primary=True)
         tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
@@ -226,7 +227,7 @@ class GPUObjectStore:
 
     def wait_and_get_object(
         self, obj_id: str, timeout: Optional[float] = None
-    ) -> List["torch.Tensor"]:
+    ) -> List[Any]:
         """Atomically waits for the GPU object to be present in the GPU object
         store, then gets it. If the object is not present after the optional
         timeout, raise a TimeoutError.
@@ -243,39 +244,9 @@ class GPUObjectStore:
             self._wait_object(obj_id, timeout)
             return self.get_object(obj_id)
 
-    def get_duplicate_objects(
-        self,
-        src_obj_id: str,
-        src_gpu_object: List["torch.Tensor"],
-    ) -> Optional[str]:
-        """
-        Get another object ID of the GPU object that duplicates the given GPU object.
-        Returns the object id if there is a duplicate, None if there is no duplicate.
-        """
-        with self._lock:
-            if len(src_gpu_object) == 0:
-                return None
-            obj_id_set = set()
-            for tensor in src_gpu_object:
-                for obj_id in self._tensor_to_object_ids[tensor.data_ptr()]:
-                    obj_id_set.add(obj_id)
-
-            for dst_obj_id in obj_id_set:
-                if dst_obj_id != src_obj_id:
-                    dst_gpu_object = self._gpu_object_store[dst_obj_id][0].data
-                    is_same_tensors = len(src_gpu_object) == len(
-                        dst_gpu_object
-                    ) and all(
-                        t1.data_ptr() == t2.data_ptr()
-                        for t1, t2 in zip(src_gpu_object, dst_gpu_object)
-                    )
-                    if is_same_tensors:
-                        return dst_obj_id
-            return None
-
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
-    ) -> List["torch.Tensor"]:
+    ) -> List[Any]:
         """Atomically waits for the GPU object to be present in the GPU object
         store, then pops it.  If the object is not present after the optional
         timeout, raise a TimeoutError.
@@ -313,7 +284,7 @@ class GPUObjectStore:
                     f"ObjectRef({obj_id}) not found in RDT object store after {timeout}s, transfer may have failed. Please report this issue on GitHub: https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-    def pop_object(self, obj_id: str) -> List["torch.Tensor"]:
+    def pop_object(self, obj_id: str) -> List[Any]:
         with self._lock:
             queue = self._gpu_object_store.get(obj_id)
             assert queue is not None, f"obj_id={obj_id} not found in GPU object store"
@@ -323,21 +294,19 @@ class GPUObjectStore:
             if gpu_object.error:
                 raise gpu_object.error
             for tensor in gpu_object.data:
-                self._tensor_to_object_ids[tensor.data_ptr()].remove(obj_id)
-                if len(self._tensor_to_object_ids[tensor.data_ptr()]) == 0:
-                    self._tensor_to_object_ids.pop(tensor.data_ptr())
+                self._tensor_to_object_ids[id(tensor)].remove(obj_id)
+                if len(self._tensor_to_object_ids[id(tensor)]) == 0:
+                    self._tensor_to_object_ids.pop(id(tensor))
             self._object_freed_cv.notify_all()
             return gpu_object.data
 
-    def wait_tensor_freed(
-        self, tensor: "torch.Tensor", timeout: Optional[float] = None
-    ) -> None:
+    def wait_tensor_freed(self, tensor: Any, timeout: Optional[float] = None) -> None:
         """
         Wait for the object to be freed from the GPU object store.
         """
         with self._object_freed_cv:
             if not self._object_freed_cv.wait_for(
-                lambda: tensor.data_ptr() not in self._tensor_to_object_ids,
+                lambda: id(tensor) not in self._tensor_to_object_ids,
                 timeout=timeout,
             ):
                 raise TimeoutError(

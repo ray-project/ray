@@ -4,7 +4,7 @@ from contextlib import contextmanager, nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
@@ -341,7 +341,8 @@ def _format_in_threadpool(
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
-        yield from formatted_batch_iter
+
+        return formatted_batch_iter
 
     if num_threadpool_workers > 0:
         collated_iter = make_async_gen(
@@ -352,6 +353,7 @@ def _format_in_threadpool(
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
+
     return collated_iter
 
 

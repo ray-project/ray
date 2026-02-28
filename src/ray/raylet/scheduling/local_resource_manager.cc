@@ -168,6 +168,13 @@ void LocalResourceManager::MaybeMarkFootprintAsBusy(WorkFootprint item) {
 
 void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
   auto prev = idle_time_states_.find(item);
+
+  // Already idle with no saved state to restore — do nothing.
+  if (prev != idle_time_states_.end() && prev->second.current.has_value() &&
+      !prev->second.saved.has_value()) {
+    return;
+  }
+
   bool state_change =
       prev == idle_time_states_.end() || !prev->second.current.has_value();
 

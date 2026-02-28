@@ -43,6 +43,9 @@ constexpr char kRayResourceGroup[] = "ray.io";
 constexpr char kRayClusterResourceName[] = "rayclusters";
 constexpr char kRayClusterRayUserVerb[] = "ray:write";
 
+constexpr int kRaySATokenDefaultTTLSeconds = 600;
+constexpr int kRaySATokenExpirationBufferSeconds = 300;
+
 }  // namespace k8s
 }  // namespace rpc
 }  // namespace ray

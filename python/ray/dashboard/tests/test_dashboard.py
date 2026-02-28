@@ -29,7 +29,11 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    fetch_prometheus_metrics,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
@@ -37,11 +41,9 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
     format_web_url,
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )

@@ -366,9 +366,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   }
 
   bool GetCurrentTaskRetryExceptions() const {
-    if (options_.is_local_mode) {
-      return false;
-    }
     return worker_context_->GetCurrentTask()->ShouldRetryExceptions();
   }
 
@@ -390,12 +387,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TODO(ilr): better way of keeping an object from being deleted
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
-    if (!options_.is_local_mode) {
-      memory_store_->Delete(deleted);
-    }
+    memory_store_->Delete(deleted);
   }
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
@@ -769,9 +763,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
 
-  /// Report the task caller at caller_address that the intermediate
-  /// task return. It means if this API is used, the caller will be notified
-  /// the task return before the current task is terminated. The caller must
+  /// Report the intermediate task return to the owner. The owner will be notified
+  /// of the task return before the current task is terminated. The owner must
   /// implement HandleReportGeneratorItemReturns API endpoint
   /// to handle the intermediate result report.
   /// This API makes sense only for a generator task
@@ -779,20 +772,19 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// result before the task terminates).
   ///
   /// NOTE: The API doesn't guarantee the ordering of the report. The
-  /// caller is supposed to reorder the report based on the item_index.
+  /// owner is supposed to reorder the report based on the item_index.
   ///
   /// \param[in] returned_object A intermediate ray object to report
-  /// to the caller before the task terminates. This object must have been
+  /// to the owner before the task terminates. This object must have been
   /// created dynamically from this worker via AllocateReturnObject.
   /// If the Object ID is nil, it means it is the end of the task return.
-  /// In this case, the caller is responsible for setting finished = true,
+  /// In this case, the owner is responsible for setting finished = true,
   /// otherwise it will panic.
   /// \param[in] generator_id The return object ref ID from a current generator
   /// task.
-  /// \param[in] caller_address The address of the caller of the current task
-  /// that created a generator_id.
+  /// \param[in] owner_address The address of the owner of the current task.
   /// \param[in] item_index The index of the task return. It is used to reorder the
-  /// report from the caller side.
+  /// reports on the owner.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
   /// \param[in] waiter The class to pause the thread if generator backpressure limit
@@ -800,7 +792,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &returned_object,
       const ObjectID &generator_id,
-      const rpc::Address &caller_address,
+      const rpc::Address &owner_address,
       int64_t item_index,
       uint64_t attempt_number,
       const std::shared_ptr<GeneratorBackpressureWaiter> &waiter);
@@ -879,7 +871,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
   /// added, or if the scheduling strategy for actor creation is not set.
   ///
-  /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
@@ -927,14 +918,25 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                  int64_t timeout_seconds);
 
+  /// Asynchronously wait for a placement group to be ready.
+  /// Returns an ObjectRef that can be used with ray.get()/ray.wait()/await.
+  ///
+  /// \param placement_group_id The id of a placement group to wait for.
+  /// \param serialized_object_data The serialized object data to put when ready.
+  /// \param serialized_object_metadata The serialized object metadata.
+  /// \return ObjectID that becomes ready when the placement group is ready.
+  ObjectID AsyncWaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                        const std::string &serialized_object_data,
+                                        const std::string &serialized_object_metadata);
+
   /// Submit an actor task.
   ///
-  /// \param[in] caller_id ID of the task submitter.
-  /// \param[in] actor_handle Handle to the actor.
+  /// \param[in] actor_id ID of the actor.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[in] max_retries max number of retry when the task fails.
+  /// \param[bool] retry_exceptions If exceptions should be retried.
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Empty string means an allow-all in the language worker.
@@ -1052,7 +1054,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] object_id Object ID of the return value.
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
-  /// \param[in] caller_address The address of the caller of the method.
+  /// \param[in] owner_address The address of the owner of the return object (i.e., the
+  /// worker that submitted the task).
   /// \param[in] contained_object_id ID serialized within each return object.
   /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
   /// objects of a task. It is used to decide if the current object should be inlined. If
@@ -1063,7 +1066,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                               const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
-                              const rpc::Address &caller_address,
+                              const rpc::Address &owner_address,
                               int64_t *task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
@@ -1080,7 +1083,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   Status SealReturnObject(const ObjectID &return_id,
                           const std::shared_ptr<RayObject> &return_object,
                           const ObjectID &generator_id,
-                          const rpc::Address &caller_address);
+                          const rpc::Address &owner_address);
 
   /// Pin the local copy of the return object, if one exists.
   ///
@@ -1092,18 +1095,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// of the object that wraps the dynamically created ObjectRefs in a
   /// generator. We use this to notify the owner of the dynamically created
   /// objects.
-  /// \param[in] caller_address The address of the caller who is also the owner
+  /// \param[in] owner_address The address of the owner of the return object (i.e.,
+  /// the worker that submitted the task).
   bool PinExistingReturnObject(const ObjectID &return_id,
                                std::shared_ptr<RayObject> *return_object,
                                const ObjectID &generator_id,
-                               const rpc::Address &caller_address);
+                               const rpc::Address &owner_address);
 
   /// Dynamically allocate an object.
   ///
   /// This should be used during task execution, if the task wants to return an
-  /// object to the task caller and have the resulting ObjectRef be owned by
-  /// the caller. This is in contrast to static allocation, where the caller
-  /// decides at task invocation time how many returns the task should have.
+  /// object to the task owner. This is in contrast to static allocation, where the
+  /// owner knows at task invocation time how many returns the task will have.
   ///
   /// NOTE: Normally task_id and put_index it not necessary to be specified
   /// because we can obtain them from the global worker context. However,
@@ -1525,23 +1528,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                                const ObjectID &object_id,
                                bool pin_object);
 
-  /// Execute a local mode task (runs normal ExecuteTask)
-  ///
-  /// \param spec[in] task_spec Task specification.
-  std::vector<rpc::ObjectReference> ExecuteTaskLocalMode(
-      const TaskSpecification &task_spec, const ActorID &actor_id = ActorID::Nil());
-
-  /// KillActor API for a local mode.
-  Status KillActorLocalMode(const ActorID &actor_id);
-
-  /// Get a handle to a named actor for local mode.
-  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
-      const std::string &name);
-
-  /// Get all named actors in local mode.
-  std::pair<std::vector<std::pair<std::string, std::string>>, Status>
-  ListNamedActorsLocalMode();
-
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from
   /// the task spec.
@@ -1894,10 +1880,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Queue of tasks to resubmit when the specified time passes.
   std::priority_queue<TaskToRetry, std::deque<TaskToRetry>, TaskToRetryDescComparator>
       to_resubmit_ ABSL_GUARDED_BY(mutex_);
-
-  /// Map of named actor registry. It doesn't need to hold a lock because
-  /// local mode is single-threaded.
-  absl::flat_hash_map<std::string, ActorID> local_mode_named_actor_registry_;
 
   // Guard for `async_plasma_callbacks_` map.
   mutable absl::Mutex plasma_mutex_;

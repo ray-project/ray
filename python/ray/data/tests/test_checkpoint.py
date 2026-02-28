@@ -18,6 +18,7 @@ from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators import Read, Write
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.block import BlockAccessor
+from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import (
     BatchBasedCheckpointFilter,
 )
@@ -26,7 +27,6 @@ from ray.data.checkpoint.checkpoint_writer import (
 )
 from ray.data.checkpoint.interfaces import (
     CheckpointBackend,
-    CheckpointConfig,
     InvalidCheckpointingConfig,
 )
 from ray.data.context import DataContext

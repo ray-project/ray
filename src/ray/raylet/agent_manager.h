@@ -24,7 +24,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -87,7 +87,7 @@ class AgentManager {
 
  private:
   const Options options_;
-  Process process_;
+  std::unique_ptr<ProcessInterface> process_;
   DelayExecutorFn delay_executor_;
   std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   // If true, when the agent dies, raylet kills itself.

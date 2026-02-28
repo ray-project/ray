@@ -1,5 +1,6 @@
 import os
 
+import ray
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
 )
@@ -22,10 +23,12 @@ class NixlConnectorBackend(BaseConnectorBackend):
 
     def _set_side_channel_host(self):
         from vllm import envs as vllm_envs
-        from vllm.utils.network_utils import get_ip
 
         if not vllm_envs.is_set("VLLM_NIXL_SIDE_CHANNEL_HOST"):
-            os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = get_ip()
+            # Use Ray's node IP (internal/cluster IP) instead of vLLM's
+            # get_ip() which can return external/public IPs on hostNetwork
+            # pods, causing cross-node NIXL handshakes to fail.
+            os.environ["VLLM_NIXL_SIDE_CHANNEL_HOST"] = ray.util.get_node_ip_address()
 
     def setup(self) -> None:
         """Initialize the NIXL connector backend.

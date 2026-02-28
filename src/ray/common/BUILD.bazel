@@ -1,5 +1,10 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+config_setting(
+    name = "is_linux",
+    constraint_values = ["@platforms//os:linux"],
+)
+
 ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
@@ -71,22 +76,121 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "memory_monitor",
-    srcs = [
-        "memory_monitor.cc",
+    name = "memory_monitor_test_fixture",
+    srcs = ["memory_monitor_test_fixture.cc"],
+    hdrs = ["memory_monitor_test_fixture.h"],
+    target_compatible_with = [
+        "@platforms//os:linux",
     ],
-    hdrs = [
-        "memory_monitor.h",
+    visibility = [
+        "//src/ray/common/tests:__pkg__",
     ],
     deps = [
-        ":asio",
-        ":ray_config",
-        "//src/ray/util:process",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/util:logging",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_monitor_interface",
+    hdrs = [
+        "memory_monitor_interface.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__subpackages__",
+    ],
+    deps = [
+        "//src/ray/util:compat",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_monitor_utils",
+    srcs = [
+        "memory_monitor_utils.cc",
+    ],
+    hdrs = [
+        "memory_monitor_utils.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__subpackages__",
+    ],
+    deps = [
+        ":memory_monitor_interface",
+        "//src/ray/util:compat",
+        "//src/ray/util:logging",
+        "@boost//:algorithm",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_prod",
-        "@nlohmann_json",
     ],
+)
+
+ray_cc_library(
+    name = "threshold_memory_monitor",
+    srcs = [
+        "threshold_memory_monitor.cc",
+    ],
+    hdrs = [
+        "threshold_memory_monitor.h",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":asio",
+        ":memory_monitor_interface",
+        ":memory_monitor_utils",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_library(
+    name = "noop_memory_monitor",
+    hdrs = [
+        "noop_memory_monitor.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":memory_monitor_interface",
+    ],
+)
+
+ray_cc_library(
+    name = "memory_monitor_factory",
+    srcs = select({
+        ":is_linux": [
+            "threshold_memory_monitor_factory.cc",
+        ],
+        "//conditions:default": [
+            "noop_memory_monitor_factory.cc",
+        ],
+    }),
+    hdrs = [
+        "memory_monitor_factory.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet:__subpackages__",
+    ],
+    deps = [
+        ":memory_monitor_interface",
+        ":noop_memory_monitor",
+    ] + select({
+        ":is_linux": [
+            ":ray_config",
+            ":threshold_memory_monitor",
+            "//src/ray/util:logging",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 ray_cc_library(

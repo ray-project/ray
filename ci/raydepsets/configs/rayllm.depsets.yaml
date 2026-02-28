@@ -1,21 +1,33 @@
 build_arg_sets:
   cpu:
     PYTHON_VERSION: py311
+    PYTHON_VERSION_STR: "3.11"
     CUDA_CODE: cpu
   cu128:
     PYTHON_VERSION: py311
+    PYTHON_VERSION_STR: "3.11"
     CUDA_CODE: cu128
+  cpu_py312:
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
+    CUDA_CODE: cpu
+  cu129_py312:
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
+    CUDA_CODE: cu129
 
 
 .common_settings: &common_settings
   append_flags:
-    - --python-version=3.11
+    - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
     - --python-platform=x86_64-manylinux_2_31
-    - --extra-index-url https://download.pytorch.org/whl/${CUDA_CODE}
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cpu
     - cu128
+    - cpu_py312
+    - cu129_py312
 
 depsets:
 # First, extract base test dependencies from the current compiled mono repo one.

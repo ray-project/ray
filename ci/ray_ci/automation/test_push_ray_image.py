@@ -42,6 +42,8 @@ class TestWandaImageName:
                 DEFAULT_ARCHITECTURE,
                 "ray-extra-py3.10-cpu",
             ),
+            # TPU images
+            (RayType.RAY, "3.10", "tpu", DEFAULT_ARCHITECTURE, "ray-py3.10-tpu"),
             # CUDA images
             (
                 RayType.RAY,
@@ -133,6 +135,8 @@ class TestPlatformSuffixes:
             ("cpu", RayType.RAY, ["-cpu", ""]),
             ("cpu", RayType.RAY_EXTRA, ["-cpu", ""]),
             ("cpu", RayType.RAY_ML, ["-cpu"]),  # ray-ml doesn't get empty for cpu
+            # TPU images
+            ("tpu", RayType.RAY, ["-tpu"]),
             # CUDA images
             ("cu11.7.1-cudnn8", RayType.RAY, ["-cu117"]),
             ("cu11.8.0-cudnn8", RayType.RAY, ["-cu118"]),
@@ -433,7 +437,7 @@ class TestShouldUpload:
 class TestCopyImage:
     """Test _copy_image function."""
 
-    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_copy")
+    @mock.patch("ci.ray_ci.automation.image_tags_lib.call_crane_copy")
     def test_copy_image_dry_run_skips_crane(self, mock_copy):
         """Test that dry run mode does not call crane copy."""
         from ci.ray_ci.automation.push_ray_image import _copy_image
@@ -441,7 +445,7 @@ class TestCopyImage:
         _copy_image("src", "dest", dry_run=True)
         mock_copy.assert_not_called()
 
-    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_copy")
+    @mock.patch("ci.ray_ci.automation.image_tags_lib.call_crane_copy")
     def test_copy_image_calls_crane(self, mock_copy):
         """Test that non-dry-run mode calls crane copy."""
         from ci.ray_ci.automation.push_ray_image import _copy_image
@@ -449,7 +453,7 @@ class TestCopyImage:
         _copy_image("src", "dest", dry_run=False)
         mock_copy.assert_called_once_with("src", "dest")
 
-    @mock.patch("ci.ray_ci.automation.push_ray_image.call_crane_copy")
+    @mock.patch("ci.ray_ci.automation.image_tags_lib.call_crane_copy")
     def test_copy_image_raises_on_crane_error(self, mock_copy):
         """Test that crane errors are wrapped in PushRayImageError."""
         from ci.ray_ci.automation.crane_lib import CraneError

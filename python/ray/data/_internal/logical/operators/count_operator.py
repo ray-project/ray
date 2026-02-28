@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ray.data._internal.logical.interfaces import LogicalOperator
 
 __all__ = [
@@ -19,4 +21,8 @@ class Count(LogicalOperator):
         self,
         input_op: LogicalOperator,
     ):
-        super().__init__("Count", [input_op])
+        super().__init__(input_dependencies=[input_op])
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs

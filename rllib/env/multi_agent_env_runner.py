@@ -32,10 +32,13 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
+    EPISODE_AGENT_RETURN_MEAN,
+    EPISODE_AGENT_STEPS,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
     EPISODE_LEN_MIN,
+    EPISODE_MODULE_RETURN_MEAN,
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
@@ -482,6 +485,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # environment `observations` and `infos` will always be returned for the
             # `MultiAgentEpisode.add_reset_step`.
             if self.module is not None:
+                kwargs = {
+                    Columns.OBS: observations,
+                    Columns.ACTIONS: actions,
+                    Columns.REWARDS: rewards,
+                    Columns.INFOS: infos,
+                    Columns.TERMINATEDS: terminateds,
+                    Columns.TRUNCATEDS: truncateds,
+                }
                 if done_episodes_to_run_env_to_module:
                     # Run the env-to-module connector pipeline for all done episodes.
                     # Note, this is needed to postprocess last-step data, e.g. if the
@@ -496,6 +507,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         rl_module=self.module,
                         shared_data=self._shared_data,
                         metrics=None,
+                        **kwargs,
                     )
                 self._cached_to_module = self._env_to_module(
                     episodes=self._ongoing_episodes,
@@ -505,6 +517,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=self._shared_data,
                     metrics=self.metrics,
                     metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+                    **kwargs,
                 )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
@@ -582,6 +595,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
+            kwargs = {
+                Columns.OBS: observations,
+                Columns.INFOS: infos,
+            }
             self._cached_to_module = self._env_to_module(
                 rl_module=self.module,
                 episodes=episodes,
@@ -589,6 +606,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 shared_data=shared_data,
                 metrics=self.metrics,
                 metrics_key_prefix=(ENV_TO_MODULE_CONNECTOR,),
+                **kwargs,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -1020,10 +1038,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 **(
                     {
                         # Per-agent returns.
-                        "agent_episode_returns_mean": agents,
+                        EPISODE_AGENT_RETURN_MEAN: agents,
+                        # Per-agent steps.
+                        EPISODE_AGENT_STEPS: agent_steps,
                         # Per-RLModule returns.
-                        "module_episode_returns_mean": modules,
-                        "agent_steps": agent_steps,
+                        EPISODE_MODULE_RETURN_MEAN: modules,
                     }
                     if agents is not None
                     else {}

@@ -1,8 +1,9 @@
 import dataclasses
+import functools
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
 
 import ray
 from ray.actor import ActorHandle
@@ -19,6 +20,27 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
+
+I = TypeVar("I")
+O = TypeVar("O")
+
+
+class _MappingIterator(Iterator[O], Generic[I, O]):
+    """Iterator that applies a transform function to each element.
+
+    Unlike a generator, local variables in __next__ go out of scope when the method
+    returns, avoiding holding references to yielded values.
+    """
+
+    def __init__(self, input_iter: Iterator[I], transform_fn: Callable[[I], O]):
+        self._input_iter = input_iter
+        self._transform_fn = transform_fn
+
+    def __iter__(self) -> "_MappingIterator[I, O]":
+        return self
+
+    def __next__(self) -> O:
+        return self._transform_fn(next(self._input_iter))
 
 
 def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
@@ -81,66 +103,102 @@ def blocks_to_batches(
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
 ) -> Iterator[Batch]:
-    """Given an iterator over blocks, returns an iterator over blocks
-    of the appropriate bacth size.
+    """Given an iterator over blocks, returns an iterator over batches."""
+    return _BatchingIterator(
+        block_iter,
+        stats=stats,
+        batch_size=batch_size,
+        drop_last=drop_last,
+        shuffle_buffer_min_size=shuffle_buffer_min_size,
+        shuffle_seed=shuffle_seed,
+        ensure_copy=ensure_copy,
+    )
 
-    If the shuffling configurations are specified, then the
-    output blocks contain shuffled data.
 
-    Args:
-        block_iter: An iterator over blocks.
-        stats: Dataset stats object used to store block batching time.
-        batch_size: Record batch size, or None to let the system pick.
-        drop_last: Whether to drop the last batch if it's incomplete.
-        shuffle_buffer_min_size: If non-None, the data will be randomly shuffled
-            using a local in-memory shuffle buffer, and this value will serve as the
-            minimum number of rows that must be in the local in-memory shuffle buffer in
-            order to yield a batch.
-        shuffle_seed: The seed to use for the local random shuffle.
-        ensure_copy: Whether batches are always copied from the underlying base
-            blocks (not zero-copy views).
+class _BatchingIterator(Iterator[Batch]):
+    """Iterator that converts blocks to batches.
 
-    Returns:
-        An iterator over blocks of the given size that are potentially shuffled.
+    Unlike a generator, local variables in __next__ go out of scope when the method
+    returns, avoiding holding references to yielded values.
     """
-    if shuffle_buffer_min_size is not None:
-        batcher = ShufflingBatcher(
-            batch_size=batch_size,
-            shuffle_buffer_min_size=shuffle_buffer_min_size,
-            shuffle_seed=shuffle_seed,
+
+    def __init__(
+        self,
+        block_iter: Iterator[Block],
+        stats: Optional[DatasetStats] = None,
+        batch_size: Optional[int] = None,
+        drop_last: bool = False,
+        shuffle_buffer_min_size: Optional[int] = None,
+        shuffle_seed: Optional[int] = None,
+        ensure_copy: bool = False,
+    ):
+        self._block_iter = block_iter
+        self._stats = stats
+        self._drop_last = drop_last
+        self._global_counter = 0
+        self._done_adding = False
+
+        if shuffle_buffer_min_size is not None:
+            self._batcher = ShufflingBatcher(
+                batch_size=batch_size,
+                shuffle_buffer_min_size=shuffle_buffer_min_size,
+                shuffle_seed=shuffle_seed,
+            )
+        else:
+            self._batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
+
+    def __iter__(self) -> "_BatchingIterator":
+        return self
+
+    def __next__(self) -> Batch:
+        timer = self._stats.iter_next_batch_s.timer() if self._stats else nullcontext()
+
+        # Try to get a batch from current batcher state
+        while True:
+            can_yield = self._batcher.has_batch() or (
+                self._batcher.has_any() and self._done_adding and not self._drop_last
+            )
+
+            if can_yield:
+                with timer:
+                    next_batch = self._batcher.next_batch()
+
+                res = Batch(
+                    metadata=BatchMetadata(batch_idx=self._global_counter),
+                    data=next_batch,
+                )
+
+                self._global_counter += 1
+                return res
+
+            elif not self._done_adding:
+                # If can't yield try adding more blocks
+                try:
+                    # NOTE: Block ref is released immediately
+                    block = next(self._block_iter)
+                    self._batcher.add(block)
+                except StopIteration:
+                    self._batcher.done_adding()
+                    self._done_adding = True
+            else:
+                # In case when
+                #   - We've exhausted input AND
+                #   - There's nothing to yield anymore
+                #
+                # We stop the iteration
+                raise StopIteration
+
+
+def _format_batch(
+    batch: Batch,
+    batch_format: Optional[str],
+    stats: Optional[DatasetStats],
+) -> Batch:
+    with stats.iter_format_batch_s.timer() if stats else nullcontext():
+        formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
+            batch_format
         )
-    else:
-        batcher = Batcher(batch_size=batch_size, ensure_copy=ensure_copy)
-
-    def get_iter_next_batch_s_timer():
-        return stats.iter_next_batch_s.timer() if stats else nullcontext()
-
-    global_counter = 0
-
-    for block in block_iter:
-        batcher.add(block)
-        while batcher.has_batch():
-            with get_iter_next_batch_s_timer():
-                batch = batcher.next_batch()
-            yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
-            global_counter += 1
-
-    # Signal to the batcher that there are no more blocks to add.
-    batcher.done_adding()
-
-    # Get any leftover batches in ShufflingBatcher.
-    while batcher.has_batch():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
-        global_counter += 1
-
-    # Get any remaining data.
-    if not drop_last and batcher.has_any():
-        with get_iter_next_batch_s_timer():
-            batch = batcher.next_batch()
-        yield Batch(metadata=BatchMetadata(batch_idx=global_counter), data=batch)
-        global_counter += 1
+    return dataclasses.replace(batch, data=formatted_data)
 
 
 def format_batches(
@@ -148,22 +206,21 @@ def format_batches(
     batch_format: Optional[str],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[Batch]:
-    """Given an iterator of blocks, returns an iterator of formatted batches.
+    """Given an iterator of batches, returns an iterator of formatted batches."""
+    return _MappingIterator(
+        batch_iter,
+        functools.partial(_format_batch, batch_format=batch_format, stats=stats),
+    )
 
-    Args:
-        batch_iter: An iterator over batches.
-        batch_format: The batch format to use.
-        stats: An optional stats object to record formatting times.
 
-    Returns:
-        An iterator over batch index and the formatted batch.
-    """
-    for batch in batch_iter:
-        with stats.iter_format_batch_s.timer() if stats else nullcontext():
-            formatted_batch = BlockAccessor.for_block(batch.data).to_batch_format(
-                batch_format
-            )
-        yield dataclasses.replace(batch, data=formatted_batch)
+def _collate_batch(
+    batch: Batch,
+    collate_fn: Callable[[DataBatch], Any],
+    stats: Optional[DatasetStats],
+) -> CollatedBatch:
+    with stats.iter_collate_batch_s.timer() if stats else nullcontext():
+        collated_data = collate_fn(batch.data)
+    return CollatedBatch(metadata=batch.metadata, data=collated_data)
 
 
 def collate(
@@ -171,18 +228,24 @@ def collate(
     collate_fn: Optional[Callable[[DataBatch], Any]],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
-    """Returns an iterator with the provided collate_fn applied to items of the batch
-    iterator.
+    """Returns an iterator with the provided collate_fn applied to batches."""
+    if not isinstance(batch_iter, Iterator):
+        batch_iter = iter(batch_iter)
 
-    Args:
-        batch_iter: An iterator over formatted batches.
-        collate_fn: A function to apply to each batch.
-        stats: An optional stats object to record formatting times.
-    """
-    for batch in batch_iter:
-        with stats.iter_collate_batch_s.timer() if stats else nullcontext():
-            collated_batch = collate_fn(batch.data)
-        yield CollatedBatch(metadata=batch.metadata, data=collated_batch)
+    return _MappingIterator(
+        batch_iter,
+        functools.partial(_collate_batch, collate_fn=collate_fn, stats=stats),
+    )
+
+
+def _finalize_batch(
+    batch: CollatedBatch,
+    finalize_fn: Callable[[Any], Any],
+    stats: Optional[DatasetStats],
+) -> CollatedBatch:
+    with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
+        finalized_data = finalize_fn(batch.data)
+    return dataclasses.replace(batch, data=finalized_data)
 
 
 def finalize_batches(
@@ -190,28 +253,14 @@ def finalize_batches(
     finalize_fn: Callable[[Any], Any],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
-    """Returns an iterator with the provided finalize_fn applied to items of the batch
-    iterator.
+    """Returns an iterator with finalize_fn applied to batches."""
+    if not isinstance(batch_iter, Iterator):
+        batch_iter = iter(batch_iter)
 
-    This is the same as `collate` except the input batches can be of type Any.
-
-    Args:
-        batch_iter: An iterator over processed batches.
-        finalize_fn: A function to apply to each batch.
-        stats: An optional stats object to record formatting times.
-
-    Returns:
-        An iterator over batch index and the finalized batch.
-    """
-    for batch in batch_iter:
-        with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
-            finalized_batch = finalize_fn(batch.data)
-        yield dataclasses.replace(batch, data=finalized_batch)
-
-
-def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
-    for batch in batch_iter:
-        yield batch.data
+    return _MappingIterator(
+        batch_iter,
+        functools.partial(_finalize_batch, finalize_fn=finalize_fn, stats=stats),
+    )
 
 
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"

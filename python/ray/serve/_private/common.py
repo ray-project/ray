@@ -17,8 +17,10 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import PublicAPI
+from ray.util.placement_group import PlacementGroup
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
+GANG_PG_NAME_PREFIX = "SERVE_GANG::"
 
 
 @dataclass(frozen=True)
@@ -721,6 +723,21 @@ class gRPCRequest:
     user_request_proto: Any
 
 
+@dataclass
+class gRPCStreamingRequest:
+    """Sent from the GRPC proxy to replicas for client/bidirectional streaming.
+
+    This class carries metadata about the streaming session. The actual request
+    messages are delivered through a separate channel/callback mechanism.
+    """
+
+    # Session ID for tracking this streaming session
+    session_id: str
+
+    # Name of the proxy actor to call back for receiving messages
+    proxy_actor_name: str
+
+
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
@@ -857,6 +874,42 @@ class CreatePlacementGroupRequest:
     runtime_env: Optional[str] = None
     bundle_label_selector: Optional[List[Dict[str, str]]] = None
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
+
+
+@dataclass
+class GangPlacementGroupRequest:
+    """Request to reserve gang placement groups for a deployment."""
+
+    deployment_id: DeploymentID
+    gang_size: int
+    gang_placement_strategy: str
+    num_replicas_to_add: int
+    replica_resource_dict: Dict[str, float]
+    """Actor-level resource requirements derived from ray_actor_options.
+    Used as the bundle template for every bundle in the gang placement group
+    when per-replica placement group bundle is not set.
+    Example: {"CPU": 4, "GPU": 1}."""
+
+    replica_placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    """Per-replica placement group bundles.  When set, each replica occupies
+    len(bundles) consecutive bundles in the gang placement group instead
+    of a single flat bundle derived from replica_resource_dict."""
+
+    replica_pg_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    """Label selector for per-replica placement group bundles."""
+
+    replica_pg_fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    """Fallback strategy for per-replica placement group bundles."""
+
+
+@dataclass
+class GangReservationResult:
+    """Result of gang placement group reservation."""
+
+    success: bool
+    """True when all gang PGs were created successfully."""
+    error_message: Optional[str] = None
+    gang_pgs: Optional[List[PlacementGroup]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
@@ -1024,6 +1077,21 @@ class ReplicaMetricReport:
     aggregated_metrics: Dict[str, float]
     metrics: Dict[str, TimeSeries]
     timestamp: float
+
+
+@dataclass
+class AsyncInferenceTaskQueueMetricReport:
+    """Metric report from QueueMonitor to controller for async inference.
+
+    Args:
+        deployment_id: The deployment ID this queue belongs to.
+        queue_length: The number of pending tasks in the broker queue.
+        timestamp_s: The time at which this report was created.
+    """
+
+    deployment_id: DeploymentID
+    queue_length: int
+    timestamp_s: float
 
 
 class AutoscalingSnapshotError(str, Enum):

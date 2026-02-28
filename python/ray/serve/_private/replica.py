@@ -70,6 +70,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+    RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
+    RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
@@ -119,13 +122,25 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
-from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
+from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
     extract_route_patterns,
     get_asgi_route_name,
+)
+from ray.serve._private.tracing_utils import (
+    TraceContextManager,
+    extract_propagated_context,
+    is_span_recording,
+    is_tracing_enabled,
+    set_http_span_attributes,
+    set_rpc_span_attributes,
+    set_span_attributes,
+    set_span_exception,
+    setup_tracing,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -138,7 +153,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
-from ray.serve.context import _get_in_flight_requests
+from ray.serve.context import GangContext, _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
@@ -256,6 +271,7 @@ ReplicaMetadata = Tuple[
     ReplicaRank,  # rank
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
+    bool,  # has_user_routing_stats_method
 ]
 
 
@@ -299,6 +315,7 @@ class ReplicaMetricsManager:
         event_loop: asyncio.BaseEventLoop,
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
+        max_ongoing_requests: int,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -309,6 +326,7 @@ class ReplicaMetricsManager:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
         self._num_ongoing_requests = 0
+        self._max_ongoing_requests = max_ongoing_requests
         # Store event loop for scheduling async tasks from sync context
         self._event_loop = event_loop or asyncio.get_event_loop()
 
@@ -347,7 +365,7 @@ class ReplicaMetricsManager:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("route",),
+            tag_keys=("route", "exception_type"),
         )
         if self._cached_metrics_enabled:
             self._cached_error_counter = defaultdict(int)
@@ -383,6 +401,26 @@ class ReplicaMetricsManager:
             ),
             boundaries=REQUEST_LATENCY_BUCKETS_MS,
         )
+
+        # Replica utilization tracking with rolling window.
+        # Tracks total user code execution time over a rolling window to calculate
+        # utilization as: user_code_time / (window_duration * max_ongoing_requests).
+        self._user_code_time_accumulator = RollingWindowAccumulator(
+            window_duration_s=RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
+            num_buckets=RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
+        )
+        self._replica_utilization_gauge = metrics.Gauge(
+            "serve_replica_utilization_percent",
+            description=(
+                "Percentage of replica capacity utilized by user code execution "
+                "over a rolling window. Calculated as: "
+                "user_code_time / (window_duration * max_ongoing_requests)."
+            ),
+        )
+        self._utilization_report_interval_s = (
+            RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S
+        )
+        self._event_loop.create_task(self._report_utilization_forever())
 
         self.set_autoscaling_config(autoscaling_config)
 
@@ -502,8 +540,10 @@ class ReplicaMetricsManager:
             self._request_counter.inc(count, tags={"route": route})
         self._cached_request_counter.clear()
 
-        for route, count in self._cached_error_counter.items():
-            self._error_counter.inc(count, tags={"route": route})
+        for (route, exception_type), count in self._cached_error_counter.items():
+            self._error_counter.inc(
+                count, tags={"route": route, "exception_type": exception_type}
+            )
         self._cached_error_counter.clear()
 
         for route, latencies in self._cached_latencies.items():
@@ -701,18 +741,77 @@ class ReplicaMetricsManager:
         """Get current total queue length of requests for this replica."""
         return self._num_ongoing_requests
 
-    def record_request_metrics(self, *, route: str, latency_ms: float, was_error: bool):
+    def set_max_ongoing_requests(self, max_ongoing_requests: int) -> None:
+        """Update max_ongoing_requests when deployment config changes."""
+        self._max_ongoing_requests = max_ongoing_requests
+
+    async def _report_utilization_forever(self) -> None:
+        """Background task to emit utilization gauge continuously."""
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._utilization_report_interval_s)
+                utilization = self._calculate_utilization()
+                self._replica_utilization_gauge.set(utilization)
+                consecutive_errors = 0
+            except Exception:
+                logger.exception("Unexpected error reporting utilization metrics.")
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
+
+    def _calculate_utilization(self) -> float:
+        """Calculate current utilization percentage based on rolling window.
+
+        Utilization is calculated as:
+            user_code_time / (window_duration * max_ongoing_requests)
+
+        This represents the percentage of the replica's theoretical maximum
+        capacity that was used for executing user code.
+        """
+        total_user_code_time_ms = self._user_code_time_accumulator.get_total()
+
+        # Max capacity = window_duration_ms * max_ongoing_requests
+        window_duration_ms = RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S * 1000
+        max_capacity_ms = window_duration_ms * self._max_ongoing_requests
+
+        if max_capacity_ms > 0:
+            utilization_percent = (total_user_code_time_ms / max_capacity_ms) * 100
+            # Cap at 100% (can theoretically exceed if requests overlap heavily)
+            utilization_percent = min(utilization_percent, 100.0)
+        else:
+            utilization_percent = 0.0
+
+        return utilization_percent
+
+    def record_request_metrics(
+        self,
+        *,
+        route: str,
+        latency_ms: float,
+        was_error: bool,
+        exception_type: Optional[str] = None,
+    ):
         """Records per-request metrics."""
+        # Track latency for utilization calculation (rolling window).
+        self._user_code_time_accumulator.add(latency_ms)
+
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
             if was_error:
-                self._cached_error_counter[route] += 1
+                exc_type = exception_type or "Unknown"
+                self._cached_error_counter[(route, exc_type)] += 1
             else:
                 self._cached_request_counter[route] += 1
         else:
             self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
             if was_error:
-                self._error_counter.inc(tags={"route": route})
+                exc_type = exception_type or "Unknown"
+                self._error_counter.inc(
+                    tags={"route": route, "exception_type": exc_type}
+                )
             else:
                 self._request_counter.inc(tags={"route": route})
 
@@ -934,6 +1033,8 @@ class ReplicaBase(ABC):
         # Flipped to `True` once graceful shutdown is initiated. May be used by replica
         # subclass implementations.
         self._shutting_down = False
+        # Gang context for this replica.
+        self._gang_context: Optional[GangContext] = None
 
         # Will be populated with the wrapped ASGI app if the user callable is an
         # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
@@ -948,6 +1049,7 @@ class ReplicaBase(ABC):
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
             ingress=ingress,
+            max_ongoing_requests=self._deployment_config.max_ongoing_requests,
         )
 
         # Start event loop monitoring for the replica's main event loop.
@@ -998,6 +1100,11 @@ class ReplicaBase(ABC):
             if hasattr(self._user_callable_asgi_app, "routes"):
                 route_patterns = extract_route_patterns(self._user_callable_asgi_app)
 
+        has_user_routing_stats_method = (
+            self._user_callable_wrapper is not None
+            and self._user_callable_wrapper.has_user_routing_stats_method
+        )
+
         return (
             self._version.deployment_config,
             self._version,
@@ -1009,6 +1116,7 @@ class ReplicaBase(ABC):
             current_rank,
             route_patterns,
             self.list_outbound_deployments(),
+            has_user_routing_stats_method,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -1070,6 +1178,7 @@ class ReplicaBase(ABC):
             rank=rank,
             world_size=world_size,
             handle_registration_callback=register_handle_callback,
+            gang_context=self._gang_context,
         )
 
     def _configure_logger_and_profilers(
@@ -1156,7 +1265,7 @@ class ReplicaBase(ABC):
             user_exception, status_code, latency_ms, request_metadata
         )
 
-        if user_exception is not None:
+        if user_exception is not None and not request_metadata.is_direct_ingress:
             raise user_exception from None
 
     def _record_errors_and_metrics(
@@ -1191,10 +1300,14 @@ class ReplicaBase(ABC):
             ),
             extra=self._access_log_context,
         )
+        exception_type = (
+            type(user_exception).__name__ if user_exception is not None else None
+        )
         self._metrics_manager.record_request_metrics(
             route=http_route,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
+            exception_type=exception_type,
         )
 
         # Record ingress metrics for direct ingress HTTP requests
@@ -1226,7 +1339,14 @@ class ReplicaBase(ABC):
         # Design: We return it so it can be passed to _wrap_request() which
         # stores it in _RequestContext. Users can then access it via serve.context
         # if needed (advanced use case), while keeping it out of their method signatures.
+        #
+        # For gRPC requests (when using RAY_SERVE_USE_GRPC_BY_DEFAULT),
+        # the _ray_trace_ctx is not injected into kwargs since there's no Ray actor
+        # call. Instead, the tracing context is passed via request_metadata.tracing_context.
+        # We fall back to using that if _ray_trace_ctx is not in kwargs.
         ray_trace_ctx = request_kwargs.pop("_ray_trace_ctx", None)
+        if ray_trace_ctx is None:
+            ray_trace_ctx = request_metadata.tracing_context
 
         if request_metadata.is_http_request:
             assert len(request_args) == 1 and isinstance(
@@ -1382,8 +1502,13 @@ class ReplicaBase(ABC):
         raise NotImplementedError
 
     async def initialize(
-        self, deployment_config: Optional[DeploymentConfig], rank: Optional[ReplicaRank]
+        self,
+        deployment_config: Optional[DeploymentConfig],
+        rank: Optional[ReplicaRank],
+        gang_context: Optional[GangContext] = None,
     ):
+        if gang_context is not None:
+            self._gang_context = gang_context
         if rank is not None:
             self._rank = rank
             self._set_internal_replica_context(
@@ -1459,6 +1584,9 @@ class ReplicaBase(ABC):
 
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
+            )
+            self._metrics_manager.set_max_ongoing_requests(
+                deployment_config.max_ongoing_requests
             )
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
@@ -1596,6 +1724,20 @@ class Replica(ReplicaBase):
     def __init__(self, **kwargs):
 
         super().__init__(**kwargs)
+
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
 
         self._controller_handle = ray.get_actor(
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
@@ -1789,6 +1931,33 @@ class Replica(ReplicaBase):
             return super()._can_accept_request(request_metadata)
 
     @contextmanager
+    def _tracing_context(self, request_metadata: RequestMetadata):
+        if not is_tracing_enabled():
+            yield
+            return
+
+        call_method = request_metadata.call_method
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name=f"replica_handle_request {self._deployment_id.name} {call_method}",
+            trace_context=trace_context,
+        )
+        with trace_manager:
+            if is_span_recording():
+                trace_attributes = {
+                    "request_id": request_metadata.request_id,
+                    "replica_id": self._replica_id.unique_id,
+                    "deployment": self._deployment_id.name,
+                    "app": self._deployment_id.app_name,
+                    "call_method": request_metadata.call_method,
+                    "route": request_metadata.route,
+                    "multiplexed_model_id": request_metadata.multiplexed_model_id,
+                    "is_streaming": request_metadata.is_streaming,
+                }
+                set_span_attributes(trace_attributes)
+            yield
+
+    @contextmanager
     def _wrap_request(
         self, request_metadata: RequestMetadata, ray_trace_ctx: Optional[Any] = None
     ) -> Generator[StatusCodeCallback, None, None]:
@@ -1798,22 +1967,53 @@ class Replica(ReplicaBase):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(
-                route=request_metadata.route,
-                request_id=request_metadata.request_id,
-                _internal_request_id=request_metadata.internal_request_id,
-                app_name=self._deployment_id.app_name,
-                multiplexed_model_id=request_metadata.multiplexed_model_id,
-                grpc_context=request_metadata.grpc_context,
-                cancel_on_parent_request_cancel=self._ingress
-                and RAY_SERVE_ENABLE_DIRECT_INGRESS,
-                _ray_trace_ctx=ray_trace_ctx,
+        with self._tracing_context(request_metadata):
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context._RequestContext(
+                    route=request_metadata.route,
+                    request_id=request_metadata.request_id,
+                    _internal_request_id=request_metadata.internal_request_id,
+                    app_name=self._deployment_id.app_name,
+                    multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    grpc_context=request_metadata.grpc_context,
+                    cancel_on_parent_request_cancel=self._ingress
+                    and RAY_SERVE_ENABLE_DIRECT_INGRESS,
+                    _ray_trace_ctx=ray_trace_ctx,
+                )
             )
+
+            with self._handle_errors_and_metrics(
+                request_metadata
+            ) as status_code_callback:
+                yield status_code_callback
+
+    def _record_errors_and_metrics(
+        self,
+        user_exception: Optional[BaseException],
+        status_code: Optional[str],
+        latency_ms: float,
+        request_metadata: RequestMetadata,
+    ):
+        super()._record_errors_and_metrics(
+            user_exception, status_code, latency_ms, request_metadata
         )
 
-        with self._handle_errors_and_metrics(request_metadata) as status_code_callback:
-            yield status_code_callback
+        if is_span_recording():
+            if request_metadata.is_http_request:
+                set_http_span_attributes(
+                    method=request_metadata._http_method,
+                    status_code=status_code,
+                    route=request_metadata.route,
+                )
+            else:
+                set_rpc_span_attributes(
+                    system=request_metadata._request_protocol,
+                    method=request_metadata.call_method,
+                    status_code=status_code,
+                    service=self._deployment_id.name,
+                )
+            if user_exception is not None:
+                set_span_exception(user_exception, escaped=False)
 
     @_wrap_grpc_call
     async def HandleRequest(
@@ -1941,6 +2141,23 @@ class Replica(ReplicaBase):
 
         return healthy, message
 
+    def get_grpc_tracing_context(self, context: grpc._cython.cygrpc._ServicerContext):
+        """Populate tracing context for gRPC requests.
+
+        This method extracts the "traceparent" metadata from the request headers and
+        sets the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        tracing_ctx = {}
+        for key, value in context.invocation_metadata():
+            if key in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key] = value
+
+        return tracing_ctx
+
     async def _direct_ingress_unary_unary(
         self,
         service_method: str,
@@ -1982,7 +2199,7 @@ class Replica(ReplicaBase):
             # TODO(edoakes): populate this.
             multiplexed_model_id="",
             route=self._deployment_id.app_name,
-            tracing_context=None,
+            tracing_context=self.get_grpc_tracing_context(context),
             is_streaming=False,
             is_direct_ingress=True,
         )
@@ -2056,23 +2273,54 @@ class Replica(ReplicaBase):
         raise NotImplementedError("unary_stream not implemented.")
 
     def _direct_ingress_service_handler_factory(
-        self, service_method: str, stream: bool
+        self, service_method: str, streaming_type: gRPCStreamingType
     ) -> Callable:
-        if stream:
+        if streaming_type == gRPCStreamingType.UNARY_STREAM:
 
             async def handler(*args, **kwargs):
                 return await self._direct_ingress_unary_stream(
                     service_method, *args, **kwargs
                 )
 
-        else:
+        elif streaming_type == gRPCStreamingType.UNARY_UNARY:
 
             async def handler(*args, **kwargs):
                 return await self._direct_ingress_unary_unary(
                     service_method, *args, **kwargs
                 )
 
+        elif streaming_type == gRPCStreamingType.STREAM_UNARY:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_unary not implemented.")
+
+        elif streaming_type == gRPCStreamingType.STREAM_STREAM:
+
+            async def handler(*args, **kwargs):
+                raise NotImplementedError("stream_stream not implemented.")
+
+        else:
+            raise ValueError(f"Unsupported streaming type: {streaming_type}")
+
         return handler
+
+    def get_asgi_tracing_context(self, headers: List[Tuple[bytes, bytes]]):
+        """Extract tracing context from ASGI request headers.
+
+        This method extracts both "traceparent" and "tracestate" headers from the
+        request headers to maintain proper trace context propagation.
+        """
+        if not is_tracing_enabled():
+            return None
+
+        tracing_ctx = None
+        for key, value in headers:
+            key_str = key.decode()
+            if key_str in ("traceparent", "tracestate"):
+                tracing_ctx = tracing_ctx or {}
+                tracing_ctx[key_str] = value.decode()
+
+        return tracing_ctx
 
     def _determine_http_route(self, scope: Scope) -> str:
         # Default to route prefix for consistency with non-DI mode
@@ -2190,7 +2438,7 @@ class Replica(ReplicaBase):
             multiplexed_model_id="",
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
-            tracing_context=None,
+            tracing_context=self.get_asgi_tracing_context(scope["headers"]),
             _http_method=scope.get("method", "WS"),
             is_direct_ingress=True,
         )
@@ -2412,7 +2660,10 @@ class ReplicaActor:
         return self._replica_impl.list_outbound_deployments()
 
     async def initialize_and_get_metadata(
-        self, deployment_config: DeploymentConfig = None, rank: ReplicaRank = None
+        self,
+        deployment_config: DeploymentConfig = None,
+        rank: ReplicaRank = None,
+        gang_context: GangContext = None,
     ) -> ReplicaMetadata:
         """Handles initializing the replica.
 
@@ -2425,7 +2676,7 @@ class ReplicaActor:
         """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
-        await self._replica_impl.initialize(deployment_config, rank)
+        await self._replica_impl.initialize(deployment_config, rank, gang_context)
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
@@ -2940,6 +3191,11 @@ class UserCallableWrapper:
             return self._call_user_health_check()
 
         return None
+
+    @property
+    def has_user_routing_stats_method(self) -> bool:
+        """Whether the user has defined a record_routing_stats method."""
+        return self._user_record_routing_stats is not None
 
     def call_user_record_routing_stats(self) -> Optional[concurrent.futures.Future]:
         self._raise_if_not_initialized("call_user_record_routing_stats")
