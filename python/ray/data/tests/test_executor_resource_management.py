@@ -239,6 +239,37 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
 
+def test_task_pool_resource_reporting_with_dynamic_remote_args(
+    ray_start_10_cpus_shared
+):
+    """Test that current_logical_usage reflects dynamic resources from ray_remote_args_fn,
+    not just the statically defined ray_remote_args."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
+    # ray_remote_args set 1 CPU, but ray_remote_args_fn overrides memory to 500
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        data_context=DataContext.get_current(),
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_cpus": 1},
+        ray_remote_args_fn=lambda: {"memory": 500},
+    )
+    op.start(ExecutionOptions())
+
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
+
+    op.add_input(input_op.get_next(), 0)
+    op.add_input(input_op.get_next(), 0)
+    # Should reflect actual dynamic resources: 2 tasks * (1 cpu, 500 memory)
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=1000)
+
+    run_op_tasks_sync(op)
+    assert op.current_logical_usage() == ExecutionResources(cpu=0, gpu=0, memory=0)
+
+
 def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
@@ -414,6 +445,34 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
+
+
+def test_actor_pool_resource_reporting_with_dynamic_remote_args(
+    ray_start_10_cpus_shared
+):
+    """Test that current_logical_usage reflects dynamic resources from ray_remote_args_fn,
+    not just the statically defined ray_remote_args."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
+    # ray_remote_args set 1 CPU, but ray_remote_args_fn overrides memory to 500
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        min_rows_per_bundle=None,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=ActorPoolStrategy(min_size=2, max_size=2),  # Create two actors
+        ray_remote_args={"num_cpus": 1},
+        ray_remote_args_fn=lambda: {"memory": 500},
+    )
+
+    # Blocking until actors are fully started
+    op.start(ExecutionOptions())
+    run_op_tasks_sync(op, only_existing=True)
+
+    # Should reflect dynamic resources: 2 actors * (1 cpu, 500 memory)
+    assert op.current_logical_usage() == ExecutionResources(cpu=2, gpu=0, memory=1000)
 
 
 def test_actor_pool_scheduling_with_bundling(
