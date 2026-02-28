@@ -34,10 +34,16 @@
 #include "ray/object_manager_rpc_client/object_manager_client_interface.h"
 #include "ray/rpc/object_manager_server.h"
 #include "ray/stats/metric.h"
+#include "ray/util/compression.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
+
+enum class CompressionAlgorithm : int {
+  none = 0,
+  zstd = 1,
+};
 
 namespace rpc {
 class ClientCallManager;
@@ -77,6 +83,22 @@ struct ObjectManagerConfig {
   std::string fallback_directory;
   /// Enable huge pages.
   bool huge_pages;
+  /// Compression algorithm for push payload.
+  /// 0: no compression
+  /// 1: zstd
+  CompressionAlgorithm push_payload_compression_algorithm;
+  /// Helper function to get the compression algorithm.
+  static CompressionAlgorithm GetCompressionAlgorithm(int algorithm) {
+    switch (algorithm) {
+    case 0:
+      return CompressionAlgorithm::none;
+    case 1:
+      return CompressionAlgorithm::zstd;
+    default:
+      RAY_LOG(FATAL) << "Unknown compression algorithm " << algorithm;
+    }
+    return CompressionAlgorithm::none;
+  }
 };
 
 struct LocalObjectInfo {
@@ -421,6 +443,18 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param node_id Remote node id, will send rpc request to it
   std::shared_ptr<rpc::ObjectManagerClientInterface> GetRpcClient(const NodeID &node_id);
+
+  /// Compress the input data.
+  ///
+  /// \param data The data to be compressed
+  /// \return The compressed data
+  std::string CompressData(const std::string &data) const;
+
+  /// Decompress the input data.
+  ///
+  /// \param data The data to be decompressed
+  /// \return The decompressed data
+  std::string DecompressData(const std::string &data) const;
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.

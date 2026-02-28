@@ -385,3 +385,14 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "compression_test",
+    size = "small",
+    srcs = ["compression_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:compression",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

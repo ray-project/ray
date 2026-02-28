@@ -427,3 +427,12 @@ ray_cc_library(
         "@com_google_absl//absl/strings:str_format",
     ],
 )
+
+ray_cc_library(
+    name = "compression",
+    hdrs = ["compression.h"],
+    deps = [
+        ":logging",
+        "@zstd//:libzstd",
+    ],
+)
