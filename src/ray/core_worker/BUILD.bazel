@@ -264,6 +264,7 @@ ray_cc_library(
         "//src/ray/stats:stats_metric",
         "//src/ray/util:counter_map",
         "//src/ray/util:exponential_backoff",
+        "//src/ray/util:non_null_func",
         "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
