@@ -1,3 +1,4 @@
+from .execution_group import ExecutionGroup, ReplicaGroup
 from .placement_group_handle import (
     DefaultPlacementGroupHandle,
     PlacementGroupHandle,
@@ -14,8 +15,10 @@ from .worker_group import WorkerGroup, WorkerGroupContext
 __all__ = [
     "ActorMetadata",
     "DefaultPlacementGroupHandle",
+    "ExecutionGroup",
     "PlacementGroupHandle",
     "RayTrainWorker",
+    "ReplicaGroup",
     "SlicePlacementGroupHandle",
     "Worker",
     "WorkerGroup",

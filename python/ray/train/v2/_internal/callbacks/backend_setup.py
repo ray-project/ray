@@ -2,8 +2,12 @@ import logging
 
 from ray.exceptions import RayActorError
 from ray.train.backend import BackendConfig
-from ray.train.v2._internal.execution.callback import WorkerGroupCallback
-from ray.train.v2._internal.execution.worker_group import WorkerGroup
+from ray.train.v2._internal.execution.callback import (
+    WorkerGroupCallback,
+)
+from ray.train.v2._internal.execution.worker_group import (
+    WorkerGroup,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -91,6 +91,9 @@ RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
 # Ray Train does not warn by default when using blocking ray.get inside async actor.
 DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 
+# torchft lighthouse address
+TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
@@ -106,6 +109,7 @@ ENV_VARS_TO_PROPAGATE = {
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
     RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+    TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR,
 }
 
 

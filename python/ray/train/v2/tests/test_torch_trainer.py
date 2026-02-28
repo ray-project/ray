@@ -10,6 +10,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.torch.config import _is_backend_nccl
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2.torch.torchft_config import TorchftConfig
 
 
 @pytest.fixture(scope="module")
@@ -52,15 +53,33 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     trainer.fit()
 
 
-@pytest.mark.parametrize("init_method", ["env", "tcp"])
-def test_torch_start_shutdown(ray_start_4_cpus, init_method):
+@pytest.mark.parametrize(
+    "torch_config,expected_world_size",
+    [
+        (TorchConfig(backend="gloo", init_method="env"), 2),
+        (TorchConfig(backend="gloo", init_method="tcp"), 2),
+        # TODO(tseah): enable this after CI has torchft dependencies
+        # (
+        #     TorchftConfig(
+        #         backend="gloo", init_method="env", lighthouse_kwargs={"min_replicas": 1}
+        #     ),
+        #     1,
+        # ),
+        # (
+        #     TorchftConfig(
+        #         backend="gloo", init_method="tcp", lighthouse_kwargs={"min_replicas": 1}
+        #     ),
+        #     1,
+        # ),
+    ],
+)
+def test_torch_start_shutdown(ray_start_4_cpus, torch_config, expected_world_size):
     def check_process_group():
         assert (
             torch.distributed.is_initialized()
-            and torch.distributed.get_world_size() == 2
+            and torch.distributed.get_world_size() == expected_world_size
         )
 
-    torch_config = TorchConfig(backend="gloo", init_method=init_method)
     trainer = TorchTrainer(
         train_loop_per_worker=check_process_group,
         scaling_config=ScalingConfig(num_workers=2),
@@ -84,6 +103,55 @@ def test_torch_process_group_shutdown_timeout(ray_start_4_cpus, monkeypatch, tim
     # Even if shutdown times out (timeout_s=0),
     # the training should complete successfully.
     trainer.fit()
+
+
+@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
+def test_torchft_linear(ray_start_4_cpus):
+    """Test torchft linear training: loss goes down and models are equal across workers."""
+
+    from ray.train.v2.examples.pytorch.torchft_linear_example import (
+        train_func as torchft_linear_train_func,
+    )
+
+    @ray.remote
+    class WeightCollector:
+        def __init__(self):
+            self.weights = {}
+
+        def report(self, rank, weight, bias):
+            self.weights[rank] = {"weight": weight, "bias": bias}
+
+        def get_weights(self):
+            return self.weights
+
+    collector = WeightCollector.remote()
+
+    def train_func(config):
+        result = torchft_linear_train_func(config)
+        assert result[-1]["loss"] < result[0]["loss"]
+        world_rank = ray.train.get_context().get_world_rank()
+        ray.get(
+            config["collector"].report.remote(
+                world_rank, result[-1]["weight"], result[-1]["bias"]
+            )
+        )
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config={"collector": collector},
+        scaling_config=ScalingConfig(num_workers=2),
+        torch_config=TorchftConfig(
+            backend="gloo", lighthouse_kwargs={"min_replicas": 2}
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    # Check that models converged across workers.
+    weights = ray.get(collector.get_weights.remote())
+    assert len(weights) == 2
+    assert weights[0]["weight"] == pytest.approx(weights[1]["weight"], abs=1e-4)
+    assert weights[0]["bias"] == pytest.approx(weights[1]["bias"], abs=1e-4)
 
 
 def test_is_backend_nccl():

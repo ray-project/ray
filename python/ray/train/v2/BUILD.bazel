@@ -11,6 +11,8 @@ doctest(
             "tests/**",
             "horovod/**",
             "jax/**",
+            # TODO(tseah): enable this after CI has torchft dependencies
+            "examples/pytorch/torchft_linear_example.py",
         ],
     ),
     tags = ["team:ml"],

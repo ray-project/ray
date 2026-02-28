@@ -1809,14 +1809,6 @@ python/ray/train/v2/_internal/execution/worker_group/worker_group.py
     DOC201: Method `WorkerGroup.poll_status` does not have a return section in docstring
     DOC101: Method `WorkerGroup._poll_workers_and_collect_errors`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `WorkerGroup._poll_workers_and_collect_errors`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [timeout: Optional[float]].
-    DOC101: Method `WorkerGroup.execute_async`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `WorkerGroup.execute_async`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**fn_kwargs: , *fn_args: , fn: Callable].
-    DOC101: Method `WorkerGroup.execute`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `WorkerGroup.execute`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**fn_kwargs: , *fn_args: , fn: Callable[..., T]].
-    DOC101: Method `WorkerGroup.execute_single_async`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `WorkerGroup.execute_single_async`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**fn_kwargs: , *fn_args: , fn: Callable[..., T], rank: int].
-    DOC101: Method `WorkerGroup.execute_single`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `WorkerGroup.execute_single`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**fn_kwargs: , *fn_args: , fn: Callable[..., T], rank: int].
     DOC101: Method `WorkerGroup._assign_worker_ranks`: Docstring contains fewer arguments than in function signature.
     DOC103: Method `WorkerGroup._assign_worker_ranks`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [workers: List[Worker]].
     DOC101: Method `WorkerGroup._decorate_worker_log_file_paths`: Docstring contains fewer arguments than in function signature.
