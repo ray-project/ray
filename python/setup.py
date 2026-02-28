@@ -214,6 +214,11 @@ ray_files += [
     p.as_posix() for p in pathlib.Path("ray/widgets/templates/").glob("*.html.j2")
 ]
 
+# RLlib files
+ray_files.append(
+    "ray/rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service.proto"
+)
+
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
