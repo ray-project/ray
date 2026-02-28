@@ -95,6 +95,10 @@ DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION", 1 * GiB
 )
 
+MAX_CONCURRENT_SHUFFLE_TASKS_PER_AGGREGATOR = env_integer(
+    "RAY_DATA_MAX_SHUFFLE_TASKS_PER_AGGREGATOR", 2
+)
+
 
 class ShuffleAggregation:
     """Stateless implementation of shuffle "aggregation" operation, which for ex,
@@ -1472,32 +1476,15 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
             shuffle_progress_bar_name="Shuffle",
         )
 
-        # Buffer for deterministic output ordering: partition_id -> list of bundles
-        # (a single partition can produce multiple bundles via _shape_blocks)
-        self._ordered_output_buffer: DefaultDict[int, List[RefBundle]] = defaultdict(
-            list
+    def can_add_input(self) -> bool:
+        # Limit concurrent shuffle tasks to avoid convoy effect where hundreds
+        # of tasks hold CPUs while waiting on aggregator submissions.
+        num_active = sum(len(tasks) for tasks in self._shuffling_tasks.values())
+        max_concurrent = (
+            self._aggregator_pool.num_aggregators
+            * MAX_CONCURRENT_SHUFFLE_TASKS_PER_AGGREGATOR
         )
-        self._ordered_output_flushed: bool = False
-
-    def _on_finalized_bundle_ready(self, partition_id: int, bundle: RefBundle) -> None:
-        # Buffer outputs until all partitions are finalized, then flush
-        # in partition order for deterministic output
-        self._ordered_output_buffer[partition_id].append(bundle)
-
-    def has_next(self) -> bool:
-        self._try_finalize()
-        # Flush buffered outputs in partition order once all finalization
-        # tasks have completed (not just submitted)
-        if (
-            not self._ordered_output_flushed
-            and self._is_finalized()
-            and len(self._finalizing_tasks) == 0
-        ):
-            for pid in sorted(self._ordered_output_buffer.keys()):
-                self._output_queue.extend(self._ordered_output_buffer[pid])
-            self._ordered_output_buffer.clear()
-            self._ordered_output_flushed = True
-        return len(self._output_queue) > 0
+        return num_active < max_concurrent
 
     def _get_partition_mode(
         self,
