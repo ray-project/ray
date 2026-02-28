@@ -9,7 +9,6 @@ from typing import Optional
 import pytest
 
 import ray
-import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address
 from ray._common.test_utils import (
     PrometheusTimeseries,
@@ -712,17 +711,31 @@ def test_opentelemetry_metrics_with_token_auth(setup_cluster_with_token_auth):
 
 def _get_dashboard_agent_address(cluster_info):
     """Get the dashboard agent HTTP address from a running cluster."""
-    import json
+    from ray import NodeID
+    from ray._raylet import GcsClient
+    from ray.core.generated import gcs_pb2
+    from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 
-    # Get agent address from internal KV
-    node_id = ray.nodes()[0]["NodeID"]
-    key = f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}"
-    agent_addr = ray.experimental.internal_kv._internal_kv_get(
-        key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
+    # Get agent address from GcsNodeInfo
+    node_id_hex = ray.nodes()[0]["NodeID"]
+    node_id = NodeID.from_hex(node_id_hex)
+    cluster = cluster_info["cluster"]
+    gcs_client = GcsClient(address=cluster.address)
+
+    # Create node selector for filtering by node_id
+    node_selector = GetAllNodeInfoRequest.NodeSelector()
+    node_selector.node_id = node_id.binary()
+
+    node_info_dict = gcs_client.get_all_node_info(
+        node_selectors=[node_selector],
+        state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
     )
-    if agent_addr:
-        ip, http_port, grpc_port = json.loads(agent_addr)
-        return f"http://{ip}:{http_port}"
+    if node_info_dict and node_id in node_info_dict:
+        node_info = node_info_dict[node_id]
+        ip = node_info.node_manager_address
+        http_port = node_info.dashboard_agent_listen_port
+        if http_port > 0:
+            return f"http://{ip}:{http_port}"
     return None
 
 

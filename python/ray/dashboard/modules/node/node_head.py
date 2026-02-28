@@ -33,11 +33,7 @@ from ray.autoscaler._private.util import (
     parse_usage,
 )
 from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
-from ray.dashboard.consts import (
-    DASHBOARD_AGENT_ADDR_IP_PREFIX,
-    DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
-    GCS_RPC_TIMEOUT_SECONDS,
-)
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.reporter.reporter_models import StatsPayload
@@ -264,22 +260,9 @@ class NodeHead(SubprocessModule):
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
         if not is_alive:
-            # Remove the agent address from the internal KV.
-            keys = [
-                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
-                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
-            ]
-            tasks = [
-                self.gcs_client.async_internal_kv_del(
-                    key,
-                    del_by_prefix=False,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-                for key in keys
-            ]
-            await asyncio.gather(*tasks)
-
+            # Note: Agent address cleanup from internal KV is no longer needed.
+            # Agent port info is now stored in GcsNodeInfo, which is automatically
+            # managed by GCS when nodes die. See issue #59666.
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
                 evicted_node_id = self._dead_node_queue.popleft()

@@ -394,24 +394,39 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
 
 
 def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
-    result = gcs_client.internal_kv_get(
-        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+    """Get dashboard agent address from GcsNodeInfo.
+
+    Returns the agent address string in format "{ip}:{grpc_port}" or None if not found.
+    """
+    from ray import NodeID
+
+    node_id_obj = NodeID.from_hex(node_id)
+    node_info_dict = gcs_client.get_all_node_info(
         timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        state_filter=gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE,
     )
-    if result:
-        # Returns [ip, http_port, grpc_port]
-        ip, _, grpc_port = json.loads(result)
-        return f"{ip}:{grpc_port}"
-    return None
+    if node_id_obj not in node_info_dict:
+        return None
+    node_info = node_info_dict[node_id_obj]
+    if node_info.metrics_agent_port <= 0:
+        return None
+    return f"{node_info.node_manager_address}:{node_info.metrics_agent_port}"
 
 
 def wait_for_dashboard_agent_available(cluster):
-    gcs_client = GcsClient(address=cluster.address)
-    wait_for_condition(
-        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
-        is not None
-    )
+    from ray._private.services import get_node
+
+    def get_dashboard_agent_address():
+        try:
+            node_info = get_node(cluster.address, cluster.head_node.node_id)
+        except RuntimeError:
+            return None
+        # Dashboard agent address is available when metrics_agent_port is set
+        if node_info.get("metrics_agent_port", 0) > 0:
+            return node_info
+        return None
+
+    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
 
 
 def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:

@@ -1,6 +1,5 @@
 import dataclasses
 import inspect
-import json
 import logging
 from functools import wraps
 from typing import List, Optional, Tuple
@@ -154,17 +153,27 @@ class StateDataSourceClient:
         return NodeManagerServiceStub(channel)
 
     async def get_log_service_stub(self, node_id: NodeID) -> LogServiceStub:
-        """Returns None if the agent on the node is not registered in Internal KV."""
+        """Returns None if the agent on the node is not found in GCS."""
         from ray._private.grpc_utils import init_grpc_channel
 
-        agent_addr = await self._gcs_client.async_internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id.hex()}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        # Query GcsNodeInfo by node_id to get the agent address
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_id = node_id.binary()
+        request = GetAllNodeInfoRequest(limit=1, node_selectors=[node_selector])
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
         )
-        if not agent_addr:
+        if not reply.node_info_list:
             return None
-        ip, http_port, grpc_port = json.loads(agent_addr)
+        node_info = reply.node_info_list[0]
+        # Check if node is alive (dead nodes retain stale address info)
+        if node_info.state != GcsNodeInfo.GcsNodeState.ALIVE:
+            return None
+        ip = node_info.node_manager_address
+        grpc_port = node_info.metrics_agent_port
+        if grpc_port <= 0:
+            # Agent not started or not available
+            return None
         options = ray_constants.GLOBAL_GRPC_OPTIONS
         channel = init_grpc_channel(
             build_address(ip, grpc_port), options=options, asynchronous=True
@@ -184,16 +193,22 @@ class StateDataSourceClient:
         """
         if not ip:
             return None
-        # Uses the dashboard agent keys to find ip -> id mapping.
-        agent_addr = await self._gcs_client.async_internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{ip}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+        # TODO: If IP lookups become a performance issue in large
+        # clusters, consider adding an IP -> NodeID index in GcsNodeManager.
+        # Currently not needed as these are low-frequency operations (profiling,
+        # log viewing).
+        node_selector = GetAllNodeInfoRequest.NodeSelector()
+        node_selector.node_ip_address = ip
+        request = GetAllNodeInfoRequest(
+            node_selectors=[node_selector],
+            state_filter=GcsNodeInfo.GcsNodeState.Value("ALIVE"),
         )
-        if not agent_addr:
-            return None
-        node_id, http_port, grpc_port = json.loads(agent_addr)
-        return node_id
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+        )
+        if reply.node_info_list:
+            return NodeID(reply.node_info_list[0].node_id).hex()
+        return None
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
