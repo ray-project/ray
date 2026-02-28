@@ -5,7 +5,7 @@ This repo had multiple agents with very similar boilerplate:
 - load config
 - build LLM
 - (optionally) discover MCP tools
-- create a LangGraph agent with MemorySaver
+- create a LangChain agent with MemorySaver
 
 This module centralizes that logic so individual agents only specify:
 - system prompt
@@ -156,7 +156,7 @@ async def build_tool_agent(
     llm_config: Optional[LLMConfig] = None,
 ) -> Any:
     """
-    Build a LangGraph agent with an explicit tool list.
+    Build a LangChain agent with an explicit tool list.
 
     Args:
         system_prompt: System prompt for the agent
@@ -166,7 +166,7 @@ async def build_tool_agent(
         llm_config: LLM configuration (takes precedence over model/temperature)
 
     Returns:
-        Configured LangGraph agent
+        Configured LangChain agent
     """
     cfg = llm_config or load_llm_config(model=model, temperature=temperature)
     llm = build_llm(cfg)
@@ -188,7 +188,7 @@ async def build_mcp_agent(
     llm_config: Optional[LLMConfig] = None,
 ) -> Any:
     """
-    Build a LangGraph agent whose tools are discovered from one or more MCP servers.
+    Build a LangChain agent whose tools are discovered from one or more MCP servers.
 
     Args:
         system_prompt: System prompt for the agent
@@ -198,7 +198,7 @@ async def build_mcp_agent(
         llm_config: LLM configuration (takes precedence over model/temperature)
 
     Returns:
-        Configured LangGraph agent with MCP tools
+        Configured LangChain agent with MCP tools
     """
     cfg = llm_config or load_llm_config(model=model, temperature=temperature)
     llm = build_llm(cfg)
