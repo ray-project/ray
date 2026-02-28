@@ -4038,7 +4038,7 @@ def read_lance(
     # Check for deprecated filter parameter
     if filter is not None:
         warnings.warn(
-            "The `filter` argument is deprecated and will not supported in a future release. "
+            "The `filter` argument is deprecated and will not be supported in a future release. "
             "Use `dataset.filter(expr=expr)` instead to filter rows.",
             DeprecationWarning,
             stacklevel=2,
