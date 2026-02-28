@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
-from ray.air import ResourceRequest
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
@@ -103,8 +102,8 @@ class TuneController:
         self._trial_to_actor: Dict[Trial, TrackedActor] = {}
 
         # Resources <-> Trial
-        self._resources_to_pending_trials: Dict[
-            ResourceRequest, Set[Trial]
+        self._resources_to_pending_trials: defaultdict[
+            "PlacementGroupFactory | None", Set[Trial]
         ] = defaultdict(set)
 
         # Keep track of actor states
@@ -147,6 +146,8 @@ class TuneController:
 
         # Reuse actors
         self._reuse_actors = reuse_actors
+        # Union with None prevents type-errors for trial.placement_group_factory
+        self._actor_cache: _ObjectCache["PlacementGroupFactory | None", TrackedActor]
         self._actor_cache = _ObjectCache(may_keep_one=True)
 
         # Trial metadata for experiment checkpoints
@@ -947,6 +948,7 @@ class TuneController:
             logger.debug(f"Removing ORIGINAL ACTOR for trial {trial}: {original_actor}")
             self._remove_actor(tracked_actor=original_actor)
 
+        assert cached_actor is not None
         self._trial_to_actor[trial] = cached_actor
         self._actor_to_trial[cached_actor] = trial
 

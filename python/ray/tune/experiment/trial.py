@@ -338,9 +338,11 @@ class Trial:
                 placement_group_factory
             )
 
-        self._default_placement_group_factory = placement_group_factory
+        self._default_placement_group_factory: "PlacementGroupFactory | None" = (
+            placement_group_factory
+        )
         # Will be created in create_placement_group_factory().
-        self.placement_group_factory = None
+        self.placement_group_factory: "PlacementGroupFactory | None" = None
 
         self.log_to_file = log_to_file
         # Make sure `stdout_file, stderr_file = Trial.log_to_file` works
@@ -646,7 +648,7 @@ class Trial:
             raise ValueError("Cannot update resources while Trial is running.")
 
         placement_group_factory = resources
-        if isinstance(resources, dict):
+        if isinstance(placement_group_factory, dict):
             placement_group_factory = resource_dict_to_pg_factory(resources)
 
         self.placement_group_factory = placement_group_factory

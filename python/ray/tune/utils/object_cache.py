@@ -1,13 +1,13 @@
 from collections import Counter, defaultdict
-from typing import Dict, Generator, List, Optional, TypeVar
+from typing import Generator, Generic, Hashable, List, Optional, TypeVar
 
 # Grouping key - must be hashable
-T = TypeVar("T")
+_KeyT = TypeVar("_KeyT", bound=Hashable)
 # Objects to cache
-U = TypeVar("U")
+_ObjT = TypeVar("_ObjT")
 
 
-class _ObjectCache:
+class _ObjectCache(Generic[_KeyT, _ObjT]):
     """Cache up to some maximum count given a grouping key.
 
     This object cache can e.g. be used to cache Ray Tune trainable actors
@@ -30,8 +30,8 @@ class _ObjectCache:
 
     def __init__(self, may_keep_one: bool = True):
         self._num_cached_objects: int = 0
-        self._cached_objects: Dict[T, List[U]] = defaultdict(list)
-        self._max_num_objects: Counter[T] = Counter()
+        self._cached_objects: defaultdict[_KeyT, List[_ObjT]] = defaultdict(list)
+        self._max_num_objects: Counter[_KeyT] = Counter()
 
         self._may_keep_one = may_keep_one
 
@@ -44,7 +44,7 @@ class _ObjectCache:
         # Counter.total() is only available for python 3.10+
         return sum(self._max_num_objects.values())
 
-    def increase_max(self, key: T, by: int = 1) -> None:
+    def increase_max(self, key: _KeyT, by: int = 1) -> None:
         """Increase number of max objects for this key.
 
         Args:
@@ -53,7 +53,7 @@ class _ObjectCache:
         """
         self._max_num_objects[key] += by
 
-    def decrease_max(self, key: T, by: int = 1) -> None:
+    def decrease_max(self, key: _KeyT, by: int = 1) -> None:
         """Decrease number of max objects for this key.
 
         Args:
@@ -62,7 +62,7 @@ class _ObjectCache:
         """
         self._max_num_objects[key] -= by
 
-    def has_cached_object(self, key: T) -> bool:
+    def has_cached_object(self, key: _KeyT) -> bool:
         """Return True if at least one cached object exists for this key.
 
         Args:
@@ -73,7 +73,7 @@ class _ObjectCache:
         """
         return bool(self._cached_objects[key])
 
-    def cache_object(self, key: T, obj: U) -> bool:
+    def cache_object(self, key: _KeyT, obj: _ObjT) -> bool:
         """Cache object for a given key.
 
         This will put the object into a cache, assuming the number
@@ -112,7 +112,7 @@ class _ObjectCache:
         self._num_cached_objects += 1
         return True
 
-    def pop_cached_object(self, key: T) -> Optional[U]:
+    def pop_cached_object(self, key: _KeyT) -> Optional[_ObjT]:
         """Get one cached object for a key.
 
         This will remove the object from the cache.
@@ -129,7 +129,9 @@ class _ObjectCache:
         self._num_cached_objects -= 1
         return self._cached_objects[key].pop(0)
 
-    def flush_cached_objects(self, force_all: bool = False) -> Generator[U, None, None]:
+    def flush_cached_objects(
+        self, force_all: bool = False
+    ) -> Generator[_ObjT, None, None]:
         """Return a generator over cached objects evicted from the cache.
 
         This method yields all cached objects that should be evicted from the
@@ -151,7 +153,7 @@ class _ObjectCache:
                 over ``keep_one``.
 
         Yields:
-            Evicted objects to be cleaned up by caller.
+            _ObjT: Evicted objects to be cleaned up by caller.
 
         """
         # If force_all=True, don't keep one.
