@@ -176,7 +176,7 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestGroupSortedByRetriableLifo) {
   expected.push_back(std::make_pair(first_submitted, should_not_retry_));
   expected.push_back(std::make_pair(third_submitted, should_not_retry_));
 
-  for (const auto &entry : expected) {
+  for (const std::pair<std::shared_ptr<WorkerInterface>, bool> &entry : expected) {
     std::pair<std::shared_ptr<WorkerInterface>, bool> worker_to_kill_and_should_retry =
         worker_killing_policy_
             .SelectWorkersToKill(

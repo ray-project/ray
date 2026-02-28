@@ -3154,8 +3154,9 @@ std::string NodeManager::CreateOomKillMessageDetails(
   std::string node_ip = first_worker->IpAddress();
 
   std::vector<std::string> worker_details;
-  for (const auto &[worker, should_retry] : workers_to_kill) {
-    auto pid = worker->GetProcess().GetId();
+  for (const std::pair<std::shared_ptr<WorkerInterface>, bool> &
+           [ worker, should_retry ] : workers_to_kill) {
+    pid_t pid = worker->GetProcess().GetId();
     int64_t used_bytes = GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
     std::string process_used_bytes_gb =
         absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
@@ -3222,7 +3223,8 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
   bool has_non_retriable_task = false;
   bool has_non_retriable_actor = false;
 
-  for (const auto &[worker, should_retry] : workers_to_kill) {
+  for (const std::pair<std::shared_ptr<WorkerInterface>, bool> &
+           [ worker, should_retry ] : workers_to_kill) {
     if (worker->GetGrantedLeaseId().IsNil()) {
       // Workers with no lease granted doesn't count as non-retriable tasks or actors.
       continue;

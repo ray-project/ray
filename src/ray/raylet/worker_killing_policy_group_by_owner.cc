@@ -36,7 +36,8 @@ GroupByOwnerIdWorkerKillingPolicy::SelectWorkersToKill(
     const SystemMemorySnapshot &system_memory_snapshot) {
   RAY_UNUSED(system_memory_snapshot);
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> remaining_alive_targets;
-  for (const auto &worker_to_kill_or_should_retry : workers_being_killed_) {
+  for (const std::pair<std::shared_ptr<WorkerInterface>, bool>
+           &worker_to_kill_or_should_retry : workers_being_killed_) {
     std::shared_ptr<WorkerInterface> worker = worker_to_kill_or_should_retry.first;
     if (worker->GetProcess().IsAlive()) {
       RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetGrantedLeaseId())
@@ -75,7 +76,7 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   // a large amount of memory first.
   std::shared_ptr<WorkerInterface> idle_worker_to_kill = nullptr;
   int64_t max_idle_worker_used_memory = 0;
-  for (const auto &worker : workers) {
+  for (const std::shared_ptr<WorkerInterface> &worker : workers) {
     if (worker->GetGrantedLeaseId().IsNil()) {
       int64_t used_memory = GetProcessUsedMemoryBytes(process_memory_snapshot,
                                                       worker->GetProcess().GetId());
@@ -106,7 +107,7 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
                 << "policy, and picking a worker to kill from the top group.";
   TaskID non_retriable_owner_id = TaskID::Nil();
   std::unordered_map<TaskID, Group> group_map;
-  for (auto worker : workers) {
+  for (std::shared_ptr<WorkerInterface> worker : workers) {
     // Skip workers that don't have any lease granted.
     if (worker->GetGrantedLeaseId().IsNil()) {
       continue;
@@ -116,14 +117,14 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
         retriable ? worker->GetGrantedLease().GetLeaseSpecification().ParentTaskId()
                   : non_retriable_owner_id;
 
-    auto it = group_map.find(owner_id);
+    std::unordered_map<TaskID, Group>::iterator it = group_map.find(owner_id);
 
     if (it == group_map.end()) {
       Group group(owner_id, retriable);
       group.AddToGroup(worker);
       group_map.emplace(owner_id, std::move(group));
     } else {
-      auto &group = it->second;
+      Group &group = it->second;
       group.AddToGroup(worker);
     }
   }
@@ -133,7 +134,9 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   }
 
   std::vector<Group> sorted;
-  for (auto it = group_map.begin(); it != group_map.end(); ++it) {
+  for (std::unordered_map<TaskID, Group>::iterator it = group_map.begin();
+       it != group_map.end();
+       ++it) {
     sorted.push_back(it->second);
   }
 
@@ -156,7 +159,7 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
   Group selected_group = sorted.front();
   bool should_retry =
       selected_group.GetAllWorkers().size() > 1 && selected_group.IsRetriable();
-  auto worker_to_kill = selected_group.SelectWorkerToKill();
+  std::shared_ptr<WorkerInterface> worker_to_kill = selected_group.SelectWorkerToKill();
 
   RAY_LOG(INFO) << absl::StrFormat(
       "Sorted list of leases based on the policy: %s, Lease should be retried? %s",
@@ -174,7 +177,7 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
     const ProcessesMemorySnapshot &process_memory_snapshot) {
   std::stringstream result;
   int32_t group_index = 0;
-  for (const auto &group : groups) {
+  for (const Group &group : groups) {
     if (group_index > 0) {
       result << ", ";
     }
@@ -186,7 +189,7 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
         absl::FormatTime(group.GetGrantedLeaseTime(), absl::UTCTimeZone()));
 
     int64_t worker_index = 0;
-    for (const auto &worker : group.GetAllWorkers()) {
+    for (const std::shared_ptr<WorkerInterface> &worker : group.GetAllWorkers()) {
       if (worker_index > 0) {
         result << ", ";
       }

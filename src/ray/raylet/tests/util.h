@@ -236,14 +236,16 @@ inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
   }
   LeaseSpecification lease_spec(message);
   RayLease lease(lease_spec);
-  auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, 0, pid);
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, 0, pid);
   worker->GrantLease(lease);
   return worker;
 }
 
 inline std::shared_ptr<WorkerInterface> CreateWorkerWithNoLease(int32_t port,
                                                                 pid_t pid = -1) {
-  auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, 0, pid);
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port, 0, pid);
   return worker;
 }
 
