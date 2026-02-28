@@ -729,6 +729,99 @@ def test_async_inference_task_queue_metrics_delay(
             pass  # Actor may already be killed
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Async Inference feature testing is flaky on Windows.",
+)
+def test_async_inference_queue_length_metric(
+    metrics_start_shutdown, external_redis  # noqa: F811
+):
+    """Test that async inference queue length metric is emitted correctly.
+
+    This tests the metric:
+    - ray_serve_async_inference_queue_length
+        Tags: deployment, application
+
+    The QueueMonitor periodically pushes queue length metrics to the controller,
+    and the controller's autoscaling state records the queue length as a gauge.
+    """
+    # Setup Redis client
+    redis_address = os.environ.get("RAY_REDIS_ADDRESS")
+    host, port = redis_address.split(":")
+    redis_client = redis.Redis(host=host, port=int(port), db=0)
+    redis_broker_url = f"redis://{redis_address}/0"
+
+    test_deployment_id = DeploymentID("test_deployment", "test_app")
+    test_queue_name = "test_queue_length_metric_queue"
+
+    try:
+        # Create QueueMonitor with the Serve controller
+        controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+        queue_monitor = create_queue_monitor_actor(
+            deployment_id=test_deployment_id,
+            broker_url=redis_broker_url,
+            queue_name=test_queue_name,
+            controller_handle=controller,
+            namespace=SERVE_NAMESPACE,
+        )
+
+        # Push some messages to the queue
+        num_messages = 7
+        for i in range(num_messages):
+            redis_client.lpush(test_queue_name, f"message_{i}")
+
+        # Wait for the queue length to be picked up
+        def check_length():
+            return ray.get(queue_monitor.get_queue_length.remote()) == num_messages
+
+        wait_for_condition(check_length, timeout=30)
+
+        timeseries = PrometheusTimeseries()
+        base_tags = {
+            "deployment": test_deployment_id.name,
+            "application": test_deployment_id.app_name,
+        }
+
+        # Wait for the queue length metric to be emitted with correct value and tags
+        # get_metric_float already filters by expected_tags, so if it
+        # returns a matching value the tags are guaranteed correct.
+        def check_queue_length_metric():
+            value = get_metric_float(
+                "ray_serve_async_inference_queue_length",
+                expected_tags=base_tags,
+                timeseries=timeseries,
+            )
+            return value == num_messages
+
+        wait_for_condition(check_queue_length_metric, timeout=30)
+
+        # Verify the metric updates when queue length changes
+        # Remove some messages
+        for i in range(3):
+            redis_client.rpop(test_queue_name)
+
+        expected_remaining = num_messages - 3
+
+        def check_updated_queue_length():
+            value = get_metric_float(
+                "ray_serve_async_inference_queue_length",
+                expected_tags=base_tags,
+                timeseries=timeseries,
+            )
+            return value == expected_remaining
+
+        wait_for_condition(check_updated_queue_length, timeout=30)
+
+    finally:
+        # Cleanup
+        redis_client.delete(test_queue_name)
+        redis_client.close()
+        try:
+            kill_queue_monitor_actor(test_deployment_id, namespace=SERVE_NAMESPACE)
+        except ValueError:
+            pass  # Actor may already be killed
+
+
 def test_user_autoscaling_stats_metrics(metrics_start_shutdown):
     """Test that user-defined autoscaling stats metrics are emitted correctly.
 

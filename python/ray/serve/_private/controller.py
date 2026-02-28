@@ -395,14 +395,13 @@ class ServeController:
         """Record async inference task queue metrics pushed from QueueMonitor."""
         latency = time.time() - report.timestamp_s
         latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.async_inference_task_queue_metrics_delay_gauge.set(
-            latency_ms,
-            tags={
-                "deployment": report.deployment_id.name,
-                "application": report.deployment_id.app_name,
-            },
-        )
+        # Record the metrics delay and queue length for observability
+        tags = {
+            "deployment": report.deployment_id.name,
+            "application": report.deployment_id.app_name,
+        }
+        self.async_inference_task_queue_metrics_delay_gauge.set(latency_ms, tags=tags)
+        self.async_inference_queue_length_gauge.set(report.queue_length, tags=tags)
         if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
             logger.warning(
                 f"Received async inference task queue metrics for deployment "
@@ -787,6 +786,14 @@ class ServeController:
             description=(
                 "Time taken for the async inference task queue metrics to be reported "
                 "to the controller. High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self.async_inference_queue_length_gauge = metrics.Gauge(
+            "serve_async_inference_queue_length",
+            description=(
+                "Number of pending tasks in the broker queue for async inference. "
+                "High values indicate tasks are waiting longer to be processed."
             ),
             tag_keys=("deployment", "application"),
         )
