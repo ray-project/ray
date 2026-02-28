@@ -198,6 +198,13 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
+# If the total input size of a groupby/aggregate is below this threshold (bytes),
+# Ray Data will execute the aggregation locally on the driver instead of spawning
+# a distributed actor pool. This avoids significant overhead for small datasets.
+DEFAULT_SMALL_DATASET_AGG_THRESHOLD_BYTES = env_integer(
+    "RAY_DATA_SMALL_DATASET_AGG_THRESHOLD_BYTES", 10 * 1024 * 1024
+)
+
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
@@ -552,6 +559,13 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        small_dataset_agg_threshold_bytes: If the total input size of a
+            groupby/aggregate is below this threshold (bytes), the aggregation is
+            executed locally on the driver rather than through a distributed actor
+            pool. This avoids startup and coordination overhead for small datasets.
+            Set to 0 to disable the fast-path and always use distributed aggregation.
+            Defaults to 10 MiB. Configurable via the environment variable
+            ``RAY_DATA_SMALL_DATASET_AGG_THRESHOLD_BYTES``.
     """
 
     # `None` means the block size is infinite.
@@ -697,6 +711,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    small_dataset_agg_threshold_bytes: int = DEFAULT_SMALL_DATASET_AGG_THRESHOLD_BYTES
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
