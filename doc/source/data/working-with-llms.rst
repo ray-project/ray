@@ -42,6 +42,19 @@ First, install Ray Data with LLM support:
 
     pip install -U "ray[data, llm]>=2.49.1"
 
+If you need to load models from cloud storage, install the appropriate extras:
+
+.. code-block:: bash
+
+    # For AWS S3
+    pip install -U "ray[data, llm-s3]>=2.49.1"
+
+    # For Google Cloud Storage
+    pip install -U "ray[data, llm-gcp]>=2.49.1"
+
+    # For Azure Blob Storage
+    pip install -U "ray[data, llm-azure]>=2.49.1"
+
 Here's a complete minimal example that runs batch inference:
 
 .. literalinclude:: doc_code/working-with-llms/minimal_quickstart.py

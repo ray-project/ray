@@ -30,6 +30,21 @@ Ray Serve LLM excels at highly distributed multi-node inference workloads:
 pip install ray[serve,llm]
 ```
 
+### Cloud storage (optional)
+
+If you need to load models from cloud storage, install the appropriate extras for your cloud provider:
+
+```bash
+# For AWS S3
+pip install ray[serve,llm-s3]
+
+# For Google Cloud Storage
+pip install ray[serve,llm-gcp]
+
+# For Azure Blob Storage
+pip install ray[serve,llm-azure]
+```
+
 ```{toctree}
 :hidden:
 

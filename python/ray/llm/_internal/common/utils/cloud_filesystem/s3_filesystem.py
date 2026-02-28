@@ -2,22 +2,39 @@
 
 This module provides an S3-specific implementation that uses boto3 (AWS SDK for Python)
 for reliable and efficient S3 operations.
+
+Note: boto3 and botocore are imported lazily to avoid requiring them unless
+S3 functionality is actually used. Install with: pip install boto3
 """
 
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Optional, Union
-
-import boto3
-from botocore import UNSIGNED
-from botocore.client import BaseClient
-from botocore.config import Config
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.llm._internal.common.observability.logging import get_logger
 from ray.llm._internal.common.utils.cloud_filesystem.base import BaseCloudFileSystem
 
+if TYPE_CHECKING:
+    from botocore.client import BaseClient
+
 logger = get_logger(__name__)
+
+
+def _import_boto3():
+    """Lazily import boto3 and botocore, raising a helpful error if not installed."""
+    try:
+        import boto3
+        from botocore import UNSIGNED
+        from botocore.config import Config
+
+        return boto3, UNSIGNED, Config
+    except ImportError:
+        raise ImportError(
+            "You must `pip install boto3` to use S3 URIs with the boto3 backend. "
+            "Alternatively, install ray[llm-s3] for the S3 dependencies. "
+            "Note that boto3 must be preinstalled on all nodes in the Ray cluster."
+        )
 
 
 class S3FileSystem(BaseCloudFileSystem):
@@ -68,7 +85,12 @@ class S3FileSystem(BaseCloudFileSystem):
 
         Returns:
             boto3 S3 client with connection pooling configured
+
+        Raises:
+            ImportError: If boto3 is not installed.
         """
+        boto3, UNSIGNED, Config = _import_boto3()
+
         # Configure connection pooling for better concurrent performance
         config = Config(
             max_pool_connections=max_pool_connections,
@@ -186,7 +208,7 @@ class S3FileSystem(BaseCloudFileSystem):
 
     @staticmethod
     def _download_single_file(
-        s3_client: BaseClient, bucket: str, key: str, local_file_path: str
+        s3_client: "BaseClient", bucket: str, key: str, local_file_path: str
     ) -> tuple[str, bool]:
         """Download a single file from S3.
 

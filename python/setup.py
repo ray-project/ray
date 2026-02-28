@@ -385,6 +385,40 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # Cloud provider extras for ray[llm]. These are optional dependencies
+    # for cloud storage backends. Users can install specific ones based on
+    # their cloud provider:
+    #   pip install ray[llm-s3]    # For AWS S3
+    #   pip install ray[llm-gcp]   # For Google Cloud Storage
+    #   pip install ray[llm-azure] # For Azure Blob Storage
+    setup_spec.extras["llm-s3"] = list(
+        set(
+            [
+                "boto3>=1.28.0",
+            ]
+            + setup_spec.extras["llm"]
+        )
+    )
+
+    setup_spec.extras["llm-gcp"] = list(
+        set(
+            [
+                "google-cloud-storage>=2.0.0",
+            ]
+            + setup_spec.extras["llm"]
+        )
+    )
+
+    setup_spec.extras["llm-azure"] = list(
+        set(
+            [
+                "adlfs>=2023.1.0",
+                "azure-identity>=1.12.0",
+            ]
+            + setup_spec.extras["llm"]
+        )
+    )
+
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
