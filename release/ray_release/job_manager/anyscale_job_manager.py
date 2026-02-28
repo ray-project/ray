@@ -3,11 +3,13 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 import anyscale
-from anyscale.job.models import JobState
-from anyscale.sdk.anyscale_client.models import (
-    CreateProductionJob,
-    CreateProductionJobConfig,
+from anyscale.compute_config.models import (
+    ComputeConfig,
+    HeadNodeConfig,
+    MarketType,
+    WorkerNodeGroupConfig,
 )
+from anyscale.job.models import JobConfig, JobState
 
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -23,6 +25,46 @@ from ray_release.util import (
     exponential_backoff_retry,
     format_link,
 )
+
+def _convert_compute_config(old_config: Dict[str, Any]) -> ComputeConfig:
+    """Convert old-style compute config dict to new ComputeConfig."""
+    old_head = old_config.get("head_node_type")
+    head_node = None
+    if old_head:
+        head_resources = old_head.get("resources", {}).get("custom_resources")
+        head_node = HeadNodeConfig(
+            instance_type=old_head["instance_type"],
+            resources=head_resources or None,
+            advanced_instance_config=old_head.get("aws_advanced_configurations"),
+        )
+
+    worker_nodes = []
+    for w in old_config.get("worker_node_types", []):
+        max_workers = w.get("max_workers", 0)
+        if max_workers <= 0:
+            continue
+        market_type = MarketType.SPOT if w.get("use_spot") else MarketType.ON_DEMAND
+        w_resources = w.get("resources", {}).get("custom_resources")
+        worker_nodes.append(
+            WorkerNodeGroupConfig(
+                name=w.get("name"),
+                instance_type=w["instance_type"],
+                min_nodes=w.get("min_workers", 0),
+                max_nodes=max_workers,
+                market_type=market_type,
+                resources=w_resources or None,
+                advanced_instance_config=w.get("aws_advanced_configurations"),
+            )
+        )
+
+    return ComputeConfig(
+        cloud=old_config.get("cloud_id"),
+        head_node=head_node,
+        worker_nodes=worker_nodes if worker_nodes else None,
+        zones=old_config.get("allowed_azs"),
+        advanced_instance_config=old_config.get("advanced_configurations_json"),
+    )
+
 
 JOB_SUCCEEDED = 0
 JOB_FAILED = -1
@@ -41,7 +83,6 @@ class AnyscaleJobManager:
         self.start_time = None
         self.counter = 0
         self.cluster_manager = cluster_manager
-        self._sdk = cluster_manager.sdk
         self._last_job_result = None
         self._job_id: Optional[str] = None
         self._last_logs = None
@@ -64,28 +105,23 @@ class AnyscaleJobManager:
             f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
         )
 
-        runtime_env = {
-            "env_vars": env_vars_for_job,
-        }
-        if working_dir:
-            runtime_env["working_dir"] = working_dir
-            if upload_path:
-                runtime_env["upload_path"] = upload_path
-
         try:
-            job_request = CreateProductionJob(
-                name=self.cluster_manager.cluster_name,
-                description=f"Smoke test: {self.cluster_manager.smoke_test}",
-                project_id=self.cluster_manager.project_id,
-                config=CreateProductionJobConfig(
-                    entrypoint=cmd_to_run,
-                    runtime_env=runtime_env,
-                    build_id=self.cluster_manager.cluster_env_build_id,
-                    compute_config_id=self.cluster_manager.cluster_compute_id,
-                    max_retries=0,
-                ),
+            compute_config = (
+                _convert_compute_config(self.cluster_manager.cluster_compute)
+                if self.cluster_manager.cluster_compute
+                else None
             )
-            job_response = self._sdk.create_job(job_request)
+            job_config = JobConfig(
+                name=self.cluster_manager.cluster_name,
+                entrypoint=cmd_to_run,
+                image_uri=self.cluster_manager.test.get_anyscale_byod_image(),
+                compute_config=compute_config,
+                project=self.cluster_manager.project_name,
+                env_vars=env_vars_for_job,
+                working_dir=working_dir if working_dir else None,
+                max_retries=0,
+            )
+            self._job_id = anyscale.job.submit(config=job_config)
         except Exception as e:
             raise JobStartupFailed(
                 "Error starting job with name "
@@ -93,7 +129,6 @@ class AnyscaleJobManager:
                 f"{e}"
             ) from e
 
-        self._job_id = job_response.result.id
         self._last_job_result = None
         self.start_time = time.time()
 
@@ -138,7 +173,7 @@ class AnyscaleJobManager:
             return
         logger.info(f"Terminating job {self._job_id}...")
         try:
-            self._sdk.terminate_job(self._job_id)
+            anyscale.job.terminate(id=self._job_id)
             logger.info(f"Job {self._job_id} terminated!")
         except Exception:
             msg = f"Couldn't terminate job {self._job_id}!"
