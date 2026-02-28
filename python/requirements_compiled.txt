@@ -1072,7 +1072,7 @@ ml-dtypes==0.3.2
     #   jax
     #   jaxlib
     #   tensorflow
-mlflow==3.1.4
+mlflow==3.5.0
     # via
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/test-requirements.txt
