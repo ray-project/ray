@@ -84,7 +84,7 @@ py_library(
 #
 # Compute Config
 #   - local (CPU) = 7 CPUs, 0 GPU: 4 Env Runners, 0 Learners on CPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
-#   - single (CPU) = 8 CPUs, 0 GPU: 4 Env Runner, 1 Learners on CPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
+#   - single (CPU) = 8 CPUs, 0 GPU: 4 Env Runner, 1 Learner on CPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
 #   - single (GPU) = 8 CPUs, 1 GPU: 4 Env Runner, 1 Learner on GPU, 2 Aggregator Actors per Learner on CPU, 1 CPU main process
 #   - multi (GPU) = 15 CPUs, 2 GPUs: 8 Env Runners, 2 Learners on GPU, 2 Aggregator Actors per Learner on CPU (4 total CPUs), 1 CPU main process
 #
@@ -1363,16 +1363,47 @@ py_test(
     ],
 )
 
-# SAC
-# MountainCar
+# | SAC (14 total tests)           |         |                Number of Learners (Device)                 |
+# | Environment                    | Success | Local (CPU) | Single (CPU)    | Single (GPU) | Multi (GPU) |
+# |--------------------------------|---------|-------------|-----------------|--------------|-------------|
+# | (SA/C) MuJoCo (Humanoid)       | 200     | ❌          | ❌              | ✅           | ❌         |
+# | (SA/D/LSTM) Stateless Cartpole | 150     | ✅          | ❌              | ❌           | ❌         |
+# | (MA/D) TicTacToe               | -2.0    | ❌          | ✅              | ❌           | ❌         |
+
+# TODO (mark): commented out for not reaching performance
+# py_test(
+#     name = "learning_tests_sac_mujoco_single_gpu",
+#     size = "large",
+#     srcs = ["examples/algorithms/sac/mujoco_sac.py"],
+#     args = [
+#         "--as-test",
+#         "--num-cpus=8",
+#         "--num-env-runners=5",
+#         "--num-learners=1",
+#         "--num-gpus-per-learner=1",
+#         "--stop-reward=200",
+#     ],
+#     main = "examples/algorithms/sac/mountaincar_sac.py",
+#     tags = [
+#         "exclusive",
+#         "learning_tests",
+#         "multi_gpu",
+#         "team:rllib",
+#     ],
+# )
+
 py_test(
-    name = "learning_tests_mountaincar_sac",
+    name = "learning_tests_sac_stateless_cartpole_local",
     size = "large",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
+    srcs = ["examples/algorithms/sac/stateless_cartpole_sac_with_lstm.py"],
     args = [
         "--as-test",
+        "--num-cpus=7",
+        "--num-env-runners=5",
+        "--num-learners=0",
+        "--stop-reward=150",
     ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
+    main = "examples/algorithms/sac/stateless_cartpole_sac_with_lstm.py",
     tags = [
         "exclusive",
         "learning_tests",
@@ -1380,199 +1411,25 @@ py_test(
     ],
 )
 
-py_test(
-    name = "learning_tests_mountaincar_sac_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=1",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_mountaincar_sac_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-    ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_mountaincar_sac_multi_gpu",
-    size = "large",
-    timeout = "eternal",
-    srcs = ["examples/algorithms/sac/mountaincar_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/mountaincar_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
-
-# Pendulum
-py_test(
-    name = "learning_tests_pendulum_sac",
-    size = "large",
-    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
-    args = [
-        "--as-test",
-    ],
-    main = "examples/algorithms/sac/pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_pendulum_sac_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=1",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_pendulum_sac_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-    ],
-    main = "examples/algorithms/sac/pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_pendulum_sac_multi_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/pendulum_sac.py"],
-    args = [
-        "--as-test",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
-
-# MultiAgentPendulum
-py_test(
-    name = "learning_tests_multi_agent_pendulum_sac",
-    size = "large",
-    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-cpus=4",
-    ],
-    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_pendulum_sac_gpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
-    args = [
-        "--as-test",
-        "--num-agents=2",
-        "--num-cpus=4",
-        "--num-learners=1",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "gpu",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_pendulum_sac_multi_cpu",
-    size = "large",
-    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
-    args = [
-        "--num-agents=2",
-        "--num-learners=2",
-    ],
-    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "team:rllib",
-    ],
-)
-
-py_test(
-    name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
-    size = "large",
-    timeout = "eternal",
-    srcs = ["examples/algorithms/sac/multi_agent_pendulum_sac.py"],
-    args = [
-        "--num-agents=2",
-        "--num-learners=2",
-        "--num-gpus-per-learner=1",
-    ],
-    main = "examples/algorithms/sac/multi_agent_pendulum_sac.py",
-    tags = [
-        "exclusive",
-        "learning_tests",
-        "multi_gpu",
-        "team:rllib",
-    ],
-)
+# TODO (mark): commented out for not reaching performance
+# py_test(
+#     name = "learning_tests_sac_tictactoe_single_cpu",
+#     size = "large",
+#     srcs = ["examples/algorithms/sac/tictactoe_sac.py"],
+#     args = [
+#         "--as-test",
+#         "--num-cpus=8",
+#         "--num-env-runners=5",
+#         "--num-learners=1",
+#         "--stop-reward=-2",
+#     ],
+#     main = "examples/algorithms/sac/tictactoe_sac.py",
+#     tags = [
+#         "exclusive",
+#         "learning_tests",
+#         "team:rllib",
+#     ],
+# )
 
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)

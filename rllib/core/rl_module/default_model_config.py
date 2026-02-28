@@ -135,7 +135,7 @@ class DefaultModelConfig:
     #: Activation function descriptor for the stack configured by `head_fcnet_hiddens`.
     #: Supported values are: 'tanh', 'relu', 'swish' (or 'silu', which is the same),
     #: and 'linear' (or None).
-    head_fcnet_activation: str = "relu"
+    head_fcnet_activation: str | None = "relu"
     #: Initializer function or class descriptor for the weight/kernel matrices in the
     #: stack configured by `head_fcnet_hiddens`. Supported values are the initializer
     #: names (str), classes or functions listed by the frameworks (`torch`). See

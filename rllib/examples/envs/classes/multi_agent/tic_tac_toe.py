@@ -87,6 +87,7 @@ class TicTacToe(MultiAgentEnv):
     # __sphinx_doc_4_begin__
     def step(self, action_dict):
         action = action_dict[self.current_player]
+
         opponent = "player2" if self.current_player == "player1" else "player1"
         self.timestep += 1
 
@@ -154,6 +155,8 @@ class TicTacToe(MultiAgentEnv):
         reward = {self.current_player: 0.0}
         self.board = [-x for x in self.board]
         self.current_player = opponent
+        self.timestep += 1
+        self.board = [-x for x in self.board]
 
         return (
             {opponent: np.array(self.board, np.float32)},
