@@ -656,8 +656,8 @@ def _get_cluster_status_to_report_v2(gcs_client: GcsClient) -> ClusterStatusToRe
         )
     except Exception as e:
         logger.info(f"Failed to get cluster status to report {e}")
-    finally:
-        return result
+
+    return result
 
 
 def get_cluster_status_to_report(gcs_client: GcsClient) -> ClusterStatusToReport:
