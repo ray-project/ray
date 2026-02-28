@@ -167,9 +167,8 @@ def test_pyarrow_conversion_error_handling(
             [pa.field("id", pa.int64()), pa.field("my_data", expected_type)]
         )
 
-        assert ds.take_all() == [
-            {"id": i, "my_data": data[i]} for i in range(len(data))
-        ]
+        results = sorted(ds.take_all(), key=lambda r: r["id"])
+        assert results == [{"id": i, "my_data": data[i]} for i in range(len(data))]
 
 
 @pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
