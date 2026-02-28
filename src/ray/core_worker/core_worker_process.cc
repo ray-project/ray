@@ -248,7 +248,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   auto core_worker_server =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options.worker_type),
                                         assigned_port,
-                                        options.node_ip_address == "127.0.0.1");
+                                        IsLocalhost(options.node_ip_address));
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
@@ -853,8 +853,11 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     // Initialize metrics agent client.
     // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
     if (options_.metrics_agent_port > 0) {
-      metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
+      metrics_agent_client_ =
+          std::make_unique<ray::rpc::MetricsAgentClientImpl>(GetLocalhostIP(),
+                                                             options_.metrics_agent_port,
+                                                             io_service_,
+                                                             *client_call_manager_);
       metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
         if (server_status.ok()) {
           stats::ConnectOpenCensusExporter(options_.metrics_agent_port);

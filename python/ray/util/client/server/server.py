@@ -19,7 +19,12 @@ import ray._private.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
-from ray._common.network_utils import build_address, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip,
+    get_localhost_ip,
+    is_localhost,
+)
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_constants import env_integer
@@ -787,8 +792,8 @@ def serve(host: str, port: int, ray_connect_handler=None):
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(logs_servicer, server)
     if not is_localhost(host):
-        add_port_to_grpc_server(server, f"127.0.0.1:{port}")
-    add_port_to_grpc_server(server, f"{host}:{port}")
+        add_port_to_grpc_server(server, build_address(get_localhost_ip(), port))
+    add_port_to_grpc_server(server, build_address(host, port))
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,
@@ -855,7 +860,10 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--host", type=str, default="0.0.0.0", help="Host IP to bind to"
+        "--host",
+        type=str,
+        default=get_all_interfaces_ip(),
+        help="Host IP to bind to. Defaults to all interfaces (0.0.0.0/::).",
     )
     parser.add_argument("-p", "--port", type=int, default=10001, help="Port to bind to")
     parser.add_argument(

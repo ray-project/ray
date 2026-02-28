@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray import cloudpickle
+from ray._common.network_utils import get_localhost_ip
 from ray._common.pydantic_compat import (
     BaseModel,
     Field,
@@ -676,8 +677,8 @@ class HTTPOptions(BaseModel):
     """HTTP options for the proxies. Supported fields:
 
     - host: Host that the proxies listens for HTTP on. Defaults to
-      "127.0.0.1". To expose Serve publicly, you probably want to set
-      this to "0.0.0.0".
+      localhost. To expose Serve publicly, you probably want to set
+      this to "0.0.0.0" for IPv4 or "::" for IPv6.
     - port: Port that the proxies listen for HTTP on. Defaults to 8000.
     - root_path: An optional root path to mount the serve application
       (for example, "/prefix"). All deployment routes are prefixed
@@ -706,7 +707,7 @@ class HTTPOptions(BaseModel):
       internal Serve HTTP proxy actor.
     """
 
-    host: Optional[str] = DEFAULT_HTTP_HOST
+    host: Optional[str] = DEFAULT_HTTP_HOST or get_localhost_ip()
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
