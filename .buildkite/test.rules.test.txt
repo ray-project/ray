@@ -80,6 +80,11 @@ ci/lint/lint.sh: tools
 ci/ray_ci/tester.py: tools
 ci/ci.sh: tools
 
+# === Build Scripts ===
+
+build-wheel.sh: tools
+ci/build/build_common.py: tools
+
 # === Root Files ===
 
 BUILD.bazel: ml tune train data serve core_cpp cpp java python doc linux_wheels macos_wheels dashboard tools release_tests
