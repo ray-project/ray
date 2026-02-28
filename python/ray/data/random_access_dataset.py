@@ -28,11 +28,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 @Deprecated(
-    warning=True,
     message="`RandomAccessDataset` is unmaintained and will be removed in a future release.",
 )
-@PublicAPI(stability="alpha")
 class RandomAccessDataset:
     """A class that provides distributed, random access to a Dataset.
 

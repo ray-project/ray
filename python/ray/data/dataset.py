@@ -6437,11 +6437,11 @@ class Dataset:
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in block_refs]
 
+    @ConsumptionAPI(pattern="Args:")
     @Deprecated(
         warning=True,
         message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
     )
-    @ConsumptionAPI(pattern="Args:")
     def to_random_access_dataset(
         self,
         key: str,
