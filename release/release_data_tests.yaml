@@ -808,6 +808,7 @@
         - RAY_health_check_timeout_ms=100000
         - RAY_health_check_failure_threshold=10
         - RAY_gcs_rpc_server_connect_timeout_s=60
+        - RAY_fetch_fail_timeout_milliseconds=1800000
     cluster_compute: dataset/cross_az_250_350_compute_gce.yaml
 
   run:
