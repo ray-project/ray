@@ -149,19 +149,22 @@ impl GcsHealthCheckManager {
         }
     }
 
-    /// Check health of a single node.
-    async fn check_node_health(&self, _address: &str, config: &HealthCheckConfig) -> bool {
-        // In production, this would make a gRPC health check call.
-        // For now, we simulate a successful check with a timeout.
-        let _ = tokio::time::timeout(
+    /// Check health of a single node via gRPC health check.
+    async fn check_node_health(&self, address: &str, config: &HealthCheckConfig) -> bool {
+        let endpoint = format!("http://{}", address);
+        let channel = match tonic::transport::Endpoint::from_shared(endpoint) {
+            Ok(ep) => ep.connect_lazy(),
+            Err(_) => return false,
+        };
+        let mut client = tonic_health::pb::health_client::HealthClient::new(channel);
+        let result = tokio::time::timeout(
             Duration::from_millis(config.timeout_ms),
-            tokio::time::sleep(Duration::from_millis(1)),
+            client.check(tonic_health::pb::HealthCheckRequest {
+                service: String::new(),
+            }),
         )
         .await;
-
-        // Placeholder: always returns healthy.
-        // Real implementation would use tonic to call grpc.health.v1.Health/Check.
-        true
+        matches!(result, Ok(Ok(_)))
     }
 
     pub fn num_monitored_nodes(&self) -> usize {

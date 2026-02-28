@@ -20,6 +20,7 @@ ray-pubsub = { workspace = true }
 ray-gcs-rpc-client = { workspace = true }
 ray-syncer = { workspace = true }
 tonic = { workspace = true }
+tonic-health = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 prost = { workspace = true }
@@ -33,9 +34,12 @@ parking_lot = { workspace = true }
 clap = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-uuid = { workspace = true }
 async-trait = { workspace = true }
 hex = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+ray-test-utils = { workspace = true }
+tonic-health = { workspace = true }

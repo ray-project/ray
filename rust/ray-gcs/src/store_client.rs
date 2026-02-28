@@ -83,18 +83,28 @@ pub trait StoreClient: Send + Sync {
 /// rather than table names, and supports prefix deletion.
 #[async_trait::async_trait]
 pub trait InternalKVInterface: Send + Sync {
-    async fn get(&self, ns: &str, key: &str) -> StoreResult<Option<String>>;
+    async fn get(&self, ns: &[u8], key: &[u8]) -> StoreResult<Option<Vec<u8>>>;
 
-    async fn multi_get(&self, ns: &str, keys: &[String]) -> StoreResult<HashMap<String, String>>;
+    async fn multi_get(
+        &self,
+        ns: &[u8],
+        keys: &[Vec<u8>],
+    ) -> StoreResult<HashMap<Vec<u8>, Vec<u8>>>;
 
-    async fn put(&self, ns: &str, key: &str, value: String, overwrite: bool) -> StoreResult<bool>;
+    async fn put(
+        &self,
+        ns: &[u8],
+        key: &[u8],
+        value: Vec<u8>,
+        overwrite: bool,
+    ) -> StoreResult<bool>;
 
     /// Delete a key or all keys with a given prefix.
-    async fn del(&self, ns: &str, key: &str, del_by_prefix: bool) -> StoreResult<i64>;
+    async fn del(&self, ns: &[u8], key: &[u8], del_by_prefix: bool) -> StoreResult<i64>;
 
-    async fn exists(&self, ns: &str, key: &str) -> StoreResult<bool>;
+    async fn exists(&self, ns: &[u8], key: &[u8]) -> StoreResult<bool>;
 
-    async fn keys(&self, ns: &str, prefix: &str) -> StoreResult<Vec<String>>;
+    async fn keys(&self, ns: &[u8], prefix: &[u8]) -> StoreResult<Vec<Vec<u8>>>;
 }
 
 // ─── In-Memory Store Client ────────────────────────────────────────────────
@@ -235,8 +245,8 @@ impl StoreClient for InMemoryStoreClient {
 
 /// In-memory implementation of the InternalKV interface.
 pub struct InMemoryInternalKV {
-    /// Namespace → (key → value).
-    data: DashMap<String, DashMap<String, String>>,
+    /// Namespace → (key → value). All stored as raw bytes.
+    data: DashMap<Vec<u8>, DashMap<Vec<u8>, Vec<u8>>>,
 }
 
 impl InMemoryInternalKV {
@@ -255,7 +265,7 @@ impl Default for InMemoryInternalKV {
 
 #[async_trait::async_trait]
 impl InternalKVInterface for InMemoryInternalKV {
-    async fn get(&self, ns: &str, key: &str) -> StoreResult<Option<String>> {
+    async fn get(&self, ns: &[u8], key: &[u8]) -> StoreResult<Option<Vec<u8>>> {
         if let Some(ns_map) = self.data.get(ns) {
             Ok(ns_map.get(key).map(|v| v.value().clone()))
         } else {
@@ -263,11 +273,15 @@ impl InternalKVInterface for InMemoryInternalKV {
         }
     }
 
-    async fn multi_get(&self, ns: &str, keys: &[String]) -> StoreResult<HashMap<String, String>> {
+    async fn multi_get(
+        &self,
+        ns: &[u8],
+        keys: &[Vec<u8>],
+    ) -> StoreResult<HashMap<Vec<u8>, Vec<u8>>> {
         let mut result = HashMap::new();
         if let Some(ns_map) = self.data.get(ns) {
             for key in keys {
-                if let Some(v) = ns_map.get(key.as_str()) {
+                if let Some(v) = ns_map.get(key.as_slice()) {
                     result.insert(key.clone(), v.value().clone());
                 }
             }
@@ -275,20 +289,26 @@ impl InternalKVInterface for InMemoryInternalKV {
         Ok(result)
     }
 
-    async fn put(&self, ns: &str, key: &str, value: String, overwrite: bool) -> StoreResult<bool> {
-        let ns_map = self.data.entry(ns.to_string()).or_default();
+    async fn put(
+        &self,
+        ns: &[u8],
+        key: &[u8],
+        value: Vec<u8>,
+        overwrite: bool,
+    ) -> StoreResult<bool> {
+        let ns_map = self.data.entry(ns.to_vec()).or_default();
         let existed = ns_map.contains_key(key);
         if existed && !overwrite {
-            return Ok(false); // Did NOT add new entry
+            return Ok(false);
         }
-        ns_map.insert(key.to_string(), value);
-        Ok(!existed) // Return true if added (new entry)
+        ns_map.insert(key.to_vec(), value);
+        Ok(!existed)
     }
 
-    async fn del(&self, ns: &str, key: &str, del_by_prefix: bool) -> StoreResult<i64> {
+    async fn del(&self, ns: &[u8], key: &[u8], del_by_prefix: bool) -> StoreResult<i64> {
         if let Some(ns_map) = self.data.get(ns) {
             if del_by_prefix {
-                let keys_to_delete: Vec<String> = ns_map
+                let keys_to_delete: Vec<Vec<u8>> = ns_map
                     .iter()
                     .filter(|e| e.key().starts_with(key))
                     .map(|e| e.key().clone())
@@ -306,7 +326,7 @@ impl InternalKVInterface for InMemoryInternalKV {
         }
     }
 
-    async fn exists(&self, ns: &str, key: &str) -> StoreResult<bool> {
+    async fn exists(&self, ns: &[u8], key: &[u8]) -> StoreResult<bool> {
         if let Some(ns_map) = self.data.get(ns) {
             Ok(ns_map.contains_key(key))
         } else {
@@ -314,7 +334,7 @@ impl InternalKVInterface for InMemoryInternalKV {
         }
     }
 
-    async fn keys(&self, ns: &str, prefix: &str) -> StoreResult<Vec<String>> {
+    async fn keys(&self, ns: &[u8], prefix: &[u8]) -> StoreResult<Vec<Vec<u8>>> {
         if let Some(ns_map) = self.data.get(ns) {
             Ok(ns_map
                 .iter()
@@ -609,34 +629,37 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_kv_put_get() {
         let kv = InMemoryInternalKV::new();
-        let added = kv.put("ns", "key1", "value1".into(), true).await.unwrap();
+        let added = kv
+            .put(b"ns", b"key1", b"value1".to_vec(), true)
+            .await
+            .unwrap();
         assert!(added);
 
-        let val = kv.get("ns", "key1").await.unwrap();
-        assert_eq!(val, Some("value1".to_string()));
+        let val = kv.get(b"ns", b"key1").await.unwrap();
+        assert_eq!(val, Some(b"value1".to_vec()));
     }
 
     #[tokio::test]
     async fn test_in_memory_kv_del_by_prefix() {
         let kv = InMemoryInternalKV::new();
-        kv.put("ns", "foo/a", "1".into(), true).await.unwrap();
-        kv.put("ns", "foo/b", "2".into(), true).await.unwrap();
-        kv.put("ns", "bar/c", "3".into(), true).await.unwrap();
+        kv.put(b"ns", b"foo/a", b"1".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"foo/b", b"2".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"bar/c", b"3".to_vec(), true).await.unwrap();
 
-        let deleted = kv.del("ns", "foo/", true).await.unwrap();
+        let deleted = kv.del(b"ns", b"foo/", true).await.unwrap();
         assert_eq!(deleted, 2);
-        assert!(!kv.exists("ns", "foo/a").await.unwrap());
-        assert!(kv.exists("ns", "bar/c").await.unwrap());
+        assert!(!kv.exists(b"ns", b"foo/a").await.unwrap());
+        assert!(kv.exists(b"ns", b"bar/c").await.unwrap());
     }
 
     #[tokio::test]
     async fn test_in_memory_kv_keys() {
         let kv = InMemoryInternalKV::new();
-        kv.put("ns", "a/1", "v".into(), true).await.unwrap();
-        kv.put("ns", "a/2", "v".into(), true).await.unwrap();
-        kv.put("ns", "b/1", "v".into(), true).await.unwrap();
+        kv.put(b"ns", b"a/1", b"v".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"a/2", b"v".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"b/1", b"v".to_vec(), true).await.unwrap();
 
-        let keys = kv.keys("ns", "a/").await.unwrap();
+        let keys = kv.keys(b"ns", b"a/").await.unwrap();
         assert_eq!(keys.len(), 2);
     }
 }

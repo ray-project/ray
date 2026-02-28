@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use tonic::Status;
+use tonic::{Request, Response, Status};
 
 use ray_common::id::{ActorID, ObjectID};
 use ray_proto::ray::rpc;
@@ -225,5 +225,221 @@ impl CoreWorkerServiceImpl {
         _request: rpc::RegisterMutableObjectReaderRequest,
     ) -> Result<rpc::RegisterMutableObjectReaderReply, Status> {
         Ok(rpc::RegisterMutableObjectReaderReply::default())
+    }
+}
+
+// ─── Tonic trait impl ───────────────────────────────────────────────────
+
+#[tonic::async_trait]
+impl rpc::core_worker_service_server::CoreWorkerService for CoreWorkerServiceImpl {
+    async fn push_task(
+        &self,
+        req: Request<rpc::PushTaskRequest>,
+    ) -> Result<Response<rpc::PushTaskReply>, Status> {
+        self.handle_push_task(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn raylet_notify_gcs_restart(
+        &self,
+        req: Request<rpc::RayletNotifyGcsRestartRequest>,
+    ) -> Result<Response<rpc::RayletNotifyGcsRestartReply>, Status> {
+        self.handle_raylet_notify_gcs_restart(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn actor_call_arg_wait_complete(
+        &self,
+        req: Request<rpc::ActorCallArgWaitCompleteRequest>,
+    ) -> Result<Response<rpc::ActorCallArgWaitCompleteReply>, Status> {
+        self.handle_actor_call_arg_wait_complete(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn get_object_status(
+        &self,
+        req: Request<rpc::GetObjectStatusRequest>,
+    ) -> Result<Response<rpc::GetObjectStatusReply>, Status> {
+        self.handle_get_object_status(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn wait_for_actor_ref_deleted(
+        &self,
+        req: Request<rpc::WaitForActorRefDeletedRequest>,
+    ) -> Result<Response<rpc::WaitForActorRefDeletedReply>, Status> {
+        self.handle_wait_for_actor_ref_deleted(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn pubsub_long_polling(
+        &self,
+        req: Request<rpc::PubsubLongPollingRequest>,
+    ) -> Result<Response<rpc::PubsubLongPollingReply>, Status> {
+        self.handle_pubsub_long_polling(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn report_generator_item_returns(
+        &self,
+        req: Request<rpc::ReportGeneratorItemReturnsRequest>,
+    ) -> Result<Response<rpc::ReportGeneratorItemReturnsReply>, Status> {
+        self.handle_report_generator_item_returns(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn pubsub_command_batch(
+        &self,
+        req: Request<rpc::PubsubCommandBatchRequest>,
+    ) -> Result<Response<rpc::PubsubCommandBatchReply>, Status> {
+        self.handle_pubsub_command_batch(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn update_object_location_batch(
+        &self,
+        req: Request<rpc::UpdateObjectLocationBatchRequest>,
+    ) -> Result<Response<rpc::UpdateObjectLocationBatchReply>, Status> {
+        self.handle_update_object_location_batch(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn get_object_locations_owner(
+        &self,
+        req: Request<rpc::GetObjectLocationsOwnerRequest>,
+    ) -> Result<Response<rpc::GetObjectLocationsOwnerReply>, Status> {
+        self.handle_get_object_locations_owner(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn kill_actor(
+        &self,
+        req: Request<rpc::KillActorRequest>,
+    ) -> Result<Response<rpc::KillActorReply>, Status> {
+        self.handle_kill_actor(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn cancel_task(
+        &self,
+        req: Request<rpc::CancelTaskRequest>,
+    ) -> Result<Response<rpc::CancelTaskReply>, Status> {
+        self.handle_cancel_task(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn request_owner_to_cancel_task(
+        &self,
+        req: Request<rpc::RequestOwnerToCancelTaskRequest>,
+    ) -> Result<Response<rpc::RequestOwnerToCancelTaskReply>, Status> {
+        self.handle_request_owner_to_cancel_task(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn get_core_worker_stats(
+        &self,
+        req: Request<rpc::GetCoreWorkerStatsRequest>,
+    ) -> Result<Response<rpc::GetCoreWorkerStatsReply>, Status> {
+        self.handle_get_core_worker_stats(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn local_gc(
+        &self,
+        req: Request<rpc::LocalGcRequest>,
+    ) -> Result<Response<rpc::LocalGcReply>, Status> {
+        self.handle_local_gc(req.into_inner()).map(Response::new)
+    }
+
+    async fn delete_objects(
+        &self,
+        req: Request<rpc::DeleteObjectsRequest>,
+    ) -> Result<Response<rpc::DeleteObjectsReply>, Status> {
+        self.handle_delete_objects(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn spill_objects(
+        &self,
+        req: Request<rpc::SpillObjectsRequest>,
+    ) -> Result<Response<rpc::SpillObjectsReply>, Status> {
+        self.handle_spill_objects(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn restore_spilled_objects(
+        &self,
+        req: Request<rpc::RestoreSpilledObjectsRequest>,
+    ) -> Result<Response<rpc::RestoreSpilledObjectsReply>, Status> {
+        self.handle_restore_spilled_objects(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn delete_spilled_objects(
+        &self,
+        req: Request<rpc::DeleteSpilledObjectsRequest>,
+    ) -> Result<Response<rpc::DeleteSpilledObjectsReply>, Status> {
+        self.handle_delete_spilled_objects(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn plasma_object_ready(
+        &self,
+        req: Request<rpc::PlasmaObjectReadyRequest>,
+    ) -> Result<Response<rpc::PlasmaObjectReadyReply>, Status> {
+        self.handle_plasma_object_ready(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn exit(
+        &self,
+        req: Request<rpc::ExitRequest>,
+    ) -> Result<Response<rpc::ExitReply>, Status> {
+        self.handle_exit(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn assign_object_owner(
+        &self,
+        req: Request<rpc::AssignObjectOwnerRequest>,
+    ) -> Result<Response<rpc::AssignObjectOwnerReply>, Status> {
+        self.handle_assign_object_owner(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn num_pending_tasks(
+        &self,
+        req: Request<rpc::NumPendingTasksRequest>,
+    ) -> Result<Response<rpc::NumPendingTasksReply>, Status> {
+        self.handle_num_pending_tasks(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn register_mutable_object_reader(
+        &self,
+        req: Request<rpc::RegisterMutableObjectReaderRequest>,
+    ) -> Result<Response<rpc::RegisterMutableObjectReaderReply>, Status> {
+        self.handle_register_mutable_object_reader(req.into_inner())
+            .await
+            .map(Response::new)
     }
 }

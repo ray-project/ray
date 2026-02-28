@@ -57,9 +57,14 @@ AUTOSCALER_V2_DIR = os.path.join("autoscaler", "v2")
 RAYLET_EXECUTABLE = os.path.join(
     RAY_PATH, "core", "src", "ray", "raylet", "raylet" + EXE_SUFFIX
 )
-GCS_SERVER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
-)
+if os.environ.get("RAY_USE_RUST_GCS") == "1":
+    GCS_SERVER_EXECUTABLE = os.path.join(
+        RAY_HOME, "rust", "target", "debug", "gcs_server" + EXE_SUFFIX
+    )
+else:
+    GCS_SERVER_EXECUTABLE = os.path.join(
+        RAY_PATH, "core", "src", "ray", "gcs", "gcs_server" + EXE_SUFFIX
+    )
 
 JEMALLOC_SO = os.path.join(RAY_PATH, "core", "libjemalloc.so")
 
