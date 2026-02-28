@@ -123,7 +123,6 @@ class TrainController:
         failure_policy: FailurePolicy,
         callbacks: Optional[List[RayTrainCallback]] = None,
         validation_config: Optional[ValidationConfig] = None,
-        has_replica_groups: bool = False,
     ):
         self._train_run_context = train_run_context
         if ray_constants.env_bool(
@@ -134,7 +133,6 @@ class TrainController:
         self._train_fn_ref = train_fn_ref
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
-        self._has_replica_groups = has_replica_groups
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
         self._storage_context = self._train_run_context.run_config.storage_context
@@ -411,7 +409,6 @@ class TrainController:
             placement_strategy=placement_strategy,
             label_selector=label_selector,
             num_slices=num_slices,
-            has_replica_groups=self._has_replica_groups,
         )
         try:
             self._worker_group = self.worker_group_cls.create(

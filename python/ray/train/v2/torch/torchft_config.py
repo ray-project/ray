@@ -1,16 +1,15 @@
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import ray
 from ray.train.torch.config import (
     TorchConfig,
     _TorchBackend,
 )
-from ray.train.v2._internal.constants import TORCHFT_LIGHTHOUSE_ENV_VAR
+from ray.train.v2._internal.constants import TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR
 from ray.train.v2._internal.execution.worker_group import WorkerGroup
-from ray.train.v2.backend import BeforeWorkerGroupStartMixin
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -34,10 +33,6 @@ class TorchftConfig(TorchConfig):
     def backend_cls(self):
         return _TorchftBackend
 
-    @property
-    def has_replica_groups(self):
-        return True
-
 
 @ray.remote
 class LighthouseServerActor:
@@ -55,7 +50,7 @@ class LighthouseServerActor:
         return self.lighthouse.address()
 
 
-class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
+class _TorchftBackend(_TorchBackend):
     """Backend for torchft-based fault-tolerant training with replica groups.
 
     Creates a separate process group per replica group by calling
@@ -66,9 +61,12 @@ class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
         super().__init__()
         self.lighthouse_actor = None
 
-    def before_worker_group_start(self, backend_config: TorchftConfig):
+    def _maybe_create_lighthouse_actor(
+        self, backend_config: TorchftConfig
+    ) -> Optional[str]:
+        """Create lighthouse actor if it doesn't exist and return its address."""
         if self.lighthouse_actor is not None:
-            return
+            return None
 
         # Let the OS pick a free port by default
         if "bind" in backend_config.lighthouse_kwargs:
@@ -86,11 +84,19 @@ class _TorchftBackend(_TorchBackend, BeforeWorkerGroupStartMixin):
         ).remote(lighthouse_kwargs=lighthouse_kwargs)
         lighthouse_address = ray.get(self.lighthouse_actor.address.remote())
         logger.info(f"Created torchft lighthouse at {lighthouse_address}")
-        os.environ[TORCHFT_LIGHTHOUSE_ENV_VAR] = lighthouse_address
+        return lighthouse_address
 
     def on_start(self, worker_group, backend_config: TorchftConfig):
         assert isinstance(worker_group, WorkerGroup)
+        lighthouse_address = self._maybe_create_lighthouse_actor(backend_config)
         replica_groups = worker_group.get_replica_groups()
+
+        # Push the lighthouse address to all workers.
+        # Necessary because workers were already started before on_start runs.
+        def _set_lighthouse_address(addr: str):
+            os.environ[TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR] = lighthouse_address
+
+        worker_group.execute(_set_lighthouse_address, lighthouse_address)
 
         # Bind super() eagerly — the zero-arg form relies on a __class__ cell
         # that doesn't transfer correctly into ThreadPoolExecutor submissions.

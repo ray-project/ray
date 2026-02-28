@@ -7,9 +7,7 @@ from ray.train.v2._internal.execution.callback import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
-    WorkerGroupContext,
 )
-from ray.train.v2.backend import BeforeWorkerGroupStartMixin
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +16,6 @@ class BackendSetupCallback(WorkerGroupCallback):
     def __init__(self, backend_config: BackendConfig):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
-
-    def before_worker_group_start(self, worker_group_context: WorkerGroupContext):
-        """Called before the worker group actors are initialized."""
-        if isinstance(self._backend, BeforeWorkerGroupStartMixin):
-            self._backend.before_worker_group_start(self._backend_config)
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
         self._backend.on_start(worker_group, self._backend_config)

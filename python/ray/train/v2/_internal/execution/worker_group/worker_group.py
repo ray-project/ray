@@ -109,7 +109,6 @@ class WorkerGroupContext:
     placement_strategy: str = "PACK"
     label_selector: Optional[List[Dict[str, str]]] = None
     num_slices: int = 1
-    has_replica_groups: bool = False
 
 
 class WorkerGroup(ExecutionGroup):
@@ -325,11 +324,10 @@ class WorkerGroup(ExecutionGroup):
             )
             worker_group_state_builder.with_workers(workers)
 
-            if worker_group_context.has_replica_groups:
-                self._replica_groups = [
-                    ReplicaGroup([worker], worker_group_context.resources_per_worker)
-                    for worker in workers
-                ]
+            self._replica_groups = [
+                ReplicaGroup([worker], worker_group_context.resources_per_worker)
+                for worker in workers
+            ]
 
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.

@@ -180,7 +180,6 @@ class DataParallelTrainer:
                 train_run_context=self.train_run_context,
                 callbacks=self._create_default_callbacks(),
                 validation_config=self.validation_config,
-                has_replica_groups=self.backend_config.has_replica_groups,
             )
 
             if result.error:
