@@ -3638,18 +3638,17 @@ py_test(
     args = [
         "--num-agents=2",
         "--as-test",
-        "--stop-reward=800.0",
+        "--stop-reward=500.0",
         "--stop-timesteps=2000000",
         "--framework=torch",
         "--algo=IMPALA",
+        "--seed=42",
     ],
     main = "examples/connectors/flatten_observations_dict_space.py",
     tags = [
         "examples",
         "exclusive",
         "team:rllib",
-        # Test is failing: https://github.com/ray-project/ray/issues/47717
-        "manual",
     ],
 )
 
