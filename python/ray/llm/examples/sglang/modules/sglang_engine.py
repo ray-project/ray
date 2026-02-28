@@ -8,6 +8,7 @@ from typing import (
     Optional,
 )
 
+from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -19,6 +20,9 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     EmbeddingResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.core.server.llm_server import (
+    _merge_replica_actor_and_child_actor_bundles,
+)
 
 
 class SGLangServer:
@@ -377,12 +381,38 @@ class SGLangServer:
         deployment_options = copy.deepcopy(llm_config.deployment_config)
         pg_config = llm_config.placement_group_config or {}
 
+        ray_actor_options = deployment_options.get("ray_actor_options", {})
+
         tp_size = llm_config.engine_kwargs.get("tp_size", 1)
+        pp_size = llm_config.engine_kwargs.get("pp_size", 1)
+        num_devices = tp_size * pp_size
+
+        if tp_size < 1 or pp_size < 1:
+            raise ValueError(
+                f"Invalid configuration: tp_size={tp_size} and pp_size={pp_size}. "
+                f"Both must be >= 1."
+            )
 
         if "placement_group_bundles" not in pg_config:
-            pg_bundles = [{"CPU": 1, "GPU": 1}]
-            if tp_size > 1:  # TO DO: to support tp_size > 1 cases
-                pg_bundles.extend([{"GPU": 1} for _ in range(tp_size - 1)])
+            child_bundles = [{"GPU": 1} for _ in range(num_devices)]
+
+            replica_bundle = {
+                "CPU": ray_actor_options.get("num_cpus", 1),
+            }
+
+            if ray_actor_options.get("num_gpus"):
+                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
+
+            if "memory" in ray_actor_options:
+                replica_bundle["memory"] = ray_actor_options["memory"]
+
+            replica_bundle.update(ray_actor_options.get("resources", {}))
+
+            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+                child_actor_bundles=child_bundles,
+                replica_actor_bundle=replica_bundle,
+            )
+
             pg_strategy = "PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
@@ -395,15 +425,13 @@ class SGLangServer:
             }
         )
 
-        ray_actor_options = deployment_options.get("ray_actor_options", {})
-
         runtime_env = ray_actor_options.setdefault("runtime_env", {})
 
-        # set as default without checking ENABLE_WORKER_PROCESS_SETUP_HOOK
-        runtime_env.setdefault(
-            "worker_process_setup_hook",
-            "ray.llm._internal.serve._worker_process_setup_hook",
-        )
+        if ENABLE_WORKER_PROCESS_SETUP_HOOK:
+            runtime_env.setdefault(
+                "worker_process_setup_hook",
+                "ray.llm._internal.serve._worker_process_setup_hook",
+            )
 
         if llm_config.runtime_env:
             runtime_env.update(llm_config.runtime_env)
