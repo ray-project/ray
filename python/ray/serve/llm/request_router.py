@@ -4,7 +4,7 @@ from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router i
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PrefixCacheAffinityRouter(_PrefixCacheAffinityRouter):
     """A request router that is aware of the KV cache.
 

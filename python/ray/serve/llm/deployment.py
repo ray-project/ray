@@ -14,7 +14,7 @@ from ray.util.annotations import PublicAPI
 #############
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LLMServer(InternalLLMServer):
     """The implementation of the vLLM engine deployment.
 
@@ -69,7 +69,7 @@ class LLMServer(InternalLLMServer):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PDProxyServer(_PDProxyServer):
     """A proxy server for prefill-decode disaggregation.
 
@@ -85,7 +85,7 @@ class PDProxyServer(_PDProxyServer):
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DPServer(_DPServer):
     """Data Parallel LLM Server.
 
