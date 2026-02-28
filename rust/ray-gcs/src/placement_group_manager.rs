@@ -247,8 +247,13 @@ mod tests {
             .unwrap();
         assert_eq!(mgr.num_placement_groups(), 1);
 
-        let pg = mgr.handle_get_named_placement_group("pg1", "default");
-        assert!(pg.is_some());
+        // Get by name and verify fields match what was created
+        let pg = mgr
+            .handle_get_named_placement_group("pg1", "default")
+            .expect("placement group should be found by name");
+        assert_eq!(pg.name, "pg1");
+        assert_eq!(pg.ray_namespace, "default");
+        assert_eq!(pg.placement_group_id[0], 1);
     }
 
     #[tokio::test]

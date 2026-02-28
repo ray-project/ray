@@ -359,9 +359,13 @@ mod tests {
             .unwrap();
         assert_eq!(mgr.num_registered_actors(), 1);
 
-        // Get by name
-        let actor = mgr.handle_get_named_actor_info("my_actor", "default");
-        assert!(actor.is_some());
+        // Get by name and verify fields match what was registered
+        let actor = mgr
+            .handle_get_named_actor_info("my_actor", "default")
+            .expect("actor should be found by name");
+        assert_eq!(actor.name, "my_actor");
+        assert_eq!(actor.ray_namespace, "default");
+        assert_eq!(actor.actor_id[0], 1);
     }
 
     #[tokio::test]

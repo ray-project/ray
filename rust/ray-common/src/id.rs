@@ -580,11 +580,19 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_deterministic() {
+    fn test_hash_deterministic_and_distinct() {
         let id = UniqueID::from_random();
         let h1 = id.murmur_hash();
         let h2 = id.murmur_hash();
-        assert_eq!(h1, h2);
+        assert_eq!(h1, h2, "same ID should produce same hash");
+
+        // Different IDs should (almost certainly) produce different hashes
+        let other = UniqueID::from_random();
+        let h3 = other.murmur_hash();
+        assert_ne!(
+            h1, h3,
+            "two random IDs should produce different hashes (collision is astronomically unlikely)"
+        );
     }
 
     #[test]

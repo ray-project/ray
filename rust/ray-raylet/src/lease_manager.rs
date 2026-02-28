@@ -315,19 +315,50 @@ mod tests {
     }
 
     #[test]
-    fn test_cancel_lease() {
+    fn test_infeasible_lease_queuing() {
         let mgr = make_lease_manager();
 
-        // Request more than available so it stays pending
+        // Request more than available so it stays infeasible
         let mut req = ResourceSet::new();
         req.set("CPU".to_string(), FixedPoint::from_f64(100.0));
 
         let _rx =
             mgr.queue_and_schedule_lease(req, SchedulingOptions::hybrid(), SchedulingClass(1));
 
-        // Lease ID 1 should be in infeasible (not pending)
-        // since it's infeasible
+        // Should be in infeasible queue since no node can satisfy 100 CPUs
         assert_eq!(mgr.num_infeasible_leases(), 1);
+    }
+
+    #[test]
+    fn test_cancel_lease() {
+        let mgr = make_lease_manager();
+
+        // Exhaust all local CPUs (4) so subsequent feasible requests stay pending
+        let mut all_cpus = ResourceSet::new();
+        all_cpus.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+
+        let mut rx1 =
+            mgr.queue_and_schedule_lease(all_cpus, SchedulingOptions::hybrid(), SchedulingClass(1));
+        match rx1.try_recv().unwrap() {
+            LeaseReply::Granted { node_id, .. } => {
+                assert_eq!(node_id, "local");
+            }
+            _ => panic!("expected grant for 4 CPUs"),
+        }
+
+        // Now request 1 CPU — feasible (total=4) but not available (all allocated)
+        // This lease stays in leases_to_schedule as pending
+        let mut small_req = ResourceSet::new();
+        small_req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let _rx2 =
+            mgr.queue_and_schedule_lease(small_req, SchedulingOptions::hybrid(), SchedulingClass(2));
+        assert_eq!(mgr.num_pending_leases(), 1, "should have 1 pending lease");
+
+        // Cancel the pending lease
+        // Lease IDs are auto-incremented starting at 1, so second lease is ID 2
+        let cancelled = mgr.cancel_lease(2);
+        assert!(cancelled, "cancel should succeed for pending lease");
     }
 
     #[test]

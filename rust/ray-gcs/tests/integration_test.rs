@@ -300,7 +300,23 @@ async fn test_gcs_cluster_id() {
         .await
         .unwrap();
     let cluster_id = resp.into_inner().cluster_id;
-    assert!(!cluster_id.is_empty());
+    assert_eq!(
+        cluster_id.len(),
+        28,
+        "cluster ID should be exactly 28 bytes, got {}",
+        cluster_id.len()
+    );
+
+    // Verify consistency: a second call returns the same cluster ID
+    let resp2 = client
+        .get_cluster_id(rpc::GetClusterIdRequest::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        cluster_id,
+        resp2.into_inner().cluster_id,
+        "cluster ID should be consistent across calls"
+    );
 
     server.shutdown_tx.send(()).unwrap();
     server.join_handle.await.unwrap();
@@ -345,7 +361,13 @@ async fn test_gcs_actor_register_and_get() {
         .await
         .unwrap();
     let info = resp.into_inner();
-    assert!(info.actor_table_data.is_some());
+    let actor_data = info
+        .actor_table_data
+        .expect("actor_table_data should be present");
+    assert_eq!(
+        actor_data.actor_id, actor_id,
+        "returned actor_id should match what was registered"
+    );
 
     server.shutdown_tx.send(()).unwrap();
     server.join_handle.await.unwrap();

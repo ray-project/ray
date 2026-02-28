@@ -151,9 +151,21 @@ mod tests {
     fn test_subscribe_unsubscribe() {
         let handler = InternalPubSubHandler::new();
 
+        // Subscribe creates a buffer entry
         handler.handle_subscribe_command(b"sub1".to_vec(), &[2, 3]);
-        handler.handle_unsubscribe_command(b"sub1");
+        assert!(
+            handler.subscriber_buffers.lock().contains_key(&b"sub1".to_vec()),
+            "subscriber buffer should exist after subscribe"
+        );
 
-        // No panic — just verifying the operations complete
+        // Unsubscribe removes the buffer entry
+        handler.handle_unsubscribe_command(b"sub1");
+        assert!(
+            !handler.subscriber_buffers.lock().contains_key(&b"sub1".to_vec()),
+            "subscriber buffer should be removed after unsubscribe"
+        );
+
+        // Double-unsubscribe should not panic
+        handler.handle_unsubscribe_command(b"sub1");
     }
 }

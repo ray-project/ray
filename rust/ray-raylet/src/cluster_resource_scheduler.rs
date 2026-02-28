@@ -209,7 +209,28 @@ mod tests {
         req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
 
         let node = scheduler.get_best_schedulable_node(&req, &SchedulingOptions::hybrid());
-        assert!(node.is_some());
+        // Hybrid scheduling picks among tied-score nodes nondeterministically.
+        // Verify a valid schedulable node is returned.
+        let valid_nodes = ["local", "remote"];
+        assert!(
+            node.as_ref().map_or(false, |n| valid_nodes.contains(&n.as_str())),
+            "scheduler should return a valid node, got {:?}",
+            node
+        );
+
+        // With preferred_node_id and sufficient top-k, it should prefer local
+        // (top-k must include the preferred node for the preference to kick in)
+        let opts = SchedulingOptions {
+            preferred_node_id: Some("local".to_string()),
+            schedule_top_k_absolute: 10,
+            ..SchedulingOptions::hybrid()
+        };
+        let node = scheduler.get_best_schedulable_node(&req, &opts);
+        assert_eq!(
+            node,
+            Some("local".to_string()),
+            "scheduler should prefer local node when preferred_node_id is set with sufficient top-k"
+        );
     }
 
     #[test]
@@ -275,6 +296,12 @@ mod tests {
         match result {
             BundleSchedulingResult::Success(assignments) => {
                 assert_eq!(assignments.len(), 2);
+                // BundleSpread should place bundles on different nodes
+                assert_ne!(
+                    assignments[0], assignments[1],
+                    "BundleSpread should assign to different nodes, got both on {:?}",
+                    assignments[0]
+                );
             }
             _ => panic!("expected success"),
         }
