@@ -512,11 +512,24 @@ class DeploymentAutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
+
+            # Exclude early "partial" period: when series have misaligned start times,
+            # late-starting series are implicitly 0 before their first data point, which
+            # undercounts the total and biases aggregations. Start the window at the
+            # timestamp when all series have contributed at least one point.
+            window_start = None
+            non_empty_series = [ts for ts in timeseries_list if ts]
+            if len(non_empty_series) > 1:
+                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+                if aligned_start < merged_timeseries[-1].timestamp:
+                    window_start = aligned_start
+
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
                 merged_timeseries,
                 aggregation_function=self._config.aggregation_function,
                 last_window_s=last_window_s,
+                window_start=window_start,
             )
             return value if value is not None else 0.0
 
