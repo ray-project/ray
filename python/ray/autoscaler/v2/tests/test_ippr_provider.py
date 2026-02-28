@@ -745,6 +745,8 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         assert st.has_resize_request_to_send()
         assert st.desired_cpu == 2.0
         assert st.desired_memory == 4 * Gi
+        assert st.suggested_max_cpu == 2.0
+        assert st.suggested_max_memory == 4 * Gi
 
     def test_revert_timeout_ippr(self):
         rc = _make_ray_cluster_with_ippr(
@@ -772,6 +774,8 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         assert st.has_resize_request_to_send()
         assert st.desired_cpu == 2.0
         assert st.desired_memory == 4 * Gi
+        assert st.suggested_max_cpu == 2.0
+        assert st.suggested_max_memory == 4 * Gi
 
     @patch(
         "ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider.RayletClient"

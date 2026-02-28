@@ -573,6 +573,8 @@ def _get_ippr_status_from_pod(
             desired_cpu=ippr_status.current_cpu,
             desired_memory=ippr_status.current_memory,
         ):
+            ippr_status.suggested_max_cpu = ippr_status.current_cpu
+            ippr_status.suggested_max_memory = ippr_status.current_memory
             logger.info(
                 f"Revert failed or stuck IPPR for {ippr_status.cloud_instance_id} with status {ippr_status}"
             )
