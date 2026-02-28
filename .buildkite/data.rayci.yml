@@ -65,9 +65,9 @@ steps:
       - data
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci:run_in_docker -- --build-name data9build-py3.10
+      - bazel run //ci/ray_ci:run_in_docker -- --build-name databuild-py3.10
           "pip install pyrefly==0.51.0 && pyrefly check $(tr '\n' ' ' < ci/lint/pyrefly-allowlist.txt)"
-    depends_on: data9build-multipy
+    depends_on: databuild-multipy
 
   # tests
   - label: ":database: data: arrow v9 tests"
