@@ -1,4 +1,4 @@
-text: Below are examples for using Ray Data for batch inference workloads or large-scale data processing with a variety of frameworks and use cases.
+text: Below are examples for using Ray Data for batch inference workloads or large-scale data processing with a variety of frameworks and use cases. For examples of using Ray Data for last-mile training ingest, see the <a href="../train/examples.html">Ray Train examples</a>.
 columns_to_show:
   - frameworks
 groupby: skill_level
