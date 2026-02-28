@@ -340,9 +340,10 @@ def test_uuid_expression_structural_equality():
     expr1 = uuid()
     expr2 = uuid()
 
-    # All uuid() expressions should be structurally equal (no parameters)
-    assert expr1.structurally_equals(expr2)
-    assert expr2.structurally_equals(expr1)
+    # Each uuid() expression is unique (like a monotonically increasing id),
+    # so no two instances are ever structurally equal.
+    assert not expr1.structurally_equals(expr2)
+    assert not expr2.structurally_equals(expr1)
 
 
 def test_uuid_expression_structural_equality_with_non_uuid_expr():
