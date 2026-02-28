@@ -10,6 +10,7 @@ ray_cc_library(
         "//src/ray/common:lease",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/raylet:worker_interface",
+        "//src/ray/util:compat",
         "//src/ray/util:fake_process",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -128,12 +129,30 @@ ray_cc_test(
         "worker_killing_policy_group_by_owner_test.cc",
     ],
     tags = ["team:core"],
+    visibility = ["//visibility:private"],
     deps = [
         ":util",
         "//src/ray/common:asio",
         "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy_group_by_owner",
         "//src/ray/util:fake_process",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "worker_killing_policy_by_time_test",
+    size = "small",
+    srcs = [
+        "worker_killing_policy_by_time_test.cc",
+    ],
+    tags = ["team:core"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":util",
+        "//src/ray/common:lease",
+        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/raylet:worker_killing_policy_by_time",
         "@com_google_googletest//:gtest_main",
     ],
 )

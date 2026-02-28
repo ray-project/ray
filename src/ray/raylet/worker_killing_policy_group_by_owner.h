@@ -103,8 +103,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
    * Once a group is selected, we select the last submitted worker from the group.
    *
    * \param workers the list of workers to select and kill from.
-   * \param system_memory snapshot of memory usage. Used to print the memory usage of the
-   * workers.
+   * \param process_memory_snapshot snapshot of per-process memory usage.
    * \return the list of workers to kill and whether the task on each worker
    * should be retried.
    */
@@ -116,7 +115,7 @@ class GroupByOwnerIdWorkerKillingPolicy : public WorkerKillingPolicyInterface {
    * Creates the debug string of the groups created by the policy.
    *
    * \param groups groups to print
-   * \param system_memory snapshot of memory usage.
+   * \param process_memory_snapshot snapshot of per-process memory usage.
    * \return the debug string.
    */
   static std::string PolicyDebugString(
