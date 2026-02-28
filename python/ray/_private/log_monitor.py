@@ -10,6 +10,7 @@ import shutil
 import sys
 import time
 import traceback
+from collections import deque
 from typing import Callable, List, Optional, Set
 
 import ray._private.ray_constants as ray_constants
@@ -158,8 +159,8 @@ class LogMonitor:
         self.logs_dir: str = logs_dir
         self.gcs_client = gcs_client
         self.log_filenames: Set[str] = set()
-        self.open_file_infos: List[LogFileInfo] = []
-        self.closed_file_infos: List[LogFileInfo] = []
+        self.open_file_infos: deque[LogFileInfo] = deque()
+        self.closed_file_infos: deque[LogFileInfo] = deque()
         self.can_open_more_files: bool = True
         self.max_files_open: int = max_files_open
         self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
@@ -184,7 +185,7 @@ class LogMonitor:
     def _close_all_files(self):
         """Close all open files (so that we can open more)."""
         while len(self.open_file_infos) > 0:
-            file_info = self.open_file_infos.pop(0)
+            file_info = self.open_file_infos.popleft()
             file_info.file_handle.close()
             file_info.file_handle = None
 
@@ -305,7 +306,7 @@ class LogMonitor:
                 self.can_open_more_files = False
                 break
 
-            file_info = self.closed_file_infos.pop(0)
+            file_info = self.closed_file_infos.popleft()
             assert file_info.file_handle is None
             # Get the file size to see if it has gotten bigger since we last
             # opened it.
