@@ -11,13 +11,14 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
-from ray.serve._private.common import DeploymentID, ReplicaState
+from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaState
 from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_state import ReplicaStartupStatus
+from ray.serve._private.test_utils import check_deployment_status
 from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
@@ -323,6 +324,78 @@ def test_replica_spread(ray_cluster):
 
     # Check that the replica on the dead node can be rescheduled.
     wait_for_condition(lambda: get_num_nodes() == 1)
+
+
+def test_autoscale_upscaling_stuck_then_healthy(ray_cluster):
+    """Test that deployment stuck in upscaling (due to insufficient cluster resources)
+    recovers to healthy when ongoing requests drop to zero.
+
+    Setup: Head with 0 CPUs + 1 worker with 1 CPU. 1 replica using 1 CPU,
+    target_ongoing_requests=1. Send 2 requests via handle -> autoscaler wants 2
+    replicas but can't add one (no CPU). Deployment stuck in UPSCALING.
+    Release requests -> deployment HEALTHY.
+    """
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=0)  # Head node (controller/proxy use 0 CPU)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+    serve.start()  # Start before adding worker so controller goes on head
+    cluster.add_node(num_cpus=1)  # Worker with 1 CPU for replica
+    cluster.wait_for_nodes()
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 1,
+            "max_replicas": 2,
+            "target_ongoing_requests": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.5,
+            "upscale_delay_s": 0,
+            # If delay is large then the test will be stuck in UPSCALING state.
+            "downscale_delay_s": 1,
+        },
+        max_ongoing_requests=1,
+        ray_actor_options={"num_cpus": 1},
+        graceful_shutdown_timeout_s=2,
+    )
+    def blocking_replica():
+        ray.get(signal.wait.remote())
+        return "ok"
+
+    handle = serve.run(blocking_replica.bind())
+    wait_for_condition(
+        check_deployment_status,
+        name="blocking_replica",
+        expected_status=DeploymentStatus.HEALTHY,
+    )
+
+    # Send 2 requests - first occupies the replica, second queues. With
+    # target_ongoing_requests=1 and 1 replica, 2 requests triggers scale to 2.
+    responses = [handle.remote() for _ in range(2)]
+
+    # Deployment should get stuck in UPSCALING: autoscaler wants 2 replicas
+    # but cluster only has 1 CPU (replica uses it all).
+    wait_for_condition(
+        check_deployment_status,
+        name="blocking_replica",
+        expected_status=DeploymentStatus.UPSCALING,
+        timeout=15,
+    )
+
+    # Release the signal so running requests complete and go to zero.
+    ray.get(signal.send.remote())
+    for r in responses:
+        assert r.result() == "ok"
+
+    # Deployment should recover to HEALTHY as load drops (may go through
+    # DOWNSCALING first if a second replica was briefly added).
+    wait_for_condition(
+        check_deployment_status,
+        name="blocking_replica",
+        expected_status=DeploymentStatus.HEALTHY,
+        timeout=30,
+    )
 
 
 def test_handle_prefers_replicas_on_same_node(ray_cluster):
