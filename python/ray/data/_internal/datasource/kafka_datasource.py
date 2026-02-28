@@ -569,7 +569,12 @@ class KafkaDatasource(Datasource):
 
                 def kafka_read_fn() -> Iterable[Block]:
                     """Read function for a single Kafka partition using confluent-kafka."""
-                    from confluent_kafka import Consumer, TopicPartition
+                    from confluent_kafka import (
+                        Consumer,
+                        KafkaError,
+                        KafkaException,
+                        TopicPartition,
+                    )
 
                     built_consumer_config = _build_consumer_config_for_read(
                         bootstrap_servers, kafka_auth_config, user_consumer_config
@@ -627,8 +632,13 @@ class KafkaDatasource(Datasource):
                                 if msg is None:
                                     continue
                                 if msg.error():
-                                    # Preserve old semantics: skip errors
-                                    continue
+                                    # In confluent-kafka, errors are delivered as messages.
+                                    # Only skip on partition EOF events, raise others.
+                                    err = msg.error()
+                                    if err.code() == KafkaError._PARTITION_EOF:
+                                        print(f"skipping partition EOF error: {err}")
+                                        continue
+                                    raise KafkaException(err)
 
                                 # Stop once we reached the end offset (exclusive)
                                 if msg.offset() >= resolved_end:
