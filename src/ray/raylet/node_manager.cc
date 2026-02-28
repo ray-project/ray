@@ -3097,8 +3097,12 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             rpc::RayErrorInfo worker_failure_reason;
             worker_failure_reason.set_error_message(worker_exit_message);
             worker_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-            SetWorkerFailureReason(
-                worker_to_kill->GetGrantedLeaseId(), worker_failure_reason, should_retry);
+
+            if (!worker_to_kill->GetGrantedLeaseId().IsNil()) {
+              SetWorkerFailureReason(worker_to_kill->GetGrantedLeaseId(),
+                                     worker_failure_reason,
+                                     should_retry);
+            }
 
             DestroyWorker(worker_to_kill,
                           rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
@@ -3163,32 +3167,32 @@ std::string NodeManager::CreateOomKillMessageDetails(
         absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
     std::string worker_type_str = "";
-    std::string lease_and_task_str = "";
+    std::string lease_str = "";
     if (worker->GetGrantedLeaseId().IsNil()) {
-      worker_type_str = "Worker with no lease granted: ";
+      worker_type_str = "(Worker with no lease granted: ";
     } else {
       if (worker->GetActorId().IsNil()) {
-        worker_type_str = "Task: ";
+        worker_type_str = "(Task: ";
       } else {
-        worker_type_str = absl::StrFormat("Actor(%s): ", worker->GetActorId().Hex());
+        worker_type_str = absl::StrFormat("(Actor(%s): ", worker->GetActorId().Hex());
       }
-      lease_and_task_str = absl::StrFormat(
-          " lease ID=%s, task name=%s,",
-          worker->GetGrantedLeaseId().Hex(),
-          worker->GetGrantedLease().GetLeaseSpecification().GetTaskName());
+      lease_str =
+          absl::StrFormat("job ID=%s, lease ID=%s, task name=%s, required resources=%s, ",
+                          worker->GetGrantedLease().GetLeaseSpecification().JobId().Hex(),
+                          worker->GetGrantedLeaseId().Hex(),
+                          worker->GetGrantedLease().GetLeaseSpecification().GetTaskName(),
+                          worker->GetGrantedLease()
+                              .GetLeaseSpecification()
+                              .GetRequiredResources()
+                              .DebugString());
     }
     std::string worker_detail = absl::StrFormat(
         "%s"
-        "job ID=%s, %s"
-        "pid=%d, required resources=%s, actual memory used=%sGB, worker ID=%s)",
+        "%s"
+        "pid=%d, actual memory used=%sGB, worker ID=%s)",
         worker_type_str,
-        worker->GetGrantedLease().GetLeaseSpecification().JobId().Hex(),
-        lease_and_task_str,
+        lease_str,
         pid,
-        worker->GetGrantedLease()
-            .GetLeaseSpecification()
-            .GetRequiredResources()
-            .DebugString(),
         process_used_bytes_gb,
         worker->WorkerId().Hex());
 
@@ -3199,7 +3203,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
       "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f), "
       "which exceeds the memory usage threshold of %f; "
       "Object store memory usage: [%s]; "
-      "Ray killed %d worker(s) based on the killing policy:"
+      "Ray killed %d worker(s) based on the killing policy: "
       "[%s]; "
       "To see more information about memory usage on this node, "
       "use `ray logs raylet.out -ip %s`; "
