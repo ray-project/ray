@@ -5,6 +5,7 @@ How-to guides for deploying and configuring Ray Serve LLM features.
 ```{toctree}
 :maxdepth: 1
 
+Callbacks <callbacks>
 Cross-node parallelism <cross-node-parallelism>
 Data parallel attention <data-parallel-attention>
 Deployment Initialization <deployment-initialization>
