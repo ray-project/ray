@@ -1508,7 +1508,11 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
         return (None, self._seed + cur_shuffle_task_idx)
 
     def _get_operator_num_cpus_override(self) -> float:
-        return self.data_context.hash_shuffle_operator_actor_num_cpus_override
+        if self.data_context.hash_shuffle_operator_actor_num_cpus_override is not None:
+            return self.data_context.hash_shuffle_operator_actor_num_cpus_override
+        # Random shuffle aggregators are lightweight (concat + permute) until
+        # finalization. Use minimal CPU to avoid starving shuffle tasks.
+        return self._DEFAULT_AGGREGATORS_MIN_CPUS
 
     # Concat + permutation has the same memory profile as HashShuffleOperator.
     _estimate_aggregator_memory_allocation = (
