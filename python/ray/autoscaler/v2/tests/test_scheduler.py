@@ -2816,6 +2816,145 @@ def test_ippr_resize_to_maximum_capacity():
     assert reply.to_ippr[0].desired_memory == 8 * 1024 * 1024 * 1024
 
 
+def test_ippr_resize_scale_out_if_one_ippr_is_new():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    # IPPR limits/specs and provider suggestion to upsize CPU to 2
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=1 * 1024 * 1024 * 1024,
+        resized_status="new",  # error or timeout will be rollback with a new IPPR action
+        raylet_id="r1",
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Scheduler should issue a new IPPR for the rollback.
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].cloud_instance_id == "pod-1"
+    assert reply.to_ippr[0].desired_cpu == 1
+    assert reply.to_ippr[0].desired_memory == 1 * 1024 * 1024 * 1024
+    # Scheduler should scale out a new node
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {"type_1": 1}
+
+
+def test_ippr_resize_scale_out_if_one_ippr_is_inprogress():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    # IPPR limits/specs and provider suggestion to upsize CPU to 2
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=1 * 1024 * 1024 * 1024,
+        resized_status="inprogress",
+        raylet_id="r1",
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Scheduler should not issue new IPPR action because the IPPR is in progress
+    assert len(reply.to_ippr) == 0
+    # Scheduler should scale out a new node
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {"type_1": 1}
+
+
 def test_ippr_in_progress_exposes_desired_capacity_avoids_launch():
     scheduler = ResourceDemandScheduler(event_logger)
 
@@ -2919,7 +3058,7 @@ def test_ippr_max_limits_affect_new_node_capacity():
     assert reply.to_ippr == []
 
 
-def test_ippr_max_limits_apply_to_replacement_new_nodes():
+def test_ippr_max_limits_affect_new_node_capacity_2():
     scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {

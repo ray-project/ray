@@ -476,9 +476,9 @@ def _get_ippr_status_from_pod(
         if condition["type"] == "PodResizePending" and condition["status"] == "True":
             ippr_status.resized_message = condition.get("message")
             ippr_status.resized_status = condition.get("reason", "").lower()
-            match = None
+            report = None
             if ippr_status.resized_message and ippr_status.resized_status == "deferred":
-                match = re.search(
+                report = re.search(
                     r"Node didn't have enough resource: (cpu|memory), requested: (\d+), used: (\d+), capacity: (\d+)",
                     ippr_status.resized_message,
                 )
@@ -486,42 +486,40 @@ def _get_ippr_status_from_pod(
                 ippr_status.resized_message
                 and ippr_status.resized_status == "infeasible"
             ):
-                match = re.search(
+                report = re.search(
                     r"Node didn't have enough capacity: (cpu|memory), requested: (\d+), ()capacity: (\d+)",
                     ippr_status.resized_message,
                 )
-            if match:
+            if report:
                 # Example (resize to max-cpu = 8, max-memory = 20Gi):
                 #   Initial pod status:
-                #     - CPU limits set to 4 cores
-                #     - CPU requests set to 1 core (gap = 3 cores)
-                #     - Mem limits set to 8Gi
-                #     - Mem requests set to 2Gi (gap = 6Gi)
-                #   Initial resize request (desired values picked by autoscaler):
+                #     - CPU limit is 4 cores
+                #     - CPU request is 1 core (gap = 3 cores)
+                #     - Mem limit is 8Gi
+                #     - Mem request is 2Gi (gap = 6Gi)
+                #   Initial resize request will be:
                 #     - desired_cpu=8 cores
                 #     - desired_memory=20Gi
-                #   Actual resize patch:
-                #     - CPU limits set 8 cores (upsize from 4)
-                #     - CPU requests set to 8 - 3  = 5 cores (upsize from 1, keep the gap 3 cores)
-                #     - Mem limits set to 20Gi (upsize from 8Gi)
-                #     - Mem requests set to 20 − 6 = 14Gi    (upsize from 2Gi, keep the gap 6Gi)
-                #   Kubelet reports (deferred):
-                #     - CPU: used=6, capacity=9 → remaining_cpu = 3 cores
-                #     - Mem: used=4Gi, capacity=10Gi  → remaining_mem = 6Gi
-                #   Targets while preserving gaps:
-                #     - Next CPU requests = 3 cores; Next Mem requests = 6Gi
-                #   Suggestions used in patch:
-                #     - suggested_max_cpu    = remaining_cpu + cpu_gap = 3 + 3  = 6 cores
-                #     - suggested_max_memory = remaining_mem + mem_gap = 6Gi + 6Gi = 12Gi
-                #   Patch outcome (requests = suggested − gap):
-                #     - CPU limits set to 6 cores
-                #     - CPU requests set to 6 - 3 cores (gap = 3 cores)
-                #     - Mem limits set to max(12Gi, 20Gi) = 20Gi (we can't lower the limit)
-                #     - Mem requests set to 12Gi - 6Gi = 6Gi (gap = 6Gi)
-                used = int(match.group(3) or "0")
-                capacity = int(match.group(4))
+                #   The actual resize patch will be:
+                #     - CPU limit is 8 cores (upsize from 4)
+                #     - CPU request is 8 - 3 = 5 cores (upsize from 1, keep the gap 3 cores)
+                #     - Mem limit is 20Gi (upsize from 8Gi)
+                #     - Mem request is 20 − 6 = 14Gi   (upsize from 2Gi, keep the gap 6Gi)
+                #   If Kubelet reports (the deferred case):
+                #     - CPU: used=5, capacity=9 → remaining_cpu = 4 cores
+                #     - Mem: used=6Gi, capacity=10Gi  → remaining_mem = 4Gi
+                #   The suggestions used in the next patch will be:
+                #     - suggested_max_cpu    = remaining_cpu + cpu_gap = 4 + 3  = 7 cores
+                #     - suggested_max_memory = remaining_mem + mem_gap = 4Gi + 6Gi = 10Gi
+                #   The actual resize patch will be:
+                #     - CPU limit is 7 cores
+                #     - CPU request is 7 - 3 = 4 cores (aligned with the kubelet's report, and keep the gap 3 cores)
+                #     - Mem limit is 10Gi
+                #     - Mem request is 10Gi - 6Gi = 4Gi (aligned with the kubelet's report, and keep the gap 6Gi)
+                used = int(report.group(3) or "0")
+                capacity = int(report.group(4))
                 max_request = capacity - used
-                if match.group(1) == "cpu":
+                if report.group(1) == "cpu":
                     diff = parse_quantity(
                         pod_status_limits.get("cpu") or pod_status_requests.get("cpu")
                     ) - parse_quantity(pod_status_requests.get("cpu"))
