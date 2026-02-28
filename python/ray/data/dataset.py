@@ -2847,7 +2847,9 @@ class Dataset:
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
-                avg expected size of the individual partition (in bytes).
+                avg expected size of the individual partition (in bytes). This hint is
+                only used as a fallback when automatic size estimation from dataset
+                metadata is unavailable.
                 This is used in estimating the total dataset size and allow to tune
                 memory requirement of the individual joining workers to prevent OOMs
                 when joining very large datasets.

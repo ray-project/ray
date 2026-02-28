@@ -6,6 +6,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
+from ray.data._internal.execution.operators import hash_shuffle as hash_shuffle_module
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import MiB, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -848,6 +849,112 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
         "Filter comparing columns from both sides should NOT be pushed before Join "
         "since neither side has both columns"
     )
+
+
+def test_partition_size_hint_overridden_by_metadata(
+    ray_start_regular_shared_2_cpus, monkeypatch
+):
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    captured = []
+    original_get_args = (
+        hash_shuffle_module.HashShufflingOperatorBase._get_default_aggregator_ray_remote_args
+    )
+
+    def capture_args(
+        self,
+        num_partitions,
+        num_aggregators,
+        total_available_cluster_resources,
+        estimated_dataset_bytes,
+    ):
+        captured.append(estimated_dataset_bytes)
+        return original_get_args(
+            self,
+            num_partitions,
+            num_aggregators,
+            total_available_cluster_resources,
+            estimated_dataset_bytes,
+        )
+
+    monkeypatch.setattr(
+        hash_shuffle_module,
+        "_try_estimate_output_bytes",
+        lambda input_logical_ops: 1234,
+    )
+    monkeypatch.setattr(
+        hash_shuffle_module.HashShufflingOperatorBase,
+        "_get_default_aggregator_ray_remote_args",
+        capture_args,
+    )
+
+    left = ray.data.range(10).map(lambda row: {"id": row["id"]})
+    right = ray.data.range(10).map(lambda row: {"id": row["id"]})
+
+    left.join(
+        right,
+        join_type="inner",
+        num_partitions=4,
+        on=("id",),
+        partition_size_hint=2 * MiB,
+    ).take(1)
+
+    assert captured, "Expected estimated dataset bytes to be captured"
+    assert captured[-1] == 1234
+
+
+def test_partition_size_hint_used_when_metadata_missing(
+    ray_start_regular_shared_2_cpus, monkeypatch
+):
+    DataContext.get_current().target_max_block_size = 1 * MiB
+
+    captured = []
+    original_get_args = (
+        hash_shuffle_module.HashShufflingOperatorBase._get_default_aggregator_ray_remote_args
+    )
+
+    def capture_args(
+        self,
+        num_partitions,
+        num_aggregators,
+        total_available_cluster_resources,
+        estimated_dataset_bytes,
+    ):
+        captured.append(estimated_dataset_bytes)
+        return original_get_args(
+            self,
+            num_partitions,
+            num_aggregators,
+            total_available_cluster_resources,
+            estimated_dataset_bytes,
+        )
+
+    monkeypatch.setattr(
+        hash_shuffle_module,
+        "_try_estimate_output_bytes",
+        lambda input_logical_ops: None,
+    )
+    monkeypatch.setattr(
+        hash_shuffle_module.HashShufflingOperatorBase,
+        "_get_default_aggregator_ray_remote_args",
+        capture_args,
+    )
+
+    left = ray.data.range(10).map(lambda row: {"id": row["id"]})
+    right = ray.data.range(10).map(lambda row: {"id": row["id"]})
+
+    partition_size_hint = 2 * MiB
+    num_partitions = 4
+    left.join(
+        right,
+        join_type="inner",
+        num_partitions=num_partitions,
+        on=("id",),
+        partition_size_hint=partition_size_hint,
+    ).take(1)
+
+    assert captured, "Expected estimated dataset bytes to be captured"
+    assert captured[-1] == partition_size_hint * num_partitions
 
 
 if __name__ == "__main__":

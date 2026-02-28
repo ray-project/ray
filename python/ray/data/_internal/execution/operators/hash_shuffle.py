@@ -560,15 +560,16 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         num_aggregators = min(target_num_partitions, max_shuffle_aggregators)
 
         # Target dataset's size estimated as either of
-        #   1. ``partition_size_hint`` multiplied by target number of partitions
-        #   2. Estimation of input ops' outputs bytes
-        if partition_size_hint is not None:
-            # TODO replace with dataset-byte-size hint
+        #   1. Estimation of input ops' outputs bytes (from metadata)
+        #   2. ``partition_size_hint`` multiplied by target number of partitions
+        #      (fallback if automatic estimation is unavailable)
+        estimated_dataset_bytes = _try_estimate_output_bytes(
+            input_logical_ops,
+        )
+
+        if estimated_dataset_bytes is None and partition_size_hint is not None:
+            # Fall back to partition_size_hint if automatic estimation failed
             estimated_dataset_bytes = partition_size_hint * target_num_partitions
-        else:
-            estimated_dataset_bytes = _try_estimate_output_bytes(
-                input_logical_ops,
-            )
 
         ray_remote_args = self._get_default_aggregator_ray_remote_args(
             num_partitions=target_num_partitions,
