@@ -508,7 +508,7 @@ class IMPALAConfig(AlgorithmConfig):
             # Extend all episodes by one artificial timestep to allow the value function
             # net to compute the bootstrap values (and add a mask to the batch to know,
             # which slots to mask out).
-            connector.prepend(AddOneTsToEpisodesAndTruncate())
+            connector.prepend(AddOneTsToEpisodesAndTruncate(vtrace=True))
             # Remove the NumpyToTensor connector if we have the GPULoaderThreads.
             if self.num_aggregator_actors_per_learner > 0:
                 connector.remove(NumpyToTensor)

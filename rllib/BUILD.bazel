@@ -1874,6 +1874,16 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_ppo_value_bootstrapping",
+    size = "medium",
+    srcs = ["algorithms/ppo/tests/test_ppo_value_bootstrapping.py"],
+    tags = [
+        "algorithms_dir",
+        "team:rllib",
+    ],
+)
+
 # SAC
 py_test(
     name = "test_sac",
