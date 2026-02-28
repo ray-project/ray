@@ -607,7 +607,7 @@ class WorkerPool : public WorkerPoolInterface {
       const ProcessEnvironment &env,
       const WorkerID &worker_id);
 
-  /// Push an warning message to user if worker pool is getting to big.
+  /// Push a warning message to user if worker pool is getting too big.
   virtual void WarnAboutSize();
 
   /// Make this synchronized function for unit test.

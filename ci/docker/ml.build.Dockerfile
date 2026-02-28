@@ -33,6 +33,7 @@ fi
 
 if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
   pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
+  pip install pandas==2.2.2 numpy==1.26.4
 fi
 
 if [[ "$RAYCI_LIGHTNING_2" == "true" ]]; then
