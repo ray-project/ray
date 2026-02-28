@@ -82,7 +82,7 @@ def plan_all_to_all_op(
     input_physical_dag = physical_children[0]
 
     if isinstance(op, RandomizeBlocks):
-        fn = generate_randomize_blocks_fn(op)
+        fn = generate_randomize_blocks_fn(op, data_context)
         # Randomize block order does not actually compute anything, so we
         # want to inherit the upstream op's target max block size.
 
@@ -92,7 +92,7 @@ def plan_all_to_all_op(
         )
         fn = generate_random_shuffle_fn(
             data_context,
-            op.seed,
+            op.seed_config,
             op.num_outputs,
             op.ray_remote_args,
             debug_limit_shuffle_execution_to_num_blocks,
