@@ -1508,11 +1508,13 @@ version = "3.0.0-dev"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "clap",
  "dashmap",
  "hex",
  "parking_lot",
  "prost",
+ "rand 0.8.5",
  "ray-common",
  "ray-gcs-rpc-client",
  "ray-observability",
@@ -1521,6 +1523,7 @@ dependencies = [
  "ray-rpc",
  "ray-stats",
  "ray-syncer",
+ "ray-test-utils",
  "ray-util",
  "redis",
  "serde",
@@ -1530,9 +1533,9 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tonic",
+ "tonic-health",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -1632,11 +1635,15 @@ dependencies = [
  "ray-rpc",
  "ray-stats",
  "ray-syncer",
+ "ray-test-utils",
  "ray-util",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "tonic",
+ "tonic-health",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1705,9 +1712,16 @@ version = "3.0.0-dev"
 dependencies = [
  "rand 0.8.5",
  "ray-common",
+ "ray-core-worker",
+ "ray-gcs",
+ "ray-proto",
+ "ray-raylet",
  "ray-util",
  "tempfile",
  "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-health",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2156,6 +2170,19 @@ dependencies = [
  "prost-types",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tonic-health"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eaf34ddb812120f5c601162d5429933c9b527d901ab0e7f930d3147e33a09b2"
+dependencies = [
+ "async-stream",
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tonic",
 ]
 
 [[package]]

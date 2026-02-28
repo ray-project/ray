@@ -10,12 +10,14 @@
 //!
 //! Replaces `src/ray/gcs/gcs_server.h/cc`.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use ray_common::config::RayConfig;
 
 use crate::actor_manager::GcsActorManager;
 use crate::autoscaler_state_manager::GcsAutoscalerStateManager;
+use crate::grpc_services::*;
 use crate::health_check_manager::{GcsHealthCheckManager, HealthCheckConfig};
 use crate::job_manager::GcsJobManager;
 use crate::kv_manager::GcsInternalKVManager;
@@ -27,6 +29,8 @@ use crate::store_client::{InMemoryInternalKV, InMemoryStoreClient, RedisStoreCli
 use crate::table_storage::GcsTableStorage;
 use crate::task_manager::GcsTaskManager;
 use crate::worker_manager::GcsWorkerManager;
+
+use ray_proto::ray::rpc;
 
 /// Storage backend type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +53,7 @@ pub struct GcsServerConfig {
     pub node_id: Option<String>,
     pub log_dir: Option<String>,
     pub session_name: Option<String>,
+    pub session_dir: Option<String>,
     pub raylet_config_list: Option<String>,
     pub ray_config: RayConfig,
 }
@@ -65,6 +70,7 @@ impl Default for GcsServerConfig {
             node_id: None,
             log_dir: None,
             session_name: None,
+            session_dir: None,
             raylet_config_list: None,
             ray_config: RayConfig::default(),
         }
@@ -184,14 +190,10 @@ impl GcsServer {
             Arc::clone(&resource_manager),
         ));
 
-        // 7. Set cluster ID (generate if not provided)
-        let cluster_id = self
-            .config
-            .node_id
-            .clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        // 7. Generate a random 28-byte cluster ID (matching C++ ClusterID::FromRandom)
+        let cluster_id: Vec<u8> = (0..28).map(|_| rand::random::<u8>()).collect();
         node_manager.set_cluster_id(cluster_id.clone());
-        tracing::info!(cluster_id = %cluster_id, "Cluster ID set");
+        tracing::info!(cluster_id = hex::encode(&cluster_id), "Cluster ID set");
 
         // 8. Initialize from persistent storage
         node_manager.initialize().await?;
@@ -216,6 +218,21 @@ impl GcsServer {
         Ok(())
     }
 
+    /// Persist the bound port to the session directory.
+    ///
+    /// Matches C++ format: `{session_dir}/gcs_server_port_{node_id_hex}`
+    fn persist_port(&self, port: u16) -> anyhow::Result<()> {
+        if let Some(ref session_dir) = self.config.session_dir {
+            let dir = Path::new(session_dir);
+            std::fs::create_dir_all(dir)?;
+            let node_id = self.config.node_id.as_deref().unwrap_or("default");
+            let filename = format!("gcs_server_port_{}", node_id);
+            std::fs::write(dir.join(&filename), port.to_string())?;
+            tracing::info!(port, filename, "Port file written");
+        }
+        Ok(())
+    }
+
     /// Start the GCS server.
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(port = self.config.port, "Starting Rust GCS server");
@@ -229,27 +246,96 @@ impl GcsServer {
             "GCS server initialized, all managers ready"
         );
 
-        // Build tonic server with all services
-        let addr: std::net::SocketAddr = format!("0.0.0.0:{}", self.config.port)
-            .parse()
-            .map_err(|e| anyhow::anyhow!("Invalid address: {}", e))?;
+        // Construct tonic service wrappers from initialized managers
+        let job_svc = JobInfoGcsServiceImpl {
+            job_manager: Arc::clone(self.job_manager.as_ref().unwrap()),
+        };
+        let node_svc = NodeInfoGcsServiceImpl {
+            node_manager: Arc::clone(self.node_manager.as_ref().unwrap()),
+        };
+        let actor_svc = ActorInfoGcsServiceImpl {
+            actor_manager: Arc::clone(self.actor_manager.as_ref().unwrap()),
+        };
+        let kv_svc = InternalKVGcsServiceImpl {
+            kv_manager: Arc::clone(self.kv_manager.as_ref().unwrap()),
+        };
+        let worker_svc = WorkerInfoGcsServiceImpl {
+            worker_manager: Arc::clone(self.worker_manager.as_ref().unwrap()),
+        };
+        let pg_svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: Arc::clone(
+                self.placement_group_manager.as_ref().unwrap(),
+            ),
+        };
+        let resource_svc = NodeResourceInfoGcsServiceImpl {
+            resource_manager: Arc::clone(self.resource_manager.as_ref().unwrap()),
+        };
+        let runtime_env_svc = RuntimeEnvGcsServiceImpl;
+        // Publisher ID: random 28-byte NodeID, matches C++ Publisher behavior
+        let publisher_id: Vec<u8> = (0..28).map(|_| rand::random::<u8>()).collect();
+        let pubsub_svc = InternalPubSubGcsServiceImpl {
+            pubsub_handler: Arc::clone(self.pubsub_handler.as_ref().unwrap()),
+            publisher_id,
+        };
+        let task_svc = TaskInfoGcsServiceImpl {
+            task_manager: Arc::clone(self.task_manager.as_ref().unwrap()),
+        };
+        let autoscaler_svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager: Arc::clone(
+                self.autoscaler_state_manager.as_ref().unwrap(),
+            ),
+        };
 
-        tracing::info!(%addr, "GCS gRPC server listening");
+        // Health service
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+        health_reporter
+            .set_serving::<rpc::job_info_gcs_service_server::JobInfoGcsServiceServer<
+                JobInfoGcsServiceImpl,
+            >>()
+            .await;
+        health_reporter
+            .set_serving::<rpc::node_info_gcs_service_server::NodeInfoGcsServiceServer<
+                NodeInfoGcsServiceImpl,
+            >>()
+            .await;
+        health_reporter
+            .set_serving::<rpc::actor_info_gcs_service_server::ActorInfoGcsServiceServer<
+                ActorInfoGcsServiceImpl,
+            >>()
+            .await;
+        health_reporter
+            .set_serving::<rpc::internal_kv_gcs_service_server::InternalKvGcsServiceServer<
+                InternalKVGcsServiceImpl,
+            >>()
+            .await;
 
-        // For now, use a simple signal-based shutdown.
-        // The full tonic server registration happens here.
-        // Each tonic service would be registered using .add_service().
-        //
-        // Example (when tonic service traits are implemented):
-        // tonic::transport::Server::builder()
-        //     .add_service(JobInfoGcsServiceServer::new(job_svc))
-        //     .add_service(NodeInfoGcsServiceServer::new(node_svc))
-        //     .add_service(InternalKVGcsServiceServer::new(kv_svc))
-        //     ... etc ...
-        //     .serve_with_shutdown(addr, signal)
-        //     .await?;
+        // Bind TCP listener
+        let listener =
+            tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.config.port)).await?;
+        let bound_port = listener.local_addr()?.port();
+        tracing::info!(port = bound_port, "GCS gRPC server listening");
 
-        tokio::signal::ctrl_c().await?;
+        // Persist port file
+        self.persist_port(bound_port)?;
+
+        // Serve
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+        tonic::transport::Server::builder()
+            .add_service(rpc::job_info_gcs_service_server::JobInfoGcsServiceServer::new(job_svc))
+            .add_service(rpc::node_info_gcs_service_server::NodeInfoGcsServiceServer::new(node_svc))
+            .add_service(rpc::actor_info_gcs_service_server::ActorInfoGcsServiceServer::new(actor_svc))
+            .add_service(rpc::internal_kv_gcs_service_server::InternalKvGcsServiceServer::new(kv_svc))
+            .add_service(rpc::worker_info_gcs_service_server::WorkerInfoGcsServiceServer::new(worker_svc))
+            .add_service(rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsServiceServer::new(pg_svc))
+            .add_service(rpc::node_resource_info_gcs_service_server::NodeResourceInfoGcsServiceServer::new(resource_svc))
+            .add_service(rpc::runtime_env_gcs_service_server::RuntimeEnvGcsServiceServer::new(runtime_env_svc))
+            .add_service(rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsServiceServer::new(pubsub_svc))
+            .add_service(rpc::task_info_gcs_service_server::TaskInfoGcsServiceServer::new(task_svc))
+            .add_service(rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateServiceServer::new(autoscaler_svc))
+            .add_service(health_service)
+            .serve_with_incoming_shutdown(incoming, shutdown_signal())
+            .await?;
+
         tracing::info!("GCS server shutting down");
         Ok(())
     }
@@ -289,6 +375,24 @@ impl GcsServer {
     }
 }
 
+/// Wait for SIGTERM or SIGINT for graceful shutdown.
+async fn shutdown_signal() {
+    let ctrl_c = tokio::signal::ctrl_c();
+    #[cfg(unix)]
+    {
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+        tokio::select! {
+            _ = ctrl_c => {},
+            _ = sigterm.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        ctrl_c.await.ok();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,7 +424,7 @@ mod tests {
 
         // Add a job
         let job_mgr = server.job_manager().unwrap();
-        let job_data = ray_proto::ray::rpc::JobTableData {
+        let job_data = rpc::JobTableData {
             job_id: vec![1, 0, 0, 0],
             ..Default::default()
         };
@@ -329,7 +433,7 @@ mod tests {
 
         // Register a node
         let node_mgr = server.node_manager().unwrap();
-        let node_info = ray_proto::ray::rpc::GcsNodeInfo {
+        let node_info = rpc::GcsNodeInfo {
             node_id: vec![0u8; 28],
             state: 0,
             ..Default::default()
@@ -340,10 +444,10 @@ mod tests {
         // Put/get KV
         let kv_mgr = server.kv_manager().unwrap();
         kv_mgr
-            .handle_put("test", "key", "value".into(), true)
+            .handle_put(b"test", b"key", b"value".to_vec(), true)
             .await
             .unwrap();
-        let val = kv_mgr.handle_get("test", "key").await.unwrap();
-        assert_eq!(val, Some("value".to_string()));
+        let val = kv_mgr.handle_get(b"test", b"key").await.unwrap();
+        assert_eq!(val, Some(b"value".to_vec()));
     }
 }

@@ -11,6 +11,7 @@
 //! This binary replaces the C++ `raylet` when `RAY_USE_RUST_RAYLET=1`.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use clap::Parser;
 use ray_common::config::RayConfig;
@@ -119,6 +120,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         session_name: args.session_name,
     };
 
-    let node_manager = NodeManager::new(config);
+    let node_manager = Arc::new(NodeManager::new(config));
     node_manager.run().await
 }

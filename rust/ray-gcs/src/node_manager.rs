@@ -31,8 +31,8 @@ pub struct GcsNodeManager {
     dead_nodes: RwLock<HashMap<NodeID, Arc<ray_proto::ray::rpc::GcsNodeInfo>>>,
     /// Nodes being drained.
     draining_nodes: RwLock<HashMap<NodeID, i64>>, // node_id → deadline_ms
-    /// Cluster ID.
-    cluster_id: RwLock<String>,
+    /// Cluster ID (raw 28-byte binary, matching C++ ClusterID::Binary()).
+    cluster_id: RwLock<Vec<u8>>,
     /// Listeners.
     node_added_listeners: RwLock<Vec<NodeAddedCallback>>,
     node_removed_listeners: RwLock<Vec<NodeRemovedCallback>>,
@@ -46,7 +46,7 @@ impl GcsNodeManager {
             alive_nodes: RwLock::new(HashMap::new()),
             dead_nodes: RwLock::new(HashMap::new()),
             draining_nodes: RwLock::new(HashMap::new()),
-            cluster_id: RwLock::new(String::new()),
+            cluster_id: RwLock::new(Vec::new()),
             node_added_listeners: RwLock::new(Vec::new()),
             node_removed_listeners: RwLock::new(Vec::new()),
             table_storage,
@@ -78,13 +78,13 @@ impl GcsNodeManager {
         Ok(())
     }
 
-    /// Set the cluster ID.
-    pub fn set_cluster_id(&self, cluster_id: String) {
+    /// Set the cluster ID (raw 28-byte binary).
+    pub fn set_cluster_id(&self, cluster_id: Vec<u8>) {
         *self.cluster_id.write() = cluster_id;
     }
 
-    /// Get the cluster ID.
-    pub fn cluster_id(&self) -> String {
+    /// Get the cluster ID (raw 28-byte binary).
+    pub fn cluster_id(&self) -> Vec<u8> {
         self.cluster_id.read().clone()
     }
 
@@ -185,8 +185,8 @@ impl GcsNodeManager {
             .collect()
     }
 
-    /// Handle GetClusterId RPC.
-    pub fn handle_get_cluster_id(&self) -> String {
+    /// Handle GetClusterId RPC — returns raw 28-byte cluster ID.
+    pub fn handle_get_cluster_id(&self) -> Vec<u8> {
         self.cluster_id.read().clone()
     }
 
@@ -303,7 +303,8 @@ mod tests {
         let storage = Arc::new(GcsTableStorage::new(store));
         let mgr = GcsNodeManager::new(storage);
 
-        mgr.set_cluster_id("test-cluster-123".to_string());
-        assert_eq!(mgr.cluster_id(), "test-cluster-123");
+        let id = vec![1u8; 28];
+        mgr.set_cluster_id(id.clone());
+        assert_eq!(mgr.cluster_id(), id);
     }
 }

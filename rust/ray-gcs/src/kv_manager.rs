@@ -10,6 +10,7 @@
 //!
 //! Replaces `src/ray/gcs/gcs_kv_manager.h/cc`.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::store_client::InternalKVInterface;
@@ -42,7 +43,7 @@ impl GcsInternalKVManager {
     }
 
     /// Validate a key — must not be empty and within length limits.
-    pub fn validate_key(key: &str) -> Result<(), String> {
+    pub fn validate_key(key: &[u8]) -> Result<(), String> {
         if key.is_empty() {
             return Err("key must not be empty".to_string());
         }
@@ -60,9 +61,9 @@ impl GcsInternalKVManager {
 
     pub async fn handle_get(
         &self,
-        namespace: &str,
-        key: &str,
-    ) -> Result<Option<String>, tonic::Status> {
+        namespace: &[u8],
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, tonic::Status> {
         Self::validate_key(key).map_err(tonic::Status::invalid_argument)?;
         self.kv
             .get(namespace, key)
@@ -72,9 +73,9 @@ impl GcsInternalKVManager {
 
     pub async fn handle_multi_get(
         &self,
-        namespace: &str,
-        keys: &[String],
-    ) -> Result<std::collections::HashMap<String, String>, tonic::Status> {
+        namespace: &[u8],
+        keys: &[Vec<u8>],
+    ) -> Result<HashMap<Vec<u8>, Vec<u8>>, tonic::Status> {
         for key in keys {
             Self::validate_key(key).map_err(tonic::Status::invalid_argument)?;
         }
@@ -86,9 +87,9 @@ impl GcsInternalKVManager {
 
     pub async fn handle_put(
         &self,
-        namespace: &str,
-        key: &str,
-        value: String,
+        namespace: &[u8],
+        key: &[u8],
+        value: Vec<u8>,
         overwrite: bool,
     ) -> Result<bool, tonic::Status> {
         Self::validate_key(key).map_err(tonic::Status::invalid_argument)?;
@@ -100,8 +101,8 @@ impl GcsInternalKVManager {
 
     pub async fn handle_del(
         &self,
-        namespace: &str,
-        key: &str,
+        namespace: &[u8],
+        key: &[u8],
         del_by_prefix: bool,
     ) -> Result<i64, tonic::Status> {
         Self::validate_key(key).map_err(tonic::Status::invalid_argument)?;
@@ -111,7 +112,11 @@ impl GcsInternalKVManager {
             .map_err(|e| tonic::Status::internal(e.to_string()))
     }
 
-    pub async fn handle_exists(&self, namespace: &str, key: &str) -> Result<bool, tonic::Status> {
+    pub async fn handle_exists(
+        &self,
+        namespace: &[u8],
+        key: &[u8],
+    ) -> Result<bool, tonic::Status> {
         Self::validate_key(key).map_err(tonic::Status::invalid_argument)?;
         self.kv
             .exists(namespace, key)
@@ -121,9 +126,9 @@ impl GcsInternalKVManager {
 
     pub async fn handle_keys(
         &self,
-        namespace: &str,
-        prefix: &str,
-    ) -> Result<Vec<String>, tonic::Status> {
+        namespace: &[u8],
+        prefix: &[u8],
+    ) -> Result<Vec<Vec<u8>>, tonic::Status> {
         self.kv
             .keys(namespace, prefix)
             .await
@@ -143,29 +148,29 @@ mod tests {
 
         // Put
         let added = mgr
-            .handle_put("ns", "key1", "val1".into(), true)
+            .handle_put(b"ns", b"key1", b"val1".to_vec(), true)
             .await
             .unwrap();
         assert!(added);
 
         // Get
-        let val = mgr.handle_get("ns", "key1").await.unwrap();
-        assert_eq!(val, Some("val1".to_string()));
+        let val = mgr.handle_get(b"ns", b"key1").await.unwrap();
+        assert_eq!(val, Some(b"val1".to_vec()));
 
         // Exists
-        assert!(mgr.handle_exists("ns", "key1").await.unwrap());
+        assert!(mgr.handle_exists(b"ns", b"key1").await.unwrap());
 
         // Del
-        let count = mgr.handle_del("ns", "key1", false).await.unwrap();
+        let count = mgr.handle_del(b"ns", b"key1", false).await.unwrap();
         assert_eq!(count, 1);
-        assert!(!mgr.handle_exists("ns", "key1").await.unwrap());
+        assert!(!mgr.handle_exists(b"ns", b"key1").await.unwrap());
     }
 
     #[tokio::test]
     async fn test_kv_manager_validate_key() {
-        assert!(GcsInternalKVManager::validate_key("valid").is_ok());
-        assert!(GcsInternalKVManager::validate_key("").is_err());
-        let long_key = "x".repeat(MAX_KEY_LENGTH + 1);
+        assert!(GcsInternalKVManager::validate_key(b"valid").is_ok());
+        assert!(GcsInternalKVManager::validate_key(b"").is_err());
+        let long_key = vec![b'x'; MAX_KEY_LENGTH + 1];
         assert!(GcsInternalKVManager::validate_key(&long_key).is_err());
     }
 }

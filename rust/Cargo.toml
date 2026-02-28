@@ -31,6 +31,7 @@ prost = "0.13"
 prost-types = "0.13"
 tonic = "0.12"
 tonic-build = "0.12"
+tonic-health = "0.12"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

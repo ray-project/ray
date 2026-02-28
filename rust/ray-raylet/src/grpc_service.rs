@@ -13,7 +13,9 @@
 
 use std::sync::Arc;
 
-use tonic::Status;
+use tonic::{Request, Response, Status};
+
+use ray_proto::ray::rpc;
 
 use crate::node_manager::NodeManager;
 
@@ -22,162 +24,157 @@ pub struct NodeManagerServiceImpl {
     pub node_manager: Arc<NodeManager>,
 }
 
-// ─── Handler methods (not yet wired to tonic trait) ─────────────────────
-//
-// Each method corresponds to one of the 30 NodeManagerService RPCs.
-// They will be wired to the tonic-generated trait once the NodeManager
-// has enough components to handle real requests.
+// ─── Handler methods ────────────────────────────────────────────────────
 
 impl NodeManagerServiceImpl {
     // ─── Scheduling RPCs ──────────────────────────────────────────────
 
     pub async fn handle_request_worker_lease(
         &self,
-        request: ray_proto::ray::rpc::RequestWorkerLeaseRequest,
-    ) -> Result<ray_proto::ray::rpc::RequestWorkerLeaseReply, Status> {
-        // In production, this delegates to ClusterLeaseManager
+        request: rpc::RequestWorkerLeaseRequest,
+    ) -> Result<rpc::RequestWorkerLeaseReply, Status> {
         tracing::debug!("RequestWorkerLease received");
         let _ = request;
-        Ok(ray_proto::ray::rpc::RequestWorkerLeaseReply::default())
+        Ok(rpc::RequestWorkerLeaseReply::default())
     }
 
     pub async fn handle_return_worker_lease(
         &self,
-        request: ray_proto::ray::rpc::ReturnWorkerLeaseRequest,
-    ) -> Result<ray_proto::ray::rpc::ReturnWorkerLeaseReply, Status> {
+        request: rpc::ReturnWorkerLeaseRequest,
+    ) -> Result<rpc::ReturnWorkerLeaseReply, Status> {
         tracing::debug!("ReturnWorkerLease received");
         let _ = request;
-        Ok(ray_proto::ray::rpc::ReturnWorkerLeaseReply::default())
+        Ok(rpc::ReturnWorkerLeaseReply::default())
     }
 
     pub async fn handle_cancel_worker_lease(
         &self,
-        request: ray_proto::ray::rpc::CancelWorkerLeaseRequest,
-    ) -> Result<ray_proto::ray::rpc::CancelWorkerLeaseReply, Status> {
+        request: rpc::CancelWorkerLeaseRequest,
+    ) -> Result<rpc::CancelWorkerLeaseReply, Status> {
         tracing::debug!("CancelWorkerLease received");
         let _ = request;
-        Ok(ray_proto::ray::rpc::CancelWorkerLeaseReply::default())
+        Ok(rpc::CancelWorkerLeaseReply::default())
     }
 
     pub async fn handle_prestart_workers(
         &self,
-        request: ray_proto::ray::rpc::PrestartWorkersRequest,
-    ) -> Result<ray_proto::ray::rpc::PrestartWorkersReply, Status> {
+        request: rpc::PrestartWorkersRequest,
+    ) -> Result<rpc::PrestartWorkersReply, Status> {
         tracing::debug!("PrestartWorkers received");
         let _ = request;
-        Ok(ray_proto::ray::rpc::PrestartWorkersReply::default())
+        Ok(rpc::PrestartWorkersReply::default())
     }
 
     pub async fn handle_report_worker_backlog(
         &self,
-        request: ray_proto::ray::rpc::ReportWorkerBacklogRequest,
-    ) -> Result<ray_proto::ray::rpc::ReportWorkerBacklogReply, Status> {
+        request: rpc::ReportWorkerBacklogRequest,
+    ) -> Result<rpc::ReportWorkerBacklogReply, Status> {
         tracing::debug!("ReportWorkerBacklog received");
         let _ = request;
-        Ok(ray_proto::ray::rpc::ReportWorkerBacklogReply::default())
+        Ok(rpc::ReportWorkerBacklogReply::default())
     }
 
     pub async fn handle_cancel_leases_with_resource_shapes(
         &self,
-        request: ray_proto::ray::rpc::CancelLeasesWithResourceShapesRequest,
-    ) -> Result<ray_proto::ray::rpc::CancelLeasesWithResourceShapesReply, Status> {
+        request: rpc::CancelLeasesWithResourceShapesRequest,
+    ) -> Result<rpc::CancelLeasesWithResourceShapesReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::CancelLeasesWithResourceShapesReply::default())
+        Ok(rpc::CancelLeasesWithResourceShapesReply::default())
     }
 
     // ─── Object Management RPCs ───────────────────────────────────────
 
     pub async fn handle_pin_object_ids(
         &self,
-        request: ray_proto::ray::rpc::PinObjectIDsRequest,
-    ) -> Result<ray_proto::ray::rpc::PinObjectIDsReply, Status> {
+        request: rpc::PinObjectIDsRequest,
+    ) -> Result<rpc::PinObjectIDsReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::PinObjectIDsReply::default())
+        Ok(rpc::PinObjectIDsReply::default())
     }
 
     // ─── Placement Group RPCs ─────────────────────────────────────────
 
     pub async fn handle_prepare_bundle_resources(
         &self,
-        request: ray_proto::ray::rpc::PrepareBundleResourcesRequest,
-    ) -> Result<ray_proto::ray::rpc::PrepareBundleResourcesReply, Status> {
+        request: rpc::PrepareBundleResourcesRequest,
+    ) -> Result<rpc::PrepareBundleResourcesReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::PrepareBundleResourcesReply::default())
+        Ok(rpc::PrepareBundleResourcesReply::default())
     }
 
     pub async fn handle_commit_bundle_resources(
         &self,
-        request: ray_proto::ray::rpc::CommitBundleResourcesRequest,
-    ) -> Result<ray_proto::ray::rpc::CommitBundleResourcesReply, Status> {
+        request: rpc::CommitBundleResourcesRequest,
+    ) -> Result<rpc::CommitBundleResourcesReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::CommitBundleResourcesReply::default())
+        Ok(rpc::CommitBundleResourcesReply::default())
     }
 
     pub async fn handle_cancel_resource_reserve(
         &self,
-        request: ray_proto::ray::rpc::CancelResourceReserveRequest,
-    ) -> Result<ray_proto::ray::rpc::CancelResourceReserveReply, Status> {
+        request: rpc::CancelResourceReserveRequest,
+    ) -> Result<rpc::CancelResourceReserveReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::CancelResourceReserveReply::default())
+        Ok(rpc::CancelResourceReserveReply::default())
     }
 
     pub async fn handle_release_unused_bundles(
         &self,
-        request: ray_proto::ray::rpc::ReleaseUnusedBundlesRequest,
-    ) -> Result<ray_proto::ray::rpc::ReleaseUnusedBundlesReply, Status> {
+        request: rpc::ReleaseUnusedBundlesRequest,
+    ) -> Result<rpc::ReleaseUnusedBundlesReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::ReleaseUnusedBundlesReply::default())
+        Ok(rpc::ReleaseUnusedBundlesReply::default())
     }
 
     // ─── Resource RPCs ────────────────────────────────────────────────
 
     pub async fn handle_resize_local_resource_instances(
         &self,
-        request: ray_proto::ray::rpc::ResizeLocalResourceInstancesRequest,
-    ) -> Result<ray_proto::ray::rpc::ResizeLocalResourceInstancesReply, Status> {
+        request: rpc::ResizeLocalResourceInstancesRequest,
+    ) -> Result<rpc::ResizeLocalResourceInstancesReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::ResizeLocalResourceInstancesReply::default())
+        Ok(rpc::ResizeLocalResourceInstancesReply::default())
     }
 
     pub fn handle_get_resource_load(
         &self,
-        request: ray_proto::ray::rpc::GetResourceLoadRequest,
-    ) -> Result<ray_proto::ray::rpc::GetResourceLoadReply, Status> {
+        request: rpc::GetResourceLoadRequest,
+    ) -> Result<rpc::GetResourceLoadReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::GetResourceLoadReply::default())
+        Ok(rpc::GetResourceLoadReply::default())
     }
 
     // ─── Observability RPCs ───────────────────────────────────────────
 
     pub fn handle_get_node_stats(
         &self,
-        request: ray_proto::ray::rpc::GetNodeStatsRequest,
-    ) -> Result<ray_proto::ray::rpc::GetNodeStatsReply, Status> {
+        request: rpc::GetNodeStatsRequest,
+    ) -> Result<rpc::GetNodeStatsReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::GetNodeStatsReply::default())
+        Ok(rpc::GetNodeStatsReply::default())
     }
 
     pub fn handle_get_objects_info(
         &self,
-        request: ray_proto::ray::rpc::GetObjectsInfoRequest,
-    ) -> Result<ray_proto::ray::rpc::GetObjectsInfoReply, Status> {
+        request: rpc::GetObjectsInfoRequest,
+    ) -> Result<rpc::GetObjectsInfoReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::GetObjectsInfoReply::default())
+        Ok(rpc::GetObjectsInfoReply::default())
     }
 
     pub fn handle_format_global_memory_info(
         &self,
-        request: ray_proto::ray::rpc::FormatGlobalMemoryInfoRequest,
-    ) -> Result<ray_proto::ray::rpc::FormatGlobalMemoryInfoReply, Status> {
+        request: rpc::FormatGlobalMemoryInfoRequest,
+    ) -> Result<rpc::FormatGlobalMemoryInfoReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::FormatGlobalMemoryInfoReply::default())
+        Ok(rpc::FormatGlobalMemoryInfoReply::default())
     }
 
     pub fn handle_get_system_config(
         &self,
-        _request: ray_proto::ray::rpc::GetSystemConfigRequest,
-    ) -> Result<ray_proto::ray::rpc::GetSystemConfigReply, Status> {
-        Ok(ray_proto::ray::rpc::GetSystemConfigReply {
+        _request: rpc::GetSystemConfigRequest,
+    ) -> Result<rpc::GetSystemConfigReply, Status> {
+        Ok(rpc::GetSystemConfigReply {
             system_config: self.node_manager.config().ray_config.to_json(),
         })
     }
@@ -186,29 +183,29 @@ impl NodeManagerServiceImpl {
 
     pub fn handle_get_worker_failure_cause(
         &self,
-        request: ray_proto::ray::rpc::GetWorkerFailureCauseRequest,
-    ) -> Result<ray_proto::ray::rpc::GetWorkerFailureCauseReply, Status> {
+        request: rpc::GetWorkerFailureCauseRequest,
+    ) -> Result<rpc::GetWorkerFailureCauseReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::GetWorkerFailureCauseReply::default())
+        Ok(rpc::GetWorkerFailureCauseReply::default())
     }
 
     // ─── Lifecycle RPCs ───────────────────────────────────────────────
 
     pub async fn handle_shutdown_raylet(
         &self,
-        request: ray_proto::ray::rpc::ShutdownRayletRequest,
-    ) -> Result<ray_proto::ray::rpc::ShutdownRayletReply, Status> {
+        request: rpc::ShutdownRayletRequest,
+    ) -> Result<rpc::ShutdownRayletReply, Status> {
         tracing::info!(graceful = request.graceful, "ShutdownRaylet received");
-        Ok(ray_proto::ray::rpc::ShutdownRayletReply::default())
+        Ok(rpc::ShutdownRayletReply::default())
     }
 
     pub async fn handle_drain_raylet(
         &self,
-        request: ray_proto::ray::rpc::DrainRayletRequest,
-    ) -> Result<ray_proto::ray::rpc::DrainRayletReply, Status> {
+        request: rpc::DrainRayletRequest,
+    ) -> Result<rpc::DrainRayletReply, Status> {
         let deadline_ms = request.deadline_timestamp_ms as u64;
         self.node_manager.handle_drain(deadline_ms);
-        Ok(ray_proto::ray::rpc::DrainRayletReply {
+        Ok(rpc::DrainRayletReply {
             is_accepted: true,
             ..Default::default()
         })
@@ -218,89 +215,355 @@ impl NodeManagerServiceImpl {
 
     pub async fn handle_global_gc(
         &self,
-        request: ray_proto::ray::rpc::GlobalGcRequest,
-    ) -> Result<ray_proto::ray::rpc::GlobalGcReply, Status> {
+        request: rpc::GlobalGcRequest,
+    ) -> Result<rpc::GlobalGcReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::GlobalGcReply::default())
+        Ok(rpc::GlobalGcReply::default())
     }
 
     // ─── GCS Recovery RPCs ────────────────────────────────────────────
 
     pub async fn handle_release_unused_actor_workers(
         &self,
-        request: ray_proto::ray::rpc::ReleaseUnusedActorWorkersRequest,
-    ) -> Result<ray_proto::ray::rpc::ReleaseUnusedActorWorkersReply, Status> {
+        request: rpc::ReleaseUnusedActorWorkersRequest,
+    ) -> Result<rpc::ReleaseUnusedActorWorkersReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::ReleaseUnusedActorWorkersReply::default())
+        Ok(rpc::ReleaseUnusedActorWorkersReply::default())
     }
 
     pub async fn handle_notify_gcs_restart(
         &self,
-        request: ray_proto::ray::rpc::NotifyGcsRestartRequest,
-    ) -> Result<ray_proto::ray::rpc::NotifyGcsRestartReply, Status> {
+        request: rpc::NotifyGcsRestartRequest,
+    ) -> Result<rpc::NotifyGcsRestartReply, Status> {
         let _ = request;
         tracing::info!("GCS restart notification received");
-        Ok(ray_proto::ray::rpc::NotifyGcsRestartReply::default())
+        Ok(rpc::NotifyGcsRestartReply::default())
     }
 
     // ─── Compiled Graphs RPCs ─────────────────────────────────────────
 
     pub async fn handle_register_mutable_object(
         &self,
-        request: ray_proto::ray::rpc::RegisterMutableObjectRequest,
-    ) -> Result<ray_proto::ray::rpc::RegisterMutableObjectReply, Status> {
+        request: rpc::RegisterMutableObjectRequest,
+    ) -> Result<rpc::RegisterMutableObjectReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::RegisterMutableObjectReply::default())
+        Ok(rpc::RegisterMutableObjectReply::default())
     }
 
     pub async fn handle_push_mutable_object(
         &self,
-        request: ray_proto::ray::rpc::PushMutableObjectRequest,
-    ) -> Result<ray_proto::ray::rpc::PushMutableObjectReply, Status> {
+        request: rpc::PushMutableObjectRequest,
+    ) -> Result<rpc::PushMutableObjectReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::PushMutableObjectReply::default())
+        Ok(rpc::PushMutableObjectReply::default())
     }
 
     // ─── Health Check RPCs ────────────────────────────────────────────
 
     pub fn handle_is_local_worker_dead(
         &self,
-        request: ray_proto::ray::rpc::IsLocalWorkerDeadRequest,
-    ) -> Result<ray_proto::ray::rpc::IsLocalWorkerDeadReply, Status> {
+        request: rpc::IsLocalWorkerDeadRequest,
+    ) -> Result<rpc::IsLocalWorkerDeadReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::IsLocalWorkerDeadReply::default())
+        Ok(rpc::IsLocalWorkerDeadReply::default())
     }
 
     pub fn handle_get_worker_pids(
         &self,
-        _request: ray_proto::ray::rpc::GetWorkerPiDsRequest,
-    ) -> Result<ray_proto::ray::rpc::GetWorkerPiDsReply, Status> {
-        Ok(ray_proto::ray::rpc::GetWorkerPiDsReply::default())
+        _request: rpc::GetWorkerPiDsRequest,
+    ) -> Result<rpc::GetWorkerPiDsReply, Status> {
+        Ok(rpc::GetWorkerPiDsReply::default())
     }
 
     pub fn handle_get_agent_pids(
         &self,
-        _request: ray_proto::ray::rpc::GetAgentPiDsRequest,
-    ) -> Result<ray_proto::ray::rpc::GetAgentPiDsReply, Status> {
-        Ok(ray_proto::ray::rpc::GetAgentPiDsReply::default())
+        _request: rpc::GetAgentPiDsRequest,
+    ) -> Result<rpc::GetAgentPiDsReply, Status> {
+        Ok(rpc::GetAgentPiDsReply::default())
     }
 
     // ─── Actor/Task Management RPCs ───────────────────────────────────
 
     pub async fn handle_kill_local_actor(
         &self,
-        request: ray_proto::ray::rpc::KillLocalActorRequest,
-    ) -> Result<ray_proto::ray::rpc::KillLocalActorReply, Status> {
+        request: rpc::KillLocalActorRequest,
+    ) -> Result<rpc::KillLocalActorReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::KillLocalActorReply::default())
+        Ok(rpc::KillLocalActorReply::default())
     }
 
     pub async fn handle_cancel_local_task(
         &self,
-        request: ray_proto::ray::rpc::CancelLocalTaskRequest,
-    ) -> Result<ray_proto::ray::rpc::CancelLocalTaskReply, Status> {
+        request: rpc::CancelLocalTaskRequest,
+    ) -> Result<rpc::CancelLocalTaskReply, Status> {
         let _ = request;
-        Ok(ray_proto::ray::rpc::CancelLocalTaskReply::default())
+        Ok(rpc::CancelLocalTaskReply::default())
+    }
+}
+
+// ─── Tonic trait impl ───────────────────────────────────────────────────
+
+#[tonic::async_trait]
+impl rpc::node_manager_service_server::NodeManagerService for NodeManagerServiceImpl {
+    async fn request_worker_lease(
+        &self,
+        req: Request<rpc::RequestWorkerLeaseRequest>,
+    ) -> Result<Response<rpc::RequestWorkerLeaseReply>, Status> {
+        self.handle_request_worker_lease(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn return_worker_lease(
+        &self,
+        req: Request<rpc::ReturnWorkerLeaseRequest>,
+    ) -> Result<Response<rpc::ReturnWorkerLeaseReply>, Status> {
+        self.handle_return_worker_lease(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn cancel_worker_lease(
+        &self,
+        req: Request<rpc::CancelWorkerLeaseRequest>,
+    ) -> Result<Response<rpc::CancelWorkerLeaseReply>, Status> {
+        self.handle_cancel_worker_lease(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn prestart_workers(
+        &self,
+        req: Request<rpc::PrestartWorkersRequest>,
+    ) -> Result<Response<rpc::PrestartWorkersReply>, Status> {
+        self.handle_prestart_workers(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn report_worker_backlog(
+        &self,
+        req: Request<rpc::ReportWorkerBacklogRequest>,
+    ) -> Result<Response<rpc::ReportWorkerBacklogReply>, Status> {
+        self.handle_report_worker_backlog(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn cancel_leases_with_resource_shapes(
+        &self,
+        req: Request<rpc::CancelLeasesWithResourceShapesRequest>,
+    ) -> Result<Response<rpc::CancelLeasesWithResourceShapesReply>, Status> {
+        self.handle_cancel_leases_with_resource_shapes(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn pin_object_i_ds(
+        &self,
+        req: Request<rpc::PinObjectIDsRequest>,
+    ) -> Result<Response<rpc::PinObjectIDsReply>, Status> {
+        self.handle_pin_object_ids(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn prepare_bundle_resources(
+        &self,
+        req: Request<rpc::PrepareBundleResourcesRequest>,
+    ) -> Result<Response<rpc::PrepareBundleResourcesReply>, Status> {
+        self.handle_prepare_bundle_resources(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn commit_bundle_resources(
+        &self,
+        req: Request<rpc::CommitBundleResourcesRequest>,
+    ) -> Result<Response<rpc::CommitBundleResourcesReply>, Status> {
+        self.handle_commit_bundle_resources(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn cancel_resource_reserve(
+        &self,
+        req: Request<rpc::CancelResourceReserveRequest>,
+    ) -> Result<Response<rpc::CancelResourceReserveReply>, Status> {
+        self.handle_cancel_resource_reserve(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn release_unused_bundles(
+        &self,
+        req: Request<rpc::ReleaseUnusedBundlesRequest>,
+    ) -> Result<Response<rpc::ReleaseUnusedBundlesReply>, Status> {
+        self.handle_release_unused_bundles(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn resize_local_resource_instances(
+        &self,
+        req: Request<rpc::ResizeLocalResourceInstancesRequest>,
+    ) -> Result<Response<rpc::ResizeLocalResourceInstancesReply>, Status> {
+        self.handle_resize_local_resource_instances(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn get_resource_load(
+        &self,
+        req: Request<rpc::GetResourceLoadRequest>,
+    ) -> Result<Response<rpc::GetResourceLoadReply>, Status> {
+        self.handle_get_resource_load(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn get_node_stats(
+        &self,
+        req: Request<rpc::GetNodeStatsRequest>,
+    ) -> Result<Response<rpc::GetNodeStatsReply>, Status> {
+        self.handle_get_node_stats(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn global_gc(
+        &self,
+        req: Request<rpc::GlobalGcRequest>,
+    ) -> Result<Response<rpc::GlobalGcReply>, Status> {
+        self.handle_global_gc(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn format_global_memory_info(
+        &self,
+        req: Request<rpc::FormatGlobalMemoryInfoRequest>,
+    ) -> Result<Response<rpc::FormatGlobalMemoryInfoReply>, Status> {
+        self.handle_format_global_memory_info(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn get_system_config(
+        &self,
+        req: Request<rpc::GetSystemConfigRequest>,
+    ) -> Result<Response<rpc::GetSystemConfigReply>, Status> {
+        self.handle_get_system_config(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn get_objects_info(
+        &self,
+        req: Request<rpc::GetObjectsInfoRequest>,
+    ) -> Result<Response<rpc::GetObjectsInfoReply>, Status> {
+        self.handle_get_objects_info(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn get_worker_failure_cause(
+        &self,
+        req: Request<rpc::GetWorkerFailureCauseRequest>,
+    ) -> Result<Response<rpc::GetWorkerFailureCauseReply>, Status> {
+        self.handle_get_worker_failure_cause(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn shutdown_raylet(
+        &self,
+        req: Request<rpc::ShutdownRayletRequest>,
+    ) -> Result<Response<rpc::ShutdownRayletReply>, Status> {
+        self.handle_shutdown_raylet(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn drain_raylet(
+        &self,
+        req: Request<rpc::DrainRayletRequest>,
+    ) -> Result<Response<rpc::DrainRayletReply>, Status> {
+        self.handle_drain_raylet(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn release_unused_actor_workers(
+        &self,
+        req: Request<rpc::ReleaseUnusedActorWorkersRequest>,
+    ) -> Result<Response<rpc::ReleaseUnusedActorWorkersReply>, Status> {
+        self.handle_release_unused_actor_workers(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn notify_gcs_restart(
+        &self,
+        req: Request<rpc::NotifyGcsRestartRequest>,
+    ) -> Result<Response<rpc::NotifyGcsRestartReply>, Status> {
+        self.handle_notify_gcs_restart(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn register_mutable_object(
+        &self,
+        req: Request<rpc::RegisterMutableObjectRequest>,
+    ) -> Result<Response<rpc::RegisterMutableObjectReply>, Status> {
+        self.handle_register_mutable_object(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn push_mutable_object(
+        &self,
+        req: Request<rpc::PushMutableObjectRequest>,
+    ) -> Result<Response<rpc::PushMutableObjectReply>, Status> {
+        self.handle_push_mutable_object(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn is_local_worker_dead(
+        &self,
+        req: Request<rpc::IsLocalWorkerDeadRequest>,
+    ) -> Result<Response<rpc::IsLocalWorkerDeadReply>, Status> {
+        self.handle_is_local_worker_dead(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn get_worker_pi_ds(
+        &self,
+        req: Request<rpc::GetWorkerPiDsRequest>,
+    ) -> Result<Response<rpc::GetWorkerPiDsReply>, Status> {
+        self.handle_get_worker_pids(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn get_agent_pi_ds(
+        &self,
+        req: Request<rpc::GetAgentPiDsRequest>,
+    ) -> Result<Response<rpc::GetAgentPiDsReply>, Status> {
+        self.handle_get_agent_pids(req.into_inner())
+            .map(Response::new)
+    }
+
+    async fn kill_local_actor(
+        &self,
+        req: Request<rpc::KillLocalActorRequest>,
+    ) -> Result<Response<rpc::KillLocalActorReply>, Status> {
+        self.handle_kill_local_actor(req.into_inner())
+            .await
+            .map(Response::new)
+    }
+
+    async fn cancel_local_task(
+        &self,
+        req: Request<rpc::CancelLocalTaskRequest>,
+    ) -> Result<Response<rpc::CancelLocalTaskReply>, Status> {
+        self.handle_cancel_local_task(req.into_inner())
+            .await
+            .map(Response::new)
     }
 }
 
@@ -325,7 +588,7 @@ mod tests {
         let svc = NodeManagerServiceImpl { node_manager: nm };
 
         let reply = svc
-            .handle_get_system_config(ray_proto::ray::rpc::GetSystemConfigRequest::default())
+            .handle_get_system_config(rpc::GetSystemConfigRequest::default())
             .unwrap();
         assert!(!reply.system_config.is_empty());
     }
@@ -347,7 +610,7 @@ mod tests {
         let svc = NodeManagerServiceImpl { node_manager: nm };
 
         let reply = svc
-            .handle_drain_raylet(ray_proto::ray::rpc::DrainRayletRequest {
+            .handle_drain_raylet(rpc::DrainRayletRequest {
                 deadline_timestamp_ms: 5000,
                 ..Default::default()
             })

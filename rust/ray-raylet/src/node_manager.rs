@@ -24,6 +24,24 @@ use crate::placement_group_resource_manager::PlacementGroupResourceManager;
 use crate::wait_manager::WaitManager;
 use crate::worker_pool::WorkerPool;
 
+/// Wait for SIGTERM or SIGINT for graceful shutdown.
+async fn shutdown_signal() {
+    let ctrl_c = tokio::signal::ctrl_c();
+    #[cfg(unix)]
+    {
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+        tokio::select! {
+            _ = ctrl_c => {},
+            _ = sigterm.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        ctrl_c.await.ok();
+    }
+}
+
 /// Configuration for starting the raylet.
 #[derive(Debug, Clone)]
 pub struct RayletConfig {
@@ -125,7 +143,7 @@ impl NodeManager {
     }
 
     /// Start the raylet (full server).
-    pub async fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!(
             port = self.config.port,
             node_ip = %self.config.node_ip_address,
@@ -134,13 +152,32 @@ impl NodeManager {
             "Starting Rust raylet"
         );
 
-        // TODO: Phase 8+
-        // - Register with GCS
-        // - Start gRPC server (NodeManagerService)
-        // - Start heartbeat reporting
-        // - Start worker pool management
+        let svc = crate::grpc_service::NodeManagerServiceImpl {
+            node_manager: Arc::clone(&self),
+        };
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+        health_reporter
+            .set_serving::<ray_proto::ray::rpc::node_manager_service_server::NodeManagerServiceServer<
+                crate::grpc_service::NodeManagerServiceImpl,
+            >>()
+            .await;
 
-        tokio::signal::ctrl_c().await?;
+        let listener =
+            tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.config.port)).await?;
+        let bound_port = listener.local_addr()?.port();
+        tracing::info!(port = bound_port, "Raylet gRPC server listening");
+
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+        tonic::transport::Server::builder()
+            .add_service(
+                ray_proto::ray::rpc::node_manager_service_server::NodeManagerServiceServer::new(
+                    svc,
+                ),
+            )
+            .add_service(health_service)
+            .serve_with_incoming_shutdown(incoming, shutdown_signal())
+            .await?;
+
         tracing::info!("Raylet shutting down");
         Ok(())
     }
