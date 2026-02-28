@@ -18,7 +18,7 @@ A RayService manages two components:
 * **Kubernetes-native support for Ray clusters and Ray Serve applications:** After using a Kubernetes configuration to define a Ray cluster and its Ray Serve applications, you can use `kubectl` to create the cluster and its applications.
 * **In-place updates for Ray Serve applications:** Users can update the Ray Serve configuration in the RayService CR configuration and use `kubectl apply` to update the applications. See [Step 7](#step-7-in-place-update-for-ray-serve-applications) for more details.
 * **Zero downtime upgrades for Ray clusters:** Users can update the Ray cluster configuration in the RayService CR configuration and use `kubectl apply` to update the cluster. RayService temporarily creates a pending cluster and waits for it to be ready, then switches traffic to the new cluster and terminates the old one. See [Step 8](#step-8-zero-downtime-upgrade-for-ray-clusters) for more details.
-* **High-availabilable services:** See [RayService high availability](kuberay-rayservice-ha) for more details.
+* **High-availability services:** See [RayService high availability](kuberay-rayservice-ha) for more details.
 
 ## Example: Serve two simple Ray Serve applications using RayService
 
@@ -236,7 +236,6 @@ This section describes the default `NewCluster` upgrade strategy. For large-scal
 In Step 7, modifying `serveConfigV2` doesn't trigger a zero downtime upgrade for Ray clusters.
 Instead, it reapplies the new configurations to the existing RayCluster.
 However, if you modify `spec.rayClusterConfig` in the RayService YAML file, it triggers a zero downtime upgrade for Ray clusters.
-RayService temporarily creates a new RayCluster and waits for it to be ready, then switches traffic to the new RayCluster by updating the selector of the head service managed by RayService `rayservice-sample-head-svc` and terminates the old one.
 
 During the zero downtime upgrade process, RayService creates a new RayCluster temporarily and waits for it to become ready.
 Once the new RayCluster is ready, RayService updates the selector of the head service managed by RayService `rayservice-sample-head-svc` to point to the new RayCluster to switch the traffic to the new RayCluster.
