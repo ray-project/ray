@@ -4,8 +4,8 @@ from typing import Dict, List, Optional, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
+from pydantic import ValidationError
 
-from ray._common.pydantic_compat import ValidationError
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
     ApplicationState,
