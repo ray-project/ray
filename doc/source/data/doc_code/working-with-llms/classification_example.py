@@ -29,8 +29,8 @@ classification_config = vLLMEngineProcessorConfig(
     ),
     batch_size=8,
     concurrency=1,
-    apply_chat_template=False,
-    detokenize=False,
+    chat_template_stage=False,
+    detokenize_stage=False,
 )
 
 classification_processor = build_processor(

@@ -1,7 +1,7 @@
 # __example_code_start__
+from transformers import pipeline
 from fastapi import FastAPI
 import torch
-from transformers import pipeline
 
 from ray import serve
 from ray.serve.handle import DeploymentHandle
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     import requests
     import ray
 
-    ray.init(runtime_env={"pip": ["transformers==4.52.4", "accelerate==1.7.0"]})
+    ray.init(runtime_env={"pip": ["transformers==4.27.1", "accelerate==0.17.1"]})
     serve.run(entrypoint)
 
     prompt = (

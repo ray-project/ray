@@ -9,7 +9,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/util:process",
+        "//src/ray/util:process_interface",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -38,7 +38,7 @@ ray_cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/raylet_ipc_client:raylet_ipc_client_interface",
         "//src/ray/util:logging",
-        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -58,7 +58,7 @@ ray_cc_library(
         "//src/ray/common:status",
         "//src/ray/flatbuffers:node_manager_generated",
         "//src/ray/util:network_util",
-        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "//src/ray/util:time",
     ],
 )

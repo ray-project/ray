@@ -6,10 +6,16 @@ from ray import available_resources as ray_available_resources
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators import Read
 from ray.data._internal.util import _autodetect_parallelism
 from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.datasource.datasource import Datasource, Reader
+
+__all__ = [
+    "SetReadParallelismRule",
+    "compute_additional_split_factor",
+]
+
 
 logger = logging.getLogger(__name__)
 
@@ -115,14 +121,14 @@ class SetReadParallelismRule(Rule):
             estimated_num_blocks,
             k,
         ) = compute_additional_split_factor(
-            logical_op._datasource_or_legacy_reader,
-            logical_op._parallelism,
+            logical_op.datasource_or_legacy_reader,
+            logical_op.parallelism,
             estimated_in_mem_bytes,
             op.target_max_block_size_override or op.data_context.target_max_block_size,
             op._additional_split_factor,
         )
 
-        if logical_op._parallelism == -1:
+        if logical_op.parallelism == -1:
             assert reason != ""
             logger.debug(
                 f"Using autodetected parallelism={detected_parallelism} "

@@ -1,6 +1,7 @@
 """HTTP Request Stage"""
 
 import asyncio
+import json
 import time
 import traceback
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Type
@@ -11,6 +12,18 @@ import numpy as np
 from aiohttp.client_exceptions import ClientPayloadError
 
 from ray.llm._internal.batch.stages.base import StatefulStage, StatefulStageUDF
+
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, (np.integer, np.floating)):
+            return obj.item()
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        else:
+            return super().default(obj)
 
 
 class HttpRequestUDF(StatefulStageUDF):
@@ -62,13 +75,9 @@ class HttpRequestUDF(StatefulStageUDF):
         request_bodies = [None] * len(batch)
         for row in batch:
             # Normalize the row to a JSON body.
-            json_body = {}
-            for key, value in row["payload"].items():
-                if isinstance(value, np.ndarray):
-                    json_body[key] = value.tolist()
-                else:
-                    json_body[key] = value
-            request_bodies[row[self.IDX_IN_BATCH_COLUMN]] = json_body
+            request_bodies[row[self.IDX_IN_BATCH_COLUMN]] = json.dumps(
+                row["payload"], cls=NumpyEncoder
+            )
 
         async with self.session_factory() as session:
             start_time = time.time()
@@ -95,7 +104,7 @@ class HttpRequestUDF(StatefulStageUDF):
                 request = session.post(
                     self.url,
                     headers=headers,
-                    json=json_body,
+                    data=json_body,
                 )
                 pending_requests.append((row[self.IDX_IN_BATCH_COLUMN], request))
 
@@ -110,7 +119,7 @@ class HttpRequestUDF(StatefulStageUDF):
                         request = session.post(
                             self.url,
                             headers=headers,
-                            json=json_body,
+                            data=json_body,
                         )
                     try:
                         async with await request as response:

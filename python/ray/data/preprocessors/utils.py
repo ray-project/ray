@@ -1,6 +1,16 @@
 import hashlib
 from collections import deque
-from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, List, Optional, Union
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Union,
+)
 
 import ray
 from ray.air.util.data_batch_conversion import BatchFormat
@@ -21,7 +31,7 @@ def simple_split_tokenizer(value: str) -> List[str]:
 def simple_hash(value: object, num_features: int) -> int:
     """Deterministically hash a value into the integer space."""
     encoded_value = str(value).encode()
-    hashed_value = hashlib.sha1(encoded_value)
+    hashed_value = hashlib.sha256(encoded_value)
     hashed_value_int = int(hashed_value.hexdigest(), 16)
     return hashed_value_int % num_features
 
@@ -243,3 +253,66 @@ def make_post_processor(base_fn, callbacks: List[Callable]):
         return processed
 
     return wrapper
+
+
+class _Computed:
+    """
+    Wraps a factory callable for defaults that must be computed from the object.
+
+    Plain callable values (e.g. a tokenizer function stored as an attribute)
+    must NOT be wrapped — they will be stored as-is.
+    """
+
+    def __init__(self, factory: Callable[[Any], Any]) -> None:
+        self._factory = factory
+
+    def __call__(self, obj: Any) -> Any:
+        return self._factory(obj)
+
+
+_REQUIRED_FIELD = object()  # Sentinel for required fields with no default value
+
+
+@dataclass
+class _PublicField:
+    """
+    Represents a public field that may have been used in older versions of the code.
+    If the field's default value is not _REQUIRED_FIELD, it will be used if neither the private field nor the public field is present during unpickling.
+    Otherwise, the field is required and must be present as either the private or public field during unpickling, or a ValueError will be raised.
+    Used for backwards compatibility during unpickling.
+    """
+
+    public_field: str
+    default: Any = _REQUIRED_FIELD
+
+
+def migrate_private_fields(
+    obj: Any,
+    *,
+    fields: Dict[str, _PublicField],
+) -> None:
+    """
+    Migrates old public field names to new private field names during unpickling for backwards compatibility.
+    """
+    for private_field, public_field_obj in fields.items():
+        if private_field not in obj.__dict__:
+            if public_field_obj.public_field in obj.__dict__:
+                # Migrate from old public field names to new private field names
+                setattr(
+                    obj, private_field, obj.__dict__.pop(public_field_obj.public_field)
+                )
+            elif public_field_obj.default is _REQUIRED_FIELD:
+                raise ValueError(
+                    f"Invalid serialized {type(obj).__name__}: missing required field '{private_field}'."
+                )
+            else:
+                # Set defaults for missing fields.
+                # _Computed defaults are called with obj; all other values are stored as-is,
+                # including callable objects like tokenizer functions.
+                setattr(
+                    obj,
+                    private_field,
+                    public_field_obj.default(obj)
+                    if isinstance(public_field_obj.default, _Computed)
+                    else public_field_obj.default,
+                )

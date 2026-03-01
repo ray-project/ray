@@ -63,12 +63,31 @@ import itertools
 import logging
 import opcode
 import pickle
-from pickle import _getattribute
 import platform
 import struct
 import sys
 import threading
 import types
+
+# Python 3.14+: Use custom _getattribute to avoid recursion issues
+# when pickling cloudpickle's own module functions like _make_function
+if sys.version_info >= (3, 14):
+    def _getattribute(obj, name):
+        """Safe attribute lookup that avoids triggering cloudpickle hooks.
+
+        This reimplements pickle._getattribute for Python 3.14+ to avoid
+        recursion issues when cloudpickle tries to serialize its own
+        module-level functions like _make_function.
+        """
+        # Handle dotted names like "a.b.c"
+        for subpath in name.split('.'):
+            if subpath == '':
+                raise AttributeError(f"Empty attribute in path: {name}")
+            parent = obj
+            obj = getattr(obj, subpath)
+        return obj, parent
+else:
+    from pickle import _getattribute
 import typing
 import uuid
 import warnings

@@ -33,6 +33,7 @@ from ray import ObjectRef
 from ray._private.ray_constants import (
     env_integer,
 )
+from ray._raylet import StreamingGeneratorStats
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.arrow_ops.transform_pyarrow import (
@@ -49,6 +50,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
@@ -65,6 +67,7 @@ from ray.data.block import (
     BlockMetadataWithSchema,
     BlockStats,
     BlockType,
+    TaskExecWorkerStats,
     to_stats,
 )
 from ray.data.context import (
@@ -273,7 +276,9 @@ def _shuffle_block(
     )
 
     if block.num_rows == 0:
-        empty = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
+        empty = BlockAccessor.for_block(block).get_metadata(
+            block_exec_stats=stats.build(block_ser_time_s=0),
+        )
         return (empty, {})
 
     num_partitions = pool.num_partitions
@@ -346,7 +351,7 @@ def _shuffle_block(
         i += 1
 
     original_block_metadata = BlockAccessor.for_block(block).get_metadata(
-        exec_stats=stats.build()
+        block_exec_stats=stats.build(block_ser_time_s=0)
     )
 
     if logger.isEnabledFor(logging.DEBUG):
@@ -483,6 +488,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     """
 
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
+    _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
 
     def __init__(
         self,
@@ -755,7 +761,13 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 self._shuffle_metrics.on_task_output_generated(
                     cur_shuffle_task_idx, out_bundle
                 )
-                self._shuffle_metrics.on_task_finished(cur_shuffle_task_idx, None)
+                # TODO wire in stats & exceptions
+                self._shuffle_metrics.on_task_finished(
+                    cur_shuffle_task_idx,
+                    None,
+                    task_exec_stats=None,
+                    task_exec_driver_stats=None,
+                )
 
                 # Update Shuffle progress bar
                 self._shuffle_bar.update(increment=input_block_metadata.num_rows or 0)
@@ -872,13 +884,28 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
             )
 
-        def _on_aggregation_done(partition_id: int, exc: Optional[Exception]):
+        def _on_aggregation_done(
+            partition_id: int,
+            exc: Optional[Exception],
+            task_exec_stats: Optional[TaskExecWorkerStats],
+            task_exec_driver_stats: Optional[TaskExecDriverStats],
+        ):
+            # NOTE: `TaskExecStats` could be null in case there's no blocks
+            #       emitted (current limitation, since it's emitted along with
+            #       `BlockMetadata`)
+            assert exc or (
+                task_exec_driver_stats
+            ), "Driver's task execution stats must be provided on task's successful completion"
+
             if partition_id in self._finalizing_tasks:
                 self._finalizing_tasks.pop(partition_id)
 
                 # Update Finalize Metrics on task completion
                 self._reduce_metrics.on_task_finished(
-                    task_index=partition_id, exception=exc
+                    task_index=partition_id,
+                    exception=exc,
+                    task_exec_stats=task_exec_stats,
+                    task_exec_driver_stats=task_exec_driver_stats,
                 )
 
                 if exc:
@@ -1011,7 +1038,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             reduce_name: self._output_blocks_stats,
         }
 
-    def current_processor_usage(self) -> ExecutionResources:
+    def current_logical_usage(self) -> ExecutionResources:
         # Current processors resource usage is comprised by
         #   - Base Aggregator actors resource utilization (captured by
         #     `base_resource_usage` method)
@@ -1020,19 +1047,21 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         base_usage = self.base_resource_usage
         running_usage = self._shuffling_resource_usage
 
-        # TODO add memory to resources being tracked
         return base_usage.add(running_usage)
 
     @property
     def base_resource_usage(self) -> ExecutionResources:
-        # TODO add memory to resources being tracked
         return ExecutionResources(
             cpu=(
                 self._aggregator_pool.num_aggregators
                 * self._aggregator_pool._aggregator_ray_remote_args["num_cpus"]
             ),
-            object_store_memory=0,
             gpu=0,
+            memory=(
+                self._aggregator_pool.num_aggregators
+                * self._aggregator_pool._aggregator_ray_remote_args.get("memory", 0)
+            ),
+            object_store_memory=0,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
@@ -1043,6 +1072,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             object_store_memory=0,
             gpu=0,
         )
+
+    def min_scheduling_resources(self) -> ExecutionResources:
+        return self.incremental_resource_usage()
 
     def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
@@ -1203,7 +1235,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         )
 
         # Round resource to 2d decimal point (for readability)
-        return round(target_num_cpus, 2)
+        rounded_target_num_cpus = round(target_num_cpus, 2)
+
+        # Lower bound to avoid scheduling on nodes with 0 CPUs (i.e. the head node).
+        if rounded_target_num_cpus < self._DEFAULT_AGGREGATORS_MIN_CPUS:
+            logger.debug(
+                f"Total # of cpus in cluster is {total_available_cluster_resources.cpu}, "
+                f"but the requested # of cpus is {target_num_cpus}. "
+                f"To prevent rounding precision, we are setting {self._DEFAULT_AGGREGATORS_MIN_CPUS} cpus per aggregator. "
+                f"This can happen for a very large # of aggregators {num_aggregators} "
+                f"or a small dataset size {estimated_aggregator_memory_required}B"
+            )
+            return self._DEFAULT_AGGREGATORS_MIN_CPUS
+        return rounded_target_num_cpus
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
@@ -1718,6 +1762,8 @@ class HashShuffleAggregator:
 
         And therefore as such doesn't require explicit concurrency control
         """
+        start_time_s = time.perf_counter()
+
         exec_stats_builder = BlockExecStats.builder()
 
         # Collect partition shards from all input sequences for this partition
@@ -1745,8 +1791,19 @@ class HashShuffleAggregator:
             exec_stats = exec_stats_builder.build()
             exec_stats_builder = BlockExecStats.builder()
 
-            yield block
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+            stats: StreamingGeneratorStats = yield block
+
+            # Update block serialization time
+            if stats:
+                exec_stats.block_ser_time_s = stats.object_creation_dur_s
+
+            yield BlockMetadataWithSchema.from_block(
+                block,
+                block_exec_stats=exec_stats,
+                task_exec_stats=TaskExecWorkerStats(
+                    task_wall_time_s=time.perf_counter() - start_time_s,
+                ),
+            )
 
     def _debug_dump(self):
         """Periodically dumps the state of the HashShuffleAggregator for debugging."""

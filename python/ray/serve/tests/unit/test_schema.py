@@ -8,8 +8,15 @@ import pytest
 
 from ray import serve
 from ray._common.pydantic_compat import ValidationError
-from ray.serve.config import AutoscalingConfig
-from ray.serve.deployment import deployment_to_schema, schema_to_deployment
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.utils import DEFAULT
+from ray.serve.config import (
+    AutoscalingConfig,
+    GangPlacementStrategy,
+    GangRuntimeFailurePolicy,
+    GangSchedulingConfig,
+)
+from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
     LoggingConfig,
@@ -381,6 +388,127 @@ class TestDeploymentSchema:
             },
         }
         DeploymentSchema.parse_obj(deployment_options)
+
+    def test_validate_bundle_label_selector(self):
+        """Test validation for placement_group_bundle_label_selector."""
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        # Validate bundle_label_selector provided without bundles raises.
+        deployment_schema["placement_group_bundle_label_selector"] = [{"a": "b"}]
+        with pytest.raises(
+            ValidationError,
+            match="Setting bundle_label_selector is not allowed when placement_group_bundles is not provided",
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # Validate mismatched lengths for bundles and bundle_label_selector raises.
+        deployment_schema["placement_group_bundles"] = [{"CPU": 1}, {"CPU": 1}]
+        deployment_schema["placement_group_bundle_label_selector"] = [
+            {"a": "b"},
+            {"c": "d"},
+            {"e": "f"},
+        ]
+        with pytest.raises(
+            ValidationError,
+            match=r"list must contain either a single selector \(to apply to all bundles\) or match the number of `placement_group_bundles`",
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # Valid config - 2 bundles and 2 placement_group_bundle_label_selector.
+        deployment_schema["placement_group_bundle_label_selector"] = [
+            {"a": "b"},
+            {"c": "d"},
+        ]
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Valid config - single placement_group_bundle_label_selector.
+        deployment_schema["placement_group_bundle_label_selector"] = [
+            {"a": "b"},
+        ]
+        DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_gang_scheduling_config_basic(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = 8
+        deployment_schema["gang_scheduling_config"] = {
+            "gang_size": 4,
+            "gang_placement_strategy": "SPREAD",
+        }
+
+        schema = DeploymentSchema.parse_obj(deployment_schema)
+        assert isinstance(schema.gang_scheduling_config, GangSchedulingConfig)
+        assert schema.gang_scheduling_config.gang_size == 4
+        assert (
+            schema.gang_scheduling_config.gang_placement_strategy
+            == GangPlacementStrategy.SPREAD
+        )
+        assert (
+            schema.gang_scheduling_config.runtime_failure_policy
+            == GangRuntimeFailurePolicy.RESTART_GANG
+        )
+
+    def test_gang_scheduling_config_unset(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = 2
+
+        schema = DeploymentSchema.parse_obj(deployment_schema)
+        assert schema.gang_scheduling_config is DEFAULT.VALUE
+
+    def test_gang_scheduling_config_auto_replicas_rejected(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
+
+        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_gang_scheduling_config_invalid_num_replicas(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = 5
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
+
+        with pytest.raises(
+            ValueError, match="num_replicas.*must be a multiple of gang_size"
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    @pytest.mark.parametrize("gang_size", [0, -1])
+    def test_gang_scheduling_config_invalid_gang_size(self, gang_size):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = 4
+        deployment_schema["gang_scheduling_config"] = {"gang_size": gang_size}
+
+        with pytest.raises(ValidationError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["max_replicas_per_node"] = 2
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 2}
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            ),
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config(
+        self,
+    ):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["placement_group_strategy"] = "SPREAD"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 2}
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting placement_group_strategy is not allowed when "
+                "gang_scheduling_config is provided."
+            ),
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
 
 
 class TestServeApplicationSchema:
@@ -891,6 +1019,64 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
     # Serve will set num_cpus to 1 if it's not set.
     assert len(deployment.ray_actor_options) == 1
     assert deployment.ray_actor_options["num_cpus"] == 1
+
+
+def test_gang_scheduling_config_deployment_schema_roundtrip():
+    # Ensure deployment_to_schema -> schema_to_deployment preserves gang config
+    gang_config = GangSchedulingConfig(gang_size=2, gang_placement_strategy="SPREAD")
+    dc = DeploymentConfig.from_default(
+        num_replicas=4,
+        gang_scheduling_config=gang_config,
+    )
+    dc.user_configured_option_names = {"num_replicas", "gang_scheduling_config"}
+
+    rc = ReplicaConfig.create(deployment_def="", init_args=(), init_kwargs={})
+    dep = Deployment(
+        name="GangDep",
+        deployment_config=dc,
+        replica_config=rc,
+        _internal=True,
+    )
+
+    schema = deployment_to_schema(dep)
+    assert isinstance(schema.gang_scheduling_config, GangSchedulingConfig)
+    assert schema.gang_scheduling_config.gang_size == 2
+    assert (
+        schema.gang_scheduling_config.gang_placement_strategy
+        == GangPlacementStrategy.SPREAD
+    )
+    assert schema.num_replicas == 4
+
+    dep2 = schema_to_deployment(schema)
+    gc2 = dep2._deployment_config.gang_scheduling_config
+    assert isinstance(gc2, GangSchedulingConfig)
+    assert gc2.gang_size == 2
+    assert gc2.gang_placement_strategy == GangPlacementStrategy.SPREAD
+    assert dep2.num_replicas == 4
+
+
+def test_schema_to_deployment_gang_scheduling_config_from_dict():
+    # Ensure schema_to_deployment works when gang_scheduling_config
+    # comes from a parsed dict (the YAML / declarative API path)
+    schema = DeploymentSchema.parse_obj(
+        {
+            "name": "GangDep",
+            "num_replicas": 6,
+            "gang_scheduling_config": {
+                "gang_size": 3,
+                "gang_placement_strategy": "PACK",
+            },
+        }
+    )
+
+    assert isinstance(schema.gang_scheduling_config, GangSchedulingConfig)
+
+    dep = schema_to_deployment(schema)
+    gc = dep._deployment_config.gang_scheduling_config
+    assert isinstance(gc, GangSchedulingConfig)
+    assert gc.gang_size == 3
+    assert gc.gang_placement_strategy == GangPlacementStrategy.PACK
+    assert dep.num_replicas == 6
 
 
 def test_serve_instance_details_is_json_serializable():

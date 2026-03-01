@@ -29,7 +29,7 @@ class MockPublisher : public PublisherInterface {
                google::protobuf::RepeatedPtrField<rpc::PubMessage> *pub_messages,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void,
+  MOCK_METHOD(StatusSet<StatusT::InvalidArgument>,
               RegisterSubscription,
               (const rpc::ChannelType channel_type,
                const UniqueID &subscriber_id,

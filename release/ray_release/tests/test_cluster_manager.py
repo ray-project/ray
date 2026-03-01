@@ -119,9 +119,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             sdk=sdk,
         )
         cluster_manager.set_cluster_env()
-        self.assertRegex(
-            cluster_manager.cluster_env_name, r"^anyscale__env__[0-9a-f]+$"
-        )
+        self.assertEqual(cluster_manager.cluster_env_name, "anyscale")
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeExisting(self):

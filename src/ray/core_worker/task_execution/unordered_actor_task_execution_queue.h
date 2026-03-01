@@ -51,16 +51,9 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   void Stop() override;
 
-  /// Add a new actor task's callbacks to the worker queue.
-  void Add(int64_t seq_no,
-           int64_t client_processed_up_to,
-           std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-               accept_request,
-           std::function<void(const TaskSpecification &,
-                              const Status &,
-                              rpc::SendReplyCallback)> reject_request,
-           rpc::SendReplyCallback send_reply_callback,
-           TaskSpecification task_spec) override;
+  void EnqueueTask(int64_t seq_no,
+                   int64_t client_processed_up_to,
+                   TaskToExecute task) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.
@@ -73,7 +66,7 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
 
   void RunRequest(TaskToExecute request);
 
-  void RunRequestWithResolvedDependencies(TaskToExecute &request);
+  void RunRequestWithResolvedDependencies(TaskToExecute request);
 
   /// Accept the given TaskToExecute or reject it if a task id is canceled via
   /// CancelTaskIfFound.

@@ -45,7 +45,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray:{sha}-{pv}-cu124 "
                 f"ray:{sha}-{pv}-cu124_pip-freeze.txt"
             )
@@ -62,7 +61,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-llm:{sha}-{pv}-cu128 "
                 f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
             )
@@ -79,7 +77,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
@@ -117,7 +114,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray:{sha}-{pv}-cu121 "
                 f"ray:{sha}-{pv}-cu121_pip-freeze.txt"
             )
@@ -143,7 +139,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-llm:{sha}-{pv}-cu128 "
                 f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
             )
@@ -168,7 +163,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
@@ -213,7 +207,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray:{sha}-{pv}-cu118 "
                 f"ray:{sha}-{pv}-cu118_pip-freeze.txt"
             )
@@ -231,7 +224,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-llm-py{v}-{cuda}-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-llm:{sha}-{pv}-cu128 "
                 f"ray-llm:{sha}-{pv}-cu128_pip-freeze.txt"
             )
@@ -248,7 +240,6 @@ class TestRayDockerContainer(RayCITestBase):
                 "./ci/build/build-ray-docker.sh "
                 f"ray-{RAY_VERSION}-{cv}-{cv}-manylinux2014_x86_64.whl "
                 f"{_DOCKER_ECR_REPO}:{ray_ci_build_id}-ray-ml-py{v}-cpu-base "
-                "requirements_compiled.txt "
                 f"rayproject/ray-ml:{sha}-{pv}-cpu "
                 f"ray-ml:{sha}-{pv}-cpu_pip-freeze.txt"
             )
@@ -453,6 +444,9 @@ class TestRayDockerContainer(RayCITestBase):
         v = DEFAULT_PYTHON_TAG_VERSION
         container = RayDockerContainer(v, "cpu", "ray")
         assert container._get_platform_tag() == "-cpu"
+
+        container = RayDockerContainer(v, "tpu", "ray")
+        assert container._get_platform_tag() == "-tpu"
 
         container = RayDockerContainer(v, "cu11.8.0-cudnn8", "ray")
         assert container._get_platform_tag() == "-cu118"

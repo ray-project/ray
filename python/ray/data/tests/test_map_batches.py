@@ -12,6 +12,10 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+)
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.exceptions import UserCodeException
@@ -796,6 +800,42 @@ def test_map_batches_async_generator_fast_yield(
     # Because all tasks are submitted almost simultaneously,
     # the output order may be different compared to the original input.
     assert len(output) == len(expected_output), (len(output), len(expected_output))
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
+    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
+)
+def test_map_batches_struct_field_type_divergence(shutdown_only):
+    """Test map_batches with struct fields that have diverging primitive types."""
+
+    def generator_fn(batch):
+        for i, row_id in enumerate(batch["id"]):
+            if i % 2 == 0:
+                # Yield struct with fields (a: int64, b: string)
+                yield {"data": [{"a": 1, "b": "hello"}]}
+            else:
+                # Yield struct with fields (a: float64, c: int32)
+                # Field 'a' has different type, field 'b' missing, field 'c' new
+                yield {"data": [{"a": 1.5, "c": 100}]}
+
+    ds = ray.data.range(4, override_num_blocks=1)
+    ds = ds.map_batches(generator_fn, batch_size=4)
+    result = ds.materialize()
+
+    rows = result.take_all()
+    assert len(rows) == 4
+
+    # Sort to make the order deterministic.
+    rows.sort(key=lambda r: (r["data"]["a"], str(r["data"]["b"])))
+
+    # Rows with a=1.0 (originally int) should have int cast to float, with c=None
+    assert rows[0]["data"] == {"a": 1.0, "b": "hello", "c": None}
+    assert rows[1]["data"] == {"a": 1.0, "b": "hello", "c": None}
+
+    # Rows with a=1.5 should have float a, with b=None
+    assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
+    assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
 
 
 if __name__ == "__main__":

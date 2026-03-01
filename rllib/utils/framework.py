@@ -399,6 +399,7 @@ def get_variable(
     return value
 
 
+@DeveloperAPI
 @Deprecated(
     old="rllib/utils/framework.py::get_activation_fn",
     new="rllib/models/utils.py::get_activation_fn",

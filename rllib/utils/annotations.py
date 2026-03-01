@@ -1,8 +1,13 @@
+from typing import Any, Callable, TypeVar
+
 from ray._common.deprecation import Deprecated
 from ray.util.annotations import _mark_annotated
 
+# TypeVar for preserving function/class signatures through decorators
+F = TypeVar("F", bound=Callable[..., Any])
 
-def override(parent_cls):
+
+def override(parent_cls: type) -> Callable[[F], F]:
     """Decorator for documenting method overrides.
 
     Args:
@@ -41,7 +46,7 @@ def override(parent_cls):
             # Set the function as a regular method on the class.
             setattr(owner, name, self.func)
 
-    def decorator(method):
+    def decorator(method: F) -> F:
         # Check, whether `method` is actually defined by the parent class.
         if method.__name__ not in dir(parent_cls):
             raise NameError(
@@ -56,7 +61,7 @@ def override(parent_cls):
     return decorator
 
 
-def PublicAPI(obj):
+def PublicAPI(obj: F) -> F:
     """Decorator for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of RLlib. You
@@ -84,7 +89,7 @@ def PublicAPI(obj):
     return obj
 
 
-def DeveloperAPI(obj):
+def DeveloperAPI(obj: F) -> F:
     """Decorator for documenting developer APIs.
 
     Developer APIs are classes and methods explicitly exposed to developers
@@ -111,7 +116,7 @@ def DeveloperAPI(obj):
     return obj
 
 
-def ExperimentalAPI(obj):
+def ExperimentalAPI(obj: F) -> F:
     """Decorator for documenting experimental APIs.
 
     Experimental APIs are classes and methods that are in development and may
@@ -140,7 +145,7 @@ def ExperimentalAPI(obj):
     return obj
 
 
-def OldAPIStack(obj):
+def OldAPIStack(obj: F) -> F:
     """Decorator for classes/methods/functions belonging to the old API stack.
 
     These should be deprecated at some point after Ray 3.0 (RLlib GA).
@@ -153,7 +158,7 @@ def OldAPIStack(obj):
     return obj
 
 
-def OverrideToImplementCustomLogic(obj):
+def OverrideToImplementCustomLogic(obj: F) -> F:
     """Users should override this in their sub-classes to implement custom logic.
 
     Used in Algorithm and Policy to tag methods that need overriding, e.g.
@@ -171,11 +176,11 @@ def OverrideToImplementCustomLogic(obj):
             ...
 
     """
-    obj.__is_overridden__ = False
+    obj.__is_overridden__ = False  # type: ignore[attr-defined]
     return obj
 
 
-def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
+def OverrideToImplementCustomLogic_CallToSuperRecommended(obj: F) -> F:
     """Users should override this in their sub-classes to implement custom logic.
 
     Thereby, it is recommended (but not required) to call the super-class'
@@ -196,11 +201,11 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
             super().setup(config)
             # ... or here (after having called super()'s setup method.
     """
-    obj.__is_overridden__ = False
+    obj.__is_overridden__ = False  # type: ignore[attr-defined]
     return obj
 
 
-def is_overridden(obj):
+def is_overridden(obj: Callable[..., Any]) -> bool:
     """Check whether a function has been overridden.
 
     Note, this only works for API calls decorated with OverrideToImplementCustomLogic

@@ -102,15 +102,7 @@ class LabelSelector {
 
   void AddConstraint(const std::string &key, const std::string &value);
 
-  void AddConstraint(LabelConstraint constraint) {
-    // Avoid adding duplicate constraints.
-    if (std::find(constraints_.begin(), constraints_.end(), constraint) !=
-        constraints_.end()) {
-      return;
-    }
-
-    constraints_.push_back(std::move(constraint));
-  }
+  void AddConstraint(LabelConstraint constraint);
 
   const std::vector<LabelConstraint> &GetConstraints() const { return constraints_; }
 

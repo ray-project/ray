@@ -10,7 +10,6 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray._raylet import NodeID
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -45,7 +44,6 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
-    _format_metrics_table,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
@@ -59,14 +57,11 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.logical.operators.map_operator import MapRows
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import MapRows, Read, Write
 from ray.data._internal.util import MiB
-from ray.data.block import BlockAccessor, BlockMetadataWithSchema
+from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def mock_resource_manager(
@@ -317,7 +312,7 @@ def test_get_eligible_operators_to_run(ray_start_regular_shared):
     assert _get_eligible_ops_to_run(ensure_liveness=False) == [o2, o3]
 
     # `o2`s queue is not empty, but it can't accept new inputs anymore
-    with patch.object(o2, "should_add_input") as _mock:
+    with patch.object(o2, "can_add_input") as _mock:
         _mock.return_value = False
         assert _get_eligible_ops_to_run(ensure_liveness=False) == [o3]
 
@@ -713,57 +708,12 @@ def test_validate_dag(ray_start_regular_shared):
         _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
 
 
-# Mock the `scale_up` method to avoid creating and leaking resources.
-@patch(
-    "ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool.scale",
-    return_value=1,
-)
-def test_configure_output_locality(mock_scale_up, ray_start_regular_shared):
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(DataContext.get_current(), inputs)
-    o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
-    )
-    o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=1),
-    )
-    # No locality.
-    build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
-    assert o2._ray_remote_args.get("scheduling_strategy") is None
-    assert o3._ray_remote_args.get("scheduling_strategy") == "SPREAD"
+def test_configure_output_locality_is_deprecated_noop(restore_data_context):
+    data_context = ray.data.DataContext.get_current()
 
-    # Current node locality.
-    build_streaming_topology(o3, ExecutionOptions(locality_with_output=True))
-    s1 = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert isinstance(s1, NodeAffinitySchedulingStrategy)
-    assert s1.node_id == ray.get_runtime_context().get_node_id()
-    s2 = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert isinstance(s2, NodeAffinitySchedulingStrategy)
-    assert s2.node_id == ray.get_runtime_context().get_node_id()
-
-    # Multi node locality.
-    node_id_1 = NodeID.from_random().hex()
-    node_id_2 = NodeID.from_random().hex()
-    build_streaming_topology(
-        o3, ExecutionOptions(locality_with_output=[node_id_1, node_id_2])
-    )
-    s1a = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s1b = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s1c = o2._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert s1a.node_id == node_id_1
-    assert s1b.node_id == node_id_2
-    assert s1c.node_id == node_id_1
-    s2a = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s2b = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    s2c = o3._get_dynamic_ray_remote_args()["scheduling_strategy"]
-    assert s2a.node_id == node_id_1
-    assert s2b.node_id == node_id_2
-    assert s2c.node_id == node_id_1
+    with pytest.warns(DeprecationWarning, match="no-op"):
+        data_context.execution_options.locality_with_output = True
+    assert data_context.execution_options.locality_with_output is False
 
 
 class OpBufferQueueTest(unittest.TestCase):
@@ -1039,15 +989,15 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
     assert len(logical_ops) == 3
     assert isinstance(logical_ops[0], Read)
-    datasource = logical_ops[0]._datasource
+    datasource = logical_ops[0].datasource
     assert isinstance(datasource, ParquetDatasource)
     assert datasource._source_paths == input_path
 
     assert isinstance(logical_ops[1], MapRows)
-    assert logical_ops[1]._fn == udf
+    assert logical_ops[1].fn == udf
 
     assert isinstance(logical_ops[2], Write)
-    datasink = logical_ops[2]._datasink_or_legacy_datasource
+    datasink = logical_ops[2].datasink_or_legacy_datasource
     assert isinstance(datasink, ParquetDatasink)
     assert datasink.unresolved_path == output_path
 
@@ -1185,8 +1135,12 @@ def create_stub_streaming_gen(
 
     @ray.remote
     def stub_map_task():
+        import time as _time
+
         if raise_exception is not None:
             raise raise_exception
+
+        task_start_s = _time.perf_counter()
 
         for nbytes in block_nbytes:
             # Create a block with a single row of the specified size.
@@ -1196,7 +1150,11 @@ def create_stub_streaming_gen(
             yield block
 
             block_accessor = BlockAccessor.for_block(block)
-            block_metadata = block_accessor.get_metadata()
+            block_metadata = block_accessor.get_metadata(
+                task_exec_stats=TaskExecWorkerStats(
+                    task_wall_time_s=_time.perf_counter() - task_start_s,
+                )
+            )
             yield BlockMetadataWithSchema(
                 block_metadata, schema=block_accessor.schema()
             )
@@ -1267,8 +1225,10 @@ class TestDataOpTask:
             raise_exception=AssertionError("Block generation failed"),
         )
 
-        def verify_exception(exc: Optional[Exception]):
+        def verify_exception(exc, task_exec_stats, task_exec_driver_stats):
             assert isinstance(exc, AssertionError)
+            assert task_exec_stats is None
+            assert task_exec_driver_stats is None
 
         data_op_task = DataOpTask(
             0,
@@ -1366,137 +1326,72 @@ class TestDataOpTask:
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
 
+    @patch("time.perf_counter")
+    def test_on_data_ready_output_backpressure_tracking(
+        self, mock_perf_counter, ray_start_regular_shared
+    ):
+        """Test that DataOpTask tracks output backpressure time correctly.
 
-def test_format_metrics_table():
-    """Test that _format_metrics_table formats metrics in a tabular format."""
-    metrics_dict = {
-        "average_num_outputs_per_task": None,
-        "average_num_inputs_per_task": None,
-        "num_output_blocks_per_task_s": None,
-        "average_total_task_completion_time_s": None,
-        "average_task_completion_excl_backpressure_time_s": None,
-        "average_bytes_per_output": None,
-        "obj_store_mem_internal_inqueue": 0,
-        "obj_store_mem_internal_outqueue": 0,
-        "obj_store_mem_pending_task_inputs": 0,
-        "average_bytes_inputs_per_task": None,
-        "average_rows_inputs_per_task": None,
-        "average_bytes_outputs_per_task": None,
-        "average_rows_outputs_per_task": None,
-        "average_max_uss_per_task": None,
-        "num_inputs_received": 1,
-        "num_row_inputs_received": 20124,
-        "bytes_inputs_received": 322116,
-        "num_task_inputs_processed": 0,
-        "bytes_task_inputs_processed": 0,
-        "bytes_inputs_of_submitted_tasks": 0,
-        "rows_inputs_of_submitted_tasks": 0,
-        "num_task_outputs_generated": 0,
-        "bytes_task_outputs_generated": 0,
-        "rows_task_outputs_generated": 0,
-        "row_outputs_taken": 20124,
-        "block_outputs_taken": 1,
-        "num_outputs_taken": 1,
-        "bytes_outputs_taken": 322116,
-        "num_outputs_of_finished_tasks": 0,
-        "bytes_outputs_of_finished_tasks": 0,
-        "rows_outputs_of_finished_tasks": 0,
-        "num_external_inqueue_blocks": 0,
-        "num_external_inqueue_bytes": 0,
-        "num_external_outqueue_blocks": 0,
-        "num_external_outqueue_bytes": 0,
-        "num_tasks_submitted": 0,
-        "num_tasks_running": 0,
-        "num_tasks_have_outputs": 0,
-        "num_tasks_finished": 0,
-        "num_tasks_failed": 0,
-        "block_generation_time": 0,
-        "task_submission_backpressure_time": 0,
-        "task_output_backpressure_time": 0,
-        "task_completion_time_total_s": 0,
-        "task_completion_time": "(samples: 0, avg: 0.00)",
-        "block_completion_time": "(samples: 0, avg: 0.00)",
-        "task_completion_time_excl_backpressure_s": 0,
-        "block_size_bytes": "(samples: 0, avg: 0.00)",
-        "block_size_rows": "(samples: 0, avg: 0.00)",
-        "num_alive_actors": 0,
-        "num_restarting_actors": 0,
-        "num_pending_actors": 0,
-        "obj_store_mem_internal_inqueue_blocks": 0,
-        "obj_store_mem_internal_outqueue_blocks": 0,
-        "obj_store_mem_freed": 0,
-        "obj_store_mem_spilled": 0,
-        "obj_store_mem_used": 0,
-        "cpu_usage": 0,
-        "gpu_usage": 0,
-    }
+        Output backpressure occurs when max_bytes_to_read=0, meaning the
+        downstream can't consume more data. The task should track the total
+        time spent in this state and report it via TaskExecDriverStats.
+        """
+        # Use 2 blocks so the task stays alive across both BP periods.
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB, 128 * MiB])
 
-    expected = """\
-category      metric                                            value
-Actors        num_alive_actors                                  0
-              num_pending_actors                                0
-              num_restarting_actors                             0
-Averages      average_bytes_inputs_per_task                     None
-              average_bytes_outputs_per_task                    None
-              average_bytes_per_output                          None
-              average_max_uss_per_task                          None
-              average_num_inputs_per_task                       None
-              average_num_outputs_per_task                      None
-              average_rows_inputs_per_task                      None
-              average_rows_outputs_per_task                     None
-              average_task_completion_excl_backpressure_time_s  None
-              average_total_task_completion_time_s              None
-Block Stats   block_size_bytes                                  (samples: 0, avg: 0.00)
-              block_size_rows                                   (samples: 0, avg: 0.00)
-              num_output_blocks_per_task_s                      None
-Inputs        bytes_inputs_of_submitted_tasks                   0
-              bytes_inputs_received                             322116
-              bytes_task_inputs_processed                       0
-              num_inputs_received                               1
-              num_row_inputs_received                           20124
-              num_task_inputs_processed                         0
-              rows_inputs_of_submitted_tasks                    0
-Object Store  num_external_inqueue_blocks                       0
-              num_external_inqueue_bytes                        0
-              num_external_outqueue_blocks                      0
-              num_external_outqueue_bytes                       0
-              obj_store_mem_freed                               0
-              obj_store_mem_internal_inqueue                    0
-              obj_store_mem_internal_inqueue_blocks             0
-              obj_store_mem_internal_outqueue                   0
-              obj_store_mem_internal_outqueue_blocks            0
-              obj_store_mem_pending_task_inputs                 0
-              obj_store_mem_spilled                             0
-              obj_store_mem_used                                0
-Outputs       block_outputs_taken                               1
-              bytes_outputs_of_finished_tasks                   0
-              bytes_outputs_taken                               322116
-              bytes_task_outputs_generated                      0
-              num_outputs_of_finished_tasks                     0
-              num_outputs_taken                                 1
-              num_task_outputs_generated                        0
-              row_outputs_taken                                 20124
-              rows_outputs_of_finished_tasks                    0
-              rows_task_outputs_generated                       0
-Resources     cpu_usage                                         0
-              gpu_usage                                         0
-Tasks         num_tasks_failed                                  0
-              num_tasks_finished                                0
-              num_tasks_have_outputs                            0
-              num_tasks_running                                 0
-              num_tasks_submitted                               0
-Timing        block_completion_time                             (samples: 0, avg: 0.00)
-              block_generation_time                             0
-              task_completion_time                              (samples: 0, avg: 0.00)
-              task_completion_time_excl_backpressure_s          0
-              task_completion_time_total_s                      0
-              task_output_backpressure_time                     0
-              task_submission_backpressure_time                 0"""
+        captured_stats = {}
 
-    assert _format_metrics_table(metrics_dict) == expected
+        def capture_done(exc, task_exec_stats, task_exec_driver_stats):
+            captured_stats["exc"] = exc
+            captured_stats["task_exec_stats"] = task_exec_stats
+            captured_stats["task_exec_driver_stats"] = task_exec_driver_stats
 
-    # Empty dict should return "(no metrics)"
-    assert _format_metrics_table({}) == "(no metrics)"
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            task_done_callback=capture_done,
+        )
+
+        clock = 0.0
+        mock_perf_counter.return_value = clock
+
+        # Wait for data to become available
+        ray.wait([streaming_gen], fetch_local=False)
+
+        # 1st backpressure period: 2.5s
+        clock = 1.0
+        mock_perf_counter.return_value = clock
+        assert data_op_task.on_data_ready(0) == 0
+
+        clock = 3.5
+        mock_perf_counter.return_value = clock
+
+        # Resume: ends 1st BP period (2.5s), reads block 1 (limited to 1 byte
+        # so it reads exactly one block and stops)
+        data_op_task.on_data_ready(None)
+        assert not data_op_task.has_finished
+
+        # 2nd backpressure period: 1.5s
+        clock = 5.0
+        mock_perf_counter.return_value = clock
+        data_op_task.on_data_ready(0)
+
+        clock = 6.5
+        mock_perf_counter.return_value = clock
+
+        # Drain to completion
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            data_op_task.on_data_ready(None)
+
+        # Verify stats were captured
+        assert captured_stats["exc"] is None
+        assert captured_stats["task_exec_stats"] is not None
+        assert captured_stats["task_exec_driver_stats"] is not None
+
+        # Total backpressure = 2.5s + 1.5s = 4.0s
+        bp_time = captured_stats["task_exec_driver_stats"].task_output_backpressure_s
+        assert bp_time == pytest.approx(4.0)
 
 
 if __name__ == "__main__":

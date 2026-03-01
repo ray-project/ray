@@ -71,10 +71,7 @@ def main(
     ecr_docker_login(ecr_registry)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        rc, output = call_crane_export(wanda_image, tmpdir)
-        if rc != 0:
-            raise ExtractWandaWheelsError(f"Crane export failed: {output}")
-
+        call_crane_export(wanda_image, tmpdir)
         wheels = list(Path(tmpdir).rglob("*.whl"))
         for wheel in wheels:
             shutil.move(wheel, output_path / wheel.name)

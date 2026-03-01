@@ -1,0 +1,14 @@
+diff --git a/exporters/otlp/BUILD b/exporters/otlp/BUILD
+index 1234567..abcdefg 100644
+--- a/exporters/otlp/BUILD
++++ b/exporters/otlp/BUILD
+@@ -42,6 +42,9 @@ cc_library(
+         "include/opentelemetry/exporters/otlp/protobuf_include_prefix.h",
+         "include/opentelemetry/exporters/otlp/protobuf_include_suffix.h",
+     ],
++    defines = [
++        "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW",
++    ],
+     strip_include_prefix = "include",
+     tags = [
+         "otlp",

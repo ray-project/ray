@@ -57,6 +57,8 @@ install_miniforge() {
       *)
         if [ "${MINIMAL_INSTALL-}" = 1 ]; then
           rm -rf "${miniforge_dir}"
+          # Clear CONDA_PYTHON_EXE to force re-activation after fresh install
+          unset CONDA_PYTHON_EXE
         fi
         mkdir -p -- "${miniforge_dir}"
         # We're forced to pass -b for non-interactive mode.
@@ -82,11 +84,38 @@ install_miniforge() {
   local python_version
   python_version="$(python -s -c "import sys; print('%s.%s' % sys.version_info[:2])")"
   if [ -n "${PYTHON-}" ] && [ "${PYTHON}" != "${python_version}" ]; then  # Update Python version
-    (
-      set +x
-      echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
-      "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
-    )
+    # For certain Python versions, we need to create a separate environment because
+    # conda itself doesn't have builds yet, and upgrading the base environment
+    # would remove conda without replacement.
+    if [[ "$PYTHON" == "3.14" ]]; then
+      (
+        set +x
+        echo "Creating new conda environment for Python ${PYTHON}..."
+      )
+      local env_name="py${PYTHON}"
+
+      # Create the environment if it doesn't exist
+      if ! conda env list | grep -q "^${env_name} "; then
+        "${WORKSPACE_DIR}"/ci/suppress_output conda create -q -y -n "${env_name}" python="${PYTHON}"
+      fi
+
+      # Activate the environment
+      (
+        set +x
+        echo "Activating conda environment ${env_name}..."
+      )
+      conda activate "${env_name}"
+
+      # Update CONDA_PYTHON_EXE for the current session
+      CONDA_PYTHON_EXE="$(command -v python)"
+      export CONDA_PYTHON_EXE
+    else
+      (
+        set +x
+        echo "Updating Anaconda Python ${python_version} to ${PYTHON}..."
+        "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y python="${PYTHON}"
+      )
+    fi
   elif [ "${MINIMAL_INSTALL-}" = "1" ]; then  # Reset environment
     (
       set +x

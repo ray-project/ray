@@ -2,6 +2,44 @@ load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 py_library(
+    name = "ray_image_lib",
+    srcs = [
+        "configs.py",
+        "container.py",
+        "docker_container.py",
+        "linux_container.py",
+        "ray_image.py",
+        "supported_images.py",
+    ],
+    data = [
+        "//:.rayciversion",
+        "//:ray-images.yaml",
+    ],
+    visibility = [
+        "//ci/build:__pkg__",
+        "//ci/ray_ci:__subpackages__",
+    ],
+    deps = [
+        ci_require("pyyaml"),
+    ],
+)
+
+py_test(
+    name = "test_ray_image",
+    size = "small",
+    srcs = ["test_ray_image.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_image_lib",
+        ci_require("pytest"),
+    ],
+)
+
+py_library(
     name = "ray_ci_lib",
     srcs = glob(
         ["*.py"],
@@ -12,7 +50,10 @@ py_library(
             "build_in_docker_windows.py",
         ],
     ),
-    data = glob(["*.yaml"]),
+    data = glob(["*.yaml"]) + [
+        "//:.rayciversion",
+        "//:ray-images.yaml",
+    ],
     visibility = ["//ci/ray_ci:__subpackages__"],
     deps = [
         "//release:bazel",
@@ -239,4 +280,24 @@ py_test(
         "team:ci",
     ],
     deps = [ci_require("pytest")],
+)
+
+py_test(
+    name = "test_supported_images",
+    size = "small",
+    srcs = ["test_supported_images.py"],
+    data = [
+        "//:.rayciversion",
+        "//:ray-images.yaml",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_image_lib",
+        ci_require("pytest"),
+        ci_require("pyyaml"),
+    ],
 )

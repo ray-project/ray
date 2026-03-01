@@ -11,6 +11,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -22,11 +23,27 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
       ARCH_SUFFIX: ""
     depends_on: raycpubase
+
+  - name: raytpubase
+    label: "wanda: ray-py{{matrix}}-tpu-base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: docker/base-deps/tpu.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
 
   - name: raycudabase
     label: "wanda: ray-py{{matrix.python}}-cu{{matrix.cuda}}-base"
@@ -40,6 +57,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -64,6 +82,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -92,8 +111,19 @@ steps:
       setup:
         python:
           - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+      adjustments:
+        - with:
+            python: "3.11"
+            cuda: "12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            cuda: "12.8.1-cudnn"
+          skip: true
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -105,8 +135,19 @@ steps:
       setup:
         python:
           - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+      adjustments:
+        - with:
+            python: "3.11"
+            cuda: "12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            cuda: "12.8.1-cudnn"
+          skip: true
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -185,6 +226,7 @@ steps:
       - "3.10"
       - "3.11"
       - "3.12"
+      - "3.13"
     env:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: ""
@@ -202,6 +244,7 @@ steps:
           - "3.10"
           - "3.11"
           - "3.12"
+          - "3.13"
         cuda:
           - "11.7.1"
           - "11.8.0"

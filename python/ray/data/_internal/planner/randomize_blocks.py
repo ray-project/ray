@@ -8,7 +8,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
+from ray.data._internal.logical.operators import RandomizeBlocks
 
 
 def generate_randomize_blocks_fn(
@@ -32,10 +32,10 @@ def generate_randomize_blocks_fn(
             )
 
         if len(blocks_with_metadata) == 0:
-            return refs, {op._name: []}
+            return refs, {op.name: []}
         else:
-            if op._seed is not None:
-                random.seed(op._seed)
+            if op.seed is not None:
+                random.seed(op.seed)
             input_owned = all(b.owns_blocks for b in refs)
             random.shuffle(blocks_with_metadata)
             output = []
@@ -54,6 +54,6 @@ def generate_randomize_blocks_fn(
                         schema=index_to_schema[i],
                     )
                 )
-            return output, {op._name: stats_list}
+            return output, {op.name: stats_list}
 
     return fn

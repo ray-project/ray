@@ -24,6 +24,7 @@ import "src/ray/protobuf/export_submission_job_event.proto";
 
 import "src/ray/protobuf/export_train_state.proto";
 import "src/ray/protobuf/export_dataset_operator_event.proto";
+import "src/ray/protobuf/export_dataset_operator_schema.proto";
 import "src/ray/protobuf/export_dataset_metadata.proto";
 
 // ExportEvent defines events stored by the export API. This
@@ -39,6 +40,7 @@ message ExportEvent {
     EXPORT_TRAIN_RUN_ATTEMPT = 6;
     EXPORT_DATASET_METADATA = 7;
     EXPORT_DATASET_OPERATOR_EVENT = 8;
+    EXPORT_DATASET_OPERATOR_SCHEMA = 9;
   }
 
   // event_id is the unique ID of this event
@@ -59,5 +61,6 @@ message ExportEvent {
     ExportTrainRunAttemptEventData train_run_attempt_event_data = 10;
     ExportDatasetMetadata dataset_metadata = 11;
     ExportDatasetOperatorEventData dataset_operator_event_data = 12;
+    ExportDatasetOperatorSchema dataset_operator_schema = 13;
   }
 }

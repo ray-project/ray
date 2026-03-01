@@ -3,7 +3,7 @@
 import pandas  # noqa
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
@@ -106,7 +106,7 @@ try:
     if pyarrow_version is None or pyarrow_version >= parse_version("21.0.0"):
         pass
     else:
-        from ray._private.ray_constants import env_bool
+        from ray._common.utils import env_bool
 
         RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
             "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False

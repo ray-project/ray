@@ -303,16 +303,39 @@ class RefBundle:
         return sliced_bundle, remaining_bundle
 
     @classmethod
-    def merge_ref_bundles(cls, bundles: List["RefBundle"]) -> "RefBundle":
-        assert bundles, "Cannot merge an empty list of RefBundles."
-        merged_blocks = list(itertools.chain(*[bundle.blocks for bundle in bundles]))
-        merged_slices = list(itertools.chain(*[bundle.slices for bundle in bundles]))
+    def merge_ref_bundles(cls, bundles: Iterable["RefBundle"]) -> "RefBundle":
+        """Merge multiple RefBundles into a single RefBundle.
+
+        Args:
+            bundles: An iterable of RefBundles to merge.
+
+        Returns:
+            A single RefBundle containing all blocks from the input bundles.
+            owns_blocks is True only if all input bundles own their blocks.
+            schema is the first non-empty schema found.
+        """
+        from ray.data.block import _take_first_non_empty_schema
+
+        bundles = list(bundles)
+        if not bundles:
+            return cls(blocks=(), owns_blocks=True, schema=None)
+
+        merged_blocks = list(
+            itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
+        )
+        merged_slices = list(
+            itertools.chain.from_iterable(bundle.slices for bundle in bundles)
+        )
+        # Ray Data uses the `owns_blocks` flag to determine if the system can eagerly
+        # destroy blocks when they're no longer needed. To be safe, we only set this
+        # to True if all input bundles own their blocks.
+        owns_blocks = all(bundle.owns_blocks for bundle in bundles)
+        # TODO: Reconcile the schemas rather than taking the first non-empty schema.
+        schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
         return cls(
             blocks=tuple(merged_blocks),
-            schema=bundles[0].schema,  # Assume all bundles have the same schema
-            owns_blocks=bundles[
-                0
-            ].owns_blocks,  # Assume all bundles have the same ownership
+            schema=schema,
+            owns_blocks=owns_blocks,
             slices=merged_slices,
         )
 

@@ -17,6 +17,7 @@ from ray._common.utils import reset_ray_address
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
     TELEMETRY_ROUTE_PREFIX,
+    TEST_METRICS_EXPORT_PORT,
     check_ray_started,
     check_ray_stopped,
     start_telemetry_app,
@@ -32,7 +33,6 @@ from ray.tests.conftest import (  # noqa
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
-TEST_METRICS_EXPORT_PORT = 9999
 
 TEST_GRPC_SERVICER_FUNCTIONS = [
     "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -326,22 +326,84 @@ def metrics_start_shutdown(request):
             "task_retry_delay_ms": 50,
         },
     )
-    grpc_port = 9000
-    grpc_servicer_functions = [
-        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
-    ]
-    yield serve.start(
-        grpc_options=gRPCOptions(
-            port=grpc_port,
-            grpc_servicer_functions=grpc_servicer_functions,
-            request_timeout_s=request_timeout_s,
-        ),
-        http_options=HTTPOptions(
-            host="0.0.0.0",
-            request_timeout_s=request_timeout_s,
-        ),
+
+    try:
+        # Wait for metrics endpoint to be ready before starting Serve
+        def metrics_endpoint_ready():
+            try:
+                resp = httpx.get(
+                    f"http://localhost:{TEST_METRICS_EXPORT_PORT}", timeout=1.0
+                )
+                return resp.status_code == 200
+            except Exception:
+                return False
+
+        wait_for_condition(metrics_endpoint_ready, timeout=30, retry_interval_ms=500)
+
+        grpc_port = 9000
+        grpc_servicer_functions = [
+            "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+            "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+        ]
+        yield serve.start(
+            grpc_options=gRPCOptions(
+                port=grpc_port,
+                grpc_servicer_functions=grpc_servicer_functions,
+                request_timeout_s=request_timeout_s,
+            ),
+            http_options=HTTPOptions(
+                host="0.0.0.0",
+                request_timeout_s=request_timeout_s,
+            ),
+        )
+    finally:
+        serve.shutdown()
+        ray.shutdown()
+        reset_ray_address()
+
+
+# Helper function to return the node ID of a remote worker.
+@ray.remote(num_cpus=0)
+def _get_node_id():
+    return ray.get_runtime_context().get_node_id()
+
+
+# Test fixture to start a Serve instance in a RayCluster with two labeled nodes
+@pytest.fixture(scope="module")
+def serve_instance_with_labeled_nodes():
+    cluster = Cluster()
+
+    # Unlabeled default node.
+    cluster.add_node(num_cpus=3, resources={"worker0": 1})
+
+    # Node 1 - labeled A100 node in us-west.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker1": 1},
+        labels={"region": "us-west", "gpu-type": "A100"},
     )
+
+    # Node 2 - labeled H100 node in us-east.
+    cluster.add_node(
+        num_cpus=3,
+        resources={"worker2": 1},
+        labels={"region": "us-east", "gpu-type": "H100"},
+    )
+
+    cluster.wait_for_nodes()
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    ray.init(address=cluster.address)
+
+    node_1_id = ray.get(_get_node_id.options(resources={"worker1": 1}).remote())
+    node_2_id = ray.get(_get_node_id.options(resources={"worker2": 1}).remote())
+
+    serve.start()
+
+    yield _get_global_client(), node_1_id, node_2_id, cluster
+
     serve.shutdown()
     ray.shutdown()
-    reset_ray_address()
+    cluster.shutdown()

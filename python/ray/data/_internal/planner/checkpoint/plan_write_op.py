@@ -6,7 +6,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
 )
-from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.operators import Write
 from ray.data._internal.planner.plan_write_op import (
     _plan_write_op_internal,
     generate_collect_write_stats_fn,
@@ -46,7 +46,7 @@ def plan_write_op_with_checkpoint_writer(
 def _generate_checkpoint_writing_transform(
     data_context: DataContext, logical_op: Write
 ) -> BlockMapTransformFn:
-    datasink = logical_op._datasink_or_legacy_datasource
+    datasink = logical_op.datasink_or_legacy_datasource
     if not isinstance(datasink, Datasink):
         raise InvalidCheckpointingOperators(
             f"To enable checkpointing, Write operation must use a "

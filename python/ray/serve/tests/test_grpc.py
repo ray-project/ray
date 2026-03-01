@@ -9,7 +9,10 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.test_utils import (
     get_application_url,
     ping_fruit_stand,
@@ -107,9 +110,10 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
         },
     )
 
-    channel = grpc.insecure_channel("localhost:9000")
-
     serve.run(g)
+
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, ["default"])
@@ -125,6 +129,10 @@ def test_grpc_routing_without_metadata(ray_cluster):
     with or without the metadata. If there are multiple app deployed, without metadata
     will return a notfound response.
     """
+    # Routing doesn't happen in direct ingress mode.
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.connect(namespace=SERVE_NAMESPACE)
@@ -145,7 +153,8 @@ def test_grpc_routing_without_metadata(ray_cluster):
     app1 = "app1"
     serve.run(g, name=app1, route_prefix=f"/{app1}")
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app1, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -179,6 +188,10 @@ def test_grpc_request_with_request_id(ray_cluster):
     the trailing metadata. When request id is passed, gRPC proxy will respond with the
     original request id.
     """
+    # Custom request id is not yet supported for direct ingress
+    if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
     cluster.connect(namespace=SERVE_NAMESPACE)
@@ -199,7 +212,8 @@ def test_grpc_request_with_request_id(ray_cluster):
     app1 = "app1"
     serve.run(g, name=app1, route_prefix=f"/{app1}")
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app1, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -231,6 +245,10 @@ def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
     When the request timed out, gRPC proxy should return timeout response for both
     unary and streaming request.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -250,18 +268,19 @@ def test_grpc_request_timeouts(ray_instance, ray_shutdown, streaming: bool):
 
     @serve.deployment
     class HelloModel:
-        def __call__(self, user_message):
-            ray.get(signal_actor.wait.remote())
+        async def __call__(self, user_message):
+            await signal_actor.wait.remote()
             return serve_pb2.UserDefinedResponse(greeting="hello")
 
-        def Streaming(self, user_message):
+        async def Streaming(self, user_message):
             for i in range(10):
-                ray.get(signal_actor.wait.remote())
+                await signal_actor.wait.remote()
                 yield serve_pb2.UserDefinedResponse(greeting="hello")
 
     serve.run(HelloModel.bind())
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -293,6 +312,10 @@ def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool
     When the request error out, gRPC proxy should return INTERNAL status and the error
     message in the response for both unary and streaming request.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -318,7 +341,8 @@ def test_grpc_request_internal_error(ray_instance, ray_shutdown, streaming: bool
     app_name = "app1"
     serve.run(model, name=app_name)
 
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
 
@@ -340,6 +364,10 @@ async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: 
 
     When the request is canceled, gRPC proxy should cancel the underlying task.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -373,7 +401,8 @@ async def test_grpc_request_cancellation(ray_instance, ray_shutdown, streaming: 
     serve.run(downstream, name="downstream", route_prefix="/downstream")
 
     # Send a request and wait for it to start executing.
-    channel = grpc.insecure_channel("localhost:9000")
+    url = get_application_url("gRPC", app_name="downstream", use_localhost=True)
+    channel = grpc.insecure_channel(url)
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     metadata = (("application", "downstream"),)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
@@ -401,6 +430,10 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     When the deployment sets code, details, and trailing metadata in the gRPC context,
     the response will reflect those values.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -465,9 +498,13 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
 def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: bool):
     """Test setting code on gRPC context then raised exception.
 
-    When the deployment in the gRPC context and then raised exception, the response
-    code should still be internal error instead of user defined error.
+    When the deployment sets a status code on the gRPC context and then raises an
+    exception, the user-defined status code should be preserved in the response.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
@@ -516,6 +553,71 @@ def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: boo
             _ = stub.__call__(request=request)
     rpc_error = exception_info.value
 
+    # User-defined status code should be preserved instead of INTERNAL
+    assert rpc_error.code() == user_defined_error_code
+    assert real_error_message in rpc_error.details()
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_exception_without_grpc_context_code(
+    ray_instance, ray_shutdown, streaming: bool
+):
+    """Test raising exception without setting gRPC status code.
+
+    When the deployment raises an exception without setting a status code on the
+    gRPC context, the response should be INTERNAL error.
+    """
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    real_error_message = "test error without status code"
+
+    @serve.deployment()
+    class HelloModel:
+        def __call__(
+            self,
+            user_message: serve_pb2.UserDefinedMessage,
+            grpc_context: RayServegRPCContext,
+        ):
+            # Don't set any status code, just raise exception
+            raise RuntimeError(real_error_message)
+
+        def Streaming(
+            self,
+            user_message: serve_pb2.UserDefinedMessage,
+            grpc_context: RayServegRPCContext,
+        ):
+            # Don't set any status code, just raise exception
+            raise RuntimeError(real_error_message)
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(model, name=app_name)
+
+    url = get_application_url("gRPC", app_name=app_name, use_localhost=True)
+    channel = grpc.insecure_channel(url)
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    with pytest.raises(grpc.RpcError) as exception_info:
+        if streaming:
+            list(stub.Streaming(request=request))
+        else:
+            _ = stub.__call__(request=request)
+    rpc_error = exception_info.value
+
+    # Without user-defined status code, should be INTERNAL
     assert rpc_error.code() == grpc.StatusCode.INTERNAL
     assert real_error_message in rpc_error.details()
 
@@ -530,6 +632,10 @@ def test_using_grpc_context_bad_function_signature(
     When the deployment sets code, details, and trailing metadata in the gRPC context,
     the response will reflect those values.
     """
+    # TODO(landscapepainter): This skipping mechanism needs to be removed when gRPC streaming for DI is implemented.
+    if streaming and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        pytest.skip()
+
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",

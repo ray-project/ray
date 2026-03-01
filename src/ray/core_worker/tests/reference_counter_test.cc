@@ -243,10 +243,12 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
         publisher_id_(publisher_id) {}
   ~MockDistributedPublisher() = default;
 
-  void RegisterSubscription(const rpc::ChannelType channel_type,
-                            const UniqueID &subscriber_id,
-                            const std::optional<std::string> &key_id_binary) override {
+  StatusSet<StatusT::InvalidArgument> RegisterSubscription(
+      const rpc::ChannelType channel_type,
+      const UniqueID &subscriber_id,
+      const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
+    return StatusT::OK();
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
