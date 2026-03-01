@@ -517,12 +517,15 @@ class DeploymentAutoscalingState:
             # late-starting series are implicitly 0 before their first data point, which
             # undercounts the total and biases aggregations. Start the window at the
             # timestamp when all series have contributed at least one point.
+            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+            # to 10ms; if aligned_start is before the first merged point, the gap would
+            # be treated as 0 and bias the average downward.
             window_start = None
             non_empty_series = [ts for ts in timeseries_list if ts]
             if len(non_empty_series) > 1:
                 aligned_start = max(ts[0].timestamp for ts in non_empty_series)
                 if aligned_start <= merged_timeseries[-1].timestamp:
-                    window_start = aligned_start
+                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
 
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
@@ -531,6 +534,14 @@ class DeploymentAutoscalingState:
                 last_window_s=last_window_s,
                 window_start=window_start,
             )
+            # Cap by current snapshot to avoid double-counting from stale LOCF when
+            # merging replica running + handle queued (same request can appear in both
+            # due to different report timestamps). This can happen in direct ingress mode,
+            # and access through deployment handle, where queued requests are reported on the handle,
+            # while running requests are reported on the replicas.
+            if value is not None and len(non_empty_series) > 1:
+                current_snapshot_total = sum(ts[-1].value for ts in non_empty_series)
+                value = min(value, current_snapshot_total)
             return value if value is not None else 0.0
 
         return 0.0
