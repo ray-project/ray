@@ -1026,7 +1026,7 @@ def read_parquet(
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         include_row_hash: If ``True``, include a deterministic hash for each row.
-            The hash is an int64 computed from the source file path and the row's
+            The hash is a uint64 computed from the source file path and the row's
             position within that file, making it reproducible across repeated reads
             of the same data. Stored in the ``'row_hash'`` column. If a column
             named ``'row_hash'`` already exists in the file, it will be
