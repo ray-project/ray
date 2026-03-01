@@ -2,6 +2,7 @@ import gc
 import logging
 import platform
 import re
+import sys
 import threading
 import time
 from collections import Counter, defaultdict
@@ -14,6 +15,7 @@ import numpy as np
 import pytest
 
 import ray
+import ray.cloudpickle as cloudpickle
 from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -44,6 +46,8 @@ from ray.data.block import BlockExecStats, BlockStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+
+cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
 
 @pytest.mark.skipif(
@@ -155,6 +159,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     else:
         metrics = [
@@ -231,6 +236,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     if extra_metrics:
         metrics.extend(extra_metrics)
@@ -701,6 +707,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -853,6 +860,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -958,6 +966,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_used: A,\n"
         "            cpu_usage: Z,\n"
         "            gpu_usage: Z,\n"
+        "            memory_usage: Z,\n"
         "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"  # noqa: E501
         "         },\n"
         "         operators_stats=[\n"
