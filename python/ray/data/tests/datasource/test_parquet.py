@@ -203,9 +203,9 @@ def test_include_row_hash_same_data_different_files(
     rows = ds.take_all()
     hashes = [row["row_hash"] for row in rows]
     assert len(hashes) == 9
-    assert len(set(hashes)) == 9, (
-        "Identical data in different files must produce distinct hashes"
-    )
+    assert (
+        len(set(hashes)) == 9
+    ), "Identical data in different files must produce distinct hashes"
 
 
 def test_include_row_hash_with_column_projection(
@@ -763,22 +763,22 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ds = ray.data.read_parquet(tensor_output_path)
         assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
-        assert data_size >= 6_000_000 and data_size <= 10_000_000, (
-            "estimated data size is out of expected bound"
-        )
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is out of expected bound"
         data_size = ds.materialize().size_bytes()
-        assert data_size >= 7_000_000 and data_size <= 10_000_000, (
-            "actual data size is out of expected bound"
-        )
+        assert (
+            data_size >= 7_000_000 and data_size <= 10_000_000
+        ), "actual data size is out of expected bound"
 
         datasource = ParquetDatasource(tensor_output_path)
         assert (
             datasource._encoding_ratio >= 300 and datasource._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
-        assert data_size >= 6_000_000 and data_size <= 10_000_000, (
-            "estimated data size is either out of expected bound"
-        )
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is either out of expected bound"
         assert (
             data_size
             == ParquetDatasource(tensor_output_path).estimate_inmemory_data_size()
@@ -791,22 +791,22 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ds = ray.data.read_parquet(text_output_path)
         assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
-        assert data_size >= 700_000 and data_size <= 2_200_000, (
-            "estimated data size is out of expected bound"
-        )
+        assert (
+            data_size >= 700_000 and data_size <= 2_200_000
+        ), "estimated data size is out of expected bound"
         data_size = ds.materialize().size_bytes()
-        assert data_size >= 1_000_000 and data_size <= 2_000_000, (
-            "actual data size is out of expected bound"
-        )
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "actual data size is out of expected bound"
 
         datasource = ParquetDatasource(text_output_path)
-        assert datasource._encoding_ratio >= 6 and datasource._encoding_ratio <= 300, (
-            "encoding ratio is out of expected bound"
-        )
+        assert (
+            datasource._encoding_ratio >= 6 and datasource._encoding_ratio <= 300
+        ), "encoding ratio is out of expected bound"
         data_size = datasource.estimate_inmemory_data_size()
-        assert data_size >= 700_000 and data_size <= 2_200_000, (
-            "estimated data size is out of expected bound"
-        )
+        assert (
+            data_size >= 700_000 and data_size <= 2_200_000
+        ), "estimated data size is out of expected bound"
         assert (
             data_size
             == ParquetDatasource(text_output_path).estimate_inmemory_data_size()
@@ -977,9 +977,9 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
 
         # Verify UUID is present in filename (should be the actual write_uuid)
         uuid_pattern = r"[a-f0-9]{32}"  # 32 hex characters (UUID without dashes)
-        assert re.search(uuid_pattern, written_file), (
-            f"File '{written_file}' should contain UUID"
-        )
+        assert re.search(
+            uuid_pattern, written_file
+        ), f"File '{written_file}' should contain UUID"
 
         # Verify the content is correct by reading back
         ds_read = ray.data.read_parquet(tmp_path)
@@ -1492,12 +1492,12 @@ def test_seed_file_shuffle_with_execution_update(
     ds1_hashable_results = {make_hashable(result) for result in ds1_epoch_results}
     ds2_hashable_results = {make_hashable(result) for result in ds2_epoch_results}
 
-    assert len(ds1_hashable_results) == 5, (
-        "ds1 should produce different results across epochs"
-    )
-    assert len(ds2_hashable_results) == 5, (
-        "ds2 should produce different results across epochs"
-    )
+    assert (
+        len(ds1_hashable_results) == 5
+    ), "ds1 should produce different results across epochs"
+    assert (
+        len(ds2_hashable_results) == 5
+    ), "ds2 should produce different results across epochs"
 
 
 def test_seed_file_shuffle_with_execution_no_effect(
@@ -1544,12 +1544,12 @@ def test_seed_file_shuffle_with_execution_no_effect(
     ds1_hashable_results = {make_hashable(result) for result in ds1_execution_results}
     ds2_hashable_results = {make_hashable(result) for result in ds2_execution_results}
 
-    assert len(ds1_hashable_results) == 1, (
-        "ds1 should produce the same results across executions"
-    )
-    assert len(ds2_hashable_results) == 1, (
-        "ds2 should produce the same results across executions"
-    )
+    assert (
+        len(ds1_hashable_results) == 1
+    ), "ds1 should produce the same results across executions"
+    assert (
+        len(ds2_hashable_results) == 1
+    ), "ds2 should produce the same results across executions"
 
 
 def test_read_file_with_partition_values(
@@ -1760,9 +1760,9 @@ def test_write_partition_cols_with_min_rows_per_file(
         # With the new optimization logic, we expect fewer files with larger sizes
         # Each file should have at least min_rows_per_file rows
         for file_size in file_sizes:
-            assert file_size >= min_rows_per_file, (
-                f"File size {file_size} is less than min_rows_per_file {min_rows_per_file}"
-            )
+            assert (
+                file_size >= min_rows_per_file
+            ), f"File size {file_size} is less than min_rows_per_file {min_rows_per_file}"
 
     # Verify we can read back the data correctly
     ds_read = ray.data.read_parquet(tmp_path)
@@ -1810,9 +1810,9 @@ def test_write_max_rows_per_file(
     # Add explicit assertion about individual file sizes for clarity
     print(f"File sizes with max_rows_per_file={max_rows_per_file}: {file_sizes}")
     for size in file_sizes:
-        assert size <= max_rows_per_file, (
-            f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
-        )
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
 
     # ------------------------------------------------------------------
     # Verify the parquet round-trip: written data == read-back data
@@ -1864,9 +1864,9 @@ def test_write_min_max_rows_per_file(
             print(
                 f"File size {size} is less than min_rows_per_file {min_rows_per_file}"
             )
-        assert size <= max_rows_per_file, (
-            f"File size {size} not less than {max_rows_per_file}"
-        )
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} not less than {max_rows_per_file}"
 
     # ------------------------------------------------------------------
     # Verify the parquet round-trip: written data == read-back data
@@ -1955,9 +1955,9 @@ def test_write_partition_cols_with_max_rows_per_file(
 
     # Add explicit assertion about individual file sizes for clarity
     for size in all_file_sizes:
-        assert size <= max_rows_per_file, (
-            f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
-        )
+        assert (
+            size <= max_rows_per_file
+        ), f"File size {size} exceeds max_rows_per_file {max_rows_per_file}"
 
     # ------------------------------------------------------------------
     # Verify the parquet round-trip: data read back must equal original
