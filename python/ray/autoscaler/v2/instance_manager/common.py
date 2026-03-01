@@ -336,6 +336,8 @@ class InstanceUtil:
             Instance.TERMINATION_FAILED: {
                 # Retry the termination, become terminating again.
                 Instance.TERMINATING,
+                # Autoscaler detects instance no longer exists in node provider's list
+                Instance.TERMINATED,
             },
             # An instance is marked as terminated when:
             # 1. A cloud instance disappears from the list of running cloud instances
