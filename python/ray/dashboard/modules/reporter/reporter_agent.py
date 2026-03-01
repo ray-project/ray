@@ -708,7 +708,7 @@ class ReporterAgent(
 
     def _get_gpu_usage(self):
         """Get GPU usage information using the GPU metric provider."""
-        return self._gpu_metric_provider.get_gpu_usage()
+        return self._gpu_metric_provider.get_gpu_usage(self._ip)
 
     @staticmethod
     def _get_tpu_usage() -> List[TpuUtilizationInfo]:
