@@ -240,7 +240,7 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
 
 
 def test_task_pool_resource_reporting_with_dynamic_remote_args(
-    ray_start_10_cpus_shared
+    ray_start_10_cpus_shared,
 ):
     """Test that current_logical_usage reflects dynamic resources from ray_remote_args_fn,
     not just the statically defined ray_remote_args."""
@@ -448,7 +448,7 @@ def test_actor_pool_scheduling(ray_start_10_cpus_shared, restore_data_context):
 
 
 def test_actor_pool_resource_reporting_with_dynamic_remote_args(
-    ray_start_10_cpus_shared
+    ray_start_10_cpus_shared,
 ):
     """Test that current_logical_usage reflects dynamic resources from ray_remote_args_fn,
     not just the statically defined ray_remote_args."""

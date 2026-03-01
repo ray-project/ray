@@ -1067,10 +1067,14 @@ class _ActorPool(AutoscalingActorPool):
 
         return None
 
-    def _create_actor(self) -> Tuple[ray.actor.ActorHandle, ObjectRef, ExecutionResources]:
+    def _create_actor(
+        self,
+    ) -> Tuple[ray.actor.ActorHandle, ObjectRef, ExecutionResources]:
         logical_actor_id = str(uuid.uuid4())
         labels = {self.get_logical_id_label_key(): logical_actor_id}
-        actor, ready_ref, resource_usage = self._create_actor_fn(labels, logical_actor_id)
+        actor, ready_ref, resource_usage = self._create_actor_fn(
+            labels, logical_actor_id
+        )
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref, resource_usage
 
