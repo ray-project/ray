@@ -7,6 +7,9 @@ import numpy as np
 import pytest
 
 import ray
+import ray.exceptions
+from ray.experimental.state.api import list_actors
+from ray._common.test_utils import SignalActor
 from ray._common.test_utils import (
     SignalActor,
     wait_for_condition,
@@ -530,6 +533,119 @@ def test_reconstruction_generator_out_of_scope(
 
     del ref
     assert_no_leak()
+
+
+def test_all_lost_objects_return_errors_if_reconstruction_fails_without_successful_first_attempt(
+    ray_start_cluster,
+):
+    # 1. The streaming generator produces 10 objects in total (called 0, 1, 2, ... , 9) which are stored in plasma
+    # 2. The streaming generator runs on Node A with backpressure=1.
+    # 4. The user consumes the first yielded object.
+    # 5. The streaming generator yields up to 1 more object and waits.
+    # 6. Node A dies and the primary copy of all yielded objects are lost.
+    # 7. There are 0 actor restarts, but there are infinite task retries.
+    # 8. Reconstruction will fail.
+    # 9. The user will get an ActorDiedError when they call ray.get for some number of objects greater than 0 and less than 2
+    # 10. The user will get an StopIteration when they call ray.get after at most 2 ActorDiedErrors.
+
+    cluster = ray_start_cluster
+
+    cluster.add_node(
+        num_cpus=0,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+        # Node death with be detected in ~500ms instead of the
+        # longer default values.
+        _system_config={
+            "health_check_period_ms": 100,
+            "health_check_timeout_ms": 100,
+            "health_check_initial_delay_ms": 0,
+        },
+    )
+
+    ray.init(address=cluster.address)
+    node_a = cluster.add_node()
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_restarts=0, max_task_retries=-1, num_cpus=1)
+    class UnrestartableActor:
+        @ray.method(_generator_backpressure_num_objects=1)
+        def func(self):
+            for _ in range(10):
+                yield np.ones(1024**2, dtype=np.int8)
+
+    unrestartable_actor = UnrestartableActor.remote()
+    generator = unrestartable_actor.func.remote()
+
+    cluster.remove_node(node_a, allow_graceful=False)
+
+    num_yielded_index: int = 0
+
+    while True:
+        try:
+            ray.get(next(generator), timeout=5)
+        except ray.exceptions.ActorDiedError:
+            assert num_yielded_index <= 1
+            num_yielded_index += 1
+        except StopIteration:
+            # yield at least 1 but upto 2 objects.
+            assert num_yielded_index >= 1 and num_yielded_index <= 2
+            break
+
+
+def test_all_lost_objects_return_errors_if_reconstruction_fails_after_successful_first_attempt(
+    ray_start_cluster,
+):
+    # 1. The streaming generator produces 10 objects in total (called 0, 1, 2, ... , 9) which are stored in plasma
+    # 2. The streaming generator runs on Node A with backpressure=1.
+    # 4. The user consumes all 10 objects and the task finishes.
+    # 6. Node A dies and the primary copy of all 10 yielded objects are lost.
+    # 7. There are 0 actor restarts, but there are infinite task retries.
+    # 8. Reconstruction will fail.
+    # 9. The user will get an ActorDiedError when they call ray.get all 10 objects.
+
+    cluster = ray_start_cluster
+
+    cluster.add_node(
+        num_cpus=0,
+        enable_object_reconstruction=True,
+        resources={"head": 1},
+        # Node death with be detected in ~500ms instead of the
+        # longer default values.
+        _system_config={
+            "health_check_period_ms": 100,
+            "health_check_timeout_ms": 100,
+            "health_check_initial_delay_ms": 0,
+        },
+    )
+
+    ray.init(address=cluster.address)
+    node = cluster.add_node()
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_restarts=0, max_task_retries=-1, num_cpus=1)
+    class UnrestartableActor:
+        @ray.method(_generator_backpressure_num_objects=1)
+        def func(self):
+            for _ in range(10):
+                yield np.ones(1024**2, dtype=np.int8)
+
+    unrestartable_actor = UnrestartableActor.remote()
+    generator = unrestartable_actor.func.remote()
+
+    object_refs = [next(generator) for _ in range(10)]
+
+    with pytest.raises(StopIteration):
+        next(generator)
+
+    # Gaurantees that the generator ran to completion.
+    assert generator.is_finished()
+
+    # Trigger task resubmission for lineage reconstruction.
+    cluster.remove_node(node, allow_graceful=False)
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        ray.get(object_refs, timeout=5)
 
 
 if __name__ == "__main__":
