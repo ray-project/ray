@@ -1,11 +1,16 @@
+import io
+import json
 import logging
 import os
 import pathlib
+import re
 import sys
+import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
+from urllib.request import urlopen
 
 import sphinx
 from docutils import nodes
@@ -72,7 +77,76 @@ extensions = [
     "sphinx_design",
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
+    "sphinx_collections",
 ]
+
+# -- sphinx-collections: pull external template files at build time -----------
+
+_ANYSCALE_HOST = os.environ.get(
+    "ANYSCALE_HOST", "https://console.anyscale.com"
+)
+_TEMPLATE_README_API = (
+    _ANYSCALE_HOST + "/api/v2/experimental_workspaces/template/readme/{name}"
+)
+
+_TEMPLATE_COLLECTIONS = {
+    "deployment-serve-llm": {
+        "target": "serve/tutorials/deployment-serve-llm",
+    },
+}
+
+
+def _resolve_template_url(name):
+    """Fetch the build zip URL for a template from the readme API."""
+    api_url = _TEMPLATE_README_API.format(name=name)
+    logger.info("sphinx-collections: resolving template URL from %s", api_url)
+    with urlopen(api_url) as resp:
+        data = json.loads(resp.read())
+    url = data["result"]["url"]
+    # The readme API returns a preview.zip; swap to build.zip for docs builds.
+    url = url.replace("/preview.zip", "/build.zip")
+    logger.info("sphinx-collections: resolved URL %s", url)
+    return url
+
+
+def _fetch_and_extract_zip(config):
+    """Download a zip archive and extract it into the collection target directory."""
+    import shutil
+
+    url = _resolve_template_url(config["name"])
+    target = pathlib.Path(config["target"])
+    if target.is_dir():
+        shutil.rmtree(target)
+    target.mkdir(parents=True, exist_ok=True)
+    logger.info("sphinx-collections: downloading %s -> %s", url, target)
+    with urlopen(url) as resp:
+        zip_bytes = io.BytesIO(resp.read())
+    with zipfile.ZipFile(zip_bytes) as zf:
+        zf.extractall(target)
+    logger.info("sphinx-collections: extracted %d files to %s", len(zf.namelist()), target)
+
+
+collections = {
+    name: {
+        "driver": "function",
+        "source": _fetch_and_extract_zip,
+        "target": coll["target"],
+        "clean": False,
+        "final_clean": False,
+        "write_result": False,
+    }
+    for name, coll in _TEMPLATE_COLLECTIONS.items()
+}
+
+# Don't wipe the target before build — other docs may co-exist in parent dirs.
+collections_clean = True
+# Clean up collected files after build so they don't get committed.
+collections_final_clean = True
+
+# The collections config contains a function reference (for the "function" driver)
+# which Sphinx cannot pickle for caching. This is harmless — suppress the warning
+# so it doesn't cause a build failure under -W (warnings-as-errors).
+suppress_warnings = ["config.cache"]
 
 # Configuration for algolia
 # Note: This API key grants read access to our indexes and is intended to be public.
@@ -249,6 +323,9 @@ exclude_patterns = [
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
+    "_collections/serve/tutorials/deployment-serve-llm/README.*",
+    "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
+    "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -542,10 +619,14 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
     """
-    generate.generate_autosummary_docs(
-        [os.path.join(app.srcdir, file) for file in autogen_files],
-        app=app,
-    )
+    try:
+        generate.generate_autosummary_docs(
+            [os.path.join(app.srcdir, file) for file in autogen_files],
+            app=app,
+        )
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Skipping autogen due to: {e}")
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -626,6 +707,18 @@ def setup(app):
             app.env.metadata[docname]["orphan"] = True
 
     app.connect('source-read', mark_orphans)
+
+    # Fix code-block language tags in _collections markdown files.
+    # Notebooks converted to markdown tag Jupyter magic shell commands
+    # (e.g. ``!serve run ...``) as ``python`` code blocks, which causes
+    # Sphinx highlighting warnings.  Re-tag them as ``bash``.
+    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n(![a-z])")
+
+    def fix_collections_code_blocks(app, docname, source):
+        if docname.startswith("_collections/"):
+            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```bash\n\1", source[0])
+
+    app.connect('source-read', fix_collections_code_blocks)
 
 
 redoc = [

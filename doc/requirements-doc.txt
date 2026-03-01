@@ -21,6 +21,7 @@ pydata-sphinx-theme==0.14.1
 autodoc_pydantic==2.2.0
 appnope
 sphinx-docsearch==0.0.7
+sphinx-collections==0.3.1
 
 pydantic==2.5.0
 
