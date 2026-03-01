@@ -2609,7 +2609,7 @@ class DeploymentState:
             else None
         )
 
-    def get_target_replica_delta(self) -> int:
+    def _get_target_replica_delta(self) -> int:
         """Calculate delta between target replicas and active replicas."""
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
@@ -3126,7 +3126,7 @@ class DeploymentState:
 
         self._check_and_stop_outdated_version_replicas()
 
-        delta_replicas = self.get_target_replica_delta()
+        delta_replicas = self._get_target_replica_delta()
         if delta_replicas == 0:
             return (upscale, downscale)
 
@@ -3443,8 +3443,15 @@ class DeploymentState:
                         )
 
             elif start_status == ReplicaStartupStatus.FAILED:
-                # Replica reconfigure (deploy / upgrade) failed
-                self.record_replica_startup_failure(error_msg)
+                # Replica reconfigure (deploy / upgrade) failed.
+                # For gang replicas, count the failure once per gang and not per replica so the
+                # retry counter isn't inflated by gang_size on every cycle.
+                if (
+                    replica.gang_context is None
+                    or replica.gang_context.gang_id not in failed_gang_ids
+                ):
+                    self.record_replica_startup_failure(error_msg)
+
                 self._stop_replica(replica)
                 # Track failed gang IDs for sibling cleanup below.
                 if replica.gang_context is not None:
@@ -4549,7 +4556,7 @@ class DeploymentStateManager:
             if gang_config is None:
                 continue
 
-            num_replicas_to_add = deployment_state.get_target_replica_delta()
+            num_replicas_to_add = deployment_state._get_target_replica_delta()
             if num_replicas_to_add <= 0:
                 # Only reserve PGs if we need to add replicas
                 continue

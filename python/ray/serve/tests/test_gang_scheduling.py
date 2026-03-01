@@ -14,6 +14,7 @@ from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @ray.remote
@@ -951,6 +952,152 @@ class TestGangFailureRecovery:
 
         wait_for_condition(check_target_gang_restarted, timeout=90)
         wait_for_condition(check_apps_running, apps=[app_name], timeout=60)
+        serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangChildSpawnPlacementGroup:
+    @ray.remote(num_cpus=0.1)
+    class ChildActor:
+        def get_pg(self):
+            return get_current_placement_group()
+
+    @ray.remote(num_cpus=0)
+    def child_task_get_pg():
+        return get_current_placement_group()
+
+    @pytest.mark.parametrize("child_type", ["actor", "task"])
+    def test_child_in_gang_pg(self, ray_cluster, child_type):
+        """Spawn a child actor/task inside a gang replica and verify it shares the gang placement group."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        ChildActor = TestGangChildSpawnPlacementGroup.ChildActor
+        child_task_get_pg = TestGangChildSpawnPlacementGroup.child_task_get_pg
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+            # Extra bundle per replica so the child actor has resources
+            # inside the gang PG (the first bundle is consumed by the replica).
+            placement_group_bundles=[{"CPU": 0.1}, {"CPU": 0.1}],
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangWithChild:
+            def test_child_in_pg(self):
+                parent_pg = get_current_placement_group()
+                if child_type == "actor":
+                    child = ChildActor.remote()
+                    child_pg = ray.get(child.get_pg.remote())
+                else:
+                    child_pg = ray.get(child_task_get_pg.remote())
+                return {
+                    "parent_pg_id": parent_pg.id.hex() if parent_pg else None,
+                    "child_pg_id": child_pg.id.hex() if child_pg else None,
+                }
+
+            def __call__(self):
+                return "ok"
+
+        app_name = "gang_child_app"
+        handle = serve.run(GangWithChild.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        for _ in range(20):
+            result = handle.test_child_in_pg.remote().result()
+            assert result["parent_pg_id"] is not None
+            assert result["child_pg_id"] is not None
+            assert result["child_pg_id"] == result["parent_pg_id"]
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+    def test_child_actor_gang_pg_bundles_bounded(self, ray_cluster):
+        """Gang replicas with placement_group_bundles: verify child actors are resource-bounded by the gang PG."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        ChildActor = TestGangChildSpawnPlacementGroup.ChildActor
+
+        @serve.deployment(
+            num_replicas=1,
+            ray_actor_options={"num_cpus": 0.1},
+            # Replica consumes the first bundle (0.1 CPU). Worker bundle (0.1
+            # CPU) fits exactly one ChildActor, so a second child is blocked.
+            placement_group_bundles=[{"CPU": 0.1}, {"CPU": 0.1}],
+            gang_scheduling_config=GangSchedulingConfig(gang_size=1),
+        )
+        class GangWithBundlesAndChild:
+            def test_second_worker_blocked(self):
+                """The second child actor shouldn't fit in this replica's bundle slice."""
+                w1 = ChildActor.remote()
+                w2 = ChildActor.remote()
+                ready, _ = ray.wait([w2.get_pg.remote()], timeout=1)
+                ray.kill(w1)
+                ray.kill(w2)
+                return len(ready) == 0
+
+            def __call__(self):
+                return "ok"
+
+        app_name = "gang_bundles_child_app"
+        handle = serve.run(GangWithBundlesAndChild.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        # Verify resource limits are enforced within the gang PG bundle slice.
+        for _ in range(4):
+            assert handle.test_second_worker_blocked.remote().result() is True
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+    def test_child_actor_opt_out_gang_pg(self, ray_cluster):
+        """Verify a child actor can opt out of the gang PG by passing placement_group=None."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        ChildActor = TestGangChildSpawnPlacementGroup.ChildActor
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangWithEscapedChild:
+            def get_child_outside_pg(self):
+                parent_pg = get_current_placement_group()
+                child = ChildActor.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=None,  # Explicitly schedule outside the placement group
+                    )
+                ).remote()
+                child_pg = ray.get(child.get_pg.remote())
+                return {
+                    "parent_pg_id": parent_pg.id.hex() if parent_pg else None,
+                    "child_pg_id": child_pg.id.hex() if child_pg else None,
+                }
+
+            def __call__(self):
+                return "ok"
+
+        app_name = "gang_escaped_child_app"
+        handle = serve.run(GangWithEscapedChild.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        for _ in range(20):
+            result = handle.get_child_outside_pg.remote().result()
+            assert result["parent_pg_id"] is not None
+            assert result["child_pg_id"] is None
+
         serve.delete(app_name)
         serve.shutdown()
 

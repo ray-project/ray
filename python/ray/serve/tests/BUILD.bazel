@@ -197,23 +197,6 @@ py_test_module_list(
     ],
 )
 
-# Gang scheduling tests
-py_test_module_list(
-    size = "large",
-    files = [
-        "test_gang_scheduling.py",
-    ],
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
 # Large tests.
 py_test_module_list(
     size = "enormous",
@@ -221,6 +204,7 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_fastapi.py",
+        "test_gang_scheduling.py",
         "test_grpc.py",
         "test_logging.py",
         "test_logging_2.py",

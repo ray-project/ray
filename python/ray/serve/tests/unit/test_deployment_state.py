@@ -6208,6 +6208,9 @@ class TestScaleDeploymentGangReplicas:
         for replica in ds._replicas.get([ReplicaState.STOPPING]):
             replica._actor.set_done_stopping()
 
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+
         dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
             return_value={
                 deployment_id: GangReservationResult(
@@ -6430,13 +6433,6 @@ class TestScaleDeploymentGangReplicas:
         for replica in ds._replicas.get([ReplicaState.STARTING]):
             replica._actor.set_ready()
 
-        dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
-            return_value={
-                deployment_id: GangReservationResult(
-                    success=True, gang_pgs=[Mock(name="pg-2")]
-                )
-            }
-        )
         dsm.update()
         check_counts(
             ds,
@@ -6456,6 +6452,52 @@ class TestScaleDeploymentGangReplicas:
             by_state=[(ReplicaState.RUNNING, target_replicas, version)],
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_gang_startup_failure_per_gang_counter(self, mock_deployment_state_manager):
+        """When a gang of replicas fails to start, the failure counter should increment once per gang and not once per replica."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        gang_size = 2
+        target_replicas = 2
+        deployment_id = DeploymentID(name="gang_startup_threshold", app_name="app")
+
+        with patch(
+            "ray.serve._private.deployment_state.MAX_PER_REPLICA_RETRY_COUNT", 2
+        ):
+            info, _ = deployment_info(
+                num_replicas=target_replicas,
+                version="v1",
+                max_constructor_retry_count=10,
+                gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+            )
+            dsm.deploy(deployment_id, info)
+            ds = dsm._deployment_states[deployment_id]
+
+            # Set by _failed_to_start_threshold -> min(max_constructor_retry_count, target_replicas * MAX_PER_REPLICA_RETRY_COUNT) = min(10, 2*2) = 4
+            expected_threshold = 4
+            assert ds._failed_to_start_threshold == expected_threshold
+
+            def run_failure_cycle():
+                """Run one full cycle: start replicas → fail → stop → clean up."""
+                dsm.update()
+                starting = ds._replicas.get([ReplicaState.STARTING])
+                for replica in starting:
+                    replica._actor.set_failed_to_start()
+                # Transition failed replicas to STOPPING
+                dsm.update()
+                # Complete stopping
+                for replica in ds._replicas.get([ReplicaState.STOPPING]):
+                    replica._actor.set_done_stopping()
+                dsm.update()
+
+            num_failure_cycles = 2
+            for _ in range(num_failure_cycles):
+                run_failure_cycle()
+                assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+
+            assert ds._replica_constructor_retry_counter == num_failure_cycles
 
     def test_terminally_failed_deployment_skips_gang_reservation(
         self, mock_deployment_state_manager

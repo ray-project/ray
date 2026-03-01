@@ -619,58 +619,6 @@ def test_schedule_replica():
     }
 
 
-def test_schedule_gang_replica():
-    """Test DeploymentScheduler._schedule_replica() gang placement group path."""
-    d_id = DeploymentID("deployment1", "app1")
-    cluster_node_info_cache = MockClusterNodeInfoCache()
-    mock_create_pg = Mock(
-        side_effect=RuntimeError("Should not create placement group for gang request")
-    )
-    scheduler = default_impl.create_deployment_scheduler(
-        cluster_node_info_cache,
-        head_node_id_override="fake-head-node-id",
-        create_placement_group_fn_override=mock_create_pg,
-    )
-
-    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
-    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
-
-    scheduling_strategy = None
-
-    def set_scheduling_strategy(actor_handle, placement_group):
-        nonlocal scheduling_strategy
-        scheduling_strategy = actor_handle._options["scheduling_strategy"]
-
-    replica_id = ReplicaID(unique_id="r_gang", deployment_id=d_id)
-    reserved_gang_pg = Mock()
-    scheduling_request = ReplicaSchedulingRequest(
-        replica_id=replica_id,
-        actor_def=MockActorClass(),
-        actor_resources={"CPU": 1},
-        actor_options={"name": "r_gang"},
-        actor_init_args=(),
-        on_scheduled=set_scheduling_strategy,
-        gang_placement_group=reserved_gang_pg,
-        gang_pg_index=3,
-    )
-    scheduler._pending_replicas[d_id][replica_id] = scheduling_request
-
-    scheduler._schedule_replica(
-        scheduling_request=scheduling_request,
-        default_scheduling_strategy="some_default",
-        target_node_id=NodeID.from_random().hex(),  # should get ignored
-        target_labels={"abc": In("xyz")},  # should get ignored
-    )
-
-    assert isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy)
-    assert scheduling_strategy.placement_group == reserved_gang_pg
-    assert scheduling_strategy.placement_group_bundle_index == 3
-    assert len(scheduler._launching_replicas[d_id]) == 1
-    assert not scheduler._launching_replicas[d_id][replica_id].target_labels
-    assert not scheduler._launching_replicas[d_id][replica_id].target_node_id
-    mock_create_pg.assert_not_called()
-
-
 def test_downscale_multiple_deployments():
     """Test to make sure downscale prefers replicas without node id
     and then replicas on a node with fewest replicas of all deployments.
