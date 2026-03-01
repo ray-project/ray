@@ -577,6 +577,143 @@ def test_read_kafka_datetime_before_all_messages(
     assert len(records) == 0
 
 
+# =============================================================================
+# Streaming Mode Tests
+# =============================================================================
+
+
+def test_kafka_datasource_streaming_properties():
+    """Test that is_streaming and polling_new_tasks_interval_s properties work."""
+    from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
+
+    # Bounded mode (trigger="once")
+    bounded_ds = KafkaDatasource(
+        topics="test-topic",
+        bootstrap_servers="localhost:9092",
+        trigger="once",
+    )
+    assert bounded_ds.is_streaming is False
+    assert bounded_ds.polling_new_tasks_interval_s is None
+
+    # Streaming mode (trigger="continuous") with default polling interval
+    streaming_ds = KafkaDatasource(
+        topics="test-topic",
+        bootstrap_servers="localhost:9092",
+        trigger="continuous",
+    )
+    assert streaming_ds.is_streaming is True
+    assert streaming_ds.polling_new_tasks_interval_s == 5.0
+
+    # Streaming mode with custom polling interval
+    streaming_ds_custom = KafkaDatasource(
+        topics="test-topic",
+        bootstrap_servers="localhost:9092",
+        trigger="continuous",
+        polling_new_tasks_interval_s=2.0,
+    )
+    assert streaming_ds_custom.polling_new_tasks_interval_s == 2.0
+
+
+def test_read_kafka_streaming_with_take(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Test that streaming with take(N) correctly limits and terminates.
+
+    Verifies that:
+    1. take(N) returns exactly N records from a streaming source
+    2. The pipeline terminates cleanly (doesn't hang)
+    3. LimitOperator properly propagates finish to InputDataBuffer
+    """
+    topic = "test-streaming-take"
+
+    # Send more messages than we'll take
+    for i in range(50):
+        kafka_producer.send(topic, key=f"key-{i}", value={"id": i})
+    kafka_producer.flush()
+    time.sleep(1.0)
+
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        trigger="continuous",
+        polling_new_tasks_interval_s=1.0,
+    )
+
+    # take(20) should return exactly 20 records and terminate
+    records = ds.take(20)
+    assert len(records) == 20
+
+    # Verify content
+    ids = sorted([json.loads(r["value"].decode())["id"] for r in records])
+    assert ids == list(range(20))
+
+
+def test_read_kafka_streaming_continuous(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Test continuous streaming with a producer sending data in parallel.
+
+    Verifies that:
+    1. The pipeline processes initial messages
+    2. The pipeline picks up new messages as they arrive
+    3. map_batches works correctly with streaming
+    """
+    import threading
+
+    topic = "test-streaming-continuous"
+
+    # Seed with initial messages
+    for i in range(10):
+        kafka_producer.send(topic, key=f"init-{i}", value={"id": i})
+    kafka_producer.flush()
+    time.sleep(1.0)
+
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        trigger="continuous",
+        polling_new_tasks_interval_s=0.5,
+    )
+
+    # Producer sends messages while consumer is running
+    def producer_thread():
+        for i in range(50):
+            kafka_producer.send(topic, key=f"stream-{i}", value={"id": 100 + i})
+            kafka_producer.flush()
+            time.sleep(0.2)
+
+    producer = threading.Thread(target=producer_thread)
+    producer.start()
+
+    def add_flag(batch):
+        batch["processed"] = [True] * len(batch["value"])
+        return batch
+
+    try:
+        processed_count = 0
+        for batch in ds.map_batches(add_flag, batch_size=5).iter_batches(batch_size=5):
+            processed_count += len(batch["value"])
+            assert "processed" in batch
+            assert all(batch["processed"])
+            if processed_count >= 40:
+                break
+    finally:
+        producer.join()
+
+    # Should have processed initial (10) + some from producer
+    assert processed_count >= 40
+
+
+def test_read_kafka_trigger_validation():
+    """Test that invalid trigger values are rejected."""
+    with pytest.raises(ValueError, match="trigger='once' or 'continuous'"):
+        ray.data.read_kafka(
+            topics="test-topic",
+            bootstrap_servers="localhost:9092",
+            trigger="invalid",
+        )
+
+
 if __name__ == "__main__":
     import sys
 

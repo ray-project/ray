@@ -294,16 +294,21 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
+        trigger: Literal["once", "continuous"],
         start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
         end_offset: Union[int, datetime, Literal["latest"]] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
         timeout_ms: int = 10000,
+        polling_new_tasks_interval_s: float = 5,
     ):
         """Initialize Kafka datasource.
 
         Args:
             topics: Kafka topic name(s) to read from.
             bootstrap_servers: Kafka broker addresses (string or list of strings).
+            trigger: Trigger mode for reading. Only "once" and "continuous" are supported.
+                "once" performs a single bounded read.
+                "continuous" performs a continuous read with micro-batching.
             start_offset: Starting position. Can be:
                 - int: Offset number
                 - datetime: Read from the first message at or after this time.
@@ -318,7 +323,8 @@ class KafkaDatasource(Datasource):
             timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
                 If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
                 it has read so far.
-
+            polling_new_tasks_interval_s: The interval in seconds to poll for new tasks.
+                Only used in streaming mode.
         Raises:
             ValueError: If required configuration is missing.
             ImportError: If kafka-python is not installed.
@@ -370,15 +376,62 @@ class KafkaDatasource(Datasource):
             if isinstance(bootstrap_servers, list)
             else [bootstrap_servers]
         )
+        self._trigger = trigger
+
+        # Warn if end_offset is specified for streaming mode (it's ignored)
+        if trigger == "continuous" and end_offset != "latest":
+            logger.warning(
+                f"end_offset={end_offset!r} is ignored for streaming mode "
+                "(trigger='continuous'). Streaming always reads up to the "
+                "current end of the topic."
+            )
+
         self._start_offset = start_offset
         self._end_offset = end_offset
         self._kafka_auth_config = kafka_auth_config
         self._timeout_ms = timeout_ms
         self._target_max_block_size = DataContext.get_current().target_max_block_size
+        self._polling_new_tasks_interval_s = polling_new_tasks_interval_s
+
+        # For streaming mode: track last processed offset per partition
+        # Key: (topic, partition), Value: last processed end offset (exclusive)
+        self._last_offsets: Dict[Tuple[str, int], int] = {}
+
+    @property
+    def is_streaming(self) -> bool:
+        """Return True if this is a streaming datasource."""
+        return self._trigger == "continuous"
+
+    @property
+    def polling_new_tasks_interval_s(self) -> Optional[float]:
+        """Return the polling interval for streaming mode."""
+        if self._trigger == "continuous":
+            return self._polling_new_tasks_interval_s
+        return None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Return an estimate of the in-memory data size, or None if unknown."""
         return None
+
+    def _discover_partitions_with_consumer(
+        self, consumer: "KafkaConsumer"
+    ) -> List[Tuple[str, int]]:
+        """Discover all partitions for all topics using an existing consumer.
+
+        Args:
+            consumer: An existing KafkaConsumer instance.
+
+        Returns:
+            List of (topic, partition) tuples.
+        """
+        topic_partitions = []
+        for topic in self._topics:
+            partitions = consumer.partitions_for_topic(topic)
+            if not partitions:
+                raise ValueError(f"Topic {topic} has no partitions or doesn't exist")
+            for partition in partitions:
+                topic_partitions.append((topic, partition))
+        return topic_partitions
 
     def get_read_tasks(
         self,
@@ -388,48 +441,75 @@ class KafkaDatasource(Datasource):
     ) -> List[ReadTask]:
         """Create read tasks for Kafka partitions.
 
-        Creates one read task per partition.
-        Each task reads from a single partition of a single topic.
+        For bounded mode (trigger="once"): Creates one task per partition,
+        reading from start_offset to end_offset.
+
+        For streaming mode (trigger="continuous"): Creates tasks only for
+        partitions with new data since the last call. Called repeatedly by
+        InputDataBuffer at polling_new_tasks_interval_s intervals.
 
         Args:
             parallelism: This argument is deprecated.
             per_task_row_limit: Maximum number of rows per read task.
-            data_context: The data context to use to get read tasks. This is not used by this datasource.
+            data_context: The data context to use to get read tasks.
 
         Returns:
-            List of ReadTask objects, one per partition.
+            List of ReadTask objects.
         """
+        from kafka import KafkaConsumer, TopicPartition
 
-        # Discover all partitions for all topics
-        # We need to create a consumer on the driver to discover partitions
-        from kafka import KafkaConsumer
-
-        # Build minimal consumer config for partition discovery
+        # Create a single consumer for both discovery and offset queries
         consumer_config = _build_consumer_config_for_discovery(
             self._bootstrap_servers, self._kafka_auth_config
         )
+        consumer = KafkaConsumer(**consumer_config)
 
-        # Discover partitions for all topics
-        topic_partitions = []  # List of (topic, partition) tuples
-        discovery_consumer = None
         try:
-            discovery_consumer = KafkaConsumer(**consumer_config)
-            for topic in self._topics:
-                partitions = discovery_consumer.partitions_for_topic(topic)
-                if not partitions:
-                    raise ValueError(
-                        f"Topic {topic} has no partitions or doesn't exist"
+            topic_partitions = self._discover_partitions_with_consumer(consumer)
+            partition_ranges = {}  # {TopicPartition: (start, end)}
+
+            if self.is_streaming:
+                # Query current end offsets from Kafka
+                # TODO(youcheng): We should make the offset fault-tolerant through checkpointing
+                tp_list = [
+                    TopicPartition(topic, partition)
+                    for topic, partition in topic_partitions
+                ]
+                end_offsets = consumer.end_offsets(tp_list)
+
+                # Initialize last_offsets on first call using _resolve_offsets
+                if not self._last_offsets:
+                    for tp in tp_list:
+                        key = (tp.topic, tp.partition)
+                        resolved_start, _ = _resolve_offsets(
+                            consumer, tp, self._start_offset, "latest"
+                        )
+                        self._last_offsets[key] = resolved_start
+
+                # Determine offset ranges for each partition
+                for tp in tp_list:
+                    key = (tp.topic, tp.partition)
+                    start = self._last_offsets.get(key, 0)
+                    end = end_offsets[tp]
+                    if start < end:  # Only include partitions with new data
+                        partition_ranges[key] = (start, end)
+                        # Update offset so next call gets new data only
+                        self._last_offsets[key] = end
+            else:
+                for topic, partition in topic_partitions:
+                    tp = TopicPartition(topic, partition)
+                    resolved_start, resolved_end = _resolve_offsets(
+                        consumer, tp, self._start_offset, self._end_offset
                     )
-                for partition in partitions:
-                    topic_partitions.append((topic, partition))
+                    partition_ranges[(topic, partition)] = (
+                        resolved_start,
+                        resolved_end,
+                    )
         finally:
-            if discovery_consumer:
-                discovery_consumer.close()
+            consumer.close()
 
         # Store config for use in read functions (avoid serialization issues)
         bootstrap_servers = self._bootstrap_servers
-        start_offset = self._start_offset
-        end_offset = self._end_offset
         timeout_ms = self._timeout_ms
         kafka_auth_config = self._kafka_auth_config
         target_max_block_size = self._target_max_block_size
@@ -447,18 +527,18 @@ class KafkaDatasource(Datasource):
                 ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
             ]
         )
-        for topic_name, partition_id in topic_partitions:
+
+        for (topic_name, partition_id), (
+            start_offset,
+            end_offset,
+        ) in partition_ranges.items():
 
             def create_kafka_read_fn(
                 topic_name: str = topic_name,
                 partition_id: int = partition_id,
                 bootstrap_servers: List[str] = bootstrap_servers,
-                start_offset: Optional[
-                    Union[int, datetime, Literal["earliest"]]
-                ] = start_offset,
-                end_offset: Optional[
-                    Union[int, datetime, Literal["latest"]]
-                ] = end_offset,
+                start_offset: int = start_offset,
+                end_offset: int = end_offset,
                 kafka_auth_config: Optional[KafkaAuthConfig] = kafka_auth_config,
                 timeout_ms: int = timeout_ms,
                 target_max_block_size: int = target_max_block_size,
@@ -492,11 +572,7 @@ class KafkaDatasource(Datasource):
                         topic_partition = TopicPartition(topic_name, partition_id)
                         consumer.assign([topic_partition])
 
-                        start_off, end_off = _resolve_offsets(
-                            consumer, topic_partition, start_offset, end_offset
-                        )
-                        # Seek to the requested starting position
-                        consumer.seek(topic_partition, start_off)
+                        consumer.seek(topic_partition, start_offset)
 
                         records = []
 
@@ -517,14 +593,14 @@ class KafkaDatasource(Datasource):
                             if elapsed_time >= timeout_seconds:
                                 logger.warning(
                                     f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
-                                    f"end_offset {end_off} was not reached. Returning {len(records)} messages collected in this read task so far."
+                                    f"end_offset {end_offset} was not reached. Returning {len(records)} messages collected in this read task so far."
                                 )
                                 break
 
                             # Check if we've reached the end_offset before polling
                             # This avoids waiting for timeout when no more messages are available
                             current_position = consumer.position(topic_partition)
-                            if current_position >= end_off:
+                            if current_position >= end_offset:
                                 break
 
                             # Calculate remaining timeout for this poll
@@ -545,7 +621,7 @@ class KafkaDatasource(Datasource):
                             for msg in messages:
                                 # Check if we've reached the end offset (for bounded reads)
                                 # Use >= for exclusive end_offset (don't include end_offset message)
-                                if end_off is not None and msg.offset >= end_off:
+                                if end_offset is not None and msg.offset >= end_offset:
                                     partition_done = True
                                     break
 

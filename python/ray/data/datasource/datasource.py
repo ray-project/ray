@@ -303,6 +303,20 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         """If ``False``, only launch read tasks on the driver's node."""
         return True
 
+    @property
+    def is_streaming(self) -> bool:
+        """Return True if this is a streaming datasource."""
+        return False
+
+    @property
+    def polling_new_tasks_interval_s(self) -> Optional[float]:
+        """Return the read tasks fetch interval in seconds for micro-batching.
+
+        Returns:
+            The interval in seconds, or None if not configured.
+        """
+        return None
+
 
 @Deprecated
 class Reader:

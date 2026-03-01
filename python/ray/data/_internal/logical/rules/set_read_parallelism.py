@@ -33,9 +33,18 @@ def compute_additional_split_factor(
     detected_parallelism, reason, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
     )
-    num_read_tasks = len(
-        datasource_or_legacy_reader.get_read_tasks(detected_parallelism)
-    )
+    # For streaming datasources, skip get_read_tasks to avoid consuming offsets
+    # during planning. The value 1 is a placeholder - it's unused because
+    # mem_size is None for streaming (estimate_inmemory_data_size returns None).
+    if (
+        isinstance(datasource_or_legacy_reader, Datasource)
+        and datasource_or_legacy_reader.is_streaming
+    ):
+        num_read_tasks = 1
+    else:
+        num_read_tasks = len(
+            datasource_or_legacy_reader.get_read_tasks(detected_parallelism)
+        )
     expected_block_size = None
     if mem_size:
         expected_block_size = mem_size / num_read_tasks
