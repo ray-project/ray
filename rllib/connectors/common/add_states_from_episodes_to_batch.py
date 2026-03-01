@@ -52,8 +52,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
     and restructured under a new STATE_IN key.
     As a Learner connector, the resulting STATE_IN batch has the shape (B', ...).
     Here, B' is the sum of splits we have to do over the given episodes, such that each
-    chunk is at most `max_seq_len` long (T-axis).
-    As a EnvToModule connector, the resulting STATE_IN batch simply consists of n
+    chunk is as long as possible, but at most `max_seq_len` long (T-axis).
+    As an EnvToModule connector, the resulting STATE_IN batch simply consists of n
     states coming from n vectorized environments/episodes.
 
     Also, all other data (observations, rewards, etc.. if applicable) will be properly
@@ -62,8 +62,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
     This ConnectorV2:
     - Operates on a list of Episode objects.
-    - Gets the most recent STATE_OUT from all the given episodes and adds them under
-    the STATE_IN key to the batch under construction.
     - Does NOT alter any data in the given episodes.
     - Can be used in EnvToModule and Learner connector pipelines.
 
