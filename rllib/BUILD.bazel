@@ -4779,15 +4779,59 @@ py_test(
     ],
 )
 
-# TODO (sven): Activate this test once this script is ready.
-# py_test(
-#    name = "examples/multi_agent/pettingzoo_shared_value_function",
-#    main = "examples/multi_agent/pettingzoo_shared_value_function.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "large",
-#    srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
-#    args = ["--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
-# )
+py_test(
+    name = "examples/multi_agent/pettingzoo_shared_value_function",
+    size = "large",
+    srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
+    args = [
+        "--num-agents=2",
+        "--as-test",
+        "--framework=torch",
+        "--stop-reward=-100.0",
+        "--num-cpus=4",
+    ],
+    main = "examples/multi_agent/pettingzoo_shared_value_function.py",
+    tags = [
+        "examples",
+        "exclusive",
+        "team:rllib",
+    ],
+)
+
+# MAPPO unit + integration tests
+py_test(
+    name = "test_mappo",
+    size = "medium",
+    srcs = ["examples/algorithms/mappo/tests/test_mappo.py"],
+    args = [
+        "-v",
+        "-k",
+        "not EndToEnd",
+    ],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_mappo_e2e",
+    size = "large",
+    srcs = ["examples/algorithms/mappo/tests/test_mappo.py"],
+    args = [
+        "-v",
+        "-k",
+        "EndToEnd",
+    ],
+    main = "examples/algorithms/mappo/tests/test_mappo.py",
+    tags = [
+        "algorithms",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
 
 py_test(
     name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
