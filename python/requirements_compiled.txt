@@ -2216,7 +2216,7 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
     #   tensorflow
 tensorflow-metadata==1.13.1
     # via tensorflow-datasets
-tensorflow-probability==0.23.0 ; python_version < "3.12"
+tensorflow-probability==0.23.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 termcolor==2.4.0
     # via
