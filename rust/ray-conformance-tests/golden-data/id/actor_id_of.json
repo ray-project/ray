@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "generator": "Computed from Rust ActorID::of (matches C++ ActorID::Of algorithm)",
+  "cases": [
+    {
+      "description": "job_id=1, task_id=nil(0xFF), counter=0",
+      "input": {"job_id_int": 1, "task_id_hex": "ffffffffffffffffffffffffffffffffffffffffffffffff", "counter": 0},
+      "expected": {"actor_id_hex": "f4d7b1441b5e91fab6be4ad900000001"}
+    },
+    {
+      "description": "job_id=1, task_id=zeros, counter=0",
+      "input": {"job_id_int": 1, "task_id_hex": "000000000000000000000000000000000000000000000000", "counter": 0},
+      "expected": {"actor_id_hex": "eafeaa9a17f7703d75caf91200000001"}
+    },
+    {
+      "description": "job_id=42, task_id=zeros, counter=0",
+      "input": {"job_id_int": 42, "task_id_hex": "000000000000000000000000000000000000000000000000", "counter": 0},
+      "expected": {"actor_id_hex": "eafeaa9a17f7703d75caf9120000002a"}
+    },
+    {
+      "description": "job_id=1, task_id=zeros, counter=1",
+      "input": {"job_id_int": 1, "task_id_hex": "000000000000000000000000000000000000000000000000", "counter": 1},
+      "expected": {"actor_id_hex": "4b731fc6342eac061f114c0200000001"}
+    },
+    {
+      "description": "job_id=100, task_id=zeros, counter=5",
+      "input": {"job_id_int": 100, "task_id_hex": "000000000000000000000000000000000000000000000000", "counter": 5},
+      "expected": {"actor_id_hex": "0a638533aae55e247a1f3d2100000064"}
+    }
+  ]
+}

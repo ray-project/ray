@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "generator": "Computed from Rust MurmurHash64A (verified against C++ algorithm)",
+  "cases": [
+    {
+      "description": "empty key, seed 0",
+      "input": {"key_hex": "", "seed": 0},
+      "expected": {"hash": 0}
+    },
+    {
+      "description": "single byte 0x00, seed 0",
+      "input": {"key_hex": "00", "seed": 0},
+      "expected": {"hash": 6351753276682545529}
+    },
+    {
+      "description": "single byte 0x01, seed 0",
+      "input": {"key_hex": "01", "seed": 0},
+      "expected": {"hash": 12725806677685968135}
+    },
+    {
+      "description": "single byte 0xff, seed 0",
+      "input": {"key_hex": "ff", "seed": 0},
+      "expected": {"hash": 3866667633532608802}
+    },
+    {
+      "description": "8 bytes (one full block), seed 0",
+      "input": {"key_hex": "0102030405060708", "seed": 0},
+      "expected": {"hash": 9850117305080776375}
+    },
+    {
+      "description": "hello bytes, seed 0",
+      "input": {"key_hex": "68656c6c6f", "seed": 0},
+      "expected": {"hash": 2191231550387646743}
+    },
+    {
+      "description": "hello bytes, seed 42",
+      "input": {"key_hex": "68656c6c6f", "seed": 42},
+      "expected": {"hash": 15282704050267035783}
+    },
+    {
+      "description": "16 bytes (two full blocks), seed 0",
+      "input": {"key_hex": "00112233445566778899aabbccddeeff", "seed": 0},
+      "expected": {"hash": 15703591577319928413}
+    },
+    {
+      "description": "9 bytes (one block + 1 tail), seed 0",
+      "input": {"key_hex": "010203040506070809", "seed": 0},
+      "expected": {"hash": 8649635342888747530}
+    },
+    {
+      "description": "28 zero bytes (UniqueID-sized), seed 0",
+      "input": {"key_hex": "00000000000000000000000000000000000000000000000000000000", "seed": 0},
+      "expected": {"hash": 351838792928280164}
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "generator": "Computed from ObjectID::from_index (big-endian index + TaskID)",
+  "cases": [
+    {
+      "description": "task_id=zeros, index=1",
+      "input": {"task_id_hex": "000000000000000000000000000000000000000000000000", "index": 1},
+      "expected": {"object_id_hex": "00000001000000000000000000000000000000000000000000000000"}
+    },
+    {
+      "description": "task_id=zeros, index=5",
+      "input": {"task_id_hex": "000000000000000000000000000000000000000000000000", "index": 5},
+      "expected": {"object_id_hex": "00000005000000000000000000000000000000000000000000000000"}
+    },
+    {
+      "description": "task_id=zeros, index=100",
+      "input": {"task_id_hex": "000000000000000000000000000000000000000000000000", "index": 100},
+      "expected": {"object_id_hex": "00000064000000000000000000000000000000000000000000000000"}
+    },
+    {
+      "description": "task_id=nil(0xFF), index=1",
+      "input": {"task_id_hex": "ffffffffffffffffffffffffffffffffffffffffffffffff", "index": 1},
+      "expected": {"object_id_hex": "00000001ffffffffffffffffffffffffffffffffffffffffffffffff"}
+    },
+    {
+      "description": "task_id=zeros, index=0",
+      "input": {"task_id_hex": "000000000000000000000000000000000000000000000000", "index": 0},
+      "expected": {"object_id_hex": "00000000000000000000000000000000000000000000000000000000"}
+    }
+  ]
+}

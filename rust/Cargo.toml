@@ -17,6 +17,7 @@ members = [
     "ray-core-worker-pylib",
     "ray-syncer",
     "ray-test-utils",
+    "ray-conformance-tests",
 ]
 
 [workspace.package]
@@ -99,3 +100,4 @@ ray-core-worker = { path = "ray-core-worker" }
 ray-core-worker-pylib = { path = "ray-core-worker-pylib" }
 ray-syncer = { path = "ray-syncer" }
 ray-test-utils = { path = "ray-test-utils" }
+ray-conformance-tests = { path = "ray-conformance-tests" }

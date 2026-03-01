@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "generator": "Computed from C++ JobID::FromInt (big-endian u32)",
+  "cases": [
+    {
+      "description": "JobID 0",
+      "input": {"value": 0},
+      "expected": {"hex": "00000000"}
+    },
+    {
+      "description": "JobID 1",
+      "input": {"value": 1},
+      "expected": {"hex": "00000001"}
+    },
+    {
+      "description": "JobID 42",
+      "input": {"value": 42},
+      "expected": {"hex": "0000002a"}
+    },
+    {
+      "description": "JobID 100",
+      "input": {"value": 100},
+      "expected": {"hex": "00000064"}
+    },
+    {
+      "description": "JobID 255",
+      "input": {"value": 255},
+      "expected": {"hex": "000000ff"}
+    },
+    {
+      "description": "JobID 65535",
+      "input": {"value": 65535},
+      "expected": {"hex": "0000ffff"}
+    },
+    {
+      "description": "JobID 1000000",
+      "input": {"value": 1000000},
+      "expected": {"hex": "000f4240"}
+    },
+    {
+      "description": "JobID u32::MAX",
+      "input": {"value": 4294967295},
+      "expected": {"hex": "ffffffff"}
+    }
+  ]
+}

@@ -15,5 +15,8 @@ bytes = { workspace = true }
 [lib]
 doctest = false
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [build-dependencies]
 tonic-build = { workspace = true }

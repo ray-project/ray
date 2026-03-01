@@ -19,6 +19,7 @@
 //! InternalPubSub, AutoscalerState, NodeResourceInfo.
 
 pub mod actor_manager;
+pub mod actor_scheduler;
 pub mod autoscaler_state_manager;
 pub mod grpc_services;
 pub mod health_check_manager;

@@ -9,6 +9,13 @@
 //! GCS RPC client library.
 //!
 //! Replaces `src/ray/gcs_rpc_client/`.
-//! Provides a typed client for calling all GCS gRPC services.
+//! Provides a typed client for calling all GCS gRPC services with
+//! automatic retry on transient failures.
 
-// Phase 7: Will use ray-proto generated clients with ray-rpc retry wrappers.
+pub mod client;
+pub mod subscriber;
+pub mod traits;
+
+pub use client::GcsRpcClient;
+pub use subscriber::GcsSubscriberClient;
+pub use traits::GcsClient;

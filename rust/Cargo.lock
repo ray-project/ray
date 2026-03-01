@@ -1453,9 +1453,23 @@ dependencies = [
  "ray-util",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "ray-conformance-tests"
+version = "3.0.0-dev"
+dependencies = [
+ "hex",
+ "prost",
+ "ray-common",
+ "ray-proto",
+ "ray-test-utils",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1463,6 +1477,7 @@ name = "ray-core-worker"
 version = "3.0.0-dev"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "dashmap",
  "futures",
@@ -1491,14 +1506,17 @@ dependencies = [
 name = "ray-core-worker-pylib"
 version = "3.0.0-dev"
 dependencies = [
+ "async-trait",
  "bytes",
  "pyo3",
  "ray-common",
  "ray-core-worker",
  "ray-gcs-rpc-client",
  "ray-proto",
+ "ray-rpc",
  "ray-util",
  "tokio",
+ "tonic",
  "tracing",
 ]
 
@@ -1543,11 +1561,14 @@ name = "ray-gcs-rpc-client"
 version = "3.0.0-dev"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "parking_lot",
  "ray-common",
  "ray-proto",
  "ray-rpc",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tracing",
 ]
@@ -1596,6 +1617,7 @@ dependencies = [
  "prost",
  "prost-types",
  "serde",
+ "serde_json",
  "tonic",
  "tonic-build",
 ]
@@ -1653,6 +1675,8 @@ name = "ray-raylet-rpc-client"
 version = "3.0.0-dev"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "parking_lot",
  "ray-common",
  "ray-proto",
  "ray-rpc",
@@ -1672,6 +1696,7 @@ dependencies = [
  "ray-common",
  "ray-proto",
  "ray-util",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tonic",
@@ -1696,6 +1721,8 @@ name = "ray-syncer"
 version = "3.0.0-dev"
 dependencies = [
  "dashmap",
+ "parking_lot",
+ "prost",
  "ray-common",
  "ray-proto",
  "ray-util",

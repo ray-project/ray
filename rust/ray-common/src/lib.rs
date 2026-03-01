@@ -8,6 +8,7 @@
 
 //! Common types for Ray: IDs, Status/Error, Config, scheduling types.
 
+pub mod cgroup;
 pub mod config;
 pub mod constants;
 pub mod id;

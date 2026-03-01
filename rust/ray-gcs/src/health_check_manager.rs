@@ -208,4 +208,42 @@ mod tests {
 
         assert_eq!(mgr.get_all_nodes().len(), 3);
     }
+
+    #[tokio::test]
+    async fn test_mark_node_healthy() {
+        let callback = Arc::new(|_: NodeID| {});
+        let mgr = GcsHealthCheckManager::new(HealthCheckConfig::default(), callback);
+
+        let mut nid_data = [0u8; 28];
+        nid_data[0] = 1;
+        let nid = NodeID::from_binary(&nid_data);
+
+        mgr.add_node(nid, "localhost:50051".to_string());
+        // Should not panic
+        mgr.mark_node_healthy(&nid);
+        assert_eq!(mgr.num_monitored_nodes(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_remove_nonexistent_node() {
+        let callback = Arc::new(|_: NodeID| {});
+        let mgr = GcsHealthCheckManager::new(HealthCheckConfig::default(), callback);
+
+        let mut nid_data = [0u8; 28];
+        nid_data[0] = 99;
+        let nid = NodeID::from_binary(&nid_data);
+
+        // Should not panic
+        mgr.remove_node(&nid);
+        assert_eq!(mgr.num_monitored_nodes(), 0);
+    }
+
+    #[test]
+    fn test_health_check_config_default() {
+        let config = HealthCheckConfig::default();
+        assert_eq!(config.initial_delay_ms, 5000);
+        assert_eq!(config.timeout_ms, 10000);
+        assert_eq!(config.period_ms, 5000);
+        assert_eq!(config.failure_threshold, 5);
+    }
 }

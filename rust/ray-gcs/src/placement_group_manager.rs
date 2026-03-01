@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use ray_common::id::PlacementGroupID;
+use ray_common::id::{NodeID, PlacementGroupID};
 
 use crate::table_storage::GcsTableStorage;
 
@@ -210,6 +210,45 @@ impl GcsPlacementGroupManager {
         }
     }
 
+    /// Handle node death — mark placement groups with bundles on the dead node
+    /// as needing rescheduling.
+    pub fn on_node_dead(&self, node_id: &NodeID) {
+        let node_id_bytes = node_id.binary().to_vec();
+        let mut pgs = self.placement_groups.write();
+        let mut counts = self.state_counts.write();
+
+        for pg in pgs.values_mut() {
+            let state = PlacementGroupState::from(pg.state);
+            if state == PlacementGroupState::Removed {
+                continue;
+            }
+
+            // Check if any bundle in this PG was placed on the dead node
+            let affected = pg.bundles.iter().any(|b| b.node_id == node_id_bytes);
+            if affected {
+                let old_state = PlacementGroupState::from(pg.state);
+                pg.state = PlacementGroupState::Rescheduling as i32;
+
+                // Clear node assignments for bundles on the dead node
+                for bundle in pg.bundles.iter_mut() {
+                    if bundle.node_id == node_id_bytes {
+                        bundle.node_id.clear();
+                    }
+                }
+
+                if let Some(c) = counts.get_mut(&old_state) {
+                    *c = c.saturating_sub(1);
+                }
+                *counts.entry(PlacementGroupState::Rescheduling).or_insert(0) += 1;
+
+                tracing::info!(
+                    pg_name = %pg.name,
+                    "Placement group affected by node death, rescheduling"
+                );
+            }
+        }
+    }
+
     pub fn num_placement_groups(&self) -> usize {
         self.placement_groups.read().len()
     }
@@ -270,5 +309,87 @@ mod tests {
         pg_id[0] = 1;
         mgr.handle_remove_placement_group(&pg_id).await.unwrap();
         assert_eq!(mgr.num_placement_groups(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_on_node_dead_reschedules_affected_pgs() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        // Create a PG with bundles on node 1
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+        let mut pg = make_pg(1, "affected_pg");
+        pg.state = PlacementGroupState::Created as i32;
+        pg.bundles = vec![ray_proto::ray::rpc::Bundle {
+            node_id: node_id.clone(),
+            ..Default::default()
+        }];
+        mgr.handle_create_placement_group(pg).await.unwrap();
+
+        // Create another PG on node 2 (should NOT be affected)
+        let mut node2_id = vec![0u8; 28];
+        node2_id[0] = 2;
+        let mut pg2 = make_pg(2, "unaffected_pg");
+        pg2.state = PlacementGroupState::Created as i32;
+        pg2.bundles = vec![ray_proto::ray::rpc::Bundle {
+            node_id: node2_id.clone(),
+            ..Default::default()
+        }];
+        mgr.handle_create_placement_group(pg2).await.unwrap();
+
+        // Kill node 1
+        let dead_node = NodeID::from_binary(node_id.as_slice().try_into().unwrap());
+        mgr.on_node_dead(&dead_node);
+
+        // Affected PG should be Rescheduling
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        let pg = mgr.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(
+            PlacementGroupState::from(pg.state),
+            PlacementGroupState::Rescheduling
+        );
+        // Bundle node_id should be cleared
+        assert!(pg.bundles[0].node_id.is_empty());
+
+        // Unaffected PG should still be Created
+        let mut pg_id2 = [0u8; 18];
+        pg_id2[0] = 2;
+        let pg2 = mgr.handle_get_placement_group(&pg_id2).unwrap();
+        assert_eq!(
+            PlacementGroupState::from(pg2.state),
+            PlacementGroupState::Created
+        );
+    }
+
+    #[tokio::test]
+    async fn test_on_node_dead_no_effect_on_removed_pgs() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+        let mut pg = make_pg(1, "removed_pg");
+        pg.state = PlacementGroupState::Removed as i32;
+        pg.bundles = vec![ray_proto::ray::rpc::Bundle {
+            node_id: node_id.clone(),
+            ..Default::default()
+        }];
+        mgr.handle_create_placement_group(pg).await.unwrap();
+
+        let dead_node = NodeID::from_binary(node_id.as_slice().try_into().unwrap());
+        mgr.on_node_dead(&dead_node);
+
+        // Should still be Removed, not Rescheduling
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        let pg = mgr.handle_get_placement_group(&pg_id).unwrap();
+        assert_eq!(
+            PlacementGroupState::from(pg.state),
+            PlacementGroupState::Removed
+        );
     }
 }

@@ -154,4 +154,94 @@ mod tests {
         assert!(pool.write_chunk(&oid, 1, &[0; 1024]));
         assert!(!pool.is_creating(&oid));
     }
+
+    #[test]
+    fn test_duplicate_create_returns_false() {
+        let mut pool = ObjectBufferPool::new(1024);
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 512,
+            ..Default::default()
+        };
+        assert!(pool.create_object(info.clone()));
+        assert!(!pool.create_object(info)); // Duplicate
+        assert_eq!(pool.num_creating(), 1);
+    }
+
+    #[test]
+    fn test_abort_create() {
+        let mut pool = ObjectBufferPool::new(1024);
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 2048,
+            ..Default::default()
+        };
+        pool.create_object(info);
+        assert!(pool.is_creating(&oid));
+
+        pool.abort_create(&oid);
+        assert!(!pool.is_creating(&oid));
+        assert_eq!(pool.num_creating(), 0);
+    }
+
+    #[test]
+    fn test_write_chunk_nonexistent_object() {
+        let mut pool = ObjectBufferPool::new(1024);
+        let oid = make_oid(99);
+        // Writing to non-existent object should return false
+        assert!(!pool.write_chunk(&oid, 0, &[0; 1024]));
+    }
+
+    #[test]
+    fn test_zero_size_object_one_chunk() {
+        let mut pool = ObjectBufferPool::new(1024);
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 0,
+            ..Default::default()
+        };
+        pool.create_object(info);
+        // Zero-size object = 1 chunk, so first write completes it
+        assert!(pool.write_chunk(&oid, 0, &[]));
+        assert!(!pool.is_creating(&oid));
+    }
+
+    #[test]
+    fn test_exact_chunk_boundary() {
+        let pool = ObjectBufferPool::new(1024);
+        // Exactly 1 chunk
+        assert_eq!(pool.num_chunks(1024), 1);
+        // Just over boundary
+        assert_eq!(pool.num_chunks(1025), 2);
+        // Exactly 2 chunks
+        assert_eq!(pool.num_chunks(2048), 2);
+    }
+
+    #[test]
+    fn test_multiple_objects_tracked_independently() {
+        let mut pool = ObjectBufferPool::new(1024);
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        pool.create_object(ObjectInfo {
+            object_id: oid1,
+            data_size: 1024,
+            ..Default::default()
+        });
+        pool.create_object(ObjectInfo {
+            object_id: oid2,
+            data_size: 2048,
+            ..Default::default()
+        });
+        assert_eq!(pool.num_creating(), 2);
+
+        // Complete first object
+        assert!(pool.write_chunk(&oid1, 0, &[0; 1024]));
+        assert_eq!(pool.num_creating(), 1);
+        assert!(!pool.is_creating(&oid1));
+        assert!(pool.is_creating(&oid2));
+    }
 }

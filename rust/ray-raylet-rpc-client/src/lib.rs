@@ -9,5 +9,11 @@
 //! Raylet RPC client library.
 //!
 //! Replaces raylet client from `src/ray/raylet_client/`.
+//! Provides a typed client for calling NodeManagerService RPCs with
+//! automatic retry on transient failures.
 
-// Phase 8: Will use ray-proto generated clients with ray-rpc retry wrappers.
+pub mod client;
+pub mod traits;
+
+pub use client::RayletRpcClient;
+pub use traits::RayletClient;

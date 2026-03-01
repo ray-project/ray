@@ -23,6 +23,7 @@ pub mod task_spec_builder;
 pub mod normal_task_submitter;
 pub mod actor_task_submitter;
 pub mod dependency_resolver;
+pub mod task_receiver;
 pub mod core_worker;
 pub mod grpc_service;
 

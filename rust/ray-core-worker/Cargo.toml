@@ -31,3 +31,4 @@ hex = { workspace = true }
 
 [dev-dependencies]
 ray-test-utils = { workspace = true }
+async-trait = { workspace = true }

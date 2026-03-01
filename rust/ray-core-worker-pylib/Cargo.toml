@@ -18,8 +18,13 @@ ray-common = { workspace = true }
 ray-core-worker = { workspace = true }
 ray-gcs-rpc-client = { workspace = true }
 ray-util = { workspace = true }
+ray-rpc = { workspace = true }
 ray-proto = { workspace = true }
 pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
+tonic = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 bytes = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }

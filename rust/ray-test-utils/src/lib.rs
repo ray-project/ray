@@ -10,9 +10,16 @@
 
 use std::net::SocketAddr;
 
-use ray_common::id::*;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+
+pub mod generators;
+pub mod mock_clients;
+pub mod proto_builders;
+pub mod wait;
+
+// Re-export generators at crate root for backward compatibility.
+pub use generators::{random_actor_id, random_job_id};
 
 /// Initialize tracing for tests.
 pub fn init_test_logging() {
@@ -20,18 +27,6 @@ pub fn init_test_logging() {
         .with_test_writer()
         .with_env_filter("debug")
         .try_init();
-}
-
-/// Create a random JobID for testing.
-pub fn random_job_id() -> JobID {
-    JobID::from_int(rand::random::<u16>() as u32 + 1)
-}
-
-/// Create a random ActorID for testing.
-pub fn random_actor_id() -> ActorID {
-    let job_id = random_job_id();
-    let task_id = TaskID::from_random();
-    ActorID::of(&job_id, &task_id, rand::random::<usize>())
 }
 
 /// Create a temporary directory for test data.

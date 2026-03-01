@@ -16,6 +16,7 @@ use std::sync::Arc;
 use ray_common::config::RayConfig;
 
 use crate::actor_manager::GcsActorManager;
+use crate::actor_scheduler::{GcsActorScheduler, GrpcCoreWorkerClient, GrpcRayletClient};
 use crate::autoscaler_state_manager::GcsAutoscalerStateManager;
 use crate::grpc_services::*;
 use crate::health_check_manager::{GcsHealthCheckManager, HealthCheckConfig};
@@ -169,6 +170,48 @@ impl GcsServer {
             Arc::new(GcsPlacementGroupManager::new(table_storage.clone()));
         let task_manager = Arc::new(GcsTaskManager::new(None));
         let pubsub_handler = Arc::new(InternalPubSubHandler::new());
+
+        // 4b. Create actor scheduler and wire into actor manager
+        let raylet_client = Arc::new(GrpcRayletClient);
+        let worker_client = Arc::new(GrpcCoreWorkerClient);
+        let actor_scheduler = Arc::new(GcsActorScheduler::new(
+            Arc::clone(&node_manager),
+            raylet_client,
+            worker_client,
+        ));
+        actor_manager.set_actor_scheduler(actor_scheduler);
+        actor_manager.set_pubsub_handler(Arc::clone(&pubsub_handler));
+
+        // 4c. Wire pubsub handlers to all managers
+        node_manager.set_pubsub_handler(Arc::clone(&pubsub_handler));
+        job_manager.set_pubsub_handler(Arc::clone(&pubsub_handler));
+        worker_manager.set_pubsub_handler(Arc::clone(&pubsub_handler));
+
+        // 4d. Wire node death cascade — when a node dies, notify all managers
+        {
+            let actor_mgr = Arc::clone(&actor_manager);
+            let job_mgr = Arc::clone(&job_manager);
+            let resource_mgr = Arc::clone(&resource_manager);
+            let pg_mgr = Arc::clone(&placement_group_manager);
+            node_manager.add_node_removed_listener(Box::new(move |node_info| {
+                let node_id = ray_common::id::NodeID::from_binary(
+                    node_info.node_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
+                );
+                actor_mgr.on_node_dead(&node_id);
+                job_mgr.on_node_dead(&node_id);
+                resource_mgr.on_node_dead(&node_id);
+                pg_mgr.on_node_dead(&node_id);
+            }));
+
+            // On node added, register with resource manager
+            let resource_mgr = Arc::clone(&resource_manager);
+            node_manager.add_node_added_listener(Box::new(move |node_info| {
+                let node_id = ray_common::id::NodeID::from_binary(
+                    node_info.node_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
+                );
+                resource_mgr.on_node_add(&node_id);
+            }));
+        }
 
         // 5. Create health check manager
         let node_mgr_for_hc = Arc::clone(&node_manager);
@@ -449,5 +492,89 @@ mod tests {
             .unwrap();
         let val = kv_mgr.handle_get(b"test", b"key").await.unwrap();
         assert_eq!(val, Some(b"value".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn test_node_death_cascade() {
+        use crate::actor_manager::ActorState;
+
+        let config = GcsServerConfig::default();
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let node_mgr = server.node_manager().unwrap();
+        let actor_mgr = server.actor_manager().unwrap();
+        let resource_mgr = server.resource_manager().unwrap();
+
+        // Register a node
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                node_manager_address: "127.0.0.1".to_string(),
+                node_manager_port: 10001,
+                state: 0,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(node_mgr.num_alive_nodes(), 1);
+        // Resource manager should have the node (via added listener)
+        assert_eq!(resource_mgr.num_alive_nodes(), 1);
+
+        // Register and place an actor on that node
+        let mut actor_id = vec![0u8; 16];
+        actor_id[0] = 1;
+        let task_spec = rpc::TaskSpec {
+            actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                actor_id: actor_id.clone(),
+                name: "test_actor".to_string(),
+                ray_namespace: "default".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        actor_mgr.handle_register_actor(task_spec).await.unwrap();
+        assert_eq!(actor_mgr.num_registered_actors(), 1);
+
+        // Manually place actor on the node (simulating scheduling)
+        let aid = ray_common::id::ActorID::from_binary(
+            actor_id.as_slice().try_into().unwrap(),
+        );
+        actor_mgr.on_actor_creation_success(
+            &aid,
+            rpc::Address {
+                node_id: node_id.clone(),
+                ip_address: "127.0.0.1".to_string(),
+                port: 20001,
+                worker_id: vec![42u8; 28],
+            },
+            1234,
+            vec![],
+            node_id.clone(),
+        );
+
+        // Verify actor is ALIVE
+        let actor = actor_mgr.handle_get_actor_info(&actor_id).unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Alive);
+
+        // Kill the node — this should cascade to all managers
+        let nid = ray_common::id::NodeID::from_binary(
+            node_id.as_slice().try_into().unwrap(),
+        );
+        node_mgr.handle_unregister_node(&node_id).await.unwrap();
+
+        // Verify cascade:
+        // 1. Node should be dead
+        assert_eq!(node_mgr.num_alive_nodes(), 0);
+        assert!(node_mgr.is_node_dead(&nid));
+
+        // 2. Actor should be DEAD (killed by cascade)
+        let actor = actor_mgr.handle_get_actor_info(&actor_id).unwrap();
+        assert_eq!(ActorState::from(actor.state), ActorState::Dead);
+
+        // 3. Resource manager should have removed the node
+        assert_eq!(resource_mgr.num_alive_nodes(), 0);
     }
 }

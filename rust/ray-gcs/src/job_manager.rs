@@ -16,6 +16,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use ray_common::id::{JobID, NodeID};
 
+use crate::pubsub_handler::{ChannelType, InternalPubSubHandler};
 use crate::table_storage::GcsTableStorage;
 
 /// Callback invoked when a job finishes.
@@ -35,6 +36,8 @@ pub struct GcsJobManager {
     finished_jobs_count: std::sync::atomic::AtomicI64,
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
+    /// Pubsub handler for publishing job state changes.
+    pubsub_handler: RwLock<Option<Arc<InternalPubSubHandler>>>,
 }
 
 impl GcsJobManager {
@@ -46,6 +49,30 @@ impl GcsJobManager {
             finish_listeners: RwLock::new(Vec::new()),
             finished_jobs_count: std::sync::atomic::AtomicI64::new(0),
             table_storage,
+            pubsub_handler: RwLock::new(None),
+        }
+    }
+
+    /// Set the pubsub handler (called during server initialization).
+    pub fn set_pubsub_handler(&self, handler: Arc<InternalPubSubHandler>) {
+        *self.pubsub_handler.write() = Some(handler);
+    }
+
+    /// Publish job state change via pubsub.
+    fn publish_job_state(&self, job_data: &ray_proto::ray::rpc::JobTableData) {
+        let pubsub = self.pubsub_handler.read();
+        if let Some(ref handler) = *pubsub {
+            let pub_msg = ray_proto::ray::rpc::PubMessage {
+                channel_type: ChannelType::GcsJobChannel as i32,
+                key_id: job_data.job_id.clone(),
+                inner_message: Some(
+                    ray_proto::ray::rpc::pub_message::InnerMessage::JobMessage(
+                        job_data.clone(),
+                    ),
+                ),
+                ..Default::default()
+            };
+            handler.publish_pubmessage(pub_msg);
         }
     }
 
@@ -100,6 +127,9 @@ impl GcsJobManager {
             .await
             .map_err(|e| tonic::Status::internal(e.to_string()))?;
 
+        // Publish via pubsub
+        self.publish_job_state(&job_data);
+
         tracing::info!(?job_id, "Job added");
         Ok(())
     }
@@ -125,8 +155,10 @@ impl GcsJobManager {
                 None
             }
         };
-        if let Some(updated) = updated {
-            let _ = self.table_storage.job_table().put(&key, &updated).await;
+        if let Some(ref updated) = updated {
+            let _ = self.table_storage.job_table().put(&key, updated).await;
+            // Publish via pubsub
+            self.publish_job_state(updated);
         }
 
         // Notify listeners
@@ -237,5 +269,157 @@ mod tests {
 
         let limited = mgr.handle_get_all_job_info(Some(2));
         assert_eq!(limited.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_job_config_cached() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let job_id_bytes = vec![1, 0, 0, 0];
+        let job_id = JobID::from_binary(job_id_bytes.as_slice().try_into().unwrap());
+
+        let job_data = ray_proto::ray::rpc::JobTableData {
+            job_id: job_id_bytes,
+            config: Some(ray_proto::ray::rpc::JobConfig {
+                ray_namespace: "test-ns".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        mgr.handle_add_job(job_data).await.unwrap();
+        let config = mgr.get_job_config(&job_id).unwrap();
+        assert_eq!(config.ray_namespace, "test-ns");
+    }
+
+    #[tokio::test]
+    async fn test_finish_listener_called() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let finished_id = Arc::new(parking_lot::Mutex::new(None));
+        let finished_clone = Arc::clone(&finished_id);
+        mgr.add_finish_listener(Box::new(move |job_id| {
+            *finished_clone.lock() = Some(*job_id);
+        }));
+
+        let job_data = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            ..Default::default()
+        };
+        mgr.handle_add_job(job_data).await.unwrap();
+        mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
+
+        let finished = finished_id.lock();
+        assert!(finished.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_next_job_id() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let id1 = mgr.handle_get_next_job_id().await.unwrap();
+        let id2 = mgr.handle_get_next_job_id().await.unwrap();
+        assert_eq!(id2, id1 + 1);
+    }
+
+    #[tokio::test]
+    async fn test_on_node_dead_is_noop() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let mut nid_data = [0u8; 28];
+        nid_data[0] = 1;
+        let nid = NodeID::from_binary(&nid_data);
+        // Should not panic
+        mgr.on_node_dead(&nid);
+    }
+
+    #[tokio::test]
+    async fn test_add_job_publishes_to_pubsub() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let handler = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(handler.clone());
+
+        handler.handle_subscribe_command(
+            b"test_sub".to_vec(),
+            ChannelType::GcsJobChannel as i32,
+            vec![],
+        );
+
+        let job_data = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            is_dead: false,
+            ..Default::default()
+        };
+        mgr.handle_add_job(job_data).await.unwrap();
+
+        let messages = handler.handle_subscriber_poll(b"test_sub", 0).await;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].channel_type, ChannelType::GcsJobChannel as i32);
+        match &messages[0].inner_message {
+            Some(ray_proto::ray::rpc::pub_message::InnerMessage::JobMessage(data)) => {
+                assert_eq!(data.job_id, vec![1, 0, 0, 0]);
+                assert!(!data.is_dead);
+            }
+            other => panic!("expected JobMessage, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_finish_job_publishes_dead_state() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+
+        let handler = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(handler.clone());
+
+        handler.handle_subscribe_command(
+            b"test_sub".to_vec(),
+            ChannelType::GcsJobChannel as i32,
+            vec![],
+        );
+
+        let job_data = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            is_dead: false,
+            ..Default::default()
+        };
+        mgr.handle_add_job(job_data).await.unwrap();
+        mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
+
+        let messages = handler.handle_subscriber_poll(b"test_sub", 0).await;
+        // 2 messages: add + finish
+        assert_eq!(messages.len(), 2);
+        match &messages[1].inner_message {
+            Some(ray_proto::ray::rpc::pub_message::InnerMessage::JobMessage(data)) => {
+                assert!(data.is_dead);
+            }
+            other => panic!("expected JobMessage with is_dead=true, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_no_pubsub_handler_does_not_panic() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsJobManager::new(storage);
+        // No pubsub handler set — should not panic
+        let job_data = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            ..Default::default()
+        };
+        mgr.handle_add_job(job_data).await.unwrap();
+        mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
     }
 }

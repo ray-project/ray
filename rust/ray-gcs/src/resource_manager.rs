@@ -161,4 +161,95 @@ mod tests {
         mgr.set_node_draining(&nid, false, 0);
         assert_eq!(mgr.handle_get_draining_nodes().len(), 0);
     }
+
+    #[test]
+    fn test_multiple_nodes() {
+        let mgr = GcsResourceManager::new();
+        let n1 = node_id(1);
+        let n2 = node_id(2);
+        let n3 = node_id(3);
+
+        mgr.on_node_add(&n1);
+        mgr.on_node_add(&n2);
+        mgr.on_node_add(&n3);
+        assert_eq!(mgr.num_alive_nodes(), 3);
+
+        mgr.on_node_dead(&n2);
+        assert_eq!(mgr.num_alive_nodes(), 2);
+        assert_eq!(mgr.handle_get_all_available_resources().len(), 2);
+    }
+
+    #[test]
+    fn test_node_dead_clears_draining() {
+        let mgr = GcsResourceManager::new();
+        let nid = node_id(1);
+
+        mgr.on_node_add(&nid);
+        mgr.set_node_draining(&nid, true, 5000);
+        assert_eq!(mgr.handle_get_draining_nodes().len(), 1);
+
+        mgr.on_node_dead(&nid);
+        assert_eq!(mgr.handle_get_draining_nodes().len(), 0);
+        assert_eq!(mgr.num_alive_nodes(), 0);
+    }
+
+    #[test]
+    fn test_get_all_total_resources() {
+        let mgr = GcsResourceManager::new();
+        let nid = node_id(1);
+        mgr.on_node_add(&nid);
+
+        let usage = NodeResourceUsage {
+            total_resources: HashMap::from([("CPU".into(), 16.0), ("GPU".into(), 4.0)]),
+            available_resources: HashMap::from([("CPU".into(), 8.0), ("GPU".into(), 2.0)]),
+            ..Default::default()
+        };
+        mgr.update_resource_usage(&nid, usage);
+
+        let total = mgr.handle_get_all_total_resources();
+        assert_eq!(total.len(), 1);
+        assert_eq!(total[0].1.get("CPU"), Some(&16.0));
+        assert_eq!(total[0].1.get("GPU"), Some(&4.0));
+    }
+
+    #[test]
+    fn test_get_all_resource_usage() {
+        let mgr = GcsResourceManager::new();
+        let nid = node_id(1);
+        mgr.on_node_add(&nid);
+
+        let usage = NodeResourceUsage {
+            total_resources: HashMap::from([("CPU".into(), 4.0)]),
+            resource_load: HashMap::from([("CPU".into(), 2.0)]),
+            ..Default::default()
+        };
+        mgr.update_resource_usage(&nid, usage);
+
+        let all = mgr.get_all_resource_usage();
+        assert_eq!(all.len(), 1);
+        let node_usage = all.get(&nid).unwrap();
+        assert_eq!(node_usage.resource_load.get("CPU"), Some(&2.0));
+    }
+
+    #[test]
+    fn test_update_resource_overwrites() {
+        let mgr = GcsResourceManager::new();
+        let nid = node_id(1);
+        mgr.on_node_add(&nid);
+
+        let usage1 = NodeResourceUsage {
+            available_resources: HashMap::from([("CPU".into(), 8.0)]),
+            ..Default::default()
+        };
+        mgr.update_resource_usage(&nid, usage1);
+
+        let usage2 = NodeResourceUsage {
+            available_resources: HashMap::from([("CPU".into(), 2.0)]),
+            ..Default::default()
+        };
+        mgr.update_resource_usage(&nid, usage2);
+
+        let available = mgr.handle_get_all_available_resources();
+        assert_eq!(available[0].1.get("CPU"), Some(&2.0));
+    }
 }
