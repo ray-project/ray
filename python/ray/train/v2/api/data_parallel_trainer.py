@@ -117,6 +117,10 @@ class DataParallelTrainer:
 
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+        if self.scaling_config.elasticity_enabled:
+            usage_lib.record_extra_usage_tag(
+                usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED, "1"
+            )
 
     def _validate_configs(self):
         if not is_v2_enabled():

@@ -214,6 +214,8 @@ enum TagKey {
   TRAIN_CHECKPOINT_MODE = 522;
   // Whether or not asynchronous validation is used ("1" if used).
   TRAIN_ASYNCHRONOUS_VALIDATION = 523;
+  // Whether or not elastic training is enabled ("1" if used).
+  TRAIN_ELASTICITY_ENABLED = 524;
 
   // LLM Serve
   // Whether or not multiple models are getting deployed in the cluster ("1" if used).
