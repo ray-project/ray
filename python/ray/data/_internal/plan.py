@@ -102,7 +102,7 @@ class ExecutionPlan:
     def explain(self) -> str:
         """Return a string representation of the logical and physical plan."""
 
-        convert_fns = [lambda x: x] + get_plan_conversion_fns()
+        convert_fns = [lambda x: x] + list(get_plan_conversion_fns())
         titles: List[str] = [
             "Logical Plan",
             "Logical Plan (Optimized)",
@@ -118,6 +118,8 @@ class ExecutionPlan:
 
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
+            if isinstance(plan, tuple):
+                plan = plan[0]
 
             # 3. Generate plan str from new plan.
             plan_str, _ = self.generate_plan_string(plan.dag, show_op_repr=True)
