@@ -59,13 +59,19 @@ def send_rllink_message(sock_, message: dict):
     if msgpack is None:
         msgpack = try_import_msgpack(error=True)
 
-    body = msgpack.packb(message, use_bin_type=True)  # .encode("utf-8")
+    try:
+        body = msgpack.packb(message, use_bin_type=True)  # .encode("utf-8")
+    except TypeError as e:
+        raise ValueError(
+            f"Error serializing message . It contains objects that are "
+            f"not msgpackable. Original error was: {e}"
+        )
     header = str(len(body)).zfill(8).encode("utf-8")
     try:
         sock_.sendall(header + body)
     except Exception as e:
         raise ConnectionError(
-            f"Error sending message {message} to server on socket {sock_}! "
+            f"Error sending message  to server on socket {sock_}! "
             f"Original error was: {e}"
         )
 
@@ -84,7 +90,7 @@ def get_rllink_message(sock_):
         # Read the message body
         body = _get_num_bytes(sock_, msg_length)
         # Decode JSON.
-        message = msgpack.unpackb(body, raw=False)  # .loads(body.decode("utf-8"))
+        message = msgpack.unpackb(body, raw=False, strict_map_key=False)
         # Check for proper protocol.
         if "type" not in message:
             raise ConnectionError(
