@@ -978,7 +978,6 @@ def raw_metric_timeseries(
 ) -> Dict[str, List[Any]]:
     """Return prometheus timeseries from a RayContext"""
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 

@@ -47,6 +47,18 @@ struct SystemMemorySnapshot {
  */
 using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
 
+inline int64_t GetProcessUsedMemoryBytes(const ProcessesMemorySnapshot &snapshot,
+                                         pid_t pid) {
+  const ProcessesMemorySnapshot::const_iterator it = snapshot.find(pid);
+  if (it == snapshot.end()) {
+    RAY_LOG_EVERY_MS(INFO, 60000) << "Can't find memory usage in process memory snapshot "
+                                     "for PID, reporting zero. PID: "
+                                  << pid;
+    return 0;
+  }
+  return it->second;
+}
+
 /**
  * @brief Callback that runs at each monitoring interval.
  *
