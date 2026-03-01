@@ -985,9 +985,7 @@ def _read_batches_from(
     )
 
 
-def _compute_row_hashes(
-    file_path: str, start_row: int, num_rows: int
-) -> np.ndarray:
+def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:
     """Compute deterministic int64 hashes from file path and row position.
 
     Hashes the file path with MD5 to obtain a 64-bit seed, adds the row indices,
