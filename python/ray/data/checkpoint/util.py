@@ -2,7 +2,7 @@ import logging
 from typing import Iterable
 
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import Block, DataBatch
 from ray.data.checkpoint.interfaces import (
     CheckpointConfig,
 )
@@ -28,17 +28,10 @@ def filter_checkpointed_rows_for_blocks(
     ckpt_filter = BatchBasedCheckpointFilter(checkpoint_config)
     checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
 
-    def filter_fn(block: Block) -> Block:
-        return ckpt_filter.filter_rows_for_block(
-            block=block,
-            checkpointed_ids=checkpointed_ids,
-        )
-
-    for block in blocks:
-        filtered_block = filter_fn(block)
-        ba = BlockAccessor.for_block(filtered_block)
-        if ba.num_rows() > 0:
-            yield filtered_block
+    yield from ckpt_filter.filter_rows_for_blocks(
+        blocks=blocks,
+        checkpointed_ids=checkpointed_ids,
+    )
 
 
 def filter_checkpointed_rows_for_batches(
