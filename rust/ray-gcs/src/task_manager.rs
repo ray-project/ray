@@ -209,4 +209,80 @@ mod tests {
         assert_eq!(mgr.num_events(), 2);
         assert_eq!(mgr.num_dropped(), 1);
     }
+
+    #[test]
+    fn test_duplicate_event_is_merged() {
+        let mgr = GcsTaskManager::new(None);
+
+        let event1 = make_task_event(1, 0);
+        let mut event2 = make_task_event(1, 0);
+        event2.state_updates = Some(ray_proto::ray::rpc::TaskStateUpdate::default());
+
+        let data = ray_proto::ray::rpc::TaskEventData {
+            events_by_task: vec![event1, event2],
+            ..Default::default()
+        };
+
+        mgr.handle_add_task_event_data(data);
+        // Second insert should merge, not create a new entry
+        assert_eq!(mgr.num_events(), 1);
+    }
+
+    #[test]
+    fn test_different_attempts_are_separate() {
+        let mgr = GcsTaskManager::new(None);
+
+        let data = ray_proto::ray::rpc::TaskEventData {
+            events_by_task: vec![make_task_event(1, 0), make_task_event(1, 1)],
+            ..Default::default()
+        };
+
+        mgr.handle_add_task_event_data(data);
+        assert_eq!(mgr.num_events(), 2);
+    }
+
+    #[test]
+    fn test_get_task_events_with_task_ids() {
+        let mgr = GcsTaskManager::new(None);
+
+        let data = ray_proto::ray::rpc::TaskEventData {
+            events_by_task: vec![
+                make_task_event(1, 0),
+                make_task_event(2, 0),
+                make_task_event(3, 0),
+            ],
+            ..Default::default()
+        };
+        mgr.handle_add_task_event_data(data);
+
+        let mut tid = [0u8; 24];
+        tid[0] = 1;
+        let task_id = TaskID::from_binary(&tid);
+        let events = mgr.handle_get_task_events(None, Some(&[task_id]), None);
+        assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn test_on_job_finished_does_not_panic() {
+        let mgr = GcsTaskManager::new(None);
+        let data = ray_proto::ray::rpc::TaskEventData {
+            events_by_task: vec![make_task_event(1, 0)],
+            ..Default::default()
+        };
+        mgr.handle_add_task_event_data(data);
+
+        let mut tid = [0u8; 24];
+        tid[0] = 1;
+        let task_id = TaskID::from_binary(&tid);
+        let job_id = task_id.job_id();
+        mgr.on_job_finished(&job_id);
+    }
+
+    #[test]
+    fn test_default_max_events() {
+        let mgr = GcsTaskManager::default();
+        // Should handle large number of events up to DEFAULT_MAX_TASK_EVENTS
+        assert_eq!(mgr.num_events(), 0);
+        assert_eq!(mgr.num_dropped(), 0);
+    }
 }

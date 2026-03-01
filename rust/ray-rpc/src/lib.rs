@@ -14,5 +14,6 @@
 //! retry middleware, and authentication interceptors.
 
 pub mod auth;
+pub mod call_manager;
 pub mod client;
 pub mod server;

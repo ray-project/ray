@@ -16,6 +16,8 @@
 //! traits/client stubs generated from Ray's `.proto` files. The generated
 //! code is wire-compatible with the C++ protobuf implementation.
 
+pub mod wkt;
+
 /// All Ray protobuf types organized by package.
 pub mod ray {
     /// Main RPC types (package `ray.rpc`).

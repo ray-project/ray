@@ -312,9 +312,18 @@ impl rpc::actor_info_gcs_service_server::ActorInfoGcsService for ActorInfoGcsSer
 
     async fn create_actor(
         &self,
-        _req: Request<rpc::CreateActorRequest>,
+        req: Request<rpc::CreateActorRequest>,
     ) -> Result<Response<rpc::CreateActorReply>, Status> {
-        Ok(Response::new(rpc::CreateActorReply::default()))
+        let request = req.into_inner();
+        let task_spec = request
+            .task_spec
+            .ok_or_else(|| Status::invalid_argument("missing task_spec"))?;
+        let rx = self.actor_manager.handle_create_actor(task_spec).await?;
+        // Await until actor is ALIVE or creation fails
+        let reply = rx
+            .await
+            .map_err(|_| Status::internal("actor creation cancelled"))??;
+        Ok(Response::new(reply))
     }
 
     async fn restart_actor_for_lineage_reconstruction(
@@ -343,9 +352,22 @@ impl rpc::actor_info_gcs_service_server::ActorInfoGcsService for ActorInfoGcsSer
 
     async fn list_named_actors(
         &self,
-        _req: Request<rpc::ListNamedActorsRequest>,
+        req: Request<rpc::ListNamedActorsRequest>,
     ) -> Result<Response<rpc::ListNamedActorsReply>, Status> {
-        Ok(Response::new(rpc::ListNamedActorsReply::default()))
+        let request = req.into_inner();
+        let names = self
+            .actor_manager
+            .handle_list_named_actors(&request.ray_namespace, request.all_namespaces);
+        Ok(Response::new(rpc::ListNamedActorsReply {
+            named_actors_list: names
+                .into_iter()
+                .map(|(ns, name)| rpc::NamedActorInfo {
+                    ray_namespace: ns,
+                    name,
+                })
+                .collect(),
+            ..Default::default()
+        }))
     }
 
     async fn get_all_actor_info(
@@ -714,19 +736,29 @@ impl rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService
 {
     async fn gcs_publish(
         &self,
-        _req: Request<rpc::GcsPublishRequest>,
+        req: Request<rpc::GcsPublishRequest>,
     ) -> Result<Response<rpc::GcsPublishReply>, Status> {
+        let request = req.into_inner();
+        self.pubsub_handler.handle_publish(request.pub_messages);
         Ok(Response::new(rpc::GcsPublishReply::default()))
     }
 
     async fn gcs_subscriber_poll(
         &self,
-        _req: Request<rpc::GcsSubscriberPollRequest>,
+        req: Request<rpc::GcsSubscriberPollRequest>,
     ) -> Result<Response<rpc::GcsSubscriberPollReply>, Status> {
-        // Long-poll: sleep briefly to avoid busy-loop, then return with publisher_id.
-        // The C++ subscriber will re-poll when it gets an empty response.
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let request = req.into_inner();
+        // Long-poll with a timeout: wait for messages or 1 second
+        let messages = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            self.pubsub_handler
+                .handle_subscriber_poll(&request.subscriber_id, request.max_processed_sequence_id),
+        )
+        .await
+        .unwrap_or_default();
+
         Ok(Response::new(rpc::GcsSubscriberPollReply {
+            pub_messages: messages,
             publisher_id: self.publisher_id.clone(),
             ..Default::default()
         }))
@@ -734,8 +766,32 @@ impl rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService
 
     async fn gcs_subscriber_command_batch(
         &self,
-        _req: Request<rpc::GcsSubscriberCommandBatchRequest>,
+        req: Request<rpc::GcsSubscriberCommandBatchRequest>,
     ) -> Result<Response<rpc::GcsSubscriberCommandBatchReply>, Status> {
+        let request = req.into_inner();
+        // Use subscriber_id for subscription registration (matches C++ Publisher behavior).
+        // sender_id is only used for the sender→subscriber mapping (for unregister-by-sender).
+        let subscriber_id = request.subscriber_id.clone();
+
+        for command in &request.commands {
+            if command.command_message_one_of.is_some()
+                && matches!(
+                    command.command_message_one_of,
+                    Some(rpc::command::CommandMessageOneOf::UnsubscribeMessage(_))
+                )
+            {
+                self.pubsub_handler
+                    .handle_unsubscribe_command(&subscriber_id);
+            } else {
+                // Subscribe command
+                self.pubsub_handler.handle_subscribe_command(
+                    subscriber_id.clone(),
+                    command.channel_type,
+                    command.key_id.clone(),
+                );
+            }
+        }
+
         Ok(Response::new(
             rpc::GcsSubscriberCommandBatchReply::default(),
         ))

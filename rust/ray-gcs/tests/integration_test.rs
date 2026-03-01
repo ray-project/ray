@@ -374,6 +374,74 @@ async fn test_gcs_actor_register_and_get() {
 }
 
 #[tokio::test]
+async fn test_gcs_list_named_actors() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::actor_info_gcs_service_client::ActorInfoGcsServiceClient::new(channel);
+
+    // Register a named actor
+    let actor_id = vec![88u8; 16];
+    client
+        .register_actor(rpc::RegisterActorRequest {
+            task_spec: Some(rpc::TaskSpec {
+                actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                    actor_id: actor_id.clone(),
+                    name: "my_named_actor".to_string(),
+                    ray_namespace: "test_ns".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // ListNamedActors should return it
+    let resp = client
+        .list_named_actors(rpc::ListNamedActorsRequest {
+            ray_namespace: "test_ns".to_string(),
+            all_namespaces: false,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let named = resp.into_inner().named_actors_list;
+    assert_eq!(named.len(), 1);
+    assert_eq!(named[0].name, "my_named_actor");
+    assert_eq!(named[0].ray_namespace, "test_ns");
+
+    // ListNamedActors with different namespace should return empty
+    let resp2 = client
+        .list_named_actors(rpc::ListNamedActorsRequest {
+            ray_namespace: "other_ns".to_string(),
+            all_namespaces: false,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp2.into_inner().named_actors_list.len(), 0);
+
+    // ListNamedActors with all_namespaces should return it
+    let resp3 = client
+        .list_named_actors(rpc::ListNamedActorsRequest {
+            all_namespaces: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp3.into_inner().named_actors_list.len(), 1);
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
+#[tokio::test]
 async fn test_gcs_get_next_job_id_monotonic() {
     let server = start_test_gcs_server().await;
     let endpoint = format!("http://{}", server.addr);

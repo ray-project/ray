@@ -84,6 +84,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(true)
         .build_client(true)
         .build_transport(true)
+        // Serde derives on all generated message/enum types for JSON conformance testing.
+        .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
+        // Redirect well-known types to our serde-compatible wrappers (see src/wkt.rs).
+        .extern_path(".google.protobuf.Timestamp", "crate::wkt::Timestamp")
+        .extern_path(".google.protobuf.Struct", "crate::wkt::Struct")
+        .extern_path(".google.protobuf.Value", "crate::wkt::Value")
+        .extern_path(".google.protobuf.ListValue", "crate::wkt::ListValue")
+        .extern_path(".google.protobuf.NullValue", "crate::wkt::NullValue")
         .compile_protos(&proto_files, &include_dirs)?;
 
     // Re-run if any proto file changes

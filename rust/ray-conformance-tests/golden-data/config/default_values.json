@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "generator": "From C++ ray_config_def.h default values",
+  "cases": [
+    {"description": "ray_cookie", "input": {"key": "ray_cookie"}, "expected": {"value_i64": 5927116441131155456}},
+    {"description": "debug_dump_period_milliseconds", "input": {"key": "debug_dump_period_milliseconds"}, "expected": {"value_u64": 10000}},
+    {"description": "event_stats", "input": {"key": "event_stats"}, "expected": {"value_bool": true}},
+    {"description": "memory_usage_threshold", "input": {"key": "memory_usage_threshold"}, "expected": {"value_f32": 0.95}},
+    {"description": "gcs_server_port", "input": {"key": "gcs_server_port"}, "expected": {"value_i32": 6379}},
+    {"description": "object_spilling_threshold", "input": {"key": "object_spilling_threshold"}, "expected": {"value_f64": 0.8}},
+    {"description": "raylet_heartbeat_period_milliseconds", "input": {"key": "raylet_heartbeat_period_milliseconds"}, "expected": {"value_u64": 1000}},
+    {"description": "worker_register_timeout_seconds", "input": {"key": "worker_register_timeout_seconds"}, "expected": {"value_i64": 60}},
+    {"description": "task_retry_delay_ms", "input": {"key": "task_retry_delay_ms"}, "expected": {"value_i64": 0}},
+    {"description": "enable_cluster_auth", "input": {"key": "enable_cluster_auth"}, "expected": {"value_bool": true}}
+  ]
+}

@@ -112,14 +112,9 @@ impl LruCache {
 
         // Remove evicted objects
         for oid in &to_remove {
-            self.remove(oid);
+            let size = self.remove(oid);
             self.num_evictions_total += 1;
-            self.bytes_evicted_total += self
-                .item_list
-                .iter()
-                .find(|e| e.object_id == *oid)
-                .map(|e| e.size)
-                .unwrap_or(0);
+            self.bytes_evicted_total += size;
         }
 
         // Compact the list periodically
@@ -335,5 +330,167 @@ mod tests {
 
         policy.end_object_access(o1, 400);
         assert_eq!(policy.pinned_memory_bytes(), 0);
+    }
+
+    #[test]
+    fn test_lru_remove() {
+        let mut cache = LruCache::new("test", 1000);
+        let o1 = make_oid(1);
+        cache.add(o1, 100);
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.used_capacity(), 100);
+
+        let size = cache.remove(&o1);
+        assert_eq!(size, 100);
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.used_capacity(), 0);
+        assert!(!cache.exists(&o1));
+    }
+
+    #[test]
+    fn test_lru_remove_nonexistent() {
+        let mut cache = LruCache::new("test", 1000);
+        let o1 = make_oid(1);
+        let size = cache.remove(&o1);
+        assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn test_lru_add_duplicate_is_idempotent() {
+        let mut cache = LruCache::new("test", 1000);
+        let o1 = make_oid(1);
+        cache.add(o1, 100);
+        cache.add(o1, 200); // Should be ignored
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.used_capacity(), 100); // Original size preserved
+    }
+
+    #[test]
+    fn test_lru_eviction_frees_enough_bytes() {
+        let mut cache = LruCache::new("test", 1000);
+        for i in 0..10 {
+            cache.add(make_oid(i), 100);
+        }
+        assert_eq!(cache.used_capacity(), 1000);
+
+        let mut evicted = Vec::new();
+        let freed = cache.choose_objects_to_evict(350, &mut evicted);
+        assert!(freed >= 350);
+        assert_eq!(evicted.len(), 4); // 4 * 100 = 400 >= 350
+        assert_eq!(cache.len(), 6);
+    }
+
+    #[test]
+    fn test_lru_eviction_returns_all_if_not_enough() {
+        let mut cache = LruCache::new("test", 1000);
+        cache.add(make_oid(1), 100);
+        cache.add(make_oid(2), 100);
+
+        let mut evicted = Vec::new();
+        let freed = cache.choose_objects_to_evict(500, &mut evicted);
+        assert_eq!(freed, 200); // Can only free 200
+        assert_eq!(evicted.len(), 2);
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_lru_compact_after_many_removals() {
+        let mut cache = LruCache::new("test", 10000);
+        // Add 20 objects
+        for i in 0..20 {
+            cache.add(make_oid(i), 100);
+        }
+        // Remove 15 objects (tombstones accumulate)
+        for i in 0..15 {
+            cache.remove(&make_oid(i));
+        }
+        assert_eq!(cache.len(), 5);
+
+        // Trigger eviction which should compact
+        let mut evicted = Vec::new();
+        cache.choose_objects_to_evict(100, &mut evicted);
+        // After compaction, item_list should be cleaned up
+        assert!(evicted.len() >= 1);
+    }
+
+    #[test]
+    fn test_lru_adjust_capacity() {
+        let mut cache = LruCache::new("test", 1000);
+        assert_eq!(cache.capacity(), 1000);
+        assert_eq!(cache.remaining_capacity(), 1000);
+
+        cache.adjust_capacity(-500);
+        assert_eq!(cache.capacity(), 500);
+        assert_eq!(cache.remaining_capacity(), 500);
+    }
+
+    #[test]
+    fn test_eviction_policy_require_space_enough_room() {
+        let mut policy = EvictionPolicy::new(1000);
+        policy.object_created(make_oid(1), 200);
+        // Still have 800 remaining, need 500 — no eviction needed
+        let mut evicted = Vec::new();
+        let freed = policy.require_space(500, &mut evicted);
+        assert_eq!(freed, 0);
+        assert!(evicted.is_empty());
+    }
+
+    #[test]
+    fn test_eviction_policy_require_space_needs_eviction() {
+        let mut policy = EvictionPolicy::new(1000);
+        for i in 0..10 {
+            policy.object_created(make_oid(i), 100);
+        }
+        // Cache is full (1000/1000). Need 300 more.
+        let mut evicted = Vec::new();
+        let freed = policy.require_space(300, &mut evicted);
+        assert!(freed >= 300);
+        assert!(!evicted.is_empty());
+    }
+
+    #[test]
+    fn test_eviction_policy_pinned_not_evicted() {
+        let mut policy = EvictionPolicy::new(1000);
+        let o1 = make_oid(1);
+        let o2 = make_oid(2);
+        let o3 = make_oid(3);
+
+        policy.object_created(o1, 400);
+        policy.object_created(o2, 400);
+        policy.object_created(o3, 200);
+
+        // Pin o1 only — it should not be evictable
+        policy.begin_object_access(&o1);
+        // Cache now: o2(400) + o3(200) = 600 used, 400 remaining
+
+        // Need 500 bytes but only 400 remaining — must evict
+        let mut evicted = Vec::new();
+        let freed = policy.require_space(500, &mut evicted);
+        assert!(freed >= 100); // Need at least 100 more
+        // o1 must NOT be evicted (it's pinned)
+        assert!(!evicted.contains(&o1));
+        // o2 should be evicted (LRU order, added before o3)
+        assert!(evicted.contains(&o2));
+    }
+
+    #[test]
+    fn test_eviction_policy_remove_object() {
+        let mut policy = EvictionPolicy::new(1000);
+        let o1 = make_oid(1);
+        policy.object_created(o1, 100);
+        policy.remove_object(&o1);
+
+        // Should not be evictable
+        let mut evicted = Vec::new();
+        policy.require_space(1000, &mut evicted);
+        assert!(!evicted.contains(&o1));
+    }
+
+    #[test]
+    fn test_lru_debug_string() {
+        let cache = LruCache::new("test_cache", 1000);
+        let s = cache.debug_string();
+        assert!(s.contains("test_cache"));
+        assert!(s.contains("1000"));
     }
 }

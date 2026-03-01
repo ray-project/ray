@@ -228,4 +228,54 @@ mod tests {
         let config = ObjectManagerConfig::default();
         assert_eq!(config.object_chunk_size, 8 * 1024 * 1024);
     }
+
+    #[test]
+    fn test_object_info_mutable_header_size() {
+        let info = ObjectInfo {
+            data_size: 1024,
+            metadata_size: 64,
+            is_mutable: true,
+            ..Default::default()
+        };
+        let header_size = std::mem::size_of::<PlasmaObjectHeader>() as i64;
+        assert_eq!(info.get_object_size(), 1024 + 64 + header_size);
+        assert!(header_size > 0);
+    }
+
+    #[test]
+    fn test_object_info_zero_sizes() {
+        let info = ObjectInfo::default();
+        assert_eq!(info.get_object_size(), 0);
+    }
+
+    #[test]
+    fn test_plasma_object_header_default() {
+        let header = PlasmaObjectHeader::default();
+        assert_eq!(header.version, 0);
+        assert!(!header.is_sealed);
+        assert_eq!(header.num_readers, 0);
+    }
+
+    #[test]
+    fn test_object_location_variants() {
+        assert_ne!(ObjectLocation::Local, ObjectLocation::Remote);
+        assert_ne!(ObjectLocation::Local, ObjectLocation::Nonexistent);
+        assert_ne!(ObjectLocation::Remote, ObjectLocation::Nonexistent);
+    }
+
+    #[test]
+    fn test_object_source_discriminants() {
+        assert_eq!(ObjectSource::CreatedByWorker as u8, 0);
+        assert_eq!(ObjectSource::RestoredFromStorage as u8, 1);
+        assert_eq!(ObjectSource::ReceivedFromRemoteRaylet as u8, 2);
+        assert_eq!(ObjectSource::ErrorStoredByRaylet as u8, 3);
+    }
+
+    #[test]
+    fn test_plasma_error_display() {
+        let err = PlasmaError::OutOfMemory;
+        assert_eq!(err.to_string(), "out of memory");
+        let err = PlasmaError::ObjectExists;
+        assert_eq!(err.to_string(), "object already exists");
+    }
 }

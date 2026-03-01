@@ -16,6 +16,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use ray_common::id::NodeID;
 
+use crate::pubsub_handler::{ChannelType, InternalPubSubHandler};
 use crate::table_storage::GcsTableStorage;
 
 /// Callback invoked when a node is added to the cluster.
@@ -38,6 +39,8 @@ pub struct GcsNodeManager {
     node_removed_listeners: RwLock<Vec<NodeRemovedCallback>>,
     /// Persistence.
     table_storage: Arc<GcsTableStorage>,
+    /// Pubsub handler for publishing node state changes.
+    pubsub_handler: RwLock<Option<Arc<InternalPubSubHandler>>>,
 }
 
 impl GcsNodeManager {
@@ -50,6 +53,30 @@ impl GcsNodeManager {
             node_added_listeners: RwLock::new(Vec::new()),
             node_removed_listeners: RwLock::new(Vec::new()),
             table_storage,
+            pubsub_handler: RwLock::new(None),
+        }
+    }
+
+    /// Set the pubsub handler (called during server initialization).
+    pub fn set_pubsub_handler(&self, handler: Arc<InternalPubSubHandler>) {
+        *self.pubsub_handler.write() = Some(handler);
+    }
+
+    /// Publish node state change via pubsub.
+    fn publish_node_state(&self, node_info: &ray_proto::ray::rpc::GcsNodeInfo) {
+        let pubsub = self.pubsub_handler.read();
+        if let Some(ref handler) = *pubsub {
+            let pub_msg = ray_proto::ray::rpc::PubMessage {
+                channel_type: ChannelType::GcsNodeInfoChannel as i32,
+                key_id: node_info.node_id.clone(),
+                inner_message: Some(
+                    ray_proto::ray::rpc::pub_message::InnerMessage::NodeInfoMessage(
+                        node_info.clone(),
+                    ),
+                ),
+                ..Default::default()
+            };
+            handler.publish_pubmessage(pub_msg);
         }
     }
 
@@ -114,6 +141,9 @@ impl GcsNodeManager {
         // Add to alive nodes
         self.alive_nodes.write().insert(node_id, node.clone());
 
+        // Publish via pubsub
+        self.publish_node_state(&node);
+
         // Notify listeners
         let listeners = self.node_added_listeners.read();
         for listener in listeners.iter() {
@@ -154,6 +184,9 @@ impl GcsNodeManager {
             let dead_node = Arc::new(dead_node);
             self.dead_nodes.write().insert(*node_id, dead_node.clone());
             self.draining_nodes.write().remove(node_id);
+
+            // Publish via pubsub
+            self.publish_node_state(&dead_node);
 
             // Notify listeners
             let listeners = self.node_removed_listeners.read();
@@ -306,5 +339,106 @@ mod tests {
         let id = vec![1u8; 28];
         mgr.set_cluster_id(id.clone());
         assert_eq!(mgr.cluster_id(), id);
+    }
+
+    #[tokio::test]
+    async fn test_register_node_publishes_to_pubsub() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        let handler = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(handler.clone());
+
+        // Subscribe to node info channel
+        handler.handle_subscribe_command(
+            b"test_sub".to_vec(),
+            ChannelType::GcsNodeInfoChannel as i32,
+            vec![],
+        );
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+
+        let messages = handler.handle_subscriber_poll(b"test_sub", 0).await;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].channel_type, ChannelType::GcsNodeInfoChannel as i32);
+        // Verify the inner message contains the node info
+        match &messages[0].inner_message {
+            Some(ray_proto::ray::rpc::pub_message::InnerMessage::NodeInfoMessage(info)) => {
+                assert_eq!(info.node_id[0], 1);
+                assert_eq!(info.state, 0); // ALIVE
+            }
+            other => panic!("expected NodeInfoMessage, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_remove_node_publishes_dead_state() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        let handler = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(handler.clone());
+
+        handler.handle_subscribe_command(
+            b"test_sub".to_vec(),
+            ChannelType::GcsNodeInfoChannel as i32,
+            vec![],
+        );
+
+        // Register then unregister
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        let nid = node_id(1);
+        mgr.handle_unregister_node(&nid.binary()).await.unwrap();
+
+        let messages = handler.handle_subscriber_poll(b"test_sub", 0).await;
+        // Should get 2 messages: register (ALIVE) + unregister (DEAD)
+        assert_eq!(messages.len(), 2);
+        match &messages[1].inner_message {
+            Some(ray_proto::ray::rpc::pub_message::InnerMessage::NodeInfoMessage(info)) => {
+                assert_eq!(info.state, 1); // DEAD
+            }
+            other => panic!("expected NodeInfoMessage with DEAD state, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_node_failure_publishes_dead_state() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        let handler = Arc::new(InternalPubSubHandler::new());
+        mgr.set_pubsub_handler(handler.clone());
+
+        handler.handle_subscribe_command(
+            b"test_sub".to_vec(),
+            ChannelType::GcsNodeInfoChannel as i32,
+            vec![],
+        );
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        mgr.on_node_failure(&node_id(1)).await.unwrap();
+
+        let messages = handler.handle_subscriber_poll(b"test_sub", 0).await;
+        assert_eq!(messages.len(), 2);
+        match &messages[1].inner_message {
+            Some(ray_proto::ray::rpc::pub_message::InnerMessage::NodeInfoMessage(info)) => {
+                assert_eq!(info.state, 1); // DEAD
+            }
+            other => panic!("expected NodeInfoMessage with DEAD state, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_no_pubsub_handler_does_not_panic() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+        // Don't set pubsub handler — should not panic
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        let nid = node_id(1);
+        mgr.handle_unregister_node(&nid.binary()).await.unwrap();
     }
 }

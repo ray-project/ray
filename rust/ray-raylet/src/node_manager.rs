@@ -182,3 +182,61 @@ impl NodeManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_config() -> RayletConfig {
+        RayletConfig {
+            node_ip_address: "127.0.0.1".to_string(),
+            port: 0,
+            object_store_socket: "/tmp/plasma".to_string(),
+            gcs_address: "127.0.0.1:6379".to_string(),
+            log_dir: None,
+            ray_config: RayConfig::default(),
+            node_id: "test-node-1".to_string(),
+            resources: HashMap::from([
+                ("CPU".to_string(), 8.0),
+                ("GPU".to_string(), 2.0),
+            ]),
+            labels: HashMap::from([("region".to_string(), "us-east".to_string())]),
+            session_name: "test-session".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_node_manager_creation() {
+        let nm = NodeManager::new(make_config());
+        assert_eq!(nm.config().node_id, "test-node-1");
+        assert_eq!(nm.config().port, 0);
+    }
+
+    #[test]
+    fn test_node_manager_components_initialized() {
+        let nm = NodeManager::new(make_config());
+        // All sub-managers should be accessible
+        let _scheduler = nm.scheduler();
+        let _worker_pool = nm.worker_pool();
+        let _lease_manager = nm.lease_manager();
+        let _wait_manager = nm.wait_manager();
+        let _pg_manager = nm.placement_group_resource_manager();
+    }
+
+    #[test]
+    fn test_node_manager_drain() {
+        let nm = NodeManager::new(make_config());
+        nm.handle_drain(5000);
+        // After drain, node should be marked as draining
+        assert!(nm.scheduler().local_resource_manager().is_local_node_draining());
+    }
+
+    #[test]
+    fn test_node_manager_resources_configured() {
+        let nm = NodeManager::new(make_config());
+        let local_rm = nm.scheduler().local_resource_manager();
+        let total = local_rm.get_local_total_resources();
+        assert!(total.get("CPU") > FixedPoint::from_f64(0.0));
+        assert!(total.get("GPU") > FixedPoint::from_f64(0.0));
+    }
+}

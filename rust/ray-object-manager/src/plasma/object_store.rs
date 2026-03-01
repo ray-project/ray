@@ -202,33 +202,16 @@ impl ObjectStore {
         &mut self,
         object_id: &ObjectID,
     ) -> Result<Allocation, crate::common::PlasmaError> {
-        let obj = self
-            .object_table
-            .remove(object_id)
-            .ok_or(crate::common::PlasmaError::ObjectNonexistent)?;
-
-        if obj.ref_count() > 0 {
-            // Put it back — can't delete while in use
-            let _alloc_stub = obj.allocation;
-            self.object_table.insert(
-                *object_id,
-                LocalObject {
-                    allocation: Allocation {
-                        address: std::ptr::null_mut(),
-                        size: 0,
-                        fd: -1,
-                        offset: 0,
-                        device_num: 0,
-                        mmap_size: 0,
-                        fallback_allocated: false,
-                    },
-                    ..obj
-                },
-            );
-            // Actually, let's just handle this differently:
-            return Err(crate::common::PlasmaError::ObjectInUse);
+        // Check ref_count before removing to avoid leaking the allocation
+        if let Some(obj) = self.object_table.get(object_id) {
+            if obj.ref_count() > 0 {
+                return Err(crate::common::PlasmaError::ObjectInUse);
+            }
+        } else {
+            return Err(crate::common::PlasmaError::ObjectNonexistent);
         }
 
+        let obj = self.object_table.remove(object_id).unwrap();
         let size = obj.object_size();
         if obj.is_sealed() {
             self.num_bytes_sealed -= size;
@@ -358,5 +341,180 @@ mod tests {
         store.seal_object(&oid).unwrap();
         store.delete_object(&oid).unwrap();
         assert!(!store.contains(&oid));
+    }
+
+    #[test]
+    fn test_delete_nonexistent() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(99);
+        let result = store.delete_object(&oid);
+        assert!(matches!(
+            result,
+            Err(crate::common::PlasmaError::ObjectNonexistent)
+        ));
+    }
+
+    #[test]
+    fn test_delete_while_in_use() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 256,
+            ..Default::default()
+        };
+
+        store
+            .create_object(dummy_allocation(), info, ObjectSource::CreatedByWorker)
+            .unwrap();
+        store.seal_object(&oid).unwrap();
+
+        // Increment ref count
+        store.get_object_mut(&oid).unwrap().incr_ref();
+
+        // Should fail with ObjectInUse
+        let result = store.delete_object(&oid);
+        assert!(matches!(
+            result,
+            Err(crate::common::PlasmaError::ObjectInUse)
+        ));
+        // Object should still be in the store with correct state
+        assert!(store.contains(&oid));
+        let obj = store.get_object(&oid).unwrap();
+        assert_eq!(obj.ref_count(), 1);
+        assert!(obj.is_sealed());
+    }
+
+    #[test]
+    fn test_seal_nonexistent() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(99);
+        let result = store.seal_object(&oid);
+        assert!(matches!(
+            result,
+            Err(crate::common::PlasmaError::ObjectNonexistent)
+        ));
+    }
+
+    #[test]
+    fn test_seal_already_sealed() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 100,
+            ..Default::default()
+        };
+        store
+            .create_object(dummy_allocation(), info, ObjectSource::CreatedByWorker)
+            .unwrap();
+        store.seal_object(&oid).unwrap();
+        let result = store.seal_object(&oid);
+        assert!(matches!(
+            result,
+            Err(crate::common::PlasmaError::ObjectSealed)
+        ));
+    }
+
+    #[test]
+    fn test_ref_count_increment_decrement() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 100,
+            ..Default::default()
+        };
+        store
+            .create_object(dummy_allocation(), info, ObjectSource::CreatedByWorker)
+            .unwrap();
+        store.seal_object(&oid).unwrap();
+
+        let obj = store.get_object_mut(&oid).unwrap();
+        assert_eq!(obj.ref_count(), 0);
+        obj.incr_ref();
+        obj.incr_ref();
+        assert_eq!(obj.ref_count(), 2);
+        obj.decr_ref();
+        assert_eq!(obj.ref_count(), 1);
+        obj.decr_ref();
+        assert_eq!(obj.ref_count(), 0);
+    }
+
+    #[test]
+    fn test_byte_tracking_across_operations() {
+        let mut store = ObjectStore::new();
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        let info1 = ObjectInfo {
+            object_id: oid1,
+            data_size: 100,
+            ..Default::default()
+        };
+        let info2 = ObjectInfo {
+            object_id: oid2,
+            data_size: 200,
+            ..Default::default()
+        };
+
+        store
+            .create_object(dummy_allocation(), info1, ObjectSource::CreatedByWorker)
+            .unwrap();
+        store
+            .create_object(dummy_allocation(), info2, ObjectSource::CreatedByWorker)
+            .unwrap();
+        assert_eq!(store.num_bytes_unsealed(), 300);
+        assert_eq!(store.num_bytes_sealed(), 0);
+        assert_eq!(store.cumulative_created_bytes(), 300);
+
+        store.seal_object(&oid1).unwrap();
+        assert_eq!(store.num_bytes_unsealed(), 200);
+        assert_eq!(store.num_bytes_sealed(), 100);
+
+        store.delete_object(&oid1).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 0);
+        assert_eq!(store.num_bytes_unsealed(), 200);
+        assert_eq!(store.num_bytes_in_use(), 200);
+        assert_eq!(store.num_objects(), 1);
+    }
+
+    #[test]
+    fn test_delete_unsealed_object() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 100,
+            ..Default::default()
+        };
+        store
+            .create_object(dummy_allocation(), info, ObjectSource::CreatedByWorker)
+            .unwrap();
+        // Delete without sealing
+        store.delete_object(&oid).unwrap();
+        assert_eq!(store.num_bytes_unsealed(), 0);
+        assert_eq!(store.num_objects(), 0);
+    }
+
+    #[test]
+    fn test_object_source_preserved() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 100,
+            ..Default::default()
+        };
+        store
+            .create_object(
+                dummy_allocation(),
+                info,
+                ObjectSource::ReceivedFromRemoteRaylet,
+            )
+            .unwrap();
+        let obj = store.get_object(&oid).unwrap();
+        assert_eq!(obj.source(), ObjectSource::ReceivedFromRemoteRaylet);
+        assert_eq!(obj.state(), ObjectState::Created);
     }
 }

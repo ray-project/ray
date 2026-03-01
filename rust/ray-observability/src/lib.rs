@@ -10,4 +10,5 @@
 //!
 //! Replaces `src/ray/observability/` (24 files).
 
+pub mod domain_events;
 pub mod events;

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "generator": "Computed from FixedPoint with RESOURCE_UNIT_SCALING=10000",
+  "cases": [
+    {"description": "zero", "input": {"f64_value": 0.0}, "expected": {"raw_i64": 0, "roundtrip_f64": 0.0}},
+    {"description": "smallest unit", "input": {"f64_value": 0.0001}, "expected": {"raw_i64": 1, "roundtrip_f64": 0.0001}},
+    {"description": "0.001", "input": {"f64_value": 0.001}, "expected": {"raw_i64": 10, "roundtrip_f64": 0.001}},
+    {"description": "0.01", "input": {"f64_value": 0.01}, "expected": {"raw_i64": 100, "roundtrip_f64": 0.01}},
+    {"description": "0.1", "input": {"f64_value": 0.1}, "expected": {"raw_i64": 1000, "roundtrip_f64": 0.1}},
+    {"description": "half", "input": {"f64_value": 0.5}, "expected": {"raw_i64": 5000, "roundtrip_f64": 0.5}},
+    {"description": "one", "input": {"f64_value": 1.0}, "expected": {"raw_i64": 10000, "roundtrip_f64": 1.0}},
+    {"description": "1.5", "input": {"f64_value": 1.5}, "expected": {"raw_i64": 15000, "roundtrip_f64": 1.5}},
+    {"description": "two", "input": {"f64_value": 2.0}, "expected": {"raw_i64": 20000, "roundtrip_f64": 2.0}},
+    {"description": "pi", "input": {"f64_value": 3.14159}, "expected": {"raw_i64": 31416, "roundtrip_f64": 3.1416}},
+    {"description": "hundred", "input": {"f64_value": 100.0}, "expected": {"raw_i64": 1000000, "roundtrip_f64": 100.0}},
+    {"description": "near-thousand", "input": {"f64_value": 999.9999}, "expected": {"raw_i64": 9999999, "roundtrip_f64": 999.9999}},
+    {"description": "negative one", "input": {"f64_value": -1.0}, "expected": {"raw_i64": -10000, "roundtrip_f64": -1.0}},
+    {"description": "negative half", "input": {"f64_value": -0.5}, "expected": {"raw_i64": -5000, "roundtrip_f64": -0.5}},
+    {"description": "sub-unit rounds to 1", "input": {"f64_value": 0.00005}, "expected": {"raw_i64": 1, "roundtrip_f64": 0.0001}}
+  ]
+}

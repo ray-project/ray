@@ -1,0 +1,18 @@
+[package]
+name = "ray-conformance-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Golden-file conformance tests ensuring Rust matches C++ behavior"
+
+[dependencies]
+ray-common = { workspace = true }
+ray-proto = { workspace = true }
+ray-test-utils = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+prost = { workspace = true }
+hex = { workspace = true }
+
+[lib]
+doctest = false

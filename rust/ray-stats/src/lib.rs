@@ -181,4 +181,82 @@ mod tests {
         gauge.set(&tags, 10.0);
         assert_eq!(gauge.get(&tags), 10.0);
     }
+
+    #[test]
+    fn test_histogram_record_and_boundaries() {
+        let hist = Histogram::new(
+            "test_hist",
+            "A test histogram",
+            vec![10.0, 50.0, 100.0, 500.0],
+        );
+        let tags = vec![("op".to_string(), "read".to_string())];
+        hist.record(&tags, 5.0);
+        hist.record(&tags, 55.0);
+        hist.record(&tags, 200.0);
+        assert_eq!(hist.boundaries(), &[10.0, 50.0, 100.0, 500.0]);
+        assert_eq!(hist.name(), "test_hist");
+        assert_eq!(hist.description(), "A test histogram");
+    }
+
+    #[test]
+    fn test_counter_separate_tags() {
+        let counter = Counter::new("c", "desc");
+        let tags_a = vec![("job".to_string(), "1".to_string())];
+        let tags_b = vec![("job".to_string(), "2".to_string())];
+        counter.increment(&tags_a, 10);
+        counter.increment(&tags_b, 20);
+        assert_eq!(counter.get(&tags_a), 10);
+        assert_eq!(counter.get(&tags_b), 20);
+    }
+
+    #[test]
+    fn test_counter_missing_tags_returns_zero() {
+        let counter = Counter::new("c", "desc");
+        let tags = vec![("job".to_string(), "missing".to_string())];
+        assert_eq!(counter.get(&tags), 0);
+    }
+
+    #[test]
+    fn test_gauge_missing_tags_returns_zero() {
+        let gauge = Gauge::new("g", "desc");
+        let tags = vec![("node".to_string(), "missing".to_string())];
+        assert_eq!(gauge.get(&tags), 0.0);
+    }
+
+    #[test]
+    fn test_gauge_separate_tags() {
+        let gauge = Gauge::new("g", "desc");
+        let tags_a = vec![("node".to_string(), "1".to_string())];
+        let tags_b = vec![("node".to_string(), "2".to_string())];
+        gauge.set(&tags_a, 100.0);
+        gauge.set(&tags_b, 200.0);
+        assert_eq!(gauge.get(&tags_a), 100.0);
+        assert_eq!(gauge.get(&tags_b), 200.0);
+    }
+
+    #[test]
+    fn test_metric_trait_on_counter() {
+        let counter = Counter::new("my_counter", "My counter description");
+        let m: &dyn Metric = &counter;
+        assert_eq!(m.name(), "my_counter");
+        assert_eq!(m.description(), "My counter description");
+    }
+
+    #[test]
+    fn test_metric_defs_constants() {
+        assert_eq!(metric_defs::GCS_ACTORS_COUNT, "ray_gcs_actors_count");
+        assert_eq!(metric_defs::OBJECT_STORE_MEMORY, "ray_object_store_memory");
+        assert_eq!(metric_defs::TASKS_RUNNING, "ray_tasks_running");
+    }
+
+    #[test]
+    fn test_counter_clone_shares_state() {
+        let counter = Counter::new("c", "desc");
+        let clone = counter.clone();
+        let tags = vec![];
+        counter.increment(&tags, 5);
+        assert_eq!(clone.get(&tags), 5);
+        clone.increment(&tags, 3);
+        assert_eq!(counter.get(&tags), 8);
+    }
 }

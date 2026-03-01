@@ -26,6 +26,7 @@ use crate::memory_store::{CoreWorkerMemoryStore, RayObject};
 use crate::normal_task_submitter::NormalTaskSubmitter;
 use crate::options::CoreWorkerOptions;
 use crate::reference_counter::ReferenceCounter;
+use crate::task_receiver::TaskReceiver;
 
 /// The core worker orchestrating task submission, object management,
 /// actor management, and reference counting.
@@ -37,6 +38,7 @@ pub struct CoreWorker {
     normal_task_submitter: NormalTaskSubmitter,
     actor_task_submitter: ActorTaskSubmitter,
     dependency_resolver: DependencyResolver,
+    task_receiver: TaskReceiver,
     worker_address: Address,
 }
 
@@ -59,14 +61,23 @@ impl CoreWorker {
             worker_id: options.worker_id.binary(),
         };
 
+        let memory_store = Arc::new(CoreWorkerMemoryStore::new());
+
+        let task_receiver = TaskReceiver::new(
+            options.worker_id,
+            memory_store.clone(),
+            0, // unlimited concurrency by default
+        );
+
         Self {
             context,
-            memory_store: Arc::new(CoreWorkerMemoryStore::new()),
+            memory_store,
             reference_counter,
             actor_manager: Arc::new(ActorManager::new()),
             normal_task_submitter,
             actor_task_submitter: ActorTaskSubmitter::new(),
             dependency_resolver: DependencyResolver::new(),
+            task_receiver,
             worker_address,
         }
     }
@@ -249,6 +260,16 @@ impl CoreWorker {
     /// Number of normal pending tasks.
     pub fn num_pending_normal_tasks(&self) -> usize {
         self.normal_task_submitter.num_pending_tasks()
+    }
+
+    /// Access the task receiver for handling incoming PushTask RPCs.
+    pub fn task_receiver(&self) -> &TaskReceiver {
+        &self.task_receiver
+    }
+
+    /// Number of tasks currently being executed by this worker.
+    pub fn num_executing_tasks(&self) -> usize {
+        self.task_receiver.num_executing()
     }
 }
 

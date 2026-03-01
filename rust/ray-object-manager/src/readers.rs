@@ -325,4 +325,113 @@ mod tests {
         assert_eq!(reader.data_size(), 4);
         assert_eq!(reader.read_data(0, 4), Some(b"test".to_vec()));
     }
+
+    #[test]
+    fn test_spilled_nonexistent_file() {
+        assert!(SpilledObjectReader::create("/nonexistent/file.bin").is_none());
+    }
+
+    #[test]
+    fn test_spilled_invalid_url() {
+        // Offset/size with non-numeric values
+        assert!(SpilledObjectReader::create("/tmp/f?offset=abc&size=10").is_none());
+    }
+
+    #[test]
+    fn test_chunk_reader_with_metadata() {
+        let reader = MemoryObjectReader::new(vec![1, 2, 3, 4], vec![10, 20]);
+        // Chunk layout: [metadata][data] = [10,20,1,2,3,4], chunk_size=3
+        let chunk_reader = ChunkObjectReader::new(Box::new(reader), 3);
+
+        assert_eq!(chunk_reader.num_chunks(), 2);
+        // Chunk 0: bytes 0..3 = [10, 20] (meta) + [1] (data)
+        assert_eq!(chunk_reader.get_chunk(0), Some(vec![10, 20, 1]));
+        // Chunk 1: bytes 3..6 = [2, 3, 4] (data)
+        assert_eq!(chunk_reader.get_chunk(1), Some(vec![2, 3, 4]));
+    }
+
+    #[test]
+    fn test_chunk_reader_empty_object() {
+        let reader = MemoryObjectReader::new(vec![], vec![]);
+        let chunk_reader = ChunkObjectReader::new(Box::new(reader), 1024);
+        assert_eq!(chunk_reader.num_chunks(), 1);
+    }
+
+    #[test]
+    fn test_memory_reader_out_of_bounds() {
+        let reader = MemoryObjectReader::new(vec![1, 2], vec![10]);
+        assert!(reader.read_data(0, 3).is_none());
+        assert!(reader.read_metadata(0, 2).is_none());
+    }
+
+    #[test]
+    fn test_spilled_partial_data_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("spilled3.bin");
+
+        let mut f = File::create(&path).unwrap();
+        let address = b"";
+        let metadata = b"AB";
+        let data = b"CDEFGH";
+
+        f.write_all(&(address.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(&(metadata.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(&(data.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(address).unwrap();
+        f.write_all(metadata).unwrap();
+        f.write_all(data).unwrap();
+        drop(f);
+
+        let reader = SpilledObjectReader::create(path.to_str().unwrap()).unwrap();
+        // Partial read: offset 2, size 3 → "EFG"
+        assert_eq!(reader.read_data(2, 3), Some(b"EFG".to_vec()));
+        // Partial metadata read
+        assert_eq!(reader.read_metadata(1, 1), Some(b"B".to_vec()));
+    }
+
+    #[test]
+    fn test_spilled_multi_object_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("multi.bin");
+
+        let mut f = File::create(&path).unwrap();
+
+        // Write first object at offset 0
+        let addr1 = b"a1";
+        let meta1 = b"m1";
+        let data1 = b"data1";
+        f.write_all(&(addr1.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(&(meta1.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(&(data1.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(addr1).unwrap();
+        f.write_all(meta1).unwrap();
+        f.write_all(data1).unwrap();
+
+        let obj2_offset = 24 + 2 + 2 + 5; // header(24) + addr(2) + meta(2) + data(5) = 33
+
+        // Write second object at offset 33
+        let addr2 = b"a2";
+        let meta2 = b"mm";
+        let data2 = b"second";
+        f.write_all(&(addr2.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(&(meta2.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(&(data2.len() as u64).to_le_bytes()).unwrap();
+        f.write_all(addr2).unwrap();
+        f.write_all(meta2).unwrap();
+        f.write_all(data2).unwrap();
+        drop(f);
+
+        // Read the second object using offset
+        let url = format!(
+            "{}?offset={}&size={}",
+            path.to_str().unwrap(),
+            obj2_offset,
+            24 + 2 + 2 + 6
+        );
+        let reader = SpilledObjectReader::create(&url).unwrap();
+        assert_eq!(reader.data_size(), 6);
+        assert_eq!(reader.metadata_size(), 2);
+        assert_eq!(reader.read_data(0, 6), Some(b"second".to_vec()));
+        assert_eq!(reader.read_metadata(0, 2), Some(b"mm".to_vec()));
+    }
 }

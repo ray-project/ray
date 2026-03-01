@@ -477,6 +477,14 @@ pub const GCS_NODE_ID: NodeID = NodeID {
 /// Bundle ID type: (PlacementGroupID, bundle_index).
 pub type BundleID = (PlacementGroupID, i64);
 
+/// Exposed for cross-language conformance testing.
+///
+/// Computes MurmurHash64A, matching the C++ implementation exactly.
+#[doc(hidden)]
+pub fn murmur_hash_64a_public(key: &[u8], seed: u64) -> u64 {
+    murmur_hash_64a(key, seed)
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

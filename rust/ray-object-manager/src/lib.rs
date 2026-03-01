@@ -17,6 +17,7 @@
 
 pub mod common;
 pub mod object_buffer_pool;
+pub mod object_directory;
 pub mod object_manager;
 pub mod plasma;
 pub mod pull_manager;

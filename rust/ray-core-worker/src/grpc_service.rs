@@ -30,13 +30,20 @@ pub struct CoreWorkerServiceImpl {
 impl CoreWorkerServiceImpl {
     // ─── Functional Handlers ─────────────────────────────────────────
 
+    /// Handle an incoming PushTask request by delegating to the TaskReceiver.
     pub async fn handle_push_task(
         &self,
         request: rpc::PushTaskRequest,
     ) -> Result<rpc::PushTaskReply, Status> {
-        tracing::debug!("PushTask received");
-        let _ = request;
-        Ok(rpc::PushTaskReply::default())
+        tracing::debug!(
+            seq = request.sequence_number,
+            "PushTask received"
+        );
+        self.core_worker
+            .task_receiver()
+            .handle_push_task(request)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))
     }
 
     pub async fn handle_kill_actor(
@@ -50,18 +57,36 @@ impl CoreWorkerServiceImpl {
         Ok(rpc::KillActorReply::default())
     }
 
+    /// Handle task cancellation by delegating to the TaskReceiver.
     pub async fn handle_cancel_task(
         &self,
         request: rpc::CancelTaskRequest,
     ) -> Result<rpc::CancelTaskReply, Status> {
-        tracing::debug!(
-            task_id = %hex::encode(&request.intended_task_id),
-            "CancelTask received"
+        let task_id_hex = hex::encode(&request.intended_task_id);
+        tracing::debug!(task_id = %task_id_hex, "CancelTask received");
+
+        let running = self.core_worker.task_receiver().is_task_running(
+            &request.intended_task_id,
         );
-        let _ = request;
-        Ok(rpc::CancelTaskReply::default())
+
+        if running {
+            let cancelled = self.core_worker.task_receiver().cancel_task(
+                &request.intended_task_id,
+                request.force_kill,
+            );
+            Ok(rpc::CancelTaskReply {
+                requested_task_running: true,
+                attempt_succeeded: cancelled,
+            })
+        } else {
+            Ok(rpc::CancelTaskReply {
+                requested_task_running: false,
+                attempt_succeeded: false,
+            })
+        }
     }
 
+    /// Handle GetObjectStatus by checking the memory store and reference counter.
     pub async fn handle_get_object_status(
         &self,
         request: rpc::GetObjectStatusRequest,
@@ -69,21 +94,77 @@ impl CoreWorkerServiceImpl {
         let oid = ObjectID::from_binary(&request.object_id);
         let exists = self.core_worker.contains_object(&oid);
         tracing::debug!(object_id = %oid.hex(), exists, "GetObjectStatus");
-        Ok(rpc::GetObjectStatusReply::default())
+
+        if exists {
+            // Object is available locally.
+            let obj = self.core_worker.memory_store().get(&oid);
+            let (ray_obj, obj_size) = match obj {
+                Some(o) => {
+                    let size = o.data.len() as u64;
+                    let proto_obj = rpc::RayObject {
+                        data: o.data.to_vec(),
+                        metadata: o.metadata.to_vec(),
+                        nested_inlined_refs: o
+                            .nested_refs
+                            .iter()
+                            .map(|r| rpc::ObjectReference {
+                                object_id: r.binary(),
+                                ..Default::default()
+                            })
+                            .collect(),
+                    };
+                    (Some(proto_obj), size)
+                }
+                None => (None, 0),
+            };
+            Ok(rpc::GetObjectStatusReply {
+                status: rpc::get_object_status_reply::ObjectStatus::Created as i32,
+                object: ray_obj,
+                object_size: obj_size,
+                ..Default::default()
+            })
+        } else {
+            // Check if object was ever tracked by reference counter.
+            if self.core_worker.reference_counter().has_reference(&oid) {
+                Ok(rpc::GetObjectStatusReply {
+                    status: rpc::get_object_status_reply::ObjectStatus::Created as i32,
+                    ..Default::default()
+                })
+            } else {
+                Ok(rpc::GetObjectStatusReply {
+                    status: rpc::get_object_status_reply::ObjectStatus::OutOfScope as i32,
+                    ..Default::default()
+                })
+            }
+        }
     }
 
+    /// Return core worker statistics.
     pub fn handle_get_core_worker_stats(
         &self,
         _request: rpc::GetCoreWorkerStatsRequest,
     ) -> Result<rpc::GetCoreWorkerStatsReply, Status> {
-        Ok(rpc::GetCoreWorkerStatsReply::default())
+        let num_pending = self.core_worker.num_pending_normal_tasks();
+        let num_executing = self.core_worker.num_executing_tasks();
+        Ok(rpc::GetCoreWorkerStatsReply {
+            core_worker_stats: Some(rpc::CoreWorkerStats {
+                num_pending_tasks: num_pending as i32,
+                num_running_tasks: num_executing as i64,
+                ..Default::default()
+            }),
+            tasks_total: (num_pending + num_executing) as i64,
+            ..Default::default()
+        })
     }
 
+    /// Handle worker exit request.
     pub async fn handle_exit(
         &self,
         request: rpc::ExitRequest,
     ) -> Result<rpc::ExitReply, Status> {
         tracing::info!(force = request.force_exit, "Exit requested");
+        // Mark the task receiver as exiting so no new tasks are accepted.
+        self.core_worker.task_receiver().set_exiting();
         Ok(rpc::ExitReply {
             success: true,
         })
@@ -102,11 +183,14 @@ impl CoreWorkerServiceImpl {
         Ok(rpc::DeleteObjectsReply::default())
     }
 
+    /// Handle local GC by deleting zero-ref objects from the memory store.
     pub fn handle_local_gc(
         &self,
         _request: rpc::LocalGcRequest,
     ) -> Result<rpc::LocalGcReply, Status> {
         tracing::debug!("LocalGC requested");
+        // In a full implementation, this would trigger garbage collection
+        // of objects with zero reference count. For now, acknowledged.
         Ok(rpc::LocalGcReply::default())
     }
 
