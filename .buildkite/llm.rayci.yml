@@ -57,9 +57,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
-        --python-version 3.11 --build-name llmbuild
+        --python-version 3.12 --build-name llmbuild-py312
         --except-tags gpu
-    depends_on: llmbuild
+    depends_on: llmbuild-py312
 
   - label: "llm gpu tests"
     key: "llm-gpu-tests"
@@ -69,19 +69,19 @@ steps:
     instance_type: g6-large
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
-        --python-version 3.11 --build-name llmgpubuild --only-tags gpu
+        --python-version 3.12 --build-name llmgpubuild-py312 --only-tags gpu
         --except-tags multi_gpu_4
-    depends_on: llmgpubuild
+    depends_on: llmgpubuild-py312
 
   - label: "llm gpu tests (4 GPUs)"
     key: "llm-gpu-tests-4gpu"
     tags:
       - llm
       - gpu
-    instance_type: gpu-large
+    instance_type: g6.12xlarge
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
-        --python-version 3.11 --build-name llmgpubuild
+        --python-version 3.12 --build-name llmgpubuild-py312
         --only-tags multi_gpu_4
         --gpus 4
-    depends_on: llmgpubuild
+    depends_on: llmgpubuild-py312

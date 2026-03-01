@@ -2242,7 +2242,7 @@
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
-  python: "3.11"
+  python: "3.12"
   group: core-daily-test
   team: core
   frequency: weekly
@@ -2250,7 +2250,7 @@
 
   cluster:
     byod:
-      type: llm-cu128 # llm image already has nixl
+      type: llm-cu129 # llm image already has nixl
       runtime_env: # env vars for nixl
         - UCX_TLS=all
         - UCX_NET_DEVICES=all
@@ -3899,14 +3899,14 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3920,14 +3920,14 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3940,14 +3940,14 @@
 
 - name: llm_serve_multi_node
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
     cluster_compute: llm_2x_4xl4.yaml
@@ -3959,14 +3959,14 @@
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3980,14 +3980,14 @@
 
 - name: llm_serve_llama_3dot1_8B_lora
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4000,14 +4000,14 @@
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4020,14 +4020,14 @@
 
 - name: llm_serve_correctness
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4039,14 +4039,14 @@
 
 - name: llm_serve_vllm_integration_tests
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4058,14 +4058,14 @@
 
 - name: llm_serve_sleep_wakeup
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4078,14 +4078,14 @@
 
 - name: llm_serve_pause_resume
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4098,14 +4098,14 @@
 
 - name: llm_serve_rlhf
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4118,14 +4118,14 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4138,14 +4138,14 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4158,14 +4158,14 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
   frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_llm_lmcache_test.sh
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4202,14 +4202,14 @@
 
 - name: llm_batch_vllm
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4222,14 +4222,14 @@
 
 - name: llm_batch_sglang_llama
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
@@ -4241,14 +4241,14 @@
 - name: llm_batch_vllm_multi_node
   # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4257,7 +4257,7 @@
       pytest -sv test_batch_multi_node_vllm.py
 
 - name: llm_batch_single_node_baseline_benchmark
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: nightly
@@ -4267,9 +4267,9 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
-      python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
+      python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu129.lock
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
@@ -4279,14 +4279,14 @@
 
 - name: text_embeddings_benchmark_{{scaling}}
   frequency: nightly
-  python: "3.11"  # necessary for the llm-cu128 image
+  python: "3.12"  # necessary for the llm-cu129 image
   working_dir: nightly_tests
   team: data
   group: data-tests
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4302,14 +4302,14 @@
 # in a test definition, so split off preemptible tests here.
 - name: text_embeddings_benchmark_{{scaling}}_preemptible
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   working_dir: nightly_tests
   team: data
   group: data-tests
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4363,14 +4363,14 @@
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57222
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/entity-recognition-with-llms  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4388,14 +4388,14 @@
 
 - name: mcp_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/mcp-ray-serve  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_mcp-ray-serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4413,14 +4413,14 @@
 
 - name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4464,14 +4464,14 @@
 
 - name: deployment_serve_llm  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4717,14 +4717,14 @@
 - name: e2e_audio
   # https://github.com/ray-project/ray/issues/57220
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-audio  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu129
       post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
@@ -4791,14 +4791,14 @@
 - name: object_detection  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57228
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/object-detection
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_object_detection.sh # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4817,14 +4817,14 @@
 - name: e2e_rag  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57224
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-rag  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4849,7 +4849,7 @@
 
   cluster:
     byod:
-      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
+      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu129"]
       post_build_script: byod_unstructured_data_ingestion.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4867,14 +4867,14 @@
 
 - name: llamafactory_llm_fine_tune  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/llamafactory-llm-fine-tune  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4892,14 +4892,14 @@
 
 - name: ray_train_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: train
   working_dir: //doc/source/train/tutorials  # use // from repo root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4917,14 +4917,14 @@
 
 - name: tune_pytorch_asha  # do not use dashes
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: tune
   working_dir: //doc/source/tune/examples/tune_pytorch_asha
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_tune_pytorch_asha.sh
     cluster_compute: ci/aws.yaml
 
@@ -4942,14 +4942,14 @@
 
 - name: llm_batch_inference_text  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/data/examples/llm_batch_inference_text  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llm_batch_inference_text.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4968,14 +4968,14 @@
 
 - name: llm_batch_inference_vision  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/data/examples/llm_batch_inference_vision  # use // to access from repo's root
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu129  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu129
       post_build_script: byod_llm_batch_inference_vision.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 

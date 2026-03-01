@@ -62,3 +62,9 @@ steps:
     wanda: ci/docker/base.cu128.wanda.yaml
     env:
       PYTHON: "3.11"
+
+  - name: oss-ci-base_cu129-multipy
+    label: "wanda: oss-ci-base_cu129-py3.12"
+    wanda: ci/docker/base.cu129.wanda.yaml
+    env:
+      PYTHON: "3.12"
