@@ -113,6 +113,16 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
+###############
+# Iceberg tests
+###############
+
+- name: iceberg_benchmark
+  python: "3.10"
+  run:
+    timeout: 3600
+    script: python iceberg_benchmark.py
+    
 ###################
 # Aggregation tests
 ###################
