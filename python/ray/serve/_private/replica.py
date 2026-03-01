@@ -74,9 +74,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
     RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
-    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
-    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
     RECONFIGURE_METHOD,
     REQUEST_LATENCY_BUCKETS_MS,
@@ -154,7 +153,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
-from ray.serve.context import GangContext, _get_in_flight_requests
+from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
@@ -162,6 +161,7 @@ from ray.serve.exceptions import (
     RayServeException,
     gRPCStatusError,
 )
+from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
     ASGIResponse,
@@ -273,6 +273,7 @@ ReplicaMetadata = Tuple[
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
+    Optional[GangContext],  # gang_context
 ]
 
 
@@ -1118,6 +1119,7 @@ class ReplicaBase(ABC):
             route_patterns,
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
+            self._gang_context,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -2855,8 +2857,7 @@ class UserCallableWrapper:
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
         self._run_user_code_in_separate_thread = run_user_code_in_separate_thread
-        self._warned_about_sync_method_event_loop = False
-        self._warned_about_sync_method_threadpool = False
+        self._warned_about_sync_method_change = False
         self._cached_user_method_info: Dict[str, UserMethodInfo] = {}
         # This is for performance optimization https://docs.python.org/3/howto/logging.html#optimization
         self._is_enabled_for_debug = logger.isEnabledFor(logging.DEBUG)
@@ -3045,16 +3046,6 @@ class UserCallableWrapper:
         )
 
         if is_sync_method and run_sync_in_threadpool:
-            if (
-                not self._warned_about_sync_method_threadpool
-                and run_sync_methods_in_threadpool_override is None
-            ):
-                self._warned_about_sync_method_threadpool = True
-                warnings.warn(
-                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_THREAD_SAFETY_WARNING.format(
-                        method_name=callable.__name__,
-                    )
-                )
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True
@@ -3085,12 +3076,12 @@ class UserCallableWrapper:
         else:
             if (
                 is_sync_method
-                and not self._warned_about_sync_method_event_loop
+                and not self._warned_about_sync_method_change
                 and run_sync_methods_in_threadpool_override is None
             ):
-                self._warned_about_sync_method_event_loop = True
+                self._warned_about_sync_method_change = True
                 warnings.warn(
-                    RAY_SERVE_RUN_SYNC_IN_EVENT_LOOP_WARNING.format(
+                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING.format(
                         method_name=callable.__name__,
                     )
                 )

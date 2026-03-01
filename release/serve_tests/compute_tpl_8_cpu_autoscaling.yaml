@@ -11,6 +11,7 @@ head_node_type:
     resources:
       custom_resources:
         proxy: 1
+        CPU: 0
 
 worker_node_types:
     - name: worker_node
