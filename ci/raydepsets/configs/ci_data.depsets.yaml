@@ -1,0 +1,114 @@
+build_arg_sets:
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+depsets:
+  - name: data_ci_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/data-test-requirements.txt
+      - python/requirements/data/data-base.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+    output: python/deplocks/ci/data-base-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py312
+    # need to remove the compiled headers for py3.13
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+
+  - name: data_v20_pyarrow_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-v20.txt
+    output: python/deplocks/ci/data-pyarrow-v20-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --override python/requirements/data/pyarrow-v20.txt
+    build_arg_sets:
+      - py310
+      - py312
+
+# needs to use constraints file once relax operation is supported (conflict on pyarrow version)
+  - name: data_pyarrow_latest_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-latest.txt
+    output: python/deplocks/ci/data-pyarrow-latest-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py312
+
+# needs to use constraints file once relax operation is supported (conflict on pyarrow version)
+  - name: data_v9_pyarrow_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-v9.txt
+    output: python/deplocks/ci/data-pyarrow-v9-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --override python/requirements/data/pyarrow-v9.txt
+    build_arg_sets:
+      - py310
+
+  - name: data_mongo_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/mongo.txt
+    output: python/deplocks/ci/data-mongo-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --override python/requirements/data/mongo.txt
+    build_arg_sets:
+      - py310
+
+  - name: data_pyarrow_nightly_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-nightly.txt
+    output: python/deplocks/ci/data-pyarrow-nightly-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --upgrade
+    build_arg_sets:
+      - py310
