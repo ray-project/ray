@@ -243,6 +243,41 @@ def test_include_row_hash_with_include_paths(
     assert len(set(df["row_hash"])) == 2
 
 
+def test_include_row_hash_existing_column(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """When the file already has a 'row_hash' column, it should be
+    overwritten by the generated one without crashing."""
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2, 3], "row_hash": [100, 200, 300]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_row_hash=True)
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 3
+    assert len(set(hashes)) == 3, "Hashes must be unique"
+    assert all(
+        h not in (100, 200, 300) for h in hashes
+    ), "Generated hashes must overwrite the original column values"
+
+
+def test_include_row_hash_existing_column_with_projection(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """Column projection + pre-existing row_hash column should work."""
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2], "row_hash": [10, 20]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, columns=["val"], include_row_hash=True)
+    schema_names = ds.schema().names
+    assert "val" in schema_names
+    assert "row_hash" in schema_names
+    rows = ds.take_all()
+    assert all(row["row_hash"] not in (10, 20) for row in rows)
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
