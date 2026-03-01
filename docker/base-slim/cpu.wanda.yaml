@@ -1,5 +1,5 @@
 name: "ray-slim-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX"
-froms: ["ubuntu:22.04"]
+froms: ["ubuntu:24.04"]
 dockerfile: docker/base-slim/Dockerfile
 srcs:
   - python/requirements_compiled.txt
@@ -7,6 +7,6 @@ srcs:
   - python/deplocks/base_slim/ray_base_slim_py$PYTHON_VERSION.lock
 build_args:
   - PYTHON_VERSION
-  - BASE_IMAGE=ubuntu:22.04
+  - BASE_IMAGE=ubuntu:24.04
 tags:
   - cr.ray.io/rayproject/ray-slim-py$PYTHON_VERSION-cpu-base$ARCH_SUFFIX

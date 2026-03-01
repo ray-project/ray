@@ -4,7 +4,7 @@ set -exo pipefail
 
 # Install system dependencies
 sudo apt-get update && \
-    sudo apt-get install -y libgl1-mesa-glx libmagic1 poppler-utils tesseract-ocr libreoffice && \
+    sudo apt-get install -y libgl1 libmagic1 poppler-utils tesseract-ocr libreoffice && \
     sudo rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies

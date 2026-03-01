@@ -41,6 +41,8 @@ apt-get update
 apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 rm -rf /var/lib/apt/lists/*
 
+# Ubuntu 24.04 creates a default 'ubuntu' user with UID 1000; remove it first.
+userdel -r ubuntu 2>/dev/null || true
 useradd -ms /bin/bash -d /home/ray ray --uid 1000 --gid 100
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers

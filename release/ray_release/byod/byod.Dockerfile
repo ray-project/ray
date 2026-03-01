@@ -20,7 +20,7 @@ APT_PKGS=(
     ca-certificates
     htop
     libaio1
-    libgl1-mesa-glx
+    libgl1
     libglfw3
     libjemalloc-dev
     libosmesa6-dev
