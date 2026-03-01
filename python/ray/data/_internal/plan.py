@@ -118,6 +118,7 @@ class ExecutionPlan:
 
             # 2. Convert plan to new plan
             plan = convert_fn(plan)
+            # The planner returns a tuple (plan, callbacks). We only need the plan for explain.
             if isinstance(plan, tuple):
                 plan = plan[0]
 
