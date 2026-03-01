@@ -181,6 +181,7 @@ def _autodetect_parallelism(
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if (
         mem_size is not None
+        and isinstance(mem_size, (int, float))
         and not np.isnan(mem_size)
         and target_max_block_size is not None
     ):

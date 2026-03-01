@@ -224,7 +224,7 @@ black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
-bokeh==2.4.3 ; python_version < "3.12"
+bokeh==3.1.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -418,7 +418,7 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
-dask==2024.8.1 ; python_version < "3.12"
+dask==2025.5.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask-expr
@@ -465,7 +465,7 @@ directsearch==1.0
     # via nevergrad
 distlib==0.3.7
     # via virtualenv
-distributed==2024.8.1 ; python_version < "3.12"
+distributed==2025.5.0 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -1977,7 +1977,7 @@ requests-oauthlib==2.0.0
     #   msrest
 requests-toolbelt==1.0.0
     # via comet-ml
-responses==0.13.4
+responses==0.25.8
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
@@ -2261,7 +2261,7 @@ tensorflow-estimator==2.15.0
     # via -r python/requirements/ml/rllib-test-requirements.txt
 tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-tensorflow-probability==0.24.0 ; python_version < "3.12"
+tensorflow-probability==0.24.0
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 termcolor==2.4.0
     # via

@@ -153,10 +153,13 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
             num_rows = None
         else:
             num_rows = len(paths) * rows_per_file
+        # Convert paths to Python strings in case they're numpy strings
+        # (e.g., from np.array_split in file_based_datasource.py)
+        input_files = [str(p) for p in paths]
         return BlockMetadata(
             num_rows=num_rows,
             size_bytes=None if None in file_sizes else int(sum(file_sizes)),
-            input_files=paths,
+            input_files=input_files,
             exec_stats=None,
         )  # Exec stats filled in later.
 
