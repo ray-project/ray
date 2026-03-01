@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple, TypeVar
+from typing import Tuple, TypeVar, Union
 
 # backwards compatibility. Luckily circular references are fine in type stubs
 from ray._raylet import ObjectRef
@@ -17,7 +17,7 @@ class BaseID:
     def from_binary(cls: type[_BID], id_bytes: bytes) -> _BID: ...
 
     @classmethod
-    def from_hex(cls: type[_BID], hex_id: str | bytes) -> _BID: ...
+    def from_hex(cls: type[_BID], hex_id: Union[str, bytes] ) -> _BID: ...
 
     def binary(self) -> bytes: ...
 
@@ -106,6 +106,7 @@ class JobID(BaseID):
 
 class WorkerID(UniqueID): ...
 
+# TODO: Make ActorID generic? see CoreWorker.get_actor_handle; ActorHandle
 _AID = TypeVar("_AID", bound=ActorID)
 class ActorID(BaseID):
 
