@@ -389,13 +389,14 @@ def test_ray_timeline(shutdown_only):
 
     with tempfile.TemporaryDirectory() as tmpdirname:
         filename = os.path.join(tmpdirname, "timeline.json")
-        ray.timeline(filename)
 
-        with open(filename, "r") as f:
-            dumped = json.load(f)
-        # TODO(swang): Check actual content. It doesn't seem to match the
-        # return value of chrome_tracing_dump in above tests?
-        assert len(dumped) > 0
+        def _verify_timeline_dumped():
+            ray.timeline(filename)
+            with open(filename, "r") as f:
+                dumped = json.load(f)
+            return len(dumped) > 0
+
+        wait_for_condition(_verify_timeline_dumped, timeout=30)
 
 
 def test_state_init_multiple_threads(shutdown_only):
