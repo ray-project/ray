@@ -3,6 +3,7 @@ from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
 from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
+from libcpp.map cimport map as c_map
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
@@ -842,6 +843,10 @@ cdef extern from "ray/raylet_rpc_client/raylet_client_with_io_context.h" nogil:
                                  int64_t timeout_ms)
         CRayStatus GetAgentPIDs(const OptionalItemPyCallback[c_vector[int32_t]] &callback,
                                  int64_t timeout_ms)
+        void AsyncResizeLocalResourceInstances(
+            const c_map[c_string, double] &resources,
+            const OptionalItemPyCallback[c_map[c_string, double]] &callback,
+            int64_t timeout_ms)
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

@@ -16,11 +16,13 @@
 
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 
@@ -55,6 +57,26 @@ void RayletClientWithIoContext::GetWorkerPIDs(
 void RayletClientWithIoContext::GetAgentPIDs(
     const rpc::OptionalItemCallback<std::vector<int32_t>> &callback, int64_t timeout_ms) {
   raylet_client_->GetAgentPIDs(callback, timeout_ms);
+}
+
+void RayletClientWithIoContext::AsyncResizeLocalResourceInstances(
+    const std::map<std::string, double> &resources,
+    const rpc::OptionalItemCallback<std::map<std::string, double>> &callback,
+    int64_t timeout_ms) {
+  auto client_callback = [callback](const Status &status,
+                                    rpc::ResizeLocalResourceInstancesReply &&reply) {
+    if (status.ok()) {
+      std::map<std::string, double> total_resources;
+      for (const auto &it : reply.total_resources()) {
+        total_resources[it.first] = it.second;
+      }
+      callback(status, total_resources);
+    } else {
+      callback(status, std::nullopt);
+    }
+  };
+
+  raylet_client_->ResizeLocalResourceInstances(resources, client_callback, timeout_ms);
 }
 
 }  // namespace rpc
