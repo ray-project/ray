@@ -28,6 +28,7 @@ from ray._common.network_utils import build_address, parse_address
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
+    RAY_ENV_VAR_HISTORY_SERVER_URL,
 )
 from ray._common.test_utils import (
     fetch_prometheus_metrics,
@@ -1486,6 +1487,41 @@ def test_dashboard_module_no_warnings(enable_test_module):
             dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
     finally:
         debug._disabled = old_val
+
+
+@pytest.fixture
+def set_historyserver_env(monkeypatch, httpserver):
+    """
+    This sets the env var before the dashboard process starts so
+    the env var is ready
+    """
+    hsurl = httpserver.url_for("/")
+    monkeypatch.setenv(RAY_ENV_VAR_HISTORY_SERVER_URL, hsurl)
+    return hsurl
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_historyserver(
+    httpserver, set_historyserver_env, ray_start_with_dashboard
+):
+    """
+    Test that the dashboard middleware correctly forwards requests to an external server.
+    """
+    target_path = "/api/call"
+    mock_response = {"status": "success", "data": "mocked_payload"}
+    httpserver.expect_request(target_path).respond_with_json(mock_response)
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = requests.get(f"{webui_url}{target_path}")
+    assert response.json() == mock_response
+    assert response.status_code == 200
 
 
 def test_dashboard_not_included_ray_init(shutdown_only, capsys):
