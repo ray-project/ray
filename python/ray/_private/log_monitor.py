@@ -11,7 +11,7 @@ import sys
 import time
 import traceback
 from collections import deque
-from typing import Callable, List, Optional, Set
+from typing import Callable, Optional, Set
 
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
@@ -137,8 +137,8 @@ class LogMonitor:
         logs_dir: The directory that the log files are in.
         log_filenames: This is the set of filenames of all files in
             open_file_infos and closed_file_infos.
-        open_file_infos (list[LogFileInfo]): Info for all of the open files.
-        closed_file_infos (list[LogFileInfo]): Info for all of the closed
+        open_file_infos (deque[LogFileInfo]): Info for all of the open files.
+        closed_file_infos (deque[LogFileInfo]): Info for all of the closed
             files.
         can_open_more_files: True if we can still open more files and
             false otherwise.
