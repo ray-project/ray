@@ -19,7 +19,7 @@ Getting Involved / Contributing
     profiling
 
 Ray is more than a framework for distributed applications but also an active community of developers,
-researchers, and folks that love machine learning.
+researchers, and people who love machine learning.
 
 .. tip:: Ask questions on `our forum <https://discuss.ray.io/>`_! The
   community is extremely active in helping people succeed in building their
