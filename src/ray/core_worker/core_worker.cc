@@ -1834,10 +1834,13 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
   auto serialized_override_runtime_env = override_runtime_env.dump();
   runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
+  // Update URIs from parent if child doesn't specify them
+  bool uris_updated = false;
   if (runtime_env_info->uris().working_dir_uri().empty() &&
       !parent_runtime_env_info->uris().working_dir_uri().empty()) {
     runtime_env_info->mutable_uris()->set_working_dir_uri(
         parent_runtime_env_info->uris().working_dir_uri());
+    uris_updated = true;
   }
   if (runtime_env_info->uris().py_modules_uris().empty() &&
       !parent_runtime_env_info->uris().py_modules_uris().empty()) {
@@ -1845,6 +1848,39 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     for (const std::string &uri : parent_runtime_env_info->uris().py_modules_uris()) {
       runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
     }
+    uris_updated = true;
+  }
+
+  // When URIs are copied from parent, also update serialized_runtime_env JSON.
+  // The runtime_env agent only looks at serialized_runtime_env, not the uris field.
+  // Without this, py_modules and working_dir from the job-level runtime_env are not
+  // applied to workers even though the URIs are copied for reference counting.
+  if (uris_updated) {
+    json runtime_env_json = json::parse(runtime_env_info->serialized_runtime_env());
+
+    // Add working_dir to JSON if URI was copied but JSON doesn't have it
+    if (!runtime_env_info->uris().working_dir_uri().empty() &&
+        (!runtime_env_json.contains("working_dir") ||
+         runtime_env_json["working_dir"].is_null() ||
+         (runtime_env_json["working_dir"].is_string() &&
+          runtime_env_json["working_dir"].get<std::string>().empty()))) {
+      runtime_env_json["working_dir"] = runtime_env_info->uris().working_dir_uri();
+    }
+
+    // Add py_modules to JSON if URIs were copied but JSON doesn't have them
+    if (!runtime_env_info->uris().py_modules_uris().empty() &&
+        (!runtime_env_json.contains("py_modules") ||
+         runtime_env_json["py_modules"].is_null() ||
+         (runtime_env_json["py_modules"].is_array() &&
+          runtime_env_json["py_modules"].empty()))) {
+      json py_modules_array = json::array();
+      for (const std::string &uri : runtime_env_info->uris().py_modules_uris()) {
+        py_modules_array.push_back(uri);
+      }
+      runtime_env_json["py_modules"] = py_modules_array;
+    }
+
+    runtime_env_info->set_serialized_runtime_env(runtime_env_json.dump());
   }
 
   runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,

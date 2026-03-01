@@ -661,5 +661,102 @@ def test_default_excludes_disabled_via_env_var(start_cluster, monkeypatch):
         ), ".git should be included when defaults disabled"
 
 
+@pytest.mark.parametrize("use_actor", [False, True], ids=["task", "actor"])
+def test_inherits_job_runtime_env_with_working_dir_and_py_modules(
+    start_cluster, tmp_working_dir, use_actor
+):
+    """Test that tasks/actors inherit both working_dir and py_modules from job.
+
+    This is a regression test for a bug where tasks/actors created from a job with both
+    working_dir and py_modules in the runtime_env would only get working_dir in their
+    sys.path, missing py_modules.
+
+    The bug was in core_worker.cc where URIs were copied from parent to child runtime_env
+    but the serialized_runtime_env JSON was not updated, causing the runtime_env agent
+    to not set up py_modules for workers.
+    """
+    cluster, address = start_cluster
+
+    # Create a module in the working_dir - fixture already creates test_module dir
+    working_dir_module = Path(tmp_working_dir) / "test_module"
+    working_dir_module.mkdir(exist_ok=True)
+    (working_dir_module / "__init__.py").write_text("")
+    (working_dir_module / "workdir_mod.py").write_text(
+        "def get_value(): return 'from_working_dir'"
+    )
+
+    # Create py_modules directory OUTSIDE working_dir to properly test the fix
+    # If py_modules is inside working_dir, it would be accessible anyway
+    with tempfile.TemporaryDirectory() as external_module_dir:
+        py_module_path = Path(external_module_dir) / "external_module"
+        py_module_path.mkdir()
+        (py_module_path / "__init__.py").write_text("")
+        (py_module_path / "helper.py").write_text(
+            "def get_helper_value(): return 'from_py_module'"
+        )
+
+        ray.init(
+            address,
+            runtime_env={
+                "working_dir": tmp_working_dir,
+                "py_modules": [str(py_module_path)],
+            },
+        )
+
+        def check_imports_impl():
+            results = {
+                "can_import_from_working_dir": False,
+                "can_import_from_py_module": False,
+                "working_dir_value": None,
+                "py_module_value": None,
+            }
+
+            try:
+                from test_module import workdir_mod
+
+                results["can_import_from_working_dir"] = True
+                results["working_dir_value"] = workdir_mod.get_value()
+            except ImportError as e:
+                results["working_dir_error"] = str(e)
+
+            try:
+                from external_module import helper
+
+                results["can_import_from_py_module"] = True
+                results["py_module_value"] = helper.get_helper_value()
+            except ImportError as e:
+                results["py_module_error"] = str(e)
+
+            return results
+
+        if use_actor:
+
+            @ray.remote
+            class TestActor:
+                def check_imports(self):
+                    return check_imports_impl()
+
+            actor = TestActor.remote()
+            result = ray.get(actor.check_imports.remote())
+        else:
+
+            @ray.remote
+            def check_imports():
+                return check_imports_impl()
+
+            result = ray.get(check_imports.remote())
+
+        assert result[
+            "can_import_from_working_dir"
+        ], f"Failed to import from working_dir. Result: {result}"
+        assert result[
+            "can_import_from_py_module"
+        ], f"Failed to import from py_modules. Result: {result}"
+        assert result["working_dir_value"] == "from_working_dir"
+        assert result["py_module_value"] == "from_py_module"
+
+        ray.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
