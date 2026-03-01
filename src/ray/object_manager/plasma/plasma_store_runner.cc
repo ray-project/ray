@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/plasma/store_runner.h"
+#include "ray/object_manager/plasma/plasma_store_runner.h"
 
 #ifndef _WIN32
 #include <fcntl.h>
@@ -34,25 +34,11 @@ void SetMallocGranularity(int value);
 }  // namespace internal
 
 PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
-                                     int64_t system_memory,
+                                     int64_t object_store_memory,
                                      bool hugepages_enabled,
                                      std::string plasma_directory,
                                      std::string fallback_directory)
-    : hugepages_enabled_(hugepages_enabled) {
-  // Sanity check.
-  if (socket_name.empty()) {
-    RAY_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
-  }
-  socket_name_ = socket_name;
-  if (system_memory == -1) {
-    RAY_LOG(FATAL) << "please specify the amount of system memory with -m switch";
-  }
-  RAY_LOG(INFO) << "Allowing the Plasma store to use up to "
-                << static_cast<double>(system_memory) / 1000000000 << "GB of memory.";
-  if (hugepages_enabled && plasma_directory.empty()) {
-    RAY_LOG(FATAL) << "if you want to use hugepages, please specify path to huge pages "
-                      "filesystem with -d";
-  }
+    : socket_name_(socket_name), hugepages_enabled_(hugepages_enabled) {
   if (plasma_directory.empty()) {
 #ifdef __linux__
     plasma_directory = "/dev/shm";
@@ -63,9 +49,11 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
   if (fallback_directory.empty()) {
     fallback_directory = "/tmp";
   }
-  RAY_LOG(INFO) << "Starting object store with directory " << plasma_directory
-                << ", fallback " << fallback_directory << ", and huge page support "
-                << (hugepages_enabled ? "enabled" : "disabled");
+  RAY_LOG(INFO) << "Starting Plasma Store with "
+                << static_cast<double>(object_store_memory) / 1000000000
+                << "GB of memory, "
+                << ", fallback=" << fallback_directory
+                << ", and hugepages=" << (hugepages_enabled ? "enabled" : "disabled");
 #ifdef __linux__
   if (!hugepages_enabled) {
     // On Linux, check that the amount of memory available in /dev/shm is large
@@ -79,21 +67,21 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
     close(shm_fd);
     // Keep some safety margin for allocator fragmentation.
     shm_mem_avail = 9 * shm_mem_avail / 10;
-    if (system_memory > shm_mem_avail) {
+    if (object_store_memory > shm_mem_avail) {
       RAY_LOG(WARNING)
           << "System memory request exceeds memory available in " << plasma_directory
-          << ". The request is for " << system_memory
+          << ". The request is for " << object_store_memory
           << " bytes, and the amount available is " << shm_mem_avail
           << " bytes. You may be able to free up space by deleting files in "
              "/dev/shm. If you are inside a Docker container, you may need to "
              "pass an argument with the flag '--shm-size' to 'docker run'.";
-      system_memory = shm_mem_avail;
+      object_store_memory = shm_mem_avail;
     }
   } else {
     internal::SetMallocGranularity(1024 * 1024 * 1024);  // 1 GB
   }
 #endif
-  system_memory_ = system_memory;
+  object_store_memory_ = object_store_memory;
   plasma_directory_ = plasma_directory;
   fallback_directory_ = fallback_directory;
 }
@@ -102,12 +90,12 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
                               std::function<void()> object_store_full_callback,
                               ray::AddObjectCallback add_object_callback,
                               ray::DeleteObjectCallback delete_object_callback) {
-  SetThreadName("store.io");
-  RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
+  SetThreadName("plasma_store.io");
+  RAY_LOG(DEBUG) << "Starting server listening on " << socket_name_;
   {
     absl::MutexLock lock(&store_runner_mutex_);
     allocator_ = std::make_unique<PlasmaAllocator>(
-        plasma_directory_, fallback_directory_, hugepages_enabled_, system_memory_);
+        plasma_directory_, fallback_directory_, hugepages_enabled_, object_store_memory_);
 #ifndef _WIN32
     std::vector<std::string> local_spilling_paths;
     if (RayConfig::instance().is_external_storage_type_fs()) {
