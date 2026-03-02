@@ -98,6 +98,17 @@ def setup_model_and_optimizer(
     return ds_engine
 
 
+def get_precision_config() -> Dict[str, Any]:
+    """Select mixed precision based on the current worker device."""
+    if torch.cuda.is_bf16_supported():
+        return {
+            "bf16": {"enabled": True},
+            "grad_accum_dtype": "bf16",
+        }
+    # T4-class GPUs don't support bf16; use fp16 for compatibility.
+    return {"fp16": {"enabled": True}}
+
+
 def report_metrics_and_save_checkpoint(
     ds_engine: deepspeed.runtime.engine.DeepSpeedEngine, metrics: Dict[str, Any]
 ) -> None:
@@ -154,9 +165,11 @@ def load_checkpoint(
 
 
 def train_loop(config: Dict[str, Any]) -> None:
+    ds_config = dict(config["ds_config"])
+    ds_config.update(get_precision_config())
 
     ds_engine = setup_model_and_optimizer(
-        config["model_name"], config["learning_rate"], config["ds_config"]
+        config["model_name"], config["learning_rate"], ds_config
     )
 
     # Load checkpoint if exists
@@ -230,8 +243,6 @@ def main():
 
     ds_config = {
         "train_micro_batch_size_per_gpu": args.batch_size,
-        "bf16": {"enabled": True},
-        "grad_accum_dtype": "bf16",
         "zero_optimization": {
             "stage": args.zero_stage,
             "overlap_comm": True,
