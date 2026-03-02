@@ -47,6 +47,7 @@ from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORI
 from ray.rllib.algorithms.utils import (
     AggregatorActor,
     _get_env_runner_bundles,
+    _get_inference_actors_bundles,
     _get_learner_bundles,
     _get_main_process_bundle,
     _get_offline_eval_runner_bundles,
@@ -3423,12 +3424,17 @@ class Algorithm(Checkpointable, Trainable):
         if config.enable_rl_module_and_learner:
             learner_bundles = _get_learner_bundles(config)
 
+        inference_bundles = []
+        if config.use_inference_actors:
+            inference_bundles = _get_inference_actors_bundles(config)
+
         bundles = (
             [main_process]
             + env_runner_bundles
             + eval_env_runner_bundles
             + offline_eval_runner_bundles
             + learner_bundles
+            + inference_bundles
         )
 
         return PlacementGroupFactory(
