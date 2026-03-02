@@ -318,13 +318,14 @@ class NvidiaGpuProvider(GpuProvider):
                 )
                 utilization = int(utilization_info.gpu)
             except self._pynvml.NVMLError as e:
-                logger.debug(f"Failed to retrieve GPU utilization: {e}")
+                logger.debug(
+                    f"Failed to retrieve GPU utilization via `nvmlDeviceGetUtilizationRates`: {e}"
+                )
 
             # Get running processes
             processes_pids = {}
 
             # Get per-process memory usage from the running-processes APIs.
-            proc_memory_map: Dict[int, int] = {}
             try:
                 nv_comp_processes = self._pynvml.nvmlDeviceGetComputeRunningProcesses(
                     gpu_handle
@@ -334,50 +335,46 @@ class NvidiaGpuProvider(GpuProvider):
                 )
                 for nv_process in nv_comp_processes + nv_graphics_processes:
                     pid = int(nv_process.pid)
-                    mem = (
-                        int(nv_process.usedGpuMemory) // MB
+                    processes_pids[pid] = ProcessGPUInfo(
+                        pid=pid,
+                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
                         if nv_process.usedGpuMemory
-                        else 0
+                        else 0,
+                        gpu_utilization=None,
                     )
-                    proc_memory_map[pid] = proc_memory_map.get(pid, 0) + mem
-            except self._pynvml.NVMLError as e:
+            except self._pynvml.NVMLError:
                 logger.debug(
-                    f"Failed to retrieve per-process GPU memory via "
-                    f"running-processes APIs: {e}"
+                    "Failed to retrieve per-process GPU memory via `nvmlDeviceGetComputeRunningProcesses` "
+                    "and `nvmlDeviceGetGraphicsRunningProcesses` APIs: {e}"
                 )
 
+            # Use a newer API (driver 550+) to get per-process SM utilization, but the user
+            # may not always have the access to the newest API.
             try:
-                # Newer API (driver 550+) gives per-process SM utilization, but user
-                # not always have the access to the newest API.
                 current_ts_ms = int(time.time() * 1000)
                 last_ts_ms = self._gpu_process_last_sample_ts.get(gpu_index, 0)
                 nv_processes = self._pynvml.nvmlDeviceGetProcessesUtilizationInfo(
                     gpu_handle, last_ts_ms
                 )
-
                 self._gpu_process_last_sample_ts[gpu_index] = current_ts_ms
 
                 for nv_process in nv_processes:
                     pid = int(nv_process.pid)
-                    processes_pids[pid] = ProcessGPUInfo(
-                        pid=pid,
-                        gpu_memory_usage=proc_memory_map.get(pid, 0),
-                        gpu_utilization=int(nv_process.smUtil),
-                    )
+                    if pid not in processes_pids:
+                        # Note that it's pretty unlikely that nvmlDeviceGetProcessesUtilizationInfo
+                        # will include a process that nvmlDeviceGetComputeRunningProcesses +
+                        # nvmlDeviceGetGraphicsRunningProcesses didn't find, but doing this just in case.
+                        processes_pids[pid] = ProcessGPUInfo(
+                            pid=pid,
+                            gpu_memory_usage=0,
+                            gpu_utilization=int(nv_process.smUtil),
+                        )
+                    else:
+                        processes_pids[pid].gpu_utilization = int(nv_process.smUtil)
             except self._pynvml.NVMLError:
                 logger.debug(
                     "Failed to retrieve GPU process SM utilization using `nvmlDeviceGetProcessesUtilizationInfo`"
                 )
-
-            # Ensure any PIDs seen in the memory map but missing from the
-            # utilization API are still reported.
-            for pid, mem_mb in proc_memory_map.items():
-                if pid not in processes_pids:
-                    processes_pids[pid] = ProcessGPUInfo(
-                        pid=pid,
-                        gpu_memory_usage=mem_mb,
-                        gpu_utilization=None,
-                    )
 
             # Optional: power (milliwatts) and temperature (Celsius)
             power_mw = None
