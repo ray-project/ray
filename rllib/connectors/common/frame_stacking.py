@@ -39,6 +39,7 @@ class FrameStacking(ConnectorV2):
         num_frames: int = 1,
         multi_agent: bool = False,
         as_learner_connector: bool = False,
+        used_together_with_gae: bool = True,
         **kwargs,
     ):
         """Initializes a FrameStackingConnector instance.
@@ -50,6 +51,9 @@ class FrameStacking(ConnectorV2):
                 observation space mapping AgentIDs to individual agents' observations.
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to an env-to-module pipeline.
+            used_together_with_gae: Whether this connector is used together with the GAE connector.
+                This is important, because the GAE connector expects the bootstrap observation to be stacked,
+                so we need to stack it here. You can disable this
         """
         super().__init__(
             input_observation_space=input_observation_space,
@@ -60,6 +64,7 @@ class FrameStacking(ConnectorV2):
         self._multi_agent = multi_agent
         self.num_frames = num_frames
         self._as_learner_connector = as_learner_connector
+        self._used_together_with_gae = used_together_with_gae
 
     @override(ConnectorV2)
     def __call__(
@@ -116,7 +121,11 @@ class FrameStacking(ConnectorV2):
                 # frame-stacked bootstrap observation (s_T, one step beyond the
                 # training window). GAE uses this to bootstrap the value estimate
                 # for truncated / in-progress episodes.
-                if not sa_episode.is_terminated and shared_data is not None:
+                if (
+                    self._used_together_with_gae
+                    and not sa_episode.is_terminated
+                    and shared_data is not None
+                ):
 
                     def _bootstrap_map_fn(s, _sa_episode=sa_episode):
                         s = np.squeeze(s, axis=-1)
@@ -131,7 +140,7 @@ class FrameStacking(ConnectorV2):
                                 s, shape=new_shape, strides=new_strides
                             )[-1],
                             axes=[1, 2, 0],
-                        ).copy()
+                        )
 
                     stacked_bootstrap = tree.map_structure(
                         _bootstrap_map_fn,

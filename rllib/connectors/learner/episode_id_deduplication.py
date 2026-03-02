@@ -21,8 +21,7 @@ class EpisodeIdDeduplication(ConnectorV2):
 
     1. **Multi-agent setups**: Multiple chunks of the same ongoing episode may
        arrive in one training batch (e.g. in APPO, when a long episode spans more
-       than one rollout window, or when sub-games within a single
-       `MultiAgentEpisode` rollout are collected). All such chunks share the same
+       than one rollout window). All such chunks share the same
        `MultiAgentEpisode.id_`, so their child
        `SingleAgentEpisode.multi_agent_episode_id` values collide. This connector
        appends a running index to `ma_episode.id_` and propagates it to each child
@@ -31,11 +30,6 @@ class EpisodeIdDeduplication(ConnectorV2):
     2. **Single-agent setups**: Same scenario for plain `SingleAgentEpisode`
        objects: two chunks from the same episode share `id_`. This connector
        appends a running index to make them unique.
-
-    This was previously handled as a side-effect inside
-    `AddOneTsToEpisodesAndTruncate`. Extracting it into a dedicated connector
-    satisfies the TODOs in `AddOneTsToEpisodesAndTruncate` and
-    `AddObservationsFromEpisodesToBatch`.
     """
 
     @override(ConnectorV2)

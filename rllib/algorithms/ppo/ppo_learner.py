@@ -60,9 +60,6 @@ class PPOLearner(Learner):
             # computations, and puts the results of this (advantages, value targets)
             # directly back in the batch. This is then the batch used for
             # `forward_train` and `compute_losses`.
-            # Note: bootstrap values for in-progress episodes are computed inside
-            # GeneralAdvantageEstimation via a second small forward pass, so episodes
-            # no longer need to be artificially extended by one timestep beforehand.
             self._learner_connector.append(
                 GeneralAdvantageEstimation(
                     gamma=self.config.gamma, lambda_=self.config.lambda_

@@ -266,11 +266,8 @@ class AddTimeDimToBatchAndZeroPad(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
-                # Skip SA episodes with no actual timesteps — consistent with
-                # AddStatesFromEpisodesToBatch's guard: a T=0 episode contributes 0
-                # OBS sequences after split_and_zero_pad, so SEQ_LENS/LOSS_MASK must
-                # also produce 0 entries (create_mask_and_seq_lens(0, m) wrongly
-                # produces 1 entry).
+                # Skip SA episodes with no actual timesteps in this batch. For empty single agent
+                # episodes, we don't want to add seq_lens and loss_mask for these.
                 if len(sa_episode) == 0:
                     continue
 

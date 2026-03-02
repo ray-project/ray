@@ -8,7 +8,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.connectors.learner import (
     AddNextObservationsFromEpisodesToTrainBatch,
     AddObservationsFromEpisodesToBatch,
-    AddOneTsToEpisodesAndTruncate,
     GeneralAdvantageEstimation,
 )
 from ray.rllib.core.learner.learner import Learner
@@ -361,12 +360,6 @@ class MARWILConfig(AlgorithmConfig):
             input_action_space=input_action_space,
             device=device,
         )
-
-        # Before anything, add one ts to each episode (and record this in the loss
-        # mask, so that the computations at this extra ts are not used to compute
-        # the loss).
-        pipeline.prepend(AddOneTsToEpisodesAndTruncate())
-
         # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
         # after the corresponding "add-OBS-..." default piece).
         pipeline.insert_after(
