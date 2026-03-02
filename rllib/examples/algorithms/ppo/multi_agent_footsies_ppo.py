@@ -166,7 +166,7 @@ config = (
         num_envs_per_env_runner=1,
         batch_mode="truncate_episodes",
         rollout_fragment_length=args.rollout_fragment_length,
-        episodes_to_numpy=False,
+        episodes_to_numpy=True,
         create_env_on_local_worker=True,
     )
     .training(
