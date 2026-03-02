@@ -488,6 +488,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     """
 
     _DEFAULT_SHUFFLE_BLOCK_NUM_CPUS = 1.0
+    _DEFAULT_AGGREGATORS_MIN_CPUS = 0.01
 
     def __init__(
         self,
@@ -1234,7 +1235,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         )
 
         # Round resource to 2d decimal point (for readability)
-        return round(target_num_cpus, 2)
+        rounded_target_num_cpus = round(target_num_cpus, 2)
+
+        # Lower bound to avoid scheduling on nodes with 0 CPUs (i.e. the head node).
+        if rounded_target_num_cpus < self._DEFAULT_AGGREGATORS_MIN_CPUS:
+            logger.debug(
+                f"Total # of cpus in cluster is {total_available_cluster_resources.cpu}, "
+                f"but the requested # of cpus is {target_num_cpus}. "
+                f"To prevent rounding precision, we are setting {self._DEFAULT_AGGREGATORS_MIN_CPUS} cpus per aggregator. "
+                f"This can happen for a very large # of aggregators {num_aggregators} "
+                f"or a small dataset size {estimated_aggregator_memory_required}B"
+            )
+            return self._DEFAULT_AGGREGATORS_MIN_CPUS
+        return rounded_target_num_cpus
 
     @classmethod
     def _estimate_aggregator_memory_allocation(
