@@ -305,6 +305,11 @@ class ClientCallManager {
 
   const std::string &GetLocalAddress() const { return local_address_; }
 
+  /// Get the next completion queue (round-robin) for raw client calls.
+  grpc::CompletionQueue *GetCompletionQueue() {
+    return cqs_[rr_index_++ % num_threads_].get();
+  }
+
  private:
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`

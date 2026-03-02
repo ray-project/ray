@@ -22,6 +22,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/rpc/raw_push_server_call.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
 
@@ -34,25 +35,22 @@ class ServerCallFactory;
   RPC_SERVICE_HANDLER_CUSTOM_AUTH(                     \
       ObjectManagerService, METHOD, -1, ClusterIdAuthType::NO_AUTH)
 
+// Only Pull and FreeObjects use standard protobuf handlers.
+// Push uses raw ByteBuffer handling via RawPushServerCall.
 #define RAY_OBJECT_MANAGER_RPC_HANDLERS        \
-  RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Push) \
   RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(Pull) \
   RAY_OBJECT_MANAGER_RPC_SERVICE_HANDLER(FreeObjects)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
-class ObjectManagerServiceHandler {
+class ObjectManagerServiceHandler : public RawPushHandler {
  public:
-  /// Handle a `Push` request.
-  /// The implementation can handle this request asynchronously. When handling is done,
-  /// the `send_reply_callback` should be called.
-  ///
-  /// \param[in] request The request message.
-  /// \param[out] reply The reply message.
-  /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePush(PushRequest request,
-                          PushReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
+  /// Handle a raw `Push` request with pre-parsed header and data pointer.
+  void HandlePush(PushRequest header,
+                  const uint8_t *data,
+                  size_t data_len,
+                  SendReplyCallback send_reply_callback) override = 0;
+
   /// Handle a `Pull` request
   virtual void HandlePull(PullRequest request,
                           PullReply *reply,
@@ -82,12 +80,22 @@ class ObjectManagerGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
       std::shared_ptr<const AuthenticationToken> auth_token) override {
+    // Register raw ByteBuffer handler for Push (method index 0).
+    server_call_factories->emplace_back(std::make_unique<RawPushServerCallFactory>(
+        service_,
+        service_handler_,
+        cq,
+        main_service_,
+        "ObjectManagerService.grpc_server.Push",
+        /*record_metrics=*/true));
+
+    // Register standard protobuf handlers for Pull and FreeObjects.
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 
  private:
-  /// The grpc async service object.
-  ObjectManagerService::AsyncService service_;
+  /// The grpc async service object (with Push marked as raw).
+  RawObjectManagerAsyncService service_;
   /// The service handler that actually handle the requests.
   ObjectManagerServiceHandler &service_handler_;
 };

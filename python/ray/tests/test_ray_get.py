@@ -13,13 +13,7 @@ def test_multithreaded_ray_get(ray_start_cluster):
     # while making many concurrent ray.get requests for a local object in plasma.
     # TODO(57923): Make this not rely on timing if possible.
     ray_cluster = ray_start_cluster
-    ray_cluster.add_node(
-        # This will make the object transfer slower and allow the test to
-        # interleave Get requests.
-        _system_config={
-            "object_manager_max_bytes_in_flight": 1024**2,
-        }
-    )
+    ray_cluster.add_node(_system_config={})
     ray.init(address=ray_cluster.address)
     ray_cluster.add_node(resources={"worker": 1})
 

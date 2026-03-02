@@ -14,8 +14,10 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 
+#include "ray/common/buffer.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -55,5 +57,15 @@ class IObjectReader {
   virtual bool ReadFromMetadataSection(uint64_t offset,
                                        uint64_t size,
                                        std::string &output) const = 0;
+
+  /// Get a contiguous buffer covering the entire object (data + metadata).
+  /// Returns nullptr if zero-copy access is not supported (e.g. spilled objects).
+  /// Data and metadata must be contiguous in memory (metadata follows data).
+  ///
+  /// \param[out] buffer_ref Set to a shared_ptr that keeps the buffer alive.
+  /// \return Pointer to the start of data, or nullptr if not supported.
+  virtual const uint8_t *GetContiguousBuffer(std::shared_ptr<Buffer> *buffer_ref) const {
+    return nullptr;
+  }
 };
 }  // namespace ray
