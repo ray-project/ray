@@ -298,6 +298,26 @@ If a ``working_dir`` is specified in the runtime env, when running ``ray.init()`
 
 Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>`` directory on the cluster. This means that relative paths in the remote tasks and actors in the code will work on the laptop and on the cluster without any code changes. For example, if the ``working_dir`` on the laptop contains ``data.txt`` and ``run.py``, inside the remote task definitions in ``run.py`` one can just use the relative path ``"data.txt"``. Then ``python run.py`` will work on my laptop, and also on the cluster. As a side note, since relative paths can be used in the code, the absolute path is only useful for debugging purposes.
 
+Using ``uv`` with Ray Client
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using `uv run <https://docs.astral.sh/uv/guides/scripts/>`_ with Ray Client, the server-side environment initialization may take longer than the default timeout values, especially when installing many packages. If you encounter timeout errors, you should increase the following environment variables:
+
+.. code-block:: bash
+
+   # Increase client-side connection timeout (default: 30 seconds)
+   export RAY_CLIENT_MAX_CONNECTION_TIMEOUT_S=120
+
+   # Increase server-side channel timeout (default: 30 seconds)
+   export RAY_CLIENT_SERVER_CHECK_CHANNEL_TIMEOUT_S=120
+
+   # Then run your application
+   uv run your_script.py
+
+These timeouts should be set before starting your Ray Client application. The values above (120 seconds) are recommended for most ``uv`` environments, but you may need to adjust them based on your environment initialization time, which depends on factors such as the number and size of packages, network speed, disk I/O performance, and whether packages require compilation.
+
+For more information on using ``uv`` with Ray, see :ref:`use-uv-for-package-management`.
+
 Troubleshooting
 ---------------
 

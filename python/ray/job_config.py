@@ -176,7 +176,19 @@ class JobConfig:
 
         if not isinstance(runtime_env, RuntimeEnv):
             runtime_env = RuntimeEnv(**self.runtime_env)
-        _validate_no_local_paths(runtime_env)
+
+        # Skip local path validation for Ray Client jobs.
+        # This is required for Ray Client to work with working_dir (e.g., UV support).
+        # For Ray Client (_client_job=True), the working_dir is already validated
+        # and uploaded to GCS on the client side. The server-side job_config may
+        # temporarily contain a local extracted path during the proxy flow, but this
+        # is safe because:
+        # 1. The actual GCS URI was already validated on the client
+        # 2. Workers get their runtime_env from GCS with the correct URI
+        # 3. Validating again on the server causes false "not a valid URI" errors
+        if not self._client_job:
+            _validate_no_local_paths(runtime_env)
+
         return runtime_env
 
     def _get_proto_job_config(self):

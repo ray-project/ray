@@ -2,12 +2,47 @@ import argparse
 import copy
 import optparse
 import os
+import pathlib
 import platform
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import psutil
+
+
+def _is_path(path_or_uri: str) -> bool:
+    """Returns True if uri_or_path is a path and False otherwise.
+
+    IMPORTANT: This is a duplicate of ray._private.path_utils.is_path().
+
+    Why we can't import from path_utils:
+    - This hook runs via `uv run --no-project uv_runtime_env_hook.py` in test scenarios
+    - UV creates a minimal environment without dependencies installed yet
+    - Importing from ray._private.path_utils triggers the full Ray import chain:
+      ray._private.path_utils → ray/__init__.py → ray._private.worker →
+      ray.widgets → ray.widgets.util → packaging.version
+    - The 'packaging' module is not available in the minimal UV environment,
+      causing: ModuleNotFoundError: No module named 'packaging.version'
+
+    This duplicate implementation uses only stdlib (pathlib, urllib.parse)
+    to avoid the dependency issue. If you modify this function, ensure you
+    also update ray._private.path_utils.is_path() to keep them in sync.
+    """
+    if not isinstance(path_or_uri, str):
+        raise TypeError(f"path_or_uri must be a string, got {type(path_or_uri)}.")
+
+    parsed_path = pathlib.Path(path_or_uri)
+    parsed_uri = urllib.parse.urlparse(path_or_uri)
+
+    if isinstance(parsed_path, pathlib.PurePosixPath):
+        return not parsed_uri.scheme
+    elif isinstance(parsed_path, pathlib.PureWindowsPath):
+        return parsed_uri.scheme == parsed_path.drive.strip(":").lower()
+    else:
+        # this should never happen
+        raise TypeError(f"Unsupported path type: {type(parsed_path).__name__}")
 
 
 def _create_uv_run_parser():
@@ -317,14 +352,19 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         )
 
     # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
-    parser = _create_uv_run_parser()
-    (options, command) = _parse_args(parser, cmdline[2:])
+    args_to_parse = cmdline[2:]  # Remove 'uv run' prefix
+    original_length = len(
+        args_to_parse
+    )  # Save before parsing (parser modifies in-place)
 
-    if cmdline[-len(command) :] != command:
-        raise AssertionError(
-            f"uv run command {command} is not a suffix of command line {cmdline}"
-        )
-    uv_run_args = cmdline[: -len(command)]
+    parser = _create_uv_run_parser()
+    (options, command) = _parse_args(parser, args_to_parse)
+
+    # Calculate how many arguments were consumed by the parser.
+    # Since disable_interspersed_args() is set, parsing stops at the first
+    # unrecognized argument (the command), so all consumed args are uv options.
+    args_consumed = original_length - len(command)
+    uv_run_args = cmdline[: 2 + args_consumed]
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
@@ -353,12 +393,25 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         )
         remaining_uv_run_args = remaining_uv_run_args + ["--python", uv_python]
 
+    # Append "python" to the end so that when Ray adds "-m default_worker.py",
+    # it becomes "uv run --python X.Y.Z python -m default_worker.py"
+    remaining_uv_run_args = remaining_uv_run_args + ["python"]
+
     runtime_env["py_executable"] = " ".join(remaining_uv_run_args)
 
     # If the user specified a working_dir, we always honor it, otherwise
     # use the same working_dir that uv run would use
     if "working_dir" not in runtime_env:
         runtime_env["working_dir"] = os.getcwd()
+
+    # Validate that pyproject.toml and requirements files are within working_dir
+    # This prevents runtime errors on workers when files are not accessible
+    # Only validate for local paths - remote URIs will be downloaded by Ray
+    working_dir = runtime_env["working_dir"]
+    # Convert Path to string if needed
+    if isinstance(working_dir, Path):
+        working_dir = str(working_dir)
+    if _is_path(working_dir):
         _check_working_dir_files(options, runtime_env)
 
     return runtime_env
