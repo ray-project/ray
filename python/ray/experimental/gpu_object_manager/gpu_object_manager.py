@@ -51,7 +51,7 @@ class GPUObjectMeta(NamedTuple):
     # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
     sent_to_src_actor_and_others_warned: bool
     # If the user set buffers for the object, the object will be fetched directly into the buffers on a ray.get
-    target_buffers: Optional[weakref.ReferenceType[List[Any]]]
+    target_buffers: Optional[List[weakref.ReferenceType[Any]]]
 
 
 # This is used to periodically check in on the RDT transfer through the refs from
@@ -441,7 +441,9 @@ class GPUObjectManager:
             self._managed_gpu_object_metadata[
                 ref.hex()
             ] = self._managed_gpu_object_metadata[ref.hex()]._replace(
-                target_buffers=weakref.ref(target_buffers)
+                target_buffers=[
+                    weakref.ref(target_buffer) for target_buffer in target_buffers
+                ]
             )
 
     def _fetch_object(
@@ -519,9 +521,17 @@ class GPUObjectManager:
 
             target_buffers = None
             if gpu_object_meta.target_buffers:
-                # Try to get the target buffers from the weak reference. If it's not alive, we
-                # just won't use the target buffers.
-                target_buffers = gpu_object_meta.target_buffers()
+                # Try to get the target buffers from the weak references. If any of the
+                # target buffers are not alive, we just won't use the target buffers.
+                target_buffers = []
+                for target_buffer in gpu_object_meta.target_buffers:
+                    buffer = target_buffer()
+                    if buffer is None:
+                        target_buffers = None
+                        break
+                    else:
+                        target_buffers.append(buffer)
+
             __ray_recv__(
                 None,
                 obj_id,

@@ -52,7 +52,7 @@ def __ray_send__(
 def validate_tensor_buffers(
     tensor_buffers: List["torch.Tensor"],
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-    device: "torch.device",
+    device: str,
 ):
     if len(tensor_buffers) != len(tensor_meta):
         raise ValueError(
@@ -72,9 +72,11 @@ def validate_tensor_buffers(
             raise ValueError(
                 tensor_buffer_mismatch_msg("Dtype", idx, single_buffer.dtype, dtype)
             )
-        if single_buffer.device != device:
+        if single_buffer.device.type != device:
             raise ValueError(
-                tensor_buffer_mismatch_msg("Device", idx, single_buffer.device, device)
+                tensor_buffer_mismatch_msg(
+                    "Device", idx, single_buffer.device.type, device
+                )
             )
         if not single_buffer.is_contiguous():
             raise ValueError(f"Tensor buffer at index {idx} is not contiguous.")
