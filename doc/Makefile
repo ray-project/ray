@@ -74,6 +74,8 @@ clean:
 	rm -f ./source/train/examples.rst
 
 html:
+	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
+	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
@@ -85,6 +87,10 @@ RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
 
 local:
 	python load_doc_cache.py --ray-dir=$(RAY_DIR)
+	@# Remove cached serve API stubs so autosummary regenerates them with correct templates
+	@# (pydantic v2 migration changed templates; cached stubs use old template with nested
+	@# autosummary :toctree: that generates unwanted per-member stub files)
+	find source/serve/api/doc/ -name "ray.serve.*.rst" -delete 2>/dev/null || true
 	python update_cache_env.py --ray-dir=$(RAY_DIR)
 	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 

@@ -79,19 +79,26 @@ See the [model composition guide](serve-model-composition) for how to update cod
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    serve.config.ProxyLocation
+   serve.config.AutoscalingContext
+   serve.autoscaling_policy.replica_queue_length_autoscaling_policy
+   serve.config.AggregationFunction
+   serve.config.GangPlacementStrategy
+   serve.config.GangRuntimeFailurePolicy
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
-   serve.config.AutoscalingContext
-   serve.autoscaling_policy.replica_queue_length_autoscaling_policy
-   serve.config.AggregationFunction
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
-   serve.config.GangPlacementStrategy
-   serve.config.GangRuntimeFailurePolicy
 ```
 
 ### Schemas
@@ -113,6 +120,15 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.schema.ScalingDecision
    serve.schema.DeploymentAutoscalingDetail
    serve.schema.ReplicaRank
+```
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   serve.schema.TaskProcessorAdapter
 ```
 
 ### Request Router
@@ -393,6 +409,7 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/autopydantic.rst
 
    schema.ServeDeploySchema
    schema.gRPCOptionsSchema
@@ -404,7 +421,7 @@ Content-Type: application/json
    schema.TaskProcessorConfig
    schema.TaskResult
    schema.ScaleDeploymentRequest
-   schema.TaskProcessorAdapter
+
 ```
 
 (serve-rest-api-response-schema)=
@@ -414,18 +431,25 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/autopydantic.rst
 
    schema.ServeInstanceDetails
-   schema.APIType
-   schema.ApplicationStatus
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
-   schema.ProxyStatus
    schema.TargetGroup
    schema.Target
    schema.DeploymentNode
    schema.DeploymentTopology
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
+
+   schema.APIType
+   schema.ApplicationStatus
+   schema.ProxyStatus
 
 ```
 
@@ -435,10 +459,17 @@ Content-Type: application/json
 .. autosummary::
    :nosignatures:
    :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
    metrics.Counter
    metrics.Histogram
    metrics.Gauge
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/autopydantic.rst
+
    schema.LoggingConfig
 ```
 

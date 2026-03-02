@@ -5,17 +5,20 @@ from enum import Enum
 from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from ray import cloudpickle
-from ray._common.pydantic_compat import (
+from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
     PrivateAttr,
-    validator,
+    field_validator,
+    model_validator,
 )
+
+from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
 
 # Import types needed for AutoscalingContext
@@ -248,7 +251,8 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
-    @validator("request_router_kwargs", always=True)
+    @field_validator("request_router_kwargs")
+    @classmethod
     def request_router_kwargs_json_serializable(cls, v):
         if isinstance(v, bytes):
             return v
@@ -261,6 +265,42 @@ class RequestRouterConfig(BaseModel):
                 )
 
         return v
+
+    def __eq__(self, other):
+        """Override equality to only compare public fields.
+
+        Pydantic v2 includes PrivateAttr in equality comparison, but
+        _serialized_request_router_cls may differ between instances even
+        when the public fields are identical (due to cloudpickle timestamps).
+        """
+        if not isinstance(other, RequestRouterConfig):
+            return False
+        return (
+            self.request_router_class == other.request_router_class
+            and self.request_router_kwargs == other.request_router_kwargs
+            and self.request_routing_stats_period_s
+            == other.request_routing_stats_period_s
+            and self.request_routing_stats_timeout_s
+            == other.request_routing_stats_timeout_s
+        )
+
+    def __hash__(self):
+        """Override hash to match __eq__ behavior."""
+        # Handle request_router_kwargs which might be dict or bytes
+        if isinstance(self.request_router_kwargs, dict):
+            kwargs_hashable = tuple(sorted(self.request_router_kwargs.items()))
+        elif isinstance(self.request_router_kwargs, bytes):
+            kwargs_hashable = self.request_router_kwargs
+        else:
+            kwargs_hashable = ()
+        return hash(
+            (
+                self.request_router_class,
+                kwargs_hashable,
+                self.request_routing_stats_period_s,
+                self.request_routing_stats_timeout_s,
+            )
+        )
 
     def __init__(self, **kwargs: dict[str, Any]):
         """Initialize RequestRouterConfig with the given parameters.
@@ -368,7 +408,8 @@ class AutoscalingPolicy(BaseModel):
         ),
     )
 
-    @validator("policy_kwargs", always=True)
+    @field_validator("policy_kwargs")
+    @classmethod
     def policy_kwargs_json_serializable(cls, v):
         if isinstance(v, bytes):
             return v
@@ -378,6 +419,28 @@ class AutoscalingPolicy(BaseModel):
             except TypeError as e:
                 raise ValueError(f"policy_kwargs is not JSON-serializable: {str(e)}.")
         return v
+
+    def __eq__(self, other):
+        """Override equality to only compare public fields.
+
+        Pydantic v2 includes PrivateAttr in equality comparison, but
+        _serialized_policy_def may differ between instances even when
+        the public fields are identical (due to cloudpickle timestamps).
+        """
+        if not isinstance(other, AutoscalingPolicy):
+            return False
+        return (
+            self.policy_function == other.policy_function
+            and self.policy_kwargs == other.policy_kwargs
+        )
+
+    def __hash__(self):
+        """Override hash to match __eq__ behavior."""
+        # Convert policy_kwargs dict to sorted tuple for hashing
+        kwargs_hashable = (
+            tuple(sorted(self.policy_kwargs.items())) if self.policy_kwargs else ()
+        )
+        return hash((self.policy_function, kwargs_hashable))
 
     def __init__(self, **kwargs):
         serialized_policy_def = kwargs.pop("_serialized_policy_def", None)
@@ -523,10 +586,12 @@ class AutoscalingConfig(BaseModel):
         description="The autoscaling policy for the deployment. This option is experimental.",
     )
 
-    @validator("max_replicas", always=True)
-    def replicas_settings_valid(cls, max_replicas, values):
-        min_replicas = values.get("min_replicas")
-        initial_replicas = values.get("initial_replicas")
+    @model_validator(mode="after")
+    def replicas_settings_valid(self):
+        min_replicas = self.min_replicas
+        max_replicas = self.max_replicas
+        initial_replicas = self.initial_replicas
+
         if min_replicas is not None and max_replicas < min_replicas:
             raise ValueError(
                 f"max_replicas ({max_replicas}) must be greater than "
@@ -545,9 +610,10 @@ class AutoscalingConfig(BaseModel):
                     f"or equal to initial_replicas ({initial_replicas})!"
                 )
 
-        return max_replicas
+        return self
 
-    @validator("metrics_interval_s")
+    @field_validator("metrics_interval_s")
+    @classmethod
     def metrics_interval_s_deprecation_warning(cls, v: PositiveFloat) -> PositiveFloat:
         if v != DEFAULT_METRICS_INTERVAL_S:
             warnings.warn(
@@ -559,10 +625,11 @@ class AutoscalingConfig(BaseModel):
             )
         return v
 
-    @validator("look_back_period_s", always=True)
-    def look_back_period_s_valid(cls, v: PositiveFloat, values):
-        # Get metrics_interval_s from values, or use default if not set
-        metrics_interval_s = values.get(
+    @field_validator("look_back_period_s")
+    @classmethod
+    def look_back_period_s_valid(cls, v: PositiveFloat, info):
+        # Get metrics_interval_s from info.data, or use default if not set
+        metrics_interval_s = info.data.get(
             "metrics_interval_s", DEFAULT_METRICS_INTERVAL_S
         )
         if v <= metrics_interval_s:
@@ -575,7 +642,8 @@ class AutoscalingConfig(BaseModel):
             )
         return v
 
-    @validator("aggregation_function", always=True)
+    @field_validator("aggregation_function")
+    @classmethod
     def aggregation_function_valid(cls, v: Union[str, AggregationFunction]):
         if isinstance(v, AggregationFunction):
             return v
@@ -720,21 +788,25 @@ class HTTPOptions(BaseModel):
     ssl_keyfile_password: Optional[str] = None
     ssl_ca_certs: Optional[str] = None
 
-    @validator("location", always=True)
-    def location_backfill_no_server(cls, v, values):
-        if values["host"] is None or v is None:
-            return DeploymentMode.NoServer
+    model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
 
-        return v
+    @model_validator(mode="after")
+    def location_backfill_no_server(self):
+        if self.host is None or self.location is None:
+            # Use object.__setattr__ since the model may have frozen=True behavior
+            object.__setattr__(self, "location", DeploymentMode.NoServer)
+        return self
 
-    @validator("ssl_certfile")
-    def validate_ssl_certfile(cls, v, values):
-        ssl_keyfile = values.get("ssl_keyfile")
+    @field_validator("ssl_certfile")
+    @classmethod
+    def validate_ssl_certfile(cls, v, info):
+        ssl_keyfile = info.data.get("ssl_keyfile")
         validate_ssl_config(v, ssl_keyfile)
         return v
 
-    @validator("middlewares", always=True)
-    def warn_for_middlewares(cls, v, values):
+    @field_validator("middlewares")
+    @classmethod
+    def warn_for_middlewares(cls, v):
         if v:
             warnings.warn(
                 "Passing `middlewares` to HTTPOptions is deprecated and will be "
@@ -744,18 +816,15 @@ class HTTPOptions(BaseModel):
             )
         return v
 
-    @validator("num_cpus", always=True)
-    def warn_for_num_cpus(cls, v, values):
+    @field_validator("num_cpus")
+    @classmethod
+    def warn_for_num_cpus(cls, v):
         if v:
             warnings.warn(
                 "Passing `num_cpus` to HTTPOptions is deprecated and will be "
                 "removed in a future version."
             )
         return v
-
-    class Config:
-        validate_assignment = True
-        arbitrary_types_allowed = True
 
 
 @PublicAPI(stability="alpha")
@@ -866,7 +935,8 @@ class GangSchedulingConfig(BaseModel):
         ),
     )
 
-    @validator("runtime_failure_policy", always=True)
+    @field_validator("runtime_failure_policy")
+    @classmethod
     def _validate_runtime_failure_policy(cls, v):
         if v == GangRuntimeFailurePolicy.RESTART_REPLICA:
             raise NotImplementedError(

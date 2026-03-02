@@ -500,7 +500,7 @@ def deployment(
         )
 
     if isinstance(logging_config, LoggingConfig):
-        logging_config = logging_config.dict()
+        logging_config = logging_config.model_dump()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,

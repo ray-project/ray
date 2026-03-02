@@ -9,9 +9,9 @@ from typing import Union
 import httpx
 import pytest
 import yaml
+from pydantic import BaseModel
 
 from ray import serve
-from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.handle import DeploymentHandle

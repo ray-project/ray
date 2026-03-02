@@ -1787,7 +1787,7 @@ class TestAppLevelAutoscalingPolicy:
 
         print(time.ctime(), "Deploying application with deployments A and B.")
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
         print(time.ctime(), "Application is RUNNING.")
@@ -1819,7 +1819,7 @@ class TestAppLevelAutoscalingPolicy:
         }
 
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1868,7 +1868,7 @@ class TestAppLevelAutoscalingPolicy:
         }
 
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1912,7 +1912,7 @@ class TestAppLevelAutoscalingPolicy:
         }
         print(time.ctime(), "Deploying application with deployments A and B.")
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1937,7 +1937,7 @@ class TestAppLevelAutoscalingPolicy:
             ],
         }
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1970,7 +1970,7 @@ class TestAppLevelAutoscalingPolicy:
             ],
         }
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
 
@@ -1993,7 +1993,7 @@ class TestAppLevelAutoscalingPolicy:
             ],
         }
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
         wait_for_condition(check_num_replicas_eq, name="A", target=1)
@@ -2110,7 +2110,7 @@ class TestAppLevelClassCallablePolicy:
 
         print(time.ctime(), "Deploying app with class-callable app-level policy.")
         client.deploy_apps(
-            ServeDeploySchema.parse_obj({"applications": [config_template]})
+            ServeDeploySchema.model_validate({"applications": [config_template]})
         )
         wait_for_condition(check_running, timeout=15)
         print(time.ctime(), "Application is RUNNING.")

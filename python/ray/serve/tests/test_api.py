@@ -7,10 +7,10 @@ import httpx
 import pytest
 import starlette.responses
 from fastapi import FastAPI
+from pydantic import BaseModel, ValidationError
 
 import ray
 from ray import serve
-from ray._common.pydantic_compat import BaseModel, ValidationError
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
@@ -628,7 +628,7 @@ class TestAppBuilder:
 
     class TypedArgs(BaseModel):
         message: str
-        num_replicas: Optional[int]
+        num_replicas: Optional[int] = None
 
     def test_prebuilt_app(self):
         a = self.A.bind()
@@ -777,23 +777,16 @@ class TestAppBuilder:
         def check_missing_required(args: self.TypedArgs):
             assert False, "Shouldn't get here because validation failed."
 
-        with pytest.raises(ValidationError, match="field required"):
+        # Pydantic v2 uses "Field required" (capitalized)
+        with pytest.raises(ValidationError, match="Field required"):
             call_user_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
 
-    @pytest.mark.parametrize("use_v1_patch", [True, False])
-    def test_pydantic_version_compatibility(self, use_v1_patch: bool):
-        """Check compatibility with different pydantic versions."""
+    def test_pydantic_version_compatibility(self):
+        """Check compatibility with pydantic v2."""
 
-        if use_v1_patch:
-            try:
-                # Only runs if installed pydantic version is >=2.5.0
-                from pydantic.v1 import BaseModel
-            except ImportError:
-                return
-        else:
-            from pydantic import BaseModel
+        from pydantic import BaseModel
 
         cat_dict = {"color": "orange", "age": 10}
 

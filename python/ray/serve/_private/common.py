@@ -3,10 +3,10 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from pydantic import BaseModel
 from starlette.types import Scope
 
 import ray
-from ray._common.pydantic_compat import BaseModel
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern

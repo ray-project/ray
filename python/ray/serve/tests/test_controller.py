@@ -72,7 +72,9 @@ def test_deploy_app_custom_exception(serve_instance):
         ]
     }
 
-    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(
+        controller.apply_config.remote(config=ServeDeploySchema.model_validate(config))
+    )
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]

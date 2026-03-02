@@ -450,7 +450,7 @@ class ProxyState:
 
     def update_actor_details(self, **kwargs) -> None:
         """Updates _actor_details with passed in kwargs."""
-        details_kwargs = self._actor_details.dict()
+        details_kwargs = self._actor_details.model_dump()
         details_kwargs.update(kwargs)
         self._actor_details = ProxyDetails(**details_kwargs)
 

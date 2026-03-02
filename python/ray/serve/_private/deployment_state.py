@@ -187,9 +187,11 @@ class DeploymentTargetState:
             self.info.replica_config.max_replicas_per_node
             == other_target_state.info.replica_config.max_replicas_per_node
         )
-        deployment_config_match = self.info.deployment_config.dict(
+        deployment_config_match = self.info.deployment_config.model_dump(
             exclude={"num_replicas"}
-        ) == other_target_state.info.deployment_config.dict(exclude={"num_replicas"})
+        ) == other_target_state.info.deployment_config.model_dump(
+            exclude={"num_replicas"}
+        )
 
         # Backward compatibility check for older versions of Ray without these fields.
         current_bundle_label_selector = getattr(
@@ -1556,9 +1558,9 @@ class DeploymentReplica:
             for k, v in kwargs.items()
         ):
             return
-        # Use .copy(update=...) instead of .dict() + reconstruction to avoid
-        # full Pydantic serialization and validation on every update.
-        self._actor_details = self._actor_details.copy(update=kwargs)
+        # Use .model_copy(update=...) instead of .model_dump() + reconstruction
+        # to avoid full Pydantic serialization and validation on every update.
+        self._actor_details = self._actor_details.model_copy(update=kwargs)
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.

@@ -385,7 +385,7 @@ class Deployment:
 
         if logging_config is not DEFAULT.VALUE:
             if isinstance(logging_config, LoggingConfig):
-                logging_config = logging_config.dict()
+                logging_config = logging_config.model_dump()
             new_deployment_config.logging_config = logging_config
 
         if gang_scheduling_config is not DEFAULT.VALUE:
@@ -466,7 +466,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     """
 
     if d.ray_actor_options is not None:
-        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+        ray_actor_options_schema = RayActorOptionsSchema.model_validate(
+            d.ray_actor_options
+        )
     else:
         ray_actor_options_schema = None
 
@@ -522,7 +524,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     if s.ray_actor_options is DEFAULT.VALUE:
         ray_actor_options = None
     else:
-        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
+        ray_actor_options = s.ray_actor_options.model_dump(exclude_unset=True)
 
     if s.placement_group_bundles is DEFAULT.VALUE:
         placement_group_bundles = None

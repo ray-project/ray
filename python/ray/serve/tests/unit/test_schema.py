@@ -5,9 +5,9 @@ import sys
 from typing import Dict, List, Optional, Union
 
 import pytest
+from pydantic import ValidationError
 
 from ray import serve
-from ray._common.pydantic_compat import ValidationError
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
@@ -125,7 +125,7 @@ class TestRayActorOptionsSchema:
         # Ensure a valid RayActorOptionsSchema can be generated
 
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
     def test_ge_zero_ray_actor_options_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -134,7 +134,7 @@ class TestRayActorOptionsSchema:
         ge_zero_fields = ["num_cpus", "num_gpus", "memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
-                RayActorOptionsSchema.parse_obj({field: -1})
+                RayActorOptionsSchema.model_validate({field: -1})
 
     @pytest.mark.parametrize("env", get_valid_runtime_envs())
     def test_ray_actor_options_valid_runtime_env(self, env):
@@ -143,7 +143,7 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
         ray_actor_options_schema["runtime_env"] = env
         original_runtime_env = copy.deepcopy(env)
-        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        schema = RayActorOptionsSchema.model_validate(ray_actor_options_schema)
         # Make sure runtime environment is unchanged by the validation
         assert schema.runtime_env == original_runtime_env
 
@@ -156,7 +156,7 @@ class TestRayActorOptionsSchema:
 
         # By default, runtime_envs with local URIs should be rejected.
         with pytest.raises(ValueError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+            RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
@@ -171,18 +171,18 @@ class TestRayActorOptionsSchema:
         }
 
         # Schema should be createable with valid fields
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
         # Schema should NOT raise error when extra field is included
         ray_actor_options_schema["extra_field"] = None
-        RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
+        RayActorOptionsSchema.model_validate(ray_actor_options_schema)
 
     def test_dict_defaults_ray_actor_options(self):
         # Dictionary fields should have empty dictionaries as defaults, not None
 
         ray_actor_options_schema = {}
-        schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-        d = schema.dict()
+        schema = RayActorOptionsSchema.model_validate(ray_actor_options_schema)
+        d = schema.model_dump()
         assert d["runtime_env"] == {}
         assert d["resources"] == {}
 
@@ -221,7 +221,7 @@ class TestDeploymentSchema:
             },
         }
 
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
     def test_gt_zero_deployment_schema(self):
         # Ensure ValidationError is raised when any fields that must be greater
@@ -238,7 +238,7 @@ class TestDeploymentSchema:
         for field in gt_zero_fields:
             deployment_schema[field] = 0
             with pytest.raises(ValidationError):
-                DeploymentSchema.parse_obj(deployment_schema)
+                DeploymentSchema.model_validate(deployment_schema)
             deployment_schema[field] = None
 
     def test_ge_zero_deployment_schema(self):
@@ -255,7 +255,7 @@ class TestDeploymentSchema:
         for field in ge_zero_fields:
             deployment_schema[field] = -1
             with pytest.raises(ValidationError):
-                DeploymentSchema.parse_obj(deployment_schema)
+                DeploymentSchema.model_validate(deployment_schema)
             deployment_schema[field] = None
 
     def test_validate_max_queued_requests(self):
@@ -264,33 +264,33 @@ class TestDeploymentSchema:
         deployment_schema = self.get_minimal_deployment_schema()
 
         deployment_schema["max_queued_requests"] = -1
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = 1
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = 100
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = "hi"
         with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = 1.5
         with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = 0
         with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = -2
         with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_queued_requests"] = -100
         with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
         # num_replicas and autoscaling_config cannot be set at the same time
@@ -298,16 +298,16 @@ class TestDeploymentSchema:
 
         deployment_schema["num_replicas"] = 5
         deployment_schema["autoscaling_config"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["num_replicas"] = None
-        deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
-        DeploymentSchema.parse_obj(deployment_schema)
+        deployment_schema["autoscaling_config"] = AutoscalingConfig().model_dump()
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["num_replicas"] = 5
-        deployment_schema["autoscaling_config"] = AutoscalingConfig().dict()
+        deployment_schema["autoscaling_config"] = AutoscalingConfig().model_dump()
         with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
         # max_replicas_per_node and placement_group_bundles
@@ -316,11 +316,11 @@ class TestDeploymentSchema:
 
         deployment_schema["max_replicas_per_node"] = 5
         deployment_schema.pop("placement_group_bundles", None)
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema.pop("max_replicas_per_node", None)
         deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["max_replicas_per_node"] = 5
         deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
@@ -331,23 +331,23 @@ class TestDeploymentSchema:
                 "placement_group_bundles is provided."
             ),
         ):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_num_replicas_auto(self):
         deployment_schema = self.get_minimal_deployment_schema()
 
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["autoscaling_config"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["autoscaling_config"] = {"max_replicas": 99}
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["num_replicas"] = "random_str"
         deployment_schema["autoscaling_config"] = None
         with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_extra_fields_invalid_deployment_schema(self):
         # Undefined fields should be forbidden in the schema
@@ -355,15 +355,15 @@ class TestDeploymentSchema:
         deployment_schema = self.get_minimal_deployment_schema()
 
         # Schema should be createable with valid fields
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         # Schema should NOT raise error when extra field is included
         deployment_schema["extra_field"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
     def test_user_config_nullable(self):
         deployment_options = {"name": "test", "user_config": None}
-        DeploymentSchema.parse_obj(deployment_options)
+        DeploymentSchema.model_validate(deployment_options)
 
     def test_autoscaling_config_nullable(self):
         deployment_options = {
@@ -371,11 +371,11 @@ class TestDeploymentSchema:
             "autoscaling_config": None,
             "num_replicas": 5,
         }
-        DeploymentSchema.parse_obj(deployment_options)
+        DeploymentSchema.model_validate(deployment_options)
 
     def test_route_prefix_nullable(self):
         deployment_options = {"name": "test", "route_prefix": None}
-        DeploymentSchema.parse_obj(deployment_options)
+        DeploymentSchema.model_validate(deployment_options)
 
     def test_num_replicas_nullable(self):
         deployment_options = {
@@ -387,7 +387,7 @@ class TestDeploymentSchema:
                 "target_ongoing_requests": 5,
             },
         }
-        DeploymentSchema.parse_obj(deployment_options)
+        DeploymentSchema.model_validate(deployment_options)
 
     def test_validate_bundle_label_selector(self):
         """Test validation for placement_group_bundle_label_selector."""
@@ -400,7 +400,7 @@ class TestDeploymentSchema:
             ValidationError,
             match="Setting bundle_label_selector is not allowed when placement_group_bundles is not provided",
         ):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
         # Validate mismatched lengths for bundles and bundle_label_selector raises.
         deployment_schema["placement_group_bundles"] = [{"CPU": 1}, {"CPU": 1}]
@@ -413,20 +413,20 @@ class TestDeploymentSchema:
             ValidationError,
             match=r"list must contain either a single selector \(to apply to all bundles\) or match the number of `placement_group_bundles`",
         ):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
         # Valid config - 2 bundles and 2 placement_group_bundle_label_selector.
         deployment_schema["placement_group_bundle_label_selector"] = [
             {"a": "b"},
             {"c": "d"},
         ]
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
         # Valid config - single placement_group_bundle_label_selector.
         deployment_schema["placement_group_bundle_label_selector"] = [
             {"a": "b"},
         ]
-        DeploymentSchema.parse_obj(deployment_schema)
+        DeploymentSchema.model_validate(deployment_schema)
 
     def test_gang_scheduling_config_basic(self):
         deployment_schema = self.get_minimal_deployment_schema()
@@ -436,7 +436,7 @@ class TestDeploymentSchema:
             "gang_placement_strategy": "SPREAD",
         }
 
-        schema = DeploymentSchema.parse_obj(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
         assert isinstance(schema.gang_scheduling_config, GangSchedulingConfig)
         assert schema.gang_scheduling_config.gang_size == 4
         assert (
@@ -452,7 +452,7 @@ class TestDeploymentSchema:
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = 2
 
-        schema = DeploymentSchema.parse_obj(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
         assert schema.gang_scheduling_config is DEFAULT.VALUE
 
     def test_gang_scheduling_config_auto_replicas_rejected(self):
@@ -461,7 +461,7 @@ class TestDeploymentSchema:
         deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
 
         with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_gang_scheduling_config_invalid_num_replicas(self):
         deployment_schema = self.get_minimal_deployment_schema()
@@ -471,7 +471,7 @@ class TestDeploymentSchema:
         with pytest.raises(
             ValueError, match="num_replicas.*must be a multiple of gang_size"
         ):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     @pytest.mark.parametrize("gang_size", [0, -1])
     def test_gang_scheduling_config_invalid_gang_size(self, gang_size):
@@ -550,7 +550,7 @@ class TestServeApplicationSchema:
         # Ensure a valid ServeApplicationSchema can be generated
 
         serve_application_schema = self.get_valid_serve_application_schema()
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        ServeApplicationSchema.model_validate(serve_application_schema)
 
     def test_extra_fields_invalid_serve_application_schema(self):
         # Undefined fields should be forbidden in the schema
@@ -558,11 +558,11 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
 
         # Schema should be createable with valid fields
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        ServeApplicationSchema.model_validate(serve_application_schema)
 
         # Schema should NOT raise error when extra field is included
         serve_application_schema["extra_field"] = None
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        ServeApplicationSchema.model_validate(serve_application_schema)
 
     @pytest.mark.parametrize("env", get_valid_runtime_envs())
     def test_serve_application_valid_runtime_env(self, env):
@@ -571,7 +571,7 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
         original_runtime_env = copy.deepcopy(env)
-        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+        schema = ServeApplicationSchema.model_validate(serve_application_schema)
         # Make sure runtime environment is unchanged by the validation
         assert schema.runtime_env == original_runtime_env
 
@@ -582,11 +582,11 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
         with pytest.raises(ValueError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+            ServeApplicationSchema.model_validate(serve_application_schema)
 
         # By default, runtime_envs with local URIs should be rejected.
         with pytest.raises(ValueError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+            ServeApplicationSchema.model_validate(serve_application_schema)
 
     @pytest.mark.parametrize("path", get_valid_import_paths())
     def test_serve_application_valid_import_path(self, path):
@@ -594,7 +594,7 @@ class TestServeApplicationSchema:
 
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["import_path"] = path
-        ServeApplicationSchema.parse_obj(serve_application_schema)
+        ServeApplicationSchema.model_validate(serve_application_schema)
 
     @pytest.mark.parametrize("path", get_invalid_import_paths())
     def test_serve_application_invalid_import_path(self, path):
@@ -603,17 +603,17 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["import_path"] = path
         with pytest.raises(ValidationError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+            ServeApplicationSchema.model_validate(serve_application_schema)
 
     def test_serve_application_import_path_required(self):
         # If no import path is specified, this should not parse successfully
         with pytest.raises(ValidationError):
-            ServeApplicationSchema.parse_obj({"host": "127.0.0.1", "port": 8000})
+            ServeApplicationSchema.model_validate({"host": "127.0.0.1", "port": 8000})
 
     def test_external_scaler_enabled_defaults_to_false(self):
         # Ensure external_scaler_enabled defaults to False
         serve_application_schema = self.get_valid_serve_application_schema()
-        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+        schema = ServeApplicationSchema.model_validate(serve_application_schema)
         assert schema.external_scaler_enabled is False
 
     def test_external_scaler_enabled_with_fixed_replicas(self):
@@ -631,7 +631,7 @@ class TestServeApplicationSchema:
             },
         ]
         # This should parse successfully
-        schema = ServeApplicationSchema.parse_obj(serve_application_schema)
+        schema = ServeApplicationSchema.model_validate(serve_application_schema)
         assert schema.external_scaler_enabled is True
 
     def test_external_scaler_enabled_conflicts_with_autoscaling(self):
@@ -651,7 +651,7 @@ class TestServeApplicationSchema:
         ]
         # This should raise a validation error
         with pytest.raises(ValueError) as exc_info:
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+            ServeApplicationSchema.model_validate(serve_application_schema)
 
         error_message = str(exc_info.value)
         assert "external_scaler_enabled is set to True" in error_message
@@ -685,7 +685,7 @@ class TestServeApplicationSchema:
         ]
         # This should raise a validation error mentioning both problematic deployments
         with pytest.raises(ValueError) as exc_info:
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+            ServeApplicationSchema.model_validate(serve_application_schema)
 
         error_message = str(exc_info.value)
         assert "external_scaler_enabled is set to True" in error_message
@@ -713,7 +713,7 @@ class TestServeApplicationSchema:
         ]
         # This should raise a validation error
         with pytest.raises(ValueError) as exc_info:
-            ServeApplicationSchema.parse_obj(serve_application_schema)
+            ServeApplicationSchema.model_validate(serve_application_schema)
 
         error_message = str(exc_info.value)
         assert "external_scaler_enabled is set to True" in error_message
@@ -736,14 +736,14 @@ class TestServeDeploySchema:
                 },
             ],
         }
-        ServeDeploySchema.parse_obj(deploy_config_dict)
+        ServeDeploySchema.model_validate(deploy_config_dict)
 
         # Duplicate app1
         deploy_config_dict["applications"].append(
             {"name": "app1", "route_prefix": "/bob", "import_path": "module.graph"},
         )
         with pytest.raises(ValidationError) as e:
-            ServeDeploySchema.parse_obj(deploy_config_dict)
+            ServeDeploySchema.model_validate(deploy_config_dict)
         assert "app1" in str(e.value) and "app2" not in str(e.value)
 
         # Duplicate app2
@@ -751,7 +751,7 @@ class TestServeDeploySchema:
             {"name": "app2", "route_prefix": "/david", "import_path": "module.graph"}
         )
         with pytest.raises(ValidationError) as e:
-            ServeDeploySchema.parse_obj(deploy_config_dict)
+            ServeDeploySchema.model_validate(deploy_config_dict)
         assert "app1" in str(e.value) and "app2" in str(e.value)
 
     def test_deploy_config_duplicate_routes1(self):
@@ -766,14 +766,14 @@ class TestServeDeploySchema:
                 {"name": "app2", "route_prefix": "/bob", "import_path": "module.graph"},
             ],
         }
-        ServeDeploySchema.parse_obj(deploy_config_dict)
+        ServeDeploySchema.model_validate(deploy_config_dict)
 
         # Duplicate route prefix /alice
         deploy_config_dict["applications"].append(
             {"name": "app3", "route_prefix": "/alice", "import_path": "module.graph"},
         )
         with pytest.raises(ValidationError) as e:
-            ServeDeploySchema.parse_obj(deploy_config_dict)
+            ServeDeploySchema.model_validate(deploy_config_dict)
         assert "alice" in str(e.value) and "bob" not in str(e.value)
 
         # Duplicate route prefix /bob
@@ -781,7 +781,7 @@ class TestServeDeploySchema:
             {"name": "app4", "route_prefix": "/bob", "import_path": "module.graph"},
         )
         with pytest.raises(ValidationError) as e:
-            ServeDeploySchema.parse_obj(deploy_config_dict)
+            ServeDeploySchema.model_validate(deploy_config_dict)
         assert "alice" in str(e.value) and "bob" in str(e.value)
 
     def test_deploy_config_duplicate_routes2(self):
@@ -797,7 +797,7 @@ class TestServeDeploySchema:
                 {"name": "app3", "route_prefix": None, "import_path": "module.graph"},
             ],
         }
-        ServeDeploySchema.parse_obj(deploy_config_dict)
+        ServeDeploySchema.model_validate(deploy_config_dict)
 
     @pytest.mark.parametrize("option,value", [("host", "127.0.0.1"), ("port", 8000)])
     def test_deploy_config_nested_http_options(self, option, value):
@@ -819,7 +819,7 @@ class TestServeDeploySchema:
         }
         deploy_config_dict["applications"][0][option] = value
         with pytest.raises(ValidationError) as e:
-            ServeDeploySchema.parse_obj(deploy_config_dict)
+            ServeDeploySchema.model_validate(deploy_config_dict)
         assert option in str(e.value)
 
     def test_deploy_empty_name(self):
@@ -835,7 +835,7 @@ class TestServeDeploySchema:
             ],
         }
         with pytest.raises(ValidationError) as e:
-            ServeDeploySchema.parse_obj(deploy_config_dict)
+            ServeDeploySchema.model_validate(deploy_config_dict)
         # Error message should be descriptive, mention name must be nonempty
         assert "name" in str(e.value) and "empty" in str(e.value)
 
@@ -849,7 +849,7 @@ class TestServeDeploySchema:
             },
         }
         with pytest.raises(ValidationError):
-            ServeDeploySchema.parse_obj(deploy_config_dict)
+            ServeDeploySchema.model_validate(deploy_config_dict)
 
     def test_deploy_with_grpc_options(self):
         """gRPC options can be specified."""
@@ -861,7 +861,7 @@ class TestServeDeploySchema:
             },
             "applications": [],
         }
-        ServeDeploySchema.parse_obj(deploy_config_dict)
+        ServeDeploySchema.model_validate(deploy_config_dict)
 
     @pytest.mark.parametrize(
         "input_val,error,output_val",
@@ -899,15 +899,15 @@ class TestServeDeploySchema:
 
         if error:
             with pytest.raises(ValidationError):
-                ServeDeploySchema.parse_obj(deploy_config_dict)
+                ServeDeploySchema.model_validate(deploy_config_dict)
         else:
-            s = ServeDeploySchema.parse_obj(deploy_config_dict)
+            s = ServeDeploySchema.model_validate(deploy_config_dict)
             assert s.target_capacity == output_val
 
 
 class TestLoggingConfig:
     def test_parse_dict(self):
-        schema = LoggingConfig.parse_obj(
+        schema = LoggingConfig.model_validate(
             {
                 "log_level": logging.DEBUG,
                 "encoding": "JSON",
@@ -922,7 +922,7 @@ class TestLoggingConfig:
         assert schema.additional_log_standard_attrs == []
 
         # Test string values for log_level.
-        schema = LoggingConfig.parse_obj(
+        schema = LoggingConfig.model_validate(
             {
                 "log_level": "DEBUG",
             }
@@ -931,7 +931,7 @@ class TestLoggingConfig:
 
     def test_wrong_encoding_type(self):
         with pytest.raises(ValidationError):
-            LoggingConfig.parse_obj(
+            LoggingConfig.model_validate(
                 {
                     "logging_level": logging.INFO,
                     "encoding": "NOT_EXIST",
@@ -941,7 +941,7 @@ class TestLoggingConfig:
             )
 
     def test_default_values(self):
-        schema = LoggingConfig.parse_obj({})
+        schema = LoggingConfig.model_validate({})
         assert schema.log_level == "INFO"
         assert schema.encoding == "TEXT"
         assert schema.logs_dir is None
@@ -949,16 +949,18 @@ class TestLoggingConfig:
         assert schema.additional_log_standard_attrs == []
 
     def test_additional_log_standard_attrs_type(self):
-        schema = LoggingConfig.parse_obj({"additional_log_standard_attrs": ["name"]})
+        schema = LoggingConfig.model_validate(
+            {"additional_log_standard_attrs": ["name"]}
+        )
         assert isinstance(schema.additional_log_standard_attrs, list)
         assert schema.additional_log_standard_attrs == ["name"]
 
     def test_additional_log_standard_attrs_type_error(self):
         with pytest.raises(ValidationError):
-            LoggingConfig.parse_obj({"additional_log_standard_attrs": "name"})
+            LoggingConfig.model_validate({"additional_log_standard_attrs": "name"})
 
     def test_additional_log_standard_attrs_deduplicate(self):
-        schema = LoggingConfig.parse_obj(
+        schema = LoggingConfig.model_validate(
             {"additional_log_standard_attrs": ["name", "name"]}
         )
         assert schema.additional_log_standard_attrs == ["name"]
@@ -1058,7 +1060,7 @@ def test_gang_scheduling_config_deployment_schema_roundtrip():
 def test_schema_to_deployment_gang_scheduling_config_from_dict():
     # Ensure schema_to_deployment works when gang_scheduling_config
     # comes from a parsed dict (the YAML / declarative API path)
-    schema = DeploymentSchema.parse_obj(
+    schema = DeploymentSchema.model_validate(
         {
             "name": "GangDep",
             "num_replicas": 6,

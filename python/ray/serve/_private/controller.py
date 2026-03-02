@@ -546,7 +546,7 @@ class ServeController:
             if last is not None and last.is_scaling_equivalent(deployment_snapshot):
                 continue
 
-            snapshots_to_log.append(deployment_snapshot.dict(exclude_none=True))
+            snapshots_to_log.append(deployment_snapshot.model_dump(exclude_none=True))
             self._last_autoscaling_snapshots[dep_id] = deployment_snapshot
 
         if snapshots_to_log:
@@ -876,7 +876,7 @@ class ServeController:
             - Memory usage
         """
         try:
-            return self._health_metrics_tracker.collect_metrics().dict()
+            return self._health_metrics_tracker.collect_metrics().model_dump()
         except Exception:
             logger.exception("Exception collecting controller health metrics.")
             raise
@@ -1160,7 +1160,7 @@ class ServeController:
             if app_config.logging_config is None and config.logging_config:
                 app_config.logging_config = config.logging_config
 
-            app_config_dict = app_config.dict(exclude_unset=True)
+            app_config_dict = app_config.model_dump(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 
         self.kv_store.put(
@@ -1334,8 +1334,12 @@ class ServeController:
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
         # fill in all info that should be shown to users.
-        http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
-        grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
+        http_options = HTTPOptionsSchema.model_validate(
+            http_config.model_dump(exclude_unset=True)
+        )
+        grpc_options = gRPCOptionsSchema.model_validate(
+            grpc_config.model_dump(exclude_unset=True)
+        )
 
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
@@ -1669,7 +1673,7 @@ class ServeController:
 
         _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
         return {
-            app: ServeApplicationSchema.parse_obj(config)
+            app: ServeApplicationSchema.model_validate(config)
             for app, config in config_checkpoints_dict.items()
         }
 

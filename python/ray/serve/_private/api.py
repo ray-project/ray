@@ -3,8 +3,9 @@ import logging
 from types import FunctionType
 from typing import Any, Dict, Union
 
+from pydantic import BaseModel
+
 import ray
-from ray._common.pydantic_compat import is_subclass_of_base_model
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
@@ -31,7 +32,7 @@ def _check_http_options(
         new_http_options = (
             http_options
             if isinstance(http_options, HTTPOptions)
-            else HTTPOptions.parse_obj(http_options)
+            else HTTPOptions.model_validate(http_options)
         )
         different_fields = []
         all_http_option_fields = new_http_options.__dict__
@@ -78,7 +79,7 @@ def _start_controller(
             )
 
     if isinstance(http_options, dict):
-        http_options = HTTPOptions.parse_obj(http_options)
+        http_options = HTTPOptions.model_validate(http_options)
     if http_options is None:
         http_options = HTTPOptions()
 
@@ -266,10 +267,8 @@ def call_user_app_builder_with_args_if_necessary(
     # that model. This will perform standard pydantic validation (e.g., raise an
     # exception if required fields are missing).
     param = signature.parameters[list(signature.parameters.keys())[0]]
-    if inspect.isclass(param.annotation) and is_subclass_of_base_model(
-        param.annotation
-    ):
-        args = param.annotation.parse_obj(args)
+    if inspect.isclass(param.annotation) and issubclass(param.annotation, BaseModel):
+        args = param.annotation.model_validate(args)
 
     app = builder(args)
     if not isinstance(app, Application):
