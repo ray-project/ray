@@ -1649,11 +1649,6 @@ python/ray/train/_internal/backend_executor.py
     DOC106: Method `BackendExecutor.get_with_failure_handling`: The option `--arg-type-hints-in-signature` is `True` but there are no argument type hints in the signature
     DOC107: Method `BackendExecutor.get_with_failure_handling`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
 --------------------
-python/ray/train/_internal/checkpoint_manager.py
-    DOC103: Method `_CheckpointManager.register_checkpoint`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [checkpoint_result: _TrainingResult]. Arguments in the docstring but not in the function signature: [checkpoint: ].
-    DOC101: Method `_CheckpointManager._get_checkpoint_score`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `_CheckpointManager._get_checkpoint_score`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [checkpoint: _TrainingResult].
---------------------
 python/ray/train/_internal/data_config.py
     DOC103: Method `DataConfig.configure`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ]. Arguments in the docstring but not in the function signature: [kwargs: ].
 --------------------
