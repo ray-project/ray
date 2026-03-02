@@ -123,9 +123,9 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         // dependencies are fetched and ExecuteRequest happens.
         ready_task = retry_task;
       } else {
-        auto &group_state = group_states_.at(group);
-        auto it = group_state.pending_tasks.find(seq_no);
-        if (it != group_state.pending_tasks.end()) {
+        auto &group_state_in = group_states_.at(group);
+        auto it = group_state_in.pending_tasks.find(seq_no);
+        if (it != group_state_in.pending_tasks.end()) {
           // For non-retry tasks, we need to check if the task is
           // still in the map because it can be erased due to being
           // canceled via a higher `client_processed_up_to`.
