@@ -1,9 +1,9 @@
 import logging
 import math
-import pprint
 import threading
 import time
 import typing
+from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import (
@@ -196,7 +196,7 @@ class StreamingExecutor(Executor, threading.Thread):
             ):
                 logger.debug(
                     f"Data Context for dataset {self._dataset_id}:\n%s",
-                    pprint.pformat(self._data_context),
+                    asdict(self._data_context),
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
