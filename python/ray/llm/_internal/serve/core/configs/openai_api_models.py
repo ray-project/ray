@@ -21,11 +21,22 @@ from vllm.entrypoints.openai.engine.protocol import (
     ErrorInfo as vLLMErrorInfo,
     ErrorResponse as vLLMErrorResponse,
 )
-from vllm.entrypoints.openai.translations.protocol import (
-    TranscriptionRequest as vLLMTranscriptionRequest,
-    TranscriptionResponse as vLLMTranscriptionResponse,
-    TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
-)
+
+try:
+    # https://github.com/vllm-project/vllm/pull/33904
+    from vllm.entrypoints.openai.speech_to_text.protocol import (
+        TranscriptionRequest as vLLMTranscriptionRequest,
+        TranscriptionResponse as vLLMTranscriptionResponse,
+        TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
+    )
+except ImportError:
+    # backward compatibility
+    from vllm.entrypoints.openai.translations.protocol import (
+        TranscriptionRequest as vLLMTranscriptionRequest,
+        TranscriptionResponse as vLLMTranscriptionResponse,
+        TranscriptionStreamResponse as vLLMTranscriptionStreamResponse,
+    )
+
 from vllm.entrypoints.pooling.embed.protocol import (
     EmbeddingChatRequest as vLLMEmbeddingChatRequest,
     EmbeddingCompletionRequest as vLLMEmbeddingCompletionRequest,
