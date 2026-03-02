@@ -3571,6 +3571,18 @@ class DeploymentState:
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
         self._set_health_gauge(replica.replica_id.unique_id, 0)
 
+    def _mark_deployment_unhealthy_for_target_version_replica(
+        self, replica: DeploymentReplica
+    ):
+        """Transition deployment to UNHEALTHY if the replica is the target version."""
+        if replica.version == self._target_state.version:
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
+                message="A replica's health check failed. This "
+                "deployment will be UNHEALTHY until the replica "
+                "recovers or a new deploy happens.",
+            )
+
     def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
@@ -3627,13 +3639,7 @@ class DeploymentState:
                 # Healthy replica whose gang has an unhealthy member.
                 # Forcefully stop it so the entire gang is rescheduled.
                 self._stop_replica(replica, graceful_stop=False)
-                if replica.version == self._target_state.version:
-                    self._curr_status_info = self._curr_status_info.handle_transition(
-                        trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
-                        message="A replica's health check failed. This "
-                        "deployment will be UNHEALTHY until the replica "
-                        "recovers or a new deploy happens.",
-                    )
+                self._mark_deployment_unhealthy_for_target_version_replica(replica)
             else:
                 self._replicas.add(replica.actor_details.state, replica)
                 self._set_health_gauge(replica.replica_id.unique_id, 1)
@@ -3651,18 +3657,10 @@ class DeploymentState:
             self._set_health_gauge(replica.replica_id.unique_id, 0)
             graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
             if restart_gang and replica.gang_context is not None:
+                # Forcefully stop all replicas in a unhealthy gang to avoid partial gangs
                 graceful = False
             self._stop_replica(replica, graceful_stop=graceful)
-            # If this is a replica of the target version, the deployment
-            # enters the "UNHEALTHY" status until the replica is
-            # recovered or a new deploy happens.
-            if replica.version == self._target_state.version:
-                self._curr_status_info = self._curr_status_info.handle_transition(
-                    trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
-                    message="A replica's health check failed. This "
-                    "deployment will be UNHEALTHY until the replica "
-                    "recovers or a new deploy happens.",
-                )
+            self._mark_deployment_unhealthy_for_target_version_replica(replica)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency

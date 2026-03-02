@@ -45,7 +45,11 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
 )
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
-from ray.serve._private.test_utils import dead_replicas_context, replica_rank_context
+from ray.serve._private.test_utils import (
+    MockPlacementGroup,
+    dead_replicas_context,
+    replica_rank_context,
+)
 from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
@@ -6571,6 +6575,226 @@ class TestScaleDeploymentGangReplicas:
         dsm.update()
         check_counts(
             ds, total=2, by_state=[(ReplicaState.RUNNING, 2, recovery_version)]
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+class TestGangHealthCheck:
+    def _deploy_gang(self, mock_deployment_state_manager, gang_size, num_replicas):
+        """Deploy gang-scheduled replicas and wait for them to become RUNNING."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(
+                *args, **kwargs
+            ),
+        )
+        b_info, v1 = deployment_info(
+            version="1",
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+        # Reserves gang PGs and creates replicas
+        dsm.update()
+        check_counts(
+            ds, total=num_replicas, by_state=[(ReplicaState.STARTING, num_replicas, v1)]
+        )
+
+        # Capture replica references and wait for them to become RUNNING
+        replicas = ds._replicas.get()
+        for replica in replicas:
+            replica._actor.set_ready()
+        dsm.update()
+
+        check_counts(
+            ds, total=num_replicas, by_state=[(ReplicaState.RUNNING, num_replicas, v1)]
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Group captured replicas by gang
+        gangs = {}
+        for r in replicas:
+            assert r.gang_context is not None
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
+
+        return dsm, ds, v1, gangs
+
+    @pytest.mark.parametrize("force_stop_unhealthy", [True, False])
+    def test_restart_gang_entire_gang_stopped(
+        self, mock_deployment_state_manager, force_stop_unhealthy
+    ):
+        """Unhealthy gang is force-stopped regardless of FORCE_STOP_UNHEALTHY_REPLICAS;
+        healthy gangs are unaffected."""
+        gang_size = 2
+        num_replicas = 4
+        num_gangs = num_replicas // gang_size
+        dsm, ds, v1, gangs = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        assert len(gangs) == num_gangs
+
+        gang_ids = list(gangs.keys())
+        target_gang = gangs[gang_ids[0]]
+        healthy_gang = gangs[gang_ids[1]]
+
+        ds.FORCE_STOP_UNHEALTHY_REPLICAS = force_stop_unhealthy
+
+        # Initialize health checks, then mark one replica in the target gang as unhealthy.
+        dsm.update()
+        target_gang[0]._actor.set_unhealthy()
+        dsm.update()
+
+        # Both replicas of the affected gang should be stopping (force-stopped).
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, gang_size, v1),
+                (ReplicaState.STOPPING, gang_size, v1),
+            ],
+        )
+        for r in target_gang:
+            assert r._actor.force_stopped_counter == 1
+
+        # Healthy gang replicas should still be running.
+        for r in healthy_gang:
+            assert r._actor.force_stopped_counter == 0
+
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+        )
+        assert "UNHEALTHY" in ds.curr_status_info.message
+
+        # After the stopped replicas finish stopping, new replicas should start.
+        for r in target_gang:
+            r._actor.set_done_stopping()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, gang_size, v1),
+                (ReplicaState.STARTING, gang_size, v1),
+            ],
+        )
+
+        # New replicas become ready -> deployment should recover to HEALTHY.
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_restart_gang_multiple_unhealthy_gang_replicas(
+        self, mock_deployment_state_manager
+    ):
+        """Verify gang replicas are force-stopped once when there are multiple unhealthy replicas in the same gang."""
+        gang_size = 2
+        num_replicas = 4
+        dsm, ds, v1, gangs = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        gang_ids = list(gangs.keys())
+        target_gang = gangs[gang_ids[0]]
+        healthy_gang = gangs[gang_ids[1]]
+
+        # Initialize health checks, then mark both replicas unhealthy.
+        dsm.update()
+        for r in target_gang:
+            r._actor.set_unhealthy()
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, gang_size, v1),
+                (ReplicaState.STOPPING, gang_size, v1),
+            ],
+        )
+        for r in target_gang:
+            assert r._actor.force_stopped_counter == 1
+        for r in healthy_gang:
+            assert r._actor.force_stopped_counter == 0
+
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+
+        # Finish stopping -> new replicas start -> become ready -> HEALTHY.
+        for r in target_gang:
+            r._actor.set_done_stopping()
+        dsm.update()
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_restart_gang_multiple_gangs_failing(self, mock_deployment_state_manager):
+        """Multiple gangs with unhealthy replicas are all stopped; surviving gang is untouched."""
+        gang_size = 2
+        num_replicas = 6  # 3 gangs
+        dsm, ds, v1, gangs = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        assert len(gangs) == 3
+
+        gang_ids = list(gangs.keys())
+        failed_gang_0 = gangs[gang_ids[0]]
+        failed_gang_1 = gangs[gang_ids[1]]
+        surviving_gang = gangs[gang_ids[2]]
+
+        dsm.update()
+        failed_gang_0[0]._actor.set_unhealthy()
+        failed_gang_1[0]._actor.set_unhealthy()
+        dsm.update()
+
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, gang_size, v1),
+                (ReplicaState.STOPPING, gang_size * 2, v1),
+            ],
+        )
+        for r in failed_gang_0 + failed_gang_1:
+            assert r._actor.force_stopped_counter == 1
+        for r in surviving_gang:
+            assert r._actor.force_stopped_counter == 0
+
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+
+        # Finish stopping -> new replicas start -> become ready -> HEALTHY.
+        for r in failed_gang_0 + failed_gang_1:
+            r._actor.set_done_stopping()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, gang_size, v1),
+                (ReplicaState.STARTING, gang_size * 2, v1),
+            ],
+        )
+        for r in ds._replicas.get([ReplicaState.STARTING]):
+            r._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v1)],
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 

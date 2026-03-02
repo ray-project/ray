@@ -375,7 +375,7 @@ def test_gang_health_check_restarts_gang(serve_instance):
         )
         return True
 
-    wait_for_condition(check_unhealthy, timeout=30)
+    wait_for_condition(check_unhealthy, timeout=10)
 
     # Zero-downtime check.
     # While the failed gang is being torn down and before the replacement
@@ -394,7 +394,7 @@ def test_gang_health_check_restarts_gang(serve_instance):
         assert app_status.deployments["GangPatient"].status == DeploymentStatus.HEALTHY
         return True
 
-    wait_for_condition(check_healthy, timeout=120)
+    wait_for_condition(check_healthy, timeout=10)
 
     # Collect final replica state.
     final_replicas = {}
@@ -411,7 +411,7 @@ def test_gang_health_check_restarts_gang(serve_instance):
         for r in initial_replicas.values()
         if r["gang_id"] == target_gang_id
     }
-    assert len(old_gang_ids) == num_gangs
+    assert len(old_gang_ids) == gang_size
     assert old_gang_ids.isdisjoint(final_replicas.keys())
 
 

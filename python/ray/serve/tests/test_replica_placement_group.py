@@ -344,7 +344,7 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
 
         # Victim should have recovered with a new PG (old one was removed).
         victim_pgs = [n for n in current_gang_pgs if "victim_app" in n]
-        if len(victim_pgs) < 1:
+        if len(victim_pgs) != 1:
             return False
 
         # Per-replica app should have recovered with a new PG.
