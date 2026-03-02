@@ -102,13 +102,13 @@ def set_target_for_ref(ref: ObjectRef, target: List[Any]):
     Set target buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
 
     This is only supported by some transports (e.g., NIXL). If the transport
-    does not support this feature, the target buffers are ignored, and a warning will be
-    logged.
+    does not support this feature, an exception will be raised during ray.get
 
     Before receiving, Ray validates that the provided target buffers match the metadata
     of the tensors in the object (e.g., shape, dtype, device). If validation fails,
-    a `ValueError` is raised. Note that the order must match the order of the tensors
-    from the sender side.
+    a `ValueError` is raised. We recommend sending over lists of tensors and passing a list
+    of the same length here because the serialization order from the sender-side must match
+    the order of the target tensors here.
 
     Note that this only applies for the first `ray.get` call on the ref.
     Subsequent `ray.get` calls on the same ref will not use the target buffers unless
