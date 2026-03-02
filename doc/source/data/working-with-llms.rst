@@ -19,6 +19,7 @@ The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray
 * :ref:`Multimodality <multimodal>` - Batch inference with VLM / omni models on multimodal data
 * :ref:`OpenAI-compatible endpoints <openai_compatible_api_endpoint>` - Query deployed models
 * :ref:`Serve deployments <serve_deployments>` - Share vLLM engines across processors
+* :ref:`Custom tokenizers <custom_tokenizers>` - Use vLLM tokenizers for models not supported by HuggingFace
 
 **Operations:**
 
@@ -93,7 +94,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **Detokenize**: Converts output token IDs back to readable text.
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
-Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize, and HttpRequestStage) use autoscaling actor pools (except for ServeDeployment stage), while the GPU stage uses a fixed pool.
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. All stages (CPU and GPU) use autoscaling actor pools by default, except for the ServeDeployment stage which uses a fixed pool.
 
 .. _horizontal_scaling:
 
@@ -108,6 +109,13 @@ Horizontally scale the LLM stage to multiple GPU replicas using the ``concurrenc
     :end-before: __concurrent_config_example_end__
 
 Each replica runs an independent inference engine. Set ``concurrency`` to match the number of available GPUs or GPU nodes.
+
+By default, when you set ``concurrency`` to an integer ``n``, GPU stages autoscale from 1 to ``n`` actors. To use a fixed pool of ``n`` actors, set ``concurrency`` to ``(n, n)``.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_fixed_pool_example_start__
+    :end-before: __concurrent_config_fixed_pool_example_end__
 
 .. _text_generation:
 
@@ -310,6 +318,46 @@ Query deployed models with an OpenAI-compatible API:
     :language: python
     :start-after: __openai_example_start__
     :end-before: __openai_example_end__
+
+.. _custom_tokenizers:
+
+Custom tokenizers
+-----------------
+
+Use this pattern when a model is supported by vLLM but not by HuggingFace ``transformers`` — for example, Mistral Tekken (``mistral``), DeepSeek-V3 (``deepseek_v32``), or Grok-2 (``grok2``).
+The built-in ChatTemplate, Tokenize, and Detokenize stages rely on HuggingFace and will fail for these models. In the following example, we disable the built-in CPU stages and replace them with ``map_batches`` callables.
+
+**Chat template**: Converts OpenAI-format messages into the prompt string the model expects. Required because each model family defines its own chat format:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_chat_template_start__
+    :end-before: __custom_chat_template_end__
+
+**Tokenize**: Converts the prompt string into token IDs for the model.
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenize_start__
+    :end-before: __custom_tokenize_end__
+
+**Detokenize** (optional): Decodes generated token IDs back to text. The vLLM engine already returns ``generated_text``, so this is only needed for custom decoding (e.g. different ``skip_special_tokens`` settings):
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_detokenize_start__
+    :end-before: __custom_detokenize_end__
+
+Build a processor with built-in stages disabled and compose the full pipeline:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenizer_pipeline_start__
+    :end-before: __custom_tokenizer_pipeline_end__
+    :dedent: 4
+
+.. note::
+    This example uses a standard model because models that truly require vLLM's custom tokenizer are too large for Ray CI environments. The pattern is identical — just replace ``MODEL_ID`` and set ``tokenizer_mode`` explicitly.
 
 .. _troubleshooting:
 

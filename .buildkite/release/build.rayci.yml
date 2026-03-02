@@ -40,8 +40,19 @@ steps:
       setup:
         python:
           - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+      adjustments:
+        - with:
+            python: "3.11"
+            cuda: "12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            cuda: "12.8.1-cudnn"
+          skip: true
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -144,8 +155,19 @@ steps:
       setup:
         python:
           - "3.11"
+          - "3.12"
         cuda:
           - "12.8.1-cudnn"
+          - "12.9.1-cudnn"
+      adjustments:
+        - with:
+            python: "3.11"
+            cuda: "12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            cuda: "12.8.1-cudnn"
+          skip: true
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -174,8 +196,19 @@ steps:
       setup:
         python:
           - "3.11"
+          - "3.12"
         platform:
           - cu12.8.1-cudnn
+          - cu12.9.1-cudnn
+      adjustments:
+        - with:
+            python: "3.11"
+            platform: "cu12.9.1-cudnn"
+          skip: true
+        - with:
+            python: "3.12"
+            platform: "cu12.8.1-cudnn"
+          skip: true
 
   - name: ray-ml-anyscale-cuda-build
     label: "wanda: ray-ml-anyscale py{{matrix.python}} cu{{matrix.cuda}}"

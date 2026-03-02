@@ -230,31 +230,23 @@ def test_parquet_read_random_shuffle(
     context = ray.data.DataContext.get_current()
     context.execution_options.preserve_order = True
 
-    input_list = list(range(10))
-    df1 = pd.DataFrame({"one": input_list[: len(input_list) // 2]})
-    table = pa.Table.from_pandas(df1)
+    num_files = 10
+    input_list = list(range(num_files))
     setup_data_path = _unwrap_protocol(data_path)
-    path1 = os.path.join(setup_data_path, "test1.parquet")
-    pq.write_table(table, path1, filesystem=fs)
-    df2 = pd.DataFrame({"one": input_list[len(input_list) // 2 :]})
-    table = pa.Table.from_pandas(df2)
-    path2 = os.path.join(setup_data_path, "test2.parquet")
-    pq.write_table(table, path2, filesystem=fs)
+    for i in range(num_files):
+        table = pa.Table.from_pydict({"id": [i]})
+        path = os.path.join(setup_data_path, f"test_{i}.parquet")
+        pq.write_table(table, path, filesystem=fs)
 
-    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle="files")
+    shuffle = FileShuffleConfig(seed=0)
+    ds = ray.data.read_parquet(data_path, filesystem=fs, shuffle=shuffle)
 
-    # Execute 10 times to get a set of output results.
-    output_results_list = []
-    for _ in range(10):
-        result = [row["one"] for row in ds.take_all()]
-        output_results_list.append(result)
-    all_rows_matched = [
-        input_list == output_list for output_list in output_results_list
-    ]
+    first = [row["id"] for row in ds.take_all()]
+    second = [row["id"] for row in ds.take_all()]
 
-    # Check when shuffle is enabled, output order has at least one different
-    # case.
-    assert not all(all_rows_matched)
+    assert sorted(first) == input_list
+    assert sorted(second) == input_list
+    assert first != second
 
 
 @pytest.mark.parametrize(
