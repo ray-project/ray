@@ -124,6 +124,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[BlockMetadata]], None
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        operator_name: Optional[str] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -137,12 +138,15 @@ class DataOpTask(OpTask):
             metadata_ready_callback: A callback that's invoked when a new block metadata
                 reference is ready. This is exposed as a seam for testing.
             task_resource_bundle: The execution resources of this task.
+            operator_name: The name of the operator that created this task. Used in
+                warning messages to identify which pipeline stage is experiencing issues.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
         # BlockMetadata.
+        self._operator_name = operator_name
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
@@ -253,12 +257,13 @@ class DataOpTask(OpTask):
             except ray.exceptions.GetTimeoutError:
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
+                op_label = self._operator_name or self.__class__.__name__
                 logger.warning(
-                    f"Metadata object not ready for "
-                    f"ref={self._pending_meta_ref.hex()} "
-                    f"(operator={self.__class__.__name__}). "
-                    f"Metadata may still be computing or worker may have failed and "
-                    f"object is being reconstructed. Will retry in next iteration."
+                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for block "
+                    f"metadata from operator '{op_label}' "
+                    f"(ref={self._pending_meta_ref.hex()}). "
+                    f"Possible causes: slow task, worker crashed, or cluster "
+                    f"overloaded. Will retry in next iteration."
                 )
                 break
 
