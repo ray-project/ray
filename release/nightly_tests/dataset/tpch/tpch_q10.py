@@ -8,6 +8,27 @@ def main(args):
     def benchmark_fn():
         from datetime import datetime
 
+        # Q10: Returned Item Reporting Query
+        # Top customers by revenue from returned lineitems in a 3-month order-date window.
+        #
+        # Equivalent SQL:
+        #   SELECT c_custkey, c_name,
+        #          SUM(l_extendedprice * (1 - l_discount)) AS revenue,
+        #          c_acctbal, n_name, c_address, c_phone, c_comment
+        #   FROM customer, orders, lineitem, nation
+        #   WHERE c_custkey = o_custkey
+        #     AND l_orderkey = o_orderkey
+        #     AND o_orderdate >= DATE '1993-10-01'
+        #     AND o_orderdate <  DATE '1994-01-01'
+        #     AND l_returnflag = 'R'
+        #     AND c_nationkey = n_nationkey
+        #   GROUP BY c_custkey, c_name, c_acctbal, c_phone, n_name, c_address, c_comment
+        #   ORDER BY revenue DESC;
+        #
+        # Note:
+        # The pipeline first filters orders/lineitem, then joins customer and nation
+        # to keep intermediate data smaller.
+
         # Load all required tables
         customer = load_table("customer", args.sf)
         orders = load_table("orders", args.sf)

@@ -6,6 +6,28 @@ from common import parse_tpch_args, load_table, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        # Q18: Large Volume Customer Query
+        # Orders whose total lineitem quantity exceeds a threshold, with customer info.
+        #
+        # Equivalent SQL:
+        #   SELECT c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice,
+        #          SUM(l_quantity) AS sum_quantity
+        #   FROM customer, orders, lineitem
+        #   WHERE o_orderkey IN (
+        #     SELECT l_orderkey
+        #     FROM lineitem
+        #     GROUP BY l_orderkey
+        #     HAVING SUM(l_quantity) > 312
+        #   )
+        #     AND c_custkey = o_custkey
+        #     AND o_orderkey = l_orderkey
+        #   GROUP BY c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice
+        #   ORDER BY o_totalprice DESC, o_orderdate
+        #   LIMIT 100;
+        #
+        # Note:
+        # TPC-H parameter is in [312, 315]; this benchmark uses the fixed value 312.
+        # It also materializes full sorted output (no LIMIT pushdown).
 
         # Load all required tables
         customer = load_table("customer", args.sf)
