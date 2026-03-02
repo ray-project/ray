@@ -611,7 +611,6 @@ class WorkerGroup(ExecutionGroup):
 
         Args:
             timeout: The maximum time to wait for the poll tasks to complete.
-
         """
         self._assert_active()
 
