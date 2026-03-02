@@ -138,6 +138,146 @@ def test_include_paths_with_column_projection(
         assert row["path"] == path
 
 
+def test_include_row_hash(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog", "bird"]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_row_hash=True)
+
+    schema_names = ds.schema().names
+    assert "row_hash" in schema_names
+
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 3
+    assert len(set(hashes)) == 3, "Hashes must be unique"
+    assert all(isinstance(h, int) for h in hashes)
+
+
+def test_include_row_hash_reproducible(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": list(range(10))})
+    pq.write_table(table, path)
+
+    hashes1 = [
+        row["row_hash"]
+        for row in ray.data.read_parquet(path, include_row_hash=True).take_all()
+    ]
+    hashes2 = [
+        row["row_hash"]
+        for row in ray.data.read_parquet(path, include_row_hash=True).take_all()
+    ]
+    assert hashes1 == hashes2, "Hashes must be reproducible across reads"
+
+
+def test_include_row_hash_unique_across_files(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    for i in range(3):
+        path = os.path.join(tmp_path, f"file{i}.parquet")
+        table = pa.Table.from_pydict({"val": [i * 10, i * 10 + 1]})
+        pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(str(tmp_path), include_row_hash=True)
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 6
+    assert len(set(hashes)) == 6, "Hashes must be unique across files"
+
+
+def test_include_row_hash_same_data_different_files(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """Files with identical content must produce different hashes because
+    the hash is derived from the file path, not the data."""
+    table = pa.Table.from_pydict({"val": [1, 2, 3]})
+    for name in ("a.parquet", "b.parquet", "c.parquet"):
+        pq.write_table(table, os.path.join(tmp_path, name))
+
+    ds = ray.data.read_parquet(str(tmp_path), include_row_hash=True)
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 9
+    assert (
+        len(set(hashes)) == 9
+    ), "Identical data in different files must produce distinct hashes"
+
+
+def test_include_row_hash_with_column_projection(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
+    schema_names = ds.schema().names
+    assert "a" in schema_names
+    assert "b" not in schema_names
+    assert "row_hash" in schema_names
+
+    rows = ds.take_all()
+    assert len(rows) == 2
+    assert all("row_hash" in row and "a" in row and "b" not in row for row in rows)
+
+
+def test_include_row_hash_with_include_paths(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_paths=True, include_row_hash=True)
+    schema_names = ds.schema().names
+    assert "path" in schema_names
+    assert "row_hash" in schema_names
+
+    df = ds.to_pandas()
+    assert "path" in df.columns
+    assert len(set(df["row_hash"])) == 2
+
+
+def test_include_row_hash_existing_column(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """When the file already has a 'row_hash' column, it should be
+    overwritten by the generated one without crashing."""
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2, 3], "row_hash": [100, 200, 300]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_row_hash=True)
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 3
+    assert len(set(hashes)) == 3, "Hashes must be unique"
+    assert all(
+        h not in (100, 200, 300) for h in hashes
+    ), "Generated hashes must overwrite the original column values"
+
+
+def test_include_row_hash_existing_column_with_projection(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """Column projection + pre-existing row_hash column should work."""
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2], "row_hash": [10, 20]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, columns=["val"], include_row_hash=True)
+    schema_names = ds.schema().names
+    assert "val" in schema_names
+    assert "row_hash" in schema_names
+    rows = ds.take_all()
+    assert all(row["row_hash"] not in (10, 20) for row in rows)
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
