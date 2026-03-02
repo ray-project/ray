@@ -72,6 +72,11 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
 
     # Posix: Use `ln -s` to create softlink.
     else:
+        if os.path.exists(package_home) and os.path.realpath(
+            package_home
+        ) == os.path.realpath(local_home):
+            print(f"{package} is already linked to source. Skipping.")
+            return
         sudo = []
         if not os.access(os.path.dirname(package_home), os.W_OK):
             print("You don't have write permission " f"to {package_home}, using sudo:")
@@ -83,9 +88,10 @@ def do_link(package, force=False, skip_list=None, allow_list=None, local_path=No
         if package == "serve":
             # Copy generated folder to a temp dir
             generated_folder = os.path.join(package_home, "generated")
-            if not os.path.exists(serve_temp_dir):
-                os.makedirs(serve_temp_dir)
-            subprocess.check_call(["mv", generated_folder, serve_temp_dir])
+            if os.path.exists(serve_temp_dir):
+                subprocess.check_call(sudo + ["rm", "-rf", serve_temp_dir])
+            subprocess.check_call(sudo + ["mkdir", "-p", serve_temp_dir])
+            subprocess.check_call(sudo + ["mv", generated_folder, serve_temp_dir])
 
         # Create backup of the old directory if it exists
         if os.path.exists(package_home):
