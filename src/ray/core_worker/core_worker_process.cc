@@ -853,19 +853,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     // Initialize metrics agent client.
     // Port > 0 means valid port, -1 means metrics agent not available (minimal install).
     if (options_.metrics_agent_port > 0) {
-      metrics_agent_client_ = std::make_unique<ray::rpc::MetricsAgentClientImpl>(
-          "127.0.0.1", options_.metrics_agent_port, io_service_, *client_call_manager_);
-      metrics_agent_client_->WaitForServerReady([this](const Status &server_status) {
-        if (server_status.ok()) {
-          stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
-          stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
-        } else {
-          RAY_LOG(ERROR)
-              << "Failed to establish connection to the metrics exporter agent. "
-                 "Metrics will not be exported. "
-              << "Exporter agent status: " << server_status.ToString();
-        }
-      });
+      // Initialize exporters synchronously to avoid a getenv/setenv race condition.
+      // POSIX setenv is MT-Unsafe.
+      stats::ConnectOpenCensusExporter(options_.metrics_agent_port);
+      stats::InitOpenTelemetryExporter(options_.metrics_agent_port);
     } else {
       RAY_LOG(INFO) << "Metrics agent not available. To enable metrics, install Ray "
                        "with dashboard support: `pip install 'ray[default]'`.";
