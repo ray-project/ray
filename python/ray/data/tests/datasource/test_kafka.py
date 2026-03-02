@@ -185,6 +185,76 @@ def test_read_kafka_datetime_validation():
         )
 
 
+def test_kafka_datasource_init_per_partition_valid():
+    """Valid per-partition start_offset dicts must pass __init__ without error."""
+    from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
+
+    # Mix of int, "earliest", and datetime per-partition offsets
+    KafkaDatasource(
+        topics=["my_topic"],
+        bootstrap_servers="localhost:9092",
+        start_offset={
+            "my_topic": {0: 1500, 1: "earliest", 2: datetime(2025, 1, 1)}
+        },
+    )
+
+    # Empty dict (no per-partition overrides) is also valid
+    KafkaDatasource(
+        topics=["my_topic"],
+        bootstrap_servers="localhost:9092",
+        start_offset={},
+    )
+
+
+@pytest.mark.parametrize(
+    "start_offset,expected_error",
+    [
+        (
+            {42: {0: 100}},
+            "Per-partition start_offset dict keys must be topic name strings",
+        ),
+        (
+            {"other_topic": {0: 100}},
+            "which is not in the topics being read",
+        ),
+        (
+            {"my_topic": 100},
+            "Per-partition start_offset values must be dicts",
+        ),
+        (
+            {"my_topic": {"0": 100}},
+            "Partition keys in per-partition start_offset must be ints",
+        ),
+        (
+            {"my_topic": {True: 100}},
+            "Partition keys in per-partition start_offset must be ints",
+        ),
+        (
+            {"my_topic": {0: True}},
+            "Per-partition start_offset values must be int, 'earliest', or datetime",
+        ),
+        (
+            {"my_topic": {0: 3.14}},
+            "Per-partition start_offset values must be int, 'earliest', or datetime",
+        ),
+        (
+            {"my_topic": {0: "latest"}},
+            "Per-partition start_offset string values must be 'earliest'",
+        ),
+    ],
+)
+def test_kafka_datasource_init_per_partition_invalid(start_offset, expected_error):
+    """Invalid per-partition start_offset dicts must raise ValueError at init time."""
+    from ray.data._internal.datasource.kafka_datasource import KafkaDatasource
+
+    with pytest.raises(ValueError, match=expected_error):
+        KafkaDatasource(
+            topics=["my_topic"],
+            bootstrap_servers="localhost:9092",
+            start_offset=start_offset,
+        )
+
+
 # Integration Tests (require Kafka container)
 
 
@@ -575,6 +645,104 @@ def test_read_kafka_datetime_before_all_messages(
     # return the first offset. This means end_offset resolves to the
     # beginning, yielding 0 rows.
     assert len(records) == 0
+
+
+def test_read_kafka_per_partition_offsets(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Per-partition start offsets must be applied per-partition; omitted
+    partitions must fall back to 'earliest'."""
+    from kafka.admin import KafkaAdminClient, NewTopic
+
+    topic = "test-per-partition-offsets"
+    admin_client = KafkaAdminClient(bootstrap_servers=[bootstrap_server])
+    admin_client.create_topics(
+        [NewTopic(name=topic, num_partitions=3, replication_factor=1)]
+    )
+    admin_client.close()
+    time.sleep(2)
+
+    # 90 messages round-robined across 3 partitions → 30 messages per partition
+    # at offsets 0-29 in each partition.
+    for i in range(90):
+        kafka_producer.send(topic, value={"id": i}, partition=i % 3)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # Partition 0: start at offset 10 → reads offsets 10-29 = 20 messages.
+    # Partitions 1 and 2: omitted from dict → fall back to "earliest" = 30 messages each.
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset={topic: {0: 10}},
+        end_offset="latest",
+    )
+    records = ds.take_all()
+    assert len(records) == 80  # 20 + 30 + 30
+
+    # Partition 0 records must all start at or after offset 10.
+    p0_records = [r for r in records if r["partition"] == 0]
+    assert len(p0_records) == 20
+    assert all(r["offset"] >= 10 for r in p0_records)
+
+
+def test_read_kafka_per_partition_earliest_string(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Explicit 'earliest' per-partition offset must read from the beginning."""
+    from kafka.admin import KafkaAdminClient, NewTopic
+
+    topic = "test-per-partition-earliest"
+    admin_client = KafkaAdminClient(bootstrap_servers=[bootstrap_server])
+    admin_client.create_topics(
+        [NewTopic(name=topic, num_partitions=2, replication_factor=1)]
+    )
+    admin_client.close()
+    time.sleep(2)
+
+    for i in range(40):
+        kafka_producer.send(topic, value={"id": i}, partition=i % 2)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # Both partitions listed explicitly with "earliest" — should return all 40 messages.
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset={topic: {0: "earliest", 1: "earliest"}},
+        end_offset="latest",
+    )
+    records = ds.take_all()
+    assert len(records) == 40
+
+
+def test_read_kafka_per_partition_nonexistent_partition(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Specifying a partition that does not exist on the broker must raise ValueError
+    with a clear message before any read tasks are launched."""
+    from kafka.admin import KafkaAdminClient, NewTopic
+
+    topic = "test-invalid-partition-id"
+    admin_client = KafkaAdminClient(bootstrap_servers=[bootstrap_server])
+    admin_client.create_topics(
+        [NewTopic(name=topic, num_partitions=1, replication_factor=1)]
+    )
+    admin_client.close()
+    time.sleep(2)
+
+    kafka_producer.send(topic, value={"id": 0})
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # Partition 99 does not exist — only partition 0 does.
+    with pytest.raises(ValueError, match="does not exist on the broker"):
+        ds = ray.data.read_kafka(
+            topics=[topic],
+            bootstrap_servers=[bootstrap_server],
+            start_offset={topic: {99: 0}},
+        )
+        ds.take_all()
 
 
 if __name__ == "__main__":

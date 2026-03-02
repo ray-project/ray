@@ -294,7 +294,12 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
+        start_offset: Union[
+            int,
+            datetime,
+            Literal["earliest"],
+            Dict[str, Dict[int, Union[int, str, datetime]]],
+        ] = "earliest",
         end_offset: Union[int, datetime, Literal["latest"]] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
         timeout_ms: int = 10000,
@@ -305,10 +310,16 @@ class KafkaDatasource(Datasource):
             topics: Kafka topic name(s) to read from.
             bootstrap_servers: Kafka broker addresses (string or list of strings).
             start_offset: Starting position. Can be:
-                - int: Offset number
+                - int: Offset number applied globally to all partitions.
                 - datetime: Read from the first message at or after this time.
-                  datetimes with no timezone info are treated as UTC.
-                - str: "earliest"
+                  Datetimes with no timezone info are treated as UTC.
+                - str: "earliest" — start from the beginning of each partition.
+                - Dict[str, Dict[int, Union[int, str, datetime]]]: Per-partition
+                  offsets, mapping topic name → (partition id → offset). Each
+                  partition offset can be an int, "earliest", or a datetime
+                  (treated the same as the global datetime form). Partitions not
+                  listed in the dict fall back to "earliest".
+                  Example: ``{"my_topic": {0: 1500, 1: "earliest"}}``.
             end_offset: Ending position (exclusive). Can be:
                 - int: Offset number
                 - datetime: Read up to (but not including) the first message
@@ -346,6 +357,48 @@ class KafkaDatasource(Datasource):
             raise ValueError("start_offset cannot be 'latest'")
         if isinstance(end_offset, str) and end_offset == "earliest":
             raise ValueError("end_offset cannot be 'earliest'")
+
+        if isinstance(start_offset, dict):
+            normalized_topics = [topics] if isinstance(topics, str) else list(topics)
+            for topic, partition_offsets in start_offset.items():
+                if not isinstance(topic, str):
+                    raise ValueError(
+                        f"Per-partition start_offset dict keys must be topic name strings. "
+                        f"Got: {type(topic).__name__}"
+                    )
+                if topic not in normalized_topics:
+                    raise ValueError(
+                        f"Per-partition start_offset specifies topic '{topic}', "
+                        f"which is not in the topics being read: {normalized_topics}"
+                    )
+                if not isinstance(partition_offsets, dict):
+                    raise ValueError(
+                        f"Per-partition start_offset values must be dicts mapping partition "
+                        f"int to offset. Got: {type(partition_offsets).__name__} for topic '{topic}'"
+                    )
+                for partition, offset in partition_offsets.items():
+                    # bool is a subclass of int in Python, so guard explicitly to
+                    # prevent True/False being silently accepted as partition IDs 1/0.
+                    if not isinstance(partition, int) or isinstance(partition, bool):
+                        raise ValueError(
+                            f"Partition keys in per-partition start_offset must be ints. "
+                            f"Got: {type(partition).__name__} for topic '{topic}'"
+                        )
+                    # Mirror the bool guard applied to partition keys: bool is a
+                    # subclass of int, so True/False must be rejected explicitly.
+                    if isinstance(offset, bool) or not isinstance(
+                        offset, (int, str, datetime)
+                    ):
+                        raise ValueError(
+                            f"Per-partition start_offset values must be int, 'earliest', "
+                            f"or datetime. Got: {type(offset).__name__} for topic "
+                            f"'{topic}', partition {partition}"
+                        )
+                    if isinstance(offset, str) and offset != "earliest":
+                        raise ValueError(
+                            f"Per-partition start_offset string values must be 'earliest'. "
+                            f"Got: {offset!r} for topic '{topic}', partition {partition}"
+                        )
 
         # Validate bootstrap_servers format
         if isinstance(bootstrap_servers, str):
@@ -426,6 +479,21 @@ class KafkaDatasource(Datasource):
             if discovery_consumer:
                 discovery_consumer.close()
 
+        # When start_offset is a per-partition dict, validate that every
+        # (topic, partition) pair it mentions actually exists on the broker.
+        # This catches typos and stale partition IDs before any tasks launch.
+        if isinstance(self._start_offset, dict):
+            discovered_set = set(topic_partitions)
+            for topic, partition_offsets in self._start_offset.items():
+                for partition in partition_offsets:
+                    if (topic, partition) not in discovered_set:
+                        available = sorted(p for t, p in discovered_set if t == topic)
+                        raise ValueError(
+                            f"Per-partition start_offset specifies partition {partition} for "
+                            f"topic '{topic}', but that partition does not exist on the broker. "
+                            f"Available partitions for topic '{topic}': {available}"
+                        )
+
         # Store config for use in read functions (avoid serialization issues)
         bootstrap_servers = self._bootstrap_servers
         start_offset = self._start_offset
@@ -448,6 +516,16 @@ class KafkaDatasource(Datasource):
             ]
         )
         for topic_name, partition_id in topic_partitions:
+            # When start_offset is a per-partition dict, look up the offset for
+            # this specific (topic, partition). Partitions not listed in the dict
+            # fall back to "earliest" so callers don't have to enumerate every
+            # partition manually.
+            if isinstance(start_offset, dict):
+                task_start_offset = start_offset.get(topic_name, {}).get(
+                    partition_id, "earliest"
+                )
+            else:
+                task_start_offset = start_offset
 
             def create_kafka_read_fn(
                 topic_name: str = topic_name,
@@ -455,7 +533,7 @@ class KafkaDatasource(Datasource):
                 bootstrap_servers: List[str] = bootstrap_servers,
                 start_offset: Optional[
                     Union[int, datetime, Literal["earliest"]]
-                ] = start_offset,
+                ] = task_start_offset,
                 end_offset: Optional[
                     Union[int, datetime, Literal["latest"]]
                 ] = end_offset,
@@ -479,6 +557,7 @@ class KafkaDatasource(Datasource):
                     incrementally for efficient streaming processing.
                     """
                     from kafka import KafkaConsumer, TopicPartition
+                    from kafka.errors import OffsetOutOfRangeError
 
                     # Build consumer configuration
                     consumer_config = _build_consumer_config_for_read(
@@ -532,10 +611,23 @@ class KafkaDatasource(Datasource):
                                 (timeout_seconds - elapsed_time) * 1000
                             )
 
-                            # Poll for a batch of messages from Kafka
-                            msg_batch = consumer.poll(
-                                timeout_ms=min(remaining_timeout_ms, 10000),
-                            )
+                            # Poll for a batch of messages from Kafka.
+                            # OffsetOutOfRangeError is raised when the requested
+                            # start offset has been deleted by Kafka's retention
+                            # policy.  Surface a clear message so callers know
+                            # to use "earliest" or a more recent offset.
+                            try:
+                                msg_batch = consumer.poll(
+                                    timeout_ms=min(remaining_timeout_ms, 10000),
+                                )
+                            except OffsetOutOfRangeError as e:
+                                raise RuntimeError(
+                                    f"Requested start offset {start_off} for partition "
+                                    f"{partition_id} of topic '{topic_name}' is out of "
+                                    f"range. The data at this offset may have been deleted "
+                                    f"by Kafka's retention policy. Use start_offset="
+                                    f"'earliest' or a more recent integer offset."
+                                ) from e
 
                             if not msg_batch:
                                 continue
