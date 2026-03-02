@@ -35,7 +35,9 @@ def main(args):
         # o_comment NOT LIKE '%special%requests%'
         orders = orders.map_batches(
             lambda batch: batch.filter(
-                pc.invert(pc.match_substring_regex(batch["o_comment"], f"{word1}.*{word2}"))
+                pc.invert(
+                    pc.match_substring_regex(batch["o_comment"], f"{word1}.*{word2}")
+                )
             ),
             batch_format="pyarrow",
         )
