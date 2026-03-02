@@ -113,6 +113,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HAProxyManager",
+        "ProxyActor",
         "ServeReplica:app:f",
     }
 
@@ -154,6 +155,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
     actor_names = {
         "ServeController",
         "HAProxyManager",
+        "ProxyActor",
         "ServeReplica:app:f",
     }
 
