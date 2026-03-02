@@ -8,6 +8,7 @@ from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportMetadata,
 )
 from ray.experimental.gpu_object_manager.util import (
+    register_nixl_memory,
     register_tensor_transport,
 )
 
@@ -15,6 +16,7 @@ __all__ = [
     "GPUObjectManager",
     "wait_tensor_freed",
     "register_tensor_transport",
+    "register_nixl_memory",
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",

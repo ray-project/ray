@@ -479,5 +479,34 @@ def test_wait_tensor_freed_views(ray_start_regular):
     assert result == "Success"
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_register_nixl_memory(ray_start_regular):
+    """
+    Test that register_nixl_memory persists the NIXL memory registration when the object ref goes out of scope
+    """
+    from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+        NixlTensorTransport,
+    )
+
+    transport = NixlTensorTransport()
+    tensor = torch.tensor([1, 2, 3]).to("cuda")
+
+    transport.register_nixl_memory(tensor)
+    key = tensor.untyped_storage().data_ptr()
+    assert key in transport._tensor_desc_cache
+    assert transport._tensor_desc_cache[key].metadata_count == 1
+
+    # Simulate ray.put via extract_tensor_transport_metadata and bump the reference count
+    obj_id = "test_obj_id"
+    meta = transport.extract_tensor_transport_metadata(obj_id, [tensor])
+    assert transport._tensor_desc_cache[key].metadata_count == 2
+
+    # Simulate GC via garbage_collect and decrement the reference count
+    transport.garbage_collect(obj_id, meta, [tensor])
+    assert key in transport._tensor_desc_cache
+    # The reference count should be 1 due to being bumped by register_nixl_memory
+    assert transport._tensor_desc_cache[key].metadata_count == 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
