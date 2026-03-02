@@ -656,6 +656,18 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             ),
         )
 
+        # Compute shuffle task CPU, accounting for aggregator actor overhead to
+        # avoid resource deadlock on small clusters where the shuffle task (1.0
+        # CPU) + aggregator actors together exceed available CPUs.
+        total_aggregator_cpus = num_aggregators * ray_remote_args["num_cpus"]
+        self._shuffle_block_num_cpus = min(
+            self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
+            max(
+                self._DEFAULT_AGGREGATORS_MIN_CPUS,
+                total_available_cluster_resources.cpu - total_aggregator_cpus,
+            ),
+        )
+
         # We track the running usage total because iterating
         # and summing over all shuffling tasks can be expensive
         # if the # of shuffling tasks is large
@@ -744,7 +756,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             input_key_column_names = self._key_column_names[input_index]
             # Compose shuffling task resource bundle
             shuffle_task_resource_bundle = {
-                "num_cpus": self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
+                "num_cpus": self._shuffle_block_num_cpus,
                 "memory": self._estimate_shuffling_memory_req(
                     block_metadata,
                     target_max_block_size=(
@@ -1128,8 +1140,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
-            cpu=self._DEFAULT_SHUFFLE_BLOCK_NUM_CPUS,
-            # cpu=self._shuffle_block_ray_remote_args.get("num_cpus", 0),
+            cpu=self._shuffle_block_num_cpus,
             # TODO estimate (twice avg block size)
             object_store_memory=0,
             gpu=0,
