@@ -38,7 +38,17 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     # should move this to ray core and make it available to both libraries.
 
     if file not in [sys.stdout, sys.stderr, None]:
-        return _original_print(objects, sep=sep, end=end, file=file, flush=flush)
+        return _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
+
+    # If sys.stdout has been redirected (e.g. via contextlib.redirect_stdout()),
+    # fall back to the original print so the redirect target receives the output.
+    # Without this, libraries like smart_open that capture docstrings via
+    # redirect_stdout() at import time will have their output swallowed by
+    # the logger instead of being captured by the StringIO.
+    if file in (sys.stdout, None) and sys.stdout is not sys.__stdout__:
+        return _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
+    if file is sys.stderr and sys.stderr is not sys.__stderr__:
+        return _original_print(*objects, sep=sep, end=end, file=file, flush=flush)
 
     root_logger = logging.getLogger()
     message = sep.join(map(str, objects))
