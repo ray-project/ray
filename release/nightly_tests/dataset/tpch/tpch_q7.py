@@ -8,6 +8,32 @@ def main(args):
     def benchmark_fn():
         from datetime import datetime
 
+        # Q7: Volume Shipping Query
+        # Revenue between two nations by supplier nation, customer nation, and ship year.
+        #
+        # Equivalent SQL:
+        #   SELECT supp_nation, cust_nation, l_year,
+        #          SUM(l_extendedprice * (1 - l_discount)) AS revenue
+        #   FROM supplier, lineitem, orders, customer, nation n1, nation n2
+        #   WHERE s_suppkey = l_suppkey
+        #     AND o_orderkey = l_orderkey
+        #     AND c_custkey = o_custkey
+        #     AND s_nationkey = n1.n_nationkey
+        #     AND c_nationkey = n2.n_nationkey
+        #     AND (
+        #       (n1.n_name = 'FRANCE' AND n2.n_name = 'GERMANY')
+        #        OR
+        #       (n1.n_name = 'GERMANY' AND n2.n_name = 'FRANCE')
+        #     )
+        #     AND l_shipdate >= DATE '1995-01-01'
+        #     AND l_shipdate <  DATE '1997-01-01'
+        #   GROUP BY supp_nation, cust_nation, l_year
+        #   ORDER BY supp_nation, cust_nation, l_year;
+        #
+        # Note:
+        # This implementation first restricts nation to {FRANCE, GERMANY}, then joins
+        # customer/supplier paths separately and merges them through orders/lineitem.
+
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
         # TODO: Remove manual projection once we support proper projection derivation

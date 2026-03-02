@@ -8,6 +8,29 @@ def main(args):
     def benchmark_fn():
         from datetime import datetime
 
+        # Q5: Local Supplier Volume Query
+        # Revenue by nation for orders in a one-year window and a target region.
+        # Keep rows where customer nation == supplier nation, then aggregate revenue.
+        #
+        # Equivalent SQL:
+        #   SELECT n_name, SUM(l_extendedprice * (1 - l_discount)) AS revenue
+        #   FROM customer
+        #   JOIN orders   ON c_custkey = o_custkey
+        #   JOIN lineitem ON l_orderkey = o_orderkey
+        #   JOIN supplier ON l_suppkey = s_suppkey
+        #   JOIN nation   ON c_nationkey = n_nationkey
+        #   JOIN region   ON n_regionkey = r_regionkey
+        #   WHERE r_name = 'ASIA'
+        #     AND o_orderdate >= DATE '1994-01-01'
+        #     AND o_orderdate <  DATE '1995-01-01'
+        #     AND c_nationkey = s_nationkey
+        #   GROUP BY n_name
+        #   ORDER BY revenue DESC;
+        #
+        # Note:
+        # The physical join order below is a linear chain optimized for Ray Data:
+        # Region -> Nation -> Customer -> Orders -> Lineitem -> Supplier.
+
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
         # TODO: Remove manual projection once we support proper projection derivation
@@ -34,7 +57,7 @@ def main(args):
         # Filter region by name
         region_filtered = region.filter(expr=col("r_name") == "ASIA")
 
-        # Join region with nation (Ray join) to restrict to the target region
+        # 1) Region -> Nation: keep nations in target region
         nation_region = region_filtered.join(
             nation,
             num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
@@ -42,38 +65,21 @@ def main(args):
             on=("r_regionkey",),
             right_on=("n_regionkey",),
         )
+        nation_region = nation_region.select_columns(["n_nationkey", "n_name"])
 
-        # Keep only needed nation columns; avoid pre-join rename to prevent
-        # projection pushdown issues with Ray join
-        asia_for_supplier = nation_region.select_columns(["n_nationkey", "n_name"])
-        asia_for_customer = nation_region.select_columns(["n_nationkey", "n_name"])
-
-        # supplier ⋈ asia_for_supplier (Ray join), get supplier nations
-        supplier_nation = supplier.join(
-            asia_for_supplier,
-            num_partitions=16,
-            join_type="inner",
-            on=("s_nationkey",),
-            right_on=("n_nationkey",),
-        )
-        supplier_nation = (
-            supplier_nation.rename_columns({"n_name": "n_name_supp"})
-            .select_columns(["s_suppkey", "s_nationkey", "n_name_supp"])
-        )
-
-        # customer ⋈ asia_for_customer (Ray join), get customer nations
-        customer_nation = customer.join(
-            asia_for_customer,
+        # 2) Nation -> Customer: keep customers in target region nations
+        customer_region = customer.join(
+            nation_region,
             num_partitions=16,
             join_type="inner",
             on=("c_nationkey",),
             right_on=("n_nationkey",),
         )
-        customer_nation = (
-            customer_nation.rename_columns({"n_name": "n_name_cust"})
-            .select_columns(["c_custkey", "c_nationkey", "n_name_cust"])
+        customer_region = customer_region.select_columns(
+            ["c_custkey", "c_nationkey", "n_name"]
         )
 
+        # 3) Customer -> Orders: keep only target-year orders from those customers
         orders_filtered = orders.filter(
             expr=(
                 (col("o_orderdate") >= date)
@@ -81,13 +87,17 @@ def main(args):
             )
         )
         orders_customer = orders_filtered.join(
-            customer_nation,
+            customer_region,
             num_partitions=16,
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
         )
+        orders_customer = orders_customer.select_columns(
+            ["o_orderkey", "c_nationkey", "n_name"]
+        )
 
+        # 4) Orders -> Lineitem
         lineitem_orders = lineitem.join(
             orders_customer,
             num_partitions=16,
@@ -95,17 +105,19 @@ def main(args):
             on=("l_orderkey",),
             right_on=("o_orderkey",),
         )
+        lineitem_orders = lineitem_orders.select_columns(
+            ["l_suppkey", "l_extendedprice", "l_discount", "c_nationkey", "n_name"]
+        )
 
-        # lineitem_orders ⋈ supplier_nation (Ray join)
+        # 5) Lineitem -> Supplier
         ds = lineitem_orders.join(
-            supplier_nation,
+            supplier,
             num_partitions=16,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
         )
-
-        # Keep only local suppliers: customer and supplier share the same nation
+        # Apply local supplier constraint after supplier columns become available
         ds = ds.filter(expr=col("c_nationkey") == col("s_nationkey"))
 
         # Calculate revenue
@@ -114,9 +126,9 @@ def main(args):
             to_f64(col("l_extendedprice")) * (1 - to_f64(col("l_discount"))),
         )
 
-        # Aggregate by nation name (supplier nation)
+        # Aggregate by nation name
         _ = (
-            ds.groupby("n_name_supp")
+            ds.groupby("n_name")
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key="revenue", descending=True)
             .materialize()

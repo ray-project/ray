@@ -6,6 +6,32 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        # Q9: Product Type Profit Measure Query
+        # Profit by nation and order year for parts whose names contain "green".
+        #
+        # Equivalent SQL:
+        #   SELECT nation, o_year, SUM(amount) AS sum_profit
+        #   FROM (
+        #     SELECT n_name AS nation,
+        #            EXTRACT(YEAR FROM o_orderdate) AS o_year,
+        #            l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity
+        #                AS amount
+        #     FROM part, supplier, lineitem, partsupp, orders, nation
+        #     WHERE s_suppkey = l_suppkey
+        #       AND ps_suppkey = l_suppkey
+        #       AND ps_partkey = l_partkey
+        #       AND p_partkey = l_partkey
+        #       AND o_orderkey = l_orderkey
+        #       AND s_nationkey = n_nationkey
+        #       AND p_name LIKE '%green%'
+        #   ) AS profit
+        #   GROUP BY nation, o_year
+        #   ORDER BY nation, o_year DESC;
+        #
+        # Note:
+        # This implementation follows the same semantics with a multi-key join
+        # on (partkey, suppkey) between lineitem and partsupp-derived data.
+
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
         # TODO: Remove manual projection once we support proper projection derivation

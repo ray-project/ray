@@ -8,6 +8,37 @@ def main(args):
     def benchmark_fn():
         from datetime import datetime
 
+        # Q8: National Market Share Query
+        # For each year, compute a nation's market share within a target region and part type.
+        #
+        # Equivalent SQL:
+        #   SELECT o_year,
+        #          SUM(CASE WHEN nation = 'BRAZIL' THEN volume ELSE 0 END) / SUM(volume)
+        #              AS mkt_share
+        #   FROM (
+        #     SELECT EXTRACT(YEAR FROM o_orderdate) AS o_year,
+        #            l_extendedprice * (1 - l_discount) AS volume,
+        #            n2.n_name AS nation
+        #     FROM part, supplier, lineitem, orders, customer, nation n1, nation n2, region
+        #     WHERE p_partkey = l_partkey
+        #       AND s_suppkey = l_suppkey
+        #       AND l_orderkey = o_orderkey
+        #       AND o_custkey = c_custkey
+        #       AND c_nationkey = n1.n_nationkey
+        #       AND n1.n_regionkey = r_regionkey
+        #       AND r_name = 'AMERICA'
+        #       AND s_nationkey = n2.n_nationkey
+        #       AND o_orderdate >= DATE '1995-01-01'
+        #       AND o_orderdate <  DATE '1997-01-01'
+        #       AND p_type = 'ECONOMY ANODIZED STEEL'
+        #   ) AS all_nations
+        #   GROUP BY o_year
+        #   ORDER BY o_year;
+        #
+        # Note:
+        # The pipeline filters region/date/part type early, then computes
+        # volume and nation-specific volume in one pass before final aggregation.
+
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
         # TODO: Remove manual projection once we support proper projection derivation
