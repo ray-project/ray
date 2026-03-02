@@ -101,3 +101,10 @@ class DeploymentUnavailableError(RayServeException):
     @property
     def message(self) -> str:
         return f"{self._deployment_id} is unavailable because it failed to deploy."
+
+
+@PublicAPI(stability="alpha")
+class ReplicaUnavailableError(RayServeException):
+    """Raised when the selected replica is no longer available."""
+
+    pass

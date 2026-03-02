@@ -830,6 +830,19 @@ class RequestRouter(ABC):
             self._replica_queue_len_cache.update(replica_id, new_queue_len)
             self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
+    def on_replica_result_finished(self, replica_id: ReplicaID):
+        """Decrement queue length cache when a request finishes or is cancelled.
+
+        This is used when a reserved slot is released without being dispatched
+        (e.g., in choose_replica context manager cleanup).
+        """
+        if self._use_replica_queue_len_cache:
+            num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
+            if num_ongoing_requests > 0:
+                new_queue_len = num_ongoing_requests - 1
+                self._replica_queue_len_cache.update(replica_id, new_queue_len)
+                self._update_router_queue_len_gauge(replica_id, new_queue_len)
+
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
 
@@ -1012,7 +1025,10 @@ class RequestRouter(ABC):
                 # Include replicas whose queues are full as not in the cache so we will
                 # actively probe them. Otherwise we may end up in "deadlock" until their
                 # cache entries expire.
-                if queue_len is None or queue_len >= r.max_ongoing_requests:
+                # Account for reserved slots to ensure choose_replica guarantees
+                # that subsequent dispatch will not be rejected.
+                total_load = (queue_len or 0) + len(r._reserved_slots)
+                if queue_len is None or total_load >= r.max_ongoing_requests:
                     not_in_cache.append(r)
                 elif queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
@@ -1031,7 +1047,9 @@ class RequestRouter(ABC):
                     # None is returned if we failed to get the queue len.
                     continue
 
-                if queue_len < r.max_ongoing_requests and queue_len < lowest_queue_len:
+                # Account for reserved slots when checking availability
+                total_load = queue_len + len(r._reserved_slots)
+                if total_load < r.max_ongoing_requests and queue_len < lowest_queue_len:
                     lowest_queue_len = queue_len
                     chosen_replica_id = r.replica_id
         elif len(not_in_cache) > 0:
@@ -1331,7 +1349,9 @@ class RequestRouter(ABC):
         available_replicas = []
         for r in candidates:
             queue_len = self._replica_queue_len_cache.get(r.replica_id)
-            if queue_len is None or queue_len < r.max_ongoing_requests:
+            # Account for reserved slots when determining availability
+            total_load = (queue_len or 0) + len(r._reserved_slots)
+            if queue_len is None or total_load < r.max_ongoing_requests:
                 available_replicas.append(r)
 
         return available_replicas

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import pickle
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, Set
 
@@ -201,6 +202,10 @@ class RunningReplica:
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
         self._grpc_replica_wrapper = None
 
+        # Slot reservation tracking for choose_replica/dispatch pattern
+        # Maps slot_token -> True to track active reservations
+        self._reserved_slots: Set[str] = set()
+
     @property
     def replica_id(self) -> ReplicaID:
         """ID of this replica."""
@@ -297,3 +302,31 @@ class RunningReplica:
             return wrapper.send_request_java(pr)
 
         return wrapper.send_request_python(pr, with_rejection=with_rejection)
+
+    def reserve_slot(self) -> str:
+        """Reserve a slot on this replica for an upcoming request.
+
+        Returns a unique token that can be used to release the slot later.
+        This is used in the choose_replica/dispatch pattern to track
+        reservations that haven't been dispatched yet.
+
+        Note: This only tracks the reservation locally. The actual queue
+        length management is handled by the replica actor itself.
+        """
+        slot_token = str(uuid.uuid4())
+        self._reserved_slots.add(slot_token)
+        return slot_token
+
+    def release_slot(self, slot_token: str) -> None:
+        """Release a previously reserved slot.
+
+        This should be called if a request is not dispatched after
+        reserving a slot (e.g., due to an error or cancellation).
+        """
+        if slot_token in self._reserved_slots:
+            self._reserved_slots.discard(slot_token)
+        else:
+            logger.warning(
+                f"Attempted to release unknown slot token {slot_token} "
+                f"on replica {self.replica_id}"
+            )

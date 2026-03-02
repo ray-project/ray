@@ -339,5 +339,128 @@ def test_response_used_in_multiple_calls(serve_instance):
     assert h.remote().result(timeout_s=10) == ("((r1))", "((r1))")
 
 
+@pytest.mark.asyncio
+async def test_choose_replica_and_dispatch_single(serve_instance):
+    """Test choose_replica + dispatch for simple single selection pattern."""
+
+    @serve.deployment(num_replicas=2)
+    class Backend:
+        def process(self, msg: str):
+            from ray.serve.api import get_replica_context
+
+            replica_id = get_replica_context().replica_id.unique_id
+            return {"actual_replica_id": replica_id, "response": msg}
+
+    @serve.deployment
+    class SimpleProxy:
+        def __init__(self, backend: DeploymentHandle):
+            self.backend = backend
+
+        async def handle_request(self, request: str):
+            # Context manager ensures slot is released if dispatch fails or is skipped
+            async with self.backend.process.choose_replica(request) as selection:
+                assert selection.replica_id is not None
+                assert selection.node_ip is not None
+
+                # Dispatch to the selected replica
+                response = await self.backend.process.dispatch(selection, request)
+
+                # Return both the selection and the response for verification
+                return {"selected_replica_id": selection.replica_id, **response}
+
+    h = serve.run(SimpleProxy.bind(Backend.bind()))
+    result = await h.handle_request.remote("test_message")
+
+    # Verify the result contains the message
+    assert result["response"] == "test_message"
+
+    # Verify that dispatch sent the request to the replica we selected
+    assert result["actual_replica_id"] == result["selected_replica_id"], (
+        f"dispatch sent request to wrong replica: "
+        f"selected {result['selected_replica_id']}, but got response from {result['actual_replica_id']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_choose_replica_and_dispatch_parallel(serve_instance):
+    """Test parallel selection pattern (e.g., PD proxy) using AsyncExitStack."""
+    from contextlib import AsyncExitStack
+
+    @serve.deployment(num_replicas=2)
+    class PrefillServer:
+        def chat(self, msg: str):
+            from ray.serve.api import get_replica_context
+
+            replica_id = get_replica_context().replica_id.unique_id
+            return {"actual_replica_id": replica_id, "response": msg}
+
+    @serve.deployment(num_replicas=2)
+    class DecodeServer:
+        def chat(self, msg: str):
+            from ray.serve.api import get_replica_context
+
+            replica_id = get_replica_context().replica_id.unique_id
+            return {"actual_replica_id": replica_id, "response": msg}
+
+    @serve.deployment
+    class PDProxy:
+        def __init__(
+            self,
+            prefill_server: DeploymentHandle,
+            decode_server: DeploymentHandle,
+        ):
+            self.prefill = prefill_server
+            self.decode = decode_server
+
+        async def handle_request(self, request: str):
+            # Use AsyncExitStack to manage multiple context managers in parallel
+            async with AsyncExitStack() as stack:
+                #  Select and RESERVE replicas from BOTH deployments in parallel
+                p_selection, d_selection = await asyncio.gather(
+                    stack.enter_async_context(self.prefill.chat.choose_replica()),
+                    stack.enter_async_context(self.decode.chat.choose_replica()),
+                )
+
+                p_msg = f"prefill:{request}"
+                d_msg = f"decode:{request}"
+
+                # Dispatch to both selected replicas
+                p_result, d_result = await asyncio.gather(
+                    self.prefill.chat.dispatch(p_selection, p_msg),
+                    self.decode.chat.dispatch(d_selection, d_msg),
+                )
+                return {
+                    "prefill": {
+                        "selected_replica_id": p_selection.replica_id,
+                        **p_result,
+                    },
+                    "decode": {
+                        "selected_replica_id": d_selection.replica_id,
+                        **d_result,
+                    },
+                }
+
+    h = serve.run(PDProxy.bind(PrefillServer.bind(), DecodeServer.bind()))
+    result = await h.handle_request.remote("test_parallel")
+
+    assert result["prefill"]["response"] == "prefill:test_parallel"
+    assert result["decode"]["response"] == "decode:test_parallel"
+
+    # Verify that dispatch sent the request to the replica we selected
+    assert (
+        result["prefill"]["actual_replica_id"]
+        == result["prefill"]["selected_replica_id"]
+    ), (
+        f"dispatch sent request to wrong replica for prefill: "
+        f"selected {result['prefill']['selected_replica_id']}, but got response from {result['prefill']['actual_replica_id']}"
+    )
+    assert (
+        result["decode"]["actual_replica_id"] == result["decode"]["selected_replica_id"]
+    ), (
+        f"dispatch sent request to wrong replica for prefill: "
+        f"selected {result['decode']['selected_replica_id']}, but got response from {result['decode']['actual_replica_id']}"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
