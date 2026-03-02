@@ -26,8 +26,10 @@ def main(args):
         word1 = "special"
         word2 = "requests"
 
-        customers = load_table("customer", args.sf)
-        orders = load_table("orders", args.sf)
+        customers = load_table("customer", args.sf).select_columns(["c_custkey"])
+        orders = load_table("orders", args.sf).select_columns(
+            ["o_orderkey", "o_custkey", "o_comment"]
+        )
 
         # Filter out orders whose comment matches '%<word1>%<word2>%' before the join
         # o_comment NOT LIKE '%special%requests%'
