@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -12,7 +12,6 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
-from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
     COLLECTIVE_TIMEOUT_S_ENV_VAR,
     COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
@@ -40,6 +39,10 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import Synchronizati
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
+)
+from ray.train.v2._internal.execution.worker_group.execution_group import (
+    ExecutionGroup,
+    ReplicaGroup,
 )
 from ray.train.v2._internal.execution.worker_group.placement_group_handle import (
     DefaultPlacementGroupHandle,
@@ -81,8 +84,6 @@ from ray.util.tpu import (
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
-
 
 @dataclass(frozen=True)
 class WorkerGroupContext:
@@ -109,7 +110,7 @@ class WorkerGroupContext:
     num_slices: int = 1
 
 
-class WorkerGroup(BaseWorkerGroup):
+class WorkerGroup(ExecutionGroup):
     _worker_cls = RayTrainWorker
 
     @classmethod
@@ -169,6 +170,7 @@ class WorkerGroup(BaseWorkerGroup):
         ]
 
         self._worker_group_state: Optional[WorkerGroupState] = None
+        self._replica_groups: Optional[List[ReplicaGroup]] = None
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
@@ -320,6 +322,11 @@ class WorkerGroup(BaseWorkerGroup):
                 worker_group_context.resources_per_worker,
             )
             worker_group_state_builder.with_workers(workers)
+
+            self._replica_groups = [
+                ReplicaGroup([worker], worker_group_context.resources_per_worker)
+                for worker in workers
+            ]
 
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
@@ -669,64 +676,6 @@ class WorkerGroup(BaseWorkerGroup):
         return poll_tasks
 
     #####################################################################################
-    # Execution Methods
-    #####################################################################################
-
-    def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
-        """Execute ``func`` on each worker and return the futures.
-
-        Returns:
-            (List[ObjectRef]) A list of ``ObjectRef`` representing the
-                output of ``func`` from each worker. The order is the same
-                as ``self.workers``.
-
-        """
-        self._assert_active()
-        workers = self.get_workers()
-
-        return [worker.execute_async(fn, *fn_args, **fn_kwargs) for worker in workers]
-
-    def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> List[T]:
-        """Execute ``func`` on each worker and return the outputs of ``func``.
-
-        Returns:
-            (List[T]) A list containing the output of ``func`` from each
-                worker. The order is the same as ``self.workers``.
-
-        """
-        return ray.get(self.execute_async(fn, *fn_args, **fn_kwargs))
-
-    def execute_single_async(
-        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
-    ) -> ObjectRef:
-        """Execute ``func`` on worker with ``rank`` and return futures.
-
-        Returns:
-            (ObjectRef) An ObjectRef representing the output of func.
-
-        """
-        self._assert_active()
-        workers = self.get_workers()
-
-        if rank >= len(workers):
-            raise ValueError(
-                f"The provided {rank=} is " f"not valid for {len(workers)} workers."
-            )
-
-        return workers[rank].execute_async(fn, *fn_args, **fn_kwargs)
-
-    def execute_single(
-        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
-    ) -> T:
-        """Execute ``func`` on worker with ``rank``.
-
-        Returns:
-            (T) The output of func.
-
-        """
-        return ray.get(self.execute_single_async(rank, fn, *fn_args, **fn_kwargs))
-
-    #####################################################################################
     # Utility Methods
     #####################################################################################
 
@@ -764,9 +713,8 @@ class WorkerGroup(BaseWorkerGroup):
         self._assert_active()
         return self._latest_poll_status
 
-    def __len__(self) -> int:
-        self._assert_active()
-        return len(self.get_workers())
+    def get_replica_groups(self) -> Optional[List[ReplicaGroup]]:
+        return self._replica_groups
 
     def get_resources_per_worker(self) -> dict:
         """Get the resources allocated per worker."""
