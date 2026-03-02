@@ -2329,6 +2329,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_multi_stream_encoders",
+    size = "medium",
+    srcs = ["core/models/tests/test_multi_stream_encoders.py"],
+    tags = [
+        "core",
+        "models",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # RLModule
 py_test(
     name = "test_torch_rl_module",

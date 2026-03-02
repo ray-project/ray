@@ -257,19 +257,8 @@ class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
             The estimated Q-value for the input action for continuous action spaces.
             Or the Q-values for all actions for discrete action spaces.
         """
-        # Construct batch. Note, we need to feed observations and actions.
-        if isinstance(self.action_space, gym.spaces.Box):
-            actions = batch[Columns.ACTIONS]
-            qf_batch = {
-                Columns.OBS: torch.concat((batch[Columns.OBS], actions), dim=-1)
-            }
-        else:
-            # For discrete action spaces, we don't need to include the actions
-            # in the batch, as the Q function outputs the Q-values for each action
-            qf_batch = {Columns.OBS: batch[Columns.OBS]}
-
         # Encoder forward pass.
-        qf_encoder_outs = encoder(qf_batch)
+        qf_encoder_outs = encoder(batch)
 
         # Q head forward pass.
         # (B,latent_size) -> (B, 1|action_dim)

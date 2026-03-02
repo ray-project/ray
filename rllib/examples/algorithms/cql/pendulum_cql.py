@@ -2,6 +2,7 @@ import warnings
 from pathlib import Path
 
 from ray.rllib.algorithms.cql.cql import CQLConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -66,6 +67,14 @@ config = (
     .reporting(
         min_time_s_per_iteration=10,
         metrics_num_episodes_for_smoothing=5,
+    )
+    .rl_module(
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[256, 256],
+            fcnet_activation="relu",
+            fusionnet_hiddens=[256, 256, 256],
+            fusionnet_activation="relu",
+        )
     )
     .evaluation(
         evaluation_interval=3,
