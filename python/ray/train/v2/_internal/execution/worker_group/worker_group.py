@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -12,7 +12,6 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
-from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.constants import (
     COLLECTIVE_TIMEOUT_S_ENV_VAR,
     COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
@@ -41,6 +40,10 @@ from ray.train.v2._internal.execution.context import (
     DistributedContext,
     TrainRunContext,
 )
+from ray.train.v2._internal.execution.worker_group.execution_group import (
+    ExecutionGroup,
+    ReplicaGroup,
+)
 from ray.train.v2._internal.execution.worker_group.placement_group_handle import (
     DefaultPlacementGroupHandle,
     PlacementGroupHandle,
@@ -64,7 +67,6 @@ from ray.train.v2._internal.util import (
     ObjectRefWrapper,
     bundle_to_remote_args,
     invoke_context_managers,
-    ray_get_safe,
     time_monotonic,
 )
 from ray.train.v2.api.config import ScalingConfig
@@ -81,8 +83,6 @@ from ray.util.tpu import (
 )
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -110,7 +110,7 @@ class WorkerGroupContext:
     num_slices: int = 1
 
 
-class WorkerGroup(BaseWorkerGroup):
+class WorkerGroup(ExecutionGroup):
     _worker_cls = RayTrainWorker
 
     @classmethod
@@ -170,6 +170,7 @@ class WorkerGroup(BaseWorkerGroup):
         ]
 
         self._worker_group_state: Optional[WorkerGroupState] = None
+        self._replica_groups: Optional[List[ReplicaGroup]] = None
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
@@ -333,6 +334,11 @@ class WorkerGroup(BaseWorkerGroup):
                 f"{time_monotonic() - create_workers_start:.2f}s."
             )
 
+            self._replica_groups = [
+                ReplicaGroup([worker], worker_group_context.resources_per_worker)
+                for worker in workers
+            ]
+
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
             # To prevent the driver from crashing, catch all `RayActorError`s and
@@ -392,7 +398,7 @@ class WorkerGroup(BaseWorkerGroup):
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
         launch_start = time_monotonic()
-        ray_get_safe(
+        ray.get(
             [
                 worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
                 for worker in workers
@@ -465,9 +471,7 @@ class WorkerGroup(BaseWorkerGroup):
         ]
 
         try:
-            actor_metadatas = ray_get_safe(
-                [actor.get_metadata.remote() for actor in actors]
-            )
+            actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
         except RayActorError as actor_error:
             for actor in actors:
                 ray.kill(actor)
@@ -504,7 +508,7 @@ class WorkerGroup(BaseWorkerGroup):
             )
             for i, worker in enumerate(workers)
         ]
-        ray_get_safe(context_init_tasks)
+        ray.get(context_init_tasks)
 
         self._decorate_worker_log_file_paths(workers)
 
@@ -856,9 +860,8 @@ class WorkerGroup(BaseWorkerGroup):
         self._assert_active()
         return self._latest_poll_status
 
-    def __len__(self) -> int:
-        self._assert_active()
-        return len(self.get_workers())
+    def get_replica_groups(self) -> Optional[List[ReplicaGroup]]:
+        return self._replica_groups
 
     def get_resources_per_worker(self) -> dict:
         """Get the resources allocated per worker."""
@@ -879,7 +882,7 @@ class WorkerGroup(BaseWorkerGroup):
         pod_name_refs = [
             worker.execute_async(get_current_pod_name) for worker in workers
         ]
-        pod_names = ray_get_safe(pod_name_refs)
+        pod_names = ray.get(pod_name_refs)
 
         # Zip workers with names and sort by name.
         worker_name_pairs = list(zip(workers, pod_names))
@@ -942,7 +945,7 @@ class WorkerGroup(BaseWorkerGroup):
             worker.execute_async(get_train_application_worker_log_path)
             for worker in workers
         ]
-        log_paths = ray_get_safe(log_path_refs)
+        log_paths = ray.get(log_path_refs)
 
         # Assign log paths to workers
         for worker, log_path in zip(workers, log_paths):

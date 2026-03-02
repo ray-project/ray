@@ -3,7 +3,7 @@ import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, AsyncIterator, List, Tuple, Union
+from typing import Any, AsyncIterator, List, Optional, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -158,11 +158,32 @@ class gRPCProxyRequest(ProxyRequest):
         context: grpc._cython.cygrpc._ServicerContext,
         service_method: str,
         stream: bool,
+        *,
+        streaming_type: gRPCStreamingType = None,
+        request_iterator: Optional[AsyncIterator[Any]] = None,
     ):
         self._request_proto = request_proto
+        self._request_iterator = request_iterator
         self.context = context
         self.service_method = service_method
         self.stream = stream
+        # Determine streaming type based on parameters
+        if streaming_type is not None:
+            self.streaming_type = streaming_type
+        elif request_iterator is not None:
+            # Has input stream
+            self.streaming_type = (
+                gRPCStreamingType.STREAM_STREAM
+                if stream
+                else gRPCStreamingType.STREAM_UNARY
+            )
+        else:
+            # No input stream
+            self.streaming_type = (
+                gRPCStreamingType.UNARY_STREAM
+                if stream
+                else gRPCStreamingType.UNARY_UNARY
+            )
         self.app_name = ""
         self.request_id = None
         self.method_name = "__call__"
@@ -203,6 +224,19 @@ class gRPCProxyRequest(ProxyRequest):
     @property
     def is_health_request(self) -> bool:
         return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
+
+    @property
+    def has_input_stream(self) -> bool:
+        """Returns True if this request has a streaming input (client/bidi streaming)."""
+        return self.streaming_type in (
+            gRPCStreamingType.STREAM_UNARY,
+            gRPCStreamingType.STREAM_STREAM,
+        )
+
+    @property
+    def request_iterator(self) -> Optional[AsyncIterator[Any]]:
+        """Returns the request iterator for client/bidi streaming, or None."""
+        return self._request_iterator
 
     def send_request_id(self, request_id: str):
         # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
