@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
@@ -60,27 +60,22 @@ class AbstractOneToOne(LogicalOperator):
         return self.input_dependencies[0]
 
 
-@dataclass(frozen=True, repr=False, init=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for limit."""
 
+    input_op: InitVar[LogicalOperator]
     limit: int
     can_modify_num_rows: bool = field(init=False, default=True)
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        limit: int,
-    ):
+    def __post_init__(self, input_op: LogicalOperator):
         assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_name", f"limit={limit}")
+        object.__setattr__(self, "_name", f"limit={self.limit}")
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-        object.__setattr__(self, "can_modify_num_rows", True)
-        object.__setattr__(self, "limit", limit)
 
     def _apply_transform(
         self, transform: Callable[[LogicalOperator], LogicalOperator]
@@ -128,44 +123,33 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
-@dataclass(frozen=True, repr=False, init=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class Download(AbstractOneToOne):
     """Logical operator for download operation.
 
     Supports downloading from multiple URI columns in a single operation.
     """
 
+    input_op: InitVar[LogicalOperator]
     uri_column_names: List[str]
     output_bytes_column_names: List[str]
-    ray_remote_args: Dict[str, Any]
-    filesystem: Optional["pyarrow.fs.FileSystem"]
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None
     can_modify_num_rows: bool = field(init=False, default=False)
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        uri_column_names: List[str],
-        output_bytes_column_names: List[str],
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    ):
+    def __post_init__(self, input_op: LogicalOperator):
         assert isinstance(input_op, LogicalOperator), input_op
-        if len(uri_column_names) != len(output_bytes_column_names):
+        if len(self.uri_column_names) != len(self.output_bytes_column_names):
             raise ValueError(
-                f"Number of URI columns ({len(uri_column_names)}) must match "
-                f"number of output columns ({len(output_bytes_column_names)})"
+                f"Number of URI columns ({len(self.uri_column_names)}) must match "
+                f"number of output columns ({len(self.output_bytes_column_names)})"
             )
         object.__setattr__(self, "_name", "Download")
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-        object.__setattr__(self, "can_modify_num_rows", False)
-        object.__setattr__(self, "uri_column_names", uri_column_names)
-        object.__setattr__(self, "output_bytes_column_names", output_bytes_column_names)
-        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
-        object.__setattr__(self, "filesystem", filesystem)
 
     def _apply_transform(
         self, transform: Callable[[LogicalOperator], LogicalOperator]
