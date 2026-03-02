@@ -171,7 +171,6 @@ __all__ = [
     "read_delta",
     "read_delta_sharing_tables",
     "read_kafka",
-    "KafkaAuthConfig",
     "read_hudi",
     "read_iceberg",
     "read_images",
@@ -187,6 +186,7 @@ __all__ = [
     "read_unity_catalog",
     "read_videos",
     "read_webdataset",
+    "KafkaAuthConfig",
     "Preprocessor",
     "TFXReadOptions",
 ]

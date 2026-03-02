@@ -4370,6 +4370,7 @@ def read_kafka(
     start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
     end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
@@ -4428,7 +4429,11 @@ def read_kafka(
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
 
-        kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
+        kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
+        consumer_config: Confluent/librdkafka consumer configuration dict to
+            pass through directly to the underlying client. These options override
+            defaults and any mapped values from `kafka_auth_config`. The `bootstrap.servers` option is derived from `bootstrap_servers` and cannot be overridden here.
+            See https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html#pythonclient-configuration for more details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
@@ -4454,7 +4459,7 @@ def read_kafka(
 
     Raises:
         ValueError: If invalid parameters are provided.
-        ImportError: If kafka-python is not installed.
+        ImportError: If confluent-kafka is not installed.
     """  # noqa: E501
     if trigger != "once":
         raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
@@ -4466,6 +4471,7 @@ def read_kafka(
             start_offset=start_offset,
             end_offset=end_offset,
             kafka_auth_config=kafka_auth_config,
+            consumer_config=consumer_config,
             timeout_ms=timeout_ms,
         ),
         parallelism=-1,
