@@ -189,9 +189,23 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
 
     async fn drain_node(
         &self,
-        _req: Request<rpc::DrainNodeRequest>,
+        req: Request<rpc::DrainNodeRequest>,
     ) -> Result<Response<rpc::DrainNodeReply>, Status> {
-        Ok(Response::new(rpc::DrainNodeReply::default()))
+        let request = req.into_inner();
+        let mut drain_node_status = Vec::new();
+        for data in &request.drain_node_data {
+            let node_id = ray_common::id::NodeID::from_binary(
+                data.node_id.as_slice(),
+            );
+            self.node_manager.handle_drain_node(&node_id, 0);
+            drain_node_status.push(rpc::DrainNodeStatus {
+                node_id: data.node_id.clone(),
+            });
+        }
+        Ok(Response::new(rpc::DrainNodeReply {
+            drain_node_status,
+            ..Default::default()
+        }))
     }
 
     async fn get_all_node_info(
@@ -205,9 +219,22 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
         &self,
         _req: Request<rpc::GetAllNodeAddressAndLivenessRequest>,
     ) -> Result<Response<rpc::GetAllNodeAddressAndLivenessReply>, Status> {
-        Ok(Response::new(
-            rpc::GetAllNodeAddressAndLivenessReply::default(),
-        ))
+        let all_nodes = self.node_manager.handle_get_all_node_info();
+        let node_info_list = all_nodes
+            .into_iter()
+            .map(|node| rpc::GcsNodeAddressAndLiveness {
+                node_id: node.node_id.clone(),
+                node_manager_address: node.node_manager_address.clone(),
+                node_manager_port: node.node_manager_port,
+                object_manager_port: node.object_manager_port,
+                state: node.state,
+                death_info: node.death_info.clone(),
+            })
+            .collect();
+        Ok(Response::new(rpc::GetAllNodeAddressAndLivenessReply {
+            node_info_list,
+            ..Default::default()
+        }))
     }
 
     async fn check_alive(
@@ -508,9 +535,26 @@ impl rpc::internal_kv_gcs_service_server::InternalKvGcsService for InternalKVGcs
 
     async fn internal_kv_multi_get(
         &self,
-        _req: Request<rpc::InternalKvMultiGetRequest>,
+        req: Request<rpc::InternalKvMultiGetRequest>,
     ) -> Result<Response<rpc::InternalKvMultiGetReply>, Status> {
-        Ok(Response::new(rpc::InternalKvMultiGetReply::default()))
+        let request = req.into_inner();
+        let mut results = Vec::new();
+        for key in &request.keys {
+            if let Some(value) = self
+                .kv_manager
+                .handle_get(&request.namespace, key)
+                .await?
+            {
+                results.push(rpc::MapFieldEntry {
+                    key: key.clone(),
+                    value,
+                });
+            }
+        }
+        Ok(Response::new(rpc::InternalKvMultiGetReply {
+            results,
+            ..Default::default()
+        }))
     }
 
     async fn internal_kv_put(
@@ -567,8 +611,14 @@ pub struct WorkerInfoGcsServiceImpl {
 impl rpc::worker_info_gcs_service_server::WorkerInfoGcsService for WorkerInfoGcsServiceImpl {
     async fn report_worker_failure(
         &self,
-        _req: Request<rpc::ReportWorkerFailureRequest>,
+        req: Request<rpc::ReportWorkerFailureRequest>,
     ) -> Result<Response<rpc::ReportWorkerFailureReply>, Status> {
+        let request = req.into_inner();
+        if let Some(worker_failure) = request.worker_failure {
+            self.worker_manager
+                .handle_report_worker_failure(worker_failure)
+                .await?;
+        }
         Ok(Response::new(rpc::ReportWorkerFailureReply::default()))
     }
 
@@ -576,20 +626,36 @@ impl rpc::worker_info_gcs_service_server::WorkerInfoGcsService for WorkerInfoGcs
         &self,
         _req: Request<rpc::GetWorkerInfoRequest>,
     ) -> Result<Response<rpc::GetWorkerInfoReply>, Status> {
+        // Single worker lookup not yet supported; return empty.
         Ok(Response::new(rpc::GetWorkerInfoReply::default()))
     }
 
     async fn get_all_worker_info(
         &self,
-        _req: Request<rpc::GetAllWorkerInfoRequest>,
+        req: Request<rpc::GetAllWorkerInfoRequest>,
     ) -> Result<Response<rpc::GetAllWorkerInfoReply>, Status> {
-        Ok(Response::new(rpc::GetAllWorkerInfoReply::default()))
+        let request = req.into_inner();
+        let limit = request.limit.filter(|&l| l > 0).map(|l| l as usize);
+        let workers = self
+            .worker_manager
+            .handle_get_all_worker_info(limit)
+            .await?;
+        Ok(Response::new(rpc::GetAllWorkerInfoReply {
+            worker_table_data: workers,
+            ..Default::default()
+        }))
     }
 
     async fn add_worker_info(
         &self,
-        _req: Request<rpc::AddWorkerInfoRequest>,
+        req: Request<rpc::AddWorkerInfoRequest>,
     ) -> Result<Response<rpc::AddWorkerInfoReply>, Status> {
+        let request = req.into_inner();
+        if let Some(worker_data) = request.worker_data {
+            self.worker_manager
+                .handle_add_worker_info(worker_data)
+                .await?;
+        }
         Ok(Response::new(rpc::AddWorkerInfoReply::default()))
     }
 
@@ -624,43 +690,89 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
 {
     async fn create_placement_group(
         &self,
-        _req: Request<rpc::CreatePlacementGroupRequest>,
+        req: Request<rpc::CreatePlacementGroupRequest>,
     ) -> Result<Response<rpc::CreatePlacementGroupReply>, Status> {
+        let request = req.into_inner();
+        if let Some(spec) = request.placement_group_spec {
+            // Convert PlacementGroupSpec to PlacementGroupTableData for storage.
+            let pg_data = rpc::PlacementGroupTableData {
+                placement_group_id: spec.placement_group_id,
+                name: spec.name,
+                bundles: spec.bundles,
+                strategy: spec.strategy,
+                creator_job_id: spec.creator_job_id,
+                creator_actor_id: spec.creator_actor_id,
+                creator_job_dead: spec.creator_job_dead,
+                creator_actor_dead: spec.creator_actor_dead,
+                is_detached: spec.is_detached,
+                ..Default::default()
+            };
+            self.placement_group_manager
+                .handle_create_placement_group(pg_data)
+                .await?;
+        }
         Ok(Response::new(rpc::CreatePlacementGroupReply::default()))
     }
 
     async fn remove_placement_group(
         &self,
-        _req: Request<rpc::RemovePlacementGroupRequest>,
+        req: Request<rpc::RemovePlacementGroupRequest>,
     ) -> Result<Response<rpc::RemovePlacementGroupReply>, Status> {
+        let request = req.into_inner();
+        self.placement_group_manager
+            .handle_remove_placement_group(&request.placement_group_id)
+            .await?;
         Ok(Response::new(rpc::RemovePlacementGroupReply::default()))
     }
 
     async fn get_placement_group(
         &self,
-        _req: Request<rpc::GetPlacementGroupRequest>,
+        req: Request<rpc::GetPlacementGroupRequest>,
     ) -> Result<Response<rpc::GetPlacementGroupReply>, Status> {
-        Ok(Response::new(rpc::GetPlacementGroupReply::default()))
+        let request = req.into_inner();
+        let pg = self
+            .placement_group_manager
+            .handle_get_placement_group(&request.placement_group_id);
+        Ok(Response::new(rpc::GetPlacementGroupReply {
+            placement_group_table_data: pg,
+            ..Default::default()
+        }))
     }
 
     async fn get_named_placement_group(
         &self,
-        _req: Request<rpc::GetNamedPlacementGroupRequest>,
+        req: Request<rpc::GetNamedPlacementGroupRequest>,
     ) -> Result<Response<rpc::GetNamedPlacementGroupReply>, Status> {
-        Ok(Response::new(rpc::GetNamedPlacementGroupReply::default()))
+        let request = req.into_inner();
+        let pg = self
+            .placement_group_manager
+            .handle_get_named_placement_group(&request.name, &request.ray_namespace);
+        Ok(Response::new(rpc::GetNamedPlacementGroupReply {
+            placement_group_table_data: pg,
+            ..Default::default()
+        }))
     }
 
     async fn get_all_placement_group(
         &self,
-        _req: Request<rpc::GetAllPlacementGroupRequest>,
+        req: Request<rpc::GetAllPlacementGroupRequest>,
     ) -> Result<Response<rpc::GetAllPlacementGroupReply>, Status> {
-        Ok(Response::new(rpc::GetAllPlacementGroupReply::default()))
+        let request = req.into_inner();
+        let limit = request.limit.filter(|&l| l > 0).map(|l| l as usize);
+        let pgs = self
+            .placement_group_manager
+            .handle_get_all_placement_groups(limit);
+        Ok(Response::new(rpc::GetAllPlacementGroupReply {
+            placement_group_table_data: pgs,
+            ..Default::default()
+        }))
     }
 
     async fn wait_placement_group_until_ready(
         &self,
         _req: Request<rpc::WaitPlacementGroupUntilReadyRequest>,
     ) -> Result<Response<rpc::WaitPlacementGroupUntilReadyReply>, Status> {
+        // TODO: implement async wait with channel pattern (like actor creation)
         Ok(Response::new(
             rpc::WaitPlacementGroupUntilReadyReply::default(),
         ))
@@ -681,30 +793,78 @@ impl rpc::node_resource_info_gcs_service_server::NodeResourceInfoGcsService
         &self,
         _req: Request<rpc::GetAllAvailableResourcesRequest>,
     ) -> Result<Response<rpc::GetAllAvailableResourcesReply>, Status> {
-        Ok(Response::new(
-            rpc::GetAllAvailableResourcesReply::default(),
-        ))
+        let resources = self.resource_manager.handle_get_all_available_resources();
+        let resources_list = resources
+            .into_iter()
+            .map(|(node_id, available)| rpc::AvailableResources {
+                node_id: node_id.binary().to_vec(),
+                resources_available: available,
+            })
+            .collect();
+        Ok(Response::new(rpc::GetAllAvailableResourcesReply {
+            resources_list,
+            ..Default::default()
+        }))
     }
 
     async fn get_all_total_resources(
         &self,
         _req: Request<rpc::GetAllTotalResourcesRequest>,
     ) -> Result<Response<rpc::GetAllTotalResourcesReply>, Status> {
-        Ok(Response::new(rpc::GetAllTotalResourcesReply::default()))
+        let resources = self.resource_manager.handle_get_all_total_resources();
+        let resources_list = resources
+            .into_iter()
+            .map(|(node_id, total)| rpc::TotalResources {
+                node_id: node_id.binary().to_vec(),
+                resources_total: total,
+            })
+            .collect();
+        Ok(Response::new(rpc::GetAllTotalResourcesReply {
+            resources_list,
+            ..Default::default()
+        }))
     }
 
     async fn get_all_resource_usage(
         &self,
         _req: Request<rpc::GetAllResourceUsageRequest>,
     ) -> Result<Response<rpc::GetAllResourceUsageReply>, Status> {
-        Ok(Response::new(rpc::GetAllResourceUsageReply::default()))
+        // Return a batch of resource usage, one per node.
+        let all_usage = self.resource_manager.get_all_resource_usage();
+        let batch = rpc::ResourceUsageBatchData {
+            batch: all_usage
+                .into_iter()
+                .map(|(node_id, usage)| rpc::ResourcesData {
+                    node_id: node_id.binary().to_vec(),
+                    resources_available: usage.available_resources,
+                    resources_total: usage.total_resources,
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        };
+        Ok(Response::new(rpc::GetAllResourceUsageReply {
+            resource_usage_data: Some(batch),
+            ..Default::default()
+        }))
     }
 
     async fn get_draining_nodes(
         &self,
         _req: Request<rpc::GetDrainingNodesRequest>,
     ) -> Result<Response<rpc::GetDrainingNodesReply>, Status> {
-        Ok(Response::new(rpc::GetDrainingNodesReply::default()))
+        let draining = self.resource_manager.handle_get_draining_nodes();
+        let draining_nodes = draining
+            .into_iter()
+            .map(|nid| rpc::DrainingNode {
+                node_id: nid.binary().to_vec(),
+                draining_deadline_timestamp_ms: 0,
+            })
+            .collect();
+        Ok(Response::new(rpc::GetDrainingNodesReply {
+            draining_nodes,
+            ..Default::default()
+        }))
     }
 }
 
@@ -808,16 +968,61 @@ pub struct TaskInfoGcsServiceImpl {
 impl rpc::task_info_gcs_service_server::TaskInfoGcsService for TaskInfoGcsServiceImpl {
     async fn add_task_event_data(
         &self,
-        _req: Request<rpc::AddTaskEventDataRequest>,
+        req: Request<rpc::AddTaskEventDataRequest>,
     ) -> Result<Response<rpc::AddTaskEventDataReply>, Status> {
+        let request = req.into_inner();
+        if let Some(data) = request.data {
+            self.task_manager.handle_add_task_event_data(data);
+        }
         Ok(Response::new(rpc::AddTaskEventDataReply::default()))
     }
 
     async fn get_task_events(
         &self,
-        _req: Request<rpc::GetTaskEventsRequest>,
+        req: Request<rpc::GetTaskEventsRequest>,
     ) -> Result<Response<rpc::GetTaskEventsReply>, Status> {
-        Ok(Response::new(rpc::GetTaskEventsReply::default()))
+        let request = req.into_inner();
+
+        let limit = request.limit.filter(|&l| l > 0).map(|l| l as usize);
+
+        // Extract job_id and task_ids from filters if present.
+        let mut job_id = None;
+        let mut task_ids_vec: Vec<ray_common::id::TaskID> = Vec::new();
+
+        if let Some(ref filters) = request.filters {
+            // Use the first job filter if present.
+            if let Some(jf) = filters.job_filters.first() {
+                if !jf.job_id.is_empty() {
+                    job_id = Some(ray_common::id::JobID::from_binary(
+                        jf.job_id.as_slice(),
+                    ));
+                }
+            }
+            // Collect task filters.
+            for tf in &filters.task_filters {
+                if !tf.task_id.is_empty() {
+                    task_ids_vec.push(ray_common::id::TaskID::from_binary(
+                        tf.task_id.as_slice(),
+                    ));
+                }
+            }
+        }
+
+        let task_ids = if task_ids_vec.is_empty() {
+            None
+        } else {
+            Some(task_ids_vec)
+        };
+
+        let events = self.task_manager.handle_get_task_events(
+            job_id.as_ref(),
+            task_ids.as_deref(),
+            limit,
+        );
+        Ok(Response::new(rpc::GetTaskEventsReply {
+            events_by_task: events,
+            ..Default::default()
+        }))
     }
 }
 
@@ -825,6 +1030,7 @@ impl rpc::task_info_gcs_service_server::TaskInfoGcsService for TaskInfoGcsServic
 
 pub struct AutoscalerStateServiceImpl {
     pub autoscaler_state_manager: Arc<GcsAutoscalerStateManager>,
+    pub node_manager: Arc<GcsNodeManager>,
 }
 
 #[tonic::async_trait]
@@ -890,16 +1096,31 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
         &self,
         _req: Request<rpc::autoscaler::GetClusterStatusRequest>,
     ) -> Result<Response<rpc::autoscaler::GetClusterStatusReply>, Status> {
-        Ok(Response::new(
-            rpc::autoscaler::GetClusterStatusReply::default(),
-        ))
+        let (version, node_states) = self
+            .autoscaler_state_manager
+            .handle_get_cluster_resource_state();
+        Ok(Response::new(rpc::autoscaler::GetClusterStatusReply {
+            cluster_resource_state: Some(rpc::autoscaler::ClusterResourceState {
+                cluster_resource_state_version: version,
+                node_states,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
     }
 
     async fn drain_node(
         &self,
-        _req: Request<rpc::autoscaler::DrainNodeRequest>,
+        req: Request<rpc::autoscaler::DrainNodeRequest>,
     ) -> Result<Response<rpc::autoscaler::DrainNodeReply>, Status> {
-        Ok(Response::new(rpc::autoscaler::DrainNodeReply::default()))
+        let request = req.into_inner();
+        let node_id = ray_common::id::NodeID::from_binary(request.node_id.as_slice());
+        self.node_manager
+            .handle_drain_node(&node_id, request.deadline_timestamp_ms);
+        Ok(Response::new(rpc::autoscaler::DrainNodeReply {
+            is_accepted: true,
+            ..Default::default()
+        }))
     }
 }
 

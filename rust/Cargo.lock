@@ -1490,6 +1490,7 @@ dependencies = [
  "ray-observability",
  "ray-proto",
  "ray-pubsub",
+ "ray-raylet",
  "ray-raylet-rpc-client",
  "ray-rpc",
  "ray-stats",
@@ -1498,7 +1499,9 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "tonic",
+ "tonic-health",
  "tracing",
 ]
 
@@ -1590,6 +1593,8 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
+ "tonic",
  "tracing",
 ]
 

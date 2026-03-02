@@ -17,12 +17,13 @@ use std::sync::Arc;
 
 use tonic::{Request, Response, Status};
 
-use ray_common::id::PlacementGroupID;
+use ray_common::id::{JobID, PlacementGroupID};
 use ray_common::scheduling::{FixedPoint, ResourceSet};
 use ray_proto::ray::rpc;
 
 use crate::lease_manager::{LeaseReply, SchedulingClass};
 use crate::node_manager::NodeManager;
+use crate::worker_pool::Language;
 use crate::placement_group_resource_manager::BundleID;
 use crate::scheduling_resources::SchedulingOptions;
 
@@ -224,9 +225,28 @@ impl NodeManagerServiceImpl {
         &self,
         request: rpc::PrestartWorkersRequest,
     ) -> Result<rpc::PrestartWorkersReply, Status> {
-        tracing::debug!("PrestartWorkers received");
-        let _ = request;
-        // Worker prestart is a hint — acknowledged but not yet implemented
+        let language = match request.language {
+            x if x == rpc::Language::Python as i32 => Language::Python,
+            x if x == rpc::Language::Java as i32 => Language::Java,
+            x if x == rpc::Language::Cpp as i32 => Language::Cpp,
+            _ => Language::Python,
+        };
+        let job_id = request
+            .job_id
+            .as_ref()
+            .map(|b| JobID::from_binary(b))
+            .unwrap_or_else(|| JobID::from_int(0));
+
+        tracing::debug!(?language, job_id = %job_id.hex(), "PrestartWorkers");
+
+        // Ensure the job is active so pop_worker can succeed later.
+        self.node_manager.worker_pool().handle_job_started(job_id);
+
+        // Start one worker process for the requested language.
+        let worker_id = self.node_manager.worker_pool().start_worker_process(language, &job_id);
+        if let Some(wid) = worker_id {
+            tracing::info!(worker_id = %wid.hex(), "Prestarted worker");
+        }
         Ok(rpc::PrestartWorkersReply::default())
     }
 
@@ -462,6 +482,18 @@ impl NodeManagerServiceImpl {
         request: rpc::ShutdownRayletRequest,
     ) -> Result<rpc::ShutdownRayletReply, Status> {
         tracing::info!(graceful = request.graceful, "ShutdownRaylet received");
+        if !request.graceful {
+            // Non-graceful shutdown: drain with deadline 0 (immediate)
+            self.node_manager.handle_drain(0);
+        } else {
+            // Graceful: drain with a reasonable deadline
+            let deadline = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64
+                + 30_000;
+            self.node_manager.handle_drain(deadline);
+        }
         Ok(rpc::ShutdownRayletReply::default())
     }
 
@@ -570,7 +602,13 @@ impl NodeManagerServiceImpl {
         &self,
         request: rpc::KillLocalActorRequest,
     ) -> Result<rpc::KillLocalActorReply, Status> {
-        let _ = request;
+        tracing::info!(
+            actor_id = hex::encode(&request.intended_actor_id),
+            force_kill = request.force_kill,
+            "KillLocalActor received"
+        );
+        // TODO: once actor→worker mapping exists, disconnect the worker here.
+        // For now, acknowledged but no-op since WorkerInfo lacks actor_id.
         Ok(rpc::KillLocalActorReply::default())
     }
 
@@ -578,7 +616,12 @@ impl NodeManagerServiceImpl {
         &self,
         request: rpc::CancelLocalTaskRequest,
     ) -> Result<rpc::CancelLocalTaskReply, Status> {
-        let _ = request;
+        tracing::info!(
+            task_id = hex::encode(&request.intended_task_id),
+            force_kill = request.force_kill,
+            "CancelLocalTask received"
+        );
+        // TODO: once task→worker mapping exists, cancel the task here.
         Ok(rpc::CancelLocalTaskReply::default())
     }
 }

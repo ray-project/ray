@@ -469,3 +469,296 @@ async fn test_gcs_get_next_job_id_monotonic() {
     server.shutdown_tx.send(()).unwrap();
     server.join_handle.await.unwrap();
 }
+
+#[tokio::test]
+async fn test_gcs_worker_info_roundtrip() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::worker_info_gcs_service_client::WorkerInfoGcsServiceClient::new(channel);
+
+    // AddWorkerInfo
+    client
+        .add_worker_info(rpc::AddWorkerInfoRequest {
+            worker_data: Some(rpc::WorkerTableData {
+                worker_address: Some(rpc::Address {
+                    ip_address: "10.0.0.1".to_string(),
+                    port: 5000,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // GetAllWorkerInfo
+    let resp = client
+        .get_all_worker_info(rpc::GetAllWorkerInfoRequest::default())
+        .await
+        .unwrap();
+    let workers = resp.into_inner().worker_table_data;
+    assert_eq!(workers.len(), 1);
+    let addr = workers[0].worker_address.as_ref().unwrap();
+    assert_eq!(addr.ip_address, "10.0.0.1");
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_gcs_placement_group_roundtrip() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::placement_group_info_gcs_service_client::PlacementGroupInfoGcsServiceClient::new(
+            channel,
+        );
+
+    let pg_id = vec![10u8; 18]; // PlacementGroupID is 18 bytes
+
+    // CreatePlacementGroup
+    client
+        .create_placement_group(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "test-pg".to_string(),
+                strategy: 0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // GetPlacementGroup
+    let resp = client
+        .get_placement_group(rpc::GetPlacementGroupRequest {
+            placement_group_id: pg_id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let pg = resp.into_inner().placement_group_table_data.unwrap();
+    assert_eq!(pg.placement_group_id, pg_id);
+    assert_eq!(pg.name, "test-pg");
+
+    // GetAllPlacementGroup
+    let resp = client
+        .get_all_placement_group(rpc::GetAllPlacementGroupRequest::default())
+        .await
+        .unwrap();
+    assert_eq!(resp.into_inner().placement_group_table_data.len(), 1);
+
+    // RemovePlacementGroup
+    client
+        .remove_placement_group(rpc::RemovePlacementGroupRequest {
+            placement_group_id: pg_id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Verify removed
+    let resp = client
+        .get_placement_group(rpc::GetPlacementGroupRequest {
+            placement_group_id: pg_id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(resp.into_inner().placement_group_table_data.is_none());
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_gcs_node_address_and_liveness() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+
+    // Register a node
+    let node_id = vec![50u8; 28];
+    client
+        .register_node(rpc::RegisterNodeRequest {
+            node_info: Some(rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                state: 0, // ALIVE
+                node_manager_address: "10.0.0.2".to_string(),
+                node_manager_port: 6789,
+                object_manager_port: 7890,
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // GetAllNodeAddressAndLiveness
+    let resp = client
+        .get_all_node_address_and_liveness(
+            rpc::GetAllNodeAddressAndLivenessRequest::default(),
+        )
+        .await
+        .unwrap();
+    let nodes = resp.into_inner().node_info_list;
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0].node_id, node_id);
+    assert_eq!(nodes[0].node_manager_address, "10.0.0.2");
+    assert_eq!(nodes[0].node_manager_port, 6789);
+    assert_eq!(nodes[0].object_manager_port, 7890);
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_gcs_check_alive() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+
+    let node_id = vec![60u8; 28];
+    client
+        .register_node(rpc::RegisterNodeRequest {
+            node_info: Some(rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                state: 0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // CheckAlive — registered node
+    let resp = client
+        .check_alive(rpc::CheckAliveRequest {
+            node_ids: vec![node_id.clone()],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let alive = resp.into_inner().raylet_alive;
+    assert_eq!(alive, vec![true]);
+
+    // CheckAlive — unknown node
+    let resp = client
+        .check_alive(rpc::CheckAliveRequest {
+            node_ids: vec![vec![0u8; 28]],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp.into_inner().raylet_alive, vec![false]);
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_gcs_kv_multi_get() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::internal_kv_gcs_service_client::InternalKvGcsServiceClient::new(channel);
+
+    // Put two keys
+    for (k, v) in &[(b"k1".as_slice(), b"v1".as_slice()), (b"k2", b"v2")] {
+        client
+            .internal_kv_put(rpc::InternalKvPutRequest {
+                namespace: b"ns".to_vec(),
+                key: k.to_vec(),
+                value: v.to_vec(),
+                overwrite: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+    }
+
+    // MultiGet
+    let resp = client
+        .internal_kv_multi_get(rpc::InternalKvMultiGetRequest {
+            namespace: b"ns".to_vec(),
+            keys: vec![b"k1".to_vec(), b"k2".to_vec(), b"k_missing".to_vec()],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let results = resp.into_inner().results;
+    assert_eq!(results.len(), 2); // k_missing should not be returned
+    let keys: Vec<_> = results.iter().map(|e| e.key.clone()).collect();
+    assert!(keys.contains(&b"k1".to_vec()));
+    assert!(keys.contains(&b"k2".to_vec()));
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn test_gcs_drain_node() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+
+    // Register a node
+    let node_id = vec![70u8; 28];
+    client
+        .register_node(rpc::RegisterNodeRequest {
+            node_info: Some(rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                state: 0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // DrainNode (batched)
+    let resp = client
+        .drain_node(rpc::DrainNodeRequest {
+            drain_node_data: vec![rpc::DrainNodeData {
+                node_id: node_id.clone(),
+            }],
+        })
+        .await
+        .unwrap();
+    let inner = resp.into_inner();
+    assert_eq!(inner.drain_node_status.len(), 1);
+    assert_eq!(inner.drain_node_status[0].node_id, node_id);
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}

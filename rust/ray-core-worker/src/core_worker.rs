@@ -257,6 +257,10 @@ impl CoreWorker {
         &self.worker_address
     }
 
+    pub fn dependency_resolver(&self) -> &DependencyResolver {
+        &self.dependency_resolver
+    }
+
     /// Number of normal pending tasks.
     pub fn num_pending_normal_tasks(&self) -> usize {
         self.normal_task_submitter.num_pending_tasks()
@@ -270,6 +274,39 @@ impl CoreWorker {
     /// Number of tasks currently being executed by this worker.
     pub fn num_executing_tasks(&self) -> usize {
         self.task_receiver.num_executing()
+    }
+
+    /// Access the actor task submitter.
+    pub fn actor_task_submitter(&self) -> &ActorTaskSubmitter {
+        &self.actor_task_submitter
+    }
+
+    /// Connect an actor to a worker address, enabling task delivery.
+    ///
+    /// After connection, any pending tasks for this actor will be flushed.
+    pub fn connect_actor(&self, actor_id: &ActorID, address: Address) {
+        self.actor_task_submitter.connect_actor(actor_id, address);
+        self.actor_task_submitter.flush_actor_tasks(actor_id);
+    }
+
+    /// Set the callback used to send actor tasks to workers.
+    ///
+    /// This must be called before actor tasks can be delivered.
+    pub fn set_actor_task_send_callback(
+        &self,
+        callback: crate::actor_task_submitter::ActorTaskSendCallback,
+    ) {
+        self.actor_task_submitter.set_send_callback(callback);
+    }
+
+    /// Register a callback for executing incoming tasks.
+    ///
+    /// This must be called before the worker can handle PushTask RPCs.
+    pub fn set_task_execution_callback(
+        &self,
+        callback: crate::task_receiver::TaskExecutionCallback,
+    ) {
+        self.task_receiver.set_execute_callback(callback);
     }
 }
 

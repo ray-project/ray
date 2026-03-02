@@ -16,6 +16,7 @@
 //! 3. **PlasmaStore** — local shared-memory object store (mmap-based)
 
 pub mod common;
+pub mod grpc_service;
 pub mod object_buffer_pool;
 pub mod object_directory;
 pub mod object_manager;

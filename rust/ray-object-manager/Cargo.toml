@@ -10,6 +10,7 @@ ray-proto = { workspace = true }
 ray-common = { workspace = true }
 ray-util = { workspace = true }
 ray-rpc = { workspace = true }
+tonic = { workspace = true }
 tokio = { workspace = true }
 bytes = { workspace = true }
 nix = { workspace = true }
@@ -22,3 +23,4 @@ parking_lot = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+tokio-stream = { workspace = true }
