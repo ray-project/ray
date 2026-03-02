@@ -134,7 +134,11 @@ def _has_file_extension(path: str, extensions: Optional[List[str]]) -> bool:
         f".{ext.lower()}" if not ext.startswith(".") else ext.lower()
         for ext in extensions
     ]
-    return any(path.lower().endswith(ext) for ext in extensions)
+    # Ignore query components when checking extensions (for example,
+    # versioned object-store paths like `...parquet?versionId=...`).
+    # Keep `#` untouched because it can be part of object keys.
+    parsed_path = path.split("?", 1)[0]
+    return any(parsed_path.lower().endswith(ext) for ext in extensions)
 
 
 # Mapping from URI schemes to compatible filesystem type_name values.
