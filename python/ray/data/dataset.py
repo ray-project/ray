@@ -6438,6 +6438,10 @@ class Dataset:
         return [block_to_arrow.remote(block) for block in block_refs]
 
     @ConsumptionAPI(pattern="Args:")
+    @Deprecated(
+        warning=True,
+        message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+    )
     def to_random_access_dataset(
         self,
         key: str,

@@ -56,4 +56,5 @@ Deprecated API
   :nosignatures:
   :toctree: doc/
 
+  Dataset.to_random_access_dataset
   Dataset.iter_tf_batches

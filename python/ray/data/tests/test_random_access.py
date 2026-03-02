@@ -15,7 +15,10 @@ def test_basic(ray_start_regular_shared, pandas):
             lambda df: pyarrow.Table.from_pandas(df), batch_format="pandas"
         )
 
-    rad = ds.to_random_access_dataset("key", num_workers=1)
+    from ray.util.annotations import RayDeprecationWarning
+    
+    with pytest.warns(RayDeprecationWarning):
+        rad = ds.to_random_access_dataset("key", num_workers=1)
 
     def expected(i):
         return {"id": i, "key": i * 2, "embedding": i**2}
@@ -35,7 +38,10 @@ def test_basic(ray_start_regular_shared, pandas):
 def test_empty_blocks(ray_start_regular_shared):
     ds = ray.data.range(10).repartition(20)
     assert ds._plan.initial_num_blocks() == 20
-    rad = ds.to_random_access_dataset("id")
+    from ray.util.annotations import RayDeprecationWarning
+    
+    with pytest.warns(RayDeprecationWarning):
+        rad = ds.to_random_access_dataset("id")
     for i in range(10):
         assert ray.get(rad.get_async(i)) == {"id": i}
 
@@ -48,7 +54,10 @@ def test_errors(ray_start_regular_shared):
 
 def test_stats(ray_start_regular_shared):
     ds = ray.data.range(100, override_num_blocks=10)
-    rad = ds.to_random_access_dataset("id", num_workers=1)
+    from ray.util.annotations import RayDeprecationWarning
+    
+    with pytest.warns(RayDeprecationWarning):
+        rad = ds.to_random_access_dataset("id", num_workers=1)
     stats = rad.stats()
     assert "Accesses per worker: 0 min, 0 max, 0 mean" in stats, stats
     ray.get(rad.get_async(0))
