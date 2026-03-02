@@ -153,7 +153,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
-from ray.serve.context import GangContext, _get_in_flight_requests
+from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
@@ -161,6 +161,7 @@ from ray.serve.exceptions import (
     RayServeException,
     gRPCStatusError,
 )
+from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
     ASGIResponse,
@@ -272,6 +273,7 @@ ReplicaMetadata = Tuple[
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
+    Optional[GangContext],  # gang_context
 ]
 
 
@@ -1117,6 +1119,7 @@ class ReplicaBase(ABC):
             route_patterns,
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
+            self._gang_context,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
