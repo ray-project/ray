@@ -319,8 +319,8 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 proxies, 1 controller, 2 replicas, 1 signal actor
-    wait_for_condition(lambda: len(list_actors()) == 7)
+    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
+    wait_for_condition(lambda: len(list_actors()) == 8)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -360,7 +360,7 @@ async def test_drain_and_undrain_haproxy_manager(
         current_status = {
             status: proxy_status_list.count(status) for status in proxy_status_list
         }
-        return current_status == proxy_status_to_count, current_status
+        return current_status == proxy_status_to_count
 
     wait_for_condition(
         condition_predictor=check_proxy_status,
