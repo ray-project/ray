@@ -38,6 +38,7 @@ from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated import gcs_pb2
 from ray.core.generated.event_pb2 import Event as RayEvent
+from ray.exceptions import AuthenticationError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -367,6 +368,15 @@ class Monitor:
             except Exception:
                 logger.exception("Error parsing resource requests")
 
+    def recreate_gcs_client(self):
+        """Recreate a GCS Client and refresh state"""
+        self.gcs_client = GcsClient(self.gcs_address)
+        _initialize_internal_kv(self.gcs_client)
+        self._session_name = self.get_session_name(self.gcs_client)
+        logger.info(f"session_name: {self._session_name}")
+        if self.autoscaler:
+            self.autoscaler.gcs_client = self.gcs_client
+
     def _run(self):
         """Run the monitor loop."""
 
@@ -436,6 +446,16 @@ class Monitor:
                     _internal_kv_put(
                         ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True
                     )
+            except AuthenticationError as e:
+                if "WrongClusterID" in str(e):
+                    logger.warning("WrongClusterID detected, recreating GcsClient...")
+                    self.recreate_gcs_client()
+                elif self.retry_on_failure:
+                    logger.exception(
+                        "Monitor: AuthenticationError exception. Trying again..."
+                    )
+                else:
+                    raise
             except Exception:
                 # By default, do not exit the monitor on failure.
                 if self.retry_on_failure:
