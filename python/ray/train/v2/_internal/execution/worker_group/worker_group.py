@@ -64,7 +64,6 @@ from ray.train.v2._internal.util import (
     ObjectRefWrapper,
     bundle_to_remote_args,
     invoke_context_managers,
-    ray_get_safe,
     time_monotonic,
 )
 from ray.train.v2.api.config import ScalingConfig
@@ -355,7 +354,7 @@ class WorkerGroup(BaseWorkerGroup):
 
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
-        ray_get_safe(
+        ray.get(
             [
                 worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
                 for worker in workers
@@ -403,9 +402,7 @@ class WorkerGroup(BaseWorkerGroup):
         ]
 
         try:
-            actor_metadatas = ray_get_safe(
-                [actor.get_metadata.remote() for actor in actors]
-            )
+            actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
         except RayActorError as actor_error:
             for actor in actors:
                 ray.kill(actor)
@@ -442,7 +439,7 @@ class WorkerGroup(BaseWorkerGroup):
             )
             for i, worker in enumerate(workers)
         ]
-        ray_get_safe(context_init_tasks)
+        ray.get(context_init_tasks)
 
         self._decorate_worker_log_file_paths(workers)
 
@@ -697,7 +694,7 @@ class WorkerGroup(BaseWorkerGroup):
                 worker. The order is the same as ``self.workers``.
 
         """
-        return ray_get_safe(self.execute_async(fn, *fn_args, **fn_kwargs))
+        return ray.get(self.execute_async(fn, *fn_args, **fn_kwargs))
 
     def execute_single_async(
         self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
@@ -790,7 +787,7 @@ class WorkerGroup(BaseWorkerGroup):
         pod_name_refs = [
             worker.execute_async(get_current_pod_name) for worker in workers
         ]
-        pod_names = ray_get_safe(pod_name_refs)
+        pod_names = ray.get(pod_name_refs)
 
         # Zip workers with names and sort by name.
         worker_name_pairs = list(zip(workers, pod_names))
@@ -847,7 +844,7 @@ class WorkerGroup(BaseWorkerGroup):
             worker.execute_async(get_train_application_worker_log_path)
             for worker in workers
         ]
-        log_paths = ray_get_safe(log_path_refs)
+        log_paths = ray.get(log_path_refs)
 
         # Assign log paths to workers
         for worker, log_path in zip(workers, log_paths):
