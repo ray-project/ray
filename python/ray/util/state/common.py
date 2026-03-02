@@ -520,6 +520,8 @@ class ActorState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the actor.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    #: The fallback options for the label selector.
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -817,6 +819,7 @@ class TaskState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the task.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1638,6 +1641,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "placement_group_id",
                 "call_site",
                 "label_selector",
+                "fallback_strategy",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
