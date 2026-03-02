@@ -1141,7 +1141,7 @@ class TestGangChildSpawnPlacementGroup:
         assert len(gang_pgs_before) == 2
 
         # Kill the controller and wait for recovery
-        controller = _get_global_client()._controller
+        controller = serve.context._get_global_client()._controller
         ray.kill(controller, no_restart=False)
         wait_for_condition(check_apps_running, apps=["app"], timeout=60)
 
