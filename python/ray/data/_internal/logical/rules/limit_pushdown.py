@@ -6,6 +6,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, 
 from ray.data._internal.logical.operators import (
     AbstractMap,
     AbstractOneToOne,
+    Download,
     Limit,
     Union,
 )
@@ -199,6 +200,14 @@ class LimitPushdownRule(Rule):
 
         if isinstance(original_op, Limit):
             return Limit(new_input, original_op.limit)
+        if isinstance(original_op, Download):
+            return Download(
+                new_input,
+                uri_column_names=original_op.uri_column_names,
+                output_bytes_column_names=original_op.output_bytes_column_names,
+                ray_remote_args=original_op.ray_remote_args,
+                filesystem=original_op.filesystem,
+            )
 
         # Use copy and replace input dependencies approach
         new_op = copy.copy(original_op)
