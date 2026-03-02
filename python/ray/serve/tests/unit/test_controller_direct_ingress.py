@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 from unittest import mock
 
@@ -134,7 +135,7 @@ class FakeProxyStateManager:
         return self._grpc_options
 
     def get_fallback_proxy_targets(self):
-        return self._fallback_proxy_targets
+        return deepcopy(self._fallback_proxy_targets)
 
 
 class FakeReplicaStateContainer:
