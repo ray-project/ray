@@ -552,6 +552,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_resource_bundle: Optional[ExecutionResources] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -610,6 +611,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
+            task_resource_bundle=task_resource_bundle,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()
