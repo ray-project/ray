@@ -164,7 +164,7 @@ class ActorProxyWrapper(ProxyWrapper):
         except ValueError:
             addr = build_address(http_options.host, http_options.port)
             logger.info(
-                f"Starting proxy on node '{node_id}' listening on '{addr}'.",
+                f"Starting proxy '{name}' on node '{node_id}' listening on '{addr}'.",
                 extra={"log_to_stderr": False},
             )
 
@@ -872,7 +872,6 @@ class ProxyStateManager:
             and self._running_native_proxies
             and self._fallback_proxy_state is None
         ):
-            logger.info(f"Starting fallback proxy on head node '{node_id}'.")
             name = self._generate_actor_name(node_id=f"fallback-{node_id}")
 
             http_options = deepcopy(self._http_options)
