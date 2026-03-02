@@ -5,7 +5,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.experimental.gpu_object_manager.util import get_tensor_transport_manager
+from ray.experimental.rdt.util import get_tensor_transport_manager
 
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -383,7 +383,7 @@ def test_storage_level_overlapping_views_reference_count(ray_start_regular):
     single NIXL registration. When each tensor's ref goes out of scope via
     garbage_collect, the metadata_count decrements. After both are freed,
     the registration is removed."""
-    from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+    from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
     )
 

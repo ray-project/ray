@@ -843,7 +843,7 @@ class Worker:
                 "ray.ObjectRef in a list and call 'put' on it."
             )
         tensors = None
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             normalize_and_validate_tensor_transport,
             validate_one_sided,
         )

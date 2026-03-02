@@ -23,10 +23,10 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
 
-    from ray.experimental.gpu_object_manager.gpu_object_store import (
+    from ray.experimental.rdt.gpu_object_store import (
         GPUObjectStore,
     )
-    from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+    from ray.experimental.rdt.tensor_transport_manager import (
         CommunicatorMetadata,
         TensorTransportMetadata,
     )
@@ -141,7 +141,7 @@ class GPUObjectManager:
         self.actor_id_to_transports_registered: Dict[str, Union[ObjectRef, bool]] = {}
 
     def register_custom_transports_on_actor(self, actor: "ray.actor.ActorHandle"):
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             register_custom_tensor_transports_on_actor,
         )
 
@@ -164,7 +164,7 @@ class GPUObjectManager:
     def gpu_object_store(self) -> "ray.experimental.GPUObjectStore":
         with self._init_lock:
             if self._gpu_object_store is None:
-                from ray.experimental.gpu_object_manager.gpu_object_store import (
+                from ray.experimental.rdt.gpu_object_store import (
                     GPUObjectStore,
                 )
 
@@ -276,13 +276,13 @@ class GPUObjectManager:
         collective group if necessary.
         """
         from ray.experimental.collective import destroy_collective_group
-        from ray.experimental.gpu_object_manager.collective_tensor_transport import (
+        from ray.experimental.rdt.collective_tensor_transport import (
             CollectiveCommunicatorMetadata,
         )
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
+        from ray.experimental.rdt.gpu_object_store import (
             __ray_abort_transport__,
         )
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             get_tensor_transport_manager,
         )
 
@@ -428,10 +428,10 @@ class GPUObjectManager:
         Returns:
             None
         """
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
+        from ray.experimental.rdt.gpu_object_store import (
             __ray_fetch_gpu_object__,
         )
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             get_tensor_transport_manager,
             validate_one_sided,
         )
@@ -451,7 +451,7 @@ class GPUObjectManager:
             )
             self.gpu_object_store.add_object(obj_id, tensors)
         else:
-            from ray.experimental.gpu_object_manager.gpu_object_store import (
+            from ray.experimental.rdt.gpu_object_store import (
                 __ray_recv__,
             )
 
@@ -535,11 +535,11 @@ class GPUObjectManager:
         Returns:
             None
         """
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
+        from ray.experimental.rdt.gpu_object_store import (
             __ray_recv__,
             __ray_send__,
         )
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             get_tensor_transport_manager,
         )
 
@@ -690,7 +690,7 @@ class GPUObjectManager:
             self.free_object_primary_copy(object_id)
 
     def free_object_primary_copy(self, object_id: str):
-        from ray.experimental.gpu_object_manager.gpu_object_store import (
+        from ray.experimental.rdt.gpu_object_store import (
             __ray_free__,
         )
 
@@ -720,7 +720,7 @@ class GPUObjectManager:
         Returns:
             True if the actor has a communicator for the given tensor transport backend, False otherwise.
         """
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             get_tensor_transport_manager,
         )
 

@@ -3,15 +3,15 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
 import ray
 from ray._raylet import ObjectRef
-from ray.experimental.gpu_object_manager.collective_tensor_transport import (
+from ray.experimental.rdt.collective_tensor_transport import (
     GLOOTensorTransport,
     NCCLTensorTransport,
 )
-from ray.experimental.gpu_object_manager.cuda_ipc_transport import CudaIpcTransport
-from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+from ray.experimental.rdt.cuda_ipc_transport import CudaIpcTransport
+from ray.experimental.rdt.nixl_tensor_transport import (
     NixlTensorTransport,
 )
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
 )
@@ -168,7 +168,7 @@ def register_custom_tensor_transports_on_actor(
     def register_transport_on_actor(
         self, owner_transport_manager_info: Dict[str, TransportManagerInfo]
     ):
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             _ensure_default_transports_registered,
             register_tensor_transport,
             transport_manager_info,

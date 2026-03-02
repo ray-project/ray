@@ -684,7 +684,7 @@ class SerializationContext:
         Returns:
             Serialized value.
         """
-        from ray.experimental.gpu_object_manager.util import get_transport_data_type
+        from ray.experimental.rdt.util import get_transport_data_type
 
         def serialize(tensor):
             ctx = ray._private.worker.global_worker.get_serialization_context()
