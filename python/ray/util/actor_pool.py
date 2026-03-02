@@ -1,3 +1,4 @@
+from collections import deque
 from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
 
 import ray
@@ -58,7 +59,7 @@ class ActorPool:
         self._next_return_index = 0
 
         # next work depending when actors free
-        self._pending_submits = []
+        self._pending_submits = deque()
 
     def map(self, fn: Callable[["ray.actor.ActorHandle", V], Any], values: List[V]):
         """Apply the given function in parallel over the actors and values.
@@ -372,7 +373,7 @@ class ActorPool:
     def _return_actor(self, actor):
         self._idle_actors.append(actor)
         if self._pending_submits:
-            self.submit(*self._pending_submits.pop(0))
+            self.submit(*self._pending_submits.popleft())
 
     def has_free(self):
         """Returns whether there are any idle actors available.
