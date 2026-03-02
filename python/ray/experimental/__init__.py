@@ -5,6 +5,7 @@ from ray.experimental.gpu_object_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
     register_tensor_transport,
+    set_target_for_ref,
     wait_tensor_freed,
 )
 from ray.experimental.locations import get_local_object_locations, get_object_locations
@@ -19,4 +20,5 @@ __all__ = [
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",
+    "set_target_for_ref",
 ]

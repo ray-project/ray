@@ -21,7 +21,7 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.data._internal.compute import TaskPoolStrategy
+from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
@@ -77,6 +77,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.util import (
     _autodetect_parallelism,
+    get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
     merge_resources_to_ray_remote_args,
     ndarray_to_block,
@@ -391,8 +392,9 @@ def read_datasource(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
-    ray_remote_args: Dict[str, Any] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
+    compute: Optional[ComputeStrategy] = None,
     override_num_blocks: Optional[int] = None,
     **read_args,
 ) -> Dataset:
@@ -411,6 +413,11 @@ def read_datasource(
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
+        compute: The compute strategy to use for reading. Pass an
+            :class:`~ray.data.ActorPoolStrategy` instance to use an actor pool,
+            or a :class:`~ray.data.TaskPoolStrategy` instance (default) to use Ray tasks.
+            If not specified, defaults to ``TaskPoolStrategy(concurrency)``. If both
+            ``compute`` and ``concurrency`` are specified, ``concurrency`` takes precedence.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
@@ -420,6 +427,27 @@ def read_datasource(
 
     Returns:
         :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
+
+    Examples:
+        Read using default task-based execution:
+
+        >>> import ray
+        >>> from ray.data._internal.datasource.range_datasource import RangeDatasource
+        >>> datasource = RangeDatasource(n=1000, block_format="arrow")
+        >>> ds = ray.data.read_datasource(datasource) # doctest: +SKIP
+
+        Read using actors for stateful operations:
+
+        >>> from ray.data import ActorPoolStrategy
+        >>> ds = ray.data.read_datasource( # doctest: +SKIP
+        ...     datasource,
+        ...     compute=ActorPoolStrategy(size=4)  # Use 4 actors
+        ... )
+
+    .. note::
+        The use of `ActorPoolStrategy` is currently experimental and comes with caveats, such
+        as additional overhead due to limited operator fusion opportunities.
+
     """  # noqa: E501
     parallelism = _get_num_output_blocks(parallelism, override_num_blocks)
 
@@ -473,13 +501,16 @@ def read_datasource(
         metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
     )
+
+    compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
+
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
         parallelism=parallelism,
         num_outputs=len(read_tasks) if read_tasks else 0,
         ray_remote_args=ray_remote_args,
-        compute=TaskPoolStrategy(concurrency),
+        compute=compute_strategy,
     )
     execution_plan = ExecutionPlan(
         stats,

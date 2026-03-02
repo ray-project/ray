@@ -949,7 +949,7 @@ class ListApiResponse:
     #      v
     # - num_filtered
     #      |  With limiting,
-    #      |  set by min(`RAY_MAX_LIMIT_FROM_API_SERER`, <user-supplied limit>)
+    #      |  set by min(`RAY_MAX_LIMIT_FROM_API_SERVER`, <user-supplied limit>)
     #      v
     # - len(result)
 

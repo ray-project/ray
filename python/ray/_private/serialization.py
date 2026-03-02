@@ -232,6 +232,9 @@ class SerializationContext:
                         "This is likely because the object you're trying to borrow an object that was not created on the "
                         "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
                     )
+                # We don't want to send over any target buffers the user set
+                if gpu_object_meta.target_buffers:
+                    gpu_object_meta = gpu_object_meta._replace(target_buffers=None)
                 return _gpu_object_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),
