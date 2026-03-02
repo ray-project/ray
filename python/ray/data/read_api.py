@@ -2816,13 +2816,13 @@ def read_databricks_tables(
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource.databricks_credentials import (
-        resolve_credential_provider,
+        resolve_credential_provider_for_databricks_table,
     )
     from ray.data._internal.datasource.databricks_uc_datasource import (
         DatabricksUCDatasource,
     )
 
-    resolved_provider = resolve_credential_provider(
+    resolved_provider = resolve_credential_provider_for_databricks_table(
         credential_provider=credential_provider
     )
 
@@ -4252,20 +4252,12 @@ def read_unity_catalog(
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
     from ray.data._internal.datasource.databricks_credentials import (
-        StaticCredentialProvider,
-        resolve_credential_provider,
+        resolve_credential_provider_for_unity_catalog,
     )
 
-    # Resolve credentials: either from credential_provider or from url/token
-    if credential_provider is not None:
-        resolved_provider = resolve_credential_provider(credential_provider)
-    elif url is not None and token is not None:
-        # Backwards compatible: create provider from url/token
-        resolved_provider = StaticCredentialProvider(token=token, host=url)
-    else:
-        raise ValueError(
-            "Either 'credential_provider' or both 'url' and 'token' must be provided."
-        )
+    resolved_provider = resolve_credential_provider_for_unity_catalog(
+        credential_provider=credential_provider, url=url, token=token
+    )
 
     connector = UnityCatalogConnector(
         table_full_name=table,

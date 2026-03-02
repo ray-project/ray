@@ -203,7 +203,7 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
             self._token = token
 
 
-def resolve_credential_provider(
+def resolve_credential_provider_for_databricks_table(
     credential_provider: Optional[DatabricksCredentialProvider] = None,
 ) -> DatabricksCredentialProvider:
     """Resolve credential provider.
@@ -220,6 +220,38 @@ def resolve_credential_provider(
 
     # Fall back to environment variables
     return EnvironmentCredentialProvider()
+
+
+def resolve_credential_provider_for_unity_catalog(
+    credential_provider: Optional[DatabricksCredentialProvider] = None,
+    url: Optional[str] = None,
+    token: Optional[str] = None,
+) -> DatabricksCredentialProvider:
+    """Resolve credential provider for Unity Catalog.
+
+    Args:
+        credential_provider: An explicit credential provider instance.
+            If provided, this takes precedence over url/token.
+        url: The Databricks host URL. Must be provided together with token
+            if credential_provider is None.
+        token: The Databricks authentication token. Must be provided together
+            with url if credential_provider is None.
+
+    Returns:
+        A DatabricksCredentialProvider instance.
+
+    Raises:
+        ValueError: If neither credential_provider nor both url and token
+            are provided.
+    """
+    if credential_provider is not None:
+        return credential_provider
+    if url is not None and token is not None:
+        return StaticCredentialProvider(token=token, host=url)
+
+    raise ValueError(
+        "Either 'credential_provider' or both 'url' and 'token' must be provided."
+    )
 
 
 def build_headers(
