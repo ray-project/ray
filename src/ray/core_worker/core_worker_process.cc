@@ -573,8 +573,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::nullopt;
       },
       io_service_,
-      *scheduler_task_placement_time_percentile_ms_,
-      *scheduler_actor_placement_time_percentile_ms_);
+      *scheduler_placement_time_percentile_ms_);
 
   auto report_locality_data_callback = [this](
                                            const ObjectID &object_id,
@@ -827,10 +826,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
-  scheduler_task_placement_time_percentile_ms_ =
-      GetSchedulerTaskPlacementTimePercentileMsMetric();
-  scheduler_actor_placement_time_percentile_ms_ =
-      GetSchedulerActorPlacementTimePercentileMsMetric();
+  scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {

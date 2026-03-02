@@ -24,15 +24,11 @@ void PercentileMetric::Record(double value) {
   tracker_.Record(value);
 }
 
-void PercentileMetric::Record(double value, stats::TagsType /*tags*/) {
-  RAY_CHECK(false) << "PercentileMetric does not support per-record tags. Use separate "
-                      "PercentileMetric instances per workload type instead.";
-}
+void PercentileMetric::Record(double value, stats::TagsType /*tags*/) { Record(value); }
 
 void PercentileMetric::Record(
     double value, std::vector<std::pair<std::string_view, std::string>> /*tags*/) {
-  RAY_CHECK(false) << "PercentileMetric does not support per-record tags. Use separate "
-                      "PercentileMetric instances per workload type instead.";
+  Record(value);
 }
 
 void PercentileMetric::Flush() {
@@ -44,13 +40,6 @@ void PercentileMetric::Flush() {
   }
 
   if (old_histogram->GetCount() == 0) {
-    // No samples this window: reset gauges to 0 so stale values from a prior
-    // window are not mistaken for recent observations.
-    p50_gauge_.Record(0);
-    p95_gauge_.Record(0);
-    p99_gauge_.Record(0);
-    max_gauge_.Record(0);
-    mean_gauge_.Record(0);
     return;
   }
 

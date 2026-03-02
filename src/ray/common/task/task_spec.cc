@@ -612,15 +612,15 @@ bool TaskSpecification::IsRetriable() const {
 }
 
 void TaskSpecification::EmitTaskMetrics(
-    ray::observability::MetricInterface &task_metric,
-    ray::observability::MetricInterface &actor_metric) const {
+    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram) const {
   double duration_ms = GetMessage().lease_grant_timestamp_ms() -
                        GetMessage().dependency_resolution_timestamp_ms();
 
   if (IsActorCreationTask()) {
-    actor_metric.Record(duration_ms);
+    scheduler_placement_time_ms_histogram.Record(duration_ms,
+                                                 {{"WorkloadType", "Actor"}});
   } else {
-    task_metric.Record(duration_ms);
+    scheduler_placement_time_ms_histogram.Record(duration_ms, {{"WorkloadType", "Task"}});
   }
 }
 
