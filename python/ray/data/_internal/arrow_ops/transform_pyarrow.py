@@ -89,30 +89,28 @@ def _hash_partition(
     return partitions
 
 
-def hash_partition(
-    table: "pyarrow.Table",
-    *,
-    hash_cols: List[str],
-    num_partitions: int,
-) -> Dict[int, "pyarrow.Table"]:
-    """Hash-partitions provided Pyarrow `Table` into `num_partitions` based on
-    hash of the composed tuple of values from the provided columns list
-
-    NOTE: Since some partitions could be empty (due to skew in the table) this returns a
-          dictionary, rather than a list
-    """
-
-    import numpy as np
-
+def _short_circuit_partitioning(
+    table: "pyarrow.Table", num_partitions: int
+) -> Optional[Dict[int, "pyarrow.Table"]]:
     assert num_partitions > 0
 
     if table.num_rows == 0:
         return {}
     elif num_partitions == 1:
         return {0: table}
+    return None
 
-    projected_table = table.select(hash_cols)
-    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
+
+def _split_by_partition_ids(
+    table: "pyarrow.Table",
+    partitions_array: np.ndarray,
+    num_partitions: int,
+) -> Dict[int, "pyarrow.Table"]:
+    """Splits a table into partitions based on a pre-computed partition assignment
+    array. Returns a dict mapping partition id to the corresponding sub-table.
+
+    Empty partitions are omitted from the result.
+    """
     # For every partition compile list of indices of rows falling
     # under that partition
     indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
@@ -131,6 +129,50 @@ def hash_partition(
         for p, idx in enumerate(indices)
         if len(idx) > 0
     }
+
+
+def hash_partition(
+    table: "pyarrow.Table",
+    *,
+    hash_cols: List[str],
+    num_partitions: int,
+) -> Dict[int, "pyarrow.Table"]:
+    """Hash-partitions provided Pyarrow `Table` into `num_partitions` based on
+    hash of the composed tuple of values from the provided columns list
+
+    NOTE: Since some partitions could be empty (due to skew in the table) this returns a
+          dictionary, rather than a list
+    """
+
+    short_circuit_result = _short_circuit_partitioning(table, num_partitions)
+    if short_circuit_result is not None:
+        return short_circuit_result
+
+    projected_table = table.select(hash_cols)
+    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
+    return _split_by_partition_ids(table, partitions_array, num_partitions)
+
+
+def random_partition(
+    table: "pyarrow.Table",
+    *,
+    num_partitions: int,
+    seed: int,
+) -> Dict[int, "pyarrow.Table"]:
+    """Randomly partitions provided Pyarrow `Table` into `num_partitions` by
+    assigning each row to a random partition using the given seed.
+
+    NOTE: Since some partitions could be empty (due to randomness) this returns a
+          dictionary, rather than a list
+    """
+    short_circuit_result = _short_circuit_partitioning(table, num_partitions)
+    if short_circuit_result is not None:
+        return short_circuit_result
+
+    partitions_array = np.random.RandomState(seed).randint(
+        0, num_partitions, size=table.num_rows
+    )
+    return _split_by_partition_ids(table, partitions_array, num_partitions)
 
 
 def take_table(
