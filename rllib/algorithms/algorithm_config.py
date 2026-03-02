@@ -1284,8 +1284,12 @@ class AlgorithmConfig(_Config):
         )
         if self.add_default_connectors_to_learner_pipeline:
             # De-duplicate episode chunk IDs first so all downstream connectors
-            # see unique batch keys. Must be the first default connector.
-            pipeline.append(EpisodeIdDeduplication())
+            # (including custom ones) see unique batch keys. Must be the very
+            # first connector in the pipeline — prepend so it runs before any
+            # user-provided custom connectors that may cache data keyed by
+            # episode ID (e.g. FrameStackingLearner stores bootstrap obs in
+            # shared_data under episode IDs).
+            pipeline.prepend(EpisodeIdDeduplication())
             # Append OBS handling.
             pipeline.append(
                 AddObservationsFromEpisodesToBatch(as_learner_connector=True)
