@@ -48,7 +48,78 @@ class CheckpointWriter:
             CheckpointBackend.FILE_STORAGE,
         ]:
             return BatchBasedCheckpointWriter(config)
+        if backend == CheckpointBackend.ICEBERG:
+            return IcebergCheckpointWriter(config)
         raise NotImplementedError(f"Backend {backend} not implemented")
+
+
+class IcebergCheckpointWriter(CheckpointWriter):
+    """CheckpointWriter that writes to an Iceberg table."""
+
+    def __init__(self, config: CheckpointConfig):
+        super().__init__(config)
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+        from pyiceberg.catalog import load_catalog
+        from pyiceberg.exceptions import NoSuchTableError
+        import pyarrow as pa
+
+        # Try to load or create the table
+        catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
+        catalog_name = catalog_kwargs.pop("name", "default")
+        catalog = load_catalog(catalog_name, **catalog_kwargs)
+
+        table_identifier = self.ckpt_config.checkpoint_path
+        # on_write_start needs to be called to initialize the table and schema
+        # We'll use a simple schema for the checkpoint table
+        schema = pa.schema([(self.id_col, pa.int64())])
+
+        try:
+            catalog.load_table(table_identifier)
+        except NoSuchTableError:
+            # Create the table if it doesn't exist
+            from pyiceberg.schema import Schema
+            from pyiceberg.types import NestedField, LongType
+
+            iceberg_schema = Schema(
+                NestedField(
+                    field_id=1, name=self.id_col, field_type=LongType(), required=True
+                )
+            )
+            catalog.create_table(table_identifier, schema=iceberg_schema)
+
+        self.datasink = IcebergDatasink(
+            table_identifier=table_identifier,
+            catalog_kwargs=self.ckpt_config.catalog_kwargs,
+        )
+        self.datasink.on_write_start(schema)
+
+    def write_block_checkpoint(self, block: BlockAccessor):
+        if block.num_rows() == 0:
+            return
+
+        # Ensure table is loaded (needed when running on worker after unpickling)
+        if self.datasink._table is None:
+            self.datasink._reload_table()
+
+        checkpoint_ids_block = block.select(columns=[self.id_col])
+        # Use TaskContext for worker-side write
+        from ray.data._internal.execution.interfaces.task_context import TaskContext
+
+        ctx = TaskContext(task_idx=0, op_name="checkpoint_write")
+        write_result = self.datasink.write([checkpoint_ids_block], ctx)
+
+        # Commit on the worker side for simplicity in checkpointing
+        # Normally on_write_complete runs on the driver, but here each worker
+        # can commit its own checkpoint IDs to the Iceberg table.
+        from ray.data.datasource.datasink import WriteResult
+
+        self.datasink.on_write_complete(
+            WriteResult(
+                num_rows=block.num_rows(),
+                size_bytes=block.size_bytes(),
+                write_returns=[write_result],
+            )
+        )
 
 
 class BatchBasedCheckpointWriter(CheckpointWriter):

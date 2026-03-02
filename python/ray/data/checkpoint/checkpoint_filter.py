@@ -4,13 +4,14 @@ import time
 from typing import List, Optional
 
 import numpy
+import pandas as pd
 import pyarrow
 
 import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch, Schema
-from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint.interfaces import CheckpointBackend, CheckpointConfig
 from ray.data.datasource import PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
@@ -62,23 +63,20 @@ class CheckpointLoader:
 
     def __init__(
         self,
-        checkpoint_path: str,
-        filesystem: pyarrow.fs.FileSystem,
-        id_column: str,
+        config: CheckpointConfig,
         checkpoint_path_partition_filter: Optional[PathPartitionFilter] = None,
     ):
         """Initialize the CheckpointLoader.
 
         Args:
-            checkpoint_path: The path to the checkpoint
-            filesystem: The filesystem to use
-            id_column: The name of the ID column
+            config: The checkpoint configuration
             checkpoint_path_partition_filter: Filter for checkpoint files to load during
                 restoration when reading from `checkpoint_path`.
         """
-        self.checkpoint_path = checkpoint_path
-        self.filesystem = filesystem
-        self.id_column = id_column
+        self.ckpt_config = config
+        self.checkpoint_path = config.checkpoint_path
+        self.filesystem = config.filesystem
+        self.id_column = config.id_column
         self.checkpoint_path_partition_filter = checkpoint_path_partition_filter
 
     def load_checkpoint(self) -> ObjectRef[Block]:
@@ -89,12 +87,23 @@ class CheckpointLoader:
         """
         start_t = time.time()
 
-        # Load the checkpoint data
-        checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
-            self.checkpoint_path,
-            filesystem=self.filesystem,
-            partition_filter=self.checkpoint_path_partition_filter,
-        )
+        if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
+            # Read checkpoint via PyIceberg directly to avoid catalog-parallelism edge cases.
+            from pyiceberg.catalog import load_catalog
+
+            catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
+            catalog_name = catalog_kwargs.pop("name", "default")
+            catalog = load_catalog(catalog_name, **catalog_kwargs)
+            table = catalog.load_table(self.checkpoint_path)
+            arrow_tbl = table.scan().select(self.id_column).to_arrow()
+            checkpoint_ds = ray.data.from_arrow(arrow_tbl)
+        else:
+            # Load the checkpoint data
+            checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
+                self.checkpoint_path,
+                filesystem=self.filesystem,
+                partition_filter=self.checkpoint_path_partition_filter,
+            )
 
         # Manually disable checkpointing for loading the checkpoint metadata
         # to avoid recursively restoring checkpoints.
@@ -174,22 +183,32 @@ class IdColumnCheckpointLoader(CheckpointLoader):
 class BatchBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends."""
 
+    def __init__(self, config: CheckpointConfig):
+        super().__init__(config)
+
+        self._loader = IdColumnCheckpointLoader(
+            config=config,
+            checkpoint_path_partition_filter=config.checkpoint_path_partition_filter,
+        )
+
     def load_checkpoint(self) -> ObjectRef[Block]:
         """Load checkpointed ids as a sorted block.
 
         Returns:
             ObjectRef[Block]: ObjectRef to the checkpointed IDs block.
         """
-        loader = IdColumnCheckpointLoader(
-            checkpoint_path=self.checkpoint_path,
-            filesystem=self.filesystem,
-            id_column=self.id_column,
-            checkpoint_path_partition_filter=self.ckpt_config.checkpoint_path_partition_filter,
-        )
-        return loader.load_checkpoint()
+        return self._loader.load_checkpoint()
 
     def delete_checkpoint(self) -> None:
-        self.filesystem.delete_dir(self.checkpoint_path_unwrapped)
+        if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
+            from pyiceberg.catalog import load_catalog
+
+            catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
+            catalog_name = catalog_kwargs.pop("name", "default")
+            catalog = load_catalog(catalog_name, **catalog_kwargs)
+            catalog.drop_table(self.checkpoint_path)
+        else:
+            self.filesystem.delete_dir(self.checkpoint_path_unwrapped)
 
     def filter_rows_for_block(
         self,
@@ -209,6 +228,10 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
 
         if len(checkpointed_ids) == 0 or len(block) == 0:
             return block
+
+        is_pandas_block = isinstance(block, pd.DataFrame)
+        if is_pandas_block:
+            block = pyarrow.Table.from_pandas(block)
 
         assert isinstance(block, pyarrow.Table)
         assert isinstance(checkpointed_ids, pyarrow.Table)
@@ -255,6 +278,10 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         # Convert the final mask to a PyArrow array and filter the block.
         mask_array = pyarrow.array(final_mask)
         filtered_block = block.filter(mask_array)
+
+        if is_pandas_block:
+            return filtered_block.to_pandas()
+
         return filtered_block
 
     def filter_rows_for_batch(

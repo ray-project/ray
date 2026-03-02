@@ -1199,6 +1199,20 @@ py_test(
 )
 
 py_test(
+    name = "test_iceberg_checkpoint",
+    size = "medium",
+    srcs = ["tests/test_iceberg_checkpoint.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_kafka",
     size = "medium",
     srcs = ["tests/datasource/test_kafka.py"],

@@ -3,6 +3,7 @@ import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 from ray import ObjectRef
+
 from ray.data._internal.execution.execution_callback import add_execution_callback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -178,9 +179,8 @@ class Planner:
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
-        if checkpoint_config is not None and self._check_supports_checkpointing(
-            logical_plan
-        ):
+        supports_ckpt = self._check_supports_checkpointing(logical_plan)
+        if checkpoint_config is not None and supports_ckpt:
             self._supports_checkpointing = True
 
             checkpoint_callback = self._create_checkpoint_callback(checkpoint_config)
@@ -194,7 +194,7 @@ class Planner:
             )
 
         elif checkpoint_config is not None:
-            assert not self._check_supports_checkpointing(logical_plan)
+            assert not supports_ckpt
             warnings.warn(
                 "You've enabled checkpointing, but the logical plan doesn't support "
                 "checkpointing. Checkpointing will be disabled."
