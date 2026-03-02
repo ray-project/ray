@@ -23,6 +23,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     DeploymentSnapshot,
     HandleMetricReport,
@@ -38,6 +39,7 @@ from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
@@ -48,7 +50,10 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller_health_metrics_tracker import (
     ControllerHealthMetricsTracker,
 )
-from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.default_impl import (
+    create_cluster_node_info_cache,
+    get_proxy_actor_class,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
     DeploymentReplica,
@@ -187,8 +192,14 @@ class ServeController:
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
+        self._ha_proxy_enabled = RAY_SERVE_ENABLE_HA_PROXY
         self._direct_ingress_enabled = RAY_SERVE_ENABLE_DIRECT_INGRESS
-        if self._direct_ingress_enabled:
+        if self._ha_proxy_enabled:
+            logger.info(
+                "HAProxy is enabled in ServeController, replacing Serve proxy "
+                "with HAProxy."
+            )
+        elif self._direct_ingress_enabled:
             logger.info(
                 "Direct ingress is enabled in ServeController, enabling proxy "
                 "on head node only."
@@ -203,6 +214,7 @@ class ServeController:
             cluster_node_info_cache=self.cluster_node_info_cache,
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
+            proxy_actor_class=get_proxy_actor_class(),
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
         del http_options, grpc_options
@@ -278,7 +290,9 @@ class ServeController:
         ] = []
         self._refresh_autoscaling_deployments_cache()
 
-        self._last_broadcasted_target_groups: List[TargetGroup] = []
+        # Initialize to None (not []) to ensure the first broadcast always happens,
+        # even if target_groups is empty (e.g., route_prefix=None deployments).
+        self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -374,6 +388,31 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
+
+    def record_autoscaling_metrics_from_async_inference_task_queue(
+        self, report: AsyncInferenceTaskQueueMetricReport
+    ):
+        """Record async inference task queue metrics pushed from QueueMonitor."""
+        latency = time.time() - report.timestamp_s
+        latency_ms = latency * 1000
+        # Record the metrics delay for observability
+        self.async_inference_task_queue_metrics_delay_gauge.set(
+            latency_ms,
+            tags={
+                "deployment": report.deployment_id.name,
+                "application": report.deployment_id.app_name,
+            },
+        )
+        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
+            logger.warning(
+                f"Received async inference task queue metrics for deployment "
+                f"{report.deployment_id} with timestamp {report.timestamp_s} "
+                f"which is {latency_ms}ms ago. "
+                f"This is greater than the warning threshold RPC latency of "
+                f"{RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
+                "This may indicate a performance issue with the controller."
+            )
+        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
@@ -648,6 +687,14 @@ class ServeController:
                 | self.proxy_state_manager.get_alive_proxy_actor_ids()
             )
 
+        self._maybe_update_ingress_ports()
+
+        # HAProxy target group broadcasting
+        if self._ha_proxy_enabled:
+            self.broadcast_target_groups_if_changed()
+
+    def _maybe_update_ingress_ports(self) -> None:
+        """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
         if self._direct_ingress_enabled:
             # Update port values for ingress replicas.
@@ -661,6 +708,25 @@ class ServeController:
             # Clean up stale ports
             # get all alive replica ids and their node ids.
             NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
+
+    def broadcast_target_groups_if_changed(self) -> None:
+        """Broadcast target groups over long poll if they have changed.
+
+        Keeps an in-memory record of the last target groups that were broadcast
+        to determine if they have changed.
+        """
+        target_groups: List[TargetGroup] = self.get_target_groups(
+            from_proxy_manager=True,
+        )
+
+        # Check if target groups have changed by comparing the objects directly
+        if self._last_broadcasted_target_groups == target_groups:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.TARGET_GROUPS: target_groups}
+        )
+        self._last_broadcasted_target_groups = target_groups
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -715,6 +781,14 @@ class ServeController:
                 "High values may indicate a busy controller."
             ),
             tag_keys=("deployment", "application", "handle"),
+        )
+        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
+            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
+            description=(
+                "Time taken for the async inference task queue metrics to be reported "
+                "to the controller. High values may indicate a busy controller."
+            ),
+            tag_keys=("deployment", "application"),
         )
 
     def _recover_state_from_checkpoint(self):
@@ -1291,6 +1365,7 @@ class ServeController:
                     protocol=RequestProtocol.HTTP,
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
+                    app_name="",
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1301,6 +1376,7 @@ class ServeController:
                         targets=self.proxy_state_manager.get_targets(
                             RequestProtocol.GRPC
                         ),
+                        app_name="",
                     )
                 )
         return target_groups
@@ -1330,9 +1406,16 @@ class ServeController:
         that have running replicas, we return target groups for direct ingress.
         If there are multiple applications with no running replicas, we return
         one target group per application with unique route prefix.
+        5. HAProxy is enabled and the caller is not an internal proxy manager. In
+        this case, we return target groups containing the proxies (e.g. haproxy).
+        6. HAProxy is enabled and the caller is an internal proxy manager (e.g.
+        haproxy manager). In this case, we return target groups containing the
+        ingress replicas and possibly the Serve proxies.
         """
         proxy_target_groups = self._get_proxy_target_groups()
-        if not self._direct_ingress_enabled:
+        if not self._direct_ingress_enabled or (
+            self._ha_proxy_enabled and not from_proxy_manager
+        ):
             return proxy_target_groups
 
         # Get all applications and their metadata
@@ -1353,6 +1436,10 @@ class ServeController:
         ]
 
         if not apps:
+            # When HAProxy is enabled and there are no apps, return empty target groups
+            # so that all requests fall through to the default_backend (404)
+            if self._ha_proxy_enabled and from_proxy_manager:
+                return []
             return proxy_target_groups
 
         # Create target groups for each application
@@ -1462,7 +1549,7 @@ class ServeController:
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix=route_prefix,
-                    targets=http_targets,
+                    targets=[] if self._ha_proxy_enabled else http_targets,
                     app_name=app_name,
                 )
             )
@@ -1471,7 +1558,7 @@ class ServeController:
                 TargetGroup(
                     protocol=RequestProtocol.GRPC,
                     route_prefix=route_prefix,
-                    targets=grpc_targets,
+                    targets=[] if self._ha_proxy_enabled else grpc_targets,
                     app_name=app_name,
                 )
             )

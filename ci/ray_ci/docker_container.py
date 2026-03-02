@@ -8,6 +8,7 @@ from ci.ray_ci.linux_container import LinuxContainer
 
 PLATFORMS_RAY = [
     "cpu",
+    "tpu",
     "cu11.7.1-cudnn8",
     "cu11.8.0-cudnn8",
     "cu12.1.1-cudnn8",
@@ -22,12 +23,12 @@ PLATFORMS_RAY_ML = [
     "cpu",
     "cu12.1.1-cudnn8",
 ]
-PLATFORMS_RAY_LLM = ["cu12.8.1-cudnn"]
+PLATFORMS_RAY_LLM = ["cu12.8.1-cudnn", "cu12.9.1-cudnn"]
 GPU_PLATFORM = "cu12.1.1-cudnn8"
 
 PYTHON_VERSIONS_RAY = ["3.10", "3.11", "3.12", "3.13"]
 PYTHON_VERSIONS_RAY_ML = ["3.10", "3.11"]
-PYTHON_VERSIONS_RAY_LLM = ["3.11"]
+PYTHON_VERSIONS_RAY_LLM = ["3.11", "3.12"]
 ARCHITECTURES_RAY = ["x86_64", "aarch64"]
 ARCHITECTURES_RAY_ML = ["x86_64"]
 ARCHITECTURES_RAY_LLM = ["x86_64"]
@@ -144,6 +145,8 @@ class DockerContainer(LinuxContainer):
     def _get_platform_tag(self) -> str:
         if self.platform == "cpu":
             return "-cpu"
+        if self.platform == "tpu":
+            return "-tpu"
         versions = self.platform.split(".")
         return f"-{versions[0]}{versions[1]}"  # cu11.8.0 -> cu118
 

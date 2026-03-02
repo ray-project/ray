@@ -1109,7 +1109,8 @@ Ray Data reads from message queues like Kafka.
 
 To read data from Kafka topics, call :func:`~ray.data.read_kafka` and specify
 the topic names and broker addresses. Ray Data performs bounded reads between
-a start and end offset.
+a start and end offset. You can specify offsets as integers, ``"earliest"``/``"latest"``
+strings, or ``datetime`` objects for time-based ranges.
 
 First, install the required dependencies:
 
@@ -1138,6 +1139,15 @@ Then, specify your Kafka configuration and read from topics.
         bootstrap_servers="localhost:9092",
         start_offset="earliest",
         end_offset="latest",
+    )
+
+    # Read messages within a datetime range (datetimes with no timezone info are treated as UTC)
+    from datetime import datetime
+    ds = ray.data.read_kafka(
+        topics="my-topic",
+        bootstrap_servers="localhost:9092",
+        start_offset=datetime(2025, 1, 1),
+        end_offset=datetime(2025, 1, 2),
     )
 
     # Read with authentication

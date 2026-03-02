@@ -16,3 +16,38 @@ py_test(
     ],
     deps = [":container_resource_utils"],
 )
+
+py_library(
+    name = "build_common",
+    srcs = ["build_common.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "build_common_test",
+    size = "small",
+    srcs = ["build_common_test.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [":build_common"],
+)
+
+py_library(
+    name = "build_wheel",
+    srcs = ["build_wheel.py"],
+    visibility = ["//visibility:public"],
+    deps = [":build_common"],
+)
+
+py_test(
+    name = "build_wheel_test",
+    size = "small",
+    srcs = ["build_wheel_test.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [":build_wheel"],
+)

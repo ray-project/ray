@@ -19,4 +19,4 @@ class Count(LogicalOperator):
         self,
         input_op: LogicalOperator,
     ):
-        super().__init__("Count", [input_op])
+        super().__init__(input_dependencies=[input_op])

@@ -41,6 +41,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: core
@@ -255,6 +256,7 @@ steps:
       - manylinux-x86_64
       - corebuild-multipy
       - forge
+      - ray-wheel-build
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
@@ -311,6 +313,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
 
   - label: ":ray: core: cgroup tests"
     tags:

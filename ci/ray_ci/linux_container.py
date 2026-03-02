@@ -65,15 +65,27 @@ class LinuxContainer(Container):
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
         ]
 
-        if not build_type or build_type == "optimized":
-            python_version = self.python_version
-            core_image_tag = f"ray-core-py{python_version}"
+        if not build_type or build_type in (
+            "optimized",
+            "wheel",
+            "wheel-aarch64",
+        ):
+            for base_tag, arg_name in [
+                (f"ray-core-py{self.python_version}", "RAY_CORE_IMAGE"),
+                ("ray-dashboard", "RAY_DASHBOARD_IMAGE"),
+            ]:
+                if self.architecture != DEFAULT_ARCHITECTURE:
+                    base_tag += f"-{self.architecture}"
+                build_cmd += ["--build-arg", f"{arg_name}={get_docker_image(base_tag)}"]
+
+        if build_type in ("wheel", "wheel-aarch64"):
+            base_tag = f"ray-wheel-py{self.python_version}"
             if self.architecture != DEFAULT_ARCHITECTURE:
-                core_image_tag += f"-{self.architecture}"
-            ray_core_image = get_docker_image(core_image_tag)
-            build_cmd += ["--build-arg", f"RAY_CORE_IMAGE={ray_core_image}"]
-            ray_dashboard_image = get_docker_image("ray-dashboard")
-            build_cmd += ["--build-arg", f"RAY_DASHBOARD_IMAGE={ray_dashboard_image}"]
+                base_tag += f"-{self.architecture}"
+            build_cmd += [
+                "--build-arg",
+                f"RAY_WHEEL_IMAGE={get_docker_image(base_tag)}",
+            ]
 
         if mask:
             build_cmd += ["--build-arg", "RAY_INSTALL_MASK=" + mask]

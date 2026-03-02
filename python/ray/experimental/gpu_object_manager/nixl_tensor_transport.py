@@ -1,10 +1,12 @@
 import threading
 import time
 import traceback
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
+from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
@@ -27,10 +29,14 @@ class NixlTransportMetadata(TensorTransportMetadata):
     Args:
         nixl_serialized_descs: Serialized tensor descriptors for NIXL transport.
         nixl_agent_meta: The additional metadata of the remote NIXL agent.
+        nixl_agent_name: The name of the NIXL agent.
+        nixl_agent_meta_version: The version of the NIXL agent metadata.
     """
 
     nixl_serialized_descs: Optional[bytes] = None
     nixl_agent_meta: Optional[bytes] = None
+    nixl_agent_name: Optional[str] = None
+    nixl_agent_meta_version: Optional[int] = 0
 
     __eq__ = object.__eq__
     __hash__ = object.__hash__
@@ -40,7 +46,6 @@ class NixlTransportMetadata(TensorTransportMetadata):
 class TensorDesc:
     reg_desc: Any  # nixlRegDList
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
-    nbytes: int  # the number of bytes in the tensor
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -49,7 +54,7 @@ class NixlTensorTransport(TensorTransportManager):
         self._nixl_agent = None
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
-        # Mapping from tensor data pointer to the NIXL descriptor, reference count, and nbytes.
+        # Mapping from tensor storage data pointer to the NIXL descriptor and reference count.
         # Unlike _managed_meta_nixl, we only deregister tensors when ALL metadata containing the tensor is freed.
         self._tensor_desc_cache: Dict[int, TensorDesc] = {}
         # Mapping from object ID to the NIXL managed meta.
@@ -58,6 +63,12 @@ class NixlTensorTransport(TensorTransportManager):
         # Lock protecting _tensor_desc_cache and _managed_meta_nixl since they can be
         # accessed from the main task execution thread or the _ray_system thread.
         self._cache_lock = threading.Lock()
+
+        # LRU cache of remote agent names. When full, the least
+        # recently used remote agent is evicted and remove_remote_agent is called.
+        self._remote_agents: OrderedDict = OrderedDict()
+        # Increment the version whenever memory is deregistered.
+        self._nixl_agent_meta_version = 0
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -122,9 +133,6 @@ class NixlTensorTransport(TensorTransportManager):
         with self._cache_lock:
             device = None
             tensor_meta = []
-            duplicate_meta = self._record_and_get_meta_if_duplicate(obj_id, gpu_object)
-            if duplicate_meta is not None:
-                return duplicate_meta
 
             if gpu_object:
                 # We assume all tensors in one GPU object have the same device type,
@@ -140,13 +148,6 @@ class NixlTensorTransport(TensorTransportManager):
                         raise ValueError(
                             "All tensors in an RDT object must be contiguous."
                         )
-                    if (
-                        t.data_ptr() in self._tensor_desc_cache
-                        and self._tensor_desc_cache[t.data_ptr()].nbytes != t.nbytes
-                    ):
-                        raise ValueError(
-                            "Tensors in an RDT object can not be partially overlapping with already registered tensors"
-                        )
                     tensor_meta.append((t.shape, t.dtype))
                     devices.add(t.device)
                 if device.type == "cuda":
@@ -160,14 +161,19 @@ class NixlTensorTransport(TensorTransportManager):
                 xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
+                agent_name = nixl_agent.name
+                agent_meta_version = self._nixl_agent_meta_version
             else:
                 serialized_descs, agent_meta = None, None
+                agent_name, agent_meta_version = None, None
 
             ret = NixlTransportMetadata(
                 tensor_meta=tensor_meta,
-                tensor_device=device,
+                tensor_device=device.type if device else None,
                 nixl_serialized_descs=serialized_descs,
                 nixl_agent_meta=agent_meta,
+                nixl_agent_name=agent_name,
+                nixl_agent_meta_version=agent_meta_version,
             )
             self._put_meta(obj_id, ret)
             return ret
@@ -213,7 +219,29 @@ class NixlTensorTransport(TensorTransportManager):
             nixl_agent = self.get_nixl_agent()
             remote_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
             local_descs = nixl_agent.register_memory(tensors)
-            remote_name = nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+
+            remote_name = tensor_transport_metadata.nixl_agent_name
+            remote_agent_meta_version = (
+                tensor_transport_metadata.nixl_agent_meta_version
+            )
+
+            # Nixl agent reuse is enabled.
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+                if remote_name in self._remote_agents:
+                    # If the remote agent metadata version is different from the cached one,
+                    # it means there was memory deregistered. We need to remove the remote agent
+                    # before adding it, because `nixlRemoteSection` currently does not support
+                    # updating descriptor list in such a case (there is potential memory overlap).
+                    if remote_agent_meta_version != self._remote_agents[remote_name]:
+                        nixl_agent.remove_remote_agent(remote_name)
+                    self._remote_agents.move_to_end(remote_name)
+                elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
+                    evicted_agent_name, _ = self._remote_agents.popitem(last=False)
+                    nixl_agent.remove_remote_agent(evicted_agent_name)
+
+                self._remote_agents[remote_name] = remote_agent_meta_version
+
+            nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
@@ -258,10 +286,12 @@ class NixlTensorTransport(TensorTransportManager):
                 self._aborted_transfer_obj_ids.discard(obj_id)
             if xfer_handle:
                 nixl_agent.release_xfer_handle(xfer_handle)
-            if remote_name:
+            if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
             if local_descs:
-                nixl_agent.deregister_memory(local_descs)
+                with self._cache_lock:
+                    nixl_agent.deregister_memory(local_descs)
+                    self._nixl_agent_meta_version += 1
 
         return tensors
 
@@ -276,25 +306,25 @@ class NixlTensorTransport(TensorTransportManager):
         )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: TensorTransportMetadata
+        self,
+        obj_id: str,
+        tensor_transport_meta: TensorTransportMetadata,
+        tensors: List["torch.Tensor"],
     ):
-        from ray._private.worker import global_worker
-
         with self._cache_lock:
             assert isinstance(tensor_transport_meta, NixlTransportMetadata)
-            gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            tensors = gpu_object_store.get_object(obj_id)
             for tensor in tensors:
-                key = tensor.data_ptr()
+                key = tensor.untyped_storage().data_ptr()
                 if key in self._tensor_desc_cache:
                     tensor_desc = self._tensor_desc_cache[key]
                     tensor_desc.metadata_count -= 1
                     if tensor_desc.metadata_count == 0:
                         self._tensor_desc_cache.pop(key)
                         self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                        self._nixl_agent_meta_version += 1
 
     def abort_transport(
         self,
@@ -303,31 +333,6 @@ class NixlTensorTransport(TensorTransportManager):
     ):
         with self._aborted_transfer_obj_ids_lock:
             self._aborted_transfer_obj_ids.add(obj_id)
-
-    # NOTE: The below methods are intended to be used internally hence they assume the caller is already holding the cache lock.
-    def _record_and_get_meta_if_duplicate(
-        self, src_obj_id: str, src_gpu_object: List["torch.Tensor"]
-    ) -> Optional[NixlTransportMetadata]:
-        """
-        Record the NIXL managed meta for the given object ID if it is a duplicate of another object, and return the meta if it is.
-        Assumes that the caller is already holding the cache lock.
-        """
-        from ray._private.worker import global_worker
-
-        gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-        duplicate_obj_id = gpu_object_store.get_duplicate_objects(
-            src_obj_id, src_gpu_object
-        )
-        if duplicate_obj_id is not None:
-            meta = self._get_meta(duplicate_obj_id)
-            if meta is None:
-                raise ValueError(
-                    f"NIXL transport metadata for object id {duplicate_obj_id} not found"
-                )
-            self._put_meta(src_obj_id, meta)
-            self._add_tensor_descs(src_gpu_object)
-            return meta
-        return None
 
     def _get_num_managed_meta_nixl(self) -> int:
         with self._cache_lock:
@@ -349,17 +354,31 @@ class NixlTensorTransport(TensorTransportManager):
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
-        If this is the first time the tensor is being added, we register the memory with NIXL.
-        Otherwise, we increment the reference count.
+        If this is the first time the tensor is being registered, we register the
+        full underlying pytorch storage object with NIXL. Otherwise, we increment the reference count.
         """
         for tensor in tensors:
-            key = tensor.data_ptr()
+            key = tensor.untyped_storage().data_ptr()
             if key in self._tensor_desc_cache:
-                if tensor.nbytes != self._tensor_desc_cache[key].nbytes:
-                    raise ValueError(
-                        "Tensors in an RDT object cannot partially overlap with each other."
-                    )
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
-                reg_desc = self.get_nixl_agent().register_memory([tensor])
-                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1, tensor.nbytes)
+                mem_type = "cuda" if tensor.is_cuda else "cpu"
+                # the GPU ID of the device the tensor is on.
+                # NOTE: we clip this to 0 since the GPU ID is not used for CPU tensors, and get_device returns -1 for CPU tensors.
+                # This triggers an error in nixl since it expects an unsigned.
+                gpu_id = max(tensor.get_device(), 0)
+                # Registering the full underlying pytorch storage object by constructing a memory region
+                # with the data pointer, size, GPU ID, and meta info. Doing the equivalent of what nixl does for pytorch tensors
+                # internally: https://github.com/ai-dynamo/nixl/blob/dd23ef01bd366aef89fa552f2b042f89a0b45fcb/src/api/python/_api.py#L1034
+                reg_desc = self.get_nixl_agent().register_memory(
+                    [
+                        (
+                            tensor.untyped_storage().data_ptr(),
+                            tensor.untyped_storage().nbytes(),
+                            gpu_id,
+                            "",
+                        )
+                    ],
+                    mem_type=mem_type,
+                )
+                self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)

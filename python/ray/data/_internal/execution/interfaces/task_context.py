@@ -1,6 +1,7 @@
+import contextlib
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
@@ -73,3 +74,15 @@ class TaskContext:
 
         if hasattr(_thread_local, "task_context"):
             delattr(_thread_local, "task_context")
+
+    @classmethod
+    @contextlib.contextmanager
+    def current(cls, context: "TaskContext") -> Iterator["TaskContext"]:
+        """Sets this TaskContext as current for the scope
+        of the context block and resets it on exit.
+        """
+        cls.set_current(context)
+        try:
+            yield context
+        finally:
+            cls.reset_current()

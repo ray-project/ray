@@ -20,7 +20,6 @@ import ray
 import ray.util.serialization_addons
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
@@ -532,7 +531,7 @@ def get_current_actor_id() -> str:
     """
 
     worker_mode = ray.get_runtime_context().worker.mode
-    if worker_mode in {SCRIPT_MODE, LOCAL_MODE}:
+    if worker_mode == ray.SCRIPT_MODE:
         return "DRIVER"
     else:
         try:

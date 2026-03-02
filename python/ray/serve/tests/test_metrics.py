@@ -19,10 +19,11 @@ from websockets.sync.client import connect
 import ray
 from ray import serve
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     PrometheusTimeseries,
+    SignalActor,
     fetch_prometheus_metric_timeseries,
+    wait_for_condition,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -888,10 +889,12 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         err_requests[0]["deployment"],
         err_requests[0]["application"],
     ) == expected_output
+    assert err_requests[0]["exception_type"] == "ZeroDivisionError"
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
         == 3,
+        timeout=40,
     )
     health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
     expected_output = {
@@ -903,6 +906,34 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
     } == expected_output
+
+
+def test_deployment_error_counter_exception_type(metrics_start_shutdown):
+    """Test that ray_serve_deployment_error_counter_total captures exception_type tag."""
+
+    @serve.deployment
+    def raises_value_error():
+        raise ValueError("intentional test error")
+
+    serve.run(
+        raises_value_error.bind(), name="value_error_app", route_prefix="/value_error"
+    )
+    url = get_application_url("HTTP", "value_error_app") + "/value_error"
+    assert httpx.get(url).status_code == 500
+
+    def check_metric():
+        err_metrics = get_metric_dictionaries(
+            "ray_serve_deployment_error_counter_total"
+        )
+        value_error_metrics = [
+            m for m in err_metrics if m.get("exception_type") == "ValueError"
+        ]
+        if len(value_error_metrics) == 1:
+            assert value_error_metrics[0]["exception_type"] == "ValueError"
+            return True
+        return False
+
+    wait_for_condition(check_metric, timeout=40)
 
 
 def test_queue_wait_time_metric(metrics_start_shutdown):
@@ -1221,6 +1252,9 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
         def __call__(self):
             return "hello"
 
+        async def record_routing_stats(self):
+            return {}
+
     serve.run(Model.bind(), name="app")
     timeseries = PrometheusTimeseries()
 
@@ -1346,6 +1380,102 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     print("Timeout error metric verified.")
 
     ray.get(signal.send.remote(clear=True))
+
+
+def test_replica_utilization_metric(metrics_start_shutdown):
+    """Test that the replica utilization metric is correctly reported.
+
+    This test verifies that:
+    1. The serve_replica_utilization_percent metric is emitted
+    2. It has the correct tags (deployment, application, replica)
+    3. The value is within the expected range (0-100)
+
+    The utilization window and report interval are configured via env vars in
+    BUILD.bazel (RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S, etc.).  With
+    max_ongoing_requests=1 and continuous 800ms-sleep requests the replica is
+    busy ~80% of the time in steady state.  We wait for one full window
+    duration so the window is saturated, then assert >= 70%.
+    """
+
+    @serve.deployment(name="UtilizationTest", max_ongoing_requests=1)
+    class SlowDeployment:
+        def __call__(self):
+            # Sleep for 800ms per request to generate ~80% utilization.
+            time.sleep(0.8)
+            return "ok"
+
+    app_name = "utilization_app"
+    handle = serve.run(SlowDeployment.bind(), name=app_name)
+
+    # Continuously send requests in a background thread to maintain utilization
+    # throughout the rolling window while we poll for the metric.
+    stop_sending = threading.Event()
+
+    def _send_requests_forever():
+        while not stop_sending.is_set():
+            try:
+                handle.remote().result()
+            except Exception:
+                pass
+
+    sender = threading.Thread(target=_send_requests_forever, daemon=True)
+    sender.start()
+
+    try:
+        # Wait for the rolling window to fill up with continuous requests so
+        # we observe steady-state utilization rather than a ramp-up value.
+        window_s = float(os.environ.get("RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S", "5"))
+        time.sleep(window_s)
+
+        timeseries = PrometheusTimeseries()
+
+        # Wait for the utilization metric to be reported
+        def check_utilization_metric_exists():
+            metrics = get_metric_dictionaries(
+                "ray_serve_replica_utilization_percent", timeseries=timeseries
+            )
+            if not metrics:
+                return False
+
+            # Check that at least one metric has the expected tags
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "UtilizationTest"
+                    and metric.get("application") == app_name
+                    and "replica" in metric
+                ):
+                    return True
+            return False
+
+        wait_for_condition(check_utilization_metric_exists, timeout=30)
+        print("Replica utilization metric exists with correct tags.")
+
+        # Verify the metric value is within expected range
+        def check_utilization_metric_value():
+            value = get_metric_float(
+                "ray_serve_replica_utilization_percent",
+                timeseries=timeseries,
+                expected_tags={
+                    "deployment": "UtilizationTest",
+                    "application": app_name,
+                },
+            )
+            # Value should be between 0 and 100
+            assert 0 <= value <= 100, f"Utilization should be 0-100, got {value}"
+            # With continuous 800ms requests and max_ongoing_requests=1 the
+            # theoretical steady-state utilization is ~80%.  After sleeping for
+            # one full window duration the window should be saturated.
+            assert (
+                value >= 70
+            ), f"Utilization should be >= 70 at steady state, got {value}"
+            print(f"Replica utilization value: {value}%")
+            return True
+
+        wait_for_condition(check_utilization_metric_value, timeout=30)
+        print("Replica utilization metric value verified.")
+    finally:
+        stop_sending.set()
+        sender.join(timeout=10)
 
 
 if __name__ == "__main__":

@@ -12,10 +12,12 @@ import pytest
 
 import ray
 import ray.cloudpickle as pickle
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.test_utils import (
     format_web_url,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
 )
