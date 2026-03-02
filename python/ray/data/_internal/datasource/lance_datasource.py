@@ -35,10 +35,12 @@ class LanceDatasource(Datasource):
         storage_options: Optional[Dict[str, str]] = None,
         scanner_options: Optional[Dict[str, Any]] = None,
     ):
+        super().__init__()
         _check_import(self, module="lance", package="pylance")
 
         import lance
 
+        self._projection_map = None
         self.uri = uri
         self.scanner_options = scanner_options or {}
         if columns is not None:
@@ -60,6 +62,9 @@ class LanceDatasource(Datasource):
             "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
         }
 
+    def supports_predicate_pushdown(self) -> bool:
+        return True
+
     def get_read_tasks(
         self,
         parallelism: int,
@@ -70,6 +75,19 @@ class LanceDatasource(Datasource):
         ds_fragments = self.scanner_options.get("fragments")
         if ds_fragments is None:
             ds_fragments = self.lance_ds.get_fragments()
+
+        filter_expr = (
+            str(self._predicate_expr.to_pyarrow())
+            if self._predicate_expr is not None
+            else None
+        )
+        filter_from_arg = self.scanner_options.get("filter")
+        if filter_from_arg is not None:
+            filter_expr = (
+                filter_from_arg
+                if filter_expr is None
+                else f"({filter_expr}) AND ({filter_from_arg})"
+            )
 
         for fragments in np.array_split(ds_fragments, parallelism):
             if len(fragments) <= 0:
@@ -88,15 +106,18 @@ class LanceDatasource(Datasource):
                 input_files=input_files,
                 exec_stats=None,
             )
-            scanner_options = self.scanner_options
+            # Use a copy per task to avoid mutation races when tasks run in parallel
+            task_scanner_options = dict(self.scanner_options)
+            if filter_expr is not None:
+                task_scanner_options["filter"] = filter_expr
             lance_ds = self.lance_ds
             retry_params = self._retry_params
 
             read_task = ReadTask(
-                lambda f=fragment_ids: _read_fragments_with_retry(
+                lambda f=fragment_ids, opts=task_scanner_options: _read_fragments_with_retry(
                     f,
                     lance_ds,
-                    scanner_options,
+                    opts,
                     retry_params,
                 ),
                 metadata,
