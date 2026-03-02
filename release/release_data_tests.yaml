@@ -122,7 +122,7 @@
   run:
     timeout: 3600
     script: python iceberg_benchmark.py
-    
+
 ###################
 # Aggregation tests
 ###################

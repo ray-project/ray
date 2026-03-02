@@ -163,9 +163,11 @@ def main(args: argparse.Namespace):
             mode=SaveMode.OVERWRITE,
         )
         count = _read_table(catalog_kwargs).count()
-        assert count == OVERWRITE_ROWS, (
-            f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
-        )
+
+        assert (
+            count == OVERWRITE_ROWS
+        ), f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
+
         return {BenchmarkMetric.NUM_ROWS: OVERWRITE_ROWS}
 
     benchmark.run_fn("overwrite", overwrite)
