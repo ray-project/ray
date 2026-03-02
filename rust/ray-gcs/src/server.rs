@@ -213,6 +213,22 @@ impl GcsServer {
             }));
         }
 
+        // 4e. Wire worker death → actor death cascade
+        {
+            let actor_mgr = Arc::clone(&actor_manager);
+            worker_manager.add_dead_listener(Box::new(move |worker_data| {
+                if let Some(ref addr) = worker_data.worker_address {
+                    let node_id = ray_common::id::NodeID::from_binary(
+                        addr.node_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
+                    );
+                    let worker_id = ray_common::id::WorkerID::from_binary(
+                        addr.worker_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
+                    );
+                    actor_mgr.on_worker_dead(&node_id, &worker_id);
+                }
+            }));
+        }
+
         // 5. Create health check manager
         let node_mgr_for_hc = Arc::clone(&node_manager);
         let health_check_manager = GcsHealthCheckManager::new(
@@ -327,6 +343,7 @@ impl GcsServer {
             autoscaler_state_manager: Arc::clone(
                 self.autoscaler_state_manager.as_ref().unwrap(),
             ),
+            node_manager: Arc::clone(self.node_manager.as_ref().unwrap()),
         };
 
         // Health service

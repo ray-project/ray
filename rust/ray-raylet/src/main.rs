@@ -90,7 +90,7 @@ fn parse_label_pairs(s: &str) -> HashMap<String, String> {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
     ray_util::logging::init_ray_logging(

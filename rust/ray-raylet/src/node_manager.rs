@@ -14,7 +14,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use ray_common::config::RayConfig;
+use ray_common::id::NodeID;
 use ray_common::scheduling::{FixedPoint, ResourceSet};
+use ray_gcs_rpc_client::{GcsClient, GcsRpcClient};
+use ray_proto::ray::rpc;
+use ray_rpc::client::RetryConfig;
 
 use crate::cluster_resource_manager::ClusterResourceManager;
 use crate::cluster_resource_scheduler::ClusterResourceScheduler;
@@ -142,8 +146,88 @@ impl NodeManager {
             .set_local_node_draining(deadline_ms);
     }
 
+    /// Resolve the binary NodeID from the config's hex string, or generate a random one.
+    fn resolve_node_id(&self) -> NodeID {
+        let hex_str = &self.config.node_id;
+        // A valid NodeID hex string is exactly 56 characters (28 bytes * 2).
+        if hex_str.len() == NodeID::SIZE * 2 {
+            let nid = NodeID::from_hex(hex_str);
+            if !nid.is_nil() {
+                return nid;
+            }
+        }
+        NodeID::from_random()
+    }
+
+    /// Register this raylet node with the GCS server.
+    ///
+    /// Connects to GCS, retrieves the cluster ID, and sends a RegisterNode RPC
+    /// with this node's address, port, resources, and labels.
+    ///
+    /// Returns the GCS client (for later unregistration) and the binary NodeID used.
+    async fn register_with_gcs(
+        &self,
+        bound_port: u16,
+    ) -> Result<(GcsRpcClient, NodeID), Box<dyn std::error::Error + Send + Sync>> {
+        let gcs_address = &self.config.gcs_address;
+        tracing::info!(gcs_address, "Connecting to GCS");
+
+        let gcs_client = GcsRpcClient::connect(gcs_address, RetryConfig::default()).await?;
+
+        // Verify GCS is alive by fetching the cluster ID.
+        let cluster_reply = gcs_client
+            .get_cluster_id(rpc::GetClusterIdRequest::default())
+            .await?;
+        tracing::info!(
+            cluster_id = hex::encode(&cluster_reply.cluster_id),
+            "Connected to GCS"
+        );
+
+        let node_id = self.resolve_node_id();
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        let node_info = rpc::GcsNodeInfo {
+            node_id: node_id.binary(),
+            node_manager_address: self.config.node_ip_address.clone(),
+            node_manager_port: bound_port as i32,
+            object_store_socket_name: self.config.object_store_socket.clone(),
+            resources_total: self.config.resources.clone(),
+            labels: self.config.labels.clone(),
+            state: rpc::gcs_node_info::GcsNodeState::Alive as i32,
+            start_time_ms: now_ms,
+            ..Default::default()
+        };
+
+        gcs_client
+            .register_node(rpc::RegisterNodeRequest {
+                node_info: Some(node_info),
+            })
+            .await?;
+        tracing::info!(node_id = %node_id.hex(), "Registered with GCS");
+
+        Ok((gcs_client, node_id))
+    }
+
+    /// Unregister this node from GCS on shutdown.
+    async fn unregister_from_gcs(gcs_client: &GcsRpcClient, node_id: &NodeID) {
+        tracing::info!(node_id = %node_id.hex(), "Unregistering from GCS");
+        let result = gcs_client
+            .unregister_node(rpc::UnregisterNodeRequest {
+                node_id: node_id.binary(),
+                ..Default::default()
+            })
+            .await;
+        match result {
+            Ok(_) => tracing::info!("Unregistered from GCS"),
+            Err(e) => tracing::warn!(error = %e, "Failed to unregister from GCS"),
+        }
+    }
+
     /// Start the raylet (full server).
-    pub async fn run(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tracing::info!(
             port = self.config.port,
             node_ip = %self.config.node_ip_address,
@@ -152,31 +236,61 @@ impl NodeManager {
             "Starting Rust raylet"
         );
 
-        let svc = crate::grpc_service::NodeManagerServiceImpl {
-            node_manager: Arc::clone(&self),
-        };
-        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
-        health_reporter
-            .set_serving::<ray_proto::ray::rpc::node_manager_service_server::NodeManagerServiceServer<
-                crate::grpc_service::NodeManagerServiceImpl,
-            >>()
-            .await;
-
+        // Bind the TCP listener first to discover the actual port.
         let listener =
             tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.config.port)).await?;
         let bound_port = listener.local_addr()?.port();
         tracing::info!(port = bound_port, "Raylet gRPC server listening");
 
+        // Wire the worker spawner callback now that we know the port.
+        let spawner_config = crate::worker_spawner::WorkerSpawnerConfig {
+            node_ip_address: self.config.node_ip_address.clone(),
+            raylet_port: bound_port,
+            gcs_address: self.config.gcs_address.clone(),
+            node_id: self.config.node_id.clone(),
+            session_name: self.config.session_name.clone(),
+            python_worker_command: None,
+        };
+        self.worker_pool
+            .set_start_worker_callback(crate::worker_spawner::make_spawn_callback(spawner_config));
+
+        // Register with GCS if an address is configured.
+        let gcs_state = if !self.config.gcs_address.is_empty() {
+            match self.register_with_gcs(bound_port).await {
+                Ok((client, node_id)) => Some((client, node_id)),
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to register with GCS, continuing without");
+                    None
+                }
+            }
+        } else {
+            tracing::warn!("No GCS address configured, skipping registration");
+            None
+        };
+
+        let svc = crate::grpc_service::NodeManagerServiceImpl {
+            node_manager: Arc::clone(&self),
+        };
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+        health_reporter
+            .set_serving::<rpc::node_manager_service_server::NodeManagerServiceServer<
+                crate::grpc_service::NodeManagerServiceImpl,
+            >>()
+            .await;
+
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
         tonic::transport::Server::builder()
             .add_service(
-                ray_proto::ray::rpc::node_manager_service_server::NodeManagerServiceServer::new(
-                    svc,
-                ),
+                rpc::node_manager_service_server::NodeManagerServiceServer::new(svc),
             )
             .add_service(health_service)
             .serve_with_incoming_shutdown(incoming, shutdown_signal())
             .await?;
+
+        // Clean up: unregister from GCS.
+        if let Some((gcs_client, node_id)) = &gcs_state {
+            Self::unregister_from_gcs(gcs_client, node_id).await;
+        }
 
         tracing::info!("Raylet shutting down");
         Ok(())

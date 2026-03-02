@@ -31,4 +31,8 @@ hex = { workspace = true }
 
 [dev-dependencies]
 ray-test-utils = { workspace = true }
+ray-raylet = { workspace = true }
+ray-gcs-rpc-client = { workspace = true }
 async-trait = { workspace = true }
+tokio-stream = { workspace = true }
+tonic-health = { workspace = true }

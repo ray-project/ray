@@ -250,16 +250,47 @@ impl CoreWorkerServiceImpl {
 
     pub async fn handle_update_object_location_batch(
         &self,
-        _request: rpc::UpdateObjectLocationBatchRequest,
+        request: rpc::UpdateObjectLocationBatchRequest,
     ) -> Result<rpc::UpdateObjectLocationBatchReply, Status> {
+        let node_id_hex = hex::encode(&request.node_id);
+        let ref_counter = self.core_worker.reference_counter();
+
+        for update in &request.object_location_updates {
+            let oid = ObjectID::from_binary(&update.object_id);
+            if let Some(plasma_update) = update.plasma_location_update {
+                if plasma_update == rpc::ObjectPlasmaLocationUpdate::Added as i32 {
+                    ref_counter.add_object_location(&oid, node_id_hex.clone());
+                } else {
+                    ref_counter.remove_object_location(&oid, &node_id_hex);
+                }
+            }
+        }
         Ok(rpc::UpdateObjectLocationBatchReply::default())
     }
 
     pub async fn handle_get_object_locations_owner(
         &self,
-        _request: rpc::GetObjectLocationsOwnerRequest,
+        request: rpc::GetObjectLocationsOwnerRequest,
     ) -> Result<rpc::GetObjectLocationsOwnerReply, Status> {
-        Ok(rpc::GetObjectLocationsOwnerReply::default())
+        let ref_counter = self.core_worker.reference_counter();
+        let object_location_infos = request
+            .object_ids
+            .iter()
+            .map(|oid_bytes| {
+                let oid = ObjectID::from_binary(oid_bytes);
+                let locations = ref_counter.get_object_locations(&oid);
+                rpc::WorkerObjectLocationsPubMessage {
+                    node_ids: locations
+                        .iter()
+                        .filter_map(|loc| hex::decode(loc).ok())
+                        .collect(),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        Ok(rpc::GetObjectLocationsOwnerReply {
+            object_location_infos,
+        })
     }
 
     pub async fn handle_request_owner_to_cancel_task(
@@ -292,15 +323,29 @@ impl CoreWorkerServiceImpl {
 
     pub async fn handle_plasma_object_ready(
         &self,
-        _request: rpc::PlasmaObjectReadyRequest,
+        request: rpc::PlasmaObjectReadyRequest,
     ) -> Result<rpc::PlasmaObjectReadyReply, Status> {
+        let oid = ObjectID::from_binary(&request.object_id);
+        self.core_worker.dependency_resolver().object_available(&oid);
         Ok(rpc::PlasmaObjectReadyReply::default())
     }
 
     pub async fn handle_assign_object_owner(
         &self,
-        _request: rpc::AssignObjectOwnerRequest,
+        request: rpc::AssignObjectOwnerRequest,
     ) -> Result<rpc::AssignObjectOwnerReply, Status> {
+        let oid = ObjectID::from_binary(&request.object_id);
+        let owner_address = request
+            .borrower_address
+            .unwrap_or_else(|| self.core_worker.worker_address().clone());
+        let contained: Vec<ObjectID> = request
+            .contained_object_ids
+            .iter()
+            .map(|b| ObjectID::from_binary(b))
+            .collect();
+        self.core_worker
+            .reference_counter()
+            .add_owned_object(oid, owner_address, contained);
         Ok(rpc::AssignObjectOwnerReply::default())
     }
 
@@ -525,5 +570,161 @@ impl rpc::core_worker_service_server::CoreWorkerService for CoreWorkerServiceImp
         self.handle_register_mutable_object_reader(req.into_inner())
             .await
             .map(Response::new)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ray_common::id::{JobID, ObjectID, WorkerID};
+    use crate::options::CoreWorkerOptions;
+
+    fn make_service() -> CoreWorkerServiceImpl {
+        let cw = CoreWorker::new(CoreWorkerOptions {
+            job_id: JobID::from_int(1),
+            ..CoreWorkerOptions::default()
+        });
+        CoreWorkerServiceImpl {
+            core_worker: Arc::new(cw),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_object_location_batch_add_and_remove() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // First, register the object so the ref counter tracks it.
+        svc.core_worker.reference_counter().add_local_reference(oid);
+
+        let node_id = vec![1u8; 28];
+        let node_id_hex = hex::encode(&node_id);
+
+        // Add a location.
+        let request = rpc::UpdateObjectLocationBatchRequest {
+            node_id: node_id.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Added as i32),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let reply = svc.handle_update_object_location_batch(request).await.unwrap();
+        assert_eq!(reply, rpc::UpdateObjectLocationBatchReply::default());
+
+        // Verify location was added.
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert_eq!(locs, vec![node_id_hex.clone()]);
+
+        // Remove the location.
+        let request = rpc::UpdateObjectLocationBatchRequest {
+            node_id: node_id.clone(),
+            object_location_updates: vec![rpc::ObjectLocationUpdate {
+                object_id: oid.binary(),
+                plasma_location_update: Some(rpc::ObjectPlasmaLocationUpdate::Removed as i32),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        svc.handle_update_object_location_batch(request).await.unwrap();
+        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        assert!(locs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_object_locations_owner() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let node_id = vec![2u8; 28];
+        let node_id_hex = hex::encode(&node_id);
+
+        // Register and add a location.
+        svc.core_worker.reference_counter().add_local_reference(oid);
+        svc.core_worker.reference_counter().add_object_location(&oid, node_id_hex.clone());
+
+        let request = rpc::GetObjectLocationsOwnerRequest {
+            object_ids: vec![oid.binary()],
+            ..Default::default()
+        };
+        let reply = svc.handle_get_object_locations_owner(request).await.unwrap();
+        assert_eq!(reply.object_location_infos.len(), 1);
+        assert_eq!(reply.object_location_infos[0].node_ids, vec![node_id]);
+    }
+
+    #[tokio::test]
+    async fn test_get_object_locations_owner_empty() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // Object not tracked — should return empty locations.
+        let request = rpc::GetObjectLocationsOwnerRequest {
+            object_ids: vec![oid.binary()],
+            ..Default::default()
+        };
+        let reply = svc.handle_get_object_locations_owner(request).await.unwrap();
+        assert_eq!(reply.object_location_infos.len(), 1);
+        assert!(reply.object_location_infos[0].node_ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_plasma_object_ready() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // Should succeed without error (just notifies the dependency resolver).
+        let request = rpc::PlasmaObjectReadyRequest {
+            object_id: oid.binary(),
+        };
+        let reply = svc.handle_plasma_object_ready(request).await.unwrap();
+        assert_eq!(reply, rpc::PlasmaObjectReadyReply::default());
+    }
+
+    #[tokio::test]
+    async fn test_assign_object_owner() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        let owner_address = rpc::Address {
+            ip_address: "10.0.0.1".to_string(),
+            port: 5000,
+            worker_id: WorkerID::from_random().binary(),
+            ..Default::default()
+        };
+
+        let request = rpc::AssignObjectOwnerRequest {
+            object_id: oid.binary(),
+            object_size: 1024,
+            contained_object_ids: vec![],
+            borrower_address: Some(owner_address.clone()),
+            ..Default::default()
+        };
+        let reply = svc.handle_assign_object_owner(request).await.unwrap();
+        assert_eq!(reply, rpc::AssignObjectOwnerReply::default());
+
+        // Verify the object is now owned.
+        assert!(svc.core_worker.reference_counter().owned_by_us(&oid));
+        let owner = svc.core_worker.reference_counter().get_owner(&oid).unwrap();
+        assert_eq!(owner.ip_address, "10.0.0.1");
+    }
+
+    #[tokio::test]
+    async fn test_assign_object_owner_defaults_to_worker_address() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // No borrower_address — should default to worker's own address.
+        let request = rpc::AssignObjectOwnerRequest {
+            object_id: oid.binary(),
+            object_size: 512,
+            contained_object_ids: vec![],
+            borrower_address: None,
+            ..Default::default()
+        };
+        svc.handle_assign_object_owner(request).await.unwrap();
+
+        assert!(svc.core_worker.reference_counter().owned_by_us(&oid));
+        let owner = svc.core_worker.reference_counter().get_owner(&oid).unwrap();
+        assert_eq!(owner.ip_address, svc.core_worker.worker_address().ip_address);
     }
 }

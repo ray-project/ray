@@ -24,3 +24,4 @@ pub mod scheduling_policy;
 pub mod scheduling_resources;
 pub mod wait_manager;
 pub mod worker_pool;
+pub mod worker_spawner;

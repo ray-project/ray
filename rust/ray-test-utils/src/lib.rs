@@ -116,6 +116,7 @@ pub async fn start_test_gcs_server_with_config(
 
         // Build services
         let job_svc = JobInfoGcsServiceImpl { job_manager };
+        let node_mgr_for_autoscaler = Arc::clone(&node_manager);
         let node_svc = NodeInfoGcsServiceImpl { node_manager };
         let actor_svc = ActorInfoGcsServiceImpl { actor_manager };
         let kv_svc = InternalKVGcsServiceImpl { kv_manager };
@@ -133,6 +134,7 @@ pub async fn start_test_gcs_server_with_config(
         let task_svc = TaskInfoGcsServiceImpl { task_manager };
         let autoscaler_svc = AutoscalerStateServiceImpl {
             autoscaler_state_manager,
+            node_manager: node_mgr_for_autoscaler,
         };
 
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
