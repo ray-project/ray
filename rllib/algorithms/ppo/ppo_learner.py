@@ -7,7 +7,6 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.connectors.learner import (
-    AddOneTsToEpisodesAndTruncate,
     GeneralAdvantageEstimation,
 )
 from ray.rllib.core.learner.learner import Learner
@@ -52,22 +51,18 @@ class PPOLearner(Learner):
             )
         )
 
-        # Extend all episodes by one artificial timestep to allow the value function net
-        # to compute the bootstrap values (and add a mask to the batch to know, which
-        # slots to mask out).
         if (
             self._learner_connector is not None
             and self.config.add_default_connectors_to_learner_pipeline
         ):
-            # Before anything, add one ts to each episode (and record this in the loss
-            # mask, so that the computations at this extra ts are not used to compute
-            # the loss).
-            self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
             # At the end of the pipeline (when the batch is already completed), add the
             # GAE connector, which performs a vf forward pass, then computes the GAE
             # computations, and puts the results of this (advantages, value targets)
             # directly back in the batch. This is then the batch used for
             # `forward_train` and `compute_losses`.
+            # Note: bootstrap values for in-progress episodes are computed inside
+            # GeneralAdvantageEstimation via a second small forward pass, so episodes
+            # no longer need to be artificially extended by one timestep beforehand.
             self._learner_connector.append(
                 GeneralAdvantageEstimation(
                     gamma=self.config.gamma, lambda_=self.config.lambda_

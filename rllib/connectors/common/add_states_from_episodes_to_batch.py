@@ -52,8 +52,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
     and restructured under a new STATE_IN key.
     As a Learner connector, the resulting STATE_IN batch has the shape (B', ...).
     Here, B' is the sum of splits we have to do over the given episodes, such that each
-    chunk is at most `max_seq_len` long (T-axis).
-    As a EnvToModule connector, the resulting STATE_IN batch simply consists of n
+    chunk is as long as possible, but at most `max_seq_len` long (T-axis).
+    As an EnvToModule connector, the resulting STATE_IN batch simply consists of n
     states coming from n vectorized environments/episodes.
 
     Also, all other data (observations, rewards, etc.. if applicable) will be properly
@@ -62,8 +62,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
     This ConnectorV2:
     - Operates on a list of Episode objects.
-    - Gets the most recent STATE_OUT from all the given episodes and adds them under
-    the STATE_IN key to the batch under construction.
     - Does NOT alter any data in the given episodes.
     - Can be used in EnvToModule and Learner connector pipelines.
 
@@ -240,6 +238,17 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
+                # Skip SA episodes with no actual timesteps in this batch. For T=0
+                # episodes, `split_and_zero_pad` correctly produces 0 OBS sequences,
+                # but the STATE_IN formula produces 1 entry (the initial/lookback state),
+                # causing a STATE_IN vs OBS count mismatch that crashes stateful modules
+                # (e.g. LSTM: "Expected hidden[0] size (1, N, 128), got [1, N+1, 128]").
+                # T=0 can arise when a MultiAgentEpisode slice covers an env-step range
+                # where a particular agent did not step (e.g. after early termination or
+                # non-simultaneous stepping).
+                if len(sa_episode) == 0:
+                    continue
+
                 max_seq_len = sa_module.model_config["max_seq_len"]
 
                 # look_back_state.shape=([state-dim],)
@@ -294,11 +303,12 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     if sa_episode.is_numpy
                     else ([look_back_state] + state_outs[:-1])[::max_seq_len]
                 )
+                num_items = int(math.ceil(len(sa_episode) / max_seq_len))
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.STATE_IN,
                     items_to_add=items_to_add,
-                    num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
+                    num_items=num_items,
                     single_agent_episode=sa_episode,
                 )
                 if Columns.NEXT_OBS in batch:

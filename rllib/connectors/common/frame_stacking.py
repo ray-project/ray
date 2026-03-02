@@ -112,6 +112,39 @@ class FrameStacking(ConnectorV2):
                     single_agent_episode=sa_episode,
                 )
 
+                # For non-terminated episodes, also compute and cache the
+                # frame-stacked bootstrap observation (s_T, one step beyond the
+                # training window). GAE uses this to bootstrap the value estimate
+                # for truncated / in-progress episodes.
+                if not sa_episode.is_terminated and shared_data is not None:
+
+                    def _bootstrap_map_fn(s, _sa_episode=sa_episode):
+                        s = np.squeeze(s, axis=-1)
+                        # One extra timestep compared to the training slice.
+                        T_plus_1 = len(_sa_episode) + 1
+                        new_shape = (T_plus_1, self.num_frames) + s.shape[1:]
+                        new_strides = (s.strides[0],) + s.strides
+                        # Take only the last row (the bootstrap timestep) and
+                        # transpose from (num_frames, H, W) to (H, W, num_frames).
+                        return np.transpose(
+                            np.lib.stride_tricks.as_strided(
+                                s, shape=new_shape, strides=new_strides
+                            )[-1],
+                            axes=[1, 2, 0],
+                        ).copy()
+
+                    stacked_bootstrap = tree.map_structure(
+                        _bootstrap_map_fn,
+                        sa_episode.get_observations(
+                            indices=slice(-self.num_frames + 1, len(sa_episode) + 1),
+                            neg_index_as_lookback=True,
+                            fill=0.0,
+                        ),
+                    )
+                    shared_data.setdefault("stacked_bootstrap_obs", {})[
+                        sa_episode.id_
+                    ] = stacked_bootstrap
+
         # Env-to-module pipeline. Episodes still operate on lists.
         else:
             for sa_episode in self.single_agent_episode_iterator(episodes):
