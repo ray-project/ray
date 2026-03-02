@@ -4,7 +4,6 @@ from typing import Callable, List, TypeVar
 import ray
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.execution.worker_group.worker import Worker
-from ray.train.v2._internal.util import ray_get_safe
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -14,7 +13,7 @@ class ExecutionGroup(BaseWorkerGroup):
     """Base class for groups that can execute functions on workers.
 
     Provides concrete implementations of the 4 execution methods and __len__
-    based on two abstract primitives: _assert_active() and _get_workers().
+    based on two abstract primitives: _assert_active() and get_workers().
     """
 
     @abc.abstractmethod
@@ -23,25 +22,24 @@ class ExecutionGroup(BaseWorkerGroup):
         pass
 
     @abc.abstractmethod
-    def _get_workers(self) -> List[Worker]:
+    def get_workers(self) -> List[Worker]:
         """Return the list of workers in this group."""
         pass
 
     def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
         self._assert_active()
-        return [
-            worker.execute_async(fn, *fn_args, **fn_kwargs)
-            for worker in self._get_workers()
-        ]
+        workers = self.get_workers()
+
+        return [worker.execute_async(fn, *fn_args, **fn_kwargs) for worker in workers]
 
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> List[T]:
-        return ray_get_safe(self.execute_async(fn, *fn_args, **fn_kwargs))
+        return ray.get(self.execute_async(fn, *fn_args, **fn_kwargs))
 
     def execute_single_async(
         self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
     ) -> ObjectRef:
         self._assert_active()
-        workers = self._get_workers()
+        workers = self.get_workers()
 
         if rank >= len(workers):
             raise ValueError(
@@ -57,7 +55,7 @@ class ExecutionGroup(BaseWorkerGroup):
 
     def __len__(self) -> int:
         self._assert_active()
-        return len(self._get_workers())
+        return len(self.get_workers())
 
 
 class ReplicaGroup(ExecutionGroup):
@@ -75,7 +73,7 @@ class ReplicaGroup(ExecutionGroup):
         # Expected to always be active since just created from WorkerGroup.
         return True
 
-    def _get_workers(self) -> List[Worker]:
+    def get_workers(self) -> List[Worker]:
         return self._workers
 
     def get_resources_per_worker(self) -> dict:
