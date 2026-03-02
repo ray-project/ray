@@ -14,6 +14,7 @@ from azure.identity import AzureCliCredential
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.resources.models import DeploymentMode
 
+from ray._common.azure_utils import handle_azure_credential_error
 from ray.autoscaler._private.util import (
     generate_rsa_key_pair,
     generate_ssh_key_name,
@@ -59,8 +60,18 @@ def _configure_resource_group(config):
     # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
     subscription_id = config["provider"].get("subscription_id")
     if subscription_id is None:
-        subscription_id = get_cli_profile().get_subscription_id()
-    resource_client = ResourceManagementClient(AzureCliCredential(), subscription_id)
+        try:
+            subscription_id = get_cli_profile().get_subscription_id()
+        except Exception as e:
+            handle_azure_credential_error(e, resource_type="subscription")
+            raise
+    try:
+        resource_client = ResourceManagementClient(
+            AzureCliCredential(), subscription_id
+        )
+    except Exception as e:
+        handle_azure_credential_error(e, resource_type="resource management")
+        raise
     config["provider"]["subscription_id"] = subscription_id
     logger.info("Using subscription id: %s", subscription_id)
 
@@ -325,15 +336,19 @@ def _configure_resource_group(config):
     create_or_update = get_azure_sdk_function(
         client=resource_client.deployments, function_name="create_or_update"
     )
-    outputs = (
-        create_or_update(
-            resource_group_name=resource_group,
-            deployment_name="ray-config",
-            parameters=parameters,
+    try:
+        outputs = (
+            create_or_update(
+                resource_group_name=resource_group,
+                deployment_name="ray-config",
+                parameters=parameters,
+            )
+            .result()
+            .properties.outputs
         )
-        .result()
-        .properties.outputs
-    )
+    except Exception as e:
+        handle_azure_credential_error(e, resource_type="resource deployment")
+        raise
 
     # append output resource ids to be used with vm creation
     config["provider"]["msi"] = outputs["msi"]["value"]
