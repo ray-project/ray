@@ -87,6 +87,11 @@ logger = logging.getLogger(__name__)
 BlockTransformer = Callable[[Block], Block]
 
 
+def _is_sortable_arrow_type(arrow_type: pa.DataType) -> bool:
+    """Return True if the given Arrow type supports sorting."""
+    return not isinstance(arrow_type, pa.ExtensionType)
+
+
 DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY = env_integer(
     "RAY_DATA_DEFAULT_HASH_SHUFFLE_AGGREGATOR_MAX_CONCURRENCY", 8
 )
@@ -239,12 +244,19 @@ class RandomShuffleAggregation(ShuffleAggregation):
 
         result = _combine(blocks)
         if result.num_rows > 0:
-            # Sort by all columns to get a canonical order before shuffling.
-            # This is necessary because shards arrive from concurrent map tasks
-            # in non-deterministic order, so we need a stable starting point
-            # for the seeded shuffle to produce deterministic output.
-            sort_keys = [(col, "ascending") for col in result.column_names]
-            result = result.sort_by(sort_keys)
+            # Sort by sortable columns to get a canonical order before
+            # shuffling. This is necessary because shards arrive from
+            # concurrent map tasks in non-deterministic order, so we need a
+            # stable starting point for the seeded shuffle to produce
+            # deterministic output. Skip columns with non-sortable types
+            # (e.g. extension types like tensors).
+            sort_keys = [
+                (col, "ascending")
+                for col in result.column_names
+                if _is_sortable_arrow_type(result.schema.field(col).type)
+            ]
+            if sort_keys:
+                result = result.sort_by(sort_keys)
             result = arrow_shuffle(result, seed=self._seed)
         yield result
 
@@ -1436,7 +1448,7 @@ class HashShuffleOperator(HashShufflingOperatorBase):
         return total_with_skew
 
 
-class RandomShuffleOperator(HashShufflingOperatorBase):
+class RandomShuffleOperator(HashShufflingOperatorBase, SubProgressBarMixin):
     """Hash-shuffle-based random shuffle operator.
 
     Randomly assigns rows to partitions during the map phase (using per-task
@@ -1456,6 +1468,7 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
         seed: int,
         num_partitions: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        input_block_transformer: Optional[BlockTransformer] = None,
     ):
         self._seed = seed
 
@@ -1474,6 +1487,7 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
             partition_aggregation_factory=_create_random_shuffle_aggregation,
             shuffle_progress_bar_name="Shuffle",
+            input_block_transformer=input_block_transformer,
         )
 
     def can_add_input(self) -> bool:
@@ -1485,6 +1499,9 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
             * MAX_CONCURRENT_SHUFFLE_TASKS_PER_AGGREGATOR
         )
         return num_active < max_concurrent
+
+    def supports_fusion(self):
+        return True
 
     def _get_partition_mode(
         self,
@@ -1502,9 +1519,19 @@ class RandomShuffleOperator(HashShufflingOperatorBase):
         return self._DEFAULT_AGGREGATORS_MIN_CPUS
 
     # Concat + permutation has the same memory profile as HashShuffleOperator.
-    _estimate_aggregator_memory_allocation = (
-        HashShuffleOperator._estimate_aggregator_memory_allocation
-    )
+    @classmethod
+    def _estimate_aggregator_memory_allocation(
+        cls,
+        *,
+        num_aggregators: int,
+        num_partitions: int,
+        estimated_dataset_bytes: int,
+    ) -> int:
+        return HashShuffleOperator._estimate_aggregator_memory_allocation(
+            num_aggregators=num_aggregators,
+            num_partitions=num_partitions,
+            estimated_dataset_bytes=estimated_dataset_bytes,
+        )
 
 
 @dataclass

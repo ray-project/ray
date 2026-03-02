@@ -21,6 +21,9 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.operators.hash_shuffle import (
+    RandomShuffleOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -51,6 +54,29 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
 logger = logging.getLogger(__name__)
 
 
+def _make_block_transformer(map_transformer):
+    """Convert a MapTransformer into a BlockTransformer (Block -> Block).
+
+    Used when fusing a MapOperator into a RandomShuffleOperator: the upstream
+    map transform is applied inside each shuffle task before partitioning.
+    """
+    from ray.data.block import BlockAccessor
+
+    map_transformer.override_target_max_block_size(None)  # avoid double-shaping
+
+    def block_transformer(block):
+        ctx = TaskContext(task_idx=0, op_name="fused_read")
+        output_iter = map_transformer.apply_transform([block], ctx)
+        builder = None
+        for out_block in output_iter:
+            if builder is None:
+                builder = BlockAccessor.for_block(out_block).builder()
+            builder.add_block(out_block)
+        return builder.build() if builder is not None else block
+
+    return block_transformer
+
+
 class FuseOperators(Rule):
     """Fuses linear chains of compatible physical operators."""
 
@@ -66,7 +92,7 @@ class FuseOperators(Rule):
 
         # Now that we have fused together all back-to-back map operators,
         # we fuse together MapOperator -> AllToAllOperator pairs.
-        fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
+        fused_dag = self._fuse_shuffle_operators_in_dag(fused_dag)
 
         # Update output dependencies after fusion.
         # TODO(hchen): Instead of updating the depdencies manually,
@@ -158,33 +184,33 @@ class FuseOperators(Rule):
         ]
         return dag
 
-    def _fuse_all_to_all_operators_in_dag(
-        self, dag: AllToAllOperator
-    ) -> AllToAllOperator:
+    def _fuse_shuffle_operators_in_dag(self, dag: PhysicalOperator) -> PhysicalOperator:
         """Starting at the given operator, traverses up the DAG of operators
-        and recursively fuses compatible MapOperator -> AllToAllOperator pairs.
+        and recursively fuses compatible MapOperator -> shuffle operator pairs.
 
-        Also, sets the target block size of the immediately upstream map op to
-        match the shuffle block size. We use a larger block size for shuffles
-        because tiny blocks are bad for I/O performance.
+        Handles both MapOperator -> AllToAllOperator and
+        MapOperator -> RandomShuffleOperator (hash-shuffle) fusion.
 
         Returns the current (root) operator after completing upstream operator fusions.
         """
         upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
-            and isinstance(dag, AllToAllOperator)
+            and isinstance(dag, (AllToAllOperator, RandomShuffleOperator))
             and isinstance(upstream_ops[0], MapOperator)
             and self._can_fuse(dag, upstream_ops[0])
         ):
             # Fuse operator with its upstream op.
-            dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
+            if isinstance(dag, RandomShuffleOperator):
+                dag = self._get_fused_random_shuffle_operator(dag, upstream_ops[0])
+            else:
+                dag = self._get_fused_all_to_all_operator(dag, upstream_ops[0])
             upstream_ops = dag.input_dependencies
 
-        # Done fusing MapOperator -> AllToAllOperator together here,
+        # Done fusing MapOperator -> shuffle operator together here,
         # move up the DAG to find the next pair of operators to fuse.
         dag._input_dependencies = [
-            self._fuse_all_to_all_operators_in_dag(upstream_op)
+            self._fuse_shuffle_operators_in_dag(upstream_op)
             for upstream_op in upstream_ops
         ]
         return dag
@@ -208,7 +234,7 @@ class FuseOperators(Rule):
         # We currently only support fusing for the following cases:
         # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
         # - TaskPoolMapOperator -> AllToAllOperator
-        # (only RandomShuffle and Repartition LogicalOperators are currently supported)
+        # - TaskPoolMapOperator -> RandomShuffleOperator (hash-shuffle)
         if not (
             (
                 isinstance(up_op, TaskPoolMapOperator)
@@ -216,7 +242,7 @@ class FuseOperators(Rule):
             )
             or (
                 isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, AllToAllOperator)
+                and isinstance(down_op, (AllToAllOperator, RandomShuffleOperator))
             )
         ):
             return False
@@ -668,6 +694,51 @@ class FuseOperators(Rule):
             )
         self._op_map[op] = logical_op
         # Return the fused physical operator.
+        return op
+
+    def _get_fused_random_shuffle_operator(
+        self, down_op: RandomShuffleOperator, up_op: MapOperator
+    ) -> RandomShuffleOperator:
+        assert self._can_fuse(down_op, up_op), (
+            "Current rule supports fusing MapOperator -> RandomShuffleOperator"
+            f", but received: {type(up_op).__name__} -> {type(down_op).__name__}"
+        )
+
+        # Fuse operator names.
+        name = up_op.name + "->" + down_op.name
+
+        down_logical_op = self._op_map.pop(down_op)
+        up_logical_op = self._op_map.pop(up_op)
+        assert isinstance(down_logical_op, RandomShuffle)
+        assert isinstance(up_logical_op, AbstractMap)
+
+        # Convert the upstream MapTransformer into a BlockTransformer that
+        # will be applied inside each shuffle task before partitioning.
+        up_map_transformer = up_op.get_map_transformer()
+        block_transformer = _make_block_transformer(up_map_transformer)
+
+        # Make the upstream operator's inputs the new, fused operator's inputs.
+        input_deps = up_op.input_dependencies
+        assert len(input_deps) == 1
+        input_op = input_deps[0]
+
+        assert up_op.data_context is down_op.data_context
+        op = RandomShuffleOperator(
+            input_op,
+            down_op.data_context,
+            seed=down_op._seed,
+            num_partitions=down_op._num_partitions,
+            input_block_transformer=block_transformer,
+        )
+        op._name = name
+
+        # Build a logical operator for reference in further fusion.
+        logical_op = RandomShuffle(
+            up_logical_op,
+            name=name,
+            ray_remote_args=up_logical_op.ray_remote_args,
+        )
+        self._op_map[op] = logical_op
         return op
 
     @classmethod
