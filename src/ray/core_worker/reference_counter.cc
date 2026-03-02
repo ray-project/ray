@@ -221,7 +221,7 @@ void ReferenceCounter::AddOwnedObject(
     const ObjectID &object_id,
     const std::vector<ObjectID> &inner_ids,
     const rpc::Address &owner_address,
-    const std::string &call_site,
+    std::string_view call_site,  // Changed: read-only param
     const int64_t object_size,
     LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
@@ -347,7 +347,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const ObjectID &object_id,
     const std::vector<ObjectID> &inner_ids,
     const rpc::Address &owner_address,
-    const std::string &call_site,
+    std::string_view call_site,  // Changed: read-only param
     const int64_t object_size,
     LineageReconstructionEligibility lineage_eligibility,
     bool add_local_ref,
@@ -370,7 +370,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   auto it = object_id_refs_
                 .emplace(object_id,
                          Reference(owner_address,
-                                   call_site,
+                                   std::string(call_site),
                                    object_size,
                                    lineage_eligibility,
                                    pinned_at_node_id,
@@ -415,8 +415,9 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
   }
 }
 
-void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
-                                         const std::string &call_site) {
+void ReferenceCounter::AddLocalReference(
+    const ObjectID &object_id,
+    std::string_view call_site) {  // Changed: read-only param
   if (object_id.IsNil()) {
     return;
   }
@@ -424,7 +425,8 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
-    it = object_id_refs_.emplace(object_id, Reference(call_site, -1)).first;
+    it = object_id_refs_.emplace(object_id, Reference(std::string(call_site), -1))
+             .first;  // Convert for constructor
   }
   bool was_in_use = it->second.RefCount() > 0;
   it->second.local_ref_count++;
@@ -1517,9 +1519,10 @@ std::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
   return it->second.locations;
 }
 
-bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
-                                           const std::string &spilled_url,
-                                           const NodeID &spilled_node_id) {
+bool ReferenceCounter::HandleObjectSpilled(
+    const ObjectID &object_id,
+    std::string_view spilled_url,  // Changed: read-only param
+    const NodeID &spilled_node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {

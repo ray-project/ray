@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <string_view>  // Changed for read-only string parameters
 #include <utility>
 #include <vector>
 
@@ -103,8 +104,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Construct from protobuf-serialized binary.
   ///
   /// \param serialized_binary Protobuf-serialized binary.
-  explicit TaskSpecification(const std::string &serialized_binary)
-      : MessageWrapper(serialized_binary) {
+  explicit TaskSpecification(
+      std::string_view serialized_binary)                 // Changed: read-only param
+      : MessageWrapper(std::string(serialized_binary)) {  // Convert for base class
     ComputeResources();
   }
 
