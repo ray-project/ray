@@ -99,10 +99,16 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "rdt_types",
+    hdrs = ["rdt_types.h"],
+)
+
+ray_cc_library(
     name = "core_worker_options",
     hdrs = ["core_worker_options.h"],
     deps = [
         ":common",
+        ":rdt_types",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/common:status",

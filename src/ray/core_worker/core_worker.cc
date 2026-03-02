@@ -4140,8 +4140,16 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_used_object_store_memory(memory_store_stats.num_local_objects_bytes);
 
   if (request.include_memory_info()) {
+    absl::flat_hash_map<ObjectID, std::pair<std::string, int64_t>> rdt_objects;
+    if (options_.get_rdt_object_infos_callback != nullptr) {
+      std::vector<RDTObjectInfo> rdt_infos = options_.get_rdt_object_infos_callback();
+      for (const auto &info : rdt_infos) {
+        ObjectID obj_id = ObjectID::FromBinary(info.object_id);
+        rdt_objects[obj_id] = std::make_pair(info.device, info.object_size);
+      }
+    }
     reference_counter_->AddObjectRefStats(
-        plasma_store_provider_->UsedObjectsList(), stats, limit);
+        plasma_store_provider_->UsedObjectsList(), rdt_objects, stats, limit);
     task_manager_->AddTaskStatusInfo(stats);
   }
 
