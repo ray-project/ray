@@ -154,6 +154,78 @@ def test_hashing_vectorizer():
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
 
+def test_hashing_vectorizer_serialization():
+    """Test HashingVectorizer serialization and deserialization functionality."""
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create vectorizer
+    vectorizer = HashingVectorizer(columns=["text"], num_features=16)
+
+    # Serialize using CloudPickle
+    serialized = vectorizer.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = HashingVectorizer.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, HashingVectorizer)
+    assert deserialized.columns == ["text"]
+    assert deserialized.num_features == 16
+    assert callable(deserialized.tokenization_fn)
+    assert deserialized.output_columns == ["text"]
+
+    # Verify it works correctly
+    df = pd.DataFrame({"text": ["hello world", "foo bar"]})
+    result = deserialized.transform_batch(df)
+
+    # Verify vectorization was applied correctly
+    assert "text" in result.columns
+    assert len(result["text"][0]) == 16
+    assert len(result["text"][1]) == 16
+
+
+def test_count_vectorizer_serialization():
+    """Test CountVectorizer serialization and deserialization functionality."""
+    import ray
+    from ray.data.preprocessor import SerializablePreprocessorBase
+
+    # Create and fit vectorizer
+    vectorizer = CountVectorizer(columns=["text"], max_features=5)
+    df = pd.DataFrame({"text": ["hello world", "foo bar", "hello foo"]})
+    ds = ray.data.from_pandas(df)
+    fitted_vectorizer = vectorizer.fit(ds)
+
+    # Serialize using CloudPickle
+    serialized = fitted_vectorizer.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = CountVectorizer.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, CountVectorizer)
+    assert deserialized._fitted
+    assert deserialized.columns == ["text"]
+    assert deserialized.max_features == 5
+
+    # Verify stats are preserved
+    assert "token_counts(text)" in deserialized.stats_
+
+    # Verify it works correctly
+    test_df = pd.DataFrame({"text": ["hello world"]})
+    result = deserialized.transform_batch(test_df)
+
+    # Verify vectorization was applied correctly
+    assert "text" in result.columns
+
+
 if __name__ == "__main__":
     import sys
 

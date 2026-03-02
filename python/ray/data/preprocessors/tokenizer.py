@@ -2,18 +2,20 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _Computed,
     _PublicField,
     migrate_private_fields,
     simple_split_tokenizer,
 )
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class Tokenizer(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.tokenizer")
+class Tokenizer(SerializablePreprocessorBase):
     """Replace each string with a list of tokens.
 
     Examples:
@@ -78,8 +80,10 @@ class Tokenizer(Preprocessor):
         self._columns = columns
         # TODO(matt): Add a more robust default tokenizer.
         self._tokenization_fn = tokenization_fn or simple_split_tokenizer
-        self._output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
     @property
@@ -107,6 +111,19 @@ class Tokenizer(Preprocessor):
             f"{self.__class__.__name__}(columns={self._columns!r}, "
             f"tokenization_fn={name}, output_columns={self._output_columns!r})"
         )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "tokenization_fn": self._tokenization_fn,
+            "output_columns": self._output_columns,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._tokenization_fn = fields["tokenization_fn"]
+        self._output_columns = fields["output_columns"]
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)

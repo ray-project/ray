@@ -195,6 +195,48 @@ def test_determine_transform_to_use():
     assert format1 == format2
 
 
+def test_chain_serialization():
+    """Test Chain serialization and deserialization functionality."""
+    import ray
+    from ray.data.preprocessor import SerializablePreprocessorBase
+    from ray.data.preprocessors import Normalizer, StandardScaler
+
+    # Create and fit chain
+    scaler = StandardScaler(columns=["A"])
+    normalizer = Normalizer(columns=["A"])
+    chain = Chain(scaler, normalizer)
+
+    df = pd.DataFrame({"A": [1.0, 2.0, 3.0]})
+    ds = ray.data.from_pandas(df)
+    fitted_chain = chain.fit(ds)
+
+    # Serialize using CloudPickle
+    serialized = fitted_chain.serialize()
+
+    # Verify it's binary CloudPickle format
+    assert isinstance(serialized, bytes)
+    assert serialized.startswith(SerializablePreprocessorBase.MAGIC_CLOUDPICKLE)
+
+    # Deserialize
+    deserialized = Chain.deserialize(serialized)
+
+    # Verify type and field values
+    assert isinstance(deserialized, Chain)
+    assert len(deserialized._preprocessors) == 2
+    assert isinstance(deserialized._preprocessors[0], StandardScaler)
+    assert isinstance(deserialized._preprocessors[1], Normalizer)
+    # Verify the StandardScaler is fitted (Normalizer is stateless)
+    assert deserialized._preprocessors[0]._fitted
+
+    # Verify it works correctly
+    test_df = pd.DataFrame({"A": [1.5, 2.5]})
+    result = deserialized.transform_batch(test_df)
+
+    # Result should have been transformed by both preprocessors
+    assert "A" in result.columns
+    assert len(result) == 2
+
+
 if __name__ == "__main__":
     import sys
 

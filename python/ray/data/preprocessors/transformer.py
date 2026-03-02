@@ -3,13 +3,17 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class PowerTransformer(Preprocessor):
+@SerializablePreprocessor(
+    version=1, identifier="io.ray.preprocessors.power_transformer"
+)
+class PowerTransformer(SerializablePreprocessorBase):
     """Apply a `power transform <https://en.wikipedia.org/wiki/Power_transform>`_ to
     make your data more normally distributed.
 
@@ -57,8 +61,10 @@ class PowerTransformer(Preprocessor):
         self._columns = columns
         self._method = method
         self._power = power
-        self._output_columns = Preprocessor._derive_and_validate_output_columns(
-            columns, output_columns
+        self._output_columns = (
+            SerializablePreprocessorBase._derive_and_validate_output_columns(
+                columns, output_columns
+            )
         )
 
         if method not in self._valid_methods:
@@ -117,6 +123,21 @@ class PowerTransformer(Preprocessor):
             f"power={self._power!r}, method={self._method!r}, "
             f"output_columns={self._output_columns!r})"
         )
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "columns": self._columns,
+            "power": self._power,
+            "method": self._method,
+            "output_columns": self._output_columns,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._columns = fields["columns"]
+        self._power = fields["power"]
+        self._method = fields["method"]
+        self._output_columns = fields["output_columns"]
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         super().__setstate__(state)
