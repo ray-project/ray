@@ -111,7 +111,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild-py3.10 --python-version 3.10
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v23 tests (data_non_parallel)"
@@ -127,7 +127,7 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name datalbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
-        --except-tags data_non_parallel_postmerge_only
+        --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v23 py{{matrix.python}} tests ({{matrix.worker_id}})"
@@ -140,7 +140,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --build-name datalbuild-py{{matrix.python}} --python-version {{matrix.python}}
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: datalbuild-multipy
     matrix:
       setup:
@@ -157,7 +157,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name datalbuild-py{{matrix.python}} --python-version {{matrix.python}}
         --only-tags data_non_parallel
-        --except-tags data_non_parallel_postmerge_only
+        --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: datalbuild-multipy
     matrix:
       setup:
@@ -176,7 +176,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild-py3.10 --python-version 3.10
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: datanbuild-multipy
     soft_fail: true
 
@@ -191,7 +191,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name datanbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
-        --except-tags data_non_parallel_postmerge_only
+        --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: datanbuild-multipy
     soft_fail: true
 
