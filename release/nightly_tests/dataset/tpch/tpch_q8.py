@@ -129,9 +129,7 @@ def main(args):
             join_type="inner",
             on=("l_partkey",),
             right_on=("p_partkey",),
-        ).select_columns(
-            ["l_suppkey", "l_extendedprice", "l_discount", "o_orderdate"]
-        )
+        ).select_columns(["l_suppkey", "l_extendedprice", "l_discount", "o_orderdate"])
 
         # Keep supplier->nation on the main path.
         lineitem_supplier = lineitem_part.join(
@@ -140,7 +138,9 @@ def main(args):
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
-        ).select_columns(["l_extendedprice", "l_discount", "o_orderdate", "s_nationkey"])
+        ).select_columns(
+            ["l_extendedprice", "l_discount", "o_orderdate", "s_nationkey"]
+        )
 
         ds = lineitem_supplier.join(
             nation,
