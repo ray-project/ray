@@ -102,7 +102,8 @@ class NormalTaskSubmitter {
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
       instrumented_io_context &io_service,
-      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
+      ray::observability::MetricInterface &scheduler_task_placement_time_ms,
+      ray::observability::MetricInterface &scheduler_actor_placement_time_ms)
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
@@ -118,10 +119,16 @@ class NormalTaskSubmitter {
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
         io_service_(io_service),
-        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {}
+        scheduler_task_placement_time_ms_(scheduler_task_placement_time_ms),
+        scheduler_actor_placement_time_ms_(scheduler_actor_placement_time_ms) {}
 
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
+
+  void FlushMetrics() {
+    scheduler_task_placement_time_ms_.Flush();
+    scheduler_actor_placement_time_ms_.Flush();
+  }
 
   /// Either remove a pending task or send an RPC to kill a running task
   ///
@@ -375,7 +382,8 @@ class NormalTaskSubmitter {
   // Retries cancelation requests if they were not successful.
   instrumented_io_context &io_service_;
 
-  ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
+  ray::observability::MetricInterface &scheduler_task_placement_time_ms_;
+  ray::observability::MetricInterface &scheduler_actor_placement_time_ms_;
 };
 
 }  // namespace core

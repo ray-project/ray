@@ -845,6 +845,8 @@ void CoreWorker::RecordMetrics() {
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
   reference_counter_->RecordMetrics();
+  // Flush percentile metrics: swap histogram buffers and update exported gauges.
+  normal_task_submitter_->FlushMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>

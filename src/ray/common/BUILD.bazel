@@ -493,6 +493,7 @@ ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
     deps = [
+        "//src/ray/stats:percentile_metric",
         "//src/ray/stats:stats_metric",
     ],
 )
