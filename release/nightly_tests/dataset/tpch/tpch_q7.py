@@ -31,15 +31,13 @@ def main(args):
         #   ORDER BY supp_nation, cust_nation, l_year;
         #
         # Note:
-        # This implementation first restricts nation to {FRANCE, GERMANY}, then joins
-        # customer/supplier paths separately and merges them through orders/lineitem.
+        # This implementation keeps a mostly linear pipeline:
+        # (nation->customer)->orders->lineitem->supplier->nation.
 
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
         # TODO: Remove manual projection once we support proper projection derivation
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_nationkey"]
-        )
+        supplier = load_table("supplier", args.sf).select_columns(["s_suppkey", "s_nationkey"])
         lineitem = load_table("lineitem", args.sf).select_columns(
             ["l_orderkey", "l_suppkey", "l_shipdate", "l_extendedprice", "l_discount"]
         )
@@ -61,21 +59,15 @@ def main(args):
             expr=(col("n_name") == nation1) | (col("n_name") == nation2)
         )
 
-        supplier_nation = supplier.join(
-            nations_of_interest,
-            num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
-            join_type="inner",
-            on=("s_nationkey",),
-            right_on=("n_nationkey",),
-        ).rename_columns({"n_name": "n_name_supp"})
-
-        customer_nation = customer.join(
-            nations_of_interest,
+        customer_nation = nations_of_interest.join(
+            customer,
             num_partitions=16,
             join_type="inner",
-            on=("c_nationkey",),
-            right_on=("n_nationkey",),
-        ).rename_columns({"n_name": "n_name_cust"})
+            on=("n_nationkey",),
+            right_on=("c_nationkey",),
+        )
+        customer_nation = customer_nation.rename_columns({"n_name": "n_name_cust"})
+        customer_nation = customer_nation.select_columns(["c_custkey", "n_name_cust"])
 
         orders_customer = orders.join(
             customer_nation,
@@ -84,7 +76,7 @@ def main(args):
             on=("o_custkey",),
             right_on=("c_custkey",),
             left_suffix="",
-        )
+        ).select_columns(["o_orderkey", "n_name_cust"])
 
         # Join lineitem with orders and filter by date
         lineitem_filtered = lineitem.filter(
@@ -96,18 +88,35 @@ def main(args):
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
+        ).select_columns(
+            ["l_suppkey", "l_shipdate", "l_extendedprice", "l_discount", "n_name_cust"]
         )
 
-        # Join with supplier (use suffix to avoid conflicts with customer nation columns)
-        ds = lineitem_orders.join(
-            supplier_nation,
+        # Keep supplier join and supplier-nation join in the same linear pipeline.
+        lineitem_supplier = lineitem_orders.join(
+            supplier,
             num_partitions=16,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
-            left_suffix="",
-            right_suffix="_supp",
         )
+        lineitem_supplier = lineitem_supplier.select_columns(
+            [
+                "l_shipdate",
+                "l_extendedprice",
+                "l_discount",
+                "n_name_cust",
+                "s_nationkey",
+            ]
+        )
+
+        ds = lineitem_supplier.join(
+            nations_of_interest,
+            num_partitions=16,
+            join_type="inner",
+            on=("s_nationkey",),
+            right_on=("n_nationkey",),
+        ).rename_columns({"n_name": "n_name_supp"})
 
         # Filter to ensure we only include shipments between the two nations
         # (exclude shipments within the same nation)

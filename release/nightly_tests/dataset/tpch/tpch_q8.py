@@ -36,8 +36,8 @@ def main(args):
         #   ORDER BY o_year;
         #
         # Note:
-        # The pipeline filters region/date/part type early, then computes
-        # volume and nation-specific volume in one pass before final aggregation.
+        # The pipeline is kept mostly linear:
+        # (region->nation->customer)->orders->lineitem->part->supplier->nation.
 
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
@@ -79,26 +79,15 @@ def main(args):
             right_on=("n_regionkey",),
         )
 
-        # Join customer with nation (use suffix to avoid conflicts)
-        customer_nation = customer.join(
-            nation_region,
+        # Join customer with nation in the region.
+        customer_nation = nation_region.join(
+            customer,
             num_partitions=16,
             join_type="inner",
-            on=("c_nationkey",),
-            right_on=("n_nationkey",),
-            left_suffix="",
-            right_suffix="_cust",
+            on=("n_nationkey",),
+            right_on=("c_nationkey",),
         )
-
-        supplier_nation = supplier.join(
-            nation,
-            num_partitions=16,
-            join_type="inner",
-            on=("s_nationkey",),
-            right_on=("n_nationkey",),
-            left_suffix="",
-            right_suffix="_supp",
-        )
+        customer_nation = customer_nation.select_columns(["c_custkey"])
 
         # Filter part by type
         part_filtered = part.filter(expr=col("p_type") == part_type)
@@ -113,7 +102,7 @@ def main(args):
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
-        )
+        ).select_columns(["o_orderkey", "o_orderdate"])
 
         # Join lineitem with orders
         lineitem_orders = lineitem.join(
@@ -122,6 +111,15 @@ def main(args):
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
+        ).select_columns(
+            [
+                "l_orderkey",
+                "l_partkey",
+                "l_suppkey",
+                "l_extendedprice",
+                "l_discount",
+                "o_orderdate",
+            ]
         )
 
         # Join with part
@@ -131,18 +129,26 @@ def main(args):
             join_type="inner",
             on=("l_partkey",),
             right_on=("p_partkey",),
+        ).select_columns(
+            ["l_suppkey", "l_extendedprice", "l_discount", "o_orderdate"]
         )
 
-        # Join with supplier (use suffix to avoid conflicts with customer nation columns)
-        ds = lineitem_part.join(
-            supplier_nation,
+        # Keep supplier->nation on the main path.
+        lineitem_supplier = lineitem_part.join(
+            supplier,
             num_partitions=16,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
-            left_suffix="",
-            right_suffix="_supp",
-        )
+        ).select_columns(["l_extendedprice", "l_discount", "o_orderdate", "s_nationkey"])
+
+        ds = lineitem_supplier.join(
+            nation,
+            num_partitions=16,
+            join_type="inner",
+            on=("s_nationkey",),
+            right_on=("n_nationkey",),
+        ).rename_columns({"n_name": "n_name_supp"})
 
         # Calculate volume
         ds = ds.with_column(

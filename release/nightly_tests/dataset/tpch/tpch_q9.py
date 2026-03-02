@@ -29,8 +29,8 @@ def main(args):
         #   ORDER BY nation, o_year DESC;
         #
         # Note:
-        # This implementation follows the same semantics with a multi-key join
-        # on (partkey, suppkey) between lineitem and partsupp-derived data.
+        # The pipeline is kept linear:
+        # part->lineitem->partsupp->supplier->nation->orders.
 
         # Load all required tables with early column pruning to reduce
         # intermediate data size (projection pushes down to Parquet reader)
@@ -60,54 +60,87 @@ def main(args):
         # Q9 parameters
         part_name_pattern = "green"
 
-        # Join partsupp with supplier
-        partsupp_supplier = partsupp.join(
-            supplier,
-            num_partitions=16,  # Empirical value to balance parallelism and shuffle overhead
-            join_type="inner",
-            on=("ps_suppkey",),
-            right_on=("s_suppkey",),
-        )
-
-        # Join with part (filter will be applied after join to avoid UDF expression issues)
-        partsupp_part = partsupp_supplier.join(
+        lineitem_part = lineitem.join(
             part,
             num_partitions=16,
+            # Empirical value to balance parallelism and shuffle overhead
             join_type="inner",
-            on=("ps_partkey",),
+            on=("l_partkey",),
             right_on=("p_partkey",),
         )
-
-        # Filter part by name pattern (after join to avoid UDF expression conversion issues)
-        partsupp_part = partsupp_part.filter(
+        # Keep contains() filter after a join to avoid pushing a UDF expression
+        # into parquet read predicate conversion.
+        lineitem_part = lineitem_part.filter(
             expr=col("p_name").str.contains(part_name_pattern)
+        ).select_columns(
+            [
+                "l_orderkey",
+                "l_partkey",
+                "l_suppkey",
+                "l_quantity",
+                "l_extendedprice",
+                "l_discount",
+            ]
         )
 
-        # Join supplier with nation
-        partsupp_nation = partsupp_part.join(
+        # Join lineitem with partsupp on part key and supplier key
+        lineitem_partsupp = lineitem_part.join(
+            partsupp,
+            num_partitions=16,
+            join_type="inner",
+            on=("l_partkey", "l_suppkey"),
+            right_on=("ps_partkey", "ps_suppkey"),
+        ).select_columns(
+            [
+                "l_orderkey",
+                "l_quantity",
+                "l_extendedprice",
+                "l_discount",
+                "l_suppkey",
+                "ps_supplycost",
+            ]
+        )
+
+        lineitem_supplier = lineitem_partsupp.join(
+            supplier,
+            num_partitions=16,
+            join_type="inner",
+            on=("l_suppkey",),
+            right_on=("s_suppkey",),
+        ).select_columns(
+            [
+                "l_orderkey",
+                "l_quantity",
+                "l_extendedprice",
+                "l_discount",
+                "ps_supplycost",
+                "s_nationkey",
+            ]
+        )
+
+        lineitem_nation = lineitem_supplier.join(
             nation,
             num_partitions=16,
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),
+        ).select_columns(
+            [
+                "l_orderkey",
+                "l_quantity",
+                "l_extendedprice",
+                "l_discount",
+                "ps_supplycost",
+                "n_name",
+            ]
         )
 
-        lineitem_orders = lineitem.join(
+        ds = lineitem_nation.join(
             orders,
             num_partitions=16,
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
-        )
-
-        # Join lineitem with partsupp on part key and supplier key
-        # Using multi-key join is more efficient than join + filter
-        ds = lineitem_orders.join(
-            partsupp_nation,
-            num_partitions=16,
-            join_type="inner",
-            on=("l_partkey", "l_suppkey"),
-            right_on=("ps_partkey", "ps_suppkey"),
         )
 
         # Calculate profit
