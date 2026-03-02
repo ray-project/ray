@@ -12,7 +12,10 @@ import yaml
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve._private.test_utils import get_application_url
 from ray.util.state import list_actors
 
@@ -191,7 +194,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
 
     serve.start()
     wait_for_condition(
-        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == expected_num_actors,
+        lambda: len(list_actors(filters=[("state", "=", "ALIVE")]))
+        == expected_num_actors,
         timeout=15,
     )
 
@@ -212,7 +216,8 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     # Restore testing controller
     serve.start()
     wait_for_condition(
-        lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == expected_num_actors,
+        lambda: len(list_actors(filters=[("state", "=", "ALIVE")]))
+        == expected_num_actors,
         timeout=15,
     )
 
