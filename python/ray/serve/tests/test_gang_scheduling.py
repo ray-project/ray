@@ -1215,5 +1215,51 @@ class TestGangControllerRecovery:
         serve.shutdown()
 
 
+class TestGangPGLeakDetection:
+    def test_gcs_failure_skip_pg_leak_detection(self, ray_cluster):
+        """Gang PG leak detection is skipped when GCS is unavailable."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangApp:
+            def __call__(self):
+                return os.getpid()
+
+        app_name = "gang_pg_leak_gcs_fail"
+        serve.run(GangApp.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        gang_pg_names_before = [
+            name
+            for name in get_all_live_placement_group_names()
+            if name.startswith(GANG_PG_NAME_PREFIX)
+        ]
+        assert len(gang_pg_names_before) > 0
+
+        # Invoke leak detection inside the controller process with
+        # get_active_placement_group_ids replaced by a function that raises.
+        # This hits the except-branch that skips gang PG leak detection.
+        controller = serve.context._get_global_client()._controller
+        ray.get(controller._detect_leaked_pgs_with_gcs_failure_for_testing.remote())
+
+        gang_pg_names_after = [
+            name
+            for name in get_all_live_placement_group_names()
+            if name.startswith(GANG_PG_NAME_PREFIX)
+        ]
+        assert set(gang_pg_names_before) == set(gang_pg_names_after)
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -3,7 +3,7 @@ import sys
 from collections import defaultdict
 from typing import List
 from unittest import mock
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -1946,33 +1946,6 @@ class TestScheduleGangPlacementGroups:
         assert len(result[deployment_id_1].gang_pgs) == num_gangs_1
         assert len(result[deployment_id_2].gang_pgs) == num_gangs_2
         assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
-
-
-class TestGangPGLeakDetection:
-    def test_gang_pg_leak_detection_skipped_on_gcs_failure(
-        self, mock_deployment_state_manager
-    ):
-        """Leak detection is skipped when GCS query for active PG IDs fails."""
-        create_dsm, _, _, _ = mock_deployment_state_manager
-
-        gang_pg_name = "SERVE_GANG::test_gang_gcs_fail"
-        gang_pg_id = "pg_id_gcs_fail"
-
-        with patch(
-            "ray.util.placement_group_table",
-            return_value={gang_pg_id: {"name": gang_pg_name}},
-        ), patch(
-            "ray.serve._private.deployment_state.get_active_placement_group_ids",
-            side_effect=RuntimeError("GCS unavailable"),
-        ), patch(
-            "ray.util.get_placement_group",
-            side_effect=AssertionError("Should not look up PGs on GCS failure"),
-        ), patch(
-            "ray.util.remove_placement_group",
-            side_effect=AssertionError("Should not remove PGs on GCS failure"),
-        ):
-            # GCS failure should cause leak detection to be skipped entirely.
-            create_dsm(placement_group_names=[gang_pg_name])
 
 
 if __name__ == "__main__":

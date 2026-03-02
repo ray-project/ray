@@ -23,6 +23,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     DeploymentSnapshot,
@@ -431,6 +432,27 @@ class ServeController:
         self.deployment_state_manager._deployment_states[
             deployment_id
         ]._stop_one_running_replica_for_testing()
+
+    def _detect_leaked_pgs_with_gcs_failure_for_testing(self):
+        """Exercise gang PG leak detection with a simulated GCS failure."""
+        original_fn = ray.serve._private.deployment_state.get_active_placement_group_ids
+
+        def _fail_get_active_pg_ids():
+            raise RuntimeError("Simulated GCS failure for testing")
+
+        ray.serve._private.deployment_state.get_active_placement_group_ids = (
+            _fail_get_active_pg_ids
+        )
+        try:
+            # We need a PG name prefixing with GANG_PG_NAME_PREFIX to enter the gang
+            # leak-detection block and hit the GCS query failure except branch.
+            self.deployment_state_manager._detect_and_remove_leaked_placement_groups(
+                [], [f"{GANG_PG_NAME_PREFIX}_test_gang_pg_name"]
+            )
+        finally:
+            ray.serve._private.deployment_state.get_active_placement_group_ids = (
+                original_fn
+            )
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.

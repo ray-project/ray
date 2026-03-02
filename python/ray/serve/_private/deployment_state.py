@@ -3571,10 +3571,12 @@ class DeploymentState:
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
         self._set_health_gauge(replica.replica_id.unique_id, 0)
 
-    def _mark_deployment_unhealthy_for_target_version_replica(
-        self, replica: DeploymentReplica
+    def _stop_replica_mark_unhealthy_if_target_version(
+        self, replica: DeploymentReplica, graceful_stop: bool
     ):
-        """Transition deployment to UNHEALTHY if the replica is the target version."""
+        """Stop the replica and mark deployment as UNHEALTHY if the replica is the target version."""
+        self._set_health_gauge(replica.replica_id.unique_id, 0)
+        self._stop_replica(replica, graceful_stop=graceful_stop)
         if replica.version == self._target_state.version:
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
@@ -3583,6 +3585,74 @@ class DeploymentState:
                 "recovers or a new deploy happens.",
             )
 
+    def _forcefully_stop_gang_replicas(
+        self,
+        healthy_replicas: List[DeploymentReplica],
+        unhealthy_replicas: List[DeploymentReplica],
+    ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
+        """Forcefully stop all replicas belonging to gangs that contain at least
+        one unhealthy replica. This prevents the existence of partial gangs by not
+        allowing individual replicas to gracefully stop or drain on their own;
+        instead, all related gang members are force-stopped as a group whenever any
+        member is unhealthy.
+
+        This differs from normal (single-replica scheduling) unhealthy-replica
+        handling in two ways:
+
+        1. Healthy siblings are also force-stopped.
+        2. Force-stop is always used (graceful_stop=False), regardless
+           of the FORCE_STOP_UNHEALTHY_REPLICAS setting.
+
+        Args:
+            healthy_replicas: A list of healthy replicas.
+            unhealthy_replicas: A list of unhealthy replicas.
+
+        Returns:
+            A (remaining_healthy, remaining_unhealthy) tuple containing only
+            replicas that follow single-replica scheduling logic.
+        """
+        gang_ids_to_restart: Set[str] = {
+            replica.gang_context.gang_id
+            for replica in unhealthy_replicas
+            if replica.gang_context is not None
+        }
+
+        if len(gang_ids_to_restart) == 0:
+            return healthy_replicas, unhealthy_replicas
+
+        remaining_healthy: List[DeploymentReplica] = []
+        for replica in healthy_replicas:
+            if (
+                replica.gang_context is not None
+                and replica.gang_context.gang_id in gang_ids_to_restart
+            ):
+                logger.warning(
+                    f"Replica {replica.replica_id} is healthy but its gang "
+                    f"(gang_id={replica.gang_context.gang_id}) has an "
+                    "unhealthy member. Forcefully stopping it because "
+                    "RESTART_GANG runtime failure policy is enabled."
+                )
+                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+            else:
+                remaining_healthy.append(replica)
+
+        remaining_unhealthy: List[DeploymentReplica] = []
+        for replica in unhealthy_replicas:
+            if (
+                replica.gang_context is not None
+                and replica.gang_context.gang_id in gang_ids_to_restart
+            ):
+                logger.warning(
+                    f"Replica {replica.replica_id} failed health check, "
+                    "forcefully stopping it as part of gang restart "
+                    f"(gang_id={replica.gang_context.gang_id})."
+                )
+                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+            else:
+                remaining_unhealthy.append(replica)
+
+        return remaining_healthy, remaining_unhealthy
+
     def check_and_update_replicas(self):
         """
         Check current state of all DeploymentReplica being tracked, and compare
@@ -3590,16 +3660,8 @@ class DeploymentState:
         transition happened.
         """
 
-        gang_config = self.get_gang_config()
-        restart_gang = (
-            gang_config is not None
-            and gang_config.runtime_failure_policy
-            == GangRuntimeFailurePolicy.RESTART_GANG
-        )
-
         healthy_replicas: List[DeploymentReplica] = []
         unhealthy_replicas: List[DeploymentReplica] = []
-        gang_ids_to_restart: Set[str] = set()
 
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
@@ -3621,46 +3683,35 @@ class DeploymentState:
                 healthy_replicas.append(replica)
             else:
                 unhealthy_replicas.append(replica)
-                if restart_gang and replica.gang_context is not None:
-                    gang_ids_to_restart.add(replica.gang_context.gang_id)
+
+        # Under the RESTART_GANG policy, force-stop all members of any gang that has at
+        # least one unhealthy replica. Replicas handled here are removed from the lists;
+        # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
+        gang_config = self.get_gang_config()
+        if (
+            gang_config is not None
+            and gang_config.runtime_failure_policy
+            == GangRuntimeFailurePolicy.RESTART_GANG
+        ):
+            healthy_replicas, unhealthy_replicas = self._forcefully_stop_gang_replicas(
+                healthy_replicas, unhealthy_replicas
+            )
 
         for replica in healthy_replicas:
-            if (
-                restart_gang
-                and replica.gang_context is not None
-                and replica.gang_context.gang_id in gang_ids_to_restart
-            ):
-                logger.warning(
-                    f"Replica {replica.replica_id} is healthy but its gang "
-                    f"(gang_id={replica.gang_context.gang_id}) has an "
-                    "unhealthy replica. Forcefully stopping it because "
-                    "RESTART_GANG runtime failure policy is enabled."
-                )
-                # Healthy replica whose gang has an unhealthy member.
-                # Forcefully stop it so the entire gang is rescheduled.
-                self._stop_replica(replica, graceful_stop=False)
-                self._mark_deployment_unhealthy_for_target_version_replica(replica)
-            else:
-                self._replicas.add(replica.actor_details.state, replica)
-                self._set_health_gauge(replica.replica_id.unique_id, 1)
-                routing_stats = replica.pull_routing_stats()
-                if routing_stats is not None and routing_stats != replica.routing_stats:
-                    self._broadcasted_replicas_set_changed = True
-                replica.record_routing_stats(routing_stats)
+            self._replicas.add(replica.actor_details.state, replica)
+            self._set_health_gauge(replica.replica_id.unique_id, 1)
+            routing_stats = replica.pull_routing_stats()
+            if routing_stats is not None and routing_stats != replica.routing_stats:
+                self._broadcasted_replicas_set_changed = True
+            replica.record_routing_stats(routing_stats)
 
-        # Process unhealthy replicas with force-stop for gang replicas under
-        # RESTART_GANG policy.
+        # Only single-replica scheduling replicas remain.
         for replica in unhealthy_replicas:
             logger.warning(
                 f"Replica {replica.replica_id} failed health check, stopping it."
             )
-            self._set_health_gauge(replica.replica_id.unique_id, 0)
             graceful = not self.FORCE_STOP_UNHEALTHY_REPLICAS
-            if restart_gang and replica.gang_context is not None:
-                # Forcefully stop all replicas in a unhealthy gang to avoid partial gangs
-                graceful = False
-            self._stop_replica(replica, graceful_stop=graceful)
-            self._mark_deployment_unhealthy_for_target_version_replica(replica)
+            self._stop_replica_mark_unhealthy_if_target_version(replica, graceful)
 
         # In steady state there are no STARTING/UPDATING/RECOVERING/STOPPING
         # replicas, so skip startup/stopping checks.  The rank consistency
