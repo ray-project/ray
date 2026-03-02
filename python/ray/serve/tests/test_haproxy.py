@@ -911,5 +911,122 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     serve.shutdown()
 
 
+def test_fallback_proxy_starts_with_native_proxy_on_head_node(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """When HAProxy is enabled, verify that two proxy actors run on the head
+    node (the native proxy + the fallback Serve proxy) and only the native
+    proxy runs on worker nodes."""
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    def hello():
+        return "hello"
+
+    serve.run(hello.options(num_replicas=2).bind(), name="app1", route_prefix="/app1")
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+
+    def check_proxies():
+        actors = list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+            ],
+        )
+
+        # Count native proxies (HAProxyManager) and Serve proxies (ProxyActor)
+        haproxy_actors = [a for a in actors if a["class_name"] == "HAProxyManager"]
+        serve_proxy_actors = [a for a in actors if a["class_name"] == "ProxyActor"]
+
+        # There should be one HAProxy manager per node
+        if len(haproxy_actors) != 2:
+            return False
+
+        # The head node should have a fallback Serve proxy,
+        # worker nodes should not.
+        if len(serve_proxy_actors) != 1:
+            return False
+
+        if serve_proxy_actors[0]["node_id"] != head_node_id:
+            return False
+
+        return True
+
+    wait_for_condition(check_proxies, timeout=30)
+
+    serve.shutdown()
+
+
+def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
+    """Test that a request to an app scaled to zero succeeds via the fallback proxy.
+
+    Flow:
+    1. Deploy an app with autoscaling min_replicas=0
+    2. Wait for it to scale down to 0 replicas
+    3. Send an HTTP request through HAProxy
+    4. HAProxy routes to the fallback Serve proxy (backup server) since
+       there are no ingress replicas
+    5. The fallback proxy queues the request and triggers upscaling
+    6. Once a replica starts, the request completes successfully
+    """
+    ray.init(num_cpus=4)
+    serve.start()
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 5,
+            "upscale_delay_s": 0,
+        },
+    )
+    class ScaleToZeroApp:
+        def __call__(self):
+            return "hello from scale-to-zero"
+
+    serve.run(ScaleToZeroApp.bind(), name="s2z_app", route_prefix="/s2z")
+
+    # Wait for the app to be running and initially serve a request
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/s2z").status_code == 200,
+        timeout=30,
+    )
+    assert httpx.get("http://localhost:8000/s2z").text == "hello from scale-to-zero"
+
+    # Wait for the app to scale down to 0 replicas
+    def check_zero_replicas():
+        actors = list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+                ("class_name", "=", "ServeReplica:s2z_app:ScaleToZeroApp"),
+            ],
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_zero_replicas, timeout=30)
+
+    # Now send a request. HAProxy has no primary servers for this backend,
+    # so it should route to the fallback Serve proxy (backup server).
+    # The fallback proxy will queue the request and trigger upscaling.
+    # The request should eventually succeed once a replica starts.
+    response = httpx.get("http://localhost:8000/s2z", timeout=30)
+    assert response.status_code == 200, (
+        f"Expected 200 after scale-from-zero, got {response.status_code}: "
+        f"{response.text}"
+    )
+    assert response.text == "hello from scale-to-zero"
+
+    serve.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
