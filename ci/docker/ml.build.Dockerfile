@@ -8,7 +8,7 @@ ARG RAYCI_LIGHTNING_2=false
 ARG PYTHON
 ARG BUILD_VARIANT=build
 ARG PYTHON_DEPSET=python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
-ARG THIRDPARTY_DEPSET=python/deplocks/ml/thirdparty_depset_py$PYTHON.lock
+ARG THIRDPARTY_DEPSET=python/deplocks/ci/ci_ml_thirdparty_depset_py$PYTHON.lock
 
 SHELL ["/bin/bash", "-ice"]
 
