@@ -318,12 +318,30 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         + ts
                     ) * (self.config.num_env_runners or 1)
                     with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
-                        to_env = self.module.forward_exploration(
-                            to_module, t=global_env_steps_lifetime
-                        )
+                        if self.config.use_inference_actors:
+                            to_env = ray.get(
+                                self.inference_actors.forward_exploration.remote(
+                                    batch=to_module,
+                                    t=global_env_steps_lifetime,
+                                )
+                            )
+                        else:
+                            to_env = self.module.forward_exploration(
+                                batch=to_module,
+                                t=global_env_steps_lifetime,
+                            )
                 else:
                     with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
-                        to_env = self.module.forward_inference(to_module)
+                        if self.config.use_inference_actors:
+                            to_env = ray.get(
+                                self.inference_actors.forward_inference.remote(
+                                    batch=to_module,
+                                )
+                            )
+                        else:
+                            to_env = self.module.forward_inference(
+                                batch=to_module
+                            )
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
