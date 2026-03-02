@@ -138,7 +138,14 @@ def plan_all_to_all_op(
 
     elif isinstance(op, Aggregate):
         if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
-            return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
+            # When the local fast-path is disabled (threshold=0), use the
+            # hash-shuffle operator directly — no changes to existing behavior.
+            if data_context.small_dataset_agg_threshold_bytes == 0:
+                return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
+            # Otherwise fall through to generate_aggregate_fn, which will run
+            # local aggregation for small datasets and sort-based distributed
+            # aggregation for larger ones. Users can set the threshold to 0 to
+            # always use hash-shuffle aggregation.
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
