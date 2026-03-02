@@ -36,12 +36,9 @@ from ray._common.test_utils import (
 from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import (
-    get_application_url,
-)
+from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.tests.conftest import TEST_METRICS_EXPORT_PORT
-from ray.serve.tests.test_metrics import get_metric_dictionaries
 from ray.util.state import list_actors
 
 
