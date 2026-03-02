@@ -311,7 +311,7 @@ class TableBlockAccessor(BlockAccessor):
                 yield tuple(), self.to_block()
                 return
 
-            yield from self._iter_groups_sorted(sort_key):
+            yield from self._iter_groups_sorted(sort_key)
 
         builder = self.builder()
         for group_keys, group_view in iter_groups():
