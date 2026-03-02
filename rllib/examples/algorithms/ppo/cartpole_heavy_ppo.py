@@ -19,7 +19,6 @@ config = (
     .environment(CartPoleWithLargeObservationSpace)
     .env_runners(
         env_to_module_connector=lambda env, spaces, device: FlattenObservations(),
-        episodes_to_numpy=False,
     )
     .training(
         lr=0.0003,

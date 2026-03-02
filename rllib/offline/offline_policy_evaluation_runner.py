@@ -216,7 +216,7 @@ class OfflinePolicyPreEvaluator(OfflinePreLearner):
         # Otherwise we map the batch to episodes.
         else:
             episodes: List[SingleAgentEpisode] = self._map_to_episodes(
-                batch, to_numpy=False
+                batch, to_numpy=True
             )["episodes"]
 
         episode_dicts = []
