@@ -25,14 +25,6 @@ def ray_init():
     ray.shutdown()
 
 
-@pytest.fixture
-def cartpole_env():
-    """Create a CartPole environment."""
-    env = gym.make("CartPole-v1")
-    yield env
-    env.close()
-
-
 @pytest.fixture(
     params=["CartPole-v1", "Pendulum-v1"],
     ids=["discrete", "continuous"],
@@ -236,16 +228,19 @@ class TestMARWILRLModule:
 class TestMARWILAlgorithmIntegration:
     """Integration tests for MARWIL algorithm with RLModule."""
 
-    def test_algorithm_build_with_rl_module(self, ray_init, cartpole_env, data_path):
+    def test_algorithm_build_with_rl_module(self, ray_init, data_path):
         """Test that MARWIL algorithm builds correctly with RLModule."""
         if not data_path.exists():
             pytest.skip(f"Test data not found at {data_path}")
 
+        # Use CartPole since the test data is CartPole-specific.
+        env = gym.make("CartPole-v1")
+
         config = (
             MARWILConfig()
             .environment(
-                observation_space=cartpole_env.observation_space,
-                action_space=cartpole_env.action_space,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
             )
             .offline_data(
                 input_=[f"local://{data_path}"],
@@ -280,6 +275,7 @@ class TestMARWILAlgorithmIntegration:
             assert Columns.ACTION_DIST_INPUTS in outputs
         finally:
             algo.stop()
+            env.close()
 
 
 if __name__ == "__main__":
