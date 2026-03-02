@@ -56,7 +56,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":util",
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:id",
@@ -67,8 +66,24 @@ ray_cc_test(
         "//src/ray/protobuf:core_worker_cc_grpc",
         "//src/ray/pubsub:subscriber",
         "//src/ray/raylet:local_object_manager",
-        "//src/ray/raylet:worker_pool",
+        "//src/ray/raylet:object_spiller",
         "//src/ray/rpc:grpc_client",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "local_disk_spiller_test",
+    size = "small",
+    srcs = ["local_disk_spiller_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:buffer",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_object",
+        "//src/ray/object_manager:spilled_object_reader",
+        "//src/ray/raylet:local_disk_spiller",
         "@com_google_googletest//:gtest_main",
     ],
 )

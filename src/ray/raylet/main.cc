@@ -42,6 +42,7 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/object_manager/ownership_object_directory.h"
 #include "ray/object_manager_rpc_client/object_manager_client.h"
+#include "ray/raylet/local_disk_spiller.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
@@ -398,6 +399,8 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::rpc::CoreWorkerClientPool> worker_rpc_pool;
   std::unique_ptr<ray::rpc::RayletClientPool> raylet_client_pool;
   std::unique_ptr<ray::raylet::WorkerPoolInterface> worker_pool;
+  /// C++ threadpool-based object spiller for local disk.
+  std::unique_ptr<ray::raylet::LocalDiskSpiller> local_disk_spiller;
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
   std::unique_ptr<ray::raylet::LocalObjectManagerInterface> local_object_manager;
@@ -868,6 +871,83 @@ int main(int argc, char *argv[]) {
         },
         object_manager_rpc_service);
 
+    // Parse spill directories from config.
+    std::vector<std::string> spill_directories;
+    {
+      std::string spill_dir = RayConfig::instance().object_spilling_directory();
+      if (!spill_dir.empty()) {
+        spill_directories.push_back(spill_dir);
+      } else {
+        std::string spill_config = RayConfig::instance().object_spilling_config();
+        if (!spill_config.empty()) {
+          try {
+            auto json = nlohmann::json::parse(spill_config);
+            if (json.contains("params") && json["params"].contains("directory_path")) {
+              auto &dir_path = json["params"]["directory_path"];
+              if (dir_path.is_string()) {
+                spill_directories.push_back(dir_path.get<std::string>());
+              } else if (dir_path.is_array()) {
+                for (const auto &d : dir_path) {
+                  spill_directories.push_back(d.get<std::string>());
+                }
+              }
+            }
+          } catch (const nlohmann::json::exception &e) {
+            RAY_LOG(WARNING) << "Failed to parse object_spilling_config: " << e.what();
+          }
+        }
+        if (spill_directories.empty()) {
+          // Fall back to /tmp as a default spill directory.
+          spill_directories.push_back("/tmp");
+        }
+      }
+    }
+
+    // Create a dedicated plasma client for object restore operations.
+    auto spiller_plasma_client = std::make_shared<plasma::PlasmaClient>();
+    RAY_CHECK_OK(spiller_plasma_client->Connect(store_socket_name, "", 300));
+
+    // Construct the LocalDiskSpiller.
+    local_disk_spiller = std::make_unique<ray::raylet::LocalDiskSpiller>(
+        spill_directories,
+        raylet_node_id,
+        node_manager_config.max_io_workers,
+        main_service,
+        /*restore_to_plasma=*/
+        [spiller_plasma_client](const ray::ObjectID &object_id,
+                                const ray::rpc::Address &owner_address,
+                                std::shared_ptr<ray::Buffer> data,
+                                std::shared_ptr<ray::Buffer> metadata) -> ray::Status {
+          // Create the object in the plasma store and copy data into it.
+          // This runs on the main thread, which is safe for plasma store access.
+          int64_t data_size = data ? static_cast<int64_t>(data->Size()) : 0;
+          int64_t metadata_size = metadata ? static_cast<int64_t>(metadata->Size()) : 0;
+          const uint8_t *metadata_ptr = metadata ? metadata->Data() : nullptr;
+          std::shared_ptr<ray::Buffer> plasma_data;
+          auto status = spiller_plasma_client->CreateAndSpillIfNeeded(
+              object_id,
+              owner_address,
+              /*is_mutable=*/false,
+              data_size,
+              metadata_ptr,
+              metadata_size,
+              &plasma_data,
+              plasma::flatbuf::ObjectSource::RestoredFromStorage);
+          if (!status.ok()) {
+            return status;
+          }
+          if (data && data->Size() > 0 && plasma_data) {
+            memcpy(plasma_data->Data(), data->Data(), data->Size());
+          }
+          status = spiller_plasma_client->Seal(object_id);
+          if (!status.ok()) {
+            RAY_CHECK_OK(spiller_plasma_client->Abort(object_id));
+            return status;
+          }
+          RAY_CHECK_OK(spiller_plasma_client->Release(object_id));
+          return ray::Status::OK();
+        });
+
     local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
         raylet_node_id,
         node_manager_config.node_manager_address,
@@ -875,7 +955,7 @@ int main(int argc, char *argv[]) {
         main_service,
         RayConfig::instance().free_objects_batch_size(),
         RayConfig::instance().free_objects_period_milliseconds(),
-        *worker_pool,
+        *local_disk_spiller,
         *worker_rpc_pool,
         /*max_io_workers*/ node_manager_config.max_io_workers,
         /*is_external_storage_type_fs*/

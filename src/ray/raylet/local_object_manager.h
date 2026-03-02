@@ -30,7 +30,7 @@
 #include "ray/pubsub/subscriber_interface.h"
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
-#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/object_spiller.h"
 #include "ray/util/logging.h"
 #include "ray/util/time.h"
 
@@ -52,7 +52,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       instrumented_io_context &io_service,
       size_t free_objects_batch_size,
       int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool,
+      ObjectSpillerInterface &object_spiller,
       rpc::CoreWorkerClientPool &owner_client_pool,
       int max_io_workers,
       bool is_external_storage_type_fs,
@@ -69,7 +69,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         io_service_(io_service),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
-        io_worker_pool_(io_worker_pool),
+        object_spiller_(object_spiller),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(std::move(on_objects_freed)),
         last_free_objects_at_ms_(current_time_ms()),
@@ -255,7 +255,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// 3. Update the spilled URL to the local directory if it doesn't
   ///    use the external storages like S3.
   void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
-                       const rpc::SpillObjectsReply &worker_reply);
+                       const std::vector<std::string> &object_urls);
 
   /// Delete spilled objects stored in given urls.
   ///
@@ -278,8 +278,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// The number of freed objects to accumulate before flushing.
   const size_t free_objects_batch_size_;
 
-  /// A worker pool, used for spilling and restoring objects.
-  IOWorkerPoolInterface &io_worker_pool_;
+  /// Object spiller, used for spilling, restoring, and deleting objects.
+  ObjectSpillerInterface &object_spiller_;
 
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
