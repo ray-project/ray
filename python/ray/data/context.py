@@ -196,6 +196,21 @@ DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS = (
     "DEADLINE_EXCEEDED",
 )
 
+DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY = ("LanceError(IO)",)
+DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS", 10
+)
+DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S = env_integer(
+    "RAY_DATA_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S", 32
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
@@ -315,6 +330,42 @@ class IcebergConfig:
     catalog_retry_max_backoff_s: int = DEFAULT_ICEBERG_CATALOG_RETRY_MAX_BACKOFF_S
     catalog_retried_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_ICEBERG_CATALOG_RETRIED_ERRORS)
+    )
+
+
+@DeveloperAPI
+@dataclass
+class LanceConfig:
+    """Configuration for Lance datasource and datasink operations.
+
+    Args:
+        read_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance read operations.
+        read_fragments_max_attempts: Maximum number of retry attempts for Lance
+            read operations.
+        read_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance read retries.
+        write_fragments_errors_to_retry: A list of substrings of error messages that
+            should trigger a retry for Lance write operations.
+        write_fragments_max_attempts: Maximum number of retry attempts for Lance
+            write operations.
+        write_fragments_retry_max_backoff_s: Maximum backoff time in seconds between
+            Lance write retries.
+    """
+
+    read_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_READ_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    read_fragments_max_attempts: int = DEFAULT_LANCE_READ_FRAGMENTS_MAX_ATTEMPTS
+    read_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_READ_FRAGMENTS_RETRY_MAX_BACKOFF_S
+    )
+    write_fragments_errors_to_retry: List[str] = field(
+        default_factory=lambda: list(DEFAULT_LANCE_WRITE_FRAGMENTS_ERRORS_TO_RETRY)
+    )
+    write_fragments_max_attempts: int = DEFAULT_LANCE_WRITE_FRAGMENTS_MAX_ATTEMPTS
+    write_fragments_retry_max_backoff_s: int = (
+        DEFAULT_LANCE_WRITE_FRAGMENTS_RETRY_MAX_BACKOFF_S
     )
 
 
@@ -513,6 +564,9 @@ class DataContext:
         retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
+        lance_config: Configuration for Lance datasource and datasink operations
+            including retry settings for read and write operations. See
+            :class:`LanceConfig` for details.
         iceberg_config: Configuration for Iceberg datasource operations including
             retry settings for file writes and catalog operations. See
             :class:`IcebergConfig` for details.
@@ -670,6 +724,7 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+    lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
     override_object_store_memory_limit_fraction: float = None

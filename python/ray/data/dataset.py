@@ -5456,11 +5456,14 @@ class Dataset:
         path: str,
         *,
         schema: Optional["pyarrow.Schema"] = None,
-        mode: Literal["create", "append", "overwrite"] = "create",
+        mode: SaveMode = SaveMode.CREATE,
         min_rows_per_file: int = 1024 * 1024,
         max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
+        table_id: Optional[List[str]] = None,
+        namespace_impl: Optional[str] = None,
+        namespace_properties: Optional[Dict[str, str]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -5476,9 +5479,11 @@ class Dataset:
                 ds.write_lance("/tmp/data/")
 
         Args:
-            path: The path to the destination Lance dataset.
+            path: The path to the destination Lance dataset. Ignored when namespace
+                parameters are provided; the namespace-resolved location is used.
             schema: The schema of the dataset. If not provided, it is inferred from the data.
-            mode: The write mode. Can be "create", "append", or "overwrite".
+            mode: The write mode using SaveMode enum:
+                SaveMode.CREATE, SaveMode.APPEND, or SaveMode.OVERWRITE.
             min_rows_per_file: The minimum number of rows per file.
             max_rows_per_file: The maximum number of rows per file.
             data_storage_version: The version of the data storage format to use. Newer versions are more
@@ -5486,6 +5491,9 @@ class Dataset:
                 "legacy" which will use the legacy v1 version.  See the user guide
                 for more details.
             storage_options: The storage options for the writer. Default is None.
+            table_id: The table identifier as a list of strings, used with namespace params.
+            namespace_impl: The namespace implementation type (e.g., "rest", "dir").
+            namespace_properties: Properties for connecting to the namespace.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5500,6 +5508,9 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
+            table_id=table_id,
+            namespace_impl=namespace_impl,
+            namespace_properties=namespace_properties,
         )
 
         self.write_datasink(

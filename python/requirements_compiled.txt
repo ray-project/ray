@@ -984,6 +984,10 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
+lance-namespace==0.4.5
+    # via pylance
+lance-namespace-urllib3-client==0.4.5
+    # via lance-namespace
 lazy-object-proxy==1.9.0
     # via openapi-spec-validator
 libclang==18.1.1
@@ -1632,6 +1636,7 @@ pydantic==2.12.4
     #   deepspeed
     #   fastapi
     #   gradio
+    #   lance-namespace-urllib3-client
     #   mlflow-skinny
     #   pyiceberg
     #   taskiq
@@ -1664,7 +1669,7 @@ pyjwt==2.8.0
     #   azure-cli-core
     #   msal
     #   snowflake-connector-python
-pylance==0.22.0
+pylance==1.0.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
@@ -1788,6 +1793,7 @@ python-dateutil==2.8.2
     #   holidays
     #   jupyter-client
     #   kubernetes
+    #   lance-namespace-urllib3-client
     #   matplotlib
     #   moto
     #   openlineage-python
@@ -2403,6 +2409,7 @@ typing-extensions==4.15.0
     #   graphene
     #   gymnasium
     #   huggingface-hub
+    #   lance-namespace-urllib3-client
     #   lightning-utilities
     #   mlflow-skinny
     #   mypy
@@ -2452,6 +2459,7 @@ urllib3==1.26.19
     #   docker
     #   dulwich
     #   kubernetes
+    #   lance-namespace-urllib3-client
     #   requests
     #   responses
     #   semgrep
