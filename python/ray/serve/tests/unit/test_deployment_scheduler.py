@@ -3,7 +3,7 @@ import sys
 from collections import defaultdict
 from typing import List
 from unittest import mock
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -11,6 +11,7 @@ import ray
 from ray._raylet import NodeID
 from ray.serve._private import default_impl
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     CreatePlacementGroupRequest,
     DeploymentID,
     GangPlacementGroupRequest,
@@ -1709,13 +1710,20 @@ class TestScheduleGangPlacementGroups:
         result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
 
         assert deployment_id in result
-        assert result[deployment_id].success
-        assert len(result[deployment_id].gang_pgs) == num_gangs
+        reservation = result[deployment_id]
+        assert reservation.success
+        assert len(reservation.gang_pgs) == num_gangs
         assert len(captured_requests) == num_gangs
         for req in captured_requests:
             assert isinstance(req, CreatePlacementGroupRequest)
             assert req.bundles == [replica_resource_dict] * gang_size
             assert req.strategy == gang_strategy
+
+        assert len(reservation.gang_ids) == num_gangs
+        assert len(reservation.gang_pg_names) == num_gangs
+        assert len(set(reservation.gang_ids)) == num_gangs
+        for pg_name in reservation.gang_pg_names:
+            assert pg_name.startswith(GANG_PG_NAME_PREFIX)
 
     def test_schedule_gang_placement_groups_invalid_gang_size(
         self, mock_deployment_state_manager
@@ -1938,6 +1946,33 @@ class TestScheduleGangPlacementGroups:
         assert len(result[deployment_id_1].gang_pgs) == num_gangs_1
         assert len(result[deployment_id_2].gang_pgs) == num_gangs_2
         assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
+
+
+class TestGangPGLeakDetection:
+    def test_gang_pg_leak_detection_skipped_on_gcs_failure(
+        self, mock_deployment_state_manager
+    ):
+        """Leak detection is skipped when GCS query for active PG IDs fails."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        gang_pg_name = "SERVE_GANG::test_gang_gcs_fail"
+        gang_pg_id = "pg_id_gcs_fail"
+
+        with patch(
+            "ray.util.placement_group_table",
+            return_value={gang_pg_id: {"name": gang_pg_name}},
+        ), patch(
+            "ray.serve._private.deployment_state.get_active_placement_group_ids",
+            side_effect=RuntimeError("GCS unavailable"),
+        ), patch(
+            "ray.util.get_placement_group",
+            side_effect=AssertionError("Should not look up PGs on GCS failure"),
+        ), patch(
+            "ray.util.remove_placement_group",
+            side_effect=AssertionError("Should not remove PGs on GCS failure"),
+        ):
+            # GCS failure should cause leak detection to be skipped entirely.
+            create_dsm(placement_group_names=[gang_pg_name])
 
 
 if __name__ == "__main__":

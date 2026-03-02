@@ -910,6 +910,8 @@ class GangReservationResult:
     """True when all gang PGs were created successfully."""
     error_message: Optional[str] = None
     gang_pgs: Optional[List[PlacementGroup]] = None
+    gang_ids: Optional[List[str]] = None
+    gang_pg_names: Optional[List[str]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
