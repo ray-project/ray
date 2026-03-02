@@ -41,9 +41,6 @@
 #include "ray/util/event.h"
 
 using ::testing::_;
-using ::testing::DoAll;
-using ::testing::Invoke;
-using ::testing::MakeAction;
 using ::testing::Return;
 
 namespace ray {
@@ -56,28 +53,9 @@ class MockEventAggregatorClient : public ray::rpc::EventAggregatorClient {
  public:
   MOCK_METHOD(void,
               AddEvents,
-              (const rpc::events::AddEventsRequest &request,
+              (rpc::events::AddEventsRequest && request,
                const rpc::ClientCallback<rpc::events::AddEventsReply> &callback),
               (override));
-};
-
-class MockEventAggregatorAddEvents
-    : public ::testing::ActionInterface<void(
-          const rpc::events::AddEventsRequest &request,
-          const rpc::ClientCallback<rpc::events::AddEventsReply> &callback)> {
- public:
-  MockEventAggregatorAddEvents(Status status, rpc::events::AddEventsReply reply)
-      : status_(std::move(status)), reply_(std::move(reply)) {}
-
-  void Perform(const std::tuple<const rpc::events::AddEventsRequest &,
-                                const rpc::ClientCallback<rpc::events::AddEventsReply> &>
-                   &args) override {
-    std::get<1>(args)(status_, std::move(reply_));
-  }
-
- private:
-  Status status_;
-  rpc::events::AddEventsReply reply_;
 };
 
 class TaskEventBufferTest : public ::testing::Test {
@@ -510,18 +488,13 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
   // If ray events to aggregator is enabled, expect to call AddEvents grpc.
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
-  rpc::events::AddEventsRequest add_events_request;
   if (to_aggregator) {
-    rpc::events::AddEventsReply reply;
-    Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
-        .WillOnce(DoAll(
-            Invoke([&](const rpc::events::AddEventsRequest &request,
-                       const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
-              CompareRayEventsData(request.events_data(), expected_ray_events_data);
-            }),
-            MakeAction(
-                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
+        .WillOnce([&](rpc::events::AddEventsRequest &&request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          CompareRayEventsData(request.events_data(), expected_ray_events_data);
+          callback(Status::OK(), rpc::events::AddEventsReply{});
+        });
   } else {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
@@ -569,17 +542,17 @@ TEST_P(TaskEventBufferTestDifferentDestination, TestFailedFlush) {
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    rpc::events::AddEventsReply reply_1;
-    Status status_1 = Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN);
-    rpc::events::AddEventsReply reply_2;
-    Status status_2 = Status::OK();
-
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .Times(2)
-        .WillOnce(MakeAction(
-            new MockEventAggregatorAddEvents(std::move(status_1), std::move(reply_1))))
-        .WillOnce(MakeAction(
-            new MockEventAggregatorAddEvents(std::move(status_2), std::move(reply_2))));
+        .WillOnce([](rpc::events::AddEventsRequest &&,
+                     const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          callback(Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN),
+                   rpc::events::AddEventsReply{});
+        })
+        .WillOnce([](rpc::events::AddEventsRequest &&,
+                     const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          callback(Status::OK(), rpc::events::AddEventsReply{});
+        });
   }
 
   // Flush
@@ -727,18 +700,15 @@ TEST_P(TaskEventBufferTestBatchSendDifferentDestination, TestBatchedSend) {
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    rpc::events::AddEventsReply reply;
-    Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
         .Times(num_events / batch_size)
-        .WillRepeatedly(DoAll(
-            Invoke([&batch_size](
-                       const rpc::events::AddEventsRequest &request,
-                       const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+        .WillRepeatedly(
+            [&batch_size](
+                rpc::events::AddEventsRequest &&request,
+                const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
               EXPECT_EQ(request.events_data().events_size(), batch_size);
-            }),
-            MakeAction(
-                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
+              callback(Status::OK(), rpc::events::AddEventsReply{});
+            });
   } else {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
@@ -834,16 +804,12 @@ TEST_P(TaskEventBufferTestLimitBufferDifferentDestination,
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
   if (to_aggregator) {
-    rpc::events::AddEventsReply reply;
-    Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
-        .WillOnce(DoAll(
-            Invoke([&](const rpc::events::AddEventsRequest &request,
-                       const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
-              CompareRayEventsData(request.events_data(), expected_ray_events_data);
-            }),
-            MakeAction(
-                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
+        .WillOnce([&](rpc::events::AddEventsRequest &&request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          CompareRayEventsData(request.events_data(), expected_ray_events_data);
+          callback(Status::OK(), rpc::events::AddEventsReply{});
+        });
   } else {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }
@@ -1192,18 +1158,13 @@ TEST_P(TaskEventBufferTestDifferentDestination,
   // If ray events to aggregator is enabled, expect to call AddEvents grpc.
   auto event_aggregator_client = static_cast<MockEventAggregatorClient *>(
       task_event_buffer_->event_aggregator_client_.get());
-  rpc::events::AddEventsRequest add_events_request;
   if (to_aggregator) {
-    rpc::events::AddEventsReply reply;
-    Status status = Status::OK();
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _))
-        .WillOnce(DoAll(
-            Invoke([&](const rpc::events::AddEventsRequest &request,
-                       const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
-              CompareRayEventsData(request.events_data(), expected_ray_events_data);
-            }),
-            MakeAction(
-                new MockEventAggregatorAddEvents(std::move(status), std::move(reply)))));
+        .WillOnce([&](rpc::events::AddEventsRequest &&request,
+                      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) {
+          CompareRayEventsData(request.events_data(), expected_ray_events_data);
+          callback(Status::OK(), rpc::events::AddEventsReply{});
+        });
   } else {
     EXPECT_CALL(*event_aggregator_client, AddEvents(_, _)).Times(0);
   }

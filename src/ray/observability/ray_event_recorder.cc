@@ -15,7 +15,6 @@
 #include "ray/observability/ray_event_recorder.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/util/graceful_shutdown.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
@@ -28,6 +27,8 @@ RayEventRecorder::RayEventRecorder(
     size_t max_buffer_size,
     std::string_view metric_source,
     ray::observability::MetricInterface &dropped_events_counter,
+    ray::observability::MetricInterface &events_sent_counter,
+    ray::observability::MetricInterface &events_failed_to_send_counter,
     const NodeID &node_id)
     : event_aggregator_client_(event_aggregator_client),
       periodical_runner_(PeriodicalRunner::Create(io_service)),
@@ -35,6 +36,8 @@ RayEventRecorder::RayEventRecorder(
       metric_source_(metric_source),
       buffer_(max_buffer_size),
       dropped_events_counter_(dropped_events_counter),
+      events_sent_counter_(events_sent_counter),
+      events_failed_to_send_counter_(events_failed_to_send_counter),
       node_id_(node_id) {}
 
 void RayEventRecorder::StartExportingEvents() {
@@ -66,33 +69,38 @@ void RayEventRecorder::StopExportingEvents() {
   RAY_LOG(INFO) << "Stopping RayEventRecorder and flushing remaining events.";
 
   auto flush_timeout_ms = RayConfig::instance().task_events_shutdown_flush_timeout_ms();
+  auto deadline = absl::Now() + absl::Milliseconds(flush_timeout_ms);
 
-  // Local handler implementing GracefulShutdownHandler interface.
-  class ShutdownHandler : public GracefulShutdownHandler {
-   public:
-    explicit ShutdownHandler(RayEventRecorder *recorder) : recorder_(recorder) {}
-
-    bool WaitUntilIdle(absl::Duration timeout) override {
-      absl::MutexLock lock(&recorder_->grpc_completion_mutex_);
-      auto deadline = absl::Now() + timeout;
-      while (recorder_->grpc_in_progress_) {
-        if (recorder_->grpc_completion_cv_.WaitWithDeadline(
-                &recorder_->grpc_completion_mutex_, deadline)) {
-          return false;  // Timeout
+  // ExportEvents() sends one batch at a time. Drain all batches by looping:
+  // wait for in-flight gRPC → check buffer → flush next batch.
+  // All waits share the same absolute deadline so the overall shutdown timeout
+  // is respected. No new events can arrive since enabled_ is already false.
+  while (true) {
+    {
+      absl::MutexLock lock(&grpc_completion_mutex_);
+      while (grpc_in_progress_) {
+        if (grpc_completion_cv_.WaitWithDeadline(&grpc_completion_mutex_, deadline)) {
+          RAY_LOG(WARNING)
+              << "RayEventRecorder shutdown timed out. Some events may be lost.";
+          return;
         }
       }
-      return true;
     }
 
-    void Flush() override { recorder_->ExportEvents(); }
+    {
+      absl::MutexLock lock(&mutex_);
+      if (buffer_.empty()) {
+        break;
+      }
+    }
 
-   private:
-    RayEventRecorder *recorder_;
-  };
+    if (absl::Now() >= deadline) {
+      RAY_LOG(WARNING) << "RayEventRecorder shutdown timed out. Some events may be lost.";
+      return;
+    }
 
-  ShutdownHandler handler(this);
-  GracefulShutdownWithFlush(
-      handler, absl::Milliseconds(flush_timeout_ms), "RayEventRecorder");
+    ExportEvents();
+  }
 }
 
 void RayEventRecorder::ExportEvents() {
@@ -100,6 +108,7 @@ void RayEventRecorder::ExportEvents() {
   if (buffer_.empty()) {
     return;
   }
+
   // Skip if there's already an in-flight gRPC call to avoid overlapping requests.
   // This prevents the race where StopExportingEvents() could return while a
   // periodic export is still in flight.
@@ -109,40 +118,72 @@ void RayEventRecorder::ExportEvents() {
            "once previous export completes.";
     return;
   }
-  rpc::events::AddEventsRequest request;
-  rpc::events::RayEventsData ray_event_data;
-  // group the event in the buffer_ by their entity id and type; then for each group,
-  // merge the events into a single event. maintain the order of the events in the buffer.
+
+  const size_t max_batch_size_bytes =
+      RayConfig::instance().ray_event_recorder_send_batch_size_bytes();
+
+  // Group events by entity_id + type (events with same key are merged).
+  // Stop grouping when batch size limit is reached.
   std::list<std::unique_ptr<RayEventInterface>> grouped_events;
   absl::flat_hash_map<RayEventKey,
                       std::list<std::unique_ptr<RayEventInterface>>::iterator>
       event_key_to_iterator;
-  for (auto &event : buffer_) {
+
+  size_t num_raw_events = 0;
+  size_t estimated_batch_size = 0;
+  for (auto it = buffer_.begin(); it != buffer_.end(); ++it, ++num_raw_events) {
+    auto &event = *it;
     auto key = std::make_pair(event->GetEntityId(), event->GetEventType());
-    auto [it, inserted] = event_key_to_iterator.try_emplace(key);
+    auto [map_it, inserted] = event_key_to_iterator.try_emplace(key);
     if (inserted) {
+      // New event - check if adding it would exceed batch size
+      size_t estimated_size = event->GetSerializedSizeEstimate();
+      if (!grouped_events.empty() &&
+          estimated_batch_size + estimated_size >= max_batch_size_bytes) {
+        // leave remaining events in the buffer
+        break;
+      }
       grouped_events.push_back(std::move(event));
       event_key_to_iterator[key] = std::prev(grouped_events.end());
+      estimated_batch_size += estimated_size;
     } else {
-      (*it->second)->Merge(std::move(*event));
+      // Merge into existing event, update estimated batch size
+      estimated_batch_size -=
+          (*map_it->second)
+              ->GetSerializedSizeEstimate();  // subtract the size of the existing event
+      (*map_it->second)
+          ->Merge(std::move(*event));  // merge the new event into the existing event
+      estimated_batch_size +=
+          (*map_it->second)
+              ->GetSerializedSizeEstimate();  // add the size of the merged event
     }
   }
+
+  // Remove processed events from buffer
+  buffer_.erase(buffer_.begin(), buffer_.begin() + num_raw_events);
+
+  // Serialize events and add to request
+  rpc::events::AddEventsRequest request;
   for (auto &event : grouped_events) {
     rpc::events::RayEvent ray_event = std::move(*event).Serialize();
-    // Set node_id centrally for all events
     ray_event.set_node_id(node_id_.Binary());
-    *ray_event_data.mutable_events()->Add() = std::move(ray_event);
+    *request.mutable_events_data()->mutable_events()->Add() = std::move(ray_event);
   }
-  *request.mutable_events_data() = std::move(ray_event_data);
-  buffer_.clear();
 
+  // Send with callback to record metrics
+  std::string metric_source_str(metric_source_);
   grpc_in_progress_ = true;
   event_aggregator_client_.AddEvents(
-      request, [this](Status status, rpc::events::AddEventsReply reply) {
-        if (!status.ok()) {
-          // TODO(#56391): Add a metric to track the number of failed events. Also
-          // add logic for error recovery.
-          RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
+      std::move(request),
+      [this, num_raw_events, metric_source_str](Status status,
+                                                rpc::events::AddEventsReply reply) {
+        if (status.ok()) {
+          events_sent_counter_.Record(num_raw_events, {{"Source", metric_source_str}});
+        } else {
+          events_failed_to_send_counter_.Record(num_raw_events,
+                                                {{"Source", metric_source_str}});
+          RAY_LOG(ERROR) << "Failed to send " << num_raw_events
+                         << " ray events: " << status.ToString();
         }
         // Signal under mutex to avoid lost wakeup race condition
         {
