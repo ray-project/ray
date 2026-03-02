@@ -112,6 +112,8 @@ from ray.rllib.utils.checkpoints import (
     get_checkpoint_info,
     try_import_msgpack,
 )
+
+from ray.rllib.inference.inference_actor import InferenceActor
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
@@ -485,6 +487,9 @@ class Algorithm(Checkpointable, Trainable):
 
         # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
         self.learner_group: Optional["LearnerGroup"] = None
+
+        # Placeholder for an Inference Actor
+        self.inference_actors: Optional[InferenceActor] = None
 
         # The Algorithm's `MetricsLogger` object to collect stats from all its
         # components (including timers, counters and other stats in its own
@@ -1184,6 +1189,19 @@ class Algorithm(Checkpointable, Trainable):
 
         # Ray metrics
         self._set_up_metrics()
+
+        # Set up inference actors
+        if config.use_inference_actors:
+            inference_actors_cls = ray.remote(
+                num_cpus=config.inference_num_cpus_per_actor,
+                num_gpus=config.inference_num_gpus_per_actor,
+            )(InferenceActor)
+            inference_actor = inference_actors_cls.remote(config=self.config)
+
+            self.env_runner_group.foreach_env_runner(
+                func=lambda er: er.register_inference_actor(inference_actor_handle=inference_actor),
+                local_env_runner=False,
+            )
 
         # Run `on_algorithm_init` callback after initialization is done.
         make_callback(

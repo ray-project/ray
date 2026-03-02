@@ -363,6 +363,7 @@ class AlgorithmConfig(_Config):
         self.use_worker_filter_stats = True
         self.sampler_perf_stats_ema_coef = None
         self._is_online = True
+        self.use_inference_actors = False
 
         # `self.learners()`
         self.num_learners = 0
@@ -623,6 +624,11 @@ class AlgorithmConfig(_Config):
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
+
+        # `self.inference()`
+        self.num_inference_actors = 1
+        self.inference_num_cpus_per_actor = 1
+        self.inference_num_gpus_per_actor = 0
 
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
@@ -1873,6 +1879,7 @@ class AlgorithmConfig(_Config):
         # @OldAPIStack settings.
         use_worker_filter_stats: Optional[bool] = NotProvided,
         update_worker_filter_stats: Optional[bool] = NotProvided,
+        use_inference_actors: Optional[bool] = NotProvided,
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,  # @OldAPIStack
         remote_worker_envs: Optional[bool] = NotProvided,  # @OldAPIStack
@@ -2206,6 +2213,15 @@ class AlgorithmConfig(_Config):
             self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
         if sampler_perf_stats_ema_coef is not NotProvided:
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
+
+        if use_inference_actors is not NotProvided:
+            if not isinstance(use_inference_actors, bool):
+                raise ValueError(
+                    f"'use_inference_actors' must be bool, got {type(use_inference_actors)} instead. "
+                    f"Use 'True' to enable inference agents or "
+                    f"'False' to run inference on the EnvRunner."
+                )
+            self.use_inference_actors = use_inference_actors
 
         # Deprecated settings.
         if synchronize_filter != DEPRECATED_VALUE:
@@ -4116,6 +4132,38 @@ class AlgorithmConfig(_Config):
             self._torch_grad_scaler_class = _torch_grad_scaler_class
         if _torch_lr_scheduler_classes is not NotProvided:
             self._torch_lr_scheduler_classes = _torch_lr_scheduler_classes
+
+        return self
+
+    def inference(
+        self,
+        *,
+        num_inference_actors: Optional[int] = NotProvided,
+        inference_num_cpus_per_actor: Optional[float] = NotProvided,
+        inference_num_gpus_per_actor: Optional[float] = NotProvided,
+    ) -> Self:
+        if num_inference_actors is not NotProvided:
+            if not isinstance(num_inference_actors, int):
+                raise ValueError(
+                    f"'num_inference_actors' must be an integer, got {type(num_inference_actors)} instead."
+                )
+            self.num_inference_actors = num_inference_actors
+
+        if inference_num_cpus_per_actor is not NotProvided:
+            if not isinstance(inference_num_cpus_per_actor, (int, float)):
+                raise ValueError(
+                    f"'inference_num_cpus_per_actor' must be int or float, "
+                    f"got {type(inference_num_cpus_per_actor)} instead."
+                )
+            self.inference_num_cpus_per_actor = inference_num_cpus_per_actor
+
+        if inference_num_gpus_per_actor is not NotProvided:
+            if not isinstance(inference_num_gpus_per_actor, (int, float)):
+                raise ValueError(
+                    f"'inference_num_gpus_per_actor' must be int or float, "
+                    f"got {type(inference_num_gpus_per_actor)} instead."
+                )
+            self.inference_num_gpus_per_actor = inference_num_gpus_per_actor
 
         return self
 
