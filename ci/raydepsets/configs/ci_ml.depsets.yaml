@@ -8,6 +8,20 @@ build_arg_sets:
 
 
 depsets:
+  - name: ci_ml_thirdparty_depset_${PYTHON_SHORT}
+    operation: compile
+    requirements:
+      - python/requirements/ml/third_party.txt
+    output: python/deplocks/ci/ci_ml_thirdparty_depset_py${PYTHON_VERSION}.lock
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+    build_arg_sets:
+      - py310
+      - py312
+
   - name: ci_ml_build_depset_${PYTHON_SHORT}
     operation: expand
     depsets:

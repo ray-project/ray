@@ -8,12 +8,14 @@ ARG RAYCI_LIGHTNING_2=false
 ARG PYTHON
 ARG BUILD_VARIANT=build
 ARG PYTHON_DEPSET=python/deplocks/ci/ml-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
+ARG THIRDPARTY_DEPSET=python/deplocks/ml/thirdparty_depset_py$PYTHON.lock
 
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+COPY "$THIRDPARTY_DEPSET" /home/ray/thirdparty_depset.lock
 
 RUN <<EOF
 #!/bin/bash
@@ -29,6 +31,10 @@ if [[ "${PYTHON-}" != "3.12" ]]; then
   pip install HEBO==0.3.5
 fi
 
+# install thirdparty dependencies
+mkdir -p python/ray/thirdparty_files
+uv pip install -r /home/ray/thirdparty_depset.lock --no-deps --target=python/ray/thirdparty_files
+
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 # Inject our own mirror for the CIFAR10 dataset
@@ -43,6 +49,7 @@ for f in "$TF_CIFAR" "$TF_KERAS_CIFAR" "$TORCH_CIFAR" "$KERAS_CIFAR"; do
   [ -f "$f" ] && sed -i 's https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz https://air-example-data.s3.us-west-2.amazonaws.com/cifar-10-python.tar.gz g' "$f"
 done
 
-
+# Remove installed ray.
+pip uninstall -y ray
 
 EOF
