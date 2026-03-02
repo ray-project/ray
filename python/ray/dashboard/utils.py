@@ -19,6 +19,8 @@ from ray._common.utils import binary_to_hex
 if TYPE_CHECKING:
     from ray.core.generated.node_manager_pb2 import GetNodeStatsReply
 
+from functools import cache
+
 from packaging.version import Version
 
 import ray
@@ -695,6 +697,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     return api_server_url
 
 
+@cache
 def get_address_for_submission_client(address: Optional[str]) -> str:
     """Get Ray API server address from Ray bootstrap or Client address.
 
