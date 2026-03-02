@@ -153,6 +153,14 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
                 #  performs this very task.
                 if "_" not in sa_episode.id_:
                     sa_episode.id_ += "_" + str(i)
+                # Ensure the batch key is unique per sub-episode in the learner
+                # pipeline. Multiple sub-games from the same MA episode share the same
+                # `multi_agent_episode_id`, causing key collisions: OBS is split via
+                # `split_and_zero_pad` treating all sub-episodes as a single stream
+                # (ceil(sum(T_i)/m) sequences), while STATE_IN is computed per episode
+                # (sum(ceil(T_i/m)) items). The ceiling inequality means STATE_IN >
+                # OBS, crashing the LSTM forward pass.
+                sa_episode.multi_agent_episode_id = sa_episode.id_
 
                 self.add_n_batch_items(
                     batch,
