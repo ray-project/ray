@@ -188,6 +188,8 @@ class OfflinePreLearner:
                 )
                 for state in batch["item"]
             ]
+            for ep in episodes:
+                ep.to_numpy()
             episodes = self._postprocess_and_sample(episodes)
 
         elif self.config.input_read_sample_batches:
