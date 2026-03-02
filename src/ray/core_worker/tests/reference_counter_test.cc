@@ -1110,6 +1110,82 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
 }
 
+// A borrower is given a reference to an object ID, removes the reference,
+// then the borrower process dies. The owner receives both the ref removed
+// message and the failure notification, triggering two cleanup callbacks.
+//
+// @ray.remote
+// class Borrower:
+//     def __init__(self, inner_ids):
+//         self.inner_id = inner_ids[0]
+//     def release(self):
+//         del self.inner_id
+//         # Process dies after releasing reference.
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// b = Borrower.remote(outer_id)
+// b.release.remote()
+TEST(DistributedReferenceCountTest, TestCleanupBorrowersOnRefRemovedIdempotent) {
+  // Clear the failure callback map to ensure clean state.
+  subscription_failure_callback_map.clear();
+  auto borrower = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // The owner creates an inner object and wraps it.
+  auto inner_id = ObjectID::FromRandom();
+  auto outer_id = ObjectID::FromRandom();
+  owner->Put(inner_id);
+  owner->PutWrappedId(outer_id, inner_id);
+
+  // The owner submits a task that depends on the outer object.
+  auto return_id = owner->SubmitTaskWithArg(outer_id);
+  owner->rc_.RemoveLocalReference(outer_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // The borrower is given a reference to the inner object.
+  borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // The borrower task returns to the owner while still using inner_id.
+  auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
+  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // The owner receives the borrower's reply and merges the borrower's ref count.
+  owner->HandleSubmittedTaskFinished(
+      return_id, outer_id, {}, borrower->address_, borrower_refs);
+  // Owner now has borrower in inner's borrowers list.
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+
+  // The borrower removes its reference to inner_id.
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  // Owner still has reference because it hasn't received the message yet.
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Owner subscribes to borrower's ref removed and borrower sends the message.
+  // This triggers message_published_callback -> CleanupBorrowersOnRefRemoved (1st call).
+  borrower->FlushBorrowerCallbacks();
+  // Owner's reference should now be cleaned up.
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+
+  // Now simulate the race condition: publisher_failed_callback fires after
+  // message_published_callback has already cleaned up.
+  // This should trigger CleanupBorrowersOnRefRemoved (2nd call) which should be
+  // idempotent. Before the fix, this would cause RAY_CHECK failure or leave dangling
+  // entries.
+  borrower->FailAllWaitForRefRemovedRequests();
+
+  // Verify the final state is correct - no references should remain.
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+}
+
 // A borrower is given a reference to an object ID, keeps the reference past
 // the task's lifetime, then deletes the reference before it hears from the
 // owner.
