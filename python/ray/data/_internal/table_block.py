@@ -311,25 +311,7 @@ class TableBlockAccessor(BlockAccessor):
                 yield tuple(), self.to_block()
                 return
 
-            start = end = 0
-            iter = self.iter_rows(public_row_format=False)
-            next_row = None
-            while True:
-                try:
-                    if next_row is None:
-                        next_row = next(iter)
-                    next_keys = next_row[keys]
-                    while keys_equal(next_row[keys], next_keys):
-                        end += 1
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-                    yield next_keys, self.slice(start, end)
-                    start = end
-                except StopIteration:
-                    break
+            yield from self._iter_groups_sorted(sort_key):
 
         builder = self.builder()
         for group_keys, group_view in iter_groups():
