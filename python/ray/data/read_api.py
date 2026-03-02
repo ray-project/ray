@@ -4367,7 +4367,12 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
+    start_offset: Union[
+        int,
+        datetime,
+        Literal["earliest"],
+        Dict[str, Dict[int, Union[int, str, datetime]]],
+    ] = "earliest",
     end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
     num_cpus: Optional[float] = None,
@@ -4408,6 +4413,21 @@ def read_kafka(
                 end_offset=datetime(2025, 1, 2),
             )
 
+            # Read with per-partition start offsets; partition 2 is omitted and
+            # falls back to "earliest"
+            ds = ray.data.read_kafka(
+                topics=["my_topic"],
+                bootstrap_servers="localhost:9092",
+                start_offset={
+                    "my_topic": {
+                        0: 1500,         # exact integer offset
+                        1: "earliest",   # explicit earliest for this partition
+                        # partition 2 not listed → falls back to "earliest"
+                    }
+                },
+                end_offset="latest",
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4418,9 +4438,15 @@ def read_kafka(
             performs a single bounded read.
         start_offset: Starting position for reading. Can be:
 
-            - int: Offset number
+            - int: Offset number applied globally to all partitions.
             - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
-            - str: "earliest"
+            - str: ``"earliest"`` — start from the beginning of each partition.
+            - Dict[str, Dict[int, Union[int, str, datetime]]]: Per-partition
+              offsets, mapping topic name → (partition id → offset). Each
+              partition offset can be an int, ``"earliest"``, or a datetime
+              (treated the same as the global datetime form). Partitions omitted
+              from the dict fall back to ``"earliest"``.
+              Example: ``{"my_topic": {0: 1500, 1: "earliest"}}``.
 
         end_offset: Ending position for reading (exclusive). Can be:
 
