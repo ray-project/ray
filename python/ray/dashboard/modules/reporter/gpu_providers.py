@@ -342,10 +342,10 @@ class NvidiaGpuProvider(GpuProvider):
                         else 0,
                         gpu_utilization=None,
                     )
-            except self._pynvml.NVMLError:
+            except self._pynvml.NVMLError as e:
                 logger.debug(
                     "Failed to retrieve per-process GPU memory via `nvmlDeviceGetComputeRunningProcesses` "
-                    "and `nvmlDeviceGetGraphicsRunningProcesses` APIs: {e}"
+                    f"and `nvmlDeviceGetGraphicsRunningProcesses` APIs: {e}"
                 )
 
             # Use a newer API (driver 550+) to get per-process SM utilization, but the user
@@ -370,10 +370,10 @@ class NvidiaGpuProvider(GpuProvider):
                             gpu_utilization=int(nv_process.smUtil),
                         )
                     else:
-                        processes_pids[pid].gpu_utilization = int(nv_process.smUtil)
-            except self._pynvml.NVMLError:
+                        processes_pids[pid]["gpu_utilization"] = int(nv_process.smUtil)
+            except self._pynvml.NVMLError as e:
                 logger.debug(
-                    "Failed to retrieve GPU process SM utilization using `nvmlDeviceGetProcessesUtilizationInfo`"
+                    f"Failed to retrieve GPU process SM utilization using `nvmlDeviceGetProcessesUtilizationInfo`, error: {e}"
                 )
 
             # Optional: power (milliwatts) and temperature (Celsius)
