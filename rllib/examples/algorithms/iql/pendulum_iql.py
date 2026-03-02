@@ -22,7 +22,7 @@ assert (
 ), "This tuned example works only with `Pendulum-v1`."
 
 # Define the data path.
-data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
+data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "pendulum/"
 
 # Define the IQL config.
 config = (
