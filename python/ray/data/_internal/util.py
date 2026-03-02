@@ -1816,6 +1816,14 @@ def infer_compression(path: str) -> Optional[str]:
     return compression
 
 
+def make_epoch_seed(seed: int, execution_idx: int) -> int:
+    """Combine a user seed with an execution index to produce a per-epoch seed.
+
+    Modulo ensures the result is in valid NumPy seed range [0, 2**32 - 1].
+    """
+    return hash((seed, execution_idx)) % (2**32)
+
+
 def get_max_task_capacity(
     allocated_resources: Optional["ExecutionResources"],
     min_scheduling_resources: "ExecutionResources",

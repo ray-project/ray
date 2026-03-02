@@ -35,7 +35,14 @@ def generate_randomize_blocks_fn(
             return refs, {op.name: []}
         else:
             if op.seed is not None:
-                random.seed(op.seed)
+                from ray.data._internal.util import make_epoch_seed
+                from ray.data.context import DataContext
+
+                data_context = DataContext.get_current()
+                execution_idx = (
+                    data_context._execution_idx if data_context is not None else 0
+                )
+                random.seed(make_epoch_seed(op.seed, execution_idx))
             input_owned = all(b.owns_blocks for b in refs)
             random.shuffle(blocks_with_metadata)
             output = []

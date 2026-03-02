@@ -27,6 +27,7 @@ from ray.data._internal.util import (
     infer_compression,
     iterate_with_retry,
     make_async_gen,
+    make_epoch_seed,
 )
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
@@ -116,8 +117,7 @@ class FileShuffleConfig:
         if self.seed is None:
             return None
         elif self.reseed_after_execution:
-            # Modulo ensures the result is in valid NumPy seed range [0, 2**32 - 1].
-            return hash((self.seed, execution_idx)) % (2**32)
+            return make_epoch_seed(self.seed, execution_idx)
         else:
             return self.seed
 
