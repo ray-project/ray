@@ -8,6 +8,7 @@ Supports color, bold text, italics, underlines, etc.
 as well as indentation and other structured output.
 """
 import inspect
+import linecache
 import logging
 import os
 import sys
@@ -130,6 +131,84 @@ def _external_caller_info():
         "lineno": caller.f_lineno,
         "filename": os.path.basename(caller.f_code.co_filename),
     }
+
+
+_DOASSERT_EXPR_CACHE: Dict[Tuple[str, int], Optional[str]] = {}
+
+
+def _doassert_expr() -> Optional[str]:
+    """Best-effort extraction of the first `doassert(...)` argument."""
+
+    frame = inspect.currentframe()
+    if frame is None or frame.f_back is None or frame.f_back.f_back is None:
+        return None
+
+    caller = frame.f_back.f_back
+    key = (caller.f_code.co_filename, caller.f_lineno)
+    if key in _DOASSERT_EXPR_CACHE:
+        return _DOASSERT_EXPR_CACHE[key]
+
+    source = "".join(
+        linecache.getline(caller.f_code.co_filename, i)
+        for i in range(caller.f_lineno, caller.f_lineno + 32)
+    )
+    start = source.find("doassert(")
+    if start == -1:
+        _DOASSERT_EXPR_CACHE[key] = None
+        return None
+
+    i = start + len("doassert(")
+    depth = 0
+    quote = ""
+    triple = False
+    while i < len(source):
+        ch = source[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if triple:
+                if source.startswith(quote * 3, i):
+                    quote = ""
+                    triple = False
+                    i += 3
+                    continue
+            elif ch == quote:
+                quote = ""
+                i += 1
+                continue
+            i += 1
+            continue
+
+        if source.startswith("'''", i) or source.startswith('"""', i):
+            quote = source[i]
+            triple = True
+            i += 3
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            i += 1
+            continue
+        if ch in "([{":
+            depth += 1
+            i += 1
+            continue
+        if ch in ")]}":
+            if depth > 0:
+                depth -= 1
+            i += 1
+            continue
+        if ch == "," and depth == 0:
+            break
+        i += 1
+
+    expr = source[start + len("doassert(") : i].strip()
+    if expr:
+        expr = " ".join(expr.split())
+    else:
+        expr = None
+    _DOASSERT_EXPR_CACHE[key] = expr
+    return expr
 
 
 def _format_msg(
@@ -591,12 +670,8 @@ class _CliLogger:
         if not val:
             exc = None
             if not self.pretty:
-                exc = AssertionError()
-
-            # TODO(maximsmol): rework asserts so that we get the expression
-            #                  that triggered the assert
-            #                  to do this, install a global try-catch
-            #                  for AssertionError and raise them normally
+                expr = _doassert_expr()
+                exc = AssertionError(f"assert {expr}") if expr else AssertionError()
             self.abort(msg, *args, exc=exc, **kwargs)
 
     def render_list(self, xs: List[str], separator: str = cf.reset(", ")):

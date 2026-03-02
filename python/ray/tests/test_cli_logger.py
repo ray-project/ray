@@ -27,5 +27,21 @@ def test_pathname():
         assert "test_cli_logger.py" in mock_stdout.getvalue()
 
 
+def _trigger_failed_doassert_for_expr_test():
+    left = 1
+    right = 2
+    cli_logger.cli_logger.doassert(
+        left > right and (left == 1),
+        "boom",
+    )
+
+
+def test_doassert_includes_failed_expression():
+    with pytest.raises(AssertionError) as exc_info:
+        _trigger_failed_doassert_for_expr_test()
+
+    assert str(exc_info.value) == "assert left > right and (left == 1)"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
