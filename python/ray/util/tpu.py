@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager
@@ -8,6 +8,7 @@ from ray._private.accelerators.tpu import (
     VALID_TPU_TYPES,
     get_chips_per_host,
     get_num_chips_from_topology,
+    infer_tpu_pod_type_from_topology,
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
@@ -219,6 +220,115 @@ def get_tpu_coordinator_env_vars(
         "MEGASCALE_NUM_SLICES": str(num_slices),
         "MEGASCALE_SLICE_ID": str(slice_id),
     }
+
+
+@PublicAPI(stability="alpha")
+def get_tpu_slice_name_from_node(node: Dict[str, Any]) -> Optional[str]:
+    """Returns the TPU slice name for a given Ray node dictionary.
+
+    Args:
+        node: A dictionary representing a Ray node (returned by ray.nodes()).
+
+    Returns:
+        The TPU slice name if the node belongs to a slice, otherwise None.
+    """
+    return node.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY)
+
+
+@PublicAPI(stability="alpha")
+def get_tpu_nodes_for_slice(
+    slice_name: str, nodes: Optional[List[Dict[str, Any]]] = None
+) -> List[Dict[str, Any]]:
+    """Returns all alive Ray nodes belonging to the specified TPU slice.
+
+    Args:
+        slice_name: The TPU slice name to filter by.
+        nodes: Optional list of Ray node dictionaries. If not provided,
+            it will be fetched via `ray.nodes()` from GCS.
+
+    Returns:
+        A list of node dictionaries that are alive and belong to the specified TPU slice.
+    """
+    if nodes is None:
+        if not ray.is_initialized():
+            return []
+        nodes = ray.nodes()
+
+    return [
+        node
+        for node in nodes
+        if node.get("Alive") and get_tpu_slice_name_from_node(node) == slice_name
+    ]
+
+
+@PublicAPI(stability="alpha")
+def get_num_ready_tpu_slices(
+    topology: str,
+    accelerator_type: str,
+    resources_per_worker: Optional[Dict[str, float]] = None,
+) -> int:
+    """
+    Checks the cluster state to determine how many full TPU slices of the
+    specified topology are currently intact and available.
+
+    Args:
+        topology: The TPU topology string (e.g. "2x4").
+        accelerator_type: The accelerator type string (e.g. "TPU-V6E").
+        resources_per_worker: Optional dictionary specifying the resources
+            expected per worker node.
+
+    Returns:
+        The integer count of fully ready and intact TPU slices.
+    """
+    if not ray.is_initialized():
+        return 0
+
+    try:
+        pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
+        if not pod_type:
+            return 0
+
+        expected_nodes_per_slice, _ = get_tpu_worker_resources(
+            topology=topology,
+            accelerator_type=accelerator_type,
+            resources_per_unit=resources_per_worker,
+            num_slices=1,
+        )
+        if expected_nodes_per_slice <= 0:
+            return 0
+
+    except Exception as e:
+        logger.warning(f"Failed to parse TPU topology for readiness check: {e}")
+        return 0
+
+    head_resource = f"TPU-{pod_type}-head"
+    if int(ray.cluster_resources().get(head_resource, 0)) == 0:
+        # Return early if there are no TPU head nodes in the cluster.
+        return 0
+
+    slice_to_nodes = {}
+    for node in ray.nodes():
+        # Build a mapping of currently alive Ray nodes and
+        # the TPU slice they belong to in GKE.
+        if node.get("Alive"):
+            labels = node.get("Labels", {})
+            if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
+                slice_name = get_tpu_slice_name_from_node(node)
+                if slice_name:
+                    slice_to_nodes.setdefault(slice_name, []).append(node)
+
+    ready_slices = 0
+    for slice_name, nodes in slice_to_nodes.items():
+        if len(nodes) == expected_nodes_per_slice:
+            # A ready TPU slice must have an available TPU head (worker rank 0) node.
+            has_head = any(
+                n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+                for n in nodes
+            )
+            if has_head:
+                ready_slices += 1
+
+    return ready_slices
 
 
 @PublicAPI(stability="alpha")
