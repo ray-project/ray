@@ -188,14 +188,11 @@ class OfflinePreLearner:
                 )
                 for state in batch["item"]
             ]
-            for ep in episodes:
-                ep.to_numpy()
             episodes = self._postprocess_and_sample(episodes)
 
         elif self.config.input_read_sample_batches:
             episodes: List[SingleAgentEpisode] = self._map_sample_batch_to_episode(
                 batch,
-                to_numpy=True,
             )["episodes"]
             episodes = self._postprocess_and_sample(episodes)
         else:
@@ -203,6 +200,11 @@ class OfflinePreLearner:
                 batch,
                 to_numpy=True,
             )["episodes"]
+
+        # Ensure all episodes are numpy'ized before entering the learner connector.
+        for ep in episodes:
+            if not ep.is_numpy:
+                ep.to_numpy()
 
         # TODO (simon): Sync learner connector state
         # TODO (sven): Add MetricsLogger to non-Learner components that have a LearnerConnector pipeline.

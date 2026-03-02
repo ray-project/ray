@@ -16,7 +16,6 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
-from ray.util.debug import log_once
 
 logger = logging.Logger(__file__)
 
@@ -33,10 +32,6 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
     def __init__(self, *, config: AlgorithmConfig, **kwargs):
         # Initialize the parent.
         super().__init__(config=config, **kwargs)
-
-        # override SingleAgentEnvRunner
-        self.episodes_to_numpy = False
-
         # Get the data context for this `EnvRunner`.
         data_context = ray.data.DataContext.get_current()
         # Limit the resources for Ray Data to the CPUs given to this `EnvRunner`.
@@ -187,15 +182,6 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             import msgpack
             import msgpack_numpy as mnp
 
-            if log_once("msgpack"):
-                logger.info(
-                    "Packing episodes with `msgpack` and encode array with "
-                    "`msgpack_numpy` for serialization. This is needed for "
-                    "recording episodes."
-                )
-            # Note, we serialize episodes with `msgpack` and `msgpack_numpy` to
-            # ensure version compatibility.
-            assert all(eps.is_numpy is False for eps in samples)
             self._samples.extend(
                 [msgpack.packb(eps.get_state(), default=mnp.encode) for eps in samples]
             )
