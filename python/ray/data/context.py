@@ -271,7 +271,7 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
     0.5,
 )
 
-DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: int = env_integer(
+DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
     1,
 )
@@ -352,7 +352,9 @@ class AutoscalingConfig:
     )
 
     # Maximum number of actors to scale up in a single scaling decision
-    actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
+    actor_pool_max_upscaling_delta: Optional[
+        int
+    ] = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
 
 
 def _execution_options_factory() -> "ExecutionOptions":

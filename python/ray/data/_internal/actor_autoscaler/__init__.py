@@ -1,9 +1,5 @@
 from typing import TYPE_CHECKING
 
-from .actor_pool_resizing_policy import (
-    ActorPoolResizingPolicy,
-    DefaultResizingPolicy,
-)
 from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
 from .base_actor_autoscaler import ActorAutoscaler
 from .default_actor_autoscaler import DefaultActorAutoscaler, _get_max_scale_up
@@ -28,7 +24,6 @@ def create_actor_autoscaler(
 
 __all__ = [
     "ActorAutoscaler",
-    "ActorPoolResizingPolicy",
     "ActorPoolScalingRequest",
     "AutoscalingActorPool",
     "DefaultResizingPolicy",

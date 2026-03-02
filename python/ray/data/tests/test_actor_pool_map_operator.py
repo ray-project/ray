@@ -19,6 +19,9 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.ray_constants import ID_SIZE
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
+from ray.data._internal.actor_autoscaler.default_actor_autoscaler import (
+    _estimate_total_available_task_slots,
+)
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
@@ -230,7 +233,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 4
         # Check that ready future is returned.
         assert pool.get_pending_actor_refs() == [ready_ref]
 
@@ -247,7 +250,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 3
+        assert _estimate_total_available_task_slots(pool) == 3
 
     def test_restarting_to_alive(self):
         # Test that actor is correctly transitioned from restarting to alive.
@@ -264,7 +267,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_alive_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
-        assert pool.num_free_task_slots() == 1
+        assert _estimate_total_available_task_slots(pool) == 1
         assert pool.get_actor_info() == _ActorPoolInfo(
             running=0, pending=0, restarting=1
         )
@@ -280,7 +283,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_alive_actors() == 1
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
         assert pool.get_actor_info() == _ActorPoolInfo(
             running=1, pending=0, restarting=0
         )
@@ -294,7 +297,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_alive_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
-        assert pool.num_free_task_slots() == 1
+        assert _estimate_total_available_task_slots(pool) == 1
         assert pool.get_actor_info() == _ActorPoolInfo(
             running=1, pending=0, restarting=0
         )
@@ -327,17 +330,17 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1  # Actor should now be idle.
-        assert pool.num_free_task_slots() == 999
+        assert _estimate_total_available_task_slots(pool) == 999
 
     def test_pick_max_tasks_in_flight(self):
         # Test that we can't pick an actor beyond the max_tasks_in_flight cap.
         pool = self._create_actor_pool(max_tasks_in_flight=2)
         actor = self._add_ready_actor(pool)
-        assert pool.num_free_task_slots() == 2
+        assert _estimate_total_available_task_slots(pool) == 2
         assert self._assign_actor(pool) == actor
-        assert pool.num_free_task_slots() == 1
+        assert _estimate_total_available_task_slots(pool) == 1
         assert self._assign_actor(pool) == actor
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
         # Check that the 3rd pick doesn't return the actor.
         assert self._assign_actor(pool) is None
 
@@ -419,7 +422,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
 
     def test_kill_inactive_idle_actor(self):
         # Test that a idle actor is killed on the kill_inactive_actor() call.
@@ -441,7 +444,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
 
     def test_kill_inactive_active_actor_not_killed(self):
         # Test that active actors are NOT killed on the kill_inactive_actor() call.
@@ -486,7 +489,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
-        assert pool.num_free_task_slots() == 4
+        assert _estimate_total_available_task_slots(pool) == 4
 
     def test_all_actors_killed(self):
         # Test that all actors are killed after the kill_all_actors() call.
@@ -514,7 +517,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
 
     def test_selector_locality_based_actor_ranking(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
@@ -655,7 +658,7 @@ class TestActorPool(unittest.TestCase):
         assert picked == actor
 
         # Verify 1 slot remaining
-        assert pool.num_free_task_slots() == 1
+        assert _estimate_total_available_task_slots(pool) == 1
 
         selector = self._create_task_selector(pool)
 
@@ -667,7 +670,7 @@ class TestActorPool(unittest.TestCase):
         assert picked == actor
 
         # Verify 0 slots remaining
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
 
         # Verify can_schedule_task() returns False when actor is busy
         assert not selector.can_schedule_task()
@@ -707,24 +710,24 @@ class TestActorPool(unittest.TestCase):
         # Case 3: Actor becomes ready - should be schedulable
         self._wait_for_actor_ready(pool, ready_ref)
         assert pool.num_running_actors() == 1
-        assert pool.num_free_task_slots() == 2
+        assert _estimate_total_available_task_slots(pool) == 2
         assert selector.can_schedule_task()
 
         # Case 4: Actor partially busy (1 of 2 slots used) - still schedulable
         actor = self._assign_actor(pool)
         assert actor is not None
-        assert pool.num_free_task_slots() == 1
+        assert _estimate_total_available_task_slots(pool) == 1
         assert selector.can_schedule_task()
 
         # Case 5: Actor fully busy (2 of 2 slots used) - not schedulable
         actor2 = self._assign_actor(pool)
         assert actor2 == actor
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
         assert not selector.can_schedule_task()
 
         # Case 6: Task completes, slot freed - schedulable again
         pool.on_task_completed(actor)
-        assert pool.num_free_task_slots() == 1
+        assert _estimate_total_available_task_slots(pool) == 1
         assert selector.can_schedule_task()
 
         # Case 7: Actor restarting - not schedulable
@@ -759,12 +762,12 @@ class TestActorPool(unittest.TestCase):
         # Make both busy
         assigned2 = self._assign_actor(pool)
         assert assigned2 == idle_actor
-        assert pool.num_free_task_slots() == 0
+        assert _estimate_total_available_task_slots(pool) == 0
         assert not selector.can_schedule_task()
 
         # Free one actor
         pool.on_task_completed(busy_actor)
-        assert pool.num_free_task_slots() == 1
+        assert _estimate_total_available_task_slots(pool) == 1
         assert selector.can_schedule_task()
 
         # Make one actor restarting, but other is still available
