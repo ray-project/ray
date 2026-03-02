@@ -159,7 +159,8 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     batch={module_id: {Columns.OBS: bootstrap_obs}},
                     episodes=episodes,
                 )
-                bs_vf = module.compute_values(bs_tensor_batch[module_id])
+                # module may be wrapped in a DDP wrapper (TorchDDPRLModule), so we need to unwrap it to access compute_values.
+                bs_vf = module.unwrapped().compute_values(bs_tensor_batch[module_id])
                 bootstrap_vf_preds_per_module[module_id] = convert_to_numpy(bs_vf)
             else:
                 # _numpy_to_tensor_connector not yet initialised; will be set below
@@ -193,7 +194,12 @@ class GeneralAdvantageEstimation(ConnectorV2):
                             batch={mid2: {Columns.OBS: bs_obs}},
                             episodes=episodes,
                         )
-                        bs_vf = rl_module[mid2].compute_values(bs_tensor_batch[mid2])
+                        # module may be wrapped in a DDP wrapper (TorchDDPRLModule), so we need to unwrap it to access compute_values.
+                        bs_vf = (
+                            rl_module[mid2]
+                            .unwrapped()
+                            .compute_values(bs_tensor_batch[mid2])
+                        )
                         bootstrap_vf_preds_per_module[mid2] = convert_to_numpy(bs_vf)
 
             # Convert main VF preds to numpy.
