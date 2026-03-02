@@ -676,7 +676,7 @@ def test_num_replicas_auto_basic(serve_instance):
         wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=30)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
-    signal.send.remote()
+    ray.get(signal.send.remote())
 
 
 def test_deploy_one_app_failed(serve_instance):
