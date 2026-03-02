@@ -1,4 +1,5 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+import inspect
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -316,13 +317,18 @@ def _warn_if_using_deprecated_placement_group(
         )
 
 
-def validate_task_options(options: Dict[str, Any], in_options: bool):
+def validate_task_options(
+    options: Dict[str, Any], in_options: bool, function: Optional[Callable] = None
+):
     """Options check for Ray tasks.
 
     Args:
         options: Options for Ray tasks.
         in_options: If True, we are checking the options under the context of
             ".options()".
+        function: Optional function to validate num_returns='streaming' or 'dynamic'
+            against. If provided and num_returns is 'streaming' or 'dynamic',
+            validates that the function is a generator function.
     """
     for k, v in options.items():
         if k not in task_options:
@@ -334,6 +340,12 @@ def validate_task_options(options: Dict[str, Any], in_options: bool):
     if in_options and "max_calls" in options:
         raise ValueError("Setting 'max_calls' is not supported in '.options()'.")
     _check_deprecate_placement_group(options)
+
+    # Validate num_returns for generator functions when function is provided
+    if function is not None:
+        num_returns = options.get("num_returns")
+        if num_returns is not None:
+            validate_num_returns(function, num_returns)
 
 
 def validate_actor_options(options: Dict[str, Any], in_options: bool):
@@ -372,6 +384,42 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
         )
 
     _check_deprecate_placement_group(options)
+
+
+def validate_num_returns(function: Callable, num_returns: Any) -> None:
+    """Validate num_returns for @ray.remote and @ray.method decorators.
+
+    This function validates:
+    1. If num_returns is an integer < 0, it should fail fast.
+    2. If num_returns='streaming' or 'dynamic' is used with a non-generator
+       function, it should fail fast.
+
+    Args:
+        function: The function or method being decorated.
+        num_returns: The num_returns value to validate.
+
+    Raises:
+        ValueError: If num_returns < 0, or if num_returns is 'streaming' or 'dynamic'
+            but the function is not a generator function or async generator function.
+    """
+    if num_returns is None:
+        return
+
+    # Validate num_returns < 0
+    if isinstance(num_returns, int) and num_returns < 0:
+        raise ValueError(f"num_returns must be >= 0, but got {num_returns}.")
+
+    # Validate num_returns='streaming' or 'dynamic' for generator functions
+    if num_returns in ("streaming", "dynamic"):
+        if not (
+            inspect.isgeneratorfunction(function)
+            or inspect.isasyncgenfunction(function)
+        ):
+            raise ValueError(
+                f"num_returns='{num_returns}' can only be used with generator functions "
+                f"(functions that use 'yield'). "
+                f"Function '{function.__name__}' is not a generator function."
+            )
 
 
 def update_options(
