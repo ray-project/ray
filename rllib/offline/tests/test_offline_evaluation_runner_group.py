@@ -1,6 +1,5 @@
 import sys
 import unittest
-from pathlib import Path
 
 import gymnasium as gym
 
@@ -9,13 +8,12 @@ from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.offline.offline_evaluation_runner_group import (
     OfflineEvaluationRunnerGroup,
 )
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 
 
 class TestOfflineData(unittest.TestCase):
     def setUp(self) -> None:
-        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-        self.base_path = Path(__file__).parents[2]
-        self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
+        self.data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
         # Assign the observation and action spaces.
         env = gym.make("CartPole-v1")
         self.observation_space = env.observation_space

@@ -1,5 +1,4 @@
 import unittest
-from pathlib import Path
 
 import numpy as np
 
@@ -14,6 +13,7 @@ from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils import unflatten_dict
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 
 
 class OfflineRLStatefulTest(unittest.TestCase):
@@ -27,7 +27,7 @@ class OfflineRLStatefulTest(unittest.TestCase):
 
     def setUp(self):
         # Define the path to the offline data.
-        offline_data_path = Path(__file__).parent / "data/statelesscartpole"
+        offline_data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "statelesscartpole/"
         # Define the BC config.
         self.config = (
             BCConfig()
@@ -39,8 +39,7 @@ class OfflineRLStatefulTest(unittest.TestCase):
             # as remote learners.
             .offline_data(
                 input_=[
-                    offline_data_path.as_posix(),
-                    # "s3://anonymous@ray-example-data/rllib/offline-data/statelesscartpole"
+                    offline_data_path,
                 ],
                 input_read_episodes=True,
                 input_read_batch_size=1,

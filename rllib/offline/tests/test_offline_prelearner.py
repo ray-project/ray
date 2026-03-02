@@ -14,6 +14,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import SCHEMA, OfflinePreLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import unflatten_dict
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 
 EXPECTED_KEYS = [
     Columns.OBS,
@@ -25,10 +26,7 @@ EXPECTED_KEYS = [
     "n_step",
 ]
 BASE_PATH = Path(__file__).parents[2]
-EPISODES_DATA_PATH = (
-    "local://"
-    + BASE_PATH.joinpath("offline/tests/data/cartpole/cartpole-v1_large").as_posix()
-)
+EPISODES_DATA_PATH = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 SAMPLE_BATCH_DATA_PATH = (
     "local://" + BASE_PATH.joinpath("offline/tests/data/cartpole/large.json").as_posix()
 )
