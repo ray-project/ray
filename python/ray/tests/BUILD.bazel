@@ -1284,6 +1284,23 @@ py_test(
     ],
 )
 
+sh_test(
+    name = "test_exported_symbols_unix",
+    size = "small",
+    srcs = ["test_exported_symbols_linux.sh"],
+    data = [
+        "raylet_exported_symbols_linux.txt",
+        "raylet_exported_symbols_macos.txt",
+        "//:_raylet",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:core",
+    ],
+)
+
 py_test(
     name = "kuberay/test_autoscaling_e2e",
     size = "large",

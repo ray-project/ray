@@ -2,7 +2,7 @@ import multiprocessing.shared_memory as shm
 import pickle
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy
 import pytest
@@ -81,6 +81,7 @@ class SharedMemoryTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List[Any]] = None,
     ):
         shm_name = tensor_transport_metadata.shm_name
         size = tensor_transport_metadata.shm_size
