@@ -20,6 +20,15 @@ class GPUTestActor:
         data.mul_(2)
         return data
 
+    def ray_put_echo(self, data):
+        tensor = self.echo(data)
+        return [ray.put(tensor, _tensor_transport="cuda_ipc")]
+
+    def ray_get_double(self, ref_lst):
+        data = ray.get(ref_lst[0])
+        data.mul_(2)
+        return data
+
     def wait_tensor_freed(self):
         gpu_manager = ray.worker.global_worker.gpu_object_manager
         ray.experimental.wait_tensor_freed(self.tensor, timeout=10)
@@ -186,10 +195,34 @@ def test_source_actor_fails_before_transfer(ray_start_regular):
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(src_actor.wait_tensor_freed.remote())
 
-    # Check that the tensor is still available on the destination actor.
+    # Check that the tensor is not available on the destination actor.
     with pytest.raises(ray.exceptions.RayTaskError):
         res_ref = dst_actor.double.remote(gpu_ref)
         ray.get(res_ref, _use_object_store=True)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_ray_get(ray_start_regular):
+    world_size = 2
+    actors = [
+        GPUTestActor.options(num_gpus=0.5, num_cpus=0).remote()
+        for _ in range(world_size)
+    ]
+
+    src_actor, dst_actor = actors[0], actors[1]
+
+    tensor = torch.tensor([1, 2, 3])
+    gpu_ref = src_actor.ray_put_echo.remote(tensor)
+
+    res_ref = dst_actor.ray_get_double.remote(gpu_ref)
+    assert torch.equal(
+        ray.get(res_ref, _use_object_store=True),
+        torch.tensor([2, 4, 6], device="cuda"),
+    )
+    assert torch.equal(
+        ray.get(ray.get(gpu_ref)[0], _use_object_store=True),
+        torch.tensor([2, 4, 6], device="cuda"),
+    )
 
 
 if __name__ == "__main__":

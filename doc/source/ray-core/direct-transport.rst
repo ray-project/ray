@@ -31,6 +31,7 @@ Currently, RDT supports the following tensor transports:
 1. `Gloo <https://github.com/pytorch/gloo>`__: A collective communication library for PyTorch and CPUs.
 2. `NVIDIA NCCL <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`__: A collective communication library for NVIDIA GPUs.
 3. `NVIDIA NIXL <https://github.com/ai-dynamo/nixl>`__ (backed by `UCX <https://github.com/openucx/ucx>`__): A library for accelerating point-to-point transfers via RDMA, especially between various types of memory and NVIDIA GPUs.
+4. CUDA IPC: Shared memory handles for processes sharing the same NVIDIA GPU.
 
 For ease of following along, we'll start with the `Gloo <https://github.com/pytorch/gloo>`__ transport, which can be used without any physical GPUs.
 
@@ -251,6 +252,26 @@ You can also use NIXL to retrieve the result from references created by :func:`r
    :start-after: __nixl_put__and_get_start__
    :end-before: __nixl_put__and_get_end__
 
+Usage with CUDA IPC (NVIDIA GPUs only)
+-------------------------------------
+
+CUDA IPC can be used to share memory between processes sharing the same NVIDIA GPU.
+To use the CUDA IPC transport in RDT, the Ray actors involved must be allocated the same GPUs by Ray, which can be done by assigning each actor a fractional GPU on the same node.
+Also, ``CUDA_VISIBLE_DEVICES`` must be set to the GPUs assigned by Ray (this is the default behavior).
+
+Here is an example showing how to use CUDA IPC to transfer an RDT object between two actors:
+
+.. literalinclude:: doc_code/direct_transport_cuda_ipc.py
+   :language: python
+   :start-after: __cuda_ipc_full_example_start__
+   :end-before: __cuda_ipc_full_example_end__
+
+Compared to the :ref:`Gloo example <direct-transport-gloo>`, the main code differences are:
+
+1. The :func:`@ray.method <ray.method>` uses ``tensor_transport="cuda_ipc"`` instead of ``tensor_transport="gloo"``.
+2. No collective group is needed.
+3. Similar to NIXL, :func:`ray.put <ray.put>` and :func:`ray.get <ray.get>` can be used with CUDA IPC.
+4. The tensor memory is **shared**. This means that *if the receiver modifies the tensor in place, the changes will be seen by the sender*. If the sender process exits, the tensor will still be available to the receiver until the receiver process frees the tensor reference or exits.
 
 Summary
 -------
