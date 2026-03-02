@@ -3,7 +3,6 @@ import math
 import threading
 import time
 import typing
-from dataclasses import asdict
 from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import (
@@ -45,7 +44,10 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.metadata_exporter import (
+    Topology as TopologyMetadata,
+    sanitize_for_struct,
+)
 from ray.data._internal.operator_schema_exporter import (
     OperatorSchema,
     get_operator_schema_exporter,
@@ -196,7 +198,7 @@ class StreamingExecutor(Executor, threading.Thread):
             ):
                 logger.debug(
                     f"Data Context for dataset {self._dataset_id}:\n%s",
-                    asdict(self._data_context),
+                    sanitize_for_struct(self._data_context),
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
