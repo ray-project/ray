@@ -416,7 +416,7 @@ def test_full_dataset_executed_for_non_write(
         ),
     ],
 )
-def test_recovery_skips_checkpointed_rows(
+def test_recovery_no_missing_rows(
     ray_start_10_cpus_shared,
     ds_factory,
     backend,
@@ -424,8 +424,7 @@ def test_recovery_skips_checkpointed_rows(
     data_path,
     data_output_path,
 ):
-    """Tests that for a Dataset which fails partway and is recovered,
-    it skips rows which have already been checkpointed."""
+    """Tests that recovery is at_least_once: no missing rows after retry."""
 
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.preserve_order = True
@@ -518,9 +517,67 @@ def test_recovery_skips_checkpointed_rows(
     # Ensure that the written data is correct.
     ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)
 
-    # For existing id column, expect integer IDs
-    actual_output = sorted([row[id_col] for row in ds_readback.iter_rows()])
-    expected_output = sorted(range(max_num_items))
+    # Checkpointing is at_least_once, so duplicates are allowed; ensure no missing IDs.
+    actual_output = [row[id_col] for row in ds_readback.iter_rows()]
+    expected_output = list(range(max_num_items))
+    assert set(actual_output) == set(expected_output)
+
+
+@pytest.mark.parametrize(
+    "backend,fs,data_path",
+    [
+        (CheckpointBackend.FILE_STORAGE, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.FILE_STORAGE,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.CLOUD_OBJECT_STORAGE,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
+        ),
+    ],
+)
+def test_manual_checkpoint_filters_ids(
+    ray_start_10_cpus_shared,
+    generate_sample_data_parquet,
+    backend,
+    fs,
+    data_path,
+    data_output_path,
+):
+    """Manually write checkpoint IDs and verify they are filtered from output."""
+    ctx = ray.data.DataContext.get_current()
+    ctx.default_hash_shuffle_parallelism = 1
+    ckpt_path = os.path.join(data_path, "test_manual_checkpoint_files")
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        override_filesystem=fs,
+        override_backend=backend,
+    )
+
+    checkpoint_ids = [1, 3, 7]
+    df = pd.DataFrame({ID_COL: checkpoint_ids})
+    checkpoint_writer = BatchBasedCheckpointWriter(ctx.checkpoint_config)
+    checkpoint_writer.write_block_checkpoint(BlockAccessor.for_block(df))
+    assert set(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == set(
+        checkpoint_ids
+    )
+
+    parquet_dir = generate_sample_data_parquet()
+    ds = ray.data.read_parquet(parquet_dir)
+    ds.write_parquet(data_output_path, filesystem=fs)
+
+    # Disable checkpointing prior to reading back the data, so we don't skip any rows.
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    expected_output = sorted(
+        [i for i in range(SAMPLE_DATA_NUM_ROWS) if i not in set(checkpoint_ids)]
+    )
     assert actual_output == expected_output
 
 
