@@ -152,6 +152,10 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
                 "export RAY_WANT_COMMIT_IN_IMAGE=abc123"
                 in content["steps"][0]["commands"][0]
             )
+            assert (
+                content["steps"][0]["commands"][1]
+                == f"bash release/gcloud_docker_login.sh {config['aws2gce_credentials']}"
+            )
             assert content["steps"][0]["commands"][4].startswith(
                 "az acr login"
             ) and content["steps"][0]["commands"][4].endswith(AZURE_REGISTRY_NAME)
