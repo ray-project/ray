@@ -1,5 +1,5 @@
 import collections
-from typing import Any, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_builder import BlockBuilder
@@ -7,9 +7,10 @@ from ray.data.block import Block, BlockAccessor, BlockType, DataBatch
 
 
 class DelegatingBlockBuilder(BlockBuilder):
-    def __init__(self):
+    def __init__(self, schema_hint: Optional["pyarrow.Schema"] = None):
         self._builder = None
         self._empty_block = None
+        self._schema_hint = schema_hint
 
     @property
     def _inferred_block_type(self) -> Optional[BlockType]:
@@ -22,7 +23,7 @@ class DelegatingBlockBuilder(BlockBuilder):
         assert isinstance(item, collections.abc.Mapping), item
 
         if self._builder is None:
-            self._builder = ArrowBlockBuilder()
+            self._builder = ArrowBlockBuilder(schema=self._schema_hint)
 
         self._builder.add(item)
 
@@ -62,9 +63,11 @@ class DelegatingBlockBuilder(BlockBuilder):
         if self._builder is None:
             if self._empty_block is not None:
                 self._builder = BlockAccessor.for_block(self._empty_block).builder()
+                if isinstance(self._builder, ArrowBlockBuilder) and self._schema_hint is not None:
+                    self._builder._schema = self._schema_hint
                 self._builder.add_block(self._empty_block)
             else:
-                self._builder = ArrowBlockBuilder()
+                self._builder = ArrowBlockBuilder(schema=self._schema_hint)
         return self._builder.build()
 
     def num_rows(self) -> int:
@@ -74,3 +77,7 @@ class DelegatingBlockBuilder(BlockBuilder):
         if self._builder is None:
             return 0
         return self._builder.get_estimated_memory_usage()
+
+
+if TYPE_CHECKING:
+    import pyarrow

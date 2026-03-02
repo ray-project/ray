@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
 
 import ray
@@ -249,6 +250,37 @@ def test_gpu_workers_not_reused(
     unique_worker_ids = ds.map(_get_worker_id, num_gpus=1).unique("worker_id")
 
     assert len(unique_worker_ids) == total_blocks
+
+
+def test_filter_map_preserve_dictionary_schema(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    indices = pa.array([0, 1, 0, 2, 1], type=pa.int32())
+    dict_values = pa.array(["alpha", "beta", "gamma"], type=pa.string())
+    dict_array = pa.DictionaryArray.from_arrays(indices, dict_values)
+    string_array = pa.array(["one", "two", "three", "four", "five"], type=pa.string())
+
+    table = pa.Table.from_arrays(
+        [dict_array, string_array], names=["dict_col", "str_col"]
+    )
+    path = tmp_path / "dict_test.parquet"
+    pq.write_table(table, path, use_dictionary=["dict_col"])
+
+    def _arrow_schema(ds):
+        schema = ds.schema()
+        return schema.base_schema if hasattr(schema, "base_schema") else schema
+
+    ds = ray.data.read_parquet(str(path))
+    expected_type = pa.dictionary(pa.int32(), pa.string())
+
+    original_schema = _arrow_schema(ds)
+    assert original_schema.field("dict_col").type == expected_type
+
+    filtered_schema = _arrow_schema(ds.filter(lambda row: True))
+    assert filtered_schema.field("dict_col").type == expected_type
+
+    mapped_schema = _arrow_schema(ds.map(lambda row: row))
+    assert mapped_schema.field("dict_col").type == expected_type
 
 
 @pytest.mark.parametrize(
