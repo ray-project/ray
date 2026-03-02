@@ -2869,9 +2869,9 @@ except Exception as e:
 
 
 try:
-    from ray.serve.scripts import serve_cli
+    from ray.serve.scripts import cli as serve_cli_group
 
-    cli.add_command(serve_cli)
+    cli.add_command(serve_cli_group, name="serve")
 except Exception as e:
     logger.debug(f"Integrating ray serve command line tool failed with {e}")
 
