@@ -202,6 +202,10 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
+        # Serialized data context.
+        self._cached_data_context = None
+        self._cached_map_transformer = None
+
     @staticmethod
     def _create_task_selector(actor_pool: "_ActorPool") -> "_ActorTaskSelector":
         return _ActorTaskSelectorImpl(actor_pool)
@@ -309,16 +313,19 @@ class ActorPoolMapOperator(MapOperator):
             A tuple of the actor handle and the object ref to the actor's location.
         """
         assert self._actor_cls is not None
-        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
+        # Cache data context and map transformer to avoid serialization overhead.
+        if self._cached_data_context is None:
+            self._cached_data_context = ray.put(self.data_context)
+            self._cached_map_transformer = ray.put(self._map_transformer)
         actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
         ).remote(
-            ctx=ctx,
+            ctx=self._cached_data_context,
             logical_actor_id=logical_actor_id,
             src_fn_name=self.name,
-            map_transformer=self._map_transformer,
+            map_transformer=self._cached_map_transformer,
             actor_location_tracker=get_or_create_actor_location_tracker(),
         )
         res_ref = actor.get_location.remote()
