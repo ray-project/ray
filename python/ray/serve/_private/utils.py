@@ -12,7 +12,7 @@ import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union
 
 import requests
 
@@ -23,7 +23,11 @@ from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
-from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    HTTP_PROXY_TIMEOUT,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 
@@ -517,6 +521,35 @@ def get_all_live_placement_group_names() -> List[str]:
             live_pg_names.append(pg_name)
 
     return live_pg_names
+
+
+def get_active_placement_group_ids() -> Set[str]:
+    """
+    Retrieve the set of placement group IDs referenced by alive Serve actors.
+
+    Returns:
+        The set of placement group IDs referenced by alive Serve actors.
+    """
+    # TODO (jeffreywang): Move the imports to the top of the file.
+    # https://github.com/ray-project/ray/issues/61330
+    from ray.util.state import list_actors
+    from ray.util.state.common import RAY_MAX_LIMIT_FROM_API_SERVER
+
+    actors = list_actors(
+        filters=[
+            ("ray_namespace", "=", SERVE_NAMESPACE),
+            ("state", "=", "ALIVE"),
+        ],
+        limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+        detail=True,
+        raise_on_missing_output=False,
+    )
+
+    return {
+        actor.placement_group_id
+        for actor in actors
+        if actor.placement_group_id is not None
+    }
 
 
 def get_current_actor_id() -> str:

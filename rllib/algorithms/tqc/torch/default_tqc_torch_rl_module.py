@@ -165,9 +165,8 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
         # Dict observations are handled by connectors (e.g., FlattenObservations)
         # before reaching this method.
 
-        # Concatenate observations and actions
-        qf_input = torch.cat([obs, actions], dim=-1)
-        batch_dict = {Columns.OBS: qf_input}
+        # Create batch dict for encoder input.
+        batch_dict = {Columns.OBS: obs, Columns.ACTIONS: actions}
 
         encoders = self.target_qf_encoders if use_target else self.qf_encoders
         heads = self.target_qf_heads if use_target else self.qf_heads

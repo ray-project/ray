@@ -1,6 +1,10 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors.utils import (
+    _PublicField,
+    migrate_private_fields,
+)
 from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
@@ -38,13 +42,14 @@ class Chain(Preprocessor):
         2  1    [1.224744871391589, 1.224744871391589]
 
     Args:
-        preprocessors: The preprocessors to sequentially compose.
+        *preprocessors: The preprocessors to sequentially compose.
     """
 
     def fit_status(self):
         fittable_count = 0
         fitted_count = 0
-        for p in self.preprocessors:
+
+        for p in self._preprocessors:
             if p.fit_status() == Preprocessor.FitStatus.FITTED:
                 fittable_count += 1
                 fitted_count += 1
@@ -67,16 +72,20 @@ class Chain(Preprocessor):
 
     def __init__(self, *preprocessors: Preprocessor):
         super().__init__()
-        self.preprocessors = preprocessors
+        self._preprocessors = preprocessors
+
+    @property
+    def preprocessors(self) -> Tuple[Preprocessor, ...]:
+        return self._preprocessors
 
     def _fit(self, ds: "Dataset") -> Preprocessor:
-        for preprocessor in self.preprocessors[:-1]:
+        for preprocessor in self._preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)
-        self.preprocessors[-1].fit(ds)
+        self._preprocessors[-1].fit(ds)
         return self
 
     def fit_transform(self, ds: "Dataset") -> "Dataset":
-        for preprocessor in self.preprocessors:
+        for preprocessor in self._preprocessors:
             ds = preprocessor.fit_transform(ds)
         return ds
 
@@ -88,7 +97,7 @@ class Chain(Preprocessor):
         memory: Optional[float] = None,
         concurrency: Optional[int] = None,
     ) -> "Dataset":
-        for preprocessor in self.preprocessors:
+        for preprocessor in self._preprocessors:
             ds = preprocessor.transform(
                 ds,
                 batch_size=batch_size,
@@ -99,12 +108,14 @@ class Chain(Preprocessor):
         return ds
 
     def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
-        for preprocessor in self.preprocessors:
+        for preprocessor in self._preprocessors:
             df = preprocessor.transform_batch(df)
         return df
 
     def __repr__(self):
-        arguments = ", ".join(repr(preprocessor) for preprocessor in self.preprocessors)
+        arguments = ", ".join(
+            repr(preprocessor) for preprocessor in self._preprocessors
+        )
         return f"{self.__class__.__name__}({arguments})"
 
     def _determine_transform_to_use(self) -> BatchFormat:
@@ -112,4 +123,14 @@ class Chain(Preprocessor):
         # For Chain preprocessor, we picked the first one as entry point.
         # TODO (jiaodong): We should revisit if our Chain preprocessor is
         # still optimal with context of lazy execution.
-        return self.preprocessors[0]._determine_transform_to_use()
+        return self._preprocessors[0]._determine_transform_to_use()
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Handle backwards compatibility for old pickled objects."""
+        super().__setstate__(state)
+        migrate_private_fields(
+            self,
+            fields={
+                "_preprocessors": _PublicField(public_field="preprocessors"),
+            },
+        )

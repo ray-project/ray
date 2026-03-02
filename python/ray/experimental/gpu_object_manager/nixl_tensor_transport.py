@@ -169,7 +169,7 @@ class NixlTensorTransport(TensorTransportManager):
 
             ret = NixlTransportMetadata(
                 tensor_meta=tensor_meta,
-                tensor_device=device,
+                tensor_device=device.type if device else None,
                 nixl_serialized_descs=serialized_descs,
                 nixl_agent_meta=agent_meta,
                 nixl_agent_name=agent_name,
@@ -191,12 +191,15 @@ class NixlTensorTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
         from ray.experimental.gpu_object_manager.util import (
             create_empty_tensors_from_metadata,
         )
 
-        tensors = create_empty_tensors_from_metadata(tensor_transport_metadata)
+        tensors = target_buffers or create_empty_tensors_from_metadata(
+            tensor_transport_metadata
+        )
 
         assert isinstance(tensor_transport_metadata, NixlTransportMetadata)
         assert isinstance(communicator_metadata, NixlCommunicatorMetadata)
