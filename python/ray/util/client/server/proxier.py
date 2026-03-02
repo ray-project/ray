@@ -37,7 +37,7 @@ from ray._private.services import (
     get_node_with_retry,
     start_ray_client_server,
 )
-from ray._private.tls_utils import add_port_to_grpc_server
+from ray._common.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
 from ray.cloudpickle.compat import pickle
@@ -755,9 +755,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.info(f"New data connection from client {client_id}: ")
                 init_req = next(request_iterator)
                 with self.clients_lock:
-                    self.reconnect_grace_periods[
-                        client_id
-                    ] = init_req.init.reconnect_grace_period
+                    self.reconnect_grace_periods[client_id] = (
+                        init_req.init.reconnect_grace_period
+                    )
                 try:
                     modified_init_req, job_config = prepare_runtime_init_req(init_req)
                     if not self.proxy_manager.start_specific_server(

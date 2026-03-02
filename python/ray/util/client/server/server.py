@@ -25,7 +25,7 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
-from ray._private.tls_utils import add_port_to_grpc_server
+from ray._common.tls_utils import add_port_to_grpc_server
 from ray._raylet import GcsClient
 from ray.job_config import JobConfig
 from ray.util.client.common import (
