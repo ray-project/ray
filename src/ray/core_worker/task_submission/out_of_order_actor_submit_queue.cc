@@ -142,8 +142,8 @@ std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
 
 std::optional<std::pair<TaskSpecification, bool>>
 OutofOrderActorSubmitQueue::PopNextTaskToSend() {
-  for (auto it = sending_queue_per_group_.begin();
-       it != sending_queue_per_group_.end();) {
+  for (auto it = sending_queue_per_group_.begin(); it != sending_queue_per_group_.end();
+       it++) {
     auto &sending = it->second;
     auto task_it = sending.begin();
     if (task_it != sending.end()) {
@@ -154,7 +154,6 @@ OutofOrderActorSubmitQueue::PopNextTaskToSend() {
       }
       return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
     }
-    ++it;
   }
   return std::nullopt;
 }

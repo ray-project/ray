@@ -28,8 +28,8 @@ OrderedActorTaskExecutionQueue::OrderedActorTaskExecutionQueue(
     worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     int64_t reorder_wait_seconds)
-    : reorder_wait_seconds_(reorder_wait_seconds),
-      wait_timer_(task_execution_service),
+    : task_execution_service_(task_execution_service),
+      reorder_wait_seconds_(reorder_wait_seconds),
       main_thread_id_(std::this_thread::get_id()),
       waiter_(waiter),
       task_event_buffer_(task_event_buffer),
@@ -76,7 +76,9 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   // Make a copy of the task spec because `task` is moved below.
   TaskSpecification task_spec = task.TaskSpec();
   const std::string &group = task_spec.ConcurrencyGroupName();
-  auto &group_state = group_states_[group];
+  auto [iter, _] = group_states_.try_emplace(
+      group, ConcurrencyGroupOrderingState(task_execution_service_));
+  auto &group_state = iter->second;
 
   if (client_processed_up_to >= group_state.next_seq_no) {
     RAY_LOG(INFO) << "client skipping requests " << group_state.next_seq_no << " to "
@@ -113,40 +115,37 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.AsyncWait(dependencies,
-                      [this, seq_no, is_retry, retry_task, group]() mutable {
-                        TaskToExecute *ready_task = nullptr;
-                        if (is_retry) {
-                          // retry_task is guaranteed to be a valid pointer for retries
-                          // because it won't be erased from the retry list until its
-                          // dependencies are fetched and ExecuteRequest happens.
-                          ready_task = retry_task;
-                        } else {
-                          auto group_it = group_states_.find(group);
-                          if (group_it != group_states_.end()) {
-                            auto it = group_it->second.pending_tasks.find(seq_no);
-                            if (it != group_it->second.pending_tasks.end()) {
-                              // For non-retry tasks, we need to check if the task is
-                              // still in the map because it can be erased due to being
-                              // canceled via a higher `client_processed_up_to`.
-                              ready_task = &it->second;
-                            }
-                          }
-                        }
+    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task, group]() {
+      TaskToExecute *ready_task = nullptr;
+      if (is_retry) {
+        // retry_task is guaranteed to be a valid pointer for retries
+        // because it won't be erased from the retry list until its
+        // dependencies are fetched and ExecuteRequest happens.
+        ready_task = retry_task;
+      } else {
+        auto &group_state = group_states_.at(group);
+        auto it = group_state.pending_tasks.find(seq_no);
+        if (it != group_state.pending_tasks.end()) {
+          // For non-retry tasks, we need to check if the task is
+          // still in the map because it can be erased due to being
+          // canceled via a higher `client_processed_up_to`.
+          ready_task = &it->second;
+        }
+      }
 
-                        if (ready_task != nullptr) {
-                          const auto &ready_task_spec = ready_task->TaskSpec();
-                          RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-                              ready_task_spec.TaskId(),
-                              ready_task_spec.JobId(),
-                              ready_task_spec.AttemptNumber(),
-                              ready_task_spec,
-                              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-                              /* include_task_info */ false));
-                          ready_task->MarkDependenciesResolved();
-                          ExecuteQueuedTasks();
-                        }
-                      });
+      if (ready_task != nullptr) {
+        const auto &ready_task_spec = ready_task->TaskSpec();
+        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+            ready_task_spec.TaskId(),
+            ready_task_spec.JobId(),
+            ready_task_spec.AttemptNumber(),
+            ready_task_spec,
+            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+            /* include_task_info */ false));
+        ready_task->MarkDependenciesResolved();
+        ExecuteQueuedTasks();
+      }
+    });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
@@ -227,59 +226,63 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
         break;
       }
     }
-  }
 
-  // Set or cancel the wait timer based on whether any group is waiting for a missing
-  // seq_no.
-  bool any_group_waiting = false;
-  for (const auto &[group_name, group_state] : group_states_) {
+    // If there are tasks to execute and the head of the line is not blocked waiting
+    // for its dependencies, we are waiting for a previous seq no, so start the wait
+    // timer.
     if (!group_state.pending_tasks.empty() &&
         group_state.pending_tasks.begin()->second.DependenciesResolved()) {
-      // There's a group with a resolved task waiting for an earlier seq_no.
-      any_group_waiting = true;
-      break;
-    }
-  }
+      // We are waiting for a task with an earlier seq_no from the client.
+      // The client always sends tasks in seq_no order, so in the majority of cases we
+      // should receive the expected message soon, but messages can come in out of order.
+      //
+      // We set a generous timeout in case the expected seq_no is never received to avoid
+      // hanging. This should happen only if the client crashes or misbehaves. After the
+      // timeout, all tasks will be canceled and the client (if alive) must retry.
+      group_state.wait_timer_.expires_from_now(
+          boost::posix_time::seconds(reorder_wait_seconds_));
 
-  // Either there are no tasks to execute, or the head of the line is blocked waiting
-  // for its dependencies. We do not set a timeout waiting for dependency resolution.
-  if (!any_group_waiting) {
-    wait_timer_.cancel();
-  } else {
-    // We are waiting for a task with an earlier seq_no from the client.
-    // The client always sends tasks in seq_no order, so in the majority of cases we
-    // should receive the expected message soon, but messages can come in out of order.
-    //
-    // We set a generous timeout in case the expected seq_no is never received to avoid
-    // hanging. This should happen only if the client crashes or misbehaves. After the
-    // timeout, all tasks will be canceled and the client (if alive) must retry.
-    wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
-    wait_timer_.async_wait([this](const boost::system::error_code &error) {
-      if (error == boost::asio::error::operation_aborted) {
-        return;  // Timer deadline was adjusted.
-      }
-      std::string error_message = absl::StrCat(
-          "Timed out waiting for expected seq_no after waiting for ",
-          reorder_wait_seconds_,
-          " seconds. Cancelling all queued tasks. "
-          "This means an expected task failed to arrive at the actor via RPC. This could "
-          "be due to network issues, submitter death, or resource contention (resource "
-          "contention can cause RPC failures).");
-      RAY_LOG(ERROR) << error_message;
-      auto invalid_status = Status::Invalid(error_message);
-      for (auto &[_, group_state] : group_states_) {
-        while (!group_state.pending_tasks.empty()) {
-          auto head = group_state.pending_tasks.begin();
-          head->second.Cancel(invalid_status);
-          group_state.next_seq_no = std::max(group_state.next_seq_no, head->first + 1);
-          {
-            absl::MutexLock lock(&mu_);
-            pending_task_id_to_is_canceled.erase(head->second.TaskID());
-          }
-          group_state.pending_tasks.erase(head);
-        }
-      }
-    });
+      // Redefining both below because structured bindings can't be captured in lambdas
+      // until C++20
+      auto &group_name_in = group_name;
+      auto next_seq_no = group_state.next_seq_no;
+      group_state.wait_timer_.async_wait(
+          [this, group_name_in, next_seq_no](const boost::system::error_code &error) {
+            if (error == boost::asio::error::operation_aborted) {
+              return;  // Timer deadline was adjusted.
+            }
+            std::string error_message = absl::StrFormat(
+                "Timed out waiting for seq_no %d in concurrency group %s, "
+                "after waiting for %d seconds. Cancelling all queued tasks. "
+                "This means an expected task failed to arrive at the actor via RPC. This "
+                "could be due to network issues, submitter death, or resource contention "
+                "(resource contention can cause RPC failures).",
+                next_seq_no,
+                group_name_in,
+                reorder_wait_seconds_);
+            RAY_LOG(ERROR) << error_message;
+            auto invalid_status = Status::Invalid(error_message);
+            // Cancel tasks in ALL groups if the client didn't send over the task with the
+            // expected seq no
+            for (auto &[_, group_state_in] : group_states_) {
+              while (!group_state_in.pending_tasks.empty()) {
+                auto head = group_state_in.pending_tasks.begin();
+                head->second.Cancel(invalid_status);
+                group_state_in.next_seq_no =
+                    std::max(group_state_in.next_seq_no, head->first + 1);
+                {
+                  absl::MutexLock lock(&mu_);
+                  pending_task_id_to_is_canceled.erase(head->second.TaskID());
+                }
+                group_state_in.pending_tasks.erase(head);
+              }
+            }
+          });
+    } else {
+      // We can cancel the wait timer because the head of line task is not waiting for the
+      // previous seq no
+      group_state.wait_timer_.cancel();
+    }
   }
 }
 
