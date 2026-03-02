@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 import warnings
+import weakref
 from collections import defaultdict
 from queue import Queue
 from typing import (
@@ -50,7 +51,7 @@ class GPUObjectMeta(NamedTuple):
     # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
     sent_to_src_actor_and_others_warned: bool
     # If the user set buffers for the object, the object will be fetched directly into the buffers on a ray.get
-    target_buffers: Optional[List[Any]]
+    target_buffers: Optional[weakref.ReferenceType[List[Any]]]
 
 
 # This is used to periodically check in on the RDT transfer through the refs from
@@ -102,17 +103,13 @@ def set_target_for_ref(ref: ObjectRef, target: List[Any]):
     Set target buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
 
     This is only supported by some transports (e.g., NIXL). If the transport
-    does not support this feature, an exception will be raised during ray.get
+    does not support this feature, an exception will be raised during ray.get.
 
     Before receiving, Ray validates that the provided target buffers match the metadata
     of the tensors in the object (e.g., shape, dtype, device). If validation fails,
     a `ValueError` is raised. We recommend sending over lists of tensors and passing a list
     of the same length here because the serialization order from the sender-side must match
     the order of the target tensors here.
-
-    Note that this only applies for the first `ray.get` call on the ref.
-    Subsequent `ray.get` calls on the same ref will not use the target buffers unless
-    they are set again after the first `ray.get` call.
 
     Args:
         ref: The ObjectRef to set the target buffers for. The ref must be for an RDT object.
@@ -444,7 +441,7 @@ class GPUObjectManager:
             self._managed_gpu_object_metadata[
                 ref.hex()
             ] = self._managed_gpu_object_metadata[ref.hex()]._replace(
-                target_buffers=target_buffers
+                target_buffers=weakref.ref(target_buffers)
             )
 
     def _fetch_object(
@@ -481,16 +478,6 @@ class GPUObjectManager:
 
         gpu_object_meta = self.get_gpu_object_metadata(obj_id)
         assert gpu_object_meta is not None
-
-        if gpu_object_meta.target_buffers:
-            # The buffers are only used for the first `ray.get` after the buffers are set. We clear
-            # them from the map here before receiving in case something below errors out.
-            with self._lock:
-                self._managed_gpu_object_metadata[
-                    obj_id
-                ] = self._managed_gpu_object_metadata[obj_id]._replace(
-                    target_buffers=None
-                )
 
         if use_object_store:
             if gpu_object_meta.target_buffers:
@@ -529,13 +516,19 @@ class GPUObjectManager:
                         f"Timed out after {timeout}s waiting for object {obj_id} to be created while trying to get the object. "
                         "You can increase the timeout by setting RAY_rdt_fetch_fail_timeout_milliseconds."
                     )
+
+            target_buffers = None
+            if gpu_object_meta.target_buffers:
+                # Try to get the target buffers from the weak reference. If it's not alive, we
+                # just won't use the target buffers.
+                target_buffers = gpu_object_meta.target_buffers()
             __ray_recv__(
                 None,
                 obj_id,
                 tensor_transport_meta,
                 communicator_meta,
                 tensor_transport,
-                gpu_object_meta.target_buffers,
+                target_buffers,
             )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
