@@ -181,17 +181,20 @@ def test_per_input_inqueue_attribution_for_union():
         topology, options, lambda: total_resources, DataContext.get_current()
     )
 
-    # Create a 10-byte RefBundle.
-    block_ref = ray.ObjectRef(b"1" * 28)
+    # Create two 10-byte RefBundles with distinct block refs (simulates real execution
+    # where each block from a source has its own ObjectRef).
+    block_ref1 = ray.ObjectRef(b"1" * 28)
+    block_ref2 = ray.ObjectRef(b"2" * 28)
     block_metadata = BlockMetadata(
         num_rows=1, size_bytes=10, input_files=None, exec_stats=None
     )
-    bundle = RefBundle([(block_ref, block_metadata)], owns_blocks=True, schema=None)
+    bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
+    bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
 
     # Add blocks only to input2's buffer inside the union operator.
     # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
-    union_op.add_input(bundle, input_index=1)
-    union_op.add_input(bundle, input_index=1)
+    union_op.add_input(bundle1, input_index=1)
+    union_op.add_input(bundle2, input_index=1)
 
     resource_manager.update_usages()
 
