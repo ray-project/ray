@@ -263,6 +263,7 @@ class WorkerGroup(ExecutionGroup):
         """
         self._assert_inactive()
         worker_group_context = self._worker_group_context
+        start_time = time_monotonic()
 
         # Check that we have sufficient resources in the cluster before waiting for
         # a placement group.
@@ -295,11 +296,16 @@ class WorkerGroup(ExecutionGroup):
             # time out if this hangs for a while to try again with a different size.
             # For example, the controller may try to set a worker group size
             # based on stale information about cluster resources.
+            pg_wait_start = time_monotonic()
             if not pg_handle.wait(self._worker_group_start_timeout_s):
                 pg_handle.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
                 )
+            logger.debug(
+                "[Worker Group Initialization] Placement group ready in "
+                f"{time_monotonic() - pg_wait_start:.2f}s."
+            )
 
             # TODO: Figure out ordering between these different calls/callbacks.
             worker_group_state_builder.with_placement_group_handle(pg_handle)
@@ -316,12 +322,17 @@ class WorkerGroup(ExecutionGroup):
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
+            create_workers_start = time_monotonic()
             workers = self._create_workers(
                 worker_group_context.num_workers,
                 pg_handle.placement_group,
                 worker_group_context.resources_per_worker,
             )
             worker_group_state_builder.with_workers(workers)
+            logger.debug(
+                f"[Worker Group Initialization] {worker_group_context.num_workers} worker actors created in "
+                f"{time_monotonic() - create_workers_start:.2f}s."
+            )
 
             self._replica_groups = [
                 ReplicaGroup([worker], worker_group_context.resources_per_worker)
@@ -333,6 +344,7 @@ class WorkerGroup(ExecutionGroup):
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
+                before_init_train_context_cb_start = time_monotonic()
                 train_context_args = {}
                 for callable in self._callbacks:
                     args = callable.before_init_train_context(workers)
@@ -345,15 +357,39 @@ class WorkerGroup(ExecutionGroup):
                             arg not in train_context_args
                         ), f"Callback {callable} returned {arg} which is already set."
                         train_context_args[arg] = arg_values
+                logger.debug(
+                    "[Worker Group Initialization] before_init_train_context "
+                    f"callbacks completed in {time_monotonic() - before_init_train_context_cb_start:.2f}s."
+                )
 
+                init_ctx_start = time_monotonic()
                 self._init_train_context_on_workers(
                     workers, sync_actor, train_context_args
+                )
+                logger.debug(
+                    "[Worker Group Initialization] Train context initialized "
+                    f"on workers in {time_monotonic() - init_ctx_start:.2f}s."
                 )
 
                 self._worker_group_state = worker_group_state_builder.build()
 
+                after_wg_start_cb_start = time_monotonic()
+                after_wg_start_cb_times = {}
                 for callback in self._callbacks:
+                    cb_start = time_monotonic()
                     callback.after_worker_group_start(self)
+                    after_wg_start_cb_times[type(callback).__name__] = (
+                        time_monotonic() - cb_start
+                    )
+                after_wg_start_cb_breakdown = "\n".join(
+                    f"    {name}: {elapsed:.2f}s"
+                    for name, elapsed in after_wg_start_cb_times.items()
+                )
+                logger.debug(
+                    "[Worker Group Initialization] after_worker_group_start "
+                    f"callbacks completed in {time_monotonic() - after_wg_start_cb_start:.2f}s.\n"
+                    f"  Individual callback time breakdown:\n{after_wg_start_cb_breakdown}"
+                )
 
             except RayActorError as actor_error:
                 error_msg = "At least one of the worker actors failed to initialize."
@@ -361,11 +397,16 @@ class WorkerGroup(ExecutionGroup):
 
         # Launch the training function on each worker.
         # This task should start a worker thread and return immediately.
+        launch_start = time_monotonic()
         ray.get(
             [
                 worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
                 for worker in workers
             ]
+        )
+        logger.debug(
+            "[Worker Group Initialization] Train function launched on "
+            f"workers in {time_monotonic() - launch_start:.2f}s."
         )
 
         workers_info = "\n".join(
@@ -377,12 +418,33 @@ class WorkerGroup(ExecutionGroup):
                 for w in workers
             ]
         )
+
+        after_training_start_cb_start = time_monotonic()
+        after_training_start_cb_times = {}
+        for callback in self._callbacks:
+            cb_start = time_monotonic()
+            callback.after_worker_group_training_start(self)
+            after_training_start_cb_times[type(callback).__name__] = (
+                time_monotonic() - cb_start
+            )
+        after_training_start_cb_breakdown = "\n".join(
+            f"    {name}: {elapsed:.2f}s"
+            for name, elapsed in after_training_start_cb_times.items()
+        )
+        logger.debug(
+            "[Worker Group Initialization] after_worker_group_training_start "
+            f"callbacks completed in {time_monotonic() - after_training_start_cb_start:.2f}s.\n"
+            f"  Individual callback time breakdown:\n{after_training_start_cb_breakdown}"
+        )
+
+        logger.debug(
+            "[Worker Group Initialization] Worker group startup completed in "
+            f"{time_monotonic() - start_time:.2f}s total."
+        )
+
         logger.info(
             f"Started training worker group of size {len(workers)}: \n{workers_info}"
         )
-
-        for callback in self._callbacks:
-            callback.after_worker_group_training_start(self)
 
     def _create_workers(
         self,
