@@ -1248,6 +1248,7 @@ class AlgorithmConfig(_Config):
             AddTimeDimToBatchAndZeroPad,
             AgentToModuleMapping,
             BatchIndividualItems,
+            EpisodeIdDeduplication,
             LearnerConnectorPipeline,
             NumpyToTensor,
         )
@@ -1282,6 +1283,9 @@ class AlgorithmConfig(_Config):
             input_action_space=input_action_space,
         )
         if self.add_default_connectors_to_learner_pipeline:
+            # De-duplicate episode chunk IDs first so all downstream connectors
+            # see unique batch keys. Must be the first default connector.
+            pipeline.append(EpisodeIdDeduplication())
             # Append OBS handling.
             pipeline.append(
                 AddObservationsFromEpisodesToBatch(as_learner_connector=True)
