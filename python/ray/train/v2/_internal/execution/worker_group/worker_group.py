@@ -612,8 +612,6 @@ class WorkerGroup(ExecutionGroup):
         Args:
             timeout: The maximum time to wait for the poll tasks to complete.
 
-        Returns:
-            The status of the worker group.
         """
         self._assert_active()
 
@@ -650,9 +648,6 @@ class WorkerGroup(ExecutionGroup):
 
         If a worker's poll task fails, a WorkerHealthCheckFailedError is similarly
         propagated in the worker status.
-
-        Args:
-            timeout: The maximum time to wait for the poll tasks to complete.
 
         Returns:
             poll_results: A list of WorkerStatus objects.
@@ -744,85 +739,6 @@ class WorkerGroup(ExecutionGroup):
         return poll_tasks
 
     #####################################################################################
-    # Execution Methods
-    #####################################################################################
-
-    def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
-        """Execute ``fn`` on each worker and return the futures.
-
-        Args:
-            fn: The function to execute on each worker.
-            *fn_args: Positional arguments to pass to ``fn``.
-            **fn_kwargs: Keyword arguments to pass to ``fn``.
-
-        Returns:
-            A list of ``ObjectRef`` representing the output of ``fn`` from each
-            worker. The order is the same as ``self.workers``.
-
-        """
-        self._assert_active()
-        workers = self.get_workers()
-
-        return [worker.execute_async(fn, *fn_args, **fn_kwargs) for worker in workers]
-
-    def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> List[T]:
-        """Execute ``fn`` on each worker and return the outputs of ``fn``.
-
-        Args:
-            fn: The function to execute on each worker.
-            *fn_args: Positional arguments to pass to ``fn``.
-            **fn_kwargs: Keyword arguments to pass to ``fn``.
-
-        Returns:
-            A list containing the output of ``fn`` from each worker. The order is
-            the same as ``self.workers``.
-
-        """
-        return ray_get_safe(self.execute_async(fn, *fn_args, **fn_kwargs))
-
-    def execute_single_async(
-        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
-    ) -> ObjectRef:
-        """Execute ``fn`` on the worker with ``rank`` and return the future.
-
-        Args:
-            rank: The rank of the worker to execute on.
-            fn: The function to execute on the worker.
-            *fn_args: Positional arguments to pass to ``fn``.
-            **fn_kwargs: Keyword arguments to pass to ``fn``.
-
-        Returns:
-            An ``ObjectRef`` representing the output of ``fn``.
-
-        """
-        self._assert_active()
-        workers = self.get_workers()
-
-        if rank >= len(workers):
-            raise ValueError(
-                f"The provided {rank=} is " f"not valid for {len(workers)} workers."
-            )
-
-        return workers[rank].execute_async(fn, *fn_args, **fn_kwargs)
-
-    def execute_single(
-        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
-    ) -> T:
-        """Execute ``fn`` on the worker with ``rank``.
-
-        Args:
-            rank: The rank of the worker to execute on.
-            fn: The function to execute on the worker.
-            *fn_args: Positional arguments to pass to ``fn``.
-            **fn_kwargs: Keyword arguments to pass to ``fn``.
-
-        Returns:
-            The output of ``fn``.
-
-        """
-        return ray.get(self.execute_single_async(rank, fn, *fn_args, **fn_kwargs))
-
-    #####################################################################################
     # Utility Methods
     #####################################################################################
 
@@ -896,9 +812,6 @@ class WorkerGroup(ExecutionGroup):
 
         Initializes the `DistributedContext` for each worker.
 
-        Args:
-            workers: The workers to assign ranks to.
-
         Returns:
             workers: Workers sorted by increasing world rank,
                 with the `DistributedContext` set.
@@ -933,9 +846,6 @@ class WorkerGroup(ExecutionGroup):
     @staticmethod
     def _decorate_worker_log_file_paths(workers: List[Worker]) -> List[Worker]:
         """Decorate worker log file paths.
-
-        Args:
-            workers: The workers to decorate.
 
         Returns:
             workers: Workers with log file paths set.
