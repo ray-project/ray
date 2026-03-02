@@ -2213,7 +2213,6 @@ python/ray/util/client/worker.py
 --------------------
 python/ray/util/collective/collective.py
     DOC101: Function `init_collective_group`: Docstring contains fewer arguments than in function signature.
-    DOC107: Function `init_collective_group`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `init_collective_group`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [gloo_timeout: int].
     DOC202: Function `init_collective_group` has a return section in docstring, but there are no return statements or annotations
     DOC101: Function `create_collective_group`: Docstring contains fewer arguments than in function signature.

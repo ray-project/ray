@@ -2,9 +2,6 @@ import datetime
 import logging
 import time
 
-import cupy
-import torch
-
 import ray
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
@@ -13,7 +10,6 @@ from ray.util.collective.const import ENV, get_store_name
 from ray.util.collective.types import (
     AllGatherOptions,
     AllReduceOptions,
-    Backend,
     BarrierOptions,
     BroadcastOptions,
     RecvOptions,
@@ -24,6 +20,18 @@ from ray.util.collective.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+global _LOG_NCCL_WARNING, _NCCL_AVAILABLE
+
+try:
+    import cupy
+    import torch
+
+    _NCCL_AVAILABLE = True
+    _LOG_NCCL_WARNING = False
+except ImportError:
+    _NCCL_AVAILABLE = False
+    _LOG_NCCL_WARNING = True
 
 
 class Rendezvous:
@@ -163,7 +171,19 @@ class NCCLGroup(BaseGroup):
 
     @classmethod
     def backend(cls):
-        return Backend.NCCL
+        return "NCCL"
+
+    @classmethod
+    def check_backend_availability(cls) -> bool:
+        global _LOG_NCCL_WARNING, _NCCL_AVAILABLE
+        if ray.get_gpu_ids() and _LOG_NCCL_WARNING:
+            logger.warning(
+                "NCCL seems unavailable. Please install Cupy "
+                "following the guide at: "
+                "https://docs.cupy.dev/en/stable/install.html."
+            )
+            _LOG_NCCL_WARNING = False
+        return _NCCL_AVAILABLE
 
     def allreduce(self, tensors, allreduce_options=AllReduceOptions()):
         """AllReduce tensors across the collective group following options.

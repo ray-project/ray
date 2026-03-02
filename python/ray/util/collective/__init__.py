@@ -1,3 +1,7 @@
+from ray.util.collective.backend_registry import (
+    get_backend_registry,
+    register_collective_backend,
+)
 from ray.util.collective.collective import (
     allgather,
     allgather_multigpu,
@@ -50,4 +54,6 @@ __all__ = [
     "recv",
     "recv_multigpu",
     "get_group_handle",
+    "get_backend_registry",
+    "register_collective_backend",
 ]
