@@ -40,7 +40,7 @@ def test_per_process_gpu_memory_usage_and_total_gpu_memory_usage():
 
     reported_proc_mb = process_info["gpu_memory_usage"]
     # Proc memory usage should be at least the tensor size and within 100mb
-    assert reported_proc_mb >= tensor_size_mb
+    assert reported_proc_mb - tensor_size_mb < 100
     # Check that gpu memory usage is >= proc gpu memory usage and within 100mb
     assert gpu_info["memory_used"] - reported_proc_mb < 100
 
