@@ -1218,6 +1218,32 @@ def start(
         # not-reachable
 
 
+@cli.command(name="wait")
+@click.option(
+    "--num-nodes",
+    required=True,
+    type=int,
+    help="Wait until at least this many nodes have joined (includes head node).",
+)
+@click.option(
+    "--timeout",
+    default=None,
+    type=float,
+    help="Timeout in seconds. If not specified, wait forever.",
+)
+@add_click_logging_options
+@PublicAPI
+def wait_for_nodes_cli(num_nodes: int, timeout: Optional[float]):
+    """Wait for the cluster to have at least the specified number of nodes."""
+    ray.init(address="auto")
+    try:
+        actual_nodes = ray.wait_for_nodes(num_nodes=num_nodes, timeout=timeout)
+        cli_logger.success(f"Cluster is ready with {actual_nodes} nodes.")
+    except TimeoutError as e:
+        cli_logger.error(str(e))
+        sys.exit(1)
+
+
 @cli.command()
 @click.option(
     "-f",

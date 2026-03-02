@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+import time
 from collections import defaultdict
 from threading import Lock
 from typing import Dict, Optional
@@ -1150,3 +1151,53 @@ def get_worker_debugger_port(worker_id):
          Debugger port of the worker.
     """
     return state.get_worker_debugger_port(worker_id)
+
+
+@DeveloperAPI
+def wait_for_nodes(
+    num_nodes: int,
+    timeout: Optional[float] = None,
+    retry_interval_s: float = 1.0,
+    log_interval_s: float = 10.0,
+) -> int:
+    """Wait until at least num_nodes nodes are alive, or timeout expires.
+
+    Args:
+        num_nodes: Target number of nodes (including head node).
+        timeout: Max wait time in seconds. None means wait forever.
+        retry_interval_s: Sleep time between checks.
+        log_interval_s: Interval between progress log messages.
+
+    Returns:
+        The number of alive nodes when the target is reached.
+
+    Raises:
+        TimeoutError: If timeout expires before reaching target nodes.
+        ray.exceptions.RaySystemError: If Ray is not initialized.
+    """
+    start_time = time.time()
+    next_log_time = start_time + log_interval_s
+    while True:
+        current_nodes = sum(1 for node in nodes() if node["Alive"])
+        if current_nodes >= num_nodes:
+            logger.info(
+                f"Cluster ready: {current_nodes} nodes are up "
+                f"(target: {num_nodes})."
+            )
+            return current_nodes
+
+        if timeout is not None and time.time() - start_time > timeout:
+            raise TimeoutError(
+                f"Timed out waiting for cluster to reach {num_nodes} nodes. "
+                f"Current number of alive nodes: {current_nodes}."
+            )
+
+        now = time.time()
+        if now >= next_log_time:
+            logger.info(
+                f"Waiting for nodes: {current_nodes}/{num_nodes} "
+                f"({now - start_time:.0f}s elapsed)"
+            )
+            next_log_time = now + log_interval_s
+
+        time.sleep(retry_interval_s)

@@ -24,6 +24,7 @@ Utility
    ray.util.tpu.slice_placement_group
 
    ray.nodes
+   ray.wait_for_nodes
    ray.cluster_resources
    ray.available_resources
 
