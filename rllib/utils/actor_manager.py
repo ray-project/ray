@@ -553,7 +553,7 @@ class FaultTolerantActorManager:
         # this call.
         if num_calls != len(remote_actor_ids):
             remote_actor_ids = [
-                (self._current_actor_id + i) % self.num_actors()
+                remote_actor_ids[(self._current_actor_id + i) % len(remote_actor_ids)]
                 for i in range(num_calls)
             ]
             # Update our round-robin pointer.
