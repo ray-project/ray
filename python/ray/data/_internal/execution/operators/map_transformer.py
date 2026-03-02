@@ -358,6 +358,54 @@ class BatchMapTransformFn(MapTransformFn):
         return f"BatchMapTransformFn({self._batch_fn=}, {self._batch_format=}, {self._batch_size=}, {self._zero_copy_batch=})"
 
 
+class ShuffleMapTransformFn(MapTransformFn):
+    """MapTransformFn that performs shuffle partition: slice blocks into N partition
+    pieces. Used when fusing MapOp with AllToAllOp via MapTransformer.fuse().
+
+    Expects ctx.kwargs to contain: output_num_blocks, random_shuffle, random_seed,
+    target_shuffle_max_block_size, task_idx.
+    """
+
+    def __init__(self):
+        super().__init__(
+            input_type=MapTransformFnDataType.Block,
+            is_udf=False,
+            output_block_size_option=None,
+        )
+
+    def _apply_transform(
+        self, ctx: TaskContext, blocks: Iterable[Block]
+    ) -> Iterable[Block]:
+        from ray.data._internal.planner.exchange.shuffle_task_spec import (
+            _partition_block,
+        )
+
+        output_num_blocks = ctx.kwargs["output_num_blocks"]
+        random_shuffle = ctx.kwargs["random_shuffle"]
+        random_seed = ctx.kwargs.get("random_seed")
+        task_idx = ctx.task_idx
+
+        # Concat all upstream blocks to one (upstream map may produce multiple)
+        builder = None
+        for block in blocks:
+            accessor = BlockAccessor.for_block(block)
+            if builder is None:
+                builder = accessor.builder()
+            builder.add_block(accessor.to_block())
+        if builder is None:
+            return
+        block = BlockAccessor.for_block(builder.build())
+
+        seed_i = random_seed + task_idx if random_seed is not None else None
+        yield from _partition_block(block, output_num_blocks, random_shuffle, seed_i)
+
+    def _post_process(self, results: Iterable[MapTransformFnData]) -> Iterable[Block]:
+        return results  # No reshaping - we produce exact partition slices
+
+    def __repr__(self) -> str:
+        return "ShuffleMapTransformFn()"
+
+
 class BlockMapTransformFn(MapTransformFn):
     """A block-to-block MapTransformFn."""
 
