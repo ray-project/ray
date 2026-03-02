@@ -1570,28 +1570,37 @@ class ServeController:
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
-        target_groups = []
-        http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
-        grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
+        if self._ha_proxy_enabled:
+            http_targets = []
+            grpc_targets = []
+            include_http = True
+            include_grpc = is_grpc_enabled(self.get_grpc_config())
+        else:
+            http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
+            grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
+            include_http = len(http_targets) > 0
+            include_grpc = len(grpc_targets) > 0
 
-        if http_targets:
+        target_groups = []
+        if include_http:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix=route_prefix,
-                    targets=[] if self._ha_proxy_enabled else http_targets,
+                    targets=http_targets,
                     app_name=app_name,
                 )
             )
-        if grpc_targets:
+        if include_grpc:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.GRPC,
                     route_prefix=route_prefix,
-                    targets=[] if self._ha_proxy_enabled else grpc_targets,
+                    targets=grpc_targets,
                     app_name=app_name,
                 )
             )
+
         return target_groups
 
     def _get_targets_for_protocol(

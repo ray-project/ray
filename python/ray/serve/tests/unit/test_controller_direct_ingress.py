@@ -88,6 +88,7 @@ class FakeProxyStateManager:
             grpc_servicer_functions=["f1"],
         )
         self._fallback_proxy_targets = {}
+        self._started_fallback_proxy = False
 
     def add_proxy_details(self, node_id, node_ip, name):
 
@@ -135,6 +136,9 @@ class FakeProxyStateManager:
 
     def get_fallback_proxy_targets(self):
         return self._fallback_proxy_targets
+
+    def started_fallback_proxy_at_least_once(self):
+        return self._started_fallback_proxy
 
 
 class FakeReplicaStateContainer:

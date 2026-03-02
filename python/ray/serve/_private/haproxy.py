@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     NodeId,
     ReplicaID,
     RequestMetadata,
+    RequestProtocol,
 )
 from ray.serve._private.constants import (
     DRAINING_MESSAGE,
@@ -247,6 +248,9 @@ class BackendConfig:
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
 
+    # The fallback server for this backend.
+    fallback_server: Optional[ServerConfig] = None
+
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
@@ -317,7 +321,7 @@ class BackendConfig:
         }
 
     def __str__(self) -> str:
-        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers})"
+        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, fallback_server={self.fallback_server})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -485,7 +489,6 @@ class HAProxyApi(ProxyApi):
     ):
         self.cfg = cfg
         self.backend_configs = backend_configs or {}
-        self.fallback_server = None
         self.config_file_path = config_file_path
         # Lock to prevent concurrent config modifications
         self._config_lock = asyncio.Lock()
@@ -663,7 +666,6 @@ class HAProxyApi(ProxyApi):
                 {
                     "config": self.cfg,
                     "backends": backends,
-                    "fallback_server": self.fallback_server,
                     "backends_with_health_config": backends_with_health_config,
                     "healthz_rules": healthz_rules,
                     "route_info": health_route_info,
@@ -907,12 +909,6 @@ class HAProxyApi(ProxyApi):
             len(bc.servers) > 0 for bc in backend_configs.values()
         )
 
-    def set_fallback_server(
-        self,
-        fallback_server: Optional[ServerConfig],
-    ) -> None:
-        self.fallback_server = fallback_server
-
     async def is_running(self) -> bool:
         try:
             await self._send_socket_command("show info")
@@ -954,7 +950,10 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop = get_or_create_event_loop()
 
         self._target_groups: List[TargetGroup] = []
-        self._fallback_target: Optional[Target] = None
+
+        # Fallback targets.
+        self._http_fallback_target: Optional[Target] = None
+        self._grpc_fallback_target: Optional[Target] = None
 
         # Lock to serialize HAProxy reloads and prevent concurrent reload operations
         # which can cause race conditions with SO_REUSEPORT
@@ -965,6 +964,7 @@ class HAProxyManager(ProxyActorInterface):
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.TARGET_GROUPS: self.update_target_groups,
+                LongPollNamespace.FALLBACK_TARGETS: self.update_fallback_targets,
             },
             call_in_event_loop=self.event_loop,
         )
@@ -1135,22 +1135,29 @@ class HAProxyManager(ProxyActorInterface):
             port=target.port,
         )
 
-    def _target_group_to_backend(self, target_group: TargetGroup) -> BackendConfig:
-        """Convert a target group to a backend name."""
-        servers = [
-            self._target_to_server(target)
-            for target in target_group.targets
-        ]
-        # The name is lowercased and formatted as <protocol>-<app_name>. Special
-        # characters in the name are converted to comply with haproxy config's
-        # allowed characters, e.g. `#` -> `-`.
+    def _create_backend_config(
+        self,
+        target_group: TargetGroup,
+        fallback_target: Optional[Target],
+    ) -> BackendConfig:
+        """Create a backend configuration from a target group and fallback target."""
+        servers = [self._target_to_server(target) for target in target_group.targets]
+
+        fallback_server = None
+        if fallback_target is not None:
+            fallback_server = self._target_to_server(fallback_target)
+
         return BackendConfig(
+            # The name is lowercased and formatted as <protocol>-<app_name>. Special
+            # characters in the name are converted to comply with haproxy config's
+            # allowed characters, e.g. `#` -> `-`.
             name=self.get_safe_name(
                 f"{target_group.protocol.value.lower()}-{target_group.app_name}"
             ),
             path_prefix=target_group.route_prefix,
             servers=servers,
             app_name=target_group.app_name,
+            fallback_server=fallback_server,
         )
 
     async def _reload_haproxy(self) -> None:
@@ -1161,23 +1168,20 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy_start_task
             await self._haproxy.reload()
 
-    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
-        self._target_groups = target_groups
+    def _update_haproxy_backends(self) -> None:
+        backend_configs = []
+        for target_group in self._target_groups:
+            fallback_target = None
+            if target_group.protocol == RequestProtocol.HTTP:
+                fallback_target = self._http_fallback_target
+            elif target_group.protocol == RequestProtocol.GRPC:
+                fallback_target = self._grpc_fallback_target
 
-        # The fallback target is the same for all target groups.
-        fallback_server = None
-        if len(target_groups) > 0:
-            fallback_target = target_groups[0].fallback_target
-            if fallback_target:
-                fallback_server = self._target_to_server(fallback_target)
-
-        backend_configs = [
-            self._target_group_to_backend(target_group)
-            for target_group in target_groups
-        ]
+            backend_config = self._create_backend_config(target_group, fallback_target)
+            backend_configs.append(backend_config)
 
         logger.info(
-            f"Got updated backend configs: {backend_configs} and fallback server: {fallback_server}.",
+            f"Got updated backend configs: {backend_configs}.",
             extra={"log_to_stderr": True},
         )
 
@@ -1186,8 +1190,27 @@ class HAProxyManager(ProxyActorInterface):
         }
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
-        self._haproxy.set_fallback_server(fallback_server)
         self.event_loop.create_task(self._reload_haproxy())
+
+    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
+        self._target_groups = target_groups
+        self._update_haproxy_backends()
+
+    def update_fallback_targets(
+        self,
+        fallback_targets: Dict[RequestProtocol, Target],
+    ) -> None:
+        # Reset so that fallbacks are repopulated from LongPoll.
+        self._http_fallback_target = None
+        self._grpc_fallback_target = None
+
+        for protocol, target in fallback_targets.items():
+            if protocol == RequestProtocol.HTTP:
+                self._http_fallback_target = target
+            elif protocol == RequestProtocol.GRPC:
+                self._grpc_fallback_target = target
+
+        self._update_haproxy_backends()
 
     def get_target_groups(self) -> List[TargetGroup]:
         """Get current target groups."""
