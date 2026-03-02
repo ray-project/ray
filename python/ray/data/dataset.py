@@ -2842,10 +2842,12 @@ class Dataset:
                 used as keys for the join operation. When none, `on` will
                 be assumed to be a list of columns to be used for the right dataset
                 as well.
-            left_suffix: (Optional) Suffix to be appended for columns of the left
-                operand.
-            right_suffix: (Optional) Suffix to be appended for columns of the right
-                operand.
+            left_suffix: (Optional) Suffix to be appended to overlapping column
+                names from the left operand to disambiguate them. Only columns
+                whose names conflict with the other side are renamed.
+            right_suffix: (Optional) Suffix to be appended to overlapping column
+                names from the right operand to disambiguate them. Only columns
+                whose names conflict with the other side are renamed.
             partition_size_hint: (Optional) Hint to joining operator about the estimated
                 avg expected size of the individual partition (in bytes).
                 This is used in estimating the total dataset size and allow to tune
