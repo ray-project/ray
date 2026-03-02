@@ -427,7 +427,9 @@ TaskSpecification CreateActorTaskSpec(int64_t seq_no,
                                       bool dependency = false) {
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-  task_spec.GetMutableMessage().mutable_actor_task_spec()->set_sequence_number(seq_no);
+  task_spec.GetMutableMessage()
+      .mutable_actor_task_spec()
+      ->set_concurrency_group_sequence_number(seq_no);
   task_spec.GetMutableMessage().set_attempt_number(is_retry ? 1 : 0);
   if (dependency) {
     task_spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
@@ -453,12 +455,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
   std::vector<int64_t> reject_seq_nos;
   std::atomic<int> n_accept = 0;
   auto fn_ok = [&accept_seq_nos, &n_accept](const TaskSpecification &task_spec) {
-    accept_seq_nos.push_back(task_spec.SequenceNumber());
+    accept_seq_nos.push_back(task_spec.ConcurrencyGroupSequenceNumber());
     n_accept++;
   };
   auto fn_rej = [&reject_seq_nos](const TaskSpecification &task_spec,
                                   const Status &status) {
-    reject_seq_nos.push_back(task_spec.SequenceNumber());
+    reject_seq_nos.push_back(task_spec.ConcurrencyGroupSequenceNumber());
   };
 
   // Submitting 0 with dep, 1, 3 (retry of 2), and 4 (with client_processed_up_to = 2 bc 2
@@ -489,6 +491,69 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryInOrderOrderedActorTaskExecuti
 
   ASSERT_EQ(accept_seq_nos, (std::vector<int64_t>{3, 4, 6}));
   ASSERT_EQ(reject_seq_nos, (std::vector<int64_t>{0, 1}));
+
+  queue.Stop();
+}
+
+TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
+  // Test that tasks in different concurrency groups are sequenced independently.
+  // group "b" tasks should execute even when group "a" is waiting for a missing seq_no.
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"a", 1, {}},
+                                                   ConcurrencyGroup{"b", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  OrderedActorTaskExecutionQueue queue(
+      io_service, waiter, task_event_buffer, pool_manager, 2);
+
+  // Track accepted tasks as (group_name, seq_no) pairs.
+  std::vector<std::pair<std::string, int64_t>> accepted;
+  std::atomic<int> n_accept = 0;
+  auto fn_ok = [&accepted, &n_accept](const TaskSpecification &task_spec) {
+    accepted.emplace_back(task_spec.ConcurrencyGroupName(),
+                          task_spec.ConcurrencyGroupSequenceNumber());
+    n_accept++;
+  };
+  auto fn_rej = [](TaskSpecification, Status) { FAIL(); };
+
+  auto make_task = [](const std::string &group, int64_t seq_no) {
+    auto spec = CreateActorTaskSpec(seq_no);
+    spec.GetMutableMessage().set_concurrency_group_name(group);
+    return spec;
+  };
+
+  auto task_a0 = make_task("a", 0);
+  auto task_a1 = make_task("a", 1);
+  auto task_b0 = make_task("b", 0);
+  auto task_b1 = make_task("b", 1);
+
+  // Sequence no 0 missing from group a, so that should block until 1 arrives.
+  // Concurrency group b should be ready to go though.
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_a1));
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_b0));
+  queue.EnqueueTask(1, -1, TaskToExecute(fn_ok, fn_rej, task_b1));
+
+  io_service.run_one();
+  io_service.run_one();
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
+  ASSERT_EQ(n_accept, 2);
+
+  // Now enqueue group "a" seq 0, which unblocks group "a".
+  queue.EnqueueTask(0, -1, TaskToExecute(fn_ok, fn_rej, task_a0));
+  io_service.run_one();
+  io_service.run_one();
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 4; }, 1000));
+
+  ASSERT_EQ(n_accept, 4);
+  std::vector<std::pair<std::string, int64_t>> expected_accepted{
+      {"b", 0}, {"b", 1}, {"a", 0}, {"a", 1}};
+  ASSERT_EQ(accepted, expected_accepted);
+
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
 
   queue.Stop();
 }

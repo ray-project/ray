@@ -25,15 +25,11 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/task_execution/actor_task_execution_queue_interface.h"
 #include "ray/core_worker/task_execution/common.h"
 #include "ray/core_worker/task_execution/concurrency_group_manager.h"
-#include "ray/core_worker/task_execution/fiber.h"
 #include "ray/core_worker/task_execution/thread_pool.h"
-#include "ray/rpc/rpc_callback_types.h"
-#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -74,28 +70,45 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
 
   void ExecuteRequest(TaskToExecute &&request);
 
-  /// Max time in seconds to wait for dependencies to show up.
+  /// Per-concurrency-group ordering state.
+  struct ConcurrencyGroupOrderingState {
+    explicit ConcurrencyGroupOrderingState(instrumented_io_context &io_context)
+        : wait_timer_(io_context) {}
+
+    /// Sorted map of task callbacks keyed by their per-group sequence number.
+    absl::btree_map<int64_t, TaskToExecute> pending_tasks;
+    /// List of task retry requests (unordered within the group).
+    std::list<TaskToExecute> pending_retry_tasks;
+    /// Set of sequence numbers that can be skipped because they were retry seq no's.
+    absl::flat_hash_set<int64_t> seq_no_to_skip;
+    /// The next sequence number we are waiting for to arrive in this group.
+    int64_t next_seq_no = 0;
+    /// Waiting for an earlier seq no to arrive for this group. If this times
+    /// for any group, we will cancel all tasks across ALL groups for this client.
+    boost::asio::deadline_timer wait_timer_;
+  };
+
+  instrumented_io_context &task_execution_service_;
+
+  /// Max time in seconds to wait for an earlier seq no to arrive.
   const int64_t reorder_wait_seconds_;
-  /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  absl::btree_map<int64_t, TaskToExecute> pending_actor_tasks_;
-  /// List of task retry requests. This is a separate from the map because retries don't
-  /// need to be ordered.
-  std::list<TaskToExecute> pending_retry_actor_tasks_;
-  /// Set of sequence numbers that can be skipped because they were retry seq no's.
-  absl::flat_hash_set<int64_t> seq_no_to_skip_;
-  /// The next sequence number we are waiting for to arrive.
-  int64_t next_seq_no_ = 0;
-  /// Timer for waiting on dependencies. Note that this is set on the task main
-  /// io service, which is fine since it only ever fires if no tasks are running.
-  boost::asio::deadline_timer wait_timer_;
+
+  /// Per-concurrency-group ordering states.
+  absl::flat_hash_map<std::string, ConcurrencyGroupOrderingState> group_states_;
+
   /// The id of the thread that constructed this scheduling queue.
   std::thread::id main_thread_id_;
+
   ActorTaskExecutionArgWaiterInterface &waiter_;
+
   worker::TaskEventBuffer &task_event_buffer_;
+
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
+
   /// Mutext to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
+
   /// A map of actor task IDs -> is_canceled
   /// Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);

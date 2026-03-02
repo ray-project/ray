@@ -829,8 +829,8 @@ message ActorTaskSpec {
   bytes actor_id = 2;
   // The dummy object ID of the actor creation task.
   bytes actor_creation_dummy_object_id = 4;
-  // Number of tasks that have been submitted to this actor so far.
-  uint64 sequence_number = 5;
+  // Per-concurrency-group sequence number for ordering tasks within each group.
+  uint64 concurrency_group_sequence_number = 5;
 }
 
 // Represents a task, including task spec.

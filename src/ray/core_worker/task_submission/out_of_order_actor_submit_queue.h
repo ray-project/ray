@@ -14,10 +14,12 @@
 
 #pragma once
 
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/task_submission/actor_submit_queue.h"
@@ -34,21 +36,25 @@ namespace core {
  */
 class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
  public:
-  OutofOrderActorSubmitQueue();
   /// Add a task into the queue.
-  void Emplace(uint64_t position, const TaskSpecification &spec) override;
+  void Emplace(const std::string &concurrency_group,
+               uint64_t position,
+               const TaskSpecification &spec) override;
   /// If a task exists.
-  bool Contains(uint64_t position) const override;
+  bool Contains(const std::string &concurrency_group, uint64_t position) const override;
   /// If the task's dependencies were resolved.
-  bool DependenciesResolved(uint64_t position) const override;
+  bool DependenciesResolved(const std::string &concurrency_group,
+                            uint64_t position) const override;
   /// Mark a task's dependency resolution failed thus remove from the queue.
-  void MarkDependencyFailed(uint64_t position) override;
+  void MarkDependencyFailed(const std::string &concurrency_group,
+                            uint64_t position) override;
   /// Make a task's dependency is resolved thus ready to send.
-  void MarkDependencyResolved(uint64_t position) override;
+  void MarkDependencyResolved(const std::string &concurrency_group,
+                              uint64_t position) override;
   // Mark a task has been canceled.
   // If a task hasn't been sent yet, this API will guarantee a task won't be
   // popped via PopNextTaskToSend.
-  void MarkTaskCanceled(uint64_t position) override;
+  void MarkTaskCanceled(const std::string &concurrency_group, uint64_t position) override;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   std::vector<TaskID> ClearAllTasks() override;
   /// Find next task to send.
@@ -60,8 +66,14 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   bool Empty() override;
 
  private:
-  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> pending_queue_;
-  absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>> sending_queue_;
+  /// Per-concurrency-group pending queues (dependency not yet resolved).
+  absl::flat_hash_map<std::string,
+                      absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>>>
+      pending_queue_per_group_;
+  /// Per-concurrency-group sending queues (dependency resolved, ready to send).
+  absl::flat_hash_map<std::string,
+                      absl::btree_map<uint64_t, std::pair<TaskSpecification, bool>>>
+      sending_queue_per_group_;
 };
 }  // namespace core
 }  // namespace ray

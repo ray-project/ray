@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -42,19 +43,26 @@ class IActorSubmitQueue {
  public:
   virtual ~IActorSubmitQueue() = default;
   /// Add a task into the queue.
-  virtual void Emplace(uint64_t sequence_no, const TaskSpecification &task_spec) = 0;
+  virtual void Emplace(const std::string &concurrency_group,
+                       uint64_t sequence_no,
+                       const TaskSpecification &task_spec) = 0;
   /// If a task exists.
-  virtual bool Contains(uint64_t sequence_no) const = 0;
+  virtual bool Contains(const std::string &concurrency_group,
+                        uint64_t sequence_no) const = 0;
   /// If the task's dependencies were resolved.
-  virtual bool DependenciesResolved(uint64_t sequence_no) const = 0;
+  virtual bool DependenciesResolved(const std::string &concurrency_group,
+                                    uint64_t sequence_no) const = 0;
   /// Mark a task's dependency resolution failed thus remove from the queue.
-  virtual void MarkDependencyFailed(uint64_t sequence_no) = 0;
+  virtual void MarkDependencyFailed(const std::string &concurrency_group,
+                                    uint64_t sequence_no) = 0;
   /// Mark a task's dependency is resolved thus ready to send.
-  virtual void MarkDependencyResolved(uint64_t sequence_no) = 0;
+  virtual void MarkDependencyResolved(const std::string &concurrency_group,
+                                      uint64_t sequence_no) = 0;
   // Mark a task has been canceled.
   // If a task hasn't been sent yet, this API will guarantee a task won't be
   // popped via PopNextTaskToSend.
-  virtual void MarkTaskCanceled(uint64_t sequence_no) = 0;
+  virtual void MarkTaskCanceled(const std::string &concurrency_group,
+                                uint64_t sequence_no) = 0;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   virtual std::vector<TaskID> ClearAllTasks() = 0;
   /// Find next task to send.
