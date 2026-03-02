@@ -2,7 +2,6 @@ import gc
 import logging
 import platform
 import re
-import sys
 import threading
 import time
 from collections import Counter, defaultdict
@@ -15,7 +14,6 @@ import numpy as np
 import pytest
 
 import ray
-import ray.cloudpickle as cloudpickle
 from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -46,8 +44,6 @@ from ray.data.block import BlockExecStats, BlockStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
-
-cloudpickle.register_pickle_by_value(sys.modules[__name__])
 
 
 @pytest.mark.skipif(
