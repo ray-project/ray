@@ -704,7 +704,7 @@ googleapis-common-protos==1.72.0
     #   grpcio-status
 gpytorch==1.14.3
     # via botorch
-gradio==5.50.0 ; platform_system != "Windows"
+gradio==6.7.0 ; platform_system != "Windows"
     # via -r python/requirements/test-requirements.txt
 gradio-client==1.14.0
     # via gradio
