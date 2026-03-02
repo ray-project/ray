@@ -1241,6 +1241,15 @@ class TestDataOpTask:
                 ray.wait([streaming_gen], fetch_local=False)
                 data_op_task.on_data_ready(None)
 
+    def test_operator_name_parameter(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
+        task = DataOpTask(0, streaming_gen, operator_name="MapBatches(fn)")
+        assert task._operator_name == "MapBatches(fn)"
+
+        streaming_gen2 = create_stub_streaming_gen(block_nbytes=[1])
+        task_default = DataOpTask(1, streaming_gen2)
+        assert task_default._operator_name is None
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )
@@ -1325,6 +1334,28 @@ class TestDataOpTask:
 
         # We should now be able to read the 128 MiB block.
         assert bytes_read == pytest.approx(128 * MiB)
+
+    @patch("ray.data._internal.execution.interfaces.physical_operator.logger.warning")
+    @patch("ray.data._internal.execution.interfaces.physical_operator.ray.get")
+    def test_operator_name_in_metadata_timeout_warning(
+        self, mock_ray_get, mock_warning, ray_start_regular_shared
+    ):
+        """Test that the operator name appears in the metadata timeout warning."""
+        mock_ray_get.side_effect = ray.exceptions.GetTimeoutError()
+
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
+        task = DataOpTask(0, streaming_gen, operator_name="MapBatches(fn)")
+
+        # Pre-set both refs to non-nil to skip the generator state machine
+        # and jump straight to the ray.get(meta_ref) timeout branch.
+        task._pending_block_ref = ray.put("dummy_block")
+        task._pending_meta_ref = ray.put("dummy_meta")
+
+        task.on_data_ready(None)
+
+        mock_warning.assert_called_once()
+        msg = mock_warning.call_args[0][0]
+        assert "operator 'MapBatches(fn)'" in msg
 
     @patch("time.perf_counter")
     def test_on_data_ready_output_backpressure_tracking(
