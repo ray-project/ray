@@ -26,41 +26,48 @@ def main(args):
         #   ORDER BY revenue DESC, o_orderdate;
         #
         # Note:
-        # This implementation pushes customer/order/lineitem filters before joins
-        # to reduce shuffle volume.
+        # This implementation keeps a linear join path:
+        # customer -> orders -> lineitem.
 
-        # Load all required tables
-        customer = load_table("customer", args.sf)
-        orders = load_table("orders", args.sf)
-        lineitem = load_table("lineitem", args.sf)
+        # Load all required tables with early projection.
+        customer = load_table("customer", args.sf).select_columns(
+            ["c_custkey", "c_mktsegment"]
+        )
+        orders = load_table("orders", args.sf).select_columns(
+            ["o_orderkey", "o_custkey", "o_orderdate", "o_shippriority"]
+        )
+        lineitem = load_table("lineitem", args.sf).select_columns(
+            ["l_orderkey", "l_shipdate", "l_extendedprice", "l_discount"]
+        )
 
         # Q3 parameters
         date = datetime(1995, 3, 15)
         segment = "BUILDING"
 
-        # Filter customer by segment
+        # Filter customer by segment.
         customer_filtered = customer.filter(expr=col("c_mktsegment") == segment)
+        customer_filtered = customer_filtered.select_columns(["c_custkey"])
 
         # Filter orders by date
         orders_filtered = orders.filter(expr=col("o_orderdate") < date)
 
-        # Join orders with customer
-        orders_customer = orders_filtered.join(
-            customer_filtered,
+        # Join customer with orders in a linear chain.
+        orders_customer = customer_filtered.join(
+            orders_filtered,
             join_type="inner",
             num_partitions=16,
-            on=("o_custkey",),
-            right_on=("c_custkey",),
-        )
+            on=("c_custkey",),
+            right_on=("o_custkey",),
+        ).select_columns(["o_orderkey", "o_orderdate", "o_shippriority"])
 
         # Join with lineitem and filter by ship date
         lineitem_filtered = lineitem.filter(expr=col("l_shipdate") > date)
-        ds = lineitem_filtered.join(
-            orders_customer,
+        ds = orders_customer.join(
+            lineitem_filtered,
             join_type="inner",
             num_partitions=16,
-            on=("l_orderkey",),
-            right_on=("o_orderkey",),
+            on=("o_orderkey",),
+            right_on=("l_orderkey",),
         )
 
         # Calculate revenue
@@ -71,7 +78,7 @@ def main(args):
 
         # Aggregate by order key, order date, and ship priority
         _ = (
-            ds.groupby(["l_orderkey", "o_orderdate", "o_shippriority"])
+            ds.groupby(["o_orderkey", "o_orderdate", "o_shippriority"])
             .aggregate(Sum(on="revenue", alias_name="revenue"))
             .sort(key=["revenue", "o_orderdate"], descending=[True, False])
             .materialize()

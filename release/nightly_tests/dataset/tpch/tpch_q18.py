@@ -29,10 +29,16 @@ def main(args):
         # TPC-H parameter is in [312, 315]; this benchmark uses the fixed value 312.
         # It also materializes full sorted output (no LIMIT pushdown).
 
-        # Load all required tables
-        customer = load_table("customer", args.sf)
-        orders = load_table("orders", args.sf)
-        lineitem = load_table("lineitem", args.sf)
+        # Load all required tables with early projection.
+        customer = load_table("customer", args.sf).select_columns(
+            ["c_custkey", "c_name"]
+        )
+        orders = load_table("orders", args.sf).select_columns(
+            ["o_orderkey", "o_custkey", "o_orderdate", "o_totalprice"]
+        )
+        lineitem = load_table("lineitem", args.sf).select_columns(
+            ["l_orderkey", "l_quantity"]
+        )
 
         # Q18 parameters (spec: [312..315])
         quantity = 312

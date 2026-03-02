@@ -26,14 +26,28 @@ def main(args):
         #   ORDER BY revenue DESC;
         #
         # Note:
-        # The pipeline first filters orders/lineitem, then joins customer and nation
-        # to keep intermediate data smaller.
+        # The pipeline is kept linear:
+        # orders -> customer -> nation -> lineitem.
 
-        # Load all required tables
-        customer = load_table("customer", args.sf)
-        orders = load_table("orders", args.sf)
-        lineitem = load_table("lineitem", args.sf)
-        nation = load_table("nation", args.sf)
+        # Load all required tables with early projection.
+        customer = load_table("customer", args.sf).select_columns(
+            [
+                "c_custkey",
+                "c_name",
+                "c_nationkey",
+                "c_acctbal",
+                "c_address",
+                "c_phone",
+                "c_comment",
+            ]
+        )
+        orders = load_table("orders", args.sf).select_columns(
+            ["o_orderkey", "o_custkey", "o_orderdate"]
+        )
+        lineitem = load_table("lineitem", args.sf).select_columns(
+            ["l_orderkey", "l_extendedprice", "l_discount", "l_returnflag"]
+        )
+        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
 
         # Q10 parameters
         date = datetime(1993, 10, 1)
@@ -51,17 +65,8 @@ def main(args):
         # Filter lineitem by return flag
         lineitem_filtered = lineitem.filter(expr=col("l_returnflag") == "R")
 
-        # Join lineitem with orders
-        lineitem_orders = lineitem_filtered.join(
-            orders_filtered,
-            join_type="inner",
-            num_partitions=16,
-            on=("l_orderkey",),
-            right_on=("o_orderkey",),
-        )
-
-        # Join with customer
-        ds = lineitem_orders.join(
+        # Join orders with customer.
+        orders_customer = orders_filtered.join(
             customer,
             join_type="inner",
             num_partitions=16,
@@ -69,13 +74,34 @@ def main(args):
             right_on=("c_custkey",),
         )
 
-        # Join with nation
-        ds = ds.join(
+        # Join with nation.
+        orders_customer_nation = orders_customer.join(
             nation,
             join_type="inner",
             num_partitions=16,
             on=("c_nationkey",),
             right_on=("n_nationkey",),
+        )
+        orders_customer_nation = orders_customer_nation.select_columns(
+            [
+                "o_orderkey",
+                "o_custkey",
+                "c_name",
+                "c_acctbal",
+                "n_name",
+                "c_address",
+                "c_phone",
+                "c_comment",
+            ]
+        )
+
+        # Join with returned lineitems.
+        ds = orders_customer_nation.join(
+            lineitem_filtered,
+            join_type="inner",
+            num_partitions=16,
+            on=("o_orderkey",),
+            right_on=("l_orderkey",),
         )
 
         # Calculate revenue
