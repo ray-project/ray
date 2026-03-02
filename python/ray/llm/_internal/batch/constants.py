@@ -35,5 +35,13 @@ class SGLangTaskType(TaskType):
     GENERATE = "generate"
 
 
+class TensorRTLLMTaskType(TaskType):
+    """The type of task to run on the TensorRT LLM engine."""
+
+    # Generate text.
+    GENERATE = "generate"
+
+
 TypeVLLMTaskType = Literal[tuple(vLLMTaskType.values())]
 TypeSGLangTaskType = Literal[tuple(SGLangTaskType.values())]
+TypeTensorRTLLMTaskType = Literal[tuple(TensorRTLLMTaskType.values())]
