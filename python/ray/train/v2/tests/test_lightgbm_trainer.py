@@ -7,6 +7,7 @@ from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
 
 import ray
+import ray.data
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.lightgbm import LightGBMTrainer, RayTrainReportCallback
@@ -37,47 +38,68 @@ params = {
 
 
 def test_fit_with_categoricals(ray_start_6_cpus):
+    @ray.remote
+    class ValidationCollector:
+        def __init__(self):
+            self.validation_scores = {}
+
+        def report(self, rank, binary_logloss, binary_error):
+            self.validation_scores[rank] = {
+                "binary_logloss": binary_logloss,
+                "binary_error": binary_error,
+            }
+
+        def get_validation_scores(self):
+            return self.validation_scores
+
+    # Ensure all workers have the same model in data parallel training
+    # by comparing their validation scores.
+    # Comparing lightgbm models directly seems less reliable.
+    collector = ValidationCollector.remote()
+
     def lightgbm_train_fn_per_worker(
         config: dict,
         label_column: str,
-        dataset_keys: set,
+        valid_dataset: ray.data.Dataset,
         num_boost_round: int = 10,
     ):
         remaining_iters = num_boost_round
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
         train_df = train_ds_iter.materialize().to_pandas()
 
-        eval_ds_iters = {
-            k: ray.train.get_dataset_shard(k)
-            for k in dataset_keys
-            if k != TRAIN_DATASET_KEY
-        }
-        eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
+        eval_df = valid_dataset.materialize().to_pandas()
+        eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
+        valid_set = lightgbm.Dataset(eval_X, label=eval_y)
 
         train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
         train_set = lightgbm.Dataset(train_X, label=train_y)
 
-        # NOTE: Include the training dataset in the evaluation datasets.
-        # This allows `train-*` metrics to be calculated and reported.
-        valid_sets = [train_set]
-        valid_names = [TRAIN_DATASET_KEY]
-
-        for eval_name, eval_df in eval_dfs.items():
-            eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
-            valid_sets.append(lightgbm.Dataset(eval_X, label=eval_y))
-            valid_names.append(eval_name)
-
         # Add network params of the worker group to enable distributed training.
         config.update(ray.train.lightgbm.get_network_params())
 
-        lightgbm.train(
+        # Add lightgbm-specific distributed training params.
+        config.update(
+            {
+                "tree_learner": "data_parallel",
+                "pre_partition": True,
+            }
+        )
+
+        booster = lightgbm.train(
             params=config,
             train_set=train_set,
             num_boost_round=remaining_iters,
-            valid_sets=valid_sets,
-            valid_names=valid_names,
+            # NOTE: Include the training dataset in the evaluation datasets.
+            # This allows `train-*` metrics to be calculated and reported.
+            valid_sets=[valid_set, train_set],
+            valid_names=["valid", TRAIN_DATASET_KEY],
             init_model=None,
             callbacks=[RayTrainReportCallback()],
+        )
+        collector.report.remote(
+            ray.train.get_context().get_world_rank(),
+            booster.best_score["valid"]["binary_logloss"],
+            booster.best_score["valid"]["binary_error"],
         )
 
     train_df_with_cat = train_df.copy()
@@ -93,18 +115,26 @@ def test_fit_with_categoricals(ray_start_6_cpus):
     valid_dataset = ray.data.from_pandas(test_df_with_cat)
     trainer = LightGBMTrainer(
         train_loop_per_worker=lambda: lightgbm_train_fn_per_worker(
-            config={},
+            config=params,
             label_column="target",
-            dataset_keys={TRAIN_DATASET_KEY, "valid"},
+            # Do not shard the validation dataset across workers to ensure all workers compute
+            # the same validation score. See https://github.com/microsoft/LightGBM/issues/4392.
+            valid_dataset=valid_dataset,
         ),
-        train_loop_config=params,
         scaling_config=scale_config,
-        datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
+        datasets={TRAIN_DATASET_KEY: train_dataset},
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
     model = RayTrainReportCallback.get_model(checkpoint)
     assert model.pandas_categorical == [["A", "B"]]
+    validation_scores = ray.get(collector.get_validation_scores.remote())
+    assert validation_scores[0]["binary_logloss"] == pytest.approx(
+        validation_scores[1]["binary_logloss"], abs=1e-6
+    )
+    assert validation_scores[0]["binary_error"] == pytest.approx(
+        validation_scores[1]["binary_error"], abs=1e-6
+    )
 
 
 if __name__ == "__main__":

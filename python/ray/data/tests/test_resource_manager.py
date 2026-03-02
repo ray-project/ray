@@ -14,6 +14,9 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
+from ray.data._internal.execution.interfaces.physical_operator import (
+    TaskExecDriverStats,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -31,6 +34,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import TaskExecWorkerStats
 from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
 from ray.data.tests.conftest import *  # noqa
 
@@ -248,6 +252,9 @@ class TestResourceManager:
                 obj_store_mem_internal_inqueue=mock_internal_inqueue[op],
                 obj_store_mem_pending_task_inputs=mock_pending_task_inputs[op],
             )
+            op._metrics.obj_store_mem_internal_inqueue_for_input = MagicMock(
+                return_value=mock_internal_inqueue[op],
+            )
             ref_bundle = MagicMock(
                 size_bytes=MagicMock(return_value=mock_external_outqueue_sizes[op])
             )
@@ -324,7 +331,7 @@ class TestResourceManager:
         # operator's object store memory usage. However, data from an
         # `InputDataBuffer` aren't counted because they were created outside of this
         # execution.
-        o2.metrics.on_input_queued(input)
+        o2.metrics.on_input_queued(input, input_index=0)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 0
@@ -332,7 +339,7 @@ class TestResourceManager:
 
         # During no-sample phase, obj_store_mem_pending_task_outputs uses fallback
         # estimate based on target_max_block_size.
-        o2.metrics.on_input_dequeued(input)
+        o2.metrics.on_input_dequeued(input, input_index=0)
         o2.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
@@ -351,7 +358,12 @@ class TestResourceManager:
         # When the task finishes, we move the data from the streaming generator to the
         # operator's internal outqueue.
         o2.metrics.on_output_queued(input)
-        o2.metrics.on_task_finished(0, None)
+        o2.metrics.on_task_finished(
+            0,
+            None,
+            TaskExecWorkerStats(task_wall_time_s=0.0),
+            TaskExecDriverStats(task_output_backpressure_s=0),
+        )
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -366,7 +378,7 @@ class TestResourceManager:
 
         # Objects in the current operator's internal inqueue count towards the previous
         # operator's object store memory usage.
-        o3.metrics.on_input_queued(topo[o2].output_queue.pop())
+        o3.metrics.on_input_queued(topo[o2].output_queue.pop(), input_index=0)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 1
@@ -374,7 +386,7 @@ class TestResourceManager:
 
         # Task inputs count toward the previous operator's object store memory
         # usage. During no-sample phase, pending task outputs uses fallback estimate.
-        o3.metrics.on_input_dequeued(input)
+        o3.metrics.on_input_dequeued(input, input_index=0)
         o3.metrics.on_task_submitted(0, input)
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
@@ -386,7 +398,12 @@ class TestResourceManager:
 
         # Task inputs no longer count once the task is finished.
         o3.metrics.on_output_queued(input)
-        o3.metrics.on_task_finished(0, None)
+        o3.metrics.on_task_finished(
+            0,
+            None,
+            TaskExecWorkerStats(task_wall_time_s=0.0),
+            TaskExecDriverStats(task_output_backpressure_s=0),
+        )
         resource_manager.update_usages()
         assert resource_manager.get_op_usage(o1).object_store_memory == 0
         assert resource_manager.get_op_usage(o2).object_store_memory == 0

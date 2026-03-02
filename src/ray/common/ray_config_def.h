@@ -1072,3 +1072,7 @@ RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 // before the timeout, the batch will be broadcasted eagerly. This flag only applies if
 // `gcs_resource_broadcast_max_batch_size != 1`.
 RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
+
+// Whether to enable/disable multiple gRPC connections to improve object transfer
+// throughput.
+RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, false)

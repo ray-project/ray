@@ -19,6 +19,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
+from ray.serve.config import GangSchedulingConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
@@ -226,6 +227,81 @@ def test_replica_startup_status_transitions(ray_cluster):
         return False
 
     wait_for_condition(check_succeeded)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_gang_replica_startup_status_transitions(ray_cluster):
+    cluster = ray_cluster
+    # Start with only 1 CPU — not enough for a gang of 2 replicas each needing 0.75 CPUs.
+    cluster.add_node(num_cpus=1)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+    serve.start()
+    client = _get_global_client()
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        version="1",
+        ray_actor_options={"num_cpus": 0.75},
+        num_replicas=2,
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    class GangDeployment:
+        async def __init__(self):
+            await signal.wait.remote()
+
+    serve._run(GangDeployment.bind(), _blocking=False)
+
+    def get_replicas(replica_state):
+        controller = client._controller
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(
+                DeploymentID(name="GangDeployment")
+            )
+        )
+        return replicas.get([replica_state])
+
+    # Wait for replicas to be created in STARTING state.
+    wait_for_condition(lambda: len(get_replicas(ReplicaState.STARTING)) > 0)
+
+    # With only 1 CPU available and each replica needing 0.75, replicas should
+    # be stuck in PENDING_ALLOCATION.
+    def is_pending_allocation():
+        replicas = get_replicas(ReplicaState.STARTING)
+        if not replicas:
+            return False
+        return all(
+            r.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
+            for r in replicas
+        )
+
+    wait_for_condition(is_pending_allocation)
+
+    # Add enough resources for the gang
+    cluster.add_node(num_cpus=1)
+    wait_for_condition(lambda: ray.cluster_resources().get("CPU", 0) == 2)
+
+    # Replicas should transition to PENDING_INITIALIZATION
+    def is_pending_initialization():
+        replicas = get_replicas(ReplicaState.STARTING)
+        if not replicas:
+            return False
+        return all(
+            r.check_started()[0] == ReplicaStartupStatus.PENDING_INITIALIZATION
+            for r in replicas
+        )
+
+    wait_for_condition(is_pending_initialization, timeout=30)
+
+    # Complete initialization
+    ray.get(signal.send.remote())
+
+    # Replicas should transition to RUNNING
+    def check_running():
+        running_replicas = get_replicas(ReplicaState.RUNNING)
+        return len(running_replicas) == 2
+
+    wait_for_condition(check_running, timeout=30)
 
 
 @serve.deployment
