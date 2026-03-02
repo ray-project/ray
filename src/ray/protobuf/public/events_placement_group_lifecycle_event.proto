@@ -1,0 +1,53 @@
+// Copyright 2025 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+import "google/protobuf/timestamp.proto";
+
+message PlacementGroupLifecycleEvent {
+  enum State {
+    PENDING = 0;
+    PREPARED = 1;
+    CREATED = 2;
+    REMOVED = 3;
+    RESCHEDULING = 4;
+  }
+
+  enum SchedulingState {
+    QUEUED = 0;
+    SCHEDULING_REMOVED = 1;
+    SCHEDULING_STARTED = 2;
+    NO_RESOURCES = 3;
+    INFEASIBLE = 4;
+    FAILED_TO_COMMIT_RESOURCES = 5;
+    FINISHED = 6;
+  }
+
+  message StateTransition {
+    State state = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    SchedulingState scheduling_state = 3;
+    uint32 scheduling_attempt = 4;
+    double highest_retry_delay_ms = 5;
+    int64 scheduling_started_time_ns = 6;
+    int64 scheduling_latency_us = 7;
+    int64 end_to_end_creation_latency_us = 8;
+  }
+
+  bytes placement_group_id = 1;
+  repeated StateTransition state_transitions = 2;
+}
