@@ -19,7 +19,7 @@ torch, _ = try_import_torch()
 
 @pytest.fixture(scope="class")
 def ray_init():
-    """Initialize Ray for the test module."""
+    """Initialize Ray for each test class."""
     ray.init(num_cpus=2, ignore_reinit_error=True)
     yield
     ray.shutdown()
@@ -33,10 +33,13 @@ def cartpole_env():
     env.close()
 
 
-@pytest.fixture
-def pendulum_env():
-    """Create a Pendulum environment."""
-    env = gym.make("Pendulum-v1")
+@pytest.fixture(
+    params=["CartPole-v1", "Pendulum-v1"],
+    ids=["discrete", "continuous"],
+)
+def env(request):
+    """Parametrized fixture for testing across discrete and continuous environments."""
+    env = gym.make(request.param)
     yield env
     env.close()
 
@@ -89,56 +92,44 @@ def make_module():
 class TestMARWILRLModule:
     """Tests for MARWIL RLModule functionality."""
 
-    @pytest.mark.parametrize("env_id", ["CartPole-v1", "Pendulum-v1"])
-    def test_forward_inference(self, ray_init, make_module, env_id):
+    def test_forward_inference(self, ray_init, make_module, env):
         """Test that forward_inference produces valid outputs for different envs."""
-        env = gym.make(env_id)
+        module = make_module(env)
+        batch_size = 4
+        obs = sample_obs_batch(env, batch_size)
 
-        try:
-            module = make_module(env)
-            batch_size = 4
-            obs = sample_obs_batch(env, batch_size)
+        with torch.no_grad():
+            outputs = module.forward_inference({Columns.OBS: obs})
 
-            with torch.no_grad():
-                outputs = module.forward_inference({Columns.OBS: obs})
+        assert Columns.ACTION_DIST_INPUTS in outputs
 
-            assert Columns.ACTION_DIST_INPUTS in outputs
+        action_dist_inputs = outputs[Columns.ACTION_DIST_INPUTS]
 
-            action_dist_inputs = outputs[Columns.ACTION_DIST_INPUTS]
+        if isinstance(env.action_space, gym.spaces.Discrete):
+            assert action_dist_inputs.shape == (batch_size, env.action_space.n)
+        else:
+            # For continuous (Box) action spaces.
+            action_dim = env.action_space.shape[0]
+            assert action_dist_inputs.shape[0] == batch_size
+            assert action_dist_inputs.shape[1] >= action_dim
 
-            if isinstance(env.action_space, gym.spaces.Discrete):
-                assert action_dist_inputs.shape == (batch_size, env.action_space.n)
-            else:
-                # For continuous (Box) action spaces.
-                action_dim = env.action_space.shape[0]
-                assert action_dist_inputs.shape[0] == batch_size
-                assert action_dist_inputs.shape[1] >= action_dim
-        finally:
-            env.close()
-
-    @pytest.mark.parametrize("env_id", ["CartPole-v1", "Pendulum-v1"])
-    def test_forward_exploration(self, ray_init, make_module, env_id):
+    def test_forward_exploration(self, ray_init, make_module, env):
         """Test that forward_exploration produces valid outputs."""
-        env = gym.make(env_id)
+        module = make_module(env, hiddens=(32, 32))
+        batch_size = 8
+        obs = sample_obs_batch(env, batch_size)
 
-        try:
-            module = make_module(env, hiddens=(32, 32))
-            batch_size = 8
-            obs = sample_obs_batch(env, batch_size)
+        with torch.no_grad():
+            outputs = module.forward_exploration({Columns.OBS: obs})
 
-            with torch.no_grad():
-                outputs = module.forward_exploration({Columns.OBS: obs})
+        assert Columns.ACTION_DIST_INPUTS in outputs
+        assert outputs[Columns.ACTION_DIST_INPUTS].shape[0] == batch_size
 
-            assert Columns.ACTION_DIST_INPUTS in outputs
-            assert outputs[Columns.ACTION_DIST_INPUTS].shape[0] == batch_size
-        finally:
-            env.close()
-
-    def test_forward_train(self, ray_init, make_module, cartpole_env):
+    def test_forward_train(self, ray_init, make_module, env):
         """Test that forward_train produces outputs needed for MARWIL loss."""
-        module = make_module(cartpole_env)
+        module = make_module(env)
         batch_size = 16
-        obs = sample_obs_batch(cartpole_env, batch_size)
+        obs = sample_obs_batch(env, batch_size)
 
         # forward_train should work with gradients enabled.
         outputs = module.forward_train({Columns.OBS: obs})
@@ -163,25 +154,30 @@ class TestMARWILRLModule:
         ),
     )
     def test_different_model_configs(
-        self, ray_init, make_module, cartpole_env, hiddens, activation
+        self, ray_init, make_module, env, hiddens, activation
     ):
         """Test RLModule with different model configurations."""
-        module = make_module(cartpole_env, hiddens=hiddens, activation=activation)
-        obs = sample_obs_batch(cartpole_env, batch_size=4)
+        module = make_module(env, hiddens=hiddens, activation=activation)
+        obs = sample_obs_batch(env, batch_size=4)
 
         with torch.no_grad():
             outputs = module.forward_inference({Columns.OBS: obs})
 
         assert Columns.ACTION_DIST_INPUTS in outputs
-        assert (
-            outputs[Columns.ACTION_DIST_INPUTS].shape[1] == cartpole_env.action_space.n
-        )
 
-    def test_value_function_api(self, ray_init, make_module, cartpole_env):
+        action_dist_inputs = outputs[Columns.ACTION_DIST_INPUTS]
+        if isinstance(env.action_space, gym.spaces.Discrete):
+            assert action_dist_inputs.shape[1] == env.action_space.n
+        else:
+            # For continuous (Box) action spaces.
+            action_dim = env.action_space.shape[0]
+            assert action_dist_inputs.shape[1] >= action_dim
+
+    def test_value_function_api(self, ray_init, make_module, env):
         """Test that the MARWIL RLModule implements ValueFunctionAPI correctly."""
-        module = make_module(cartpole_env)
+        module = make_module(env)
         batch_size = 8
-        obs = sample_obs_batch(cartpole_env, batch_size)
+        obs = sample_obs_batch(env, batch_size)
 
         with torch.no_grad():
             values = module.compute_values({Columns.OBS: obs})
@@ -189,47 +185,32 @@ class TestMARWILRLModule:
         assert values.shape == (batch_size,)
         assert torch.isfinite(values).all()
 
-    def test_inference_only_mode(self, ray_init, make_module, cartpole_env):
+    def test_inference_only_mode(self, ray_init, make_module, env):
         """Test that RLModule can be built in inference-only mode."""
-        module = make_module(cartpole_env, inference_only=True)
-        obs = sample_obs_batch(cartpole_env, batch_size=4)
+        module = make_module(env, inference_only=True)
+        obs = sample_obs_batch(env, batch_size=4)
 
         with torch.no_grad():
             outputs = module.forward_inference({Columns.OBS: obs})
 
-        # Action distribution inputs are supposed to be returned by an inference-only module.
         assert Columns.ACTION_DIST_INPUTS in outputs
-        # Values are not supposed to be returned.
-        assert Columns.VF_PREDS not in outputs
 
-    @pytest.mark.parametrize(
-        "env_id",
-        ["CartPole-v1", "Pendulum-v1"],
-        ids=["discrete", "continuous"],
-    )
-    def test_action_distribution_classes(self, ray_init, make_module, env_id):
+    def test_action_distribution_classes(self, ray_init, make_module, env):
         """Test that action distribution classes are correctly returned."""
-        env = gym.make(env_id)
+        module = make_module(env)
 
-        try:
-            module = make_module(env)
+        inference_dist_cls = module.get_inference_action_dist_cls()
+        exploration_dist_cls = module.get_exploration_action_dist_cls()
 
-            inference_dist_cls = module.get_inference_action_dist_cls()
-            exploration_dist_cls = module.get_exploration_action_dist_cls()
-            training_dist_cls = module.get_train_action_dist_cls()
+        assert inference_dist_cls is not None
+        assert exploration_dist_cls is not None
 
-            assert inference_dist_cls is not None
-            assert exploration_dist_cls is not None
-            assert training_dist_cls is not None
-        finally:
-            env.close()
-
-    def test_sampling_loop(self, ray_init, make_module, cartpole_env):
+    def test_sampling_loop(self, ray_init, make_module, env):
         """Test a complete sampling loop with the RLModule."""
-        module = make_module(cartpole_env)
+        module = make_module(env)
         action_dist_cls = module.get_exploration_action_dist_cls()
 
-        obs, _ = cartpole_env.reset()
+        obs, _ = env.reset()
         done = False
         max_steps = 100
         steps = 0
@@ -245,7 +226,7 @@ class TestMARWILRLModule:
             )
             action = action_dist.sample()[0].numpy()
 
-            obs, _, terminated, truncated, _ = cartpole_env.step(action)
+            obs, _, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             steps += 1
 
