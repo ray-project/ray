@@ -26,6 +26,8 @@ use crate::memory_store::{CoreWorkerMemoryStore, RayObject};
 use crate::normal_task_submitter::NormalTaskSubmitter;
 use crate::options::CoreWorkerOptions;
 use crate::reference_counter::ReferenceCounter;
+use crate::task_event_buffer::TaskEventBuffer;
+use crate::task_manager::TaskManager;
 use crate::task_receiver::TaskReceiver;
 
 /// The core worker orchestrating task submission, object management,
@@ -39,6 +41,8 @@ pub struct CoreWorker {
     actor_task_submitter: ActorTaskSubmitter,
     dependency_resolver: DependencyResolver,
     task_receiver: TaskReceiver,
+    task_manager: Arc<TaskManager>,
+    task_event_buffer: Arc<TaskEventBuffer>,
     worker_address: Address,
 }
 
@@ -69,6 +73,13 @@ impl CoreWorker {
             0, // unlimited concurrency by default
         );
 
+        let task_event_buffer = Arc::new(TaskEventBuffer::new(100_000));
+        let task_manager = Arc::new(TaskManager::new(
+            memory_store.clone(),
+            reference_counter.clone(),
+            task_event_buffer.clone(),
+        ));
+
         Self {
             context,
             memory_store,
@@ -78,6 +89,8 @@ impl CoreWorker {
             actor_task_submitter: ActorTaskSubmitter::new(),
             dependency_resolver: DependencyResolver::new(),
             task_receiver,
+            task_manager,
+            task_event_buffer,
             worker_address,
         }
     }
@@ -307,6 +320,58 @@ impl CoreWorker {
         callback: crate::task_receiver::TaskExecutionCallback,
     ) {
         self.task_receiver.set_execute_callback(callback);
+    }
+
+    // ─── Task Manager ────────────────────────────────────────────────
+
+    /// Access the task manager.
+    pub fn task_manager(&self) -> &Arc<TaskManager> {
+        &self.task_manager
+    }
+
+    /// Access the task event buffer.
+    pub fn task_event_buffer(&self) -> &Arc<TaskEventBuffer> {
+        &self.task_event_buffer
+    }
+
+    /// Submit a task through the task manager.
+    ///
+    /// Registers the task with the TaskManager (which tracks state,
+    /// retries, and return object ownership) and then submits it
+    /// via the NormalTaskSubmitter.
+    pub async fn submit_task_with_manager(
+        &self,
+        task_spec: TaskSpec,
+        max_retries: i32,
+    ) -> CoreWorkerResult<Vec<ObjectID>> {
+        let return_ids = self.task_manager.add_pending_task(
+            self.worker_address.clone(),
+            task_spec.clone(),
+            max_retries,
+        );
+        self.normal_task_submitter.submit_task(&task_spec).await?;
+        Ok(return_ids)
+    }
+
+    /// Complete a task through the task manager.
+    pub fn complete_task(
+        &self,
+        task_id: &[u8],
+        return_objects: Vec<(ObjectID, RayObject)>,
+    ) -> CoreWorkerResult<()> {
+        self.task_manager
+            .complete_pending_task(task_id, return_objects)
+    }
+
+    /// Fail a task through the task manager, retrying if possible.
+    pub fn fail_task(
+        &self,
+        task_id: &[u8],
+        error_message: &str,
+        is_oom: bool,
+    ) -> CoreWorkerResult<bool> {
+        self.task_manager
+            .fail_or_retry_pending_task(task_id, error_message, is_oom)
     }
 }
 

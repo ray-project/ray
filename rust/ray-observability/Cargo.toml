@@ -14,5 +14,11 @@ tracing-subscriber = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+parking_lot = { workspace = true }
 uuid = { workspace = true }
 nix = { workspace = true }
+
+[dev-dependencies]
+parking_lot = { workspace = true }
+serde_json = { workspace = true }
+tempfile = "3"

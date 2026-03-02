@@ -24,3 +24,5 @@ pub mod plasma;
 pub mod pull_manager;
 pub mod push_manager;
 pub mod readers;
+pub mod spill_manager;
+pub mod transport;

@@ -174,6 +174,123 @@ impl AuthInterceptor {
     }
 }
 
+/// Result of a token review (K8s TokenReview API).
+#[derive(Debug, Clone)]
+pub struct TokenReviewResult {
+    /// Whether the token is authenticated.
+    pub authenticated: bool,
+    /// The username associated with the token, if authenticated.
+    pub username: Option<String>,
+    /// Groups the user belongs to.
+    pub groups: Vec<String>,
+    /// Error message if authentication failed.
+    pub error: Option<String>,
+}
+
+/// Trait for validating tokens against an external authority (e.g., K8s API).
+///
+/// The default `AuthInterceptor` does simple string comparison.
+/// For production K8s deployments, implement this trait to call the
+/// K8s TokenReview API for proper token validation.
+pub trait TokenReviewer: Send + Sync {
+    /// Validate a bearer token and return the review result.
+    fn review_token(&self, token: &str) -> TokenReviewResult;
+}
+
+/// A simple local token reviewer that compares against a known token.
+///
+/// Used for ClusterAuth mode where the token is a shared secret.
+pub struct LocalTokenReviewer {
+    expected_token: String,
+    username: String,
+}
+
+impl LocalTokenReviewer {
+    pub fn new(expected_token: impl Into<String>, username: impl Into<String>) -> Self {
+        Self {
+            expected_token: expected_token.into(),
+            username: username.into(),
+        }
+    }
+}
+
+impl TokenReviewer for LocalTokenReviewer {
+    fn review_token(&self, token: &str) -> TokenReviewResult {
+        if token == self.expected_token {
+            TokenReviewResult {
+                authenticated: true,
+                username: Some(self.username.clone()),
+                groups: vec!["ray-users".to_string()],
+                error: None,
+            }
+        } else {
+            TokenReviewResult {
+                authenticated: false,
+                username: None,
+                groups: vec![],
+                error: Some("Invalid token".to_string()),
+            }
+        }
+    }
+}
+
+/// TLS configuration for gRPC channels.
+#[derive(Debug, Clone, Default)]
+pub struct TlsConfig {
+    /// Path to CA certificate for server verification.
+    pub ca_cert_path: Option<String>,
+    /// Path to client certificate (for mutual TLS).
+    pub client_cert_path: Option<String>,
+    /// Path to client key (for mutual TLS).
+    pub client_key_path: Option<String>,
+    /// Whether to skip server certificate verification (INSECURE).
+    pub skip_verify: bool,
+}
+
+impl TlsConfig {
+    /// Create a TLS config for K8s in-cluster communication.
+    pub fn k8s_in_cluster() -> Self {
+        Self {
+            ca_cert_path: Some(k8s::CA_CERT_PATH.to_string()),
+            client_cert_path: None,
+            client_key_path: None,
+            skip_verify: false,
+        }
+    }
+
+    /// Check if TLS is configured (any cert paths set).
+    pub fn is_enabled(&self) -> bool {
+        self.ca_cert_path.is_some()
+            || self.client_cert_path.is_some()
+    }
+
+    /// Check if mutual TLS is configured.
+    pub fn is_mtls(&self) -> bool {
+        self.client_cert_path.is_some() && self.client_key_path.is_some()
+    }
+
+    /// Read the CA certificate bytes, if configured.
+    pub fn read_ca_cert(&self) -> Option<Vec<u8>> {
+        self.ca_cert_path
+            .as_ref()
+            .and_then(|p| std::fs::read(p).ok())
+    }
+
+    /// Read the client certificate bytes, if configured.
+    pub fn read_client_cert(&self) -> Option<Vec<u8>> {
+        self.client_cert_path
+            .as_ref()
+            .and_then(|p| std::fs::read(p).ok())
+    }
+
+    /// Read the client key bytes, if configured.
+    pub fn read_client_key(&self) -> Option<Vec<u8>> {
+        self.client_key_path
+            .as_ref()
+            .and_then(|p| std::fs::read(p).ok())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,5 +503,85 @@ mod tests {
 
         // Server validates
         assert!(server_interceptor.validate_request(&incoming).is_ok());
+    }
+
+    #[test]
+    fn test_local_token_reviewer_valid() {
+        let reviewer = LocalTokenReviewer::new("secret", "ray-user");
+        let result = reviewer.review_token("secret");
+        assert!(result.authenticated);
+        assert_eq!(result.username, Some("ray-user".to_string()));
+        assert!(result.groups.contains(&"ray-users".to_string()));
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_local_token_reviewer_invalid() {
+        let reviewer = LocalTokenReviewer::new("secret", "ray-user");
+        let result = reviewer.review_token("wrong");
+        assert!(!result.authenticated);
+        assert!(result.username.is_none());
+        assert!(result.groups.is_empty());
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_tls_config_default() {
+        let config = TlsConfig::default();
+        assert!(!config.is_enabled());
+        assert!(!config.is_mtls());
+        assert!(!config.skip_verify);
+    }
+
+    #[test]
+    fn test_tls_config_k8s() {
+        let config = TlsConfig::k8s_in_cluster();
+        assert!(config.is_enabled());
+        assert!(!config.is_mtls());
+        assert_eq!(config.ca_cert_path.as_deref(), Some(k8s::CA_CERT_PATH));
+    }
+
+    #[test]
+    fn test_tls_config_mtls() {
+        let config = TlsConfig {
+            ca_cert_path: Some("/ca.pem".into()),
+            client_cert_path: Some("/client.pem".into()),
+            client_key_path: Some("/client.key".into()),
+            skip_verify: false,
+        };
+        assert!(config.is_enabled());
+        assert!(config.is_mtls());
+    }
+
+    #[test]
+    fn test_tls_config_read_missing() {
+        let config = TlsConfig {
+            ca_cert_path: Some("/nonexistent/ca.pem".into()),
+            ..Default::default()
+        };
+        assert!(config.read_ca_cert().is_none());
+        assert!(config.read_client_cert().is_none());
+        assert!(config.read_client_key().is_none());
+    }
+
+    #[test]
+    fn test_tls_config_read_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let ca_path = dir.path().join("ca.pem");
+        let cert_path = dir.path().join("client.pem");
+        let key_path = dir.path().join("client.key");
+        std::fs::write(&ca_path, b"CA_CERT_DATA").unwrap();
+        std::fs::write(&cert_path, b"CLIENT_CERT_DATA").unwrap();
+        std::fs::write(&key_path, b"CLIENT_KEY_DATA").unwrap();
+
+        let config = TlsConfig {
+            ca_cert_path: Some(ca_path.to_str().unwrap().into()),
+            client_cert_path: Some(cert_path.to_str().unwrap().into()),
+            client_key_path: Some(key_path.to_str().unwrap().into()),
+            skip_verify: false,
+        };
+        assert_eq!(config.read_ca_cert().unwrap(), b"CA_CERT_DATA");
+        assert_eq!(config.read_client_cert().unwrap(), b"CLIENT_CERT_DATA");
+        assert_eq!(config.read_client_key().unwrap(), b"CLIENT_KEY_DATA");
     }
 }

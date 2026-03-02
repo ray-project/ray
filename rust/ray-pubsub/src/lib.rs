@@ -10,9 +10,17 @@
 //!
 //! Replaces `src/ray/pubsub/` (14 files).
 //! Implements the GCS-backed publish/subscribe pattern using long-polling.
+//!
+//! The publisher manages per-channel subscription indices, per-subscriber
+//! message mailboxes with configurable buffer limits, and dead subscriber
+//! detection.
+//!
+//! The subscriber manages long-poll connections to publishers, command
+//! batching, sequence ID tracking for deduplication, and publisher
+//! failover detection.
 
 pub mod publisher;
 pub mod subscriber;
 
-pub use publisher::Publisher;
-pub use subscriber::Subscriber;
+pub use publisher::{PubMessage, Publisher, PublisherConfig};
+pub use subscriber::{Subscriber, SubscriberCommand, SubscriberConfig};

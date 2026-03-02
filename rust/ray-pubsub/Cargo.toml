@@ -15,3 +15,5 @@ tokio-stream = { workspace = true }
 tracing = { workspace = true }
 dashmap = { workspace = true }
 thiserror = { workspace = true }
+parking_lot = { workspace = true }
+prost = { workspace = true }

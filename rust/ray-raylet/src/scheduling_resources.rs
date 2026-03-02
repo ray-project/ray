@@ -271,11 +271,17 @@ pub struct LabelConstraint {
     pub values: Vec<String>,
 }
 
-/// Label operators.
+/// Label operators matching the protobuf `LabelOperator` oneof.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LabelOperator {
+    /// Node label value must be in the provided set.
     In,
+    /// Node label value must NOT be in the provided set.
     NotIn,
+    /// Node label key must exist (value irrelevant).
+    Exists,
+    /// Node label key must NOT exist.
+    DoesNotExist,
 }
 
 /// A set of label constraints that all must match.
@@ -289,7 +295,7 @@ impl LabelSelector {
         Self::default()
     }
 
-    /// Check if labels match all constraints.
+    /// Check if labels match all constraints (AND semantics).
     pub fn matches(&self, labels: &HashMap<String, String>) -> bool {
         self.constraints.iter().all(|c| {
             let value = labels.get(&c.key);
@@ -308,6 +314,8 @@ impl LabelSelector {
                         true // key not present satisfies NotIn
                     }
                 }
+                LabelOperator::Exists => value.is_some(),
+                LabelOperator::DoesNotExist => value.is_none(),
             }
         })
     }
@@ -350,6 +358,10 @@ pub struct SchedulingOptions {
     pub node_affinity_fail_on_unavailable: bool,
     // Label scheduling specific
     pub label_selector: LabelSelector,
+    /// Hard label expressions — ALL must be satisfied or scheduling fails.
+    pub label_match_expressions_hard: LabelSelector,
+    /// Soft label expressions — preferred but not required; increases priority.
+    pub label_match_expressions_soft: LabelSelector,
 }
 
 impl Default for SchedulingOptions {
@@ -368,6 +380,8 @@ impl Default for SchedulingOptions {
             node_affinity_spill_on_unavailable: false,
             node_affinity_fail_on_unavailable: false,
             label_selector: LabelSelector::new(),
+            label_match_expressions_hard: LabelSelector::new(),
+            label_match_expressions_soft: LabelSelector::new(),
         }
     }
 }
@@ -411,6 +425,22 @@ impl SchedulingOptions {
         Self {
             scheduling_type: SchedulingType::NodeLabel,
             label_selector: selector,
+            ..Self::default()
+        }
+    }
+
+    /// Create node-label scheduling options with hard and soft expressions.
+    ///
+    /// Hard expressions must all be satisfied or scheduling fails.
+    /// Soft expressions increase priority when satisfied.
+    pub fn node_label_with_expressions(
+        hard: LabelSelector,
+        soft: LabelSelector,
+    ) -> Self {
+        Self {
+            scheduling_type: SchedulingType::NodeLabel,
+            label_match_expressions_hard: hard,
+            label_match_expressions_soft: soft,
             ..Self::default()
         }
     }
@@ -566,5 +596,78 @@ mod tests {
         // Key not present satisfies NotIn
         let empty_labels = HashMap::new();
         assert!(selector.matches(&empty_labels));
+    }
+
+    #[test]
+    fn test_label_selector_exists() {
+        let selector = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "gpu_type".to_string(),
+                operator: LabelOperator::Exists,
+                values: vec![],
+            }],
+        };
+
+        let mut labels = HashMap::new();
+        labels.insert("gpu_type".to_string(), "A100".to_string());
+        assert!(selector.matches(&labels));
+
+        // Any value satisfies Exists
+        labels.insert("gpu_type".to_string(), "".to_string());
+        assert!(selector.matches(&labels));
+
+        // Missing key does not satisfy Exists
+        let empty_labels = HashMap::new();
+        assert!(!selector.matches(&empty_labels));
+    }
+
+    #[test]
+    fn test_label_selector_does_not_exist() {
+        let selector = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "gpu_type".to_string(),
+                operator: LabelOperator::DoesNotExist,
+                values: vec![],
+            }],
+        };
+
+        // Key not present satisfies DoesNotExist
+        let empty_labels = HashMap::new();
+        assert!(selector.matches(&empty_labels));
+
+        // Key present does NOT satisfy DoesNotExist
+        let mut labels = HashMap::new();
+        labels.insert("gpu_type".to_string(), "A100".to_string());
+        assert!(!selector.matches(&labels));
+    }
+
+    #[test]
+    fn test_label_selector_combined_operators() {
+        // Must have "zone" key AND zone NOT IN ("eu-west")
+        let selector = LabelSelector {
+            constraints: vec![
+                LabelConstraint {
+                    key: "zone".to_string(),
+                    operator: LabelOperator::Exists,
+                    values: vec![],
+                },
+                LabelConstraint {
+                    key: "zone".to_string(),
+                    operator: LabelOperator::NotIn,
+                    values: vec!["eu-west".to_string()],
+                },
+            ],
+        };
+
+        let mut labels = HashMap::new();
+        labels.insert("zone".to_string(), "us-east".to_string());
+        assert!(selector.matches(&labels));
+
+        labels.insert("zone".to_string(), "eu-west".to_string());
+        assert!(!selector.matches(&labels));
+
+        // Missing key: Exists fails
+        let empty_labels = HashMap::new();
+        assert!(!selector.matches(&empty_labels));
     }
 }

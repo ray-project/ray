@@ -677,6 +677,141 @@ async fn test_gcs_check_alive() {
     server.join_handle.await.unwrap();
 }
 
+// ─── Phase 15: Placement Group Scheduler Integration Tests ────────────
+
+/// Test placement group creation and removal via gRPC with SPREAD strategy.
+#[tokio::test]
+async fn test_placement_group_create_and_remove_spread() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::placement_group_info_gcs_service_client::PlacementGroupInfoGcsServiceClient::new(
+            channel,
+        );
+
+    let pg_id = vec![200u8; 18];
+
+    // Create with SPREAD strategy (1).
+    client
+        .create_placement_group(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "spread-test-pg".to_string(),
+                strategy: 1, // SPREAD
+                bundles: vec![
+                    rpc::Bundle {
+                        bundle_id: Some(rpc::bundle::BundleIdentifier {
+                            placement_group_id: pg_id.clone(),
+                            bundle_index: 0,
+                        }),
+                        unit_resources: [("CPU".to_string(), 1.0)].into(),
+                        ..Default::default()
+                    },
+                    rpc::Bundle {
+                        bundle_id: Some(rpc::bundle::BundleIdentifier {
+                            placement_group_id: pg_id.clone(),
+                            bundle_index: 1,
+                        }),
+                        unit_resources: [("CPU".to_string(), 1.0)].into(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Verify creation.
+    let resp = client
+        .get_placement_group(rpc::GetPlacementGroupRequest {
+            placement_group_id: pg_id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let pg = resp.into_inner().placement_group_table_data.unwrap();
+    assert_eq!(pg.name, "spread-test-pg");
+    assert_eq!(pg.strategy, 1); // SPREAD
+
+    // Remove the placement group.
+    client
+        .remove_placement_group(rpc::RemovePlacementGroupRequest {
+            placement_group_id: pg_id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Verify it's gone.
+    let resp = client
+        .get_placement_group(rpc::GetPlacementGroupRequest {
+            placement_group_id: pg_id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(resp.into_inner().placement_group_table_data.is_none());
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
+/// Test creating multiple placement groups and querying all.
+#[tokio::test]
+async fn test_multiple_placement_groups() {
+    let server = start_test_gcs_server().await;
+    let endpoint = format!("http://{}", server.addr);
+
+    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+        .unwrap()
+        .connect_lazy();
+    let mut client =
+        rpc::placement_group_info_gcs_service_client::PlacementGroupInfoGcsServiceClient::new(
+            channel,
+        );
+
+    // Create 3 placement groups with different strategies.
+    for (i, strategy) in [(0, "pack"), (1, "spread"), (2, "strict_pack")].iter() {
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = *i as u8 + 100;
+        client
+            .create_placement_group(rpc::CreatePlacementGroupRequest {
+                placement_group_spec: Some(rpc::PlacementGroupSpec {
+                    placement_group_id: pg_id.clone(),
+                    name: format!("{}-pg", strategy),
+                    strategy: *i,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+    }
+
+    // Query all.
+    let resp = client
+        .get_all_placement_group(rpc::GetAllPlacementGroupRequest::default())
+        .await
+        .unwrap();
+    let all_pgs = resp.into_inner().placement_group_table_data;
+    assert_eq!(all_pgs.len(), 3);
+
+    // Verify names.
+    let names: Vec<String> = all_pgs.iter().map(|pg| pg.name.clone()).collect();
+    assert!(names.contains(&"pack-pg".to_string()));
+    assert!(names.contains(&"spread-pg".to_string()));
+    assert!(names.contains(&"strict_pack-pg".to_string()));
+
+    server.shutdown_tx.send(()).unwrap();
+    server.join_handle.await.unwrap();
+}
+
 #[tokio::test]
 async fn test_gcs_kv_multi_get() {
     let server = start_test_gcs_server().await;

@@ -172,6 +172,26 @@ impl ObjectManager {
     pub fn num_active_pushes(&self) -> usize {
         self.push_manager.num_active_pushes()
     }
+
+    /// Access the pull manager (immutable).
+    pub fn pull_manager(&self) -> &PullManager {
+        &self.pull_manager
+    }
+
+    /// Access the pull manager (mutable).
+    pub fn pull_manager_mut(&mut self) -> &mut PullManager {
+        &mut self.pull_manager
+    }
+
+    /// Access the push manager (immutable).
+    pub fn push_manager(&self) -> &PushManager {
+        &self.push_manager
+    }
+
+    /// Access the push manager (mutable).
+    pub fn push_manager_mut(&mut self) -> &mut PushManager {
+        &mut self.push_manager
+    }
 }
 
 #[cfg(test)]

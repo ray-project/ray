@@ -311,11 +311,119 @@ impl SchedulingPolicy for NodeAffinitySchedulingPolicy {
 
 // ─── Node Label Policy ──────────────────────────────────────────────────
 
-/// Schedule based on node labels.
+/// Schedule based on node labels with hard/soft expression priority.
+///
+/// Implements the C++ 4-tier priority selection:
+///
+/// 1. Hard + Soft match, resources available
+/// 2. Hard match only, resources available
+/// 3. Hard + Soft match, resources feasible (not yet available)
+/// 4. Hard match only, resources feasible
+///
+/// If `label_match_expressions_hard` is empty, falls back to the legacy
+/// `label_selector` field for backwards compatibility.
 pub struct NodeLabelSchedulingPolicy;
 
 impl SchedulingPolicy for NodeLabelSchedulingPolicy {
     fn schedule(
+        &self,
+        request: &ResourceSet,
+        options: &SchedulingOptions,
+        nodes: &HashMap<String, NodeResources>,
+        local_node_id: &str,
+    ) -> Option<String> {
+        // Use legacy path if no hard/soft expressions are provided.
+        if options.label_match_expressions_hard.is_empty()
+            && options.label_match_expressions_soft.is_empty()
+        {
+            return self.schedule_legacy(request, options, nodes, local_node_id);
+        }
+
+        let hard = &options.label_match_expressions_hard;
+        let soft = &options.label_match_expressions_soft;
+
+        // Step 1: Filter to alive, feasible, non-draining nodes.
+        let feasible: Vec<(&String, &NodeResources)> = nodes
+            .iter()
+            .filter(|(id, nr)| {
+                !nr.is_draining
+                    && nr.is_feasible(request)
+                    && !(options.avoid_local_node && *id == local_node_id)
+            })
+            .collect();
+
+        if feasible.is_empty() {
+            return None;
+        }
+
+        // Step 2: Filter by hard expressions (required).
+        let hard_matched: Vec<(&String, &NodeResources)> = if hard.is_empty() {
+            feasible
+        } else {
+            feasible
+                .into_iter()
+                .filter(|(_, nr)| hard.matches(&nr.labels))
+                .collect()
+        };
+
+        if hard_matched.is_empty() {
+            return None; // No nodes satisfy hard constraints.
+        }
+
+        // Step 3: From hard-matched, filter by soft expressions (preferred).
+        let soft_matched: Vec<(&String, &NodeResources)> = if soft.is_empty() {
+            Vec::new()
+        } else {
+            hard_matched
+                .iter()
+                .filter(|(_, nr)| soft.matches(&nr.labels))
+                .copied()
+                .collect()
+        };
+
+        // Step 4: Apply 4-tier priority selection.
+        let pick = |candidates: &[(&String, &NodeResources)]| -> Option<String> {
+            if candidates.is_empty() {
+                return None;
+            }
+            let mut rng = rand::thread_rng();
+            let idx = rng.gen_range(0..candidates.len());
+            Some(candidates[idx].0.clone())
+        };
+
+        // Tier 1: hard + soft, available
+        let tier1: Vec<_> = soft_matched
+            .iter()
+            .filter(|(_, nr)| nr.is_available(request))
+            .copied()
+            .collect();
+        if let Some(node) = pick(&tier1) {
+            return Some(node);
+        }
+
+        // Tier 2: hard only, available
+        let tier2: Vec<_> = hard_matched
+            .iter()
+            .filter(|(_, nr)| nr.is_available(request))
+            .copied()
+            .collect();
+        if let Some(node) = pick(&tier2) {
+            return Some(node);
+        }
+
+        // Tier 3: hard + soft, feasible (already filtered)
+        if let Some(node) = pick(&soft_matched) {
+            return Some(node);
+        }
+
+        // Tier 4: hard only, feasible
+        pick(&hard_matched)
+    }
+}
+
+impl NodeLabelSchedulingPolicy {
+    /// Legacy scheduling path using the flat `label_selector` field.
+    fn schedule_legacy(
         &self,
         request: &ResourceSet,
         options: &SchedulingOptions,
@@ -912,5 +1020,319 @@ mod tests {
             "expected Infeasible for 4 bundles on 3 nodes, got {:?}",
             result
         );
+    }
+
+    // ─── Node Label Policy Tests ────────────────────────────────────────
+
+    use crate::scheduling_resources::{LabelConstraint, LabelOperator, LabelSelector};
+
+    fn make_labeled_nodes() -> HashMap<String, NodeResources> {
+        let mut nodes = HashMap::new();
+
+        // n1: zone=us-east, tier=prod, 4 CPU
+        let mut n1_total = ResourceSet::new();
+        n1_total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mut n1 = NodeResources::new(n1_total);
+        n1.labels.insert("zone".to_string(), "us-east".to_string());
+        n1.labels.insert("tier".to_string(), "prod".to_string());
+        nodes.insert("n1".to_string(), n1);
+
+        // n2: zone=us-west, tier=prod, 8 CPU
+        let mut n2_total = ResourceSet::new();
+        n2_total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
+        let mut n2 = NodeResources::new(n2_total);
+        n2.labels.insert("zone".to_string(), "us-west".to_string());
+        n2.labels.insert("tier".to_string(), "prod".to_string());
+        nodes.insert("n2".to_string(), n2);
+
+        // n3: zone=eu-west, tier=dev, 2 CPU
+        let mut n3_total = ResourceSet::new();
+        n3_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let mut n3 = NodeResources::new(n3_total);
+        n3.labels.insert("zone".to_string(), "eu-west".to_string());
+        n3.labels.insert("tier".to_string(), "dev".to_string());
+        nodes.insert("n3".to_string(), n3);
+
+        // n4: no labels, 4 CPU
+        let mut n4_total = ResourceSet::new();
+        n4_total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let n4 = NodeResources::new(n4_total);
+        nodes.insert("n4".to_string(), n4);
+
+        nodes
+    }
+
+    #[test]
+    fn test_node_label_hard_only() {
+        let nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Hard: tier=prod → matches n1 and n2
+        let hard = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["prod".to_string()],
+            }],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, LabelSelector::new());
+
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..50 {
+            if let Some(id) = policy.schedule(&req, &opts, &nodes, "") {
+                seen.insert(id);
+            }
+        }
+        // Should only pick n1 and n2
+        assert!(seen.contains("n1") || seen.contains("n2"));
+        assert!(!seen.contains("n3"));
+        assert!(!seen.contains("n4"));
+    }
+
+    #[test]
+    fn test_node_label_hard_and_soft() {
+        let nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Hard: tier=prod → matches n1, n2
+        // Soft: zone=us-east → prefers n1
+        let hard = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["prod".to_string()],
+            }],
+        };
+        let soft = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "zone".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["us-east".to_string()],
+            }],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, soft);
+
+        // Tier 1: hard+soft+available → n1 only
+        // So all picks should be n1
+        for _ in 0..20 {
+            let result = policy.schedule(&req, &opts, &nodes, "");
+            assert_eq!(result, Some("n1".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_node_label_soft_fallback_to_hard() {
+        let mut nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Exhaust n1's resources so it's feasible but not available
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        nodes.get_mut("n1").unwrap().available.subtract(&used);
+
+        // Hard: tier=prod → matches n1, n2
+        // Soft: zone=us-east → prefers n1 (but n1 is unavailable)
+        let hard = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["prod".to_string()],
+            }],
+        };
+        let soft = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "zone".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["us-east".to_string()],
+            }],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, soft);
+
+        // Tier 1: hard+soft+available → empty (n1 unavailable)
+        // Tier 2: hard+available → n2 only
+        for _ in 0..20 {
+            let result = policy.schedule(&req, &opts, &nodes, "");
+            assert_eq!(result, Some("n2".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_node_label_exists_operator() {
+        let nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Hard: key "tier" must exist → matches n1, n2, n3 (not n4)
+        let hard = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::Exists,
+                values: vec![],
+            }],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, LabelSelector::new());
+
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..100 {
+            if let Some(id) = policy.schedule(&req, &opts, &nodes, "") {
+                seen.insert(id);
+            }
+        }
+        assert!(!seen.contains("n4"), "n4 has no 'tier' label");
+        assert!(!seen.is_empty());
+    }
+
+    #[test]
+    fn test_node_label_does_not_exist_operator() {
+        let nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Hard: key "tier" must NOT exist → matches only n4
+        let hard = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::DoesNotExist,
+                values: vec![],
+            }],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, LabelSelector::new());
+
+        for _ in 0..20 {
+            let result = policy.schedule(&req, &opts, &nodes, "");
+            assert_eq!(result, Some("n4".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_node_label_no_hard_match_returns_none() {
+        let nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Hard: tier=staging → matches nobody
+        let hard = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["staging".to_string()],
+            }],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, LabelSelector::new());
+
+        let result = policy.schedule(&req, &opts, &nodes, "");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_node_label_tier3_feasible_soft() {
+        let mut nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Exhaust ALL nodes' resources
+        for nr in nodes.values_mut() {
+            let total = nr.total.clone();
+            nr.available.subtract(&total);
+        }
+
+        // Hard: tier=prod → n1, n2
+        // Soft: zone=us-east → n1
+        let hard = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["prod".to_string()],
+            }],
+        };
+        let soft = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "zone".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["us-east".to_string()],
+            }],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, soft);
+
+        // Tier 1: empty (nothing available)
+        // Tier 2: empty (nothing available)
+        // Tier 3: hard+soft+feasible → n1
+        for _ in 0..20 {
+            let result = policy.schedule(&req, &opts, &nodes, "");
+            assert_eq!(result, Some("n1".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_node_label_legacy_selector() {
+        let nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Use legacy label_selector (no hard/soft expressions)
+        let selector = LabelSelector {
+            constraints: vec![LabelConstraint {
+                key: "tier".to_string(),
+                operator: LabelOperator::In,
+                values: vec!["dev".to_string()],
+            }],
+        };
+        let opts = SchedulingOptions::node_label(selector);
+
+        for _ in 0..20 {
+            let result = policy.schedule(&req, &opts, &nodes, "");
+            assert_eq!(result, Some("n3".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_node_label_combined_hard_constraints() {
+        let nodes = make_labeled_nodes();
+        let policy = NodeLabelSchedulingPolicy;
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Hard: tier=prod AND zone IN (us-east, us-west) → n1, n2
+        // Then add: zone NOT IN (us-west) → only n1
+        let hard = LabelSelector {
+            constraints: vec![
+                LabelConstraint {
+                    key: "tier".to_string(),
+                    operator: LabelOperator::In,
+                    values: vec!["prod".to_string()],
+                },
+                LabelConstraint {
+                    key: "zone".to_string(),
+                    operator: LabelOperator::NotIn,
+                    values: vec!["us-west".to_string()],
+                },
+            ],
+        };
+        let opts = SchedulingOptions::node_label_with_expressions(hard, LabelSelector::new());
+
+        for _ in 0..20 {
+            let result = policy.schedule(&req, &opts, &nodes, "");
+            assert_eq!(result, Some("n1".to_string()));
+        }
     }
 }

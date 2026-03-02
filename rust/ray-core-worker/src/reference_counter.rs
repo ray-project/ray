@@ -18,13 +18,19 @@ use parking_lot::Mutex;
 use ray_common::id::ObjectID;
 use ray_proto::ray::rpc::Address;
 
+/// Callback invoked when an object's reference count reaches zero.
+pub type ObjectFreedCallback = Box<dyn Fn(&ObjectID) + Send + Sync>;
+
 /// Ownership and reference information for a single object.
 #[derive(Debug, Clone)]
 struct Reference {
     local_ref_count: u64,
     submitted_task_ref_count: u64,
+    lineage_ref_count: u64,
     owner_address: Option<Address>,
     is_owned_by_us: bool,
+    is_pending_creation: bool,
+    object_size: i64,
     object_locations: HashSet<String>,
     contained_in: HashSet<ObjectID>,
     contains: HashSet<ObjectID>,
@@ -35,8 +41,11 @@ impl Reference {
         Self {
             local_ref_count: 0,
             submitted_task_ref_count: 0,
+            lineage_ref_count: 0,
             owner_address: None,
             is_owned_by_us: false,
+            is_pending_creation: false,
+            object_size: -1,
             object_locations: HashSet::new(),
             contained_in: HashSet::new(),
             contains: HashSet::new(),
@@ -46,18 +55,31 @@ impl Reference {
     fn total_ref_count(&self) -> u64 {
         self.local_ref_count + self.submitted_task_ref_count
     }
+
+    /// Whether the reference can be deleted (all counts zero, including lineage).
+    fn should_delete(&self) -> bool {
+        self.total_ref_count() == 0 && self.lineage_ref_count == 0
+    }
 }
 
 /// Tracks reference counts for objects in the core worker.
 pub struct ReferenceCounter {
     refs: Mutex<HashMap<ObjectID, Reference>>,
+    /// Optional callback invoked when an object's reference count reaches zero.
+    on_object_freed: Mutex<Option<ObjectFreedCallback>>,
 }
 
 impl ReferenceCounter {
     pub fn new() -> Self {
         Self {
             refs: Mutex::new(HashMap::new()),
+            on_object_freed: Mutex::new(None),
         }
+    }
+
+    /// Set a callback that fires when any object's reference count reaches zero.
+    pub fn set_object_freed_callback(&self, callback: ObjectFreedCallback) {
+        *self.on_object_freed.lock() = Some(callback);
     }
 
     /// Add a local reference to an object. Creates the entry if it doesn't exist.
@@ -70,13 +92,25 @@ impl ReferenceCounter {
     /// Remove a local reference. Returns the set of object IDs whose total
     /// reference count has reached zero and should be freed.
     pub fn remove_local_reference(&self, object_id: &ObjectID) -> Vec<ObjectID> {
-        let mut refs = self.refs.lock();
-        let mut deleted = Vec::new();
-        if let Some(entry) = refs.get_mut(object_id) {
-            entry.local_ref_count = entry.local_ref_count.saturating_sub(1);
-            if entry.total_ref_count() == 0 {
-                refs.remove(object_id);
-                deleted.push(*object_id);
+        let deleted;
+        {
+            let mut refs = self.refs.lock();
+            let mut d = Vec::new();
+            if let Some(entry) = refs.get_mut(object_id) {
+                entry.local_ref_count = entry.local_ref_count.saturating_sub(1);
+                if entry.total_ref_count() == 0 {
+                    refs.remove(object_id);
+                    d.push(*object_id);
+                }
+            }
+            deleted = d;
+        }
+        // Fire callback outside lock.
+        if !deleted.is_empty() {
+            if let Some(ref cb) = *self.on_object_freed.lock() {
+                for oid in &deleted {
+                    cb(oid);
+                }
             }
         }
         deleted
@@ -166,15 +200,27 @@ impl ReferenceCounter {
 
     /// Decrement submitted task ref counts. Returns freed object IDs.
     pub fn update_finished_task_references(&self, object_ids: &[ObjectID]) -> Vec<ObjectID> {
-        let mut refs = self.refs.lock();
-        let mut deleted = Vec::new();
-        for id in object_ids {
-            if let Some(entry) = refs.get_mut(id) {
-                entry.submitted_task_ref_count =
-                    entry.submitted_task_ref_count.saturating_sub(1);
-                if entry.total_ref_count() == 0 {
-                    refs.remove(id);
-                    deleted.push(*id);
+        let deleted;
+        {
+            let mut refs = self.refs.lock();
+            let mut d = Vec::new();
+            for id in object_ids {
+                if let Some(entry) = refs.get_mut(id) {
+                    entry.submitted_task_ref_count =
+                        entry.submitted_task_ref_count.saturating_sub(1);
+                    if entry.total_ref_count() == 0 {
+                        refs.remove(id);
+                        d.push(*id);
+                    }
+                }
+            }
+            deleted = d;
+        }
+        // Fire callback outside lock.
+        if !deleted.is_empty() {
+            if let Some(ref cb) = *self.on_object_freed.lock() {
+                for oid in &deleted {
+                    cb(oid);
                 }
             }
         }
@@ -189,6 +235,100 @@ impl ReferenceCounter {
     /// Number of tracked objects.
     pub fn num_objects(&self) -> usize {
         self.refs.lock().len()
+    }
+
+    // ─── Lineage Reference Counting ────────────────────────────────
+
+    /// Add a lineage reference. Lineage refs keep the entry alive even when
+    /// local and submitted ref counts reach zero, to allow task reconstruction.
+    pub fn add_lineage_reference(&self, object_id: &ObjectID) {
+        let mut refs = self.refs.lock();
+        if let Some(entry) = refs.get_mut(object_id) {
+            entry.lineage_ref_count += 1;
+        }
+    }
+
+    /// Remove a lineage reference. Returns freed object IDs.
+    pub fn remove_lineage_reference(&self, object_id: &ObjectID) -> Vec<ObjectID> {
+        let deleted;
+        {
+            let mut refs = self.refs.lock();
+            let mut d = Vec::new();
+            if let Some(entry) = refs.get_mut(object_id) {
+                entry.lineage_ref_count = entry.lineage_ref_count.saturating_sub(1);
+                if entry.should_delete() {
+                    refs.remove(object_id);
+                    d.push(*object_id);
+                }
+            }
+            deleted = d;
+        }
+        if !deleted.is_empty() {
+            if let Some(ref cb) = *self.on_object_freed.lock() {
+                for oid in &deleted {
+                    cb(oid);
+                }
+            }
+        }
+        deleted
+    }
+
+    // ─── Object Size & Pending Creation ────────────────────────────
+
+    /// Update the known size of an object.
+    pub fn update_object_size(&self, object_id: &ObjectID, size: i64) {
+        if let Some(entry) = self.refs.lock().get_mut(object_id) {
+            entry.object_size = size;
+        }
+    }
+
+    /// Get the known size of an object. Returns -1 if unknown.
+    pub fn get_object_size(&self, object_id: &ObjectID) -> i64 {
+        self.refs
+            .lock()
+            .get(object_id)
+            .map(|e| e.object_size)
+            .unwrap_or(-1)
+    }
+
+    /// Mark whether an object is pending creation.
+    pub fn update_object_pending_creation(&self, object_id: &ObjectID, pending: bool) {
+        if let Some(entry) = self.refs.lock().get_mut(object_id) {
+            entry.is_pending_creation = pending;
+        }
+    }
+
+    /// Check whether an object is pending creation.
+    pub fn is_object_pending_creation(&self, object_id: &ObjectID) -> bool {
+        self.refs
+            .lock()
+            .get(object_id)
+            .is_some_and(|e| e.is_pending_creation)
+    }
+
+    // ─── Bulk Operations ───────────────────────────────────────────
+
+    /// Get all objects currently in scope (non-zero reference count).
+    pub fn all_in_scope_object_ids(&self) -> Vec<ObjectID> {
+        self.refs.lock().keys().copied().collect()
+    }
+
+    /// Get all reference counts (local, submitted) for debugging.
+    pub fn all_reference_counts(&self) -> HashMap<ObjectID, (u64, u64)> {
+        self.refs
+            .lock()
+            .iter()
+            .map(|(id, r)| (*id, (r.local_ref_count, r.submitted_task_ref_count)))
+            .collect()
+    }
+
+    /// Number of objects owned by us.
+    pub fn num_objects_owned_by_us(&self) -> usize {
+        self.refs
+            .lock()
+            .values()
+            .filter(|r| r.is_owned_by_us)
+            .count()
     }
 }
 

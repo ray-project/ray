@@ -11,4 +11,8 @@ opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
 parking_lot = { workspace = true }

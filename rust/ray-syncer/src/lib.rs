@@ -18,6 +18,9 @@
 //! Messages are versioned with monotonic sequence numbers for reliable
 //! delivery, and each node maintains a local snapshot of all peers' state.
 
+pub mod client;
+pub mod grpc_service;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;

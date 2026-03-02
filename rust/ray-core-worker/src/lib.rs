@@ -24,6 +24,8 @@ pub mod normal_task_submitter;
 pub mod actor_task_submitter;
 pub mod dependency_resolver;
 pub mod task_receiver;
+pub mod task_event_buffer;
+pub mod task_manager;
 pub mod core_worker;
 pub mod grpc_service;
 

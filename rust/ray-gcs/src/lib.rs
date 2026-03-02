@@ -27,6 +27,7 @@ pub mod job_manager;
 pub mod kv_manager;
 pub mod node_manager;
 pub mod placement_group_manager;
+pub mod placement_group_scheduler;
 pub mod pubsub_handler;
 pub mod resource_manager;
 pub mod server;

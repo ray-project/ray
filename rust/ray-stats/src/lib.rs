@@ -54,6 +54,12 @@ impl Counter {
         let values = self.value.lock();
         values.get(tags).copied().unwrap_or(0)
     }
+
+    /// Return all tag→value pairs for export.
+    pub fn get_all_values(&self) -> Vec<(Vec<(String, String)>, u64)> {
+        let values = self.value.lock();
+        values.iter().map(|(k, v)| (k.clone(), *v)).collect()
+    }
 }
 
 impl Metric for Counter {
@@ -90,6 +96,12 @@ impl Gauge {
     pub fn get(&self, tags: &[(String, String)]) -> f64 {
         let values = self.value.lock();
         values.get(tags).copied().unwrap_or(0.0)
+    }
+
+    /// Return all tag→value pairs for export.
+    pub fn get_all_values(&self) -> Vec<(Vec<(String, String)>, f64)> {
+        let values = self.value.lock();
+        values.iter().map(|(k, v)| (k.clone(), *v)).collect()
     }
 }
 
@@ -134,6 +146,12 @@ impl Histogram {
     pub fn boundaries(&self) -> &[f64] {
         &self.boundaries
     }
+
+    /// Return all tag→values pairs for export.
+    pub fn get_all_values(&self) -> Vec<(Vec<(String, String)>, Vec<f64>)> {
+        let values = self.values.lock();
+        values.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
 }
 
 impl Metric for Histogram {
@@ -158,6 +176,8 @@ pub mod metric_defs {
     pub const RESOURCES_AVAILABLE: &str = "ray_resources_available";
     pub const WORKER_REGISTER_TIME_MS: &str = "ray_worker_register_time_ms";
 }
+
+pub mod exporter;
 
 #[cfg(test)]
 mod tests {

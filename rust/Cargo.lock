@@ -1603,11 +1603,13 @@ name = "ray-observability"
 version = "3.0.0-dev"
 dependencies = [
  "nix",
+ "parking_lot",
  "ray-common",
  "ray-stats",
  "ray-util",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1632,6 +1634,8 @@ name = "ray-pubsub"
 version = "3.0.0-dev"
 dependencies = [
  "dashmap",
+ "parking_lot",
+ "prost",
  "ray-common",
  "ray-proto",
  "ray-util",
@@ -1718,6 +1722,7 @@ dependencies = [
  "opentelemetry_sdk",
  "parking_lot",
  "ray-util",
+ "tokio",
  "tracing",
 ]
 
