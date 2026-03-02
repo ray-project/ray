@@ -31,7 +31,7 @@ The multi-agent system consists of three agents:
 Each agent runs as an independent, autoscaling service with two interfaces: **SSE** for human-to-agent chat and **A2A** for agent-to-agent communication.
 
 <figure>
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/multi-agent-architecture.png" alt="Architecture diagram showing Weather, Research, and Travel agents communicating through the A2A protocol on Ray Serve" style="width: 100%; height: auto;" />
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/multi-agent-architecture.png" alt="Architecture diagram showing Weather, Research, and Travel agents communicating through the A2A protocol on Ray Serve" style="width: auto; height: auto;" />
 </figure>
 
 ### Key terminology
@@ -401,7 +401,7 @@ See [mcps/web_search_mcp_server.py](https://github.com/ray-project/ray/tree/mast
 The agent runtime provides a builder pattern for creating agents and deploying them with both SSE (human-to-agent) and A2A (agent-to-agent) interfaces. This shared infrastructure eliminates code duplication across agents by centralizing configuration, agent building, and deployment logic.
 
 <figure>
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/agent-builder-pattern.png" alt="Diagram showing the agent runtime builder pattern with configuration, agent building, and deployment layers" style="width: 65%; height: auto;" />
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/agent-builder-pattern.png" alt="Diagram showing the agent runtime builder pattern with configuration, agent building, and deployment layers" style="width: auto; height: auto;" />
 </figure>
 
 The agent runtime consists of four core modules:
@@ -551,7 +551,7 @@ async def a2a_weather(query: str) -> str:
 The A2A (Agent-to-Agent) protocol enables standardized agent-to-agent communication. This system uses the official `a2a-sdk` with custom helper utilities.
 
 <figure>
-<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/a2a-protocol.png" alt="Sequence diagram showing A2A protocol communication between agents using discovery, message send, and task polling" />
+<img src="https://anyscale-public-materials.s3.us-west-2.amazonaws.com/agent-template/multi-agent/a2a-protocol.png" alt="Sequence diagram showing A2A protocol communication between agents using discovery, message send, and task polling" style="width: auto; height: auto;" />
 </figure>
 
 **A2A components:**
