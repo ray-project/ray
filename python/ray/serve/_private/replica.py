@@ -56,6 +56,7 @@ from ray.serve._private.common import (
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
+    gRPCStreamingRequest,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -169,7 +170,7 @@ from ray.serve.generated.serve_pb2 import (
     ListApplicationsResponse,
 )
 from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
-from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
 from ray.util import metrics as ray_metrics
@@ -1365,20 +1366,88 @@ class ReplicaBase(ABC):
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            request: gRPCRequest = request_args[0]
+            if len(request_args) == 1 and isinstance(
+                request_args[0], gRPCStreamingRequest
+            ):
+                # Handle client streaming or bidirectional streaming request
+                streaming_request: gRPCStreamingRequest = request_args[0]
+                request_args, request_kwargs = self._setup_grpc_streaming_args(
+                    request_metadata, streaming_request
+                )
+            else:
+                # Handle unary or server streaming request
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                request: gRPCRequest = request_args[0]
 
-            method_info = self._user_callable_wrapper.get_user_method_info(
-                request_metadata.call_method
-            )
-            request_args = (request.user_request_proto,)
-            request_kwargs = (
-                {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
-                if method_info.takes_grpc_context_kwarg
-                else {}
-            )
+                method_info = self._user_callable_wrapper.get_user_method_info(
+                    request_metadata.call_method
+                )
+                request_args = (request.user_request_proto,)
+                request_kwargs = (
+                    {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+                    if method_info.takes_grpc_context_kwarg
+                    else {}
+                )
 
         return request_args, request_kwargs, ray_trace_ctx
+
+    def _setup_grpc_streaming_args(
+        self,
+        request_metadata: RequestMetadata,
+        streaming_request: gRPCStreamingRequest,
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Set up request args for gRPC client/bidirectional streaming.
+
+        Creates a gRPCInputStream that wraps the callback to the proxy,
+        allowing the user method to iterate over incoming request messages.
+        """
+        # Look up the proxy actor fresh per-request to avoid stale handles
+        # if the proxy actor restarts (same name, new actor ID). This mirrors
+        # the per-request lookup in StreamingHTTPRequest.receive_asgi_messages.
+        proxy_actor = ray.get_actor(
+            streaming_request.proxy_actor_name, namespace=SERVE_NAMESPACE
+        )
+
+        # Create a cancel event that will be set when the client cancels
+        cancel_event = asyncio.Event()
+
+        # Create an async iterator that fetches messages from the proxy
+        async def request_message_iterator():
+            while True:
+                # Ray handles serialization - no manual pickle needed
+                (
+                    has_more,
+                    message,
+                    is_cancelled,
+                ) = await proxy_actor.receive_grpc_messages.remote(
+                    streaming_request.session_id
+                )
+                if is_cancelled:
+                    # Set the cancel event so is_cancelled() returns True
+                    cancel_event.set()
+                if not has_more:
+                    break
+                yield message
+
+        # Create the gRPCInputStream wrapper with the cancel event
+        input_stream = gRPCInputStream(
+            request_message_iterator(), cancel_event=cancel_event
+        )
+
+        method_info = self._user_callable_wrapper.get_user_method_info(
+            request_metadata.call_method
+        )
+
+        request_args = (input_stream,)
+        request_kwargs = (
+            {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+            if method_info.takes_grpc_context_kwarg
+            else {}
+        )
+
+        return request_args, request_kwargs
 
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
