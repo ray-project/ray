@@ -17,7 +17,7 @@ import pytest
 
 import ray
 from ray import tune
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import run_string_as_driver
 from ray.exceptions import RayTaskError
 from ray.train._internal.session import _TrainingResult
 from ray.tune import Checkpoint, TuneError

@@ -19,7 +19,12 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
+#include "ray/util/fake_process.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -32,7 +37,7 @@ class MockWorker : public WorkerInterface {
         port_(port),
         runtime_env_hash_(runtime_env_hash),
         job_id_(JobID::FromInt(859)),
-        proc_(Process::CreateNewDummy()) {}
+        proc_(std::make_unique<FakeProcess>()) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -95,12 +100,14 @@ class MockWorker : public WorkerInterface {
   void MarkUnblocked() override { blocked_ = false; }
   bool IsBlocked() const override { return blocked_; }
 
-  Process GetProcess() const override { return proc_; }
-  void SetProcess(Process proc) override { proc_ = std::move(proc); }
+  const ProcessInterface &GetProcess() const override { return *proc_; }
+  void SetProcess(std::unique_ptr<ProcessInterface> proc) override {
+    proc_ = std::move(proc);
+  }
 
-  Language GetLanguage() const override {
+  rpc::Language GetLanguage() const override {
     RAY_CHECK(false) << "Method unused";
-    return Language::PYTHON;
+    return rpc::Language::PYTHON;
   }
 
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
@@ -192,10 +199,59 @@ class MockWorker : public WorkerInterface {
   LeaseID lease_id_;
   JobID job_id_;
   ActorID root_detached_actor_id_;
-  Process proc_;
+  std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
 };
+
+/**
+ * @brief Creates a MockWorker for a normal or actor creation task.
+ *
+ * @param owner_id The parent task ID for the lease.
+ * @param max_retries The maximum number of task retries allowed.
+ * For actor creation tasks, this is the maximum number of actor restarts allowed.
+ * @param port The port number for the worker.
+ * @param task_type The type of task to create.
+ * Only supports NORMAL_TASK and ACTOR_CREATION_TASK.
+ * @return A shared pointer to the created worker.
+ */
+inline std::shared_ptr<WorkerInterface> CreateTaskWorker(TaskID owner_id,
+                                                         int32_t max_retries,
+                                                         int32_t port,
+                                                         rpc::TaskType task_type) {
+  rpc::LeaseSpec message;
+  message.set_lease_id(LeaseID::FromRandom().Binary());
+  message.set_parent_task_id(owner_id.Binary());
+  message.set_type(task_type);
+  if (task_type == rpc::TaskType::NORMAL_TASK) {
+    message.set_max_retries(max_retries);
+  } else if (task_type == rpc::TaskType::ACTOR_CREATION_TASK) {
+    message.set_max_actor_restarts(max_retries);
+  } else {
+    RAY_CHECK(false) << absl::StrFormat(
+        "Unexpected task type: %d received when creating mock task worker. "
+        "Only supports NORMAL_TASK and ACTOR_CREATION_TASK.",
+        static_cast<int>(task_type));
+  }
+  LeaseSpecification lease_spec(message);
+  RayLease lease(lease_spec);
+  auto worker = std::make_shared<MockWorker>(ray::WorkerID::FromRandom(), port);
+  worker->GrantLease(lease);
+  return worker;
+}
+
+/**
+ * @brief Kills a worker's process by replacing it with a dead FakeProcess.
+ * @note This function assumes that the worker is mocked and SetProcess can be called
+ *       more than once.
+ *
+ * @param worker The worker whose process should be killed.
+ */
+inline void KillWorkerProcess(std::shared_ptr<WorkerInterface> worker) {
+  std::unique_ptr<FakeProcess> fake_process = std::make_unique<FakeProcess>();
+  fake_process->SetAlive(false);
+  worker->SetProcess(std::move(fake_process));
+}
 
 }  // namespace raylet
 

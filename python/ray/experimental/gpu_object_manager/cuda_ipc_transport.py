@@ -96,7 +96,7 @@ class CudaIpcTransport(TensorTransportManager):
 
         return CudaIpcTransportMetadata(
             tensor_meta=tensor_meta,
-            tensor_device=device,
+            tensor_device=device.type if device else None,
             cuda_ipc_handles=cuda_ipc_handles,
             cuda_ipc_event_ipc_handle=event_ipc_handle,
             ray_gpu_idx=ray_gpu_idx,
@@ -118,6 +118,7 @@ class CudaIpcTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
 
         assert isinstance(
@@ -126,6 +127,11 @@ class CudaIpcTransport(TensorTransportManager):
         assert isinstance(
             communicator_metadata, CudaIpcCommunicatorMetadata
         ), "metadata must be a CudaIpcCommunicatorMetadata object for CUDA IPC transport"
+
+        if target_buffers:
+            raise ValueError(
+                "The CUDA IPC transport does not support receiving into buffers."
+            )
 
         tensors = []
         if tensor_transport_metadata.tensor_meta:
@@ -190,7 +196,10 @@ class CudaIpcTransport(TensorTransportManager):
         )
 
     def garbage_collect(
-        self, obj_id: str, tensor_transport_meta: CudaIpcTransportMetadata
+        self,
+        obj_id: str,
+        tensor_transport_meta: CudaIpcTransportMetadata,
+        tensors: List["torch.Tensor"],
     ):
         pass
 

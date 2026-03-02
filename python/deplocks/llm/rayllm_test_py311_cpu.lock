@@ -149,6 +149,7 @@ aiohttp==3.13.3 \
     #   aiohttp-cors
     #   fsspec
     #   pytest-aiohttp
+    #   taskiq
     #   vllm
 aiohttp-cors==0.7.0 \
     --hash=sha256:0451ba59fdf6909d0e2cd21e4c0a43752bc0703d33fc78ae94d9d9321710193e \
@@ -207,6 +208,7 @@ anyio==4.5.0 \
     #   openai
     #   sse-starlette
     #   starlette
+    #   taskiq
     #   watchfiles
 apache-tvm-ffi==0.1.8.post2 \
     --hash=sha256:0bc5456f971097dcd973daba32cb6f321893873c53235159ab6426b0c7bef7e2 \
@@ -1958,6 +1960,12 @@ isoduration==20.11.0 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   jsonschema
+izulu==0.50.0 \
+    --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
+    --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   taskiq
 jedi==0.19.1 \
     --hash=sha256:cf0496f3651bc65d7174ac1b7d043eff454892c708a87d1b683e57b569927ffd \
     --hash=sha256:e983c654fe5c02867aef4cdfce5a2fbb4a50adc0af145f70504238f18ef5e7e0
@@ -3268,6 +3276,7 @@ packaging==24.2 \
     #   pytest
     #   ray
     #   sphinx
+    #   taskiq
     #   tensorboardx
     #   transformers
 pandas==2.3.3 \
@@ -3900,6 +3909,12 @@ pycparser==2.21 \
     # via
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   cffi
+pycron==3.2.0 \
+    --hash=sha256:6d2349746270bd642b71b9f7187cf13f4d9ee2412b4710396a507b5fe4f60dac \
+    --hash=sha256:e125a28aca0295769541a40633f70b602579df48c9cb357c36c28d2628ba2b13
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   taskiq
 pycurl==7.45.4 \
     --hash=sha256:0470bff6cc24d8c2f63c80931aa239463800871609dafc6bcc9ca10f5a12a04e \
     --hash=sha256:1324a859b50bdb0abdbd5620e42f74240d0b7daf2d5925fa303695d9fc3ece18 \
@@ -3952,6 +3967,7 @@ pydantic==2.12.3 \
     #   openai
     #   openai-harmony
     #   pydantic-extra-types
+    #   taskiq
     #   vllm
     #   xgrammar
 pydantic-core==2.41.4 \
@@ -5214,6 +5230,18 @@ tabulate==0.9.0 \
     #   -c python/deplocks/llm/ray_test_py311_cpu.lock
     #   -r python/requirements/cloud-requirements.txt
     #   flashinfer-python
+taskiq==0.12.1 \
+    --hash=sha256:338dcf58eaca327e511a9380b2185bfa6a415dd79a5cf144546a2dbb95459298 \
+    --hash=sha256:a8ade45e2e23edbadb972a88dec44e68c7daef83383d01fa3af48594a24a712a
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   -r python/requirements.txt
+taskiq-dependencies==1.5.7 \
+    --hash=sha256:0d3b240872ef152b719153b9526d866d2be978aeeaea6600e878414babc2dcb4 \
+    --hash=sha256:6fcee5d159bdb035ef915d4d848826169b6f06fe57cc2297a39b62ea3e76036f
+    # via
+    #   -c python/deplocks/llm/ray_test_py311_cpu.lock
+    #   taskiq
 tensorboardx==2.6.2.2 \
     --hash=sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8 \
     --hash=sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666

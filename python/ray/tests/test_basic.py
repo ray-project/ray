@@ -11,11 +11,11 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import (
-    client_test_enabled,
+from ray._common.test_utils import (
+    SignalActor,
     run_string_as_driver,
 )
+from ray._private.test_utils import client_test_enabled
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 import psutil

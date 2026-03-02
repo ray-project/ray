@@ -197,6 +197,8 @@ include "includes/setproctitle.pxi"
 include "includes/raylet_client.pxi"
 include "includes/gcs_subscriber.pxi"
 include "includes/rpc_token_authentication.pxi"
+# Ray Serve-only: Cython timeseries utilities for autoscaling metrics.
+include "includes/timeseries_utils.pxi"
 
 import ray
 from ray.exceptions import (
@@ -3756,6 +3758,22 @@ cdef class CoreWorker:
                     placement_group_id))
         return status.ok()
 
+    def async_wait_placement_group_ready(self, PlacementGroupID placement_group_id,
+                                         serialized_object):
+        cdef CPlacementGroupID cplacement_group_id = (
+            CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        cdef CObjectID c_object_id
+        cdef c_string serialized_object_data = serialized_object.to_bytes()
+        cdef c_string serialized_object_metadata = serialized_object.metadata
+        with nogil:
+            c_object_id = CCoreWorkerProcess.GetCoreWorker() \
+                .AsyncWaitPlacementGroupReady(cplacement_group_id,
+                                              serialized_object_data,
+                                              serialized_object_metadata)
+        # skip_adding_local_ref is True because it's already added through the
+        # call to AsyncWaitPlacementGroupReady.
+        return ObjectRef(c_object_id.Binary(), skip_adding_local_ref=True)
+
     def submit_actor_task(self,
                           Language language,
                           ActorID actor_id,
@@ -4279,7 +4297,7 @@ cdef class CoreWorker:
             if tensor_transport is not None:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
                 # and store them in the GPUObjectManager.
-                serialized_object, tensors = context.serialize_gpu_objects(output)
+                serialized_object, tensors = context.serialize_gpu_objects(output, tensor_transport)
                 pickled_rdt_metadata = context.store_gpu_objects(
                     return_id.Hex().decode("ascii"), tensors, tensor_transport)
                 # One copy from python bytes object to C++ string

@@ -110,6 +110,31 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "process_interface",
+    hdrs = ["process_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compat",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+ray_cc_library(
+    name = "process_utils",
+    srcs = ["process_utils.cc"],
+    hdrs = ["process_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compat",
+        ":logging",
+        "@com_google_absl//absl/strings:str_format",
+    ] + select({
+        "@platforms//os:linux": [":filesystem"],
+        "//conditions:default": [],
+    }),
+)
+
+ray_cc_library(
     name = "process",
     srcs = [
         "process.cc",
@@ -119,15 +144,30 @@ ray_cc_library(
         "process.h",
         "subreaper.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":cmd_line_utils",
         ":compat",
         ":filesystem",
         ":logging",
         ":macros",
+        ":process_interface",
+        ":process_utils",
+        "//src/ray/common:status",
+        "//src/ray/common:status_or",
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_process",
+    hdrs = ["fake_process.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":process_interface",
     ],
 )
 

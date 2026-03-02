@@ -369,15 +369,13 @@ class TorchLearner(Learner):
         pin_memory: bool = False,
         use_stream: bool = False,
     ) -> MultiAgentBatch:
-        batch = convert_to_torch_tensor(
+        batch_dict = convert_to_torch_tensor(
             batch.policy_batches,
             device=self._device if to_device else None,
             pin_memory=pin_memory,
             use_stream=use_stream,
         )
-        # TODO (sven): This computation of `env_steps` is not accurate!
-        length = max(len(b) for b in batch.values())
-        batch = MultiAgentBatch(batch, env_steps=length)
+        batch = MultiAgentBatch(batch_dict, env_steps=batch.env_steps())
         return batch
 
     @override(Learner)
