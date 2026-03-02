@@ -96,7 +96,7 @@ class CudaIpcTransport(TensorTransportManager):
 
         return CudaIpcTransportMetadata(
             tensor_meta=tensor_meta,
-            tensor_device=device,
+            tensor_device=device.type if device else None,
             cuda_ipc_handles=cuda_ipc_handles,
             cuda_ipc_event_ipc_handle=event_ipc_handle,
             ray_gpu_idx=ray_gpu_idx,

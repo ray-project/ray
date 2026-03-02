@@ -2,10 +2,7 @@ import logging
 import threading
 import traceback
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
-
-if TYPE_CHECKING:
-    import torch
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import google.protobuf.message
 
@@ -154,12 +151,13 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
-        # This flag is to mark whether the custom serializer for torch.Tensor has
-        # been registered. If the method is decorated with
-        # `@ray.method(tensor_transport="xxx")`, it will use external transport
-        # (e.g. gloo, nccl, etc.) for tensor communication between actors,
+
+        # These flags are to mark whether the custom serializer for a rdt type
+        # (e.g. torch.Tensor or jax.Array) has been registered.
+        # If the method is decorated with `@ray.method(tensor_transport="xxx")`,
+        # it will use external transport to move this type between actors,
         # instead of the normal serialize -> object store -> deserialize codepath.
-        self._torch_custom_serializer_registered = False
+        self._rdt_custom_serializer_registered: Dict[type, bool] = {}
 
         # Enable zero-copy serialization of tensors if the environment variable is set.
         self._zero_copy_tensors_enabled = (
@@ -337,7 +335,7 @@ class SerializationContext:
     def _deserialize_pickle5_data(
         self,
         data: Any,
-        out_of_band_tensors: Optional[List["torch.Tensor"]],
+        out_of_band_tensors: Optional[List[Any]],
     ) -> Any:
         """
 
@@ -350,12 +348,9 @@ class SerializationContext:
         Returns:
             Any: The deserialized object.
         """
-        from ray.experimental.channel import ChannelContext
-
-        ctx = ChannelContext.get_current().serialization_context
         enable_gpu_objects = out_of_band_tensors is not None
         if enable_gpu_objects:
-            ctx.reset_out_of_band_tensors(out_of_band_tensors)
+            self._thread_local.rdt_tensors = out_of_band_tensors
 
         try:
             in_band, buffers = unpack_pickle5_buffers(data)
@@ -368,14 +363,14 @@ class SerializationContext:
             raise DeserializationError()
         finally:
             if enable_gpu_objects:
-                ctx.reset_out_of_band_tensors([])
+                self._thread_local.rdt_tensors = []
         return obj
 
     def _deserialize_msgpack_data(
         self,
         data,
         metadata_fields,
-        out_of_band_tensors: Optional[List["torch.Tensor"]] = None,
+        out_of_band_tensors: Optional[List[Any]] = None,
     ):
         msgpack_data, pickle5_data = split_buffer(data)
 
@@ -425,7 +420,7 @@ class SerializationContext:
         data,
         metadata,
         object_ref,
-        out_of_band_tensors: Optional[List["torch.Tensor"]],
+        out_of_band_tensors: Optional[List[Any]],
     ):
         if metadata:
             metadata_fields = metadata.split(b",")
@@ -568,7 +563,7 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        gpu_objects: Dict[str, List["torch.Tensor"]],
+        gpu_objects: Dict[str, List[Any]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
@@ -679,33 +674,77 @@ class SerializationContext:
     def serialize_gpu_objects(
         self,
         value: Any,
-    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
+        tensor_transport: str,
+    ) -> Tuple[MessagePackSerializedObject, List[Any]]:
         """Retrieve GPU data from `value` and store it in the GPU object store. Then, return the serialized value.
 
         Args:
             value: The value to serialize.
-
+            tensor_transport: The transport with which the RDT object will be transferred.
         Returns:
             Serialized value.
         """
+        from ray.experimental.gpu_object_manager.util import get_transport_data_type
 
-        if not self._torch_custom_serializer_registered:
-            # Register a custom serializer for torch.Tensor. If the method is
-            # decorated with `@ray.method(tensor_transport="xxx")`, it will
-            # use external transport (e.g. gloo, nccl, etc.) for tensor
-            # communication between actors, instead of the normal serialize ->
-            # object store -> deserialize codepath.
-            from ray.experimental.channel.torch_tensor_type import TorchTensorType
+        def serialize(tensor):
+            ctx = ray._private.worker.global_worker.get_serialization_context()
+            if getattr(ctx._thread_local, "use_external_transport", False):
+                # Store the tensor in the thread-local array for RDT and store the index
+                # in the serialized object.
+                ctx._thread_local.rdt_tensors.append(tensor)
+                return len(ctx._thread_local.rdt_tensors) - 1
 
-            TorchTensorType().register_custom_serializer()
-            self._torch_custom_serializer_registered = True
+            # If the custom rdt serializer is already registered for this type
+            # but this method is not an rdt method, we'll try to serialize with
+            # the default pickle serializer to avoid registering and deregistering
+            # serializers per function call.
+            import pickle
 
-        serialized_val, tensors = self._serialize_and_retrieve_tensors(value)
+            return pickle.dumps(tensor)
+
+        def deserialize(val):
+            ctx = ray._private.worker.global_worker.get_serialization_context()
+            if isinstance(val, int):
+                # Index into the thread-local array based on the index stored
+                # during serialization.
+                assert val < len(ctx._thread_local.rdt_tensors)
+                return ctx._thread_local.rdt_tensors[val]
+
+            import pickle
+
+            assert isinstance(val, bytes)
+            return pickle.loads(val)
+
+        data_type = get_transport_data_type(tensor_transport)
+
+        # Register a custom serializer for torch.Tensor or jax.Array. If the method is
+        # decorated with `@ray.method(tensor_transport="xxx")`, it will use external
+        # transport (e.g. gloo, nccl, etc.) for tensor communication between actors,
+        # instead of the normal serialize -> object store -> deserialize codepath.
+        if not self._rdt_custom_serializer_registered.get(data_type, False):
+            ray.util.serialization.register_serializer(
+                data_type,
+                serializer=serialize,
+                deserializer=deserialize,
+            )
+
+            self._rdt_custom_serializer_registered[data_type] = True
+
+        # Pull the tensors out during serialization and store the array indices in the serialized object.
+        # Then resets to the original state for future method calls.
+        self._thread_local.use_external_transport = True
+        self._thread_local.rdt_tensors = []
+        try:
+            serialized_val = self._serialize_to_msgpack(value)
+            tensors = self._thread_local.rdt_tensors
+        finally:
+            self._thread_local.use_external_transport = False
+            self._thread_local.rdt_tensors = []
 
         return serialized_val, tensors
 
     def store_gpu_objects(
-        self, obj_id: str, tensors: List["torch.Tensor"], tensor_transport: str
+        self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> bytes:
         """
         Store GPU objects in the GPU object store.
@@ -750,23 +789,3 @@ class SerializationContext:
             return RawSerializedObject(value)
         else:
             return self._serialize_to_msgpack(value)
-
-    def _serialize_and_retrieve_tensors(
-        self, value: Any
-    ) -> Tuple[MessagePackSerializedObject, List["torch.Tensor"]]:
-        """
-        Serialize `value` and return the serialized value and any tensors retrieved from `value`.
-        This is only used for GPU objects.
-        """
-        from ray.experimental.channel import ChannelContext
-
-        ctx = ChannelContext.get_current().serialization_context
-        prev_use_external_transport = ctx.use_external_transport
-        ctx.set_use_external_transport(True)
-        try:
-            serialized_val = self._serialize_to_msgpack(value)
-        finally:
-            ctx.set_use_external_transport(prev_use_external_transport)
-
-        tensors, _ = ctx.reset_out_of_band_tensors([])
-        return serialized_val, tensors
