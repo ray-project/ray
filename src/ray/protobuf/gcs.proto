@@ -652,7 +652,10 @@ message PlacementGroupTableData {
   bytes placement_group_id = 1;
   // The name of the placement group.
   string name = 2;
-  // The array of the bundle in Placement Group.
+  // The currently active bundles for this Placement Group.
+  // If a fallback strategy is applied, this field is updated to contain the bundles
+  // from that strategy rather than the original request.
+  // The field will be empty by default when the Placement Group hadn't been scheduled.
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
@@ -685,6 +688,13 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // The full list of scheduling options for this placement group.
+  // Index 0: The original, primary request.
+  // Index 1..N: The options defined in each fallback strategy.
+  repeated PlacementGroupSchedulingOption scheduling_options = 17;
+  // The index of the chosen scheduling option.
+  // Default to -1 meaning the placement group hasn't been scheduled yet.
+  int32 active_scheduling_strategy_index = 18;
 }
 
 message JobTableData {

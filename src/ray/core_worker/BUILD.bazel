@@ -118,6 +118,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:placement_group",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/util:process",

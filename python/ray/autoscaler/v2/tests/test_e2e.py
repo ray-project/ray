@@ -936,13 +936,34 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
             actual_bundle_selectors.append(bundle["label_selector"])
 
         expected_bundle_selectors = [
-            {"accelerator-type": "A100"},
-            {"accelerator-type": "TPU_V6E"},
+            {
+                "label_constraints": [
+                    {
+                        "label_key": "accelerator-type",
+                        "operator": "LABEL_OPERATOR_IN",
+                        "label_values": ["A100"],
+                    }
+                ]
+            },
+            {
+                "label_constraints": [
+                    {
+                        "label_key": "accelerator-type",
+                        "operator": "LABEL_OPERATOR_IN",
+                        "label_values": ["TPU_V6E"],
+                    }
+                ]
+            },
         ]
         assert actual_bundle_selectors == expected_bundle_selectors, (
             f"Placement group has incorrect bundle selectors. "
             f"Expected: {expected_bundle_selectors}, Got: {actual_bundle_selectors}"
         )
+
+        label_selectors_dict = [
+            {"accelerator-type": "A100"},
+            {"accelerator-type": "TPU_V6E"},
+        ]
 
         nodes = {node["NodeID"]: node["Labels"] for node in ray.nodes()}
         for bundle_index, bundle in enumerate(bundles_list):
@@ -953,7 +974,7 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
             ), f"Node with ID '{bundle_node_id}' for bundle {bundle_index} was not found."
 
             # Verify node's labels satisfy the bundle's label_selector.
-            bundle_selector = actual_bundle_selectors[bundle_index]
+            bundle_selector = label_selectors_dict[bundle_index]
             node_labels = nodes[bundle_node_id]
             assert _verify_node_labels_for_selector(node_labels, bundle_selector)
 

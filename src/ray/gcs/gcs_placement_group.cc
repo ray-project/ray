@@ -144,5 +144,33 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
 }
 
+const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+    &GcsPlacementGroup::GetSchedulingStrategy() const {
+  return placement_group_table_data_.scheduling_options();
+}
+
+google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+    *GcsPlacementGroup::GetMutableSchedulingStrategy() {
+  // Invalidate the cache because mutating the strategy.
+  cached_bundle_specs_.clear();
+  return placement_group_table_data_.mutable_scheduling_options();
+}
+
+int GcsPlacementGroup::GetActiveStrategyIndex() const {
+  return placement_group_table_data_.active_scheduling_strategy_index();
+}
+
+void GcsPlacementGroup::UpdateActiveBundles(
+    int strategy_index, const rpc::PlacementGroupSchedulingOption &selected_option) {
+  // Invalidate the cache because we are changing the bundles.
+  cached_bundle_specs_.clear();
+
+  // Replace the current bundles with the bundles from the selected strategy.
+  placement_group_table_data_.mutable_bundles()->CopyFrom(selected_option.bundles());
+
+  // Save the index of the selected strategy.
+  placement_group_table_data_.set_active_scheduling_strategy_index(strategy_index);
+}
+
 }  // namespace gcs
 }  // namespace ray

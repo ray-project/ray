@@ -23,18 +23,27 @@ namespace ray {
 void BundleSpecification::ComputeResources() {
   auto unit_resource = MapFromProtobuf(message_->unit_resources());
 
-  if (unit_resource.empty()) {
+  bool has_label_selector = message_->has_label_selector() &&
+                            message_->label_selector().label_constraints_size() > 0;
+
+  if (unit_resource.empty() && !has_label_selector) {
     // A static nil object is used here to avoid allocating the empty object every time.
     static std::shared_ptr<ResourceRequest> nil_unit_resource =
         std::make_shared<ResourceRequest>();
     unit_resource_ = nil_unit_resource;
   } else {
-    unit_resource_ = std::make_shared<ResourceRequest>(ResourceMapToResourceRequest(
-        unit_resource, /*requires_object_store_memory=*/false));
+    // Allocate if bundle specifies resources or label selector.
+    if (unit_resource.empty()) {
+      unit_resource_ = std::make_shared<ResourceRequest>();
+    } else {
+      unit_resource_ = std::make_shared<ResourceRequest>(ResourceMapToResourceRequest(
+          unit_resource, /*requires_object_store_memory=*/false));
+    }
 
-    // Set LabelSelector required for scheduling this bundle if specified.
-    // Parses string map from proto to LabelSelector data type.
-    unit_resource_->SetLabelSelector(LabelSelector(message_->label_selector()));
+    // Apply labels if present.
+    if (has_label_selector) {
+      unit_resource_->SetLabelSelector(LabelSelector(message_->label_selector()));
+    }
   }
 
   // Generate placement group bundle labels.

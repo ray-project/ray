@@ -131,10 +131,16 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   // resources for each bundle
   void MockReceivePrepareRequest(
       const std::shared_ptr<gcs::GcsPlacementGroup> &placement_group) {
-    int bundles_size = placement_group->GetPlacementGroupTableData().bundles_size();
-    for (int bundle_index = 0; bundle_index < bundles_size; bundle_index++) {
-      placement_group->GetMutableBundle(bundle_index)
-          ->set_node_id(NodeID::FromRandom().Binary());
+    // Mutate the primary scheduling strategy because 'bundles' is empty for PENDING PGs.
+    auto *strategy = placement_group->GetMutableSchedulingStrategy();
+    if (strategy->size() > 0) {
+      auto *bundles = strategy->Mutable(0)->mutable_bundles();
+      for (int i = 0; i < bundles->size(); i++) {
+        bundles->Mutable(i)->set_node_id(NodeID::FromRandom().Binary());
+      }
+      // Manually set the active bundles to the updated strategy.
+      placement_group->UpdateActiveBundles(
+          0, placement_group->GetSchedulingStrategy().Get(0));
     }
   }
 
@@ -143,9 +149,15 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   void MockReceivePrepareRequestWithBundleIndexes(
       const std::shared_ptr<gcs::GcsPlacementGroup> &placement_group,
       const std::vector<int> &bundle_indices) {
-    for (const auto &bundle_index : bundle_indices) {
-      placement_group->GetMutableBundle(bundle_index)
-          ->set_node_id(NodeID::FromRandom().Binary());
+    auto *strategy = placement_group->GetMutableSchedulingStrategy();
+    if (strategy->size() > 0) {
+      auto *bundles = strategy->Mutable(0)->mutable_bundles();
+      for (const auto &bundle_index : bundle_indices) {
+        bundles->Mutable(bundle_index)->set_node_id(NodeID::FromRandom().Binary());
+      }
+      // Manually set the active bundles to the updated strategy.
+      placement_group->UpdateActiveBundles(
+          0, placement_group->GetSchedulingStrategy().Get(0));
     }
   }
 
@@ -245,11 +257,14 @@ TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
   // Fill the cache and verify it.
+  placement_group->UpdateActiveBundles(0,
+                                       placement_group->GetSchedulingStrategy().Get(0));
   const auto &bundle_specs = placement_group->GetBundles();
   ASSERT_EQ(placement_group->cached_bundle_specs_, bundle_specs);
   ASSERT_FALSE(placement_group->cached_bundle_specs_.empty());
   // Invalidate the cache and verify it.
-  RAY_UNUSED(placement_group->GetMutableBundle(0));
+  RAY_UNUSED(
+      placement_group->GetMutableSchedulingStrategy()->Mutable(0)->mutable_bundles(0));
   ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
 }
 
@@ -856,8 +871,6 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulerReinitializeAfterGcsRestart) {
   ASSERT_EQ(mock_placement_group_scheduler_->GetPlacementGroupCount(), 1);
 
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
-  placement_group->GetMutableBundle(0)->set_node_id(NodeID::FromRandom().Binary());
-  placement_group->GetMutableBundle(1)->set_node_id(NodeID::FromRandom().Binary());
   mock_placement_group_scheduler_->placement_groups_.pop_back();
   OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);

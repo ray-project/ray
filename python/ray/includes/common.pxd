@@ -422,6 +422,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CLabelSelector label_selector,
             c_vector[CFallbackOption] fallback_strategy)
 
+    cdef cppclass CPlacementGroupSchedulingOption "ray::core::PlacementGroupSchedulingOption":
+        CPlacementGroupSchedulingOption()
+        c_vector[unordered_map[c_string, double]] bundles
+        c_vector[CLabelSelector] bundle_label_selector
+
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
         CPlacementGroupCreationOptions()
@@ -431,7 +436,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
             CNodeID soft_target_node_id,
-            const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
+            const c_vector[CLabelSelector] &bundle_label_selector,
+            const c_vector[CPlacementGroupSchedulingOption] &fallback_strategy,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":

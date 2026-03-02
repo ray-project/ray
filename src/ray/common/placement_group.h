@@ -18,6 +18,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -33,6 +34,13 @@ using BundleLocations =
     absl::flat_hash_map<BundleID,
                         std::pair<NodeID, std::shared_ptr<const BundleSpecification>>,
                         pair_hash>;
+
+// Defines the structure of a scheduling option to try when scheduling the placement
+// group.
+struct PlacementGroupSchedulingOption {
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  std::vector<LabelSelector> bundle_label_selector;
+};
 
 class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpec> {
  public:
@@ -87,8 +95,8 @@ class PlacementGroupSpecBuilder {
       const JobID &creator_job_id,
       const ActorID &creator_actor_id,
       bool is_creator_detached_actor,
-      const std::vector<std::unordered_map<std::string, std::string>>
-          &bundle_label_selector = {}) {
+      const std::vector<LabelSelector> &bundle_label_selector = {},
+      const std::vector<PlacementGroupSchedulingOption> &fallback_strategy = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -105,36 +113,52 @@ class PlacementGroupSpecBuilder {
     message_->set_is_detached(is_detached);
     message_->set_soft_target_node_id(soft_target_node_id.Binary());
 
-    for (size_t i = 0; i < bundles.size(); i++) {
-      auto resources = bundles[i];
-      auto message_bundle = message_->add_bundles();
-      auto mutable_bundle_id = message_bundle->mutable_bundle_id();
-      mutable_bundle_id->set_bundle_index(i);
-      mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
-      auto mutable_unit_resources = message_bundle->mutable_unit_resources();
-      for (auto it = resources.begin(); it != resources.end();) {
-        auto current = it++;
-        // Remove a resource with value 0 because they are not allowed.
-        if (current->second == 0) {
-          resources.erase(current);
-        } else {
-          mutable_unit_resources->insert({current->first, current->second});
-        }
-      }
-      // Set the label selector for this bundle if provided in bundle_label_selector.
-      if (bundle_label_selector.size() > i) {
-        auto *mutable_label_selector = message_bundle->mutable_label_selector();
-        for (const auto &pair : bundle_label_selector[i]) {
-          (*mutable_label_selector)[pair.first] = pair.second;
-        }
-      }
+    // Populate primary strategy bundles.
+    PopulateBundles(message_.get(), placement_group_id, bundles, bundle_label_selector);
+
+    // Populate fallback strategy bundles.
+    for (const auto &option : fallback_strategy) {
+      auto *fallback_message = message_->add_fallback_strategy();
+      PopulateBundles(fallback_message,
+                      placement_group_id,
+                      option.bundles,
+                      option.bundle_label_selector);
     }
+
     return *this;
   }
 
   PlacementGroupSpecification Build() { return PlacementGroupSpecification(message_); }
 
  private:
+  /// Helper to populate bundles for both primary and fallback scheduling options.
+  template <typename ProtoMessageType>
+  void PopulateBundles(
+      ProtoMessageType *proto_message,
+      const PlacementGroupID &placement_group_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<LabelSelector> &label_selectors) {
+    for (size_t i = 0; i < bundles.size(); i++) {
+      auto *message_bundle = proto_message->add_bundles();
+      auto *mutable_bundle_id = message_bundle->mutable_bundle_id();
+      mutable_bundle_id->set_bundle_index(i);
+      mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+
+      auto *mutable_unit_resources = message_bundle->mutable_unit_resources();
+      for (const auto &resource : bundles[i]) {
+        // Resources with value 0 are not allowed.
+        if (resource.second > 0) {
+          mutable_unit_resources->insert({resource.first, resource.second});
+        }
+      }
+
+      // Set the label selector for this bundle if provided.
+      if (label_selectors.size() > i) {
+        label_selectors[i].ToProto(message_bundle->mutable_label_selector());
+      }
+    }
+  }
+
   std::shared_ptr<rpc::PlacementGroupSpec> message_;
 };
 

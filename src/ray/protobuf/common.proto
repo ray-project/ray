@@ -678,7 +678,7 @@ message Bundle {
   bytes node_id = 3;
   // Label selector associated with this bundle.
   // Populated from bundle_label_selector if provided.
-  map<string, string> label_selector = 4;
+  LabelSelector label_selector = 4;
 }
 
 message PlacementGroupSpec {
@@ -687,6 +687,7 @@ message PlacementGroupSpec {
   // The name of the placement group.
   string name = 2;
   // The array of the bundle in Placement Group.
+  // This is the primary resource requirements of the Placement Group.
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
@@ -705,6 +706,9 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
+  // The list of fallback options to try if the primary resource request cannot be
+  // scheduled.
+  repeated PlacementGroupSchedulingOption fallback_strategy = 12;
 }
 
 message ObjectReference {
@@ -1068,6 +1072,11 @@ enum PlacementStrategy {
   // Places Bundles across distinct nodes.
   // The group is not allowed to deploy more than one bundle on a node.
   STRICT_SPREAD = 3;
+}
+
+// Represents a single scheduling option for a placement group.
+message PlacementGroupSchedulingOption {
+  repeated Bundle bundles = 1;
 }
 
 // The type of operator to use for the label constraint.

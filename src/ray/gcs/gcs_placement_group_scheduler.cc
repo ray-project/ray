@@ -38,6 +38,24 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       cluster_resource_scheduler_(cluster_resource_scheduler),
       raylet_client_pool_(raylet_client_pool) {}
 
+raylet_scheduling_policy::SchedulingResult GcsPlacementGroupScheduler::TrySchedule(
+    const std::shared_ptr<GcsPlacementGroup> &placement_group,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+    const rpc::PlacementStrategy strategy) {
+  std::vector<const ResourceRequest *> resource_request_list;
+  resource_request_list.reserve(bundles.size());
+  for (const auto &bundle : bundles) {
+    resource_request_list.emplace_back(&bundle->GetRequiredResources());
+  }
+
+  auto scheduling_options =
+      CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
+                              strategy,
+                              placement_group->GetSoftTargetNodeID());
+
+  return cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+}
+
 void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     const SchedulePgRequest &request) {
   const auto &placement_group = request.placement_group;
@@ -54,25 +72,74 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     return;
   }
 
-  const auto &bundles = placement_group->GetUnplacedBundles();
-  const auto &strategy = placement_group->GetStrategy();
+  const auto &scheduling_strategies = placement_group->GetSchedulingStrategy();
+  RAY_CHECK(!scheduling_strategies.empty())
+      << "Placement group must have at least one scheduling strategy.";
+
+  std::vector<std::shared_ptr<const BundleSpecification>> bundles_to_schedule;
+  bool is_scheduling_all_bundles = false;
+
+  if (placement_group->GetActiveStrategyIndex() != -1) {
+    // A strategy has already been selected and is active. Schedule unplaced bundles.
+    bundles_to_schedule = placement_group->GetUnplacedBundles();
+    is_scheduling_all_bundles =
+        (bundles_to_schedule.size() == placement_group->GetBundles().size());
+  } else {
+    is_scheduling_all_bundles = true;
+  }
+
+  if (is_scheduling_all_bundles) {
+    // If we are scheduling all bundles (either brand new PG, or all bundles are
+    // rescheduling), start from the primary strategy (index 0).
+    bundles_to_schedule.clear();
+    for (const auto &bundle_proto : scheduling_strategies.Get(0).bundles()) {
+      bundles_to_schedule.push_back(
+          std::make_shared<const BundleSpecification>(bundle_proto));
+    }
+  }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
-                 << ", bundles size = " << bundles.size();
+                 << ", bundles size = " << bundles_to_schedule.size();
+  auto bundles = bundles_to_schedule;
 
-  std::vector<const ResourceRequest *> resource_request_list;
-  resource_request_list.reserve(bundles.size());
-  for (const auto &bundle : bundles) {
-    resource_request_list.emplace_back(&bundle->GetRequiredResources());
-  }
-
-  auto scheduling_options =
-      CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
-                              strategy,
-                              placement_group->GetSoftTargetNodeID());
   auto scheduling_result =
-      cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
+      TrySchedule(placement_group, bundles_to_schedule, placement_group->GetStrategy());
+  bool any_strategy_feasible = !scheduling_result.status.IsInfeasible();
+  int selected_strategy_index =
+      is_scheduling_all_bundles ? 0 : placement_group->GetActiveStrategyIndex();
+
+  if (is_scheduling_all_bundles && !scheduling_result.status.IsSuccess() &&
+      scheduling_strategies.size() > 1) {
+    RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
+                   << placement_group->GetPlacementGroupID() << ". Attempting "
+                   << (scheduling_strategies.size() - 1) << " fallback options.";
+
+    for (int i = 1; i < scheduling_strategies.size(); i++) {
+      const auto &option = scheduling_strategies.Get(i);
+      std::vector<std::shared_ptr<const BundleSpecification>> fallback_bundles;
+      for (const auto &bundle_proto : option.bundles()) {
+        fallback_bundles.push_back(
+            std::make_shared<const BundleSpecification>(bundle_proto));
+      }
+
+      auto fallback_result =
+          TrySchedule(placement_group, fallback_bundles, placement_group->GetStrategy());
+
+      if (!fallback_result.status.IsInfeasible()) {
+        any_strategy_feasible = true;
+      }
+
+      if (fallback_result.status.IsSuccess()) {
+        RAY_LOG(INFO) << "Fallback strategy " << i << " succeeded for PG "
+                      << placement_group->GetPlacementGroupID();
+        scheduling_result = fallback_result;
+        bundles_to_schedule = fallback_bundles;
+        selected_strategy_index = i;
+        break;
+      }
+    }
+  }
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
@@ -84,12 +151,18 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         << ", because current resources can't satisfy the required resource. IsFailed: "
         << result_status.IsFailed() << " IsInfeasible: " << result_status.IsInfeasible()
         << " IsPartialSuccess: " << result_status.IsPartialSuccess();
-    bool infeasible = result_status.IsInfeasible();
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
-    failure_callback(placement_group, /*is_feasible*/ !infeasible);
+    failure_callback(placement_group, /*is_feasible*/ any_strategy_feasible);
     return;
   }
+
+  if (is_scheduling_all_bundles) {
+    // Only update active bundles after full scheduling option succeeds.
+    placement_group->UpdateActiveBundles(
+        selected_strategy_index, scheduling_strategies.Get(selected_strategy_index));
+  }
+  bundles = bundles_to_schedule;
 
   RAY_LOG(DEBUG) << "Can schedule a placement group "
                  << placement_group->GetPlacementGroupID()

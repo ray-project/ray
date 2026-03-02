@@ -62,8 +62,6 @@ class GcsPlacementGroup {
         placement_group_spec.placement_group_id());
     placement_group_table_data_.set_name(placement_group_spec.name());
     placement_group_table_data_.set_state(rpc::PlacementGroupTableData::PENDING);
-    placement_group_table_data_.mutable_bundles()->CopyFrom(
-        placement_group_spec.bundles());
     placement_group_table_data_.set_strategy(placement_group_spec.strategy());
     placement_group_table_data_.set_creator_job_id(placement_group_spec.creator_job_id());
     placement_group_table_data_.set_creator_actor_id(
@@ -78,6 +76,18 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
+
+    // Construct scheduling strategy list. Index 0 contains the primary request.
+    auto *primary_option = placement_group_table_data_.add_scheduling_options();
+    primary_option->mutable_bundles()->CopyFrom(placement_group_spec.bundles());
+
+    // Index 1..N: fallback strategies.
+    placement_group_table_data_.mutable_scheduling_options()->MergeFrom(
+        placement_group_spec.fallback_strategy());
+
+    // Initialize to active strategy -1 to indicate that no strategy has been scheduled.
+    placement_group_table_data_.set_active_scheduling_strategy_index(-1);
+
     SetupStates();
   }
 
@@ -155,6 +165,17 @@ class GcsPlacementGroup {
   const rpc::PlacementGroupStats &GetStats() const;
 
   rpc::PlacementGroupStats *GetMutableStats();
+
+  const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+      &GetSchedulingStrategy() const;
+
+  google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+      *GetMutableSchedulingStrategy();
+
+  int GetActiveStrategyIndex() const;
+
+  void UpdateActiveBundles(int strategy_index,
+                           const rpc::PlacementGroupSchedulingOption &selected_option);
 
  private:
   // XXX.

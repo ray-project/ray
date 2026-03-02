@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/common/placement_group.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/fallback_strategy.h"
 #include "ray/common/scheduling/label_selector.h"
@@ -222,6 +223,8 @@ struct ActorCreationOptions {
   const std::vector<FallbackOption> fallback_strategy;
 };
 
+using PlacementGroupSchedulingOption = ray::PlacementGroupSchedulingOption;
+
 using PlacementStrategy = rpc::PlacementStrategy;
 
 struct PlacementGroupCreationOptions {
@@ -231,14 +234,15 @@ struct PlacementGroupCreationOptions {
       std::vector<std::unordered_map<std::string, double>> bundles,
       bool is_detached_p,
       NodeID soft_target_node_id = NodeID::Nil(),
-      std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector =
-          {})
+      std::vector<LabelSelector> bundle_label_selector = {},
+      std::vector<PlacementGroupSchedulingOption> fallback_strategy = {})
       : name_(std::move(name)),
         strategy_(strategy),
         bundles_(std::move(bundles)),
         is_detached_(is_detached_p),
         soft_target_node_id_(soft_target_node_id),
-        bundle_label_selector_(std::move(bundle_label_selector)) {
+        bundle_label_selector_(std::move(bundle_label_selector)),
+        fallback_strategy_(std::move(fallback_strategy)) {
     RAY_CHECK(soft_target_node_id_.IsNil() || strategy_ == PlacementStrategy::STRICT_PACK)
         << "soft_target_node_id only works with STRICT_PACK now";
   }
@@ -258,7 +262,9 @@ struct PlacementGroupCreationOptions {
   /// This only applies to STRICT_PACK pg.
   const NodeID soft_target_node_id_;
   /// The label selectors to apply per-bundle in this placement group.
-  const std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector_;
+  const std::vector<LabelSelector> bundle_label_selector_;
+  /// The list of fallback options to try if the primary request cannot be satisfied.
+  const std::vector<PlacementGroupSchedulingOption> fallback_strategy_;
 };
 
 class ObjectLocation {

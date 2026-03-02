@@ -345,6 +345,31 @@ class GlobalState:
 
         stats = placement_group_info.stats
         assert placement_group_info is not None
+
+        scheduling_options = []
+        for strategy_proto in placement_group_info.scheduling_options:
+            bundles_list = []
+            label_selectors_list = []
+            for bundle in strategy_proto.bundles:
+                # Extract unit resources
+                bundle_dict = message_to_dict(bundle)
+                bundles_list.append(bundle_dict.get("unitResources", {}))
+                # Extract label selector from the bundle
+                label_selectors_list.append(message_to_dict(bundle.label_selector))
+
+            strategy_dict = {
+                "bundles": bundles_list,
+                "bundle_label_selector": label_selectors_list,
+            }
+            scheduling_options.append(strategy_dict)
+
+        # In GCS, bundles now strictly represents the actively placed bundles, meaning it is
+        # empty for pending PGs. If bundles is empty, we fall back to the primary requested
+        # shape for the pending PG so there is no user-facing change.
+        bundles_source = placement_group_info.bundles
+        if not bundles_source and len(placement_group_info.scheduling_options) > 0:
+            bundles_source = placement_group_info.scheduling_options[0].bundles
+
         return {
             "placement_group_id": binary_to_hex(
                 placement_group_info.placement_group_id
@@ -354,11 +379,11 @@ class GlobalState:
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
                 bundle.bundle_id.bundle_index: message_to_dict(bundle)["unitResources"]
-                for bundle in placement_group_info.bundles
+                for bundle in bundles_source
             },
             "bundles_to_node_id": {
                 bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
-                for bundle in placement_group_info.bundles
+                for bundle in bundles_source
             },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
@@ -373,6 +398,7 @@ class GlobalState:
                     stats.scheduling_state
                 ].name,
             },
+            "scheduling_options": scheduling_options,
         }
 
     def _nanoseconds_to_microseconds(self, time_in_nanoseconds):
