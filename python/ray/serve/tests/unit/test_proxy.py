@@ -377,6 +377,61 @@ class TestgRPCProxy:
             assert response.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
 
     @pytest.mark.asyncio
+    async def test_receive_grpc_messages_missing_session_returns_cancelled(self):
+        """Test receive_grpc_messages returns cancelled tuple for missing session.
+
+        When a streaming session is cleaned up (due to timeout, error, or completion),
+        calling receive_grpc_messages again should return (False, None, True) instead
+        of raising KeyError. This provides consistent graceful termination behavior.
+        """
+        grpc_proxy = self.create_grpc_proxy()
+
+        # Call receive_grpc_messages with a non-existent session ID
+        # Before the fix, this would raise KeyError
+        # After the fix, it should return (False, None, True)
+        result = await grpc_proxy.receive_grpc_messages("non-existent-session-id")
+        has_more, message_bytes, is_cancelled = result
+
+        # Should indicate stream is done and was cancelled (graceful termination)
+        assert has_more is False
+        assert message_bytes is None
+        assert is_cancelled is True
+
+    @pytest.mark.asyncio
+    async def test_receive_grpc_messages_after_cleanup_returns_cancelled(self):
+        """Test receive_grpc_messages returns cancelled after session cleanup.
+
+        After _cleanup_streaming_session is called, subsequent calls to
+        receive_grpc_messages should return (False, None, True) instead of KeyError.
+        """
+        grpc_proxy = self.create_grpc_proxy()
+        session_id = "test-session-123"
+
+        # Simulate creating a streaming session
+        cancel_event = asyncio.Event()
+
+        async def mock_iterator():
+            yield "message1"
+            yield "message2"
+
+        grpc_proxy._streaming_sessions[session_id] = (mock_iterator(), cancel_event)
+
+        # Cleanup the session (simulates timeout, error, or completion)
+        grpc_proxy._cleanup_streaming_session(session_id)
+
+        # Verify session was removed
+        assert session_id not in grpc_proxy._streaming_sessions
+
+        # Now calling receive_grpc_messages should return cancelled tuple
+        # instead of raising KeyError
+        result = await grpc_proxy.receive_grpc_messages(session_id)
+        has_more, message_bytes, is_cancelled = result
+
+        assert has_more is False
+        assert message_bytes is None
+        assert is_cancelled is True
+
+    @pytest.mark.asyncio
     async def test_service_handler_factory(self):
         """Test gRPCProxy service_handler_factory returns the correct entrypoints."""
 
