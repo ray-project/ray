@@ -11,13 +11,12 @@ import grpc
 import requests
 from filelock import FileLock
 
-from rllib.utils.env_vars import RLLIB_FOOTSIES_BINARIES_URL
-
 from ray.rllib.env import EnvContext
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.proto import (
     footsies_service_pb2 as footsies_pb2,
     footsies_service_pb2_grpc as footsies_pb2_grpc,
 )
+from ray.rllib.utils.env_vars import RLLIB_FOOTSIES_BINARIES_URL
 from ray.util import log_once
 
 logger = logging.getLogger(__name__)
