@@ -13,6 +13,8 @@ import TokenAuthenticationDialog from "./authentication/TokenAuthenticationDialo
 import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
+// Historyserver import
+import { HistoryserverPage } from "./pages/historyserver/HistoryserverPage";
 import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
 import {
@@ -394,6 +396,8 @@ const App = () => {
               <Routes>
                 {/* Redirect people hitting the /new path to root. TODO(aguo): Delete this redirect in ray 2.5 */}
                 <Route element={<Navigate replace to="/" />} path="/new" />
+                {/* HistoryServer specific page */}
+                <Route element={<HistoryserverPage />} path="historyserver" />
                 <Route element={<MainNavLayout />} path="/">
                   <Route element={<Navigate replace to="overview" />} path="" />
                   <Route element={<OverviewPage />} path="overview" />
