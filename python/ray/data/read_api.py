@@ -109,7 +109,7 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -4531,7 +4531,7 @@ def _get_datasource_or_legacy_reader(
             "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
             "`Reader`, implement `Datasource.get_read_tasks` and "
             "`Datasource.estimate_inmemory_data_size`.",
-            DeprecationWarning,
+            RayDeprecationWarning,
         )
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
     else:
