@@ -1,6 +1,7 @@
 """Iceberg release benchmark"""
 
 import argparse
+import os
 import uuid
 
 from pyiceberg import schema as pyi_schema, types as pyi_types
@@ -46,6 +47,7 @@ def _get_catalog_kwargs(warehouse_path: str) -> dict:
 
 def _setup_catalog(catalog_kwargs: dict):
     """Create catalog, namespace, and table"""
+    os.makedirs(_CATALOG_DB_DIR, exist_ok=True)
     catalog = SqlCatalog(**catalog_kwargs)
     if (_DB_NAME,) not in catalog.list_namespaces():
         catalog.create_namespace(_DB_NAME)
