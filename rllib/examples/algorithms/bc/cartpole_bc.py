@@ -1,5 +1,6 @@
 import warnings
-from pathlib import Path
+
+from rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -23,11 +24,8 @@ assert (
     args.env == "CartPole-v1" or args.env is None
 ), "This tuned example works only with `CartPole-v1`."
 
-# Define the data paths.
-data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-base_path = Path(__file__).parents[3]
-data_path = "local://" / base_path / data_path
-print(f"data_path={data_path}")
+# Define the data path.
+data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 
 # Define the BC config.
 config = (
@@ -39,7 +37,7 @@ config = (
     # configured. The read method needs at least as many blocks
     # as remote learners.
     .offline_data(
-        input_=[data_path.as_posix()],
+        input_=[data_path],
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
