@@ -280,20 +280,37 @@ void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
 }
 
 void NodeInfoAccessor::AsyncGetAll(
-    const rpc::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+    const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+        &callback,
     int64_t timeout_ms,
-    const std::vector<NodeID> &node_ids) {
+    const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
+    const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
+    const std::optional<int64_t> &limit) const {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
-  for (const auto &node_id : node_ids) {
-    request.add_node_selectors()->set_node_id(node_id.Binary());
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
   }
+  for (const auto &node_selector : node_selectors) {
+    *request.add_node_selectors() = node_selector;
+  }
+  if (limit.has_value()) {
+    request.set_limit(limit.value());
+  }
+
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       std::move(request),
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
-        callback(status, VectorFromProtobuf(std::move(*reply.mutable_node_info_list())));
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
                        << status;
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(
+            status,
+            std::make_pair(VectorFromProtobuf(std::move(*reply.mutable_node_info_list())),
+                           reply.num_filtered()));
       },
       timeout_ms);
 }

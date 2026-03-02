@@ -103,7 +103,16 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     gcs_client_->Nodes().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
+        [&node_table_data, &promise](
+            const Status &status,
+            const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                &results) {
+          RAY_CHECK_OK(status);
+          for (const auto &node_info : results->first) {
+            node_table_data.push_back(node_info.SerializeAsString());
+          }
+          promise.set_value(true);
+        },
         /*timeout_ms=*/-1);
   }
   promise.get_future().get();
