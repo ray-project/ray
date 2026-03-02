@@ -4,6 +4,7 @@ import time
 
 # coding: utf-8
 from typing import Dict, List, Optional, Tuple
+from unittest.mock import patch
 
 import pytest
 
@@ -2736,6 +2737,71 @@ def test_get_nodes_with_resource_availabilities():
             "type_gpu4": 0.1,
         },
     ) == ({"type_gpu4": 1}, [])
+
+
+def test_infeasible_shape_caching():
+    """
+    Test that identical requests failing to schedule on a node are cached,
+    drastically reducing calls to _try_schedule_one to prevent O(N^2 * M) hangs.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 2},
+            min_worker_nodes=0,
+            max_worker_nodes=1,  # Cluster can fit max one node
+        ),
+    }
+
+    # Start with 1 existing node that has 2 CPUs available.
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 2},
+                total_resources={"CPU": 2},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="1",
+                node_id="r1",
+            ),
+            cloud_instance_id="c-1",
+        ),
+    ]
+
+    # Submit 1,000 identical tasks that all request 2 CPUs.
+    # Every request after the initial one should be cached and fail early.
+    resource_requests = [ResourceRequestUtil.make({"CPU": 2}) for _ in range(1000)]
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=resource_requests,
+        instances=instances,
+        max_num_nodes=1,
+    )
+
+    # Validate _try_schedule_one is only called twice by the scheduler.
+    orig_try_schedule_one = SchedulingNode._try_schedule_one
+    with patch.object(
+        SchedulingNode,
+        "_try_schedule_one",
+        autospec=True,
+        side_effect=orig_try_schedule_one,
+    ) as mock_try_schedule:
+        reply = scheduler.schedule(request)
+
+        # 1 task should be scheduled on the existing node. The other 999 fail.
+        assert len(reply.infeasible_resource_requests) == 999
+
+        #   Call 1: Fits the first 2-CPU request (Node is now full).
+        #   Call 2: Evaluates the second 2-CPU request, fails, and adds to infeasible_shapes.
+        #   Calls 3-1000: Bypassed entirely by the cache.
+        assert mock_try_schedule.call_count == 2
 
 
 if __name__ == "__main__":
