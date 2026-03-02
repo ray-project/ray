@@ -1135,7 +1135,7 @@ python/ray/data/_internal/output_buffer.py
 --------------------
 python/ray/data/_internal/plan.py
     DOC101: Method `ExecutionPlan.get_plan_as_string`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ExecutionPlan.get_plan_as_string`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dataset_cls: Type['Dataset']].
+    DOC103: Method `ExecutionPlan.get_plan_as_string`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dataset: 'Dataset'].
 --------------------
 python/ray/data/_internal/planner/exchange/interfaces.py
     DOC103: Method `ExchangeTaskSpec.reduce`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*mapper_outputs: List[Block]]. Arguments in the docstring but not in the function signature: [mapper_outputs: ].

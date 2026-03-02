@@ -1,9 +1,7 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
-
-import pyarrow
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -12,7 +10,6 @@ from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.interfaces.operator import Operator
 from ray.data._internal.logical.operators import Read
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.optimizers import get_plan_conversion_fns
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import _take_first_non_empty_schema
@@ -160,7 +157,7 @@ class ExecutionPlan:
             curr_max_depth = max(curr_max_depth, input_max_depth)
         return curr_str, curr_max_depth
 
-    def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
+    def get_plan_as_string(self, dataset: "Dataset") -> str:
         """Create a cosmetic string representation of this execution plan.
 
         Returns:
@@ -170,7 +167,9 @@ class ExecutionPlan:
         # representation. Ideally ExecutionPlan.__repr__ should be replaced with this
         # method as well.
 
-        from ray.data.dataset import MaterializedDataset
+        from ray.data.dataset import Dataset, MaterializedDataset
+
+        dataset_cls = dataset.__class__
 
         # Do not force execution for schema, as this method is expected to be very
         # cheap.
@@ -184,7 +183,7 @@ class ExecutionPlan:
                 self._logical_plan.dag, including_source=False
             )
 
-        schema = self.schema(fetch_if_missing=False)
+        schema = dataset._base_schema(fetch_if_missing=False)
         count = self._cache.get_num_rows(self._logical_plan.dag)
 
         if schema is None or count is None:
@@ -201,15 +200,16 @@ class ExecutionPlan:
             # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
             if not has_n_ary_operator:
                 assert isinstance(dag, SourceOperator), dag
-                plan = ExecutionPlan(
-                    DatasetStats(metadata={}, parent=None),
-                    self._context,
+                ds = Dataset(
+                    ExecutionPlan(
+                        DatasetStats(metadata={}, parent=None), self._context
+                    ),
+                    LogicalPlan(dag, self._context),
                 )
-                plan.link_logical_plan(LogicalPlan(dag, plan._context))
                 if schema is None:
-                    schema = plan.schema()
+                    schema = ds._base_schema(fetch_if_missing=False)
                 if count is None:
-                    count = plan.meta_count()
+                    count = ds._meta_count()
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -357,62 +357,9 @@ class ExecutionPlan:
         fully executing the dataset."""
         return self._logical_plan.dag.estimated_num_outputs()
 
-    def schema(
-        self, fetch_if_missing: bool = False
-    ) -> Union[type, "pyarrow.lib.Schema"]:
-        """Get the schema after applying all execution plan optimizations,
-        but prior to fully executing the dataset
-        (unless `fetch_if_missing` is set to True).
-
-        Args:
-            fetch_if_missing: Whether to execute the plan to fetch the schema.
-
-        Returns:
-            The schema of the output dataset.
-        """
-
-        def _build_limited_plan(plan: "ExecutionPlan") -> "ExecutionPlan":
-            limited_dag = Limit(plan._logical_plan.dag, limit=1)
-            limited_plan = plan.copy()
-            limited_plan.link_logical_plan(LogicalPlan(limited_dag, plan._context))
-            return limited_plan
-
-        schema = self._cache.get_schema(self._logical_plan.dag)
-        if schema is None:
-            schema = self._logical_plan.dag.infer_schema()
-        if schema is None and fetch_if_missing:
-            # Lazily execute only the first block to minimize computation.
-            # We achieve this by appending a Limit[1] operation to a copy of
-            # this plan, which we then execute to get its schema.
-            limited_plan = _build_limited_plan(self)
-            iter_ref_bundles, _, executor = limited_plan.execute_to_iterator()
-            if executor is not None:
-                # Make sure executor is fully shutdown upon exiting
-                with executor:
-                    schema = _take_first_non_empty_schema(
-                        bundle.schema for bundle in iter_ref_bundles
-                    )
-        if schema is not None:
-            self._cache.set_schema(self._logical_plan.dag, schema)
-        return schema
-
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
         return self._logical_plan.dag.infer_metadata().input_files
-
-    def meta_count(self) -> Optional[int]:
-        """Get the number of rows after applying all plan optimizations, if possible.
-
-        This method will never trigger any computation.
-
-        Returns:
-            The number of records of the result Dataset, or None.
-        """
-        dag = self._logical_plan.dag
-        num_rows = self._cache.get_num_rows(dag)
-        if num_rows is None:
-            num_rows = dag.infer_metadata().num_rows
-        return num_rows
 
     @omit_traceback_stdout
     def execute_to_iterator(
