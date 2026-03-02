@@ -1,7 +1,5 @@
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -140,8 +138,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
             # Extend all episodes by one ts.
             add_one_ts_to_episodes_and_truncate([sa_episode])
 
-            loss_mask = np.ones(len_ + 1, dtype=np.bool_)
-            loss_mask[-1] = False
+            loss_mask = [True for _ in range(len_)] + [False]
             self.add_n_batch_items(
                 batch,
                 Columns.LOSS_MASK,
@@ -150,10 +147,11 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 sa_episode,
             )
 
-            terminateds = np.zeros(len_ + 1, dtype=np.bool_)
-            if len_ > 0:
-                terminateds[len_ - 1] = sa_episode.is_terminated
-            terminateds[len_] = True  # extra timestep always terminated
+            terminateds = (
+                [False for _ in range(len_ - 1)]
+                + [bool(sa_episode.is_terminated)]
+                + [True]  # extra timestep
+            )
             self.add_n_batch_items(
                 batch,
                 Columns.TERMINATEDS,
