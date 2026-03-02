@@ -337,10 +337,14 @@ def test_gang_health_check_restarts_gang(serve_instance):
                 "gang_id": gc.gang_id if gc else None,
             }
 
+    num_replicas = 4
+    gang_size = 2
+    num_gangs = num_replicas // gang_size
+
     h = serve.run(
         GangPatient.options(
-            num_replicas=4,
-            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
         ).bind()
     )
 
@@ -349,13 +353,13 @@ def test_gang_health_check_restarts_gang(serve_instance):
     for _ in range(100):
         result = h.remote().result()
         initial_replicas[result["replica_id"]] = result
-        if len(initial_replicas) == 4:
+        if len(initial_replicas) == num_replicas:
             break
-    assert len(initial_replicas) == 4
+    assert len(initial_replicas) == num_replicas
 
     # Identify the two distinct gang IDs.
     gang_ids = {r["gang_id"] for r in initial_replicas.values()}
-    assert len(gang_ids) == 2
+    assert len(gang_ids) == num_gangs
 
     # Make one replica fail health checks.
     fail_info = h.set_should_fail.remote().result()
@@ -386,6 +390,7 @@ def test_gang_health_check_restarts_gang(serve_instance):
     # Wait for deployment to recover.
     def check_healthy():
         app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app_status.status == "RUNNING"
         assert app_status.deployments["GangPatient"].status == DeploymentStatus.HEALTHY
         return True
 
@@ -396,9 +401,9 @@ def test_gang_health_check_restarts_gang(serve_instance):
     for _ in range(100):
         result = h.remote().result()
         final_replicas[result["replica_id"]] = result
-        if len(final_replicas) == 4:
+        if len(final_replicas) == num_replicas:
             break
-    assert len(final_replicas) == 4
+    assert len(final_replicas) == num_replicas
 
     # Both replicas from the failed gang should have been replaced.
     old_gang_ids = {
@@ -406,7 +411,7 @@ def test_gang_health_check_restarts_gang(serve_instance):
         for r in initial_replicas.values()
         if r["gang_id"] == target_gang_id
     }
-    assert len(old_gang_ids) == 2
+    assert len(old_gang_ids) == num_gangs
     assert old_gang_ids.isdisjoint(final_replicas.keys())
 
 

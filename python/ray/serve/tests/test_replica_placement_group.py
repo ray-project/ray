@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import GANG_PG_NAME_PREFIX
+from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentStatus
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangSchedulingConfig
@@ -239,12 +239,14 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
 def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
     """Verify that leaked gang PGs are removed while in-use gang PGs are kept.
 
-    Deploys two gang-scheduled apps (``survivor`` and ``victim``).  After
-    killing the controller and the victim's actors:
+    Deploys two gang-scheduled apps (``survivor`` and ``victim``) and a
+    non-gang app with a per-replica placement group (``per_replica``).  After
+    killing the controller and the victim's + per_replica's actors:
 
-    * The victim's gang PG has no alive actors → detected as leaked → removed.
-    * The survivor's gang PG still has alive actors → preserved.
-    * The survivor's actors continue to serve requests without interruption.
+    * The victim's gang PG has no alive actors -> detected as leaked -> removed.
+    * The per-replica PG has no alive actor -> detected as leaked -> removed.
+    * The survivor's gang PG still has alive actors -> preserved.
+    * All apps recover successfully.
     """
 
     @serve.deployment(
@@ -267,19 +269,37 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
         def __call__(self):
             return "victim_ok"
 
+    @serve.deployment(
+        placement_group_bundles=[{"CPU": 0.1}],
+        ray_actor_options={"num_cpus": 0.1},
+        health_check_period_s=1,
+    )
+    class PerReplica:
+        def get_pg(self) -> PlacementGroup:
+            return get_current_placement_group()
+
+        def __call__(self):
+            return "per_replica_ok"
+
     h_surv = serve.run(Survivor.bind(), name="survivor_app", route_prefix="/surv")
     h_vict = serve.run(Victim.bind(), name="victim_app", route_prefix="/vict")
+    h_pr = serve.run(
+        PerReplica.bind(), name="per_replica_app", route_prefix="/per_replica"
+    )
 
     assert h_surv.remote().result() == "survivor_ok"
     assert h_vict.remote().result() == "victim_ok"
+    assert h_pr.remote().result() == "per_replica_ok"
 
-    # There should be exactly 2 gang PGs (one per app).
-    gang_pgs = [
-        n
-        for n in get_all_live_placement_group_names()
-        if n.startswith(GANG_PG_NAME_PREFIX)
-    ]
+    prev_per_replica_pg = h_pr.get_pg.remote().result()
+
+    # There should be exactly 2 gang PGs (one per gang app) + 1 per-replica PG.
+    all_pg_names = get_all_live_placement_group_names()
+    gang_pgs = [n for n in all_pg_names if n.startswith(GANG_PG_NAME_PREFIX)]
+    non_gang_pgs = [n for n in all_pg_names if not n.startswith(GANG_PG_NAME_PREFIX)]
     assert len(gang_pgs) == 2
+    assert len(non_gang_pgs) == 1
+
     survivor_pg = [n for n in gang_pgs if "survivor_app" in n]
     victim_pg = [n for n in gang_pgs if "victim_app" in n]
     assert len(survivor_pg) == 1
@@ -289,13 +309,14 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
     # Kill the controller
     ray.kill(_get_global_client()._controller, no_restart=False)
 
-    # Kill the victim actors directly while the controller is restarting.
-    victim_actors = [
+    # Kill the victim actors and per-replica actors while the controller is restarting
+    actors_to_kill = [
         a
         for a in ray.util.list_named_actors(all_namespaces=True)
-        if a["namespace"] == SERVE_NAMESPACE and "victim_app" in a["name"]
+        if a["namespace"] == SERVE_NAMESPACE
+        and ("victim_app" in a["name"] or "per_replica_app" in a["name"])
     ]
-    for actor_info in victim_actors:
+    for actor_info in actors_to_kill:
         try:
             handle = ray.get_actor(actor_info["name"], namespace=SERVE_NAMESPACE)
             ray.kill(handle, no_restart=True)
@@ -323,16 +344,36 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
 
         # Victim should have recovered with a new PG (old one was removed).
         victim_pgs = [n for n in current_gang_pgs if "victim_app" in n]
-        assert len(victim_pgs) >= 1
+        if len(victim_pgs) < 1:
+            return False
+
+        # Per-replica app should have recovered with a new PG.
+        try:
+            new_per_replica_pg = h_pr.get_pg.remote().result()
+        except Exception:
+            return False
+        if new_per_replica_pg == prev_per_replica_pg:
+            return False
+
         return True
 
     wait_for_condition(recovery_complete, timeout=60)
 
-    # Verify victim app also recovers.
+    # Verify all apps recovered and are serving.
     assert h_vict.remote().result() == "victim_ok"
+    assert h_pr.remote().result() == "per_replica_ok"
+
+    # Verify all apps are RUNNING and deployments are HEALTHY.
+    status = serve.status()
+    for app_name in ("survivor_app", "victim_app", "per_replica_app"):
+        app_status = status.applications[app_name]
+        assert app_status.status == "RUNNING"
+        for dep_name, dep_status in app_status.deployments.items():
+            assert dep_status.status == DeploymentStatus.HEALTHY
 
     serve.delete("survivor_app")
     serve.delete("victim_app")
+    serve.delete("per_replica_app")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")

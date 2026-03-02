@@ -12,7 +12,6 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import check_apps_running
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
-from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -1152,7 +1151,7 @@ class TestGangControllerRecovery:
             DeploymentID(name="Gang2", app_name="gang_app2"),
         ]
         no_gang_deployment_id = DeploymentID(name="NoGang", app_name="no_gang_app")
-        controller = _get_global_client()._controller
+        controller = serve.context._get_global_client()._controller
 
         # Record controller-side gang_context before crash
         gang_ctx_before = {}
@@ -1176,7 +1175,7 @@ class TestGangControllerRecovery:
         ray.kill(controller, no_restart=False)
         wait_for_condition(check_apps_running, apps=app_names, timeout=60)
 
-        new_controller = _get_global_client()._controller
+        new_controller = serve.context._get_global_client()._controller
 
         def all_states_recovered():
             # Verify gang_context recovered for all gang deployments

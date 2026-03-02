@@ -6214,7 +6214,10 @@ class TestScaleDeploymentGangReplicas:
         dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
             return_value={
                 deployment_id: GangReservationResult(
-                    success=True, gang_pgs=[Mock(name="pg-0")]
+                    success=True,
+                    gang_pgs=[Mock(name="pg-0")],
+                    gang_ids=["g0"],
+                    gang_pg_names=["SERVE_GANG::pg-0"],
                 )
             }
         )
@@ -6274,7 +6277,10 @@ class TestScaleDeploymentGangReplicas:
         dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
             return_value={
                 deployment_id: GangReservationResult(
-                    success=True, gang_pgs=[Mock(name="pg-0"), Mock(name="pg-1")]
+                    success=True,
+                    gang_pgs=[Mock(name="pg-0"), Mock(name="pg-1")],
+                    gang_ids=["g0", "g1"],
+                    gang_pg_names=["SERVE_GANG::pg-0", "SERVE_GANG::pg-1"],
                 )
             }
         )
@@ -6305,9 +6311,16 @@ class TestScaleDeploymentGangReplicas:
         dsm.deploy(deployment_id, info)
         ds = dsm._deployment_states[deployment_id]
 
+        gang_ids = ["gang_0", "gang_1"]
+        gang_pg_names = ["SERVE_GANG::pg-0", "SERVE_GANG::pg-1"]
         dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
             return_value={
-                deployment_id: GangReservationResult(success=True, gang_pgs=gang_pgs)
+                deployment_id: GangReservationResult(
+                    success=True,
+                    gang_pgs=gang_pgs,
+                    gang_ids=gang_ids,
+                    gang_pg_names=gang_pg_names,
+                )
             }
         )
 
@@ -6351,6 +6364,7 @@ class TestScaleDeploymentGangReplicas:
                 assert gang_context.gang_id == gang_id
                 assert gang_context.world_size == gang_size
                 assert set(gang_context.member_replica_ids) == member_ids
+                assert gang_context.pg_name in gang_pg_names
 
         for replica in starting_replicas:
             replica._actor.set_ready()
@@ -6540,7 +6554,10 @@ class TestScaleDeploymentGangReplicas:
         dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
             return_value={
                 deployment_id: GangReservationResult(
-                    success=True, gang_pgs=[Mock(name="pg-recovery")]
+                    success=True,
+                    gang_pgs=[Mock(name="pg-recovery")],
+                    gang_ids=["g0"],
+                    gang_pg_names=["SERVE_GANG::pg-recovery"],
                 )
             }
         )

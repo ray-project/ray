@@ -3621,7 +3621,7 @@ class DeploymentState:
                 logger.warning(
                     f"Replica {replica.replica_id} is healthy but its gang "
                     f"(gang_id={replica.gang_context.gang_id}) has an "
-                    "unhealthy replica. Forcefully stopping it because  "
+                    "unhealthy replica. Forcefully stopping it because "
                     "RESTART_GANG runtime failure policy is enabled."
                 )
                 # Healthy replica whose gang has an unhealthy member.
