@@ -1,12 +1,6 @@
-"""Iceberg release benchmark (P0).
-
-Linear pipeline: write (create) -> read back + verify -> upsert + verify -> overwrite + verify.
-Each step is timed. Data is generated distributed via ray.data.range().
-Copy-on-write only for now; merge-on-read later.
-"""
+"""Iceberg release benchmark"""
 
 import argparse
-import os
 import uuid
 
 from pyiceberg import schema as pyi_schema, types as pyi_types
@@ -41,25 +35,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _build_catalog_kwargs(warehouse_path: str) -> dict:
+def _get_catalog_kwargs(warehouse_path: str) -> dict:
     return {
         "name": _CATALOG_NAME,
         "type": "sql",
-        "uri": f"sqlite:///{_CATALOG_DB_DIR}/catalog.db",
+        "uri": f"sqlite:///{_CATALOG_DB_DIR}/iceberg_benchmark_catalog.db",
         "warehouse": warehouse_path,
     }
 
 
 def _setup_catalog(catalog_kwargs: dict):
     """Create catalog, namespace, and table"""
-    os.makedirs(_CATALOG_DB_DIR, exist_ok=True)
-    catalog = SqlCatalog(
-        _CATALOG_NAME,
-        **{
-            "uri": catalog_kwargs["uri"],
-            "warehouse": catalog_kwargs["warehouse"],
-        },
-    )
+    catalog = SqlCatalog(**catalog_kwargs)
     if (_DB_NAME,) not in catalog.list_namespaces():
         catalog.create_namespace(_DB_NAME)
     catalog.create_table(
@@ -87,12 +74,12 @@ def _setup_catalog(catalog_kwargs: dict):
     ), f"Failed to create table {_TABLE_ID}"
 
 
-def _make_dataset(n: int) -> ray.data.Dataset:
+def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
     """Generate a dataset with id, value, part columns."""
     return ray.data.range(n).map(
         lambda row: {
             "id": row["id"],
-            "value": f"v_{row['id']}",
+            "value": f"{value_prefix}{row['id']}",
             "part": row["id"] % 10,
         }
     )
@@ -105,7 +92,7 @@ def _read_table(catalog_kwargs: dict) -> ray.data.Dataset:
 
 
 def main(args: argparse.Namespace):
-    catalog_kwargs = _build_catalog_kwargs(args.warehouse_path)
+    catalog_kwargs = _get_catalog_kwargs(args.warehouse_path)
     _setup_catalog(catalog_kwargs)
     benchmark = Benchmark()
 
@@ -135,13 +122,7 @@ def main(args: argparse.Namespace):
 
     # 3. Upsert (copy-on-write): update first UPSERT_ROWS ids
     def upsert():
-        ds = ray.data.range(UPSERT_ROWS).map(
-            lambda row: {
-                "id": row["id"],
-                "value": f"updated_{row['id']}",
-                "part": row["id"] % 10,
-            }
-        )
+        ds = _make_dataset(UPSERT_ROWS, value_prefix="updated_")
         ds.write_iceberg(
             table_identifier=_TABLE_ID,
             catalog_kwargs=catalog_kwargs.copy(),
@@ -163,11 +144,9 @@ def main(args: argparse.Namespace):
             mode=SaveMode.OVERWRITE,
         )
         count = _read_table(catalog_kwargs).count()
-
         assert (
             count == OVERWRITE_ROWS
         ), f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
-
         return {BenchmarkMetric.NUM_ROWS: OVERWRITE_ROWS}
 
     benchmark.run_fn("overwrite", overwrite)
