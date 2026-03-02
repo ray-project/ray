@@ -3788,7 +3788,8 @@ cdef class CoreWorker:
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
                           c_bool enable_task_events,
-                          tensor_transport: Optional[str]):
+                          tensor_transport: Optional[str],
+                          dict labels=None):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3822,6 +3823,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
