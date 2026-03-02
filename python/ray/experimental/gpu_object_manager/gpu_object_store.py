@@ -1,7 +1,7 @@
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     CommunicatorMetadata,
@@ -11,6 +11,9 @@ from ray.experimental.gpu_object_manager.util import (
     device_match_transport,
     get_tensor_transport_manager,
 )
+
+if TYPE_CHECKING:
+    import torch
 
 
 def __ray_send__(
@@ -46,12 +49,46 @@ def __ray_send__(
     )
 
 
+def validate_tensor_buffers(
+    tensor_buffers: List["torch.Tensor"],
+    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
+    device: str,
+):
+    if len(tensor_buffers) != len(tensor_meta):
+        raise ValueError(
+            f"Length of tensor_buffers ({len(tensor_buffers)}) does not match length from object metadata ({len(tensor_meta)})."
+        )
+
+    def tensor_buffer_mismatch_msg(prop, idx, actual, expected):
+        return f"{prop} of tensor_buffer at index {idx} ({actual}) does not match {prop.lower()} from object metadata ({expected})."
+
+    for idx, single_buffer in enumerate(tensor_buffers):
+        shape, dtype = tensor_meta[idx]
+        if single_buffer.shape != shape:
+            raise ValueError(
+                tensor_buffer_mismatch_msg("Shape", idx, single_buffer.shape, shape)
+            )
+        if single_buffer.dtype != dtype:
+            raise ValueError(
+                tensor_buffer_mismatch_msg("Dtype", idx, single_buffer.dtype, dtype)
+            )
+        if single_buffer.device.type != device:
+            raise ValueError(
+                tensor_buffer_mismatch_msg(
+                    "Device", idx, single_buffer.device.type, device
+                )
+            )
+        if not single_buffer.is_contiguous():
+            raise ValueError(f"Tensor buffer at index {idx} is not contiguous.")
+
+
 def __ray_recv__(
     self,
     obj_id: str,
     tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
     backend: str,
+    target_buffers: Optional[List[Any]] = None,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
@@ -67,10 +104,15 @@ def __ray_recv__(
             )
 
         tensor_transport_manager = get_tensor_transport_manager(backend)
+        if target_buffers:
+            # Currently only torch tensors are supported as target buffers. We could make this
+            # more generic in the future by adding a pluggable buffer validation function.
+            validate_tensor_buffers(target_buffers, tensor_meta, device)
         tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
             communicator_meta,
+            target_buffers,
         )
         assert len(tensors) == len(tensor_meta)
         gpu_object_store.add_object(obj_id, tensors)
