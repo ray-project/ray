@@ -282,7 +282,7 @@ The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication
 
-By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. Individual handles can override with `handle.options(_by_reference=True)`.
+By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. Individual handles can override with `handle.options(_by_reference=True)`. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
 
 ## Debugging performance issues in controller
 
