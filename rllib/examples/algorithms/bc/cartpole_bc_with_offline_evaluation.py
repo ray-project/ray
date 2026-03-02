@@ -1,13 +1,12 @@
 import warnings
 
-from rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
-
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
