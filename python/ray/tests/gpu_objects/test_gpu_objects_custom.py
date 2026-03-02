@@ -2,10 +2,10 @@ import multiprocessing.shared_memory as shm
 import pickle
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
+import numpy
 import pytest
-import torch
 
 import ray
 from ray.experimental import (
@@ -48,18 +48,12 @@ class SharedMemoryTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List[torch.Tensor],
+        gpu_object: List[numpy.ndarray],
     ) -> TensorTransportMetadata:
 
         tensor_meta = []
-        device = None
         if gpu_object:
-            device = gpu_object[0].device
             for tensor in gpu_object:
-                if tensor.device.type != "cpu":
-                    raise ValueError(
-                        "Shared memory transport only supports CPU tensors"
-                    )
                 tensor_meta.append((tensor.shape, tensor.dtype))
 
         serialized_gpu_object = pickle.dumps(gpu_object)
@@ -71,7 +65,7 @@ class SharedMemoryTransport(TensorTransportManager):
         self.shared_memory_objects[obj_id] = shm_obj
 
         return ShmTransportMetadata(
-            tensor_meta=tensor_meta, tensor_device=device, shm_name=name, shm_size=size
+            tensor_meta=tensor_meta, tensor_device="cpu", shm_name=name, shm_size=size
         )
 
     def get_communicator_metadata(
@@ -87,7 +81,7 @@ class SharedMemoryTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
-        target_buffers: Optional[List["torch.Tensor"]] = None,
+        target_buffers: Optional[List[Any]] = None,
     ):
         shm_name = tensor_transport_metadata.shm_name
         size = tensor_transport_metadata.shm_size
@@ -98,7 +92,7 @@ class SharedMemoryTransport(TensorTransportManager):
 
     def send_multiple_tensors(
         self,
-        tensors: List["torch.Tensor"],
+        tensors: List[numpy.ndarray],
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
     ):
@@ -108,7 +102,7 @@ class SharedMemoryTransport(TensorTransportManager):
         self,
         obj_id: str,
         tensor_transport_meta: TensorTransportMetadata,
-        tensors: List["torch.Tensor"],
+        tensors: List[numpy.ndarray],
     ):
         self.shared_memory_objects[obj_id].close()
         self.shared_memory_objects[obj_id].unlink()
@@ -123,12 +117,17 @@ class SharedMemoryTransport(TensorTransportManager):
 
 
 def test_register_and_use_custom_transport(ray_start_regular):
-    register_tensor_transport("shared_memory", ["cpu"], SharedMemoryTransport)
+    register_tensor_transport(
+        "shared_memory", ["cpu"], SharedMemoryTransport, numpy.ndarray
+    )
 
     @ray.remote
     class Actor:
         @ray.method(tensor_transport="shared_memory")
         def echo(self, data):
+            return data
+
+        def non_rdt_echo(self, data):
             return data
 
         def sum(self, data):
@@ -143,7 +142,12 @@ def test_register_and_use_custom_transport(ray_start_regular):
     cloudpickle.register_pickle_by_value(sys.modules[SharedMemoryTransport.__module__])
 
     actors = [Actor.remote() for _ in range(2)]
-    ref = actors[0].echo.remote(torch.tensor([1, 2, 3]))
+    ref = actors[0].echo.remote(numpy.array([1, 2, 3]))
+    result = actors[1].sum.remote(ref)
+    assert ray.get(result) == 6
+
+    # Test that non-rdt methods that return the data type still work.
+    ref = actors[0].non_rdt_echo.remote(numpy.array([1, 2, 3]))
     result = actors[1].sum.remote(ref)
     assert ray.get(result) == 6
 

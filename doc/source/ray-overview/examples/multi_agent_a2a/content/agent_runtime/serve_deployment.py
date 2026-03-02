@@ -1,8 +1,8 @@
 """
-Ray Serve deployment factory for LangGraph agents.
+Ray Serve deployment factory for LangChain agents.
 
 This module provides a unified way to create Ray Serve deployments for any
-LangGraph agent, eliminating duplicate FastAPI app and deployment code.
+LangChain agent, eliminating duplicate FastAPI app and deployment code.
 """
 
 from __future__ import annotations
@@ -26,11 +26,11 @@ AgentBuilder = Union[Callable[[], Any], Callable[[], Coroutine[Any, Any, Any]]]
 def create_chat_app(
     build_agent_fn: AgentBuilder,
     *,
-    title: str = "LangGraph Agent",
-    description: str = "LangGraph agent with streaming SSE support",
+    title: str = "LangChain Agent",
+    description: str = "LangChain agent with streaming SSE support",
 ) -> FastAPI:
     """
-    Create a FastAPI app with a /chat endpoint that streams LangGraph updates as SSE.
+    Create a FastAPI app with a /chat endpoint that streams LangChain updates as SSE.
 
     This is the core FastAPI app used by all agent deployments. It provides:
     - Async lifespan management for agent initialization/cleanup
@@ -38,7 +38,7 @@ def create_chat_app(
     - Thread ID support for conversation continuity
 
     Args:
-        build_agent_fn: Function that returns a LangGraph agent (can be sync or async)
+        build_agent_fn: Function that returns a LangChain agent (can be sync or async)
         title: FastAPI app title
         description: FastAPI app description
 
@@ -71,7 +71,7 @@ def create_chat_app(
         POST /chat
         Body: {"user_request": "<text>", "thread_id": "<optional>", "checkpoint_ns": "<optional>"}
 
-        Streams LangGraph 'update' dicts as Server-Sent Events (one JSON object per event).
+        Streams LangChain 'update' dicts as Server-Sent Events (one JSON object per event).
         SSE frames look like:
             data: {"some": "update"}
 
@@ -90,7 +90,7 @@ def create_chat_app(
         )
         checkpoint_ns = body.get("checkpoint_ns")  # Optional namespacing
 
-        # Build config for LangGraph
+        # Build config for LangChain
         config = {"configurable": {"thread_id": thread_id}}
         if checkpoint_ns:
             config["configurable"]["checkpoint_ns"] = checkpoint_ns
@@ -139,19 +139,19 @@ def create_chat_app(
 def create_agent_deployment(
     build_agent_fn: AgentBuilder,
     *,
-    name: str = "LangGraphAgent",
-    title: str = "LangGraph Agent",
-    description: str = "LangGraph agent with streaming SSE support",
+    name: str = "LangChainAgent",
+    title: str = "LangChain Agent",
+    description: str = "LangChain agent with streaming SSE support",
     num_cpus: float = 1,
 ) -> Any:
     """
-    Create a Ray Serve deployment for a LangGraph agent.
+    Create a Ray Serve deployment for a LangChain agent.
 
     This is a factory function that creates both the FastAPI app and the
     Ray Serve deployment wrapper in one step.
 
     Args:
-        build_agent_fn: Function that returns a LangGraph agent (can be sync or async)
+        build_agent_fn: Function that returns a LangChain agent (can be sync or async)
         name: Name for the Ray Serve deployment class
         title: FastAPI app title
         description: FastAPI app description

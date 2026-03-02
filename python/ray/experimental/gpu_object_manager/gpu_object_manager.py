@@ -22,7 +22,6 @@ from ray._raylet import ObjectRef
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import torch
 
     from ray.experimental.gpu_object_manager.gpu_object_store import (
         GPUObjectStore,
@@ -50,8 +49,8 @@ class GPUObjectMeta(NamedTuple):
     sent_dest_actors: Set[str]
     # sent_to_src_actor_and_others_warned indicates whether the object has already triggered a warning about being sent back to the source actor and other actors simultaneously.
     sent_to_src_actor_and_others_warned: bool
-    # If the user set a buffer for the object, the object will be fetched directly into the buffer on a ray.get
-    target_buffers: Optional[List["torch.Tensor"]]
+    # If the user set buffers for the object, the object will be fetched directly into the buffers on a ray.get
+    target_buffers: Optional[List[Any]]
 
 
 # This is used to periodically check in on the RDT transfer through the refs from
@@ -68,7 +67,7 @@ class TransferMetadata(NamedTuple):
 
 
 @PublicAPI(stability="alpha")
-def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
+def wait_tensor_freed(tensor: Any, timeout: Optional[float] = None):
     """
     Wait for the tensor to be freed.
 
@@ -98,7 +97,7 @@ def wait_tensor_freed(tensor: "torch.Tensor", timeout: Optional[float] = None):
 
 
 @PublicAPI(stability="alpha")
-def set_target_for_ref(ref: ObjectRef, target: List["torch.Tensor"]):
+def set_target_for_ref(ref: ObjectRef, target: List[Any]):
     """
     Set target buffers for an RDT ObjectRef to fetch tensors into when `ray.get` is called.
 
@@ -437,9 +436,7 @@ class GPUObjectManager:
                 # Trigger the transfer now that the metadata is available.
                 self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
-    def set_target_buffers_for_ref(
-        self, ref: ObjectRef, target_buffers: List["torch.Tensor"]
-    ):
+    def set_target_buffers_for_ref(self, ref: ObjectRef, target_buffers: List[Any]):
         with self._lock:
             if ref.hex() not in self._managed_gpu_object_metadata:
                 raise ValueError(f"Ref {ref} is not an RDT object.")
@@ -698,7 +695,7 @@ class GPUObjectManager:
         self,
         object_id: str,
         use_object_store: bool = False,
-    ) -> List["torch.Tensor"]:
+    ) -> List[Any]:
         """
         Get the RDT object for a given object ID.
 
@@ -791,7 +788,7 @@ class GPUObjectManager:
         self,
         obj_ref: ObjectRef,
         tensor_transport: str,
-        tensors: List["torch.Tensor"],
+        tensors: List[Any],
     ):
         """
         Put the GPU object into the GPU object manager.

@@ -15,9 +15,6 @@ class Operator:
     ):
         self._name = name
         self._input_dependencies = input_dependencies
-        self._output_dependencies = []
-
-        self._wire_output_deps(input_dependencies)
 
     @property
     def name(self) -> str:
@@ -42,14 +39,6 @@ class Operator:
         ), "Operator.__init__() was not called."
         return self._input_dependencies
 
-    @property
-    def output_dependencies(self) -> List["Operator"]:
-        """List of operators that consume outputs from this operator."""
-        assert hasattr(
-            self, "_output_dependencies"
-        ), "Operator.__init__() was not called."
-        return self._output_dependencies
-
     def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""
         for op in self.input_dependencies:
@@ -67,32 +56,23 @@ class Operator:
         """
 
         transformed_input_ops = []
-        new_ops = []
+        has_changes = False
 
         for input_op in self.input_dependencies:
             transformed_input_op = input_op._apply_transform(transform)
             transformed_input_ops.append(transformed_input_op)
-            # Keep track of new input ops
             if transformed_input_op is not input_op:
-                new_ops.append(transformed_input_op)
+                has_changes = True
 
-        if new_ops:
+        if has_changes:
             # Make a shallow copy to avoid modifying operators in-place
             target = copy.copy(self)
 
-            # NOTE: Only newly created ops need to have output deps
-            #       wired in
-            target._wire_output_deps(new_ops)
             target._input_dependencies = transformed_input_ops
         else:
             target = self
 
         return transform(target)
-
-    def _wire_output_deps(self, input_dependencies: List["Operator"]):
-        for x in input_dependencies:
-            assert isinstance(x, Operator), x
-            x._output_dependencies.append(self)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}[{self._name}]"

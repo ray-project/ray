@@ -70,7 +70,7 @@ class CollectiveTensorTransport(TensorTransportManager):
                 tensor_meta.append((t.shape, t.dtype))
         return CollectiveTransportMetadata(
             tensor_meta=tensor_meta,
-            tensor_device=device,
+            tensor_device=device.type if device else None,
         )
 
     def get_communicator_metadata(
