@@ -18,6 +18,7 @@ members = [
     "ray-syncer",
     "ray-test-utils",
     "ray-conformance-tests",
+    "examples",
 ]
 
 [workspace.package]

@@ -1534,6 +1534,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ray-examples"
+version = "3.0.0-dev"
+dependencies = [
+ "bytes",
+ "ray-common",
+ "ray-core-worker",
+ "ray-gcs",
+ "ray-gcs-rpc-client",
+ "ray-proto",
+ "ray-raylet",
+ "ray-rpc",
+ "ray-test-utils",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ray-gcs"
 version = "3.0.0-dev"
 dependencies = [

@@ -1,0 +1,26 @@
+[package]
+name = "ray-examples"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Example programs demonstrating the Ray Rust backend"
+
+[dependencies]
+ray-common = { workspace = true }
+ray-proto = { workspace = true }
+ray-test-utils = { workspace = true }
+ray-gcs = { workspace = true }
+ray-gcs-rpc-client = { workspace = true }
+ray-rpc = { workspace = true }
+ray-raylet = { workspace = true }
+ray-core-worker = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[bin]]
+name = "add-two-numbers"
+path = "src/add_two_numbers.rs"
