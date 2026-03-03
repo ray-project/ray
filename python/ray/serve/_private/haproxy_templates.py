@@ -46,9 +46,8 @@ defaults
     option httplog
     option abortonclose
     {%- if config.disable_nagle %}
-    # Disable Nagle's algorithm (set TCP_NODELAY) on client and server connections
-    http-request set-nodelay
-    http-response set-nodelay
+    # Disable Nagle's algorithm (set TCP_NODELAY) on all connections
+    option http-no-delay
     {%- endif %}
     {%- if config.enable_hap_optimization %}
     option idle-close-on-response
