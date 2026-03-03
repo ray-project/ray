@@ -45,11 +45,14 @@ def _get_catalog_kwargs(warehouse_path: str) -> dict:
     }
 
 
-def _setup_catalog(catalog_kwargs: dict):
-    """Create catalog, namespace, and table"""
+def _load_catalog(catalog_kwargs: dict):
     catalog_name = catalog_kwargs["name"]
     catalog_properties = {k: v for k, v in catalog_kwargs.items() if k != "name"}
-    catalog = pyi_catalog.load_catalog(catalog_name, **catalog_properties)
+    return pyi_catalog.load_catalog(catalog_name, **catalog_properties)
+
+
+def _setup_catalog(catalog):
+    """Create catalog, namespace, and table"""
     if (_DB_NAME,) not in catalog.list_namespaces():
         catalog.create_namespace(_DB_NAME)
     catalog.create_table(
@@ -119,6 +122,20 @@ def _setup_catalog(catalog_kwargs: dict):
     ), f"Failed to create table {_TABLE_ID}"
 
 
+def _teardown_catalog(catalog):
+    """Drop benchmark resources to avoid accumulating metadata and data files."""
+    if (_DB_NAME,) not in catalog.list_namespaces():
+        return
+
+    table_exists = (_DB_NAME, _TABLE_NAME) in catalog.list_tables(_DB_NAME)
+    if table_exists:
+        catalog.purge_table(_TABLE_ID)
+
+    # Best-effort cleanup of the namespace created by this benchmark.
+    if not catalog.list_tables(_DB_NAME):
+        catalog.drop_namespace(_DB_NAME)
+
+
 def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
     """Generate a dataset with id, value, part columns."""
     return ray.data.range(n).map(
@@ -145,63 +162,71 @@ def _read_table(catalog_kwargs: dict) -> ray.data.Dataset:
 
 def main(args: argparse.Namespace):
     catalog_kwargs = _get_catalog_kwargs(args.warehouse_path)
-    _setup_catalog(catalog_kwargs)
+    catalog = _load_catalog(catalog_kwargs)
+    _setup_catalog(catalog)
     benchmark = Benchmark()
 
-    # 1. Write (create new table)
-    def write_create():
-        ds = _make_dataset(NUM_ROWS)
-        ds.write_iceberg(
-            table_identifier=_TABLE_ID,
-            catalog_kwargs=catalog_kwargs.copy(),
-            mode=SaveMode.APPEND,
-        )
-        count = _read_table(catalog_kwargs).count()
-        assert count == NUM_ROWS, f"write_create: expected {NUM_ROWS}, got {count}"
-        return {BenchmarkMetric.NUM_ROWS: NUM_ROWS}
+    try:
+        # 1. Write (create new table)
+        def write_create():
+            ds = _make_dataset(NUM_ROWS)
+            ds.write_iceberg(
+                table_identifier=_TABLE_ID,
+                catalog_kwargs=catalog_kwargs.copy(),
+                mode=SaveMode.APPEND,
+            )
+            count = _read_table(catalog_kwargs).count()
+            assert count == NUM_ROWS, f"write_create: expected {NUM_ROWS}, got {count}"
+            return {BenchmarkMetric.NUM_ROWS: NUM_ROWS}
 
-    benchmark.run_fn("write_create", write_create)
+        benchmark.run_fn("write_create", write_create)
 
-    # 2. Read back and consume
-    def read():
-        count = 0
-        for batch in _read_table(catalog_kwargs).iter_batches(batch_format="pyarrow"):
-            count += len(batch)
-        assert count == NUM_ROWS, f"read: expected {NUM_ROWS}, got {count}"
-        return {BenchmarkMetric.NUM_ROWS: count}
+        # 2. Read back and consume
+        def read():
+            count = 0
+            for batch in _read_table(catalog_kwargs).iter_batches(
+                batch_format="pyarrow"
+            ):
+                count += len(batch)
+            assert count == NUM_ROWS, f"read: expected {NUM_ROWS}, got {count}"
+            return {BenchmarkMetric.NUM_ROWS: count}
 
-    benchmark.run_fn("read", read)
+        benchmark.run_fn("read", read)
 
-    # 3. Upsert (copy-on-write): update first UPSERT_ROWS ids
-    def upsert():
-        ds = _make_dataset(UPSERT_ROWS, value_prefix="updated_")
-        ds.write_iceberg(
-            table_identifier=_TABLE_ID,
-            catalog_kwargs=catalog_kwargs.copy(),
-            mode=SaveMode.UPSERT,
-            upsert_kwargs={"join_cols": ["id"]},
-        )
-        count = _read_table(catalog_kwargs).count()
-        assert count == NUM_ROWS, f"upsert: expected {NUM_ROWS}, got {count}"
-        return {BenchmarkMetric.NUM_ROWS: UPSERT_ROWS}
+        # 3. Upsert (copy-on-write): update first UPSERT_ROWS ids
+        def upsert():
+            ds = _make_dataset(UPSERT_ROWS, value_prefix="updated_")
+            ds.write_iceberg(
+                table_identifier=_TABLE_ID,
+                catalog_kwargs=catalog_kwargs.copy(),
+                mode=SaveMode.UPSERT,
+                upsert_kwargs={"join_cols": ["id"]},
+            )
+            count = _read_table(catalog_kwargs).count()
+            assert count == NUM_ROWS, f"upsert: expected {NUM_ROWS}, got {count}"
+            return {BenchmarkMetric.NUM_ROWS: UPSERT_ROWS}
 
-    benchmark.run_fn("upsert", upsert)
+        benchmark.run_fn("upsert", upsert)
 
-    # 4. Overwrite (copy-on-write): replace entire table
-    def overwrite():
-        ds = _make_dataset(OVERWRITE_ROWS)
-        ds.write_iceberg(
-            table_identifier=_TABLE_ID,
-            catalog_kwargs=catalog_kwargs.copy(),
-            mode=SaveMode.OVERWRITE,
-        )
-        count = _read_table(catalog_kwargs).count()
-        assert count == OVERWRITE_ROWS, f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
-        return {BenchmarkMetric.NUM_ROWS: OVERWRITE_ROWS}
+        # 4. Overwrite (copy-on-write): replace entire table
+        def overwrite():
+            ds = _make_dataset(OVERWRITE_ROWS)
+            ds.write_iceberg(
+                table_identifier=_TABLE_ID,
+                catalog_kwargs=catalog_kwargs.copy(),
+                mode=SaveMode.OVERWRITE,
+            )
+            count = _read_table(catalog_kwargs).count()
+            assert (
+                count == OVERWRITE_ROWS
+            ), f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
+            return {BenchmarkMetric.NUM_ROWS: OVERWRITE_ROWS}
 
-    benchmark.run_fn("overwrite", overwrite)
+        benchmark.run_fn("overwrite", overwrite)
 
-    benchmark.write_result()
+        benchmark.write_result()
+    finally:
+        _teardown_catalog(catalog)
 
 
 if __name__ == "__main__":
