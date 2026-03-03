@@ -57,7 +57,6 @@ def main():
 
     ray.init(include_dashboard=True)
     subprocess.run(["ray", "stop"], check=False)
-    ray.shutdown()
 
     pids_after = _ps_ray_python_pids()
     hanging = pids_after - pids_before
