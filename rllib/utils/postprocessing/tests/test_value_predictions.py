@@ -1,5 +1,3 @@
-import unittest
-
 import numpy as np
 
 from ray.rllib.utils.postprocessing.value_predictions import (
@@ -8,7 +6,7 @@ from ray.rllib.utils.postprocessing.value_predictions import (
 from ray.rllib.utils.test_utils import check
 
 
-class TestComputeValueTargetsWithBootstrap(unittest.TestCase):
+class TestComputeValueTargetsWithBootstrap:
     """Tests for compute_value_targets_with_bootstrap."""
 
     def test_terminated_episode_lambda1(self):
