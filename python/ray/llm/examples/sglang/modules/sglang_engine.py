@@ -265,6 +265,24 @@ class SGLangServer:
             )
             yield delta_text, finish_reason
 
+    @staticmethod
+    def _build_sse_chunk(
+        gen_id: str,
+        object_type: str,
+        created: int,
+        model: str,
+        choice: dict[str, Any],
+    ) -> str:
+        """Build an SSE-formatted chunk string from a single choice payload."""
+        chunk_data = {
+            "id": gen_id,
+            "object": object_type,
+            "created": created,
+            "model": model,
+            "choices": [choice],
+        }
+        return f"data: {json.dumps(chunk_data)}\n\n"
+
     async def chat(
         self,
         request: ChatCompletionRequest,
@@ -284,20 +302,13 @@ class SGLangServer:
                 if first_chunk:
                     delta["role"] = "assistant"
                     first_chunk = False
-                chunk_data = {
-                    "id": gen_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": request.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": delta,
-                            "finish_reason": finish_reason,
-                        }
-                    ],
-                }
-                yield f"data: {json.dumps(chunk_data)}\n\n"
+                yield self._build_sse_chunk(
+                    gen_id,
+                    "chat.completion.chunk",
+                    created,
+                    request.model,
+                    {"index": 0, "delta": delta, "finish_reason": finish_reason},
+                )
             return
 
         metadata = await self._generate_and_extract_metadata(request, prompt)
@@ -349,21 +360,18 @@ class SGLangServer:
                 async for delta_text, finish_reason in self._stream_generate(
                     request, prompt_string
                 ):
-                    chunk_data = {
-                        "id": gen_id,
-                        "object": "text_completion",
-                        "created": created,
-                        "model": request.model,
-                        "choices": [
-                            {
-                                "index": i,
-                                "text": delta_text,
-                                "logprobs": None,
-                                "finish_reason": finish_reason,
-                            }
-                        ],
-                    }
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                    yield self._build_sse_chunk(
+                        gen_id,
+                        "text_completion",
+                        created,
+                        request.model,
+                        {
+                            "index": i,
+                            "text": delta_text,
+                            "logprobs": None,
+                            "finish_reason": finish_reason,
+                        },
+                    )
             return
 
         all_choices = []
