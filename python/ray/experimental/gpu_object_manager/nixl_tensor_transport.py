@@ -221,11 +221,13 @@ class NixlTensorTransport(TensorTransportManager):
         local_xfer_descs = None
         remote_name = None
         xfer_handle = None
+        added_tensor_descs = False
         try:
             nixl_agent = self.get_nixl_agent()
             remote_xfer_descs = nixl_agent.deserialize_descs(nixl_serialized_descs)
             # This creates a placeholder for the tensor in the tensor_desc_cache even though it doesn't have an object ref for caching purposes.
             self._add_tensor_descs(tensors)
+            added_tensor_descs = True
             local_xfer_descs = nixl_agent.get_xfer_descs(tensors)
 
             remote_name = tensor_transport_metadata.nixl_agent_name
@@ -296,7 +298,7 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent.release_xfer_handle(xfer_handle)
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
-            if local_xfer_descs:
+            if added_tensor_descs:
                 with self._cache_lock:
                     for tensor in tensors:
                         key = tensor.untyped_storage().data_ptr()
