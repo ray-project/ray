@@ -246,11 +246,16 @@ class TrainController:
         )
         if failure_result:
             return failure_result
-
+        current_num_workers = (
+            len(self._worker_group.get_workers()) if self._worker_group else 0
+        )
         if (
             self._has_replica_groups
             and decision.poll_status is not None
+            and bool(decision.poll_status.failing_replica_group_indices)
             and self._worker_group
+            # TODO: relax this after integrating replica groups with elastic training.
+            and decision.num_workers == current_num_workers
         ):
             # Torchft: replace only failing replica groups.
             try:
