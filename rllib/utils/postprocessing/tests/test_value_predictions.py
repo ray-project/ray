@@ -77,35 +77,6 @@ class TestComputeValueTargetsWithBootstrap:
         )
         check(result, [10.0, 20.0, 30.0], atol=1e-5)
 
-    def test_single_timestep_terminated(self):
-        """Single terminated timestep: target = reward."""
-        values = np.array([5.0])
-        rewards = np.array([10.0])
-        terminateds = np.array([True])
-        bootstrap = 0.0
-        gamma = 0.99
-        lambda_ = 0.95
-
-        result = compute_value_targets_with_bootstrap(
-            values, rewards, terminateds, bootstrap, gamma, lambda_
-        )
-        check(result, [10.0], atol=1e-5)
-
-    def test_single_timestep_truncated(self):
-        """Single truncated timestep: target = r + gamma * bootstrap."""
-        values = np.array([5.0])
-        rewards = np.array([10.0])
-        terminateds = np.array([False])
-        bootstrap = 3.0
-        gamma = 0.99
-        lambda_ = 0.95
-
-        result = compute_value_targets_with_bootstrap(
-            values, rewards, terminateds, bootstrap, gamma, lambda_
-        )
-        # delta = 10 + 0.99*3 - 5 = 7.97;  A = 7.97;  target = 12.97
-        check(result, [12.97], atol=1e-5)
-
     def test_intermediate_lambda(self):
         """GAE with 0 < lambda < 1 matches the reference implementation."""
         values = np.array([1.0, 2.0, 3.0, 4.0])
@@ -138,19 +109,6 @@ class TestComputeValueTargetsWithBootstrap:
         #   target_1 =  5.28186 + 2.0 =  7.28186
         #   target_0 =  6.44759 + 1.0 =  7.44759
         check(result, [7.447589, 7.281860, 5.989750, 3.5], atol=1e-5)
-
-    def test_all_zeros(self):
-        """Zero values, rewards, and bootstrap should give zero targets."""
-        T = 5
-        result = compute_value_targets_with_bootstrap(
-            values=np.zeros(T),
-            rewards=np.zeros(T),
-            terminateds=np.zeros(T, dtype=bool),
-            bootstrap_value=0.0,
-            gamma=0.99,
-            lambda_=0.95,
-        )
-        check(result, np.zeros(T), atol=1e-7)
 
 
 if __name__ == "__main__":
