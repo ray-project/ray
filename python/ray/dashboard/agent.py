@@ -108,13 +108,13 @@ class DashboardAgent:
     def _init_non_minimal(self):
         from grpc import aio as aiogrpc
 
+        from ray._common.tls_utils import add_port_to_grpc_server
         from ray._private.authentication.authentication_utils import (
             is_token_auth_enabled,
         )
         from ray._private.authentication.grpc_authentication_server_interceptor import (
             AsyncAuthenticationServerInterceptor,
         )
-        from ray._common.tls_utils import add_port_to_grpc_server
         from ray.dashboard.http_server_agent import HttpServerAgent
 
         # We would want to suppress deprecating warnings from aiogrpc library
