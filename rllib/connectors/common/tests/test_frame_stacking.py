@@ -48,7 +48,14 @@ def _run(episode, num_frames, with_gae=False):
 
 class TestFrameStackingLearner:
     def test_bootstrap_non_terminated(self):
-        """Test that the bootstrap observation is correctly computed for a non-terminated episode."""
+        """Test that the bootstrap observation is correctly computed for a non-terminated episode.
+
+        For this test, we construct an episode that has 3 obserations that are all zeros.
+        This is followed by 6 observations that are [<all ones>, <all twos>, ..., <all sevens>].
+        We then stack 4 frames and check that the bootstrap observation is correctly computed.
+        The bootstrap observation should be the last 4 observations,
+        which are [<all fours>, <all fives>, <all sixes>, <all sevens>].
+        """
         _, bootstrap = _run(
             _make_episode(T=6, num_frames=4), num_frames=4, with_gae=True
         )
@@ -68,6 +75,7 @@ class TestFrameStackingLearner:
 
     @pytest.mark.parametrize("T,num_frames", [(1, 4), (3, 2), (8, 1)])
     def test_output_shape(self, T, num_frames):
+        """Test that the output shape is correct for a given number of frames."""
         obs, _ = _run(_make_episode(T, num_frames), num_frames)
         check(obs.shape, (T, H, W, num_frames))
 
