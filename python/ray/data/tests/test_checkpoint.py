@@ -29,7 +29,7 @@ from ray.data._internal.planner.checkpoint.plan_read_op import (
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.checkpoint_filter import (
-    BatchBasedCheckpointFilter,
+    NumpyArrayBasedCheckpointFilter,
 )
 from ray.data.checkpoint.checkpoint_writer import (
     BatchBasedCheckpointWriter,
@@ -694,7 +694,7 @@ def test_write_block_checkpoint_with_pandas_df(restore_data_context, tmp_path):
 
 
 def test_filter_rows_for_block():
-    """Test BatchBasedCheckpointFilter.filter_rows_for_block."""
+    """Test NumpyArrayBasedCheckpointFilter.filter_rows_for_block."""
 
     # Common test setup
     checkpoint_path = "/mock/path"
@@ -734,7 +734,7 @@ def test_filter_rows_for_block():
         }
     )
 
-    filter_instance = BatchBasedCheckpointFilter(config, checkpointed_ids_ref)
+    filter_instance = NumpyArrayBasedCheckpointFilter(config, checkpointed_ids_ref)
     filtered_block = filter_instance.filter_rows_for_block(
         block=block,
     )

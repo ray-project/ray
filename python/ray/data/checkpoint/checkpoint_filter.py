@@ -2,6 +2,7 @@ import abc
 import logging
 import sys
 import time
+from abc import abstractmethod
 from typing import List, Optional, Tuple
 
 import numpy
@@ -20,8 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 @ray.remote
-class CheckpointHolder:
-    """Holds checkpointed IDs in numpy ndarray format"""
+class CheckpointConverter:
+    """Convert checkpointed IDs from pyarrow.Table to numpy.ndarray.
+    This actor provides:
+    1. the object ref of the checkpointed IDs, which will be passed to each checkpoint filter actor.
+    2. the size of the checkpointed IDs, which will be used to determine the `ray_remote_args`
+       of each checkpoint filter actor.
+    """
 
     def __init__(self):
         self.checkpointed_ids_ndarray: numpy.ndarray = numpy.array([])
@@ -137,7 +143,7 @@ class CheckpointLoader:
         # Note: the convert is very time-consuming.
         # Use an actor to hold the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
-        checkpoint_holder = CheckpointHolder.remote()
+        checkpoint_holder = CheckpointConverter.remote()
         ray.get(
             checkpoint_holder.set_checkpointed_ids_ndarray.remote(
                 block_ref, self.id_column
@@ -197,13 +203,24 @@ class CheckpointFilter(abc.ABC):
     def __init__(self, config: CheckpointConfig):
         self.ckpt_config = config
         self.id_column = self.ckpt_config.id_column
-        self.checkpointed_ids = None
+
+    @abstractmethod
+    def filter_rows_for_block(self, block: Block) -> Block:
+        """For the given block, filter out rows that have already
+        been checkpointed, and return the resulting block.
+
+        Args:
+            block: The input block to filter.
+        Returns:
+            A new block with rows that have not been checkpointed.
+        """
+        raise NotImplementedError
 
 
-class BatchBasedCheckpointFilter(CheckpointFilter):
+class NumpyArrayBasedCheckpointFilter(CheckpointFilter):
     """CheckpointFilter for batch-based backends.
 
-    This filter will first retrieve the checkpointed IDs from the object store.
+    This filter will first fetch the checkpointed IDs (as NumPy arrays) from the object store.
     For each input block, it filters the block and returns the filtered block.
     """
 
@@ -220,14 +237,7 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
         self,
         block: Block,
     ) -> Block:
-        """For the given block, filter out rows that have already
-        been checkpointed, and return the resulting block.
-
-        Args:
-            block: The input block to filter.
-        Returns:
-            A new block with rows that have not been checkpointed.
-        """
+        """Filter IDs in memory using NumPy's binary search."""
 
         if self.checkpointed_ids.shape[0] == 0 or len(block) == 0:
             return block

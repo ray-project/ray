@@ -15,12 +15,14 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data.block import Block
 from ray.data.checkpoint.checkpoint_filter import (
-    BatchBasedCheckpointFilter,
     IdColumnCheckpointLoader,
+    NumpyArrayBasedCheckpointFilter,
 )
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.types import ObjectRef
+
+CHECKPOINT_MEMORY_SAFETY_FACTOR = 1.5
 
 
 def plan_read_op_with_checkpoint_filter(
@@ -81,9 +83,10 @@ def plan_read_op_with_checkpoint_filter(
         ray_remote_args={
             "memory": max(
                 data_context.checkpoint_actor_memory_bytes,
-                int(checkpointed_ids_size * 1.5),
+                int(checkpointed_ids_size * CHECKPOINT_MEMORY_SAFETY_FACTOR),
             )
         },
+        supports_fusion=False,
     )
     return checkpoint_op
 
@@ -111,7 +114,7 @@ def _get_checkpoint_map_transformer(
     # This method will run only once for on single actor.
     def init_checkpoint_filter():
         checkpoint_filter.append(
-            BatchBasedCheckpointFilter(
+            NumpyArrayBasedCheckpointFilter(
                 data_context.checkpoint_config, checkpointed_ids_ref
             )
         )
