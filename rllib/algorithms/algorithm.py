@@ -1191,16 +1191,10 @@ class Algorithm(Checkpointable, Trainable):
 
         # Set up inference actors
         if config.use_inference_actors:
-            inference_actor = (
-                ray.remote(
-                    num_cpus=config.inference_num_cpus_per_actor,
-                    num_gpus=config.inference_num_gpus_per_actor,
-                )
-                (InferenceActor)
-                .remote(
-                    config=self.config
-                )
-            )
+            inference_actor = ray.remote(
+                num_cpus=config.inference_num_cpus_per_actor,
+                num_gpus=config.inference_num_gpus_per_actor,
+            )(InferenceActor).remote(config=self.config)
 
             self.env_runner_group.foreach_env_runner(
                 func=lambda er: er.register_inference_actor(
