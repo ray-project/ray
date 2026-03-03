@@ -993,20 +993,20 @@ def read_parquet(
         petal.width   float
         variety       string
 
-        The Parquet reader also supports projection and filter pushdown, allowing column
-        selection and row filtering to be pushed down to the file scan.
+        The Parquet reader also supports projection and filter pushdown. Use
+        :meth:`Dataset.filter <ray.data.Dataset.filter>` with predicate expressions to
+        enable filter pushdown.
 
         .. testcode::
 
-            import pyarrow as pa
+            from ray.data.expressions import col
 
             # Create a Dataset by reading a Parquet file, pushing column selection and
             # row filtering down to the file scan.
             ds = ray.data.read_parquet(
                 "s3://anonymous@ray-example-data/iris.parquet",
                 columns=["sepal.length", "variety"],
-                filter=pa.dataset.field("sepal.length") > 5.0,
-            )
+            ).filter(expr=col("sepal.length") > 5.0)
 
             ds.show(2)
 
@@ -1067,7 +1067,8 @@ def read_parquet(
         **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
-                    #pyarrow.dataset.Scanner.from_fragment>`_
+                    #pyarrow.dataset.Scanner.from_fragment>`_. Passing ``filter`` here
+            is deprecated; use ``read_parquet(...).filter(expr=...)`` instead.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
@@ -1076,10 +1077,13 @@ def read_parquet(
     _validate_shuffle_arg(shuffle)
 
     # Check for deprecated filter parameter
-    if "filter" in arrow_parquet_args:
+    read_filter = arrow_parquet_args.pop("filter", None)
+    if read_filter is not None:
         warnings.warn(
-            "The `filter` argument is deprecated and will not be supported in a future release. "
-            "Use `dataset.filter(expr=expr)` instead to filter rows.",
+            "The `filter` argument to `read_parquet` is deprecated and will be "
+            "removed in a future release. Use "
+            "`read_parquet(...).filter(expr=...)` with predicate expressions from "
+            "`ray.data.expressions` instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1097,6 +1101,7 @@ def read_parquet(
         columns=columns,
         dataset_kwargs=dataset_kwargs,
         to_batch_kwargs=arrow_parquet_args,
+        read_filter=read_filter,
         _block_udf=_block_udf,
         filesystem=filesystem,
         schema=schema,
