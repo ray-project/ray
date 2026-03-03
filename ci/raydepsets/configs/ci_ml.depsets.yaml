@@ -35,6 +35,9 @@ depsets:
       - python/requirements/ml/tune-test-requirements.txt
       - python/requirements/ml/rllib-requirements.txt
       - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/data-test-requirements.txt
+      - python/requirements/ml/core-requirements.txt
     output: python/deplocks/ci/ml-build-ci_depset_py${PYTHON_VERSION}.lock
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -43,6 +46,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/deplocks/ci/ml-build-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
       - py312
@@ -60,6 +64,9 @@ depsets:
       - python/requirements/ml/tune-test-requirements.txt
       - python/requirements/ml/rllib-requirements.txt
       - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/data-test-requirements.txt
+      - python/requirements/ml/core-requirements.txt
     output: python/deplocks/ci/ml-gpubuild-ci_depset_py${PYTHON_VERSION}.lock
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -68,6 +75,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --override python/deplocks/ci/ml-gpubuild-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
       - py312
