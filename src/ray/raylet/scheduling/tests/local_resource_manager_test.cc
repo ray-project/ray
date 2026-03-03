@@ -501,4 +501,28 @@ TEST_F(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime) {
   ASSERT_NE(AssertIdleAndGetTime(), initial_idle_time);
 }
 
+TEST_F(LocalResourceManagerTest, RepeatedMarkFootprintAsIdleDoesNotResetIdleTime) {
+  CreateManagerWithFakeClock();
+
+  AssertIdleAndGetTime();
+
+  // First explicit idle mark for PULLING_TASK_ARGUMENTS (creates the entry).
+  manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+  auto idle_after_first_mark = AssertIdleAndGetTime();
+
+  // Advance time and call MarkFootprintAsIdle again — this should be a no-op.
+  AdvanceTime(absl::Milliseconds(500));
+  manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+
+  // Idle time must NOT have been reset to the current (advanced) time.
+  ASSERT_EQ(AssertIdleAndGetTime(), idle_after_first_mark);
+
+  // Call it a few more times with time advancing each time.
+  for (int i = 0; i < 5; i++) {
+    AdvanceTime(absl::Milliseconds(100));
+    manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+    ASSERT_EQ(AssertIdleAndGetTime(), idle_after_first_mark);
+  }
+}
+
 }  // namespace ray

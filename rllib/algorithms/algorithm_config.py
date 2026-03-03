@@ -472,7 +472,6 @@ class AlgorithmConfig(_Config):
         # `self.offline_data()`
         self.input_ = "sampler"
         self.offline_data_class = None
-        self.offline_data_class = None
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
@@ -661,9 +660,6 @@ class AlgorithmConfig(_Config):
         self.prioritized_replay_alpha = DEPRECATED_VALUE
         self.prioritized_replay_beta = DEPRECATED_VALUE
         self.prioritized_replay_eps = DEPRECATED_VALUE
-        self.min_time_s_per_reporting = DEPRECATED_VALUE
-        self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
-        self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self._disable_execution_plan_api = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:

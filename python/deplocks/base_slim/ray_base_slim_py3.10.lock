@@ -139,6 +139,7 @@ aiohttp==3.13.3 \
     #   aiohttp-cors
     #   anyscale
     #   ray
+    #   taskiq
 aiohttp-cors==0.7.0 \
     --hash=sha256:0451ba59fdf6909d0e2cd21e4c0a43752bc0703d33fc78ae94d9d9321710193e \
     --hash=sha256:4d39c6d7100fd9764ed1caf8cebf0eb01bf5e3f24e2e073fda6234bc48b19f5d
@@ -177,6 +178,7 @@ anyio==4.12.0 \
     #   httpx
     #   jupyter-server
     #   starlette
+    #   taskiq
     #   watchfiles
 anyscale==0.26.74 \
     --hash=sha256:e3823395f1fb5fee6ad2f03e16e540f22c3c9f5b8a8867b7d7f711b68be6d8bd
@@ -1243,6 +1245,12 @@ isoduration==20.11.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   jsonschema
+izulu==0.50.0 \
+    --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
+    --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   taskiq
 jedi==0.19.1 \
     --hash=sha256:cf0496f3651bc65d7174ac1b7d043eff454892c708a87d1b683e57b569927ffd \
     --hash=sha256:e983c654fe5c02867aef4cdfce5a2fbb4a50adc0af145f70504238f18ef5e7e0
@@ -2099,6 +2107,7 @@ packaging==24.2 \
     #   kombu
     #   nbconvert
     #   ray
+    #   taskiq
     #   tensorboardx
 pandas==1.5.3 \
     --hash=sha256:14e45300521902689a81f3f41386dc86f19b8ba8dd5ac5a3c7010ef8d2932813 \
@@ -2431,6 +2440,12 @@ pycparser==2.21 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   cffi
+pycron==3.2.0 \
+    --hash=sha256:6d2349746270bd642b71b9f7187cf13f4d9ee2412b4710396a507b5fe4f60dac \
+    --hash=sha256:e125a28aca0295769541a40633f70b602579df48c9cb357c36c28d2628ba2b13
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   taskiq
 pydantic==2.12.4 \
     --hash=sha256:0f8cb9555000a4b5b617f66bfd2566264c4984b27589d3b845685983e8ea85ac \
     --hash=sha256:92d3d202a745d46f9be6df459ac5a064fdaa3c1c4cd8adcfa332ccf3c05f871e
@@ -2438,6 +2453,7 @@ pydantic==2.12.4 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   fastapi
     #   ray
+    #   taskiq
 pydantic-core==2.41.5 \
     --hash=sha256:0177272f88ab8312479336e1d777f6b124537d47f2123f89cb37e0accea97f90 \
     --hash=sha256:01a3d0ab748ee531f4ea6c3e48ad9dac84ddba4b0d82291f87248f2f9de8d740 \
@@ -3058,6 +3074,18 @@ tabulate==0.9.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   anyscale
+taskiq==0.12.1 \
+    --hash=sha256:338dcf58eaca327e511a9380b2185bfa6a415dd79a5cf144546a2dbb95459298 \
+    --hash=sha256:a8ade45e2e23edbadb972a88dec44e68c7daef83383d01fa3af48594a24a712a
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   ray
+taskiq-dependencies==1.5.7 \
+    --hash=sha256:0d3b240872ef152b719153b9526d866d2be978aeeaea6600e878414babc2dcb4 \
+    --hash=sha256:6fcee5d159bdb035ef915d4d848826169b6f06fe57cc2297a39b62ea3e76036f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   taskiq
 tensorboardx==2.6.2.2 \
     --hash=sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8 \
     --hash=sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666
@@ -3168,6 +3196,7 @@ typing-extensions==4.15.0 \
     #   pyopenssl
     #   referencing
     #   starlette
+    #   taskiq
     #   textual
     #   typing-inspection
 typing-inspection==0.4.2 \

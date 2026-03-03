@@ -11,6 +11,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     PhysicalOperator,
     RefBundle,
+    TaskExecDriverStats,
 )
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
@@ -27,7 +28,7 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
 )
-from ray.data.block import BlockMetadata
+from ray.data.block import BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
@@ -123,7 +124,7 @@ class TestHangingExecutionIssueDetector:
         _ = ray.data.range(1).map(f1).materialize()
 
         log_output = log_capture.getvalue()
-        warn_msg = r"A task \(task_id=.+\) .+ \(pid=.+, node_id=.+, attempt=.+\) has been running for [\d\.]+s"
+        warn_msg = r"A task of operator .+ \(pid=.+, node_id=.+, attempt=.+\) has been running for [\d\.]+s"
         assert re.search(warn_msg, log_output) is None, log_output
 
         # # test hanging does log hanging warning
@@ -168,8 +169,18 @@ class TestHangingExecutionIssueDetector:
         op.metrics.on_task_submitted(0, input_bundle)
         op.metrics.on_task_submitted(1, input_bundle)
         op.metrics.on_task_submitted(2, input_bundle)
-        op.metrics.on_task_finished(0, exception=None)
-        op.metrics.on_task_finished(1, exception=None)
+        op.metrics.on_task_finished(
+            0,
+            exception=None,
+            task_exec_stats=TaskExecWorkerStats(task_wall_time_s=0.0),
+            task_exec_driver_stats=TaskExecDriverStats(task_output_backpressure_s=0),
+        )
+        op.metrics.on_task_finished(
+            1,
+            exception=None,
+            task_exec_stats=TaskExecWorkerStats(task_wall_time_s=0.0),
+            task_exec_driver_stats=TaskExecDriverStats(task_output_backpressure_s=0),
+        )
 
         # Start detecting
         issues = detector.detect()

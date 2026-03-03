@@ -3,6 +3,7 @@ import pytest
 import ray
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.deployment_state import DeploymentVersion
+from ray.serve.config import GangSchedulingConfig
 
 
 def test_hash_consistent_across_processes(serve_instance):
@@ -78,6 +79,39 @@ def test_placement_group_options_trigger_restart():
     # Validate actor restart occurs due to differing hash.
     assert v1.placement_group_options_hash != v3.placement_group_options_hash
     assert v1.requires_actor_restart(v3)
+
+
+@pytest.mark.parametrize(
+    "gsc_kwargs,should_restart",
+    [
+        ({"gang_size": 2}, False),
+        ({"gang_size": 4}, True),
+        ({"gang_size": 2, "gang_placement_strategy": "PACK"}, False),
+        ({"gang_size": 2, "gang_placement_strategy": "SPREAD"}, True),
+        (None, True),
+    ],
+)
+def test_gang_scheduling_config_changes_trigger_restart(gsc_kwargs, should_restart):
+    """Test that changing gang_scheduling_config triggers an actor restart."""
+    config1 = GangSchedulingConfig(gang_size=2)
+    config2 = GangSchedulingConfig(**gsc_kwargs) if gsc_kwargs is not None else None
+
+    cfg1 = DeploymentConfig(num_replicas=4, gang_scheduling_config=config1)
+    v1 = DeploymentVersion(
+        code_version="1", deployment_config=cfg1, ray_actor_options={}
+    )
+
+    cfg2 = DeploymentConfig(num_replicas=4, gang_scheduling_config=config2)
+    v2 = DeploymentVersion(
+        code_version="1", deployment_config=cfg2, ray_actor_options={}
+    )
+
+    if should_restart:
+        assert v1.gang_scheduling_config_hash != v2.gang_scheduling_config_hash
+        assert v1.requires_actor_restart(v2)
+    else:
+        assert v1.gang_scheduling_config_hash == v2.gang_scheduling_config_hash
+        assert not v1.requires_actor_restart(v2)
 
 
 if __name__ == "__main__":

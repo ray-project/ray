@@ -75,6 +75,8 @@ class DeploymentVersion:
             or self.placement_group_options_hash
             != new_version.placement_group_options_hash
             or self.max_replicas_per_node != new_version.max_replicas_per_node
+            or self.gang_scheduling_config_hash
+            != new_version.gang_scheduling_config_hash
         )
 
     def requires_actor_reconfigure(self, new_version):
@@ -114,6 +116,12 @@ class DeploymentVersion:
             combined_placement_group_options
         )
         self.placement_group_options_hash = crc32(serialized_placement_group_options)
+        serialized_gang_scheduling_config = _serialize(
+            self.deployment_config.gang_scheduling_config.dict()
+            if self.deployment_config.gang_scheduling_config is not None
+            else {}
+        )
+        self.gang_scheduling_config_hash = crc32(serialized_gang_scheduling_config)
         # Include app-level route prefix in the version hashes so changing
         # it triggers an in-place reconfigure of running replicas.
         serialized_route_prefix = _serialize(self.route_prefix)
@@ -141,6 +149,7 @@ class DeploymentVersion:
                     DeploymentOptionUpdateType.NeedsActorReconfigure,
                 ]
             )
+            + serialized_gang_scheduling_config
         )
 
     def to_proto(self) -> bytes:
