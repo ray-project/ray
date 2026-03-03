@@ -37,7 +37,16 @@ enum class SchedulingType {
   BUNDLE_STRICT_PACK = 6,
   BUNDLE_STRICT_SPREAD = 7,
   AFFINITY_WITH_BUNDLE = 8,
-  NODE_LABEL = 9
+  NODE_LABEL = 9,
+};
+
+// GPU-domain-level scheduling strategies for placement groups
+enum class GpuDomainSchedulingStrategy {
+  NONE = 0,
+  PACK = 1,
+  SPREAD = 2,
+  STRICT_PACK = 3,
+  STRICT_SPREAD = 4,
 };
 
 // Options that controls the scheduling behavior.
@@ -170,6 +179,14 @@ struct SchedulingOptions {
   bool avoid_local_node_;
   bool require_node_available_;
   bool avoid_gpu_nodes_;
+  // GPU-domain-level filter tier that runs before the node-level scheduling
+  // strategy. The node-level strategy is determined by scheduling_type_ as
+  // usual. Set to NONE to disable domain-level filtering.
+  GpuDomainSchedulingStrategy gpu_domain_scheduling_strategy_ =
+      GpuDomainSchedulingStrategy::NONE;
+  // If non-empty, constrains GPU-domain-aware scheduling to the specified
+  // domain (partial failure rescheduling). If empty, a new domain is selected.
+  std::string target_gpu_domain_;
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.

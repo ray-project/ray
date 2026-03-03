@@ -19,6 +19,7 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/bundle_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/gpu_domain_bundle_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/node_affinity_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/node_label_scheduling_policy.h"
@@ -73,17 +74,32 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
       : bundle_pack_policy_(cluster_resource_manager, is_node_available),
         bundle_spread_policy_(cluster_resource_manager, is_node_available),
         bundle_strict_spread_policy_(cluster_resource_manager, is_node_available),
-        bundle_strict_pack_policy_(cluster_resource_manager, is_node_available) {}
+        bundle_strict_pack_policy_(cluster_resource_manager, is_node_available),
+        gpu_domain_strict_pack_policy_(cluster_resource_manager, is_node_available) {}
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options) override;
+      SchedulingOptions options,
+      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) override;
 
  private:
+  /// Routes to the appropriate GPU-domain-level policy and returns candidate domains.
+  GpuDomainFilterResult ScheduleGpuDomainLevel(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      const SchedulingOptions &options,
+      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes);
+
+  /// Routes to the appropriate node-level bundle policy based on scheduling type.
+  SchedulingResult ScheduleNodeLevel(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      SchedulingOptions options,
+      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes);
+
   BundlePackSchedulingPolicy bundle_pack_policy_;
   BundleSpreadSchedulingPolicy bundle_spread_policy_;
   BundleStrictSpreadSchedulingPolicy bundle_strict_spread_policy_;
   BundleStrictPackSchedulingPolicy bundle_strict_pack_policy_;
+  GpuDomainStrictPackSchedulingPolicy gpu_domain_strict_pack_policy_;
 };
 
 }  // namespace raylet_scheduling_policy

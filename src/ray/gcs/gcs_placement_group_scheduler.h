@@ -471,6 +471,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   bool TryReleasingBundleResources(
       const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
 
+  /// Returns true if the placement group is a GPU-domain-aware placement group.
+  bool IsGpuDomainPlacementGroup(const GcsPlacementGroup &pg) const;
+
   /// Help function to check if the resource_name has the pattern
   /// {original_resource_name}_group_{placement_group_id}, which means
   /// wildcard resource.
@@ -509,6 +512,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The bundles that waiting to be destroyed and release resources.
   std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
       waiting_removed_bundles_;
+
+  /// Tracks the selected GPU domain ID for each GPU-domain-aware placement group.
+  absl::flat_hash_map<PlacementGroupID, std::string> placement_group_gpu_domains_;
 
   friend class GcsPlacementGroupSchedulerTest;
   FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);

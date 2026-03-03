@@ -397,7 +397,14 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 SchedulingResult ClusterResourceScheduler::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options) {
-  return bundle_scheduling_policy_->Schedule(resource_request_list, options);
+  absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
+  for (const auto &entry : cluster_resource_manager_->GetResourceView()) {
+    if (NodeAvailable(entry.first)) {
+      candidate_nodes.emplace(entry.first, &entry.second);
+    }
+  }
+  return bundle_scheduling_policy_->Schedule(
+      resource_request_list, options, std::move(candidate_nodes));
 }
 
 }  // namespace ray

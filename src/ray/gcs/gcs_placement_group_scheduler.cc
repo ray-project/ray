@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -56,6 +57,22 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
+  const bool is_gpu_domain_pg = IsGpuDomainPlacementGroup(*placement_group);
+
+  // For GPU-domain PGs: if ALL bundles are unplaced (total failure), clear the
+  // domain assignment so a new domain can be selected. If only some bundles are
+  // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
+  if (is_gpu_domain_pg) {
+    const auto &all_bundles = placement_group->GetBundles();
+    bool is_total_failure = (bundles.size() == all_bundles.size());
+    if (is_total_failure) {
+      auto pg_id = placement_group->GetPlacementGroupID();
+      if (placement_group_gpu_domains_.erase(pg_id) > 0) {
+        RAY_LOG(INFO) << "All bundles for pg " << pg_id
+                      << " are unplaced, rescheduling on a new GPU domain";
+      }
+    }
+  }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
@@ -71,6 +88,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
                               placement_group->GetSoftTargetNodeID());
+  if (is_gpu_domain_pg) {
+    scheduling_options.gpu_domain_scheduling_strategy_ =
+        raylet_scheduling_policy::GpuDomainSchedulingStrategy::STRICT_PACK;
+    auto it = placement_group_gpu_domains_.find(placement_group->GetPlacementGroupID());
+    if (it != placement_group_gpu_domains_.end()) {
+      scheduling_options.target_gpu_domain_ = it->second;
+    }
+  }
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 
@@ -96,6 +121,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                  << ". Selected node size: " << selected_nodes.size();
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
+
+  if (is_gpu_domain_pg && scheduling_result.selected_gpu_domain.has_value()) {
+    placement_group_gpu_domains_[placement_group->GetPlacementGroupID()] =
+        *scheduling_result.selected_gpu_domain;
+    RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
+                  << " assigned to GPU domain: "
+                  << *scheduling_result.selected_gpu_domain;
+  }
 
   // Covert to a map of bundle to node.
   ScheduleMap bundle_to_node;
@@ -166,6 +199,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     // Return destroyed bundles resources to the cluster resource.
     ReturnBundleResources(bundle_locations.value());
   }
+  placement_group_gpu_domains_.erase(placement_group_id);
 }
 
 void GcsPlacementGroupScheduler::MarkScheduleCancelled(
@@ -663,9 +697,26 @@ absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMa
   return node_bundle_resources_map;
 }
 
-/// Help function to check if the resource_name has the pattern
-/// {original_resource_name}_group_{placement_group_id}, which means
-/// wildcard resource.
+bool GcsPlacementGroupScheduler::IsGpuDomainPlacementGroup(
+    const GcsPlacementGroup &pg) const {
+  constexpr std::string_view kAcceleratorTypeKey = "ray.io/accelerator-type";
+  constexpr std::string_view kGB300Value = "GB300";
+
+  const auto &all_bundles = pg.GetBundles();
+  // Only checking the first bundle since we've already validated that if the GB300 label
+  // selector is present, it must be present in all bundles in placement_group.py
+  const auto &bundle = all_bundles[0];
+  const auto &label_selector = bundle->GetRequiredResources().GetLabelSelector();
+  for (const auto &constraint : label_selector.GetConstraints()) {
+    if (constraint.GetLabelKey() == kAcceleratorTypeKey &&
+        constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
+        constraint.GetLabelValues().contains(kGB300Value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(
     const std::string &resource_name) {
   std::string_view resource_name_view(resource_name);
