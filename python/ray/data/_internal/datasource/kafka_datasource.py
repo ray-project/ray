@@ -675,12 +675,15 @@ class KafkaDatasource(Datasource):
 
                                     next_offset = msg.offset() + 1
 
-                                if len(records) >= KafkaDatasource.BATCH_SIZE_FOR_YIELD:
-                                    table = pa.Table.from_pylist(records)
-                                    output_buffer.add_block(table)
-                                    while output_buffer.has_next():
-                                        yield output_buffer.next()
-                                    records = []
+                                    if (
+                                        len(records)
+                                        >= KafkaDatasource.BATCH_SIZE_FOR_YIELD
+                                    ):
+                                        table = pa.Table.from_pylist(records)
+                                        output_buffer.add_block(table)
+                                        while output_buffer.has_next():
+                                            yield output_buffer.next()
+                                        records = []
 
                         # Yield any remaining records
                         if records:
