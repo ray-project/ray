@@ -613,6 +613,31 @@ class RequestRouter(ABC):
             }
         )
 
+    def _compute_backoff_s(self, attempt: int) -> float:
+        """Compute the backoff time in seconds for a given retry attempt.
+
+        Uses exponential backoff with the class-level backoff parameters.
+
+        Args:
+            attempt: The retry attempt number (0-indexed).
+
+        Returns:
+            The number of seconds to sleep before the next retry.
+        """
+        return min(
+            self.initial_backoff_s * (self.backoff_multiplier**attempt),
+            self.max_backoff_s,
+        )
+
+    async def _backoff(self, attempt: int) -> None:
+        """Sleep for the appropriate backoff time for a given retry attempt.
+
+        Args:
+            attempt: The retry attempt number (0-indexed).
+        """
+        backoff_s = self._compute_backoff_s(attempt)
+        await asyncio.sleep(backoff_s)
+
     def _update_router_queue_len_gauge(
         self, replica_id: ReplicaID, queue_len: int, *, force: bool = False
     ) -> None:
@@ -644,6 +669,19 @@ class RequestRouter(ABC):
         contents of `RequestRouter.request_router_kwargs`.
         """
         pass
+
+    @property
+    def supports_rejection_protocol(self) -> bool:
+        """Whether this router supports the rejection protocol.
+
+        The rejection protocol is used when replicas may reject requests due to
+        being at capacity. Routers that guarantee capacity
+        should return False to skip the rejection handling.
+
+        Returns:
+            True if rejection protocol should be used, False otherwise.
+        """
+        return True
 
     @property
     def _event_loop(self) -> asyncio.AbstractEventLoop:
@@ -1126,11 +1164,7 @@ class RequestRouter(ABC):
                     )
                 else:
                     # Only backoff after the first retry.
-                    backoff_s = min(
-                        self.initial_backoff_s * self.backoff_multiplier**attempt,
-                        self.max_backoff_s,
-                    )
-                    await asyncio.sleep(backoff_s)
+                    await self._backoff(attempt)
                     attempt += 1
         finally:
             if entered_backoff:
@@ -1332,10 +1366,28 @@ class RequestRouter(ABC):
         pending_request: PendingRequest,
         replica_id: ReplicaID,
         result: ReplicaResult,
-    ):
+    ) -> None:
         """Called when a request is routed to a replica.
 
         This is used as a callback to update the state of the request router
         after a response is generated.
+        """
+        pass
+
+    def on_request_completed(
+        self,
+        replica_id: ReplicaID,
+        internal_request_id: str,
+    ) -> None:
+        """Called when a request to a replica has completed.
+
+        This lifecycle hook is called after a request finishes (successfully or
+        with an error). It can be used by request routers that need to perform
+        cleanup after a request completes, such as releasing capacity tokens.
+
+        Args:
+            replica_id: The ID of the replica that handled the request.
+            internal_request_id: The internal unique identifier for the request
+                (from RequestMetadata.internal_request_id).
         """
         pass

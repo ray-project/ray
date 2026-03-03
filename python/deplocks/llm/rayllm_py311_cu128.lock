@@ -138,6 +138,7 @@ aiohttp==3.13.3 \
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   -r python/requirements.txt
     #   aiohttp-cors
+    #   taskiq
     #   vllm
 aiohttp-cors==0.7.0 \
     --hash=sha256:0451ba59fdf6909d0e2cd21e4c0a43752bc0703d33fc78ae94d9d9321710193e \
@@ -193,6 +194,7 @@ anyio==4.5.0 \
     #   openai
     #   sse-starlette
     #   starlette
+    #   taskiq
     #   watchfiles
 apache-tvm-ffi==0.1.8.post2 \
     --hash=sha256:0bc5456f971097dcd973daba32cb6f321893873c53235159ab6426b0c7bef7e2 \
@@ -1540,6 +1542,12 @@ interegular==0.3.3 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   lm-format-enforcer
+izulu==0.50.0 \
+    --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
+    --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   taskiq
 jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
@@ -2609,6 +2617,7 @@ packaging==24.2 \
     #   lm-format-enforcer
     #   pooch
     #   ray
+    #   taskiq
     #   tensorboardx
     #   transformers
 pandas==2.3.3 \
@@ -3191,6 +3200,12 @@ pycparser==2.21 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   cffi
+pycron==3.2.0 \
+    --hash=sha256:6d2349746270bd642b71b9f7187cf13f4d9ee2412b4710396a507b5fe4f60dac \
+    --hash=sha256:e125a28aca0295769541a40633f70b602579df48c9cb357c36c28d2628ba2b13
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   taskiq
 pydantic==2.12.3 \
     --hash=sha256:1da1c82b0fc140bb0103bc1441ffe062154c8d38491189751ee00fd8ca65ce74 \
     --hash=sha256:6986454a854bc3bc6e5443e1369e06a3a456af9d339eda45510f517d9ea5c6bf
@@ -3208,6 +3223,7 @@ pydantic==2.12.3 \
     #   openai
     #   openai-harmony
     #   pydantic-extra-types
+    #   taskiq
     #   vllm
     #   xgrammar
 pydantic-core==2.41.4 \
@@ -4332,6 +4348,18 @@ tabulate==0.9.0 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
     #   flashinfer-python
+taskiq==0.12.1 \
+    --hash=sha256:338dcf58eaca327e511a9380b2185bfa6a415dd79a5cf144546a2dbb95459298 \
+    --hash=sha256:a8ade45e2e23edbadb972a88dec44e68c7daef83383d01fa3af48594a24a712a
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   -r python/requirements.txt
+taskiq-dependencies==1.5.7 \
+    --hash=sha256:0d3b240872ef152b719153b9526d866d2be978aeeaea6600e878414babc2dcb4 \
+    --hash=sha256:6fcee5d159bdb035ef915d4d848826169b6f06fe57cc2297a39b62ea3e76036f
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py311_cu128.lock
+    #   taskiq
 tensorboardx==2.6.2.2 \
     --hash=sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8 \
     --hash=sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666

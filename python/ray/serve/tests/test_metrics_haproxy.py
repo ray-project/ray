@@ -17,6 +17,7 @@ Key differences from the default Serve proxy:
 import http
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Optional
 
 import httpx
@@ -36,12 +37,9 @@ from ray._common.test_utils import (
 from ray._common.utils import reset_ray_address
 from ray.serve import HTTPOptions
 from ray.serve._private.long_poll import LongPollHost, UpdatedObject
-from ray.serve._private.test_utils import (
-    get_application_url,
-)
+from ray.serve._private.test_utils import get_application_url, get_metric_dictionaries
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.tests.conftest import TEST_METRICS_EXPORT_PORT
-from ray.serve.tests.test_metrics import get_metric_dictionaries
 from ray.util.state import list_actors
 
 
@@ -605,6 +603,66 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows")
+def test_no_499_misclassification_after_successful_response(metrics_start_shutdown):
+    """Reproduce the race where response is sent (body without more_body) but
+    response_finished stays False, then disconnect arrives and we incorrectly log 499.
+
+    convert_object_to_asgi_messages omits more_body in the final body chunk (valid
+    per ASGI spec). The fix treats omitted more_body as final so we don't
+    misclassify successful responses as 499 when client disconnects after response.
+    """
+
+    @serve.deployment
+    async def fast_return(request: Request):
+        return "ok"
+
+    serve.run(
+        fast_return.bind(),
+        route_prefix="/race_test",
+        name="race_test",
+    )
+
+    http_url = get_application_url("HTTP", app_name="race_test")
+
+    def _request_then_close_immediately():
+        """Send request, read 1 byte of response, then close. This creates the race:
+        server has sent full response (body without more_body) but client closes
+        before request_task exits. Without the fix, response_finished stays False
+        and we incorrectly log 499."""
+        with httpx.Client() as client:
+            with client.stream("GET", http_url) as response:
+                next(
+                    response.iter_bytes(1)
+                )  # Read 1 byte, then exit - connection closes
+
+    # Run many times to hit the race (disconnect arrives before request_task exits)
+    num_requests = 500
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [
+            executor.submit(_request_then_close_immediately)
+            for _ in range(num_requests)
+        ]
+        for f in as_completed(futures):
+            f.result()
+
+    # First assert all requests were processed
+    def check_request_count_and_no_499_errors():
+        check_sum_metric_eq(
+            "ray_serve_num_http_requests_total",
+            num_requests,
+            tags={"route": "/race_test"},
+        )
+        check_sum_metric_eq(
+            "ray_serve_num_http_error_requests_total",
+            0,
+            tags={"route": "/race_test", "error_code": "499"},
+        )
+        return True
+
+    wait_for_condition(check_request_count_and_no_499_errors, timeout=30)
+
+
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -828,6 +886,7 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     wait_for_condition(
         lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
         == 3,
+        timeout=40,
     )
     health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
     expected_output = {

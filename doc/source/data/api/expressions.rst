@@ -23,6 +23,7 @@ Public API
     udf
     pyarrow_udf
     download
+    monotonically_increasing_id
 
 Expression Classes
 ------------------

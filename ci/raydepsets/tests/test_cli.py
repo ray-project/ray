@@ -417,12 +417,12 @@ class TestCli(unittest.TestCase):
             [
                 "--no-annotate",
                 "--no-header",
-                "--extra-index-url https://download.pytorch.org/whl/cu128",
+                "--index https://download.pytorch.org/whl/cu128",
             ]
         ) == [
             "--no-annotate",
             "--no-header",
-            "--extra-index-url",
+            "--index",
             "https://download.pytorch.org/whl/cu128",
         ]
 
@@ -1028,7 +1028,7 @@ class TestCli(unittest.TestCase):
             for pkg in expected_packages:
                 assert pkg in names, f"Expected package {pkg} not found"
 
-            # Verify options (--index-url and --extra-index-url)
+            # Verify options (--index-url and --index)
             assert len(rf.options) >= 1
 
             # Verify packages with environment markers are parsed
@@ -1051,6 +1051,133 @@ class TestCli(unittest.TestCase):
             names2 = sorted([req.name for req in rf2.requirements])
             assert names == names2
             assert len(rf2.requirements) == len(rf.requirements)
+
+    def test_relax(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            # First compile a depset to create the source lock file
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            # Relax by removing emoji from the lock file
+            manager.relax(
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji"],
+                name="relaxed_depset",
+                output="requirements_compiled_relaxed.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_relaxed.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" not in names
+            assert "pyperclip" in names
+
+    def test_relax_multiple_packages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            # Relax by removing both packages
+            manager.relax(
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji", "pyperclip"],
+                name="relaxed_depset",
+                output="requirements_compiled_relaxed.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_relaxed.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "emoji" not in names
+            assert "pyperclip" not in names
+            assert len(rf.requirements) == 0
+
+    def test_relax_package_not_found(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                append_flags=["--no-annotate"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            with self.assertRaises(RuntimeError) as e:
+                manager.relax(
+                    source_depset="general_depset__py311_cpu",
+                    packages=["nonexistent-package"],
+                    name="relaxed_depset",
+                    output="requirements_compiled_relaxed.txt",
+                )
+            assert "Package nonexistent-package not found in lock file" in str(
+                e.exception
+            )
+
+    def test_relax_preserves_options(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            manager.compile(
+                constraints=["requirement_constraints_test.txt"],
+                requirements=["requirements_test.txt"],
+                name="general_depset__py311_cpu",
+                output="requirements_compiled_general.txt",
+            )
+            # Verify the source has an index URL option
+            source_rf = parse_lock_file(
+                str(Path(tmpdir) / "requirements_compiled_general.txt")
+            )
+            assert len(source_rf.options) >= 1
+
+            manager.relax(
+                source_depset="general_depset__py311_cpu",
+                packages=["emoji"],
+                name="relaxed_depset",
+                output="requirements_compiled_relaxed.txt",
+            )
+            output_rf = parse_lock_file(
+                str(Path(tmpdir) / "requirements_compiled_relaxed.txt")
+            )
+            # Options (like --index-url) should be preserved
+            assert len(output_rf.options) >= 1
+
+    def test_relax_large_lock_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            # Use the large lock file as source by creating a depset that points to it
+            depset = Depset(
+                name="large_depset",
+                operation="compile",
+                requirements=["requirements_test.txt"],
+                output="requirements_compiled_large_test.txt",
+                config_name="test.depsets.yaml",
+            )
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            manager = _create_test_manager(tmpdir)
+            # Relax by removing numpy and torch
+            manager.relax(
+                source_depset="large_depset",
+                packages=["numpy", "torch"],
+                name="relaxed_large_depset",
+                output="requirements_compiled_relaxed_large.txt",
+            )
+            output_file = Path(tmpdir) / "requirements_compiled_relaxed_large.txt"
+            rf = parse_lock_file(str(output_file))
+            names = [req.name for req in rf.requirements]
+            assert "numpy" not in names
+            assert "torch" not in names
+            assert len(rf.requirements) == 38  # 40 - 2 removed
 
 
 if __name__ == "__main__":

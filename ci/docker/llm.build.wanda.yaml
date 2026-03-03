@@ -7,6 +7,8 @@ srcs:
   - ci/suppress_output
   - python/deplocks/llm/rayllm_test_py311_cpu.lock
   - python/deplocks/llm/rayllm_test_py311_cu128.lock
+  - python/deplocks/llm/rayllm_test_py312_cpu.lock
+  - python/deplocks/llm/rayllm_test_py312_cu129.lock
 tags:
   - cr.ray.io/rayproject/llm$BUILD_VARIANT
 build_args:

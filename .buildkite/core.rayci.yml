@@ -256,6 +256,7 @@ steps:
       - manylinux-x86_64
       - corebuild-multipy
       - forge
+      - ray-wheel-build
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:

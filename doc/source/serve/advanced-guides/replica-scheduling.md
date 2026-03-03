@@ -9,7 +9,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 | Goal | Solution | Example |
 |------|----------|---------|
 | Multi-GPU inference with tensor parallelism | `placement_group_bundles` + `STRICT_PACK` | vLLM with `tensor_parallel_size=4` |
-| Target specific GPU types or zones | Custom resources in `ray_actor_options` | Schedule on A100 nodes only |
+| Target specific GPU types or zones | `label_selector` in `ray_actor_options` | Schedule on A100 nodes only |
 | Limit replicas per node for high availability | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
 | Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
@@ -69,8 +69,10 @@ By default, Ray Serve uses a **spread scheduling strategy** that distributes rep
 
 When scheduling a replica, the scheduler evaluates strategies in the following priority order:
 
-1. **Placement groups**: If you specify `placement_group_bundles`, the scheduler uses a `PlacementGroupSchedulingStrategy` to co-locate the replica with its required resources.
+1. **Placement groups**: If you specify `placement_group_bundles`, the scheduler uses a `PlacementGroupSchedulingStrategy` to co-locate the replica with its required resources. If you specify `placement_group_bundle_label_selector`, the scheduler will only select nodes with the required labels for each bundle.
 2. **Pack scheduling with node affinity**: If pack scheduling is enabled, the scheduler identifies the best available node by preferring non-idle nodes (nodes already running replicas) and using a best-fit algorithm to minimize resource fragmentation. It then uses a `NodeAffinitySchedulingStrategy` with soft constraints to schedule the replica on that node.
+  - **With labels**: If a `label_selector` is provided, the scheduler strictly filters candidate nodes to match the labels before selecting the best fit.
+  - **With fallback**: If a `fallback_strategy` is provided, the scheduler first attempts to pack on nodes matching the labels. If no matching nodes are available, it retries using the next fallback option.
 3. **Default strategy**: Falls back to `SPREAD` when pack scheduling isn't enabled.
 
 ### Downscaling behavior
@@ -126,6 +128,19 @@ For more details on placement group strategies, see the [Ray Core placement grou
 A **placement group** is a Ray primitive that reserves a group of resources (called **bundles**) across one or more nodes in your cluster. When you configure [`placement_group_bundles`](../api/doc/ray.serve.deployment_decorator.rst) for a Ray Serve deployment, Ray creates a dedicated placement group for *each replica*, ensuring those resources are reserved and available for that replica's use.
 
 A **bundle** is a dictionary specifying resource requirements, such as `{"CPU": 2, "GPU": 1}`. When you define multiple bundles, you're telling Ray to reserve multiple sets of resources that can be placed according to your chosen strategy.
+
+#### Controlling placement group location with label selectors
+You can further refine where placement groups are scheduled using a `placement_group_bundle_label_selector`. This field defines a list of label selectors to apply per-bundle when scheduling the Serve deployment. This allows you to restrict the nodes where your bundles (and therefore your replicas) are placed based on Ray node labels. For more information on Ray label selectors, see [Use labels to control scheduling](https://docs.ray.io/en/latest/ray-core/scheduling/labels.html).
+
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __placement_group_labels_start__
+:end-before: __placement_group_labels_end__
+:language: python
+```
+
+The `placement_group_bundle_label_selector` accepts a list of dictionaries.
+- Single selector: If you provide a list containing a single dictionary, that selector is applied to all bundles in `placement_group_bundles`.
+- Per-bundle selector: If you provide a list of multiple dictionaries, the length must match `placement_group_bundles`. The *i*-th selector applies to the *i*-th bundle.
 
 #### What placement groups and bundles mean
 
@@ -195,35 +210,43 @@ The following example reserves 2 GPUs for each replica using a strict pack strat
 
 The replica actor is scheduled in the first bundle, so the resources specified in `ray_actor_options` must be a subset of the first bundle's resources. All actors and tasks created by the replica are scheduled in the placement group by default (`placement_group_capture_child_tasks=True`).
 
-### Target nodes with custom resources
+### Target nodes with labels
 
-You can use custom resources in [`ray_actor_options`](../api/doc/ray.serve.deployment_decorator.rst) to target replicas to specific nodes. This is the recommended approach for controlling which nodes run your replicas.
+You can use label selectors in [`ray_actor_options`](../api/doc/ray.serve.deployment_decorator.rst) to target replicas to specific nodes. This is the recommended approach for controlling which nodes run your replicas.
 
-Then configure your deployment to require the specific resource:
+Then configure your deployment to require the specific labels:
 
 ```{literalinclude} ../doc_code/replica_scheduling.py
-:start-after: __custom_resources_start__
-:end-before: __custom_resources_end__
+:start-after: __label_selectors_start__
+:end-before: __label_selectors_end__
 :language: python
 ```
 
-First, start your Ray nodes with custom resources that identify their capabilities:
+First, start your Ray nodes with labels that identify their capabilities:
 
 ```{literalinclude} ../doc_code/replica_scheduling.py
-:start-after: __custom_resources_main_start__
-:end-before: __custom_resources_main_end__
+:start-after: __label_selector_main_start__
+:end-before: __label_selector_main_end__
 :language: python
 ```
 
-Custom resources offer several advantages for Ray Serve deployments:
+#### Soft constraints with `fallback_strategy`
 
-- **Quantifiable**: You can request specific amounts (such as `{"A100": 2}` for 2 GPUs or `{"A100": 0.5}` to share a GPU between 2 replicas), while labels are binary (present or absent).
-- **Autoscaler-aware**: The Ray autoscaler understands custom resources and can provision nodes with the required resources automatically.
-- **Scheduling guarantees**: Replicas won't be scheduled until nodes with the required custom resources are available, preventing placement on incompatible nodes.
+By default, a `label_selector` acts as a hard constraint. If no node matches the selector, the replica remains pending indefinitely. You can relax this requirement by providing a `fallback_strategy` in `ray_actor_options`.
 
-:::{tip}
-Use descriptive resource names that reflect the node's capabilities, such as GPU types, availability zones, or hardware generations.
-:::
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __fallback_strategy_start__
+:end-before: __fallback_strategy_end__
+:language: python
+```
+
+This allows you to express preferences. For example, when using PACK scheduling, the scheduler will attempt to find a node that matches the `label_selector` first. If no available node is found, the scheduler will retry scheduling using the rules defined in your fallback strategy.
+
+Label selectors and fallback strategies offer several advantages for Ray Serve deployments:
+
+- **Expressive placement constraints**: Ray automatically detects and populates labels for node attributes like `ray.io/accelerator-type`, or you can add custom labels at startup using the `--labels` flag. You can target these labels utilizing familiar Kubernetes-like syntax with complex operators (equality, negation (`!`), inclusion (`in`), and exclusion (`!in`)) to precisely filter which nodes run your replicas.
+- **Autoscaler-aware**: The Ray autoscaler understands label selectors and can provision nodes with the required labels automatically.
+- **Soft constraints**: Unlike custom resources which are strict requirements, label selectors can also be specified in the `fallback_strategy` field. This allows you to define preferred scheduling options while permitting the scheduler to utilize alternative nodes if the primary targets are unavailable, preventing deployments from stalling.
 
 ## Environment variables
 
@@ -262,7 +285,7 @@ export RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES="TPU,custom_accelerator"
 ray start --head
 ```
 
-When pack scheduling sorts replicas by resource requirements, the priority order is:
+When pack scheduling is enabled, the scheduler first filters the cluster to find nodes that match the `label_selector` (if specified). It then sorts the pending replicas by resource requirements to pack them efficiently. The priority order for sorting replicas is:
 1. Custom resources in `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES` (in order)
 2. GPU
 3. CPU
