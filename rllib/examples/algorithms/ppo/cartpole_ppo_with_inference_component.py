@@ -37,8 +37,9 @@ config = (
         inference_num_gpus_per_actor=0.2,
     )
     .learners(
-        num_learners=0,
-        num_gpus_per_learner=0,
+        num_learners=1,
+        num_cpus_per_learner=1,
+        num_gpus_per_learner=0.8,
     )
 )
 
