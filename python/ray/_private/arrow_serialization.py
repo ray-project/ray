@@ -297,14 +297,6 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     """
     import pyarrow as pa
 
-    if _is_dense_union(a.type):
-        # Dense unions are not supported.
-        # TODO(Clark): Support dense unions.
-        raise NotImplementedError(
-            "Custom slice view serialization of dense union arrays is not yet "
-            "supported."
-        )
-
     # Dispatch to handler for array type.
     if pa.types.is_null(a.type):
         return _null_array_to_array_payload(a)
@@ -533,8 +525,6 @@ def _union_array_to_array_payload(a: "pyarrow.UnionArray") -> "PicklableArrayPay
     # Dedicated path for UnionArrays.
     # UnionArrays have a top-level bitmap buffer and type code buffer, and one or
     # more children arrays.
-    # Buffer scheme: [None, typecodes, child_bitmap, child_data, ...]
-    assert not _is_dense_union(a.type)
     buffers = a.buffers()
     assert len(buffers) > 1, len(buffers)
 
@@ -545,19 +535,53 @@ def _union_array_to_array_payload(a: "pyarrow.UnionArray") -> "PicklableArrayPay
     type_code_buf = buffers[1]
     type_code_buf = _copy_buffer_if_needed(type_code_buf, pa.int8(), a.offset, len(a))
 
-    # Get field children payload.
-    # Offsets and truncations are already propagated to the field arrays, so we can
-    # serialize them as-is.
-    children = [_array_to_array_payload(a.field(i)) for i in range(a.type.num_fields)]
+    if _is_dense_union(a.type):
+        import numpy as np
+
+        # Dense unions include an additional value offsets buffer that indexes into
+        # child arrays.
+        assert len(buffers) > 2, len(buffers)
+        value_offset_buf = buffers[2]
+        value_offset_buf = _copy_buffer_if_needed(
+            value_offset_buf, pa.int32(), a.offset, len(a)
+        )
+        type_codes = np.frombuffer(type_code_buf, dtype=np.int8, count=len(a))
+        value_offsets = np.frombuffer(
+            value_offset_buf, dtype=np.int32, count=len(a)
+        ).copy()
+
+        # Propagate slice truncation to children and rewrite value offsets so they
+        # index into the new child slices.
+        children = []
+        for i, type_code in enumerate(a.type.type_codes):
+            mask = type_codes == np.int8(type_code)
+            if mask.any():
+                child_offset = int(value_offsets[mask].min())
+                child_limit = int(value_offsets[mask].max()) + 1
+                child_length = child_limit - child_offset
+                value_offsets[mask] -= child_offset
+            else:
+                child_offset = 0
+                child_length = 0
+            child = a.field(i).slice(child_offset, child_length)
+            children.append(_array_to_array_payload(child))
+        value_offset_buf = pa.py_buffer(value_offsets)
+        new_buffers = [bitmap_buf, type_code_buf, value_offset_buf]
+    else:
+        # Sparse union children are already aligned with parent offsets.
+        children = [
+            _array_to_array_payload(a.field(i)) for i in range(a.type.num_fields)
+        ]
+        new_buffers = [bitmap_buf, type_code_buf]
+
     return PicklableArrayPayload(
         type=a.type,
         length=len(a),
-        buffers=[bitmap_buf, type_code_buf],
+        buffers=new_buffers,
         null_count=a.null_count,
         offset=0,
         children=children,
     )
-
 
 def _dictionary_array_to_array_payload(
     a: "pyarrow.DictionaryArray",

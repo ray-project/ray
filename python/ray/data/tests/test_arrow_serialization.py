@@ -533,6 +533,34 @@ def test_custom_arrow_data_serializer_fallback(
             assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
+def test_dense_union_payload_rebases_value_offsets():
+    arr = pa.UnionArray.from_dense(
+        pa.array([0, 1, 0, 1, 0, 1], type=pa.int8()),
+        pa.array([5, 6, 7, 8, 9, 10], type=pa.int32()),
+        [
+            pa.array(list(range(20))),
+            pa.array([True, False] * 10),
+        ],
+    )
+    view = arr.slice(2, 4)
+
+    payload = PicklableArrayPayload.from_array(view)
+    restored = payload.to_array()
+
+    assert view.equals(restored)
+    assert restored.offset == 0
+
+    type_codes = restored.type_codes.to_numpy(zero_copy_only=False)
+    value_offsets = restored.offsets.to_numpy(zero_copy_only=False)
+    for i, type_code in enumerate(restored.type.type_codes):
+        used_offsets = value_offsets[type_codes == np.int8(type_code)]
+        if used_offsets.size > 0:
+            assert used_offsets.min() == 0
+            assert len(restored.field(i)) == int(used_offsets.max()) + 1
+        else:
+            assert len(restored.field(i)) == 0
+
+
 def test_arrow_scalar_conversion(ray_start_regular_shared):
     ds = ray.data.from_items([1])
 
