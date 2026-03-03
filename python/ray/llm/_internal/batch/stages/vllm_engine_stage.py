@@ -81,6 +81,8 @@ class vLLMEngineRequest(BaseModel):
     prompt_token_ids: Optional[List[int]]
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
+    # The kwargs for tokenization.
+    tokenization_kwargs: Optional[Dict[str, Any]] = None
     # LoRA request.
     lora_request: Optional[Any] = None
 
@@ -234,8 +236,8 @@ class vLLMEngineWrapper:
         self.request_id = 0
         self.idx_in_batch_column = idx_in_batch_column
         self.task_type = kwargs.pop("task_type", vLLMTaskType.GENERATE)
-        # Flag to log deprecation warning only once
         self._guided_decoding_warning_logged = False
+        self._truncate_prompt_tokens_warning_logged = False
 
         # Use model_source in kwargs["model"] because "model" is actually
         # the model source in vLLM.
@@ -394,6 +396,8 @@ class vLLMEngineWrapper:
         mm_processor_kwargs = row.pop("mm_processor_kwargs", None)
         multimodal_uuids = row.pop("multimodal_uuids", None)
 
+        tokenization_kwargs = row.pop("tokenization_kwargs", None)
+
         lora_request = await self._maybe_get_lora_request(row)
 
         # Prepare sampling parameters.
@@ -438,9 +442,33 @@ class vLLMEngineWrapper:
             vLLMTaskType.CLASSIFY,
             vLLMTaskType.SCORE,
         ):
-            pooling_params = row.pop("pooling_params", {})
+            pooling_params = maybe_convert_ndarray_to_list(
+                row.pop("pooling_params", {})
+            )
+
+            # vLLM 0.16.0 deprecates truncate_prompt_tokens in PoolingParams.
+            # truncate_prompt_tokens must be passed via tokenization_kwargs instead.
+            # TODO (jeffreywang): Remove this in Ray 2.56.0.
+            if "truncate_prompt_tokens" in pooling_params:
+                truncate_value = pooling_params.pop("truncate_prompt_tokens")
+                if not self._truncate_prompt_tokens_warning_logged:
+                    logger.warning(
+                        "Setting truncate_prompt_tokens in pooling_params is "
+                        "deprecated. Please pass "
+                        "tokenization_kwargs={'truncation': True, "
+                        "'max_length': N} via the tokenization_kwargs column instead."
+                    )
+                    self._truncate_prompt_tokens_warning_logged = True
+                if truncate_value == -1:
+                    truncate_value = self._vllm_config.model_config.max_model_len
+
+                if tokenization_kwargs is None:
+                    tokenization_kwargs = {}
+                tokenization_kwargs.setdefault("truncation", True)
+                tokenization_kwargs.setdefault("max_length", truncate_value)
+
             params = vllm.PoolingParams(
-                **maybe_convert_ndarray_to_list(pooling_params),
+                **pooling_params,
                 task=self.task_type,
             )
         else:
@@ -456,6 +484,7 @@ class vLLMEngineWrapper:
             mm_processor_kwargs=mm_processor_kwargs,
             multimodal_uuids=multimodal_uuids,
             params=params,
+            tokenization_kwargs=tokenization_kwargs,
             lora_request=lora_request,
         )
         self.request_id += 1
@@ -495,7 +524,7 @@ class vLLMEngineWrapper:
 
         import vllm
 
-        # TODO (jeffreywang): Consolidate to multimodal_data only
+        # TODO (jeffreywang): Consolidate to multimodal_data only in Ray 2.56.0
         if request.images:
             multi_modal_data = (
                 {**request.multimodal_data, "image": request.images}
@@ -522,7 +551,6 @@ class vLLMEngineWrapper:
             )
 
         # Send the request to the LLM engine.
-        # vLLM 0.12.0 uses encode() for pooling/embedding/classification tasks, generate() for text generation
         if self.task_type in (
             vLLMTaskType.EMBED,
             vLLMTaskType.CLASSIFY,
@@ -532,6 +560,7 @@ class vLLMEngineWrapper:
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 pooling_params=request.params,
+                tokenization_kwargs=request.tokenization_kwargs,
             )
         else:
             stream = self.engine.generate(
@@ -973,5 +1002,12 @@ class vLLMEngineStage(StatefulStage):
                 "The pooling parameters. See "
                 "https://docs.vllm.ai/en/latest/api/vllm/#vllm.PoolingParams "
                 "for details. If not provided, default pooling parameters will be used."
+            )
+            ret["tokenization_kwargs"] = (
+                "Tokenization keyword arguments passed to the vLLM engine. "
+                "Use this to control prompt truncation, e.g. "
+                '{"truncation": true, "max_length": 512}. '
+                "See https://docs.vllm.ai/en/latest/features/input_processing.html "
+                "for details."
             )
         return ret

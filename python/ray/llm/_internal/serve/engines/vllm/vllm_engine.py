@@ -1,5 +1,6 @@
 import argparse
 import dataclasses
+import inspect
 import typing
 from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Tuple, Union
 
@@ -309,11 +310,19 @@ class VLLMEngine(LLMEngine):
 
         args = _dict_to_namespace(merged)
 
-        await init_app_state(
-            self._engine_client,
-            state=state,
-            args=args,
-        )
+        if "vllm_config" in inspect.signature(init_app_state).parameters:
+            await init_app_state(
+                self._engine_client,
+                vllm_config=vllm_engine_config,
+                state=state,
+                args=args,
+            )
+        else:
+            await init_app_state(
+                self._engine_client,
+                state=state,
+                args=args,
+            )
 
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
