@@ -54,6 +54,13 @@ class Read(
         self.parallelism = parallelism
         self.detected_parallelism = None
 
+    @property
+    def window_shuffle_config(self):
+        from ray.data.datasource.file_based_datasource import WindowShuffle
+
+        shuffle = getattr(self.datasource, "_shuffle", None)
+        return shuffle if isinstance(shuffle, WindowShuffle) else None
+
     def output_data(self):
         return None
 
@@ -100,6 +107,12 @@ class Read(
             return (
                 len(metadata.input_files) if metadata.input_files is not None else None
             )
+
+        # When WindowShuffle is active, the read operator produces smaller
+        # blocks (target_max_block_size / merge_window).
+        ws = self.window_shuffle_config
+        if ws is not None:
+            target_max_block_size = target_max_block_size // ws.merge_window
 
         # Otherwise, estimate total number of blocks from estimated total
         # byte size

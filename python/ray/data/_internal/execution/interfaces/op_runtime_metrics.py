@@ -762,13 +762,16 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # If we don’t have a sample yet and the limit is “unlimited”, we can’t
         # estimate – just bail out.
         if bytes_per_output is None:
-            if context.target_max_block_size is None:
+            # Prefer the operator-level override (e.g. smaller blocks from
+            # WindowShuffle) over the global DataContext default.
+            target = (
+                self._op.target_max_block_size_override or context.target_max_block_size
+            )
+            if target is None:
                 return None
             else:
                 # Block size can be up to MAX_SAFE_BLOCK_SIZE_FACTOR larger before being sliced.
-                bytes_per_output = (
-                    context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
-                )
+                bytes_per_output = target * MAX_SAFE_BLOCK_SIZE_FACTOR
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:
