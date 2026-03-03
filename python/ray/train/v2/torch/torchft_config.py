@@ -9,7 +9,7 @@ from ray.train.torch.config import (
     _TorchBackend,
 )
 from ray.train.v2._internal.constants import TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR
-from ray.train.v2._internal.execution.worker_group import WorkerGroup
+from ray.train.v2._internal.execution.worker_group import ReplicaGroup, WorkerGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -57,16 +57,19 @@ class _TorchftBackend(_TorchBackend):
     the parent _TorchBackend.on_start() once per replica group.
     """
 
+    has_replica_groups: bool = True
+
     def __init__(self):
         super().__init__()
         self.lighthouse_actor = None
+        self.lighthouse_address = None
 
     def _maybe_create_lighthouse_actor(
         self, backend_config: TorchftConfig
     ) -> Optional[str]:
         """Create lighthouse actor if it doesn't exist and return its address."""
         if self.lighthouse_actor is not None:
-            return None
+            return self.lighthouse_address
 
         # Let the OS pick a free port by default
         if "bind" in backend_config.lighthouse_kwargs:
@@ -82,16 +85,14 @@ class _TorchftBackend(_TorchBackend):
                 soft=False,
             )
         ).remote(lighthouse_kwargs=lighthouse_kwargs)
-        lighthouse_address = ray.get(self.lighthouse_actor.address.remote())
-        logger.info(f"Created torchft lighthouse at {lighthouse_address}")
-        return lighthouse_address
+        self.lighthouse_address = ray.get(self.lighthouse_actor.address.remote())
+        logger.info(f"Created torchft lighthouse at {self.lighthouse_address}")
+        return self.lighthouse_address
 
     def on_start(self, worker_group, backend_config: TorchftConfig):
-        assert isinstance(worker_group, WorkerGroup)
         lighthouse_address = self._maybe_create_lighthouse_actor(backend_config)
-        replica_groups = worker_group.get_replica_groups()
 
-        # Push the lighthouse address to all workers.
+        # Push the lighthouse address to all workers in this group.
         # Necessary because workers were already started before on_start runs.
         def _set_lighthouse_address(addr: str):
             os.environ[TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR] = addr
@@ -101,10 +102,18 @@ class _TorchftBackend(_TorchBackend):
         # Bind super() eagerly — the zero-arg form relies on a __class__ cell
         # that doesn't transfer correctly into ThreadPoolExecutor submissions.
         parent_on_start = super().on_start
-        with ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(parent_on_start, rg, backend_config)
-                for rg in replica_groups
-            ]
-            for f in futures:
-                f.result()
+
+        if isinstance(worker_group, ReplicaGroup):
+            # Single replica group replacement — just start this one.
+            parent_on_start(worker_group, backend_config)
+        else:
+            # Full worker group startup — start all replica groups in parallel.
+            assert isinstance(worker_group, WorkerGroup)
+            replica_groups = worker_group.get_replica_groups()
+            with ThreadPoolExecutor() as executor:
+                futures = [
+                    executor.submit(parent_on_start, rg, backend_config)
+                    for rg in replica_groups
+                ]
+                for f in futures:
+                    f.result()

@@ -1,10 +1,16 @@
 import abc
-from typing import Callable, List, TypeVar
+from typing import TYPE_CHECKING, Callable, List, Optional, TypeVar
 
 import ray
 from ray.train._internal.base_worker_group import BaseWorkerGroup
+from ray.train.v2._internal.execution.worker_group.state import _shutdown_workers
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.worker_group.poll import (
+        WorldRankToOngoingPoll,
+    )
 
 T = TypeVar("T")
 
@@ -65,16 +71,38 @@ class ReplicaGroup(ExecutionGroup):
     as if they were a standalone worker group.
     """
 
-    def __init__(self, workers: List[Worker], resources_per_worker: dict):
+    def __init__(
+        self,
+        workers: List[Worker],
+        resources_per_worker: dict,
+        world_rank_to_ongoing_poll: Optional["WorldRankToOngoingPoll"] = None,
+    ):
         self._workers = workers
         self._resources_per_worker = resources_per_worker
+        self._world_rank_to_ongoing_poll = world_rank_to_ongoing_poll
 
     def _assert_active(self):
-        # Expected to always be active since just created from WorkerGroup.
-        return True
+        if self._workers is None:
+            raise ValueError("ReplicaGroup has been shut down.")
 
     def get_workers(self) -> List[Worker]:
+        self._assert_active()
         return self._workers
 
     def get_resources_per_worker(self) -> dict:
         return self._resources_per_worker
+
+    def shutdown(self):
+        """Shutdown all workers in this replica group and clear state."""
+        if self._workers is not None:
+            # Remove workers from ongoing poll tracking before shutdown.
+            if self._world_rank_to_ongoing_poll is not None:
+                ranks = [
+                    w.distributed_context.world_rank
+                    for w in self._workers
+                    if w.distributed_context is not None
+                ]
+                self._world_rank_to_ongoing_poll.remove_ranks(ranks)
+
+            _shutdown_workers(self._workers)
+            self._workers = None

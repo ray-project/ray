@@ -41,6 +41,7 @@ class Backend(metaclass=Singleton):
     """
 
     share_cuda_visible_devices: bool = False
+    has_replica_groups: bool = False
 
     def on_start(self, worker_group: BaseWorkerGroup, backend_config: BackendConfig):
         """Logic for starting this backend."""

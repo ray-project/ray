@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Iterable, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
 from ray.train.v2._internal.exceptions import (
@@ -45,6 +45,18 @@ class WorkerStatus:
 @dataclass(frozen=True)
 class WorkerGroupPollStatus:
     worker_statuses: Dict[int, WorkerStatus]
+    worker_rank_to_replica_group_rank: Optional[Dict[int, int]] = None
+
+    @property
+    def failing_replica_group_indices(self) -> Set[int]:
+        """Return the set of replica group indices that have failing workers."""
+        if self.worker_rank_to_replica_group_rank is None:
+            return set()
+        return {
+            self.worker_rank_to_replica_group_rank[rank]
+            for rank in self.errors
+            if rank in self.worker_rank_to_replica_group_rank
+        }
 
     @property
     def errors(self) -> Dict[int, Exception]:
@@ -128,3 +140,34 @@ class PollTask:
 
     start_time: float
     task: ObjectRef
+
+
+class WorldRankToOngoingPoll:
+    """Tracks ongoing poll tasks by world rank.
+
+    Wraps a dictionary mapping world rank to PollTask with
+    update interface methods.
+    """
+
+    def __init__(self):
+        self._polls: Dict[int, PollTask] = {}
+
+    def get(self, rank: int) -> Optional[PollTask]:
+        return self._polls.get(rank)
+
+    def setdefault(self, rank: int, poll_task: PollTask) -> PollTask:
+        return self._polls.setdefault(rank, poll_task)
+
+    def pop(self, rank: int) -> Optional[PollTask]:
+        return self._polls.pop(rank, None)
+
+    def remove_ranks(self, ranks: Iterable[int]) -> None:
+        """Remove poll tasks for the given ranks."""
+        for rank in ranks:
+            self._polls.pop(rank, None)
+
+    def clear(self) -> None:
+        self._polls.clear()
+
+    def __contains__(self, rank: int) -> bool:
+        return rank in self._polls

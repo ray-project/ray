@@ -3,8 +3,7 @@ import copy
 import logging
 import os
 import traceback
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -31,6 +30,8 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckTimeoutError,
 )
 from ray.train.v2._internal.execution.callback import (
+    ExecutionGroupCallback,
+    ReplicaGroupCallback,
     TrainContextCallback,
     WorkerCallback,
     WorkerGroupCallback,
@@ -52,8 +53,10 @@ from ray.train.v2._internal.execution.worker_group.placement_group_handle import
 from ray.train.v2._internal.execution.worker_group.poll import (
     PollTask,
     WorkerGroupPollStatus,
+    WorldRankToOngoingPoll,
 )
 from ray.train.v2._internal.execution.worker_group.state import (
+    WorkerGroupContext,
     WorkerGroupState,
     WorkerGroupStateBuilder,
 )
@@ -64,7 +67,6 @@ from ray.train.v2._internal.execution.worker_group.worker import (
 )
 from ray.train.v2._internal.logging.logging import get_train_application_worker_log_path
 from ray.train.v2._internal.util import (
-    ObjectRefWrapper,
     bundle_to_remote_args,
     invoke_context_managers,
     time_monotonic,
@@ -83,31 +85,6 @@ from ray.util.tpu import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class WorkerGroupContext:
-    """Context for a worker group.
-
-    This stores the context that is shared when starting a worker group.
-
-    Attributes:
-        run_attempt_id: The ID of the run attempt.
-        train_fn_ref: An object store reference to the training function to execute.
-        num_workers: The number of workers in the worker group.
-        resources_per_worker: The resources per worker.
-        placement_strategy: Strategy for placing workers.
-        label_selector: Optional label selectors to apply per-bundle for workers.
-        num_slices: The number of TPU slices (if using TPU). Defaults to 1.
-    """
-
-    run_attempt_id: str
-    train_fn_ref: ObjectRefWrapper[Callable[[], None]]
-    num_workers: int
-    resources_per_worker: Dict[str, float]
-    placement_strategy: str = "PACK"
-    label_selector: Optional[List[Dict[str, str]]] = None
-    num_slices: int = 1
 
 
 class WorkerGroup(ExecutionGroup):
@@ -162,6 +139,10 @@ class WorkerGroup(ExecutionGroup):
         callbacks = callbacks or []
         # Group of callbacks that are specific to worker group itself.
         self._callbacks = [c for c in callbacks if isinstance(c, WorkerGroupCallback)]
+        # Group of callbacks for replica group lifecycle events.
+        self._replica_group_callbacks = [
+            c for c in callbacks if isinstance(c, ReplicaGroupCallback)
+        ]
         # Group of callbacks that will be propagated and called on the worker actors.
         self._worker_callbacks_to_propagate = [
             c
@@ -171,8 +152,10 @@ class WorkerGroup(ExecutionGroup):
 
         self._worker_group_state: Optional[WorkerGroupState] = None
         self._replica_groups: Optional[List[ReplicaGroup]] = None
-        # Maps world rank to the ongoing poll task.
-        self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
+        # Maps world rank to replica group index.
+        self._worker_rank_to_replica_group_rank: Optional[Dict[int, int]] = None
+        # Tracks ongoing poll tasks by world rank.
+        self._world_rank_to_ongoing_poll = WorldRankToOngoingPoll()
         self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
         # Environment variables
@@ -324,31 +307,25 @@ class WorkerGroup(ExecutionGroup):
             worker_group_state_builder.with_workers(workers)
 
             self._replica_groups = [
-                ReplicaGroup([worker], worker_group_context.resources_per_worker)
+                ReplicaGroup(
+                    [worker],
+                    worker_group_context.resources_per_worker,
+                    self._world_rank_to_ongoing_poll,
+                )
                 for worker in workers
             ]
+            self._worker_rank_to_replica_group_rank = {
+                worker.distributed_context.world_rank: i
+                for i, rg in enumerate(self._replica_groups)
+                for worker in rg.get_workers()
+            }
 
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
-                train_context_args = {}
-                for callable in self._callbacks:
-                    args = callable.before_init_train_context(workers)
-                    for arg, arg_values in args.items():
-                        assert len(arg_values) == worker_group_context.num_workers, (
-                            f"Callback {callable} returned {arg} with "
-                            f"{len(arg_values)} values, expected {worker_group_context.num_workers}."
-                        )
-                        assert (
-                            arg not in train_context_args
-                        ), f"Callback {callable} returned {arg} which is already set."
-                        train_context_args[arg] = arg_values
-
-                self._init_train_context_on_workers(
-                    workers, sync_actor, train_context_args
-                )
+                self._init_train_context(workers, sync_actor, self._callbacks)
 
                 self._worker_group_state = worker_group_state_builder.build()
 
@@ -389,7 +366,28 @@ class WorkerGroup(ExecutionGroup):
         num_workers: int,
         placement_group: PlacementGroup,
         resources_per_worker: Dict[str, float],
+        bundle_indices: Optional[List[int]] = None,
+        distributed_contexts: Optional[List[DistributedContext]] = None,
     ) -> List[Worker]:
+        """Create worker actors at placement group bundle indices.
+
+        Args:
+            num_workers: Number of workers to create.
+            placement_group: The placement group to schedule workers in.
+            resources_per_worker: Resources per worker.
+            bundle_indices: Optional explicit bundle indices to use.
+                If None, uses range(num_workers).
+            distributed_contexts: Optional pre-computed distributed contexts.
+                If provided, assigns them directly instead of calling
+                _assign_worker_ranks. Used for replica group replacement.
+
+        Returns:
+            List of Worker instances. If distributed_contexts is None,
+            workers are sorted by world rank via _assign_worker_ranks.
+        """
+        indices = (
+            bundle_indices if bundle_indices is not None else list(range(num_workers))
+        )
 
         runtime_env = self._get_worker_runtime_env(
             custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
@@ -405,7 +403,7 @@ class WorkerGroup(ExecutionGroup):
                     placement_group=placement_group, placement_group_bundle_index=i
                 ),
             ).remote()
-            for i in range(num_workers)
+            for i in indices
         ]
 
         try:
@@ -421,10 +419,47 @@ class WorkerGroup(ExecutionGroup):
             raise WorkerGroupStartupFailedError(error_msg) from actor_error
 
         workers = [
-            Worker(actor, meta, resources_per_worker)
-            for actor, meta in zip(actors, actor_metadatas)
+            Worker(actor, meta, resources_per_worker, bundle_index=idx)
+            for idx, actor, meta in zip(indices, actors, actor_metadatas)
         ]
-        return WorkerGroup._assign_worker_ranks(workers)
+
+        if distributed_contexts is not None:
+            for worker, dc in zip(workers, distributed_contexts):
+                worker.distributed_context = dc
+            return workers
+        else:
+            return WorkerGroup._assign_worker_ranks(workers)
+
+    def _init_train_context(
+        self,
+        workers: List[Worker],
+        sync_actor: ActorHandle,
+        callbacks: List[ExecutionGroupCallback],
+    ) -> None:
+        """Collect train context args from callbacks and initialize train context.
+
+        This method is used by both _start_impl (for full worker group startup)
+        and replace_replica_group (for partial replica replacement).
+
+        Args:
+            workers: The workers to initialize.
+            sync_actor: The synchronization actor.
+            callbacks: Callbacks to collect train context args from.
+        """
+        train_context_args: Dict[str, List[Any]] = {}
+        for cb in callbacks:
+            args = cb.before_init_train_context(workers)
+            for arg, arg_values in args.items():
+                assert len(arg_values) == len(workers), (
+                    f"Callback {cb} returned {arg} with "
+                    f"{len(arg_values)} values, expected {len(workers)}."
+                )
+                assert (
+                    arg not in train_context_args
+                ), f"Callback {cb} returned {arg} which is already set."
+                train_context_args[arg] = arg_values
+
+        self._init_train_context_on_workers(workers, sync_actor, train_context_args)
 
     def _init_train_context_on_workers(
         self,
@@ -524,7 +559,9 @@ class WorkerGroup(ExecutionGroup):
 
     def _clear_state(self):
         self._worker_group_state = None
-        self._world_rank_to_ongoing_poll = {}
+        self._replica_groups = None
+        self._worker_rank_to_replica_group_rank = None
+        self._world_rank_to_ongoing_poll.clear()
 
     def abort(self):
         """Abort the worker group."""
@@ -556,6 +593,7 @@ class WorkerGroup(ExecutionGroup):
 
         worker_group_poll_status = WorkerGroupPollStatus(
             worker_statuses=dict(enumerate(poll_results)),
+            worker_rank_to_replica_group_rank=self._worker_rank_to_replica_group_rank,
         )
 
         for callback in self._callbacks:
@@ -612,7 +650,7 @@ class WorkerGroup(ExecutionGroup):
             # Save the start time of the poll task to check for timeouts.
             # Don't overwrite the ongoing poll task if it already exists.
             ongoing_poll = self._world_rank_to_ongoing_poll.setdefault(
-                hanging_rank, PollTask(start_time, hanging_poll)
+                hanging_rank, PollTask(start_time=start_time, task=hanging_poll)
             )
 
             error = None
@@ -633,7 +671,7 @@ class WorkerGroup(ExecutionGroup):
             done_rank = poll_task_to_world_rank[done_poll]
 
             # Remove the ongoing poll task for the worker.
-            self._world_rank_to_ongoing_poll.pop(done_rank, None)
+            self._world_rank_to_ongoing_poll.pop(done_rank)
 
             try:
                 poll_result: WorkerStatus = ray.get(done_poll)
@@ -668,12 +706,99 @@ class WorkerGroup(ExecutionGroup):
         workers = self.get_workers()
         poll_tasks = []
         for i, worker in enumerate(workers):
-            if i in self._world_rank_to_ongoing_poll:
-                ongoing_poll = self._world_rank_to_ongoing_poll[i]
+            ongoing_poll = self._world_rank_to_ongoing_poll.get(i)
+            if ongoing_poll is not None:
                 poll_tasks.append(ongoing_poll.task)
             else:
                 poll_tasks.append(worker.actor.poll_status.remote())
         return poll_tasks
+
+    #####################################################################################
+    # Replica Group Replacement
+    #####################################################################################
+
+    def replace_replica_group(self, replica_group_index: int):
+        """Replace a failing replica group with new workers at the same placement
+        group slots.
+
+        Args:
+            replica_group_index: The index of the replica group to replace.
+        """
+        self._assert_active()
+
+        # Save old replica group state.
+        old_replica_group = self._replica_groups[replica_group_index]
+        old_workers = old_replica_group.get_workers()
+        old_distributed_contexts = [w.distributed_context for w in old_workers]
+        old_bundle_indices = [w.bundle_index for w in old_workers]
+
+        # Shutdown old replica group.
+        for cb in self._replica_group_callbacks:
+            cb.before_replica_group_shutdown(old_replica_group)
+        old_replica_group.shutdown()
+
+        # Create new workers with old replica group state.
+        pg = self._worker_group_state.placement_group_handle.placement_group
+        new_workers = self._create_workers(
+            num_workers=len(old_workers),
+            placement_group=pg,
+            resources_per_worker=self._worker_group_context.resources_per_worker,
+            bundle_indices=old_bundle_indices,
+            distributed_contexts=old_distributed_contexts,
+        )
+
+        # Initialize train context on new workers.
+        sync_actor = self._worker_group_state.sync_actor
+        try:
+            self._init_train_context(
+                new_workers, sync_actor, self._replica_group_callbacks
+            )
+        except RayActorError as actor_error:
+            error_msg = (
+                "At least one replacement worker failed to initialize "
+                f"in replica group {replica_group_index}."
+            )
+            raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+        # Update internal tracking.
+        self._worker_group_state = self._worker_group_state.replace_workers(
+            old_workers, new_workers
+        )
+        new_replica_group = ReplicaGroup(
+            new_workers,
+            self._worker_group_context.resources_per_worker,
+            self._world_rank_to_ongoing_poll,
+        )
+        self._replica_groups[replica_group_index] = new_replica_group
+        for w in new_workers:
+            self._worker_rank_to_replica_group_rank[
+                w.distributed_context.world_rank
+            ] = replica_group_index
+
+        # Start training.
+        for cb in self._replica_group_callbacks:
+            cb.after_replica_group_start(new_replica_group)
+        worker_group_context = self._worker_group_context
+        ray.get(
+            [
+                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
+                for worker in new_workers
+            ]
+        )
+
+        workers_info = "\n".join(
+            [
+                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
+                f"world_rank={w.distributed_context.world_rank}, "
+                f"local_rank={w.distributed_context.local_rank}, "
+                f"node_rank={w.distributed_context.node_rank}"
+                for w in new_workers
+            ]
+        )
+        logger.info(
+            f"Started training replica group of size {len(new_workers)}: "
+            f"\n{workers_info}"
+        )
 
     #####################################################################################
     # Utility Methods

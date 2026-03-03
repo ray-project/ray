@@ -58,10 +58,8 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
-    WorkerGroupPollStatus,
-)
-from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
+    WorkerGroupPollStatus,
 )
 from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
@@ -184,6 +182,12 @@ class TrainController:
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
         )
 
+        self._has_replica_groups = (
+            train_run_context.backend_config.backend_cls.has_replica_groups
+            if train_run_context.backend_config
+            else False
+        )
+
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
 
@@ -243,6 +247,30 @@ class TrainController:
         if failure_result:
             return failure_result
 
+        if (
+            self._has_replica_groups
+            and decision.poll_status is not None
+            and self._worker_group
+        ):
+            # Torchft: replace only failing replica groups.
+            try:
+                self._replace_bad_workers(decision.poll_status)
+            except Exception as e:
+                optional_controller_error = ControllerError(e)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=optional_controller_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=optional_controller_error,
+                )
+            return TrainControllerLoopIterationResult(
+                run_attempt_id=self._get_run_attempt_id(),
+                previous_state=self._state,
+                next_state=RunningState(),
+            )
+
+        # Standard: full restart.
         if self._worker_group:
             self._shutdown_worker_group()
 
@@ -265,6 +293,26 @@ class TrainController:
                 previous_state=self._state,
                 next_state=RunningState(),
             )
+
+    def _replace_bad_workers(self, poll_status: WorkerGroupPollStatus):
+        """Replace failing replica groups in the worker group.
+
+        Args:
+            poll_status: The poll status containing error information.
+
+        Returns:
+            None
+        """
+        failing_rg_indices = poll_status.failing_replica_group_indices
+
+        if not failing_rg_indices:
+            logger.warning("No failing replica groups found in poll status.")
+            return
+
+        logger.info(f"Replacing failing replica groups: {failing_rg_indices}")
+
+        for rg_index in failing_rg_indices:
+            self._worker_group.replace_replica_group(rg_index)
 
     def _get_retry_state(
         self,

@@ -1,15 +1,24 @@
 import logging
 import os
 
-from ray.train.v2._internal.execution.callback import WorkerGroupCallback
+from ray.train.v2._internal.execution.callback import (
+    ReplicaGroupCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.context import get_train_context
-from ray.train.v2._internal.execution.worker_group import WorkerGroup
+from ray.train.v2._internal.execution.worker_group import (
+    ExecutionGroup,
+    ReplicaGroup,
+    WorkerGroup,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class WorkingDirectorySetupCallback(WorkerGroupCallback):
-    def after_worker_group_start(self, worker_group: WorkerGroup):
+class WorkingDirectorySetupCallback(ReplicaGroupCallback, WorkerGroupCallback):
+    def _after_execution_group_start(self, execution_group: ExecutionGroup):
+        """Shared logic for setting up the working directory on an execution group."""
+
         def chdir_to_working_dir() -> None:
             """Create the local working directory for the experiment."""
             local_working_directory = (
@@ -21,4 +30,10 @@ class WorkingDirectorySetupCallback(WorkerGroupCallback):
             )
             os.chdir(local_working_directory)
 
-        worker_group.execute(chdir_to_working_dir)
+        execution_group.execute(chdir_to_working_dir)
+
+    def after_worker_group_start(self, worker_group: WorkerGroup):
+        self._after_execution_group_start(worker_group)
+
+    def after_replica_group_start(self, replica_group: ReplicaGroup):
+        self._after_execution_group_start(replica_group)
