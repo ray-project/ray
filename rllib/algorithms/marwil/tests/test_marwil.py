@@ -1,5 +1,4 @@
 import unittest
-from pathlib import Path
 
 import gymnasium as gym
 import numpy as np
@@ -13,6 +12,7 @@ from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import unflatten_dict
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import LEARNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import check
@@ -38,11 +38,7 @@ class TestMARWIL(unittest.TestCase):
           --stop='{"timesteps_total": 50000}' \
           --config='{"output": "/tmp/out", "batch_mode": "complete_episodes"}'
         """
-        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-        base_path = Path(__file__).parents[3]
-        print(f"base_path={base_path}")
-        data_path = "local://" / base_path / data_path
-        print(f"data_path={data_path}")
+        data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 
         config = (
             marwil.MARWILConfig()
@@ -83,11 +79,7 @@ class TestMARWIL(unittest.TestCase):
 
         Learns from a historic-data file.
         """
-        data_path = "offline/tests/data/pendulum/pendulum-v1_large"
-        base_path = Path(__file__).parents[3]
-        print(f"base_path={base_path}")
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
-        print(f"data_path={data_path}")
+        data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "pendulum/"
 
         config = (
             marwil.MARWILConfig()
@@ -126,12 +118,7 @@ class TestMARWIL(unittest.TestCase):
 
     def test_marwil_loss_function(self):
         """Test MARWIL's loss function."""
-
-        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-        base_path = Path(__file__).parents[3]
-        print(f"base_path={base_path}")
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
-        print(f"data_path={data_path}")
+        data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 
         config = (
             marwil.MARWILConfig()
@@ -235,9 +222,7 @@ class TestMARWIL(unittest.TestCase):
 
     def test_marwil_lr_schedule(self):
         # Define the data paths.
-        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-        base_path = Path(__file__).parents[3]
-        data_path = "local://" / base_path / data_path
+        data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 
         config = (
             marwil.MARWILConfig()

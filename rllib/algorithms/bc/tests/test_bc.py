@@ -4,6 +4,7 @@ from pathlib import Path
 import ray
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.env_vars import RLLIB_OFFLINE_DATA_S3_ROOT
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -24,10 +25,7 @@ class TestBC(unittest.TestCase):
 
     def test_bc_compilation_and_learning_from_offline_file(self):
         # Define the data paths.
-        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
-        base_path = Path(__file__).parents[3]
-        print(f"base_path={base_path}")
-        data_path = "local://" / base_path / data_path
+        data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
 
         print(f"data_path={data_path}")
 
@@ -87,7 +85,7 @@ class TestBC(unittest.TestCase):
 
     def test_bc_lr_schedule(self):
         # Define the data paths.
-        data_path = "offline/tests/data/cartpole/cartpole-v1_large"
+        data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
         base_path = Path(__file__).parents[3]
         data_path = "local://" / base_path / data_path
 

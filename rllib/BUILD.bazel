@@ -41,15 +41,8 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest", "py_test_module_list")
 
-filegroup(
-    name = "cartpole-v1_large",
-    data = glob(["offline/tests/data/cartpole/cartpole-v1_large/*.parquet"]),
-    visibility = ["//visibility:public"],
-)
-
 doctest(
     size = "enormous",
-    data = glob(["offline/tests/data/cartpole/cartpole-v1_large/*.parquet"]),
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -431,10 +424,6 @@ py_test(
     args = [
         "--as-test",
     ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-    ],
     main = "examples/algorithms/bc/cartpole_bc.py",
     tags = [
         "exclusive",
@@ -451,10 +440,6 @@ py_test(
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
-    ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/bc/cartpole_bc.py",
     tags = [
@@ -477,10 +462,6 @@ py_test(
         "--offline-evaluation-interval=1",
         "--num-offline-eval-runners=2",
     ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-    ],
     main = "examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
         "exclusive",
@@ -501,10 +482,6 @@ py_test(
         "--num-offline-eval-runners=2",
         "--num-gpus-per-offline-eval-runner=0.5",
     ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-    ],
     main = "examples/algorithms/bc/cartpole_bc_with_offline_evaluation.py",
     tags = [
         "exclusive",
@@ -523,10 +500,6 @@ py_test(
     srcs = ["examples/algorithms/cql/pendulum_cql.py"],
     args = [
         "--as-test",
-    ],
-    # Include the zipped json data file as well.
-    data = [
-        "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "examples/algorithms/cql/pendulum_cql.py",
     tags = [
@@ -750,10 +723,6 @@ py_test(
         "--as-test",
         "--num-cpus=32",
     ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/pendulum/pendulum-v1_enormous",
-    ],
     main = "examples/algorithms/iql/pendulum_iql.py",
     tags = [
         "exclusive",
@@ -772,10 +741,6 @@ py_test(
         "--as-test",
         "--num-cpus=32",
         "--num-gpus-per-learner=1",
-    ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/pendulum/pendulum-v1_enormous",
     ],
     main = "examples/algorithms/iql/pendulum_iql.py",
     tags = [
@@ -796,10 +761,6 @@ py_test(
     args = [
         "--as-test",
     ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-    ],
     main = "examples/algorithms/marwil/cartpole_marwil.py",
     tags = [
         "exclusive",
@@ -817,10 +778,6 @@ py_test(
     args = [
         "--as-test",
         "--num-gpus-per-learner=1",
-    ],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
     ],
     main = "examples/algorithms/marwil/cartpole_marwil.py",
     tags = [
@@ -1715,8 +1672,6 @@ py_test(
     name = "test_bc",
     size = "medium",
     srcs = ["algorithms/bc/tests/test_bc.py"],
-    # Include the offline data files.
-    data = ["offline/tests/data/cartpole/cartpole-v1_large"],
     tags = [
         "algorithms",
         "team:rllib",
@@ -1813,11 +1768,6 @@ py_test(
     name = "test_marwil",
     size = "large",
     srcs = ["algorithms/marwil/tests/test_marwil.py"],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-        "offline/tests/data/pendulum/pendulum-v1_large",
-    ],
     tags = [
         "algorithms",
         "team:rllib",
@@ -2625,7 +2575,6 @@ py_test(
     srcs = ["offline/tests/test_offline_data.py"],
     # Include the offline data files.
     data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
         "offline/tests/data/cartpole/large.json",
     ],
     tags = [
@@ -2639,10 +2588,6 @@ py_test(
     name = "test_offline_evaluation_runner",
     size = "medium",
     srcs = ["offline/tests/test_offline_evaluation_runner.py"],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-    ],
     tags = [
         "offline",
         "team:rllib",
@@ -2654,10 +2599,6 @@ py_test(
     name = "test_offline_policy_evaluation_runner",
     size = "medium",
     srcs = ["offline/tests/test_offline_policy_evaluation_runner.py"],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-    ],
     tags = [
         "offline",
         "team:rllib",
@@ -2669,10 +2610,6 @@ py_test(
     name = "test_offline_evaluation_runner_group",
     size = "medium",
     srcs = ["offline/tests/test_offline_evaluation_runner_group.py"],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
-    ],
     tags = [
         "offline",
         "team:rllib",
@@ -2688,7 +2625,6 @@ py_test(
     srcs = ["offline/tests/test_offline_prelearner.py"],
     # Include the offline data files.
     data = [
-        "offline/tests/data/cartpole/cartpole-v1_large",
         "offline/tests/data/cartpole/large.json",
     ],
     tags = [
@@ -2702,10 +2638,6 @@ py_test(
     name = "test_offline_rl_stateful",
     size = "medium",
     srcs = ["offline/tests/test_offline_rl_stateful.py"],
-    # Include the offline data files.
-    data = [
-        "offline/tests/data/statelesscartpole",
-    ],
     tags = [
         "offline",
         "team:rllib",
@@ -5020,8 +4952,6 @@ py_test(
         "--as-test",
         "--framework=torch",
     ],
-    # Include the offline data files.
-    data = ["offline/tests/data/cartpole/cartpole-v1_large"],
     main = "examples/offline_rl/train_w_bc_finetune_w_ppo.py",
     tags = [
         "examples",
