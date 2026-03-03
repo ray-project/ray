@@ -3141,10 +3141,25 @@ class DeploymentState:
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
+            gang_config = self.get_gang_config()
+            gang_id_by_replica = None
+
+            if gang_config is not None:
+                # Build gang membership map so the scheduler can select complete gangs
+                gang_id_by_replica = {}
+                for replica in self._replicas.get():
+                    if replica.gang_context is not None:
+                        gang_id_by_replica[
+                            replica.replica_id
+                        ] = replica.gang_context.gang_id
+
             removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
             logger.info(f"Removing {removed_replicas} from {self._id}.")
             downscale = DeploymentDownscaleRequest(
-                deployment_id=self._id, num_to_stop=to_remove
+                deployment_id=self._id,
+                num_to_stop=to_remove,
+                gang_id_by_replica=gang_id_by_replica,
+                gang_size=gang_config.gang_size if gang_config else None,
             )
 
         return upscale, downscale
