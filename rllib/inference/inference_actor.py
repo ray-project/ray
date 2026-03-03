@@ -3,11 +3,20 @@ from typing import Any, Dict, Optional
 
 import gymnasium as gym
 
+from ray.rllib.connectors.env_to_module import (
+    NumpyToTensor,
+)
+from ray.rllib.connectors.module_to_env import (
+    GetActions,
+    ModuleToEnvPipeline,
+    TensorToNumpy,
+)
 from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import get_device
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -20,6 +29,7 @@ logger = logging.getLogger("ray.rllib")
 class InferenceActor:
     def __init__(self, *, config, **kwargs):
         self.config = config
+        self.explore = self.config.explore
 
         self._device = get_device(
             config=self.config,
@@ -28,10 +38,15 @@ class InferenceActor:
 
         self.env: Optional[gym.Env] = None
         self.make_env()
-        self.spaces: Optional[Dict] = self.get_spaces()
+
+        spaces = self.get_spaces()
+        self.spaces: Optional[Dict] = spaces
 
         self.module: Optional[RLModule] = None
         self.make_module()
+
+        self.numpy_to_tensor = NumpyToTensor(device=self._device)
+        self.gpu_to_cpu_pipeline = self._build_gpu_to_cpu_pipeline()
 
     def make_env(self) -> None:
         """Creates a vectorized gymnasium env and stores it in `self.env`.
@@ -123,9 +138,67 @@ class InferenceActor:
         }
 
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Pass batch to the RLModule."""
-        return self.module._forward_exploration(batch, **kwargs)
+        """Pass batch to the RLModule.
+
+        Handle parts of the EnvToModule and ModuleToEnv pipelines that can be run on GPUs
+        """
+
+        batch = self.numpy_to_tensor(
+            rl_module=self.module,
+            batch=batch,
+            episodes=None,
+        )
+
+        to_env = self.module._forward_exploration(batch, **kwargs)
+        to_env = self.gpu_to_cpu_pipeline(
+            rl_module=self.module,
+            batch=to_env,
+            episodes=[SingleAgentEpisode(),], # hack
+            explore=self.explore,
+        )
+
+        return to_env
 
     def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Pass batch to the RLModule."""
         return self.module._forward_inference(batch, **kwargs)
+
+    def _build_gpu_to_cpu_pipeline(self):
+        env = self.env
+        spaces = self.spaces
+
+        if env is not None:
+            obs_space = getattr(env, "single_observation_space", env.observation_space)
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
+            obs_space = spaces[INPUT_ENV_SINGLE_SPACES][0]
+        else:
+            obs_space = self.config.observation_space
+        if obs_space is None and self.config.is_multi_agent:
+            obs_space = gym.spaces.Dict(
+                {
+                    aid: env.envs[0].unwrapped.get_observation_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
+                }
+            )
+        if env is not None:
+            act_space = getattr(env, "single_action_space", env.action_space)
+        elif spaces is not None and INPUT_ENV_SINGLE_SPACES in spaces:
+            act_space = spaces[INPUT_ENV_SINGLE_SPACES][1]
+        else:
+            act_space = self.config.action_space
+        if act_space is None and self.config.is_multi_agent:
+            act_space = gym.spaces.Dict(
+                {
+                    aid: env.envs[0].unwrapped.get_action_space(aid)
+                    for aid in env.envs[0].unwrapped.possible_agents
+                }
+            )
+        pipeline = ModuleToEnvPipeline(
+            input_observation_space=obs_space,
+            input_action_space=act_space,
+            connectors=[],
+        )
+        pipeline.append(GetActions())
+        pipeline.append(TensorToNumpy())
+
+        return pipeline
