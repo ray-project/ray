@@ -6,6 +6,10 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
+from ray.data._internal.execution.interfaces.execution_options import (
+    ExecutionOptions,
+    ExecutionResources,
+)
 from ray.runtime_env import RuntimeEnv
 from ray.train import BackendConfig, DataConfig
 from ray.train.v2._internal.callbacks.state_manager import (
@@ -53,7 +57,11 @@ from ray.train.v2._internal.state.state_actor import (
     get_state_actor,
 )
 from ray.train.v2._internal.state.state_manager import TrainStateManager
-from ray.train.v2._internal.state.util import _DEAD_CONTROLLER_ABORT_STATUS_DETAIL
+from ray.train.v2._internal.state.util import (
+    _DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
+    construct_data_config,
+    execution_options_to_dict,
+)
 from ray.train.v2.api.config import (
     CheckpointConfig,
     FailureConfig,
@@ -883,6 +891,115 @@ def test_get_framework_version(ray_start_regular, fw):
         assert list(versions.keys()) == ["ray"]
     else:
         assert fw in versions
+
+
+def test_execution_options_to_dict_defaults_and_custom():
+    """Test execution_options_to_dict with default and fully customized options."""
+    # Default options
+    default_result = execution_options_to_dict(ExecutionOptions())
+    assert set(default_result.keys()) == {
+        "resource_limits",
+        "exclude_resources",
+        "locality_with_output",
+        "preserve_order",
+        "actor_locality_enabled",
+        "verbose_progress",
+    }
+    assert default_result["locality_with_output"] is False
+    assert default_result["preserve_order"] is False
+    assert default_result["actor_locality_enabled"] is True
+
+    # All custom values
+    custom_result = execution_options_to_dict(
+        ExecutionOptions(
+            resource_limits=ExecutionResources(
+                cpu=8.0, gpu=4.0, object_store_memory=1e9
+            ),
+            exclude_resources=ExecutionResources(cpu=2.0, gpu=0.5),
+            locality_with_output=True,
+            preserve_order=True,
+            actor_locality_enabled=False,
+            verbose_progress=False,
+        )
+    )
+    assert custom_result["resource_limits"]["CPU"] == 8.0
+    assert custom_result["resource_limits"]["GPU"] == 4.0
+    assert custom_result["resource_limits"]["object_store_memory"] == 1e9
+    assert custom_result["exclude_resources"]["CPU"] == 2.0
+    assert custom_result["exclude_resources"]["GPU"] == 0.5
+    assert custom_result["locality_with_output"] is True
+    assert custom_result["preserve_order"] is True
+    assert custom_result["actor_locality_enabled"] is False
+    assert custom_result["verbose_progress"] is False
+
+
+def test_construct_data_config_defaults_and_split_variants():
+    """Test construct_data_config with default config and different split options."""
+    # Default
+    default = construct_data_config(DataConfig())
+    assert isinstance(default, DataConfigSchema)
+    assert default.datasets_to_split == "all"
+    assert default.enable_shard_locality is True
+    assert default.execution_options == {}
+
+    # Specific dataset list
+    result = construct_data_config(DataConfig(datasets_to_split=["train", "eval"]))
+    assert result.datasets_to_split == ["train", "eval"]
+
+    # Empty list
+    result = construct_data_config(DataConfig(datasets_to_split=[]))
+    assert result.datasets_to_split == []
+
+    # Shard locality disabled
+    result = construct_data_config(DataConfig(enable_shard_locality=False))
+    assert result.enable_shard_locality is False
+
+
+def test_construct_data_config_per_dataset_execution_options():
+    """Test with multiple datasets each having distinct execution options."""
+    config = DataConfig(
+        datasets_to_split=["ds1", "ds2", "ds3"],
+        execution_options={
+            "ds1": ExecutionOptions(
+                resource_limits=ExecutionResources(cpu=16.0, gpu=8.0),
+                exclude_resources=ExecutionResources(cpu=4.0),
+                locality_with_output=True,
+                preserve_order=True,
+                actor_locality_enabled=False,
+                verbose_progress=False,
+            ),
+            "ds2": ExecutionOptions(
+                locality_with_output=["node_a"],
+                verbose_progress=False,
+            ),
+            "ds3": ExecutionOptions(
+                exclude_resources=ExecutionResources(cpu=0.5, gpu=0.5),
+            ),
+        },
+        enable_shard_locality=False,
+    )
+    result = construct_data_config(config)
+
+    assert result.datasets_to_split == ["ds1", "ds2", "ds3"]
+    assert result.enable_shard_locality is False
+    assert len(result.execution_options) == 3
+
+    ds1 = result.execution_options["ds1"]
+    assert ds1["resource_limits"]["CPU"] == 16.0
+    assert ds1["resource_limits"]["GPU"] == 8.0
+    assert ds1["exclude_resources"]["CPU"] == 4.0
+    assert ds1["locality_with_output"] is True
+    assert ds1["preserve_order"] is True
+    assert ds1["actor_locality_enabled"] is False
+    assert ds1["verbose_progress"] is False
+
+    ds2 = result.execution_options["ds2"]
+    assert ds2["locality_with_output"] == ["node_a"]
+    assert ds2["verbose_progress"] is False
+
+    ds3 = result.execution_options["ds3"]
+    assert ds3["exclude_resources"]["CPU"] == 0.5
+    assert ds3["exclude_resources"]["GPU"] == 0.5
 
 
 if __name__ == "__main__":
