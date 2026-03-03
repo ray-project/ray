@@ -135,7 +135,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             self._module_to_env.remove("GetActions")
             self._module_to_env.remove("TensorToNumpy")
 
-
         self._needs_initial_reset: bool = True
         self._ongoing_episodes: List[Optional[SingleAgentEpisode]] = [
             None for _ in range(self.num_envs)

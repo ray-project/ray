@@ -153,7 +153,9 @@ class InferenceActor:
         to_env = self.gpu_to_cpu_pipeline(
             rl_module=self.module,
             batch=to_env,
-            episodes=[SingleAgentEpisode(),], # hack
+            episodes=[
+                SingleAgentEpisode(),
+            ],  # hack
             explore=self.explore,
         )
 
