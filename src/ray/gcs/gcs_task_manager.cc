@@ -104,7 +104,7 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
   return result;
 }
 
-void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
+void GcsTaskManager::GcsTaskManagerStorage::MarkChildTasksFailedOnWorkerDead(
     const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data) {
   auto task_attempts_itr = worker_index_.find(worker_id);
   if (task_attempts_itr == worker_index_.end()) {
@@ -113,16 +113,38 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   }
 
   rpc::RayErrorInfo error_info;
-  error_info.set_error_type(rpc::ErrorType::WORKER_DIED);
-  std::stringstream error_message;
-  error_message << "Worker running the task (" << worker_id.Hex()
-                << ") died with exit_type: " << worker_failure_data.exit_type()
-                << " with error_message: " << worker_failure_data.exit_detail();
-  error_info.set_error_message(error_message.str());
+  error_info.set_error_type(rpc::ErrorType::OWNER_DIED);
+  int64_t failed_ts_ns = worker_failure_data.end_time_ms() * 1000 * 1000;
 
-  for (const auto &task_locator : task_attempts_itr->second) {
-    MarkTaskAttemptFailedIfNeeded(
-        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
+  // DFS over the subtree rooted at a given task, marking all descendants failed.
+  // The root task itself is skipped — its owner is responsible for marking it failed.
+  std::function<void(const TaskID &)> dfs_mark_failed = [&](const TaskID &task_id) {
+    auto children_itr = parent_to_child_index_.find(task_id);
+    if (children_itr == parent_to_child_index_.end()) {
+      return;
+    }
+    for (const auto &child_locator : children_itr->second) {
+      TaskID child_task_id =
+          TaskID::FromBinary(child_locator->GetTaskEventsMutable().task_id());
+      std::stringstream error_message;
+      error_message << "Task (" << child_task_id.Hex() << ") failed because owner ("
+                    << worker_id.Hex()
+                    << ") died with exit_type: " << worker_failure_data.exit_type()
+                    << " with error_message: " << worker_failure_data.exit_detail();
+      error_info.set_error_message(error_message.str());
+      // This marking failure could be overwritten if a task event for the task comes up.
+      // But currently, final state is determined by the highest numbered state present in
+      // the state_ts map. Therefore, FAILED will persist over FINISHED.
+      MarkTaskAttemptFailedIfNeeded(child_locator, failed_ts_ns, error_info);
+      dfs_mark_failed(child_task_id);
+    }
+  };
+
+  for (const auto &parent_task_locator : task_attempts_itr->second) {
+    TaskID parent_task_id =
+        TaskID::FromBinary(parent_task_locator->GetTaskEventsMutable().task_id());
+    RAY_CHECK(!parent_task_id.IsNil());
+    dfs_mark_failed(parent_task_id);
   }
 }
 
@@ -248,6 +270,19 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
   if (!worker_id.IsNil()) {
     worker_index_[worker_id].insert(loc);
   }
+
+  // build parent->child index.
+  if (task_events.has_task_info()) {
+    const auto &task_info = task_events.task_info();
+    TaskID parent_task_id = TaskID::FromBinary(task_info.parent_task_id());
+
+    if (!parent_task_id.IsNil()) {
+      // inserting here would mean that we might, at some point, have two entries for two
+      // attempts of the same child task. Shouldn't be a problem though, since its fine to
+      // mark both attempts of the child task failed.
+      parent_to_child_index_[parent_task_id].insert(loc);
+    }
+  }
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
@@ -281,6 +316,19 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
     RAY_CHECK(worker_attempts_iter->second.erase(loc) == 1);
     if (worker_attempts_iter->second.empty()) {
       worker_index_.erase(worker_attempts_iter);
+    }
+  }
+
+  if (task_events.has_task_info()) {
+    const auto &task_info = task_events.task_info();
+    TaskID parent_task_id = TaskID::FromBinary(task_info.parent_task_id());
+    if (!parent_task_id.IsNil()) {
+      auto child_tasks_itr = parent_to_child_index_.find(parent_task_id);
+      RAY_CHECK(child_tasks_itr != parent_to_child_index_.end());
+      RAY_CHECK(child_tasks_itr->second.erase(loc) == 1);
+      if (child_tasks_itr->second.empty()) {
+        parent_to_child_index_.erase(child_tasks_itr);
+      }
     }
   }
 
@@ -728,7 +776,20 @@ void GcsTaskManager::SetUsageStatsClient(UsageStatsClient *usage_stats_client) {
 
 void GcsTaskManager::OnWorkerDead(
     const WorkerID &worker_id, const std::shared_ptr<rpc::WorkerTableData> &worker_data) {
-  RAY_LOG(DEBUG) << "Marking all running tasks of worker " << worker_id << " as failed.";
+  // Only mark child tasks as failed on ungraceful death. On graceful death, the owner
+  // will flush the task buffer and the events would receive GCS eventually. If owner dies
+  // ungracefully, the events for child tasks will never reach GCS, so mark them
+  // explicitly.
+  if (worker_data->exit_type() == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+      worker_data->exit_type() == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
+    RAY_LOG(DEBUG) << "Worker " << worker_id
+                   << " died gracefully (exit_type=" << worker_data->exit_type()
+                   << "), not marking child tasks as failed.";
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "Marking all running tasks owned by the worker " << worker_id
+                 << " as failed (exit_type=" << worker_data->exit_type() << ").";
 
   auto timer = std::make_shared<boost::asio::deadline_timer>(
       io_service_,
@@ -741,9 +802,8 @@ void GcsTaskManager::OnWorkerDead(
           // timer canceled or aborted.
           return;
         }
-        // If there are any non-terminated tasks from the worker, mark them failed since
-        // all workers associated with the worker will be failed.
-        task_event_storage_->MarkTasksFailedOnWorkerDead(worker_id, *worker_data);
+        // Mark the entire tree of child tasks for each task on the dead worker as FAILED.
+        task_event_storage_->MarkChildTasksFailedOnWorkerDead(worker_id, *worker_data);
       });
 }
 
