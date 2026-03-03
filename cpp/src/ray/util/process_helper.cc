@@ -115,6 +115,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     ConfigInternal::Instance().plasma_store_socket_name =
         node_info.object_store_socket_name();
     ConfigInternal::Instance().node_manager_port = node_info.node_manager_port();
+    ConfigInternal::Instance().UpdateSessionDir(node_info.session_dir());
   }
   RAY_CHECK(!ConfigInternal::Instance().raylet_socket_name.empty())
       << "Failed to start ray cluster, raylet socket name could not be resolved";
@@ -122,11 +123,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       << "Failed to start ray cluster, plasma store socket name could not be resolved";
   RAY_CHECK(ConfigInternal::Instance().node_manager_port > 0)
       << "Failed to start ray cluster, node manager port could not be resolved";
-
-  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
-    auto session_dir = *global_state_accessor->GetInternalKV("session", "session_dir");
-    ConfigInternal::Instance().UpdateSessionDir(session_dir);
-  }
 
   gcs::GcsClientOptions gcs_options =
       gcs::GcsClientOptions(bootstrap_ip,
