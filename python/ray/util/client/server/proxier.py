@@ -755,9 +755,9 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.info(f"New data connection from client {client_id}: ")
                 init_req = next(request_iterator)
                 with self.clients_lock:
-                    self.reconnect_grace_periods[client_id] = (
-                        init_req.init.reconnect_grace_period
-                    )
+                    self.reconnect_grace_periods[
+                        client_id
+                    ] = init_req.init.reconnect_grace_period
                 try:
                     modified_init_req, job_config = prepare_runtime_init_req(init_req)
                     if not self.proxy_manager.start_specific_server(

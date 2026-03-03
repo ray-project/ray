@@ -30,21 +30,21 @@ class CoreContextFilter(logging.Filter):
             LogKey.NODE_ID.value: runtime_context.get_node_id(),
         }
         if runtime_context.worker.mode == ray.WORKER_MODE:
-            ray_core_logging_context[LogKey.ACTOR_ID.value] = (
-                runtime_context.get_actor_id()
-            )
-            ray_core_logging_context[LogKey.TASK_ID.value] = (
-                runtime_context.get_task_id()
-            )
-            ray_core_logging_context[LogKey.TASK_NAME.value] = (
-                runtime_context.get_task_name()
-            )
-            ray_core_logging_context[LogKey.TASK_FUNCTION_NAME.value] = (
-                runtime_context.get_task_function_name()
-            )
-            ray_core_logging_context[LogKey.ACTOR_NAME.value] = (
-                runtime_context.get_actor_name()
-            )
+            ray_core_logging_context[
+                LogKey.ACTOR_ID.value
+            ] = runtime_context.get_actor_id()
+            ray_core_logging_context[
+                LogKey.TASK_ID.value
+            ] = runtime_context.get_task_id()
+            ray_core_logging_context[
+                LogKey.TASK_NAME.value
+            ] = runtime_context.get_task_name()
+            ray_core_logging_context[
+                LogKey.TASK_FUNCTION_NAME.value
+            ] = runtime_context.get_task_function_name()
+            ray_core_logging_context[
+                LogKey.ACTOR_NAME.value
+            ] = runtime_context.get_actor_name()
         return ray_core_logging_context
 
     def filter(self, record):
