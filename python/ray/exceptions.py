@@ -441,7 +441,7 @@ class ActorDiedError(RayActorError):
                 f"{cause.__str__()}"
             )
         else:
-            # Inidicating system-level actor failures.
+            # Indicating system-level actor failures.
             assert isinstance(cause, ActorDiedErrorContext)
             error_msg_lines = [ActorDiedError.BASE_ERROR_MSG]
             error_msg_lines.append(f"\tclass_name: {cause.class_name}")
@@ -810,10 +810,6 @@ class ObjectReconstructionFailedError(ObjectLostError):
             "boundary. Only the owner of an object can trigger reconstruction, "
             "but this worker borrowed the object from another worker."
         ),
-        ErrorType.OBJECT_UNRECONSTRUCTABLE_LOCAL_MODE: (
-            "The object cannot be reconstructed because Ray is running in "
-            "local mode. Local mode does not support object reconstruction."
-        ),
         ErrorType.OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND: (
             "The object cannot be reconstructed because its reference was "
             "not found in the reference counter. "
@@ -1016,7 +1012,7 @@ class UnserializableException(RayError):
     the original exception along with its stack trace that was captured at the
     time of serialization.
 
-    For more details and how to handle this with custom serializers, :ref:`configuring custom exeception serializers <custom-exception-serializer>`
+    For more details and how to handle this with custom serializers, :ref:`configuring custom exception serializers <custom-exception-serializer>`
 
     Args:
         original_stack_trace: The string representation and stack trace of the

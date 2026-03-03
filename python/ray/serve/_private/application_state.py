@@ -48,7 +48,12 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    AutoscalingPolicy,
+    GangSchedulingConfig,
+    RequestRouterConfig,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -1707,6 +1712,14 @@ def override_deployment_info(
         override_max_replicas_per_node = options.pop(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
+        override_bundle_label_selector = options.pop(
+            "placement_group_bundle_label_selector",
+            replica_config.placement_group_bundle_label_selector,
+        )
+        override_fallback_strategy = options.pop(
+            "placement_group_fallback_strategy",
+            replica_config.placement_group_fallback_strategy,
+        )
 
         # Record telemetry for container runtime env feature at deployment level
         if override_actor_options.get("runtime_env") and (
@@ -1725,8 +1738,17 @@ def override_deployment_info(
             placement_group_bundles=override_placement_group_bundles,
             placement_group_strategy=override_placement_group_strategy,
             max_replicas_per_node=override_max_replicas_per_node,
+            placement_group_bundle_label_selector=override_bundle_label_selector,
+            placement_group_fallback_strategy=override_fallback_strategy,
         )
         override_options["replica_config"] = replica_config
+
+        if "gang_scheduling_config" in options:
+            gang_scheduling_config = options.get("gang_scheduling_config")
+            if gang_scheduling_config and isinstance(gang_scheduling_config, dict):
+                options["gang_scheduling_config"] = GangSchedulingConfig(
+                    **gang_scheduling_config
+                )
 
         if "request_router_config" in options:
             request_router_config = options.get("request_router_config")

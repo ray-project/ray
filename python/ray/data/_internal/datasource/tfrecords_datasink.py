@@ -4,6 +4,9 @@ from typing import TYPE_CHECKING, Dict, Iterable, Optional, Union
 import numpy as np
 
 from .tfrecords_datasource import _get_single_true_type
+from ray.data._internal.tensor_extensions.arrow import (
+    get_arrow_extension_tensor_types,
+)
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
@@ -90,6 +93,9 @@ def _value_to_feature(
         # determining the output feature's data type.
         value_type = value.type.value_type
         value = value.as_py()
+    elif isinstance(value.type, get_arrow_extension_tensor_types()):
+        value_type = value.type
+        value = value.as_py()
     else:
         value_type = value.type
         value = value.as_py()
@@ -103,6 +109,7 @@ def _value_to_feature(
         "string": pa.types.is_string(value_type),
         "float": pa.types.is_floating(value_type),
         "int": pa.types.is_integer(value_type),
+        "tensor": isinstance(value_type, get_arrow_extension_tensor_types()),
     }
     assert sum(bool(value) for value in underlying_value_type.values()) <= 1
 
@@ -115,12 +122,18 @@ def _value_to_feature(
                 "the tensorflow-metadata package."
             )
         specified_feature_type = {
+            # We default anything that is not a string or tensor to be
+            # a byte array, mostly to deal with the case when we have
+            # null input, but we specify a schema.
             "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
-            and not underlying_value_type["string"],
+            and not underlying_value_type["string"]
+            and not underlying_value_type["tensor"],
             "string": schema_feature_type == schema_pb2.FeatureType.BYTES
             and underlying_value_type["string"],
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
             "int": schema_feature_type == schema_pb2.FeatureType.INT,
+            "tensor": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and underlying_value_type["tensor"],
         }
 
         und_type = _get_single_true_type(underlying_value_type)
@@ -141,6 +154,12 @@ def _value_to_feature(
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if underlying_value_type["string"]:
         value = [v.encode() for v in value]  # casting to bytes
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
+    if underlying_value_type["tensor"]:
+        if value is None:
+            value = []
+        else:
+            value = [tf.io.serialize_tensor(value).numpy()]
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(

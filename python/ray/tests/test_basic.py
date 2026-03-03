@@ -11,11 +11,11 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray._common.test_utils import SignalActor
-from ray._private.test_utils import (
-    client_test_enabled,
+from ray._common.test_utils import (
+    SignalActor,
     run_string_as_driver,
 )
+from ray._private.test_utils import client_test_enabled
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 import psutil
@@ -759,7 +759,7 @@ def test_fetch_local(ray_start_cluster_head):
     assert (1, 0) == (len(ready_ref), len(remaining_ref))
 
 
-def test_nested_functions(ray_start_shared_local_modes):
+def test_nested_functions(ray_start_regular_shared):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
     @ray.remote
@@ -776,7 +776,7 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(f.remote()) == (1, 2)
 
 
-def test_recursive_remote_call(ray_start_shared_local_modes):
+def test_recursive_remote_call(ray_start_regular_shared):
     # Test a remote function that recursively calls itself.
     @ray.remote
     def factorial(n):
@@ -792,7 +792,7 @@ def test_recursive_remote_call(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(5)) == 120
 
 
-def test_mutually_recursive_functions(ray_start_shared_local_modes):
+def test_mutually_recursive_functions(ray_start_regular_shared):
     # Test remote functions that recursively call each other.
     @ray.remote
     def factorial_even(n):
@@ -810,7 +810,7 @@ def test_mutually_recursive_functions(ray_start_shared_local_modes):
     assert ray.get(factorial_odd.remote(5)) == 120
 
 
-def test_ray_recursive_objects(ray_start_shared_local_modes):
+def test_ray_recursive_objects(ray_start_regular_shared):
     class ClassA:
         pass
 
@@ -836,7 +836,7 @@ def test_ray_recursive_objects(ray_start_shared_local_modes):
         ray.put(obj)
 
 
-def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes):
+def test_passing_arguments_by_value_out_of_the_box(ray_start_regular_shared):
     @ray.remote
     def f(x):
         return x
@@ -868,7 +868,7 @@ def test_passing_arguments_by_value_out_of_the_box(ray_start_shared_local_modes)
     ray.get(ray.put(Foo))
 
 
-def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes):
+def test_putting_object_that_closes_over_object_ref(ray_start_regular_shared):
     # This test is here to prevent a regression of
     # https://github.com/ray-project/ray/issues/1317.
 
@@ -883,7 +883,7 @@ def test_putting_object_that_closes_over_object_ref(ray_start_shared_local_modes
     ray.put(f)
 
 
-def test_keyword_args(ray_start_shared_local_modes):
+def test_keyword_args(ray_start_regular_shared):
     @ray.remote
     def keyword_fct1(a, b="hello"):
         return "{} {}".format(a, b)
@@ -968,7 +968,7 @@ def test_keyword_args(ray_start_shared_local_modes):
     assert ray.get(f3.remote(4)) == 4
 
 
-def test_args_starkwargs(ray_start_shared_local_modes):
+def test_args_starkwargs(ray_start_regular_shared):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
 
@@ -996,7 +996,7 @@ def test_args_starkwargs(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_args_named_and_star(ray_start_shared_local_modes):
+def test_args_named_and_star(ray_start_regular_shared):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
@@ -1034,7 +1034,7 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-def test_oversized_function(ray_start_shared_local_modes):
+def test_oversized_function(ray_start_regular_shared):
     bar = bytearray(800 * 1024 * 125)
 
     @ray.remote
@@ -1053,7 +1053,7 @@ def test_oversized_function(ray_start_shared_local_modes):
         Actor.remote()
 
 
-def test_args_stars_after(ray_start_shared_local_modes):
+def test_args_stars_after(ray_start_regular_shared):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
@@ -1084,7 +1084,7 @@ def test_args_stars_after(ray_start_shared_local_modes):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_object_id_backward_compatibility(ray_start_shared_local_modes):
+def test_object_id_backward_compatibility(ray_start_regular_shared):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.
     # This test is to make sure legacy code can still use `ObjectID`.
@@ -1099,7 +1099,7 @@ def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     assert isinstance(object_ref, ray.ObjectRef)
 
 
-def test_nonascii_in_function_body(ray_start_shared_local_modes):
+def test_nonascii_in_function_body(ray_start_regular_shared):
     @ray.remote
     def return_a_greek_char():
         return "φ"
@@ -1107,7 +1107,7 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
     assert ray.get(return_a_greek_char.remote()) == "φ"
 
 
-def test_failed_task(ray_start_shared_local_modes, error_pubsub):
+def test_failed_task(ray_start_regular_shared, error_pubsub):
     @ray.remote
     def throw_exception_fct1():
         raise Exception("Test function 1 intentionally failed.")
@@ -1169,7 +1169,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         assert False
 
 
-def test_base_exception_raised(ray_start_shared_local_modes):
+def test_base_exception_raised(ray_start_regular_shared):
     @ray.remote
     def f():
         raise BaseException("rip")

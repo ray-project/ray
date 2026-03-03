@@ -738,6 +738,33 @@ def test_autoscaling_config_validation_warnings(
 
     assert expected_message not in warn_log_args_str
 
+    # Test #4: Fixed-size pool with invalid config (no warnings)
+    #   - max_tasks_in_flight / max_concurrency == 1
+    #   - Default upscaling threshold (200%)
+    #   - Even though config would normally trigger warning, fixed-size pools
+    #     don't scale up by design, so warning should not be emitted
+    with patch(
+        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+    ) as mock_warning:
+        ds = ray.data.range(2, override_num_blocks=2).map_batches(
+            SimpleMapper,
+            compute=ray.data.ActorPoolStrategy(
+                size=2,
+                max_tasks_in_flight_per_actor=1,
+            ),
+            max_concurrency=1,
+        )
+        ds.take_all()
+
+    # Check that this warning hasn't been emitted for fixed-size pool
+    warn_log_args_str = str(mock_warning.call_args_list)
+    expected_message = (
+        "⚠️  Actor Pool configuration of the "
+        "ActorPoolMapOperator[MapBatches(SimpleMapper)] will not allow it to scale up: "
+    )
+
+    assert expected_message not in warn_log_args_str
+
 
 @pytest.fixture
 def autoscaler_config_mocks():

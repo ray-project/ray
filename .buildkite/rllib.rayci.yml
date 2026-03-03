@@ -9,8 +9,9 @@ steps:
     wanda: ci/docker/rllib.build.wanda.yaml
     depends_on: oss-ci-base_ml-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py3.10
-      IMAGE_TO: rllibbuild-py3.10
+      PYTHON: "3.10"
+      BASE_TYPE: "ml"
+      BUILD_VARIANT: "build"
       RAYCI_IS_GPU_BUILD: "false"
     tags: cibase
 
@@ -18,8 +19,9 @@ steps:
     wanda: ci/docker/rllib.build.wanda.yaml
     depends_on: oss-ci-base_gpu-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py3.10
-      IMAGE_TO: rllibgpubuild-py3.10
+      PYTHON: "3.10"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "gpubuild"
       RAYCI_IS_GPU_BUILD: "true"
     tags: cibase
 

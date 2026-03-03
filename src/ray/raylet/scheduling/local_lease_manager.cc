@@ -114,7 +114,7 @@ void LocalLeaseManager::WaitForLeaseArgsRequests(std::shared_ptr<internal::Work>
       RAY_LOG(DEBUG) << "Waiting for args for lease: " << lease_id;
       auto it = waiting_lease_queue_.insert(waiting_lease_queue_.end(), std::move(work));
       RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
-      cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
+      cluster_resource_scheduler_.GetLocalResourceManager().MaybeMarkFootprintAsBusy(
           WorkFootprint::PULLING_TASK_ARGUMENTS);
     }
   } else {
@@ -292,8 +292,12 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
           if (wait_time > sched_cls_cap_max_ms_) {
             wait_time = sched_cls_cap_max_ms_;
-            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
-                                "task. Worker process startup is being throttled.";
+            RAY_LOG(WARNING)
+                << "Starting too many worker processes for a single type of task. "
+                   "Worker process startup is being throttled (wait_time="
+                << wait_time << "ms). This limit prevents deadlocks for nested tasks. "
+                << "If your workload does not use nested tasks, consider setting "
+                   "RAY_worker_cap_enabled=false for faster worker startup.";
           }
 
           int64_t target_time = get_time_ms_() + wait_time;
@@ -325,7 +329,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           auto it = waiting_lease_queue_.insert(waiting_lease_queue_.begin(),
                                                 std::move(*work_it));
           RAY_CHECK(waiting_leases_index_.emplace(lease_id, it).second);
-          cluster_resource_scheduler_.GetLocalResourceManager().MarkFootprintAsBusy(
+          cluster_resource_scheduler_.GetLocalResourceManager().MaybeMarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
           RAY_LOG(DEBUG) << "Failed to pin arguments for lease " << lease_id;

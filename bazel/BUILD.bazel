@@ -23,6 +23,12 @@ py_library(
 )
 
 config_setting(
+    name = "is_linux",
+    constraint_values = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64_config",
     constraint_values = [
         "@platforms//os:linux",

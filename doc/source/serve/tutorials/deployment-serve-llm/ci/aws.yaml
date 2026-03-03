@@ -5,8 +5,6 @@ region: us-west-2
 head_node_type:
   name: head
   instance_type: m5.2xlarge
-  resources:
-    cpu: 8
 
 # Worker nodes
 auto_select_worker_config: true

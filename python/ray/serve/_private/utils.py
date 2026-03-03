@@ -12,7 +12,7 @@ import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union
 
 import requests
 
@@ -20,11 +20,14 @@ import ray
 import ray.util.serialization_addons
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
-from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.serve._private.common import RequestMetadata, ServeComponentType
-from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    HTTP_PROXY_TIMEOUT,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 
@@ -520,6 +523,35 @@ def get_all_live_placement_group_names() -> List[str]:
     return live_pg_names
 
 
+def get_active_placement_group_ids() -> Set[str]:
+    """
+    Retrieve the set of placement group IDs referenced by alive Serve actors.
+
+    Returns:
+        The set of placement group IDs referenced by alive Serve actors.
+    """
+    # TODO (jeffreywang): Move the imports to the top of the file.
+    # https://github.com/ray-project/ray/issues/61330
+    from ray.util.state import list_actors
+    from ray.util.state.common import RAY_MAX_LIMIT_FROM_API_SERVER
+
+    actors = list_actors(
+        filters=[
+            ("ray_namespace", "=", SERVE_NAMESPACE),
+            ("state", "=", "ALIVE"),
+        ],
+        limit=RAY_MAX_LIMIT_FROM_API_SERVER,
+        detail=True,
+        raise_on_missing_output=False,
+    )
+
+    return {
+        actor.placement_group_id
+        for actor in actors
+        if actor.placement_group_id is not None
+    }
+
+
 def get_current_actor_id() -> str:
     """Gets the ID of the calling actor.
 
@@ -532,7 +564,7 @@ def get_current_actor_id() -> str:
     """
 
     worker_mode = ray.get_runtime_context().worker.mode
-    if worker_mode in {SCRIPT_MODE, LOCAL_MODE}:
+    if worker_mode == ray.SCRIPT_MODE:
         return "DRIVER"
     else:
         try:

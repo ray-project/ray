@@ -41,6 +41,7 @@ ray_cc_test(
     srcs = ["normal_task_execution_queue_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:normal_task_execution_queue",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
@@ -54,6 +55,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
+        "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:ordered_actor_task_execution_queue",
         "//src/ray/core_worker/task_execution:unordered_actor_task_execution_queue",
         "@com_google_googletest//:gtest",
@@ -69,6 +71,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
+        "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker_rpc_client:core_worker_client_interface",
         "//src/ray/util:time",

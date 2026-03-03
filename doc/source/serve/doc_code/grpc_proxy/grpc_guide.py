@@ -349,6 +349,13 @@ class GrpcDeployment:
         grpc_context.set_details(message)
         grpc_context.set_trailing_metadata([("num", str(num))])
 
+        # You can also set a status code before raising an exception.
+        # The status code will be preserved in the response.
+        if user_message.name == "error":
+            grpc_context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
+            grpc_context.set_details("Resource exhausted, please retry later.")
+            raise RuntimeError("Simulated error")
+
         user_response = UserDefinedResponse(
             greeting=greeting,
             num=num,

@@ -8,8 +8,8 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data import Schema
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource.path_util import _unwrap_protocol
 
 
@@ -87,7 +87,7 @@ def test_lance_read_basic(fs, data_path, batch_size):
     ds = ray.data.read_lance(path, columns=["one"])
     values = [s["one"] for s in ds.take_all()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
-    assert ds.schema().names == ["one", "two", "three", "four"]
+    assert ds.schema().names == ["one"]
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
