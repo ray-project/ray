@@ -82,9 +82,12 @@ def _rebuild_list_array(
             )
             offsets = pc.subtract(offsets, start_offset)
 
-    return pyarrow.ListArray.from_arrays(
-        offsets=offsets, values=child_array, mask=arr.is_null()
+    factory = (
+        pyarrow.LargeListArray.from_arrays
+        if isinstance(arr, pyarrow.LargeListArray)
+        else pyarrow.ListArray.from_arrays
     )
+    return factory(offsets=offsets, values=child_array, mask=arr.is_null())
 
 
 def _get_result_type(
@@ -100,7 +103,12 @@ def _get_result_type(
         struct_type = arr_type.value_type
         if pyarrow.types.is_struct(struct_type) and struct_type.num_fields >= 2:
             idx = 0 if component == MapComponent.KEYS else 1
-            return pyarrow.list_(struct_type.field(idx).type)
+            list_fn = (
+                pyarrow.large_list
+                if pyarrow.types.is_large_list(arr_type)
+                else pyarrow.list_
+            )
+            return list_fn(struct_type.field(idx).type)
     return pyarrow.list_(pyarrow.null())
 
 
