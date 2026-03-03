@@ -452,9 +452,18 @@ class SchedulingNode:
                 unschedulable_requests.append(r)
                 continue
 
+            # Record the label count to detect if this node's state mutates.
+            # This is to support requests becoming schedulable due to anti-affinity.
+            num_labels_before = len(self.labels)
+
             if not self._try_schedule_one(r, resource_request_source):
                 unavailable_shapes.add(shape_key)
                 unschedulable_requests.append(r)
+            else:
+                # If the request successfully scheduled and added a label to the node,
+                # it might have expanded feasibility so we invalidate the unavailable cache.
+                if len(self.labels) > num_labels_before:
+                    unavailable_shapes.clear()
 
         score = self._compute_score(resource_request_source)
 
