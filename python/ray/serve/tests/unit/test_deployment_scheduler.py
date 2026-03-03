@@ -10,7 +10,12 @@ import pytest
 import ray
 from ray._raylet import NodeID
 from ray.serve._private import default_impl
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import (
+    CreatePlacementGroupRequest,
+    DeploymentID,
+    GangPlacementGroupRequest,
+    ReplicaID,
+)
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
@@ -23,6 +28,7 @@ from ray.serve._private.deployment_scheduler import (
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
+from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
     MockActorClass,
     MockClusterNodeInfoCache,
@@ -1670,6 +1676,268 @@ class TestPackScheduling:
         assert isinstance(strategy2, NodeAffinitySchedulingStrategy)
         assert strategy2.node_id == node_id_1
         assert call2.kwargs == {"placement_group": None}
+
+
+class TestScheduleGangPlacementGroups:
+    def test_schedule_gang_placement_groups(self, mock_deployment_state_manager):
+        """Creates gangs successfully and verifies placement requests include expected bundles and strategy."""
+        captured_requests = []
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        replica_resource_dict = {"CPU": 2.0, "GPU": 1.0}
+        gang_strategy = "SPREAD"
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d1", app_name="app1")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            gang_strategy,
+            num_replicas_to_add,
+            replica_resource_dict=replica_resource_dict,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert deployment_id in result
+        assert result[deployment_id].success
+        assert len(result[deployment_id].gang_pgs) == num_gangs
+        assert len(captured_requests) == num_gangs
+        for req in captured_requests:
+            assert isinstance(req, CreatePlacementGroupRequest)
+            assert req.bundles == [replica_resource_dict] * gang_size
+            assert req.strategy == gang_strategy
+
+    def test_schedule_gang_placement_groups_invalid_gang_size(
+        self, mock_deployment_state_manager
+    ):
+        """Returns failure when desired replicas cannot be evenly divided by gang size."""
+        gang_size = 3
+        num_replicas_to_add = 4
+        create_pg_fn = Mock()
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d2", app_name="app2")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert not result[deployment_id].success
+        assert "not divisible by gang_size" in result[deployment_id].error_message
+        create_pg_fn.assert_not_called()
+
+    def test_schedule_gang_placement_groups_all_pg_creation_failures(
+        self, mock_deployment_state_manager
+    ):
+        """Reports failure when every gang placement group creation attempt raises exceptions."""
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            raise RuntimeError("simulated placement group creation failure")
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d3", app_name="app3")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert not result[deployment_id].success
+        assert (
+            "Failed to create any gang placement groups"
+            in result[deployment_id].error_message
+        )
+
+    def test_schedule_gang_placement_groups_partial_pg_creation_failures(
+        self, mock_deployment_state_manager
+    ):
+        """Keeps successful gang reservations when only a subset of placement groups fail."""
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        failed_gangs = 1
+        num_calls = 0
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            nonlocal num_calls
+            num_calls += 1
+            if num_calls == 1:
+                raise RuntimeError("fail first gang only")
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d4", app_name="app4")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(result[deployment_id].gang_pgs) == num_gangs - failed_gangs
+
+    def test_schedule_gang_placement_groups_with_per_replica_bundles(
+        self, mock_deployment_state_manager
+    ):
+        """Flattens per-replica bundles and propagates label selectors and fallback strategies correctly."""
+        captured_requests = []
+        gang_size = 2
+        num_gangs = 4
+        num_replicas_to_add = num_gangs * gang_size
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d5", app_name="app5")
+        per_replica_bundles = [{"GPU": 1.0, "CPU": 1.0}, {"CPU": 1.0}]
+        per_replica_label_selector = [{"gpu": "a100"}, {"zone": "z1"}]
+        per_replica_fallback = [{"allow_soft": True}, {"allow_soft": False}]
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            replica_resource_dict={"CPU": 1.0},
+            replica_placement_group_bundles=per_replica_bundles,
+            replica_pg_bundle_label_selector=per_replica_label_selector,
+            replica_pg_fallback_strategy=per_replica_fallback,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(captured_requests) == num_gangs
+        expected_bundles = per_replica_bundles * gang_size
+        expected_label_selector = per_replica_label_selector * gang_size
+        expected_fallback = per_replica_fallback * gang_size
+        for req in captured_requests:
+            assert req.bundles == expected_bundles
+            assert req.bundle_label_selector == expected_label_selector
+            assert req.fallback_strategy == expected_fallback
+
+    def test_schedule_gang_placement_groups_without_per_replica_bundles_uses_resource_dict(
+        self, mock_deployment_state_manager
+    ):
+        """Uses replica resource dict for each gang bundle without optional selectors."""
+        captured_requests = []
+        gang_size = 3
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        replica_resource_dict = {"CPU": 2.0, "GPU": 0.5}
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d6", app_name="app6")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            replica_resource_dict=replica_resource_dict,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(captured_requests) == num_gangs
+        for req in captured_requests:
+            assert req.bundles == [replica_resource_dict] * gang_size
+            assert req.bundle_label_selector is None
+            assert req.fallback_strategy is None
+
+    def test_schedule_gang_placement_groups_multiple_deployments(
+        self, mock_deployment_state_manager
+    ):
+        """Schedules gang placement groups for multiple deployments and returns independent results."""
+        create_pg_fn = Mock(return_value=Mock())
+        gang_size_1 = 2
+        num_gangs_1 = 2
+        num_replicas_to_add_1 = gang_size_1 * num_gangs_1
+        gang_size_2 = 3
+        num_gangs_2 = 2
+        num_replicas_to_add_2 = gang_size_2 * num_gangs_2
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id_1 = DeploymentID(name="d7", app_name="app7")
+        deployment_id_2 = DeploymentID(name="d8", app_name="app8")
+        gang_requests = {
+            deployment_id_1: GangPlacementGroupRequest(
+                deployment_id_1,
+                gang_size_1,
+                "STRICT_PACK",
+                num_replicas_to_add_1,
+                {"CPU": 1.0},
+            ),
+            deployment_id_2: GangPlacementGroupRequest(
+                deployment_id_2,
+                gang_size_2,
+                "STRICT_PACK",
+                num_replicas_to_add_2,
+                {"CPU": 1.0},
+            ),
+        }
+
+        result = scheduler.schedule_gang_placement_groups(gang_requests)
+
+        assert set(result.keys()) == {deployment_id_1, deployment_id_2}
+        assert result[deployment_id_1].success
+        assert result[deployment_id_2].success
+        assert len(result[deployment_id_1].gang_pgs) == num_gangs_1
+        assert len(result[deployment_id_2].gang_pgs) == num_gangs_2
+        assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
 
 
 if __name__ == "__main__":
