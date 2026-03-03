@@ -1627,18 +1627,38 @@ class ResourceDemandScheduler(IResourceScheduler):
             # the score of the scheduling node to compare with others.
             score: UtilizationScore
 
-        nodes_copy = copy.deepcopy(nodes)
+        # Track node states we've already simulated in this pass. Since we only
+        # select one best node to return, we skip the heavy deepcopy/simulation
+        # overhead for duplicates
+        seen_node_states = set()
 
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
-        for idx, node in enumerate(nodes_copy):
-            remaining, score = node.try_schedule(requests, resource_request_source)
+        for idx, node in enumerate(nodes):
+            # Generate a deterministic signature of the node's scheduling capacity.
+            avail_res = node.get_available_resources(resource_request_source)
+            state_key = (
+                node.node_type,
+                node.node_kind,
+                frozenset(node.total_resources.items()),
+                frozenset(avail_res.items()),
+                frozenset(node.labels.items()),
+            )
+
+            # Skip this node if we've already evaluated the exact state.
+            if state_key in seen_node_states:
+                continue
+            seen_node_states.add(state_key)
+
+            node_copy = copy.deepcopy(node)
+
+            remaining, score = node_copy.try_schedule(requests, resource_request_source)
 
             if len(remaining) == len(requests):
                 # The node cannot schedule any of the requests.
                 continue
 
-            results.append(ScheduleResult(node, remaining, idx, score))
+            results.append(ScheduleResult(node_copy, remaining, idx, score))
 
         # No nodes can schedule any of the requests.
         if len(results) == 0:

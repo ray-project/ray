@@ -2884,6 +2884,66 @@ def test_infeasible_shape_caching_with_label_mutation():
     assert to_launch == {}
 
 
+def test_identical_node_state_caching():
+    """
+    Test that the scheduler avoids redundant deepcopies and simulations
+    for nodes with identical states.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=100,
+        ),
+    }
+
+    # Create 100 identical pending nodes
+    instances = []
+    for i in range(100):
+        instances.append(
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.REQUESTED,
+                    instance_id=f"pending-{i}",
+                )
+            )
+        )
+
+    # Submit a single request that requires 1 CPU
+    resource_requests = [ResourceRequestUtil.make({"CPU": 1})]
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=resource_requests,
+        instances=instances,
+        max_num_nodes=100,
+    )
+
+    # Track how many times try_schedule is actually called on a node
+    orig_try_schedule = SchedulingNode.try_schedule
+    with patch.object(
+        SchedulingNode,
+        "try_schedule",
+        autospec=True,
+        side_effect=orig_try_schedule,
+    ) as mock_try_schedule:
+
+        reply = scheduler.schedule(request)
+
+        # The scheduler should evaluate exactly one of the 100 identical pending nodes
+        assert mock_try_schedule.call_count == 1
+
+        # It should successfully schedule the task without needing to launch any new nodes,
+        # because it used the first pending node.
+        to_launch, _ = _launch_and_terminate(reply)
+        assert to_launch == {}
+        assert len(reply.infeasible_resource_requests) == 0
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
