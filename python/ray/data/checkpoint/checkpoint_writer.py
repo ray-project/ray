@@ -131,10 +131,11 @@ class IcebergCheckpointWriter(CheckpointWriter):
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
-        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+        import pyarrow as pa
         from pyiceberg.catalog import load_catalog
         from pyiceberg.exceptions import NoSuchTableError
-        import pyarrow as pa
+
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 
         # Try to load or create the table
         catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
@@ -151,7 +152,7 @@ class IcebergCheckpointWriter(CheckpointWriter):
         except NoSuchTableError:
             # Create the table if it doesn't exist
             from pyiceberg.schema import Schema
-            from pyiceberg.types import NestedField, LongType
+            from pyiceberg.types import LongType, NestedField
 
             iceberg_schema = Schema(
                 NestedField(
