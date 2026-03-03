@@ -99,6 +99,7 @@ python/ray/experimental/channel/
 python/ray/experimental/gpu_object_manager/
 python/ray/experimental/collective/
 python/ray/tests/gpu_objects/
+python/ray/dashboard/modules/reporter/gpu_providers.py
 @ python cgraphs_direct_transport
 ;
 

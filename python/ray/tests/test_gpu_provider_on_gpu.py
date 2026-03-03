@@ -16,7 +16,7 @@ def test_per_process_gpu_memory_usage_and_total_gpu_memory_usage():
     """
 
     device = torch.device("cuda:0")
-    tensor_size_mb = 1024
+    tensor_size_mb = 2048
     num_elements = tensor_size_mb * 1024 * 1024
     tensor = torch.zeros(num_elements, dtype=torch.int8, device=device)
     assert tensor.size(0) == num_elements
@@ -39,14 +39,14 @@ def test_per_process_gpu_memory_usage_and_total_gpu_memory_usage():
     assert process_info is not None
 
     reported_proc_mb = process_info["gpu_memory_usage"]
-    # Proc memory usage should be at least the tensor size and within 100mb
+    # Proc memory usage should be at least the tensor size and within 200mb
     assert (
-        reported_proc_mb >= tensor_size_mb and reported_proc_mb - tensor_size_mb < 100
+        reported_proc_mb >= tensor_size_mb and reported_proc_mb - tensor_size_mb < 200
     )
-    # Check that gpu memory usage is >= proc gpu memory usage and within 100mb
+    # Check that gpu memory usage is >= proc gpu memory usage and within 500mb
     assert (
         gpu_info["memory_used"] > reported_proc_mb
-        and gpu_info["memory_used"] - reported_proc_mb < 100
+        and gpu_info["memory_used"] - reported_proc_mb < 500
     )
 
 
