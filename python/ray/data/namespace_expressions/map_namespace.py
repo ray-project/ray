@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 import pyarrow
@@ -22,7 +22,7 @@ class MapComponent(str, Enum):
 
 def _get_child_array(
     arr: pyarrow.Array, component: MapComponent
-) -> pyarrow.Array | None:
+) -> Optional[pyarrow.Array]:
     """Extract the flat keys or values array from a map-like array.
 
     Example: MapArray [{"a": 1}, {"b": 2}] -> keys ["a", "b"] or values [1, 2]
