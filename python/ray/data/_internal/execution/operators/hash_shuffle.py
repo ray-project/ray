@@ -55,6 +55,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
@@ -278,6 +279,7 @@ def _shuffle_block(
     send_empty_blocks: bool = False,
     override_partition_id: Optional[int] = None,
     random_partition_seed: Optional[int] = None,
+    task_idx: int = 0,
 ) -> Tuple[BlockMetadata, Dict[int, "_PartitionStats"]]:
     """Shuffles provided block following the algorithm:
 
@@ -293,6 +295,8 @@ def _shuffle_block(
         key_columns: Columns to be used by hash-partitioning algorithm
         pool: Hash-shuffling operator's pool of aggregators that are due to receive
               corresponding partitions (of the block)
+        block_transformer: Block transformer that will be applied to every block prior
+            to shuffling
         send_empty_blocks: If set to true, empty blocks will NOT be filtered and
             still be fanned out to individual aggregators to distribute schemas
             (only known once we receive incoming block)
@@ -300,8 +304,8 @@ def _shuffle_block(
             assigned to
         random_partition_seed: Seed for random partitioning. When provided, rows are
             randomly assigned to partitions instead of hash-partitioned.
-        block_transformer: Block transformer that will be applied to every block prior
-            to shuffling
+        task_idx: Index of this shuffle task, used to set up TaskContext for fused
+            transforms that require it (e.g. monotonically_increasing_id)
 
     Returns:
         A tuple of
@@ -323,8 +327,11 @@ def _shuffle_block(
         f"random_partition_seed ({random_partition_seed}) must be provided!"
     )
 
-    # Apply block transformer prior to shuffling (if any)
+    # Apply block transformer prior to shuffling (if any).
+    # Set up TaskContext so fused transforms that need it (e.g.
+    # monotonically_increasing_id) can access the task index.
     if block_transformer is not None:
+        TaskContext.set_current(TaskContext(task_idx=task_idx, op_name="fused_shuffle"))
         block = block_transformer(block)
 
     # Make sure we're handling Arrow blocks
@@ -795,6 +802,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                 send_empty_blocks=should_broadcast_schemas,
                 override_partition_id=override_partition_id,
                 random_partition_seed=random_partition_seed,
+                task_idx=cur_shuffle_task_idx,
             )
 
             if should_broadcast_schemas:

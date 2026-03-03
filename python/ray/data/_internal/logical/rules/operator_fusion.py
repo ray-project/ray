@@ -65,7 +65,14 @@ def _make_block_transformer(map_transformer):
     map_transformer.override_target_max_block_size(None)  # avoid double-shaping
 
     def block_transformer(block):
-        ctx = TaskContext(task_idx=0, op_name="fused_read")
+        # Use externally-set TaskContext if available (e.g. set by
+        # _shuffle_block with the correct task_idx), otherwise fall back
+        # to a default.  The context must be current on the thread so that
+        # expressions like monotonically_increasing_id() can read it.
+        ctx = TaskContext.get_current()
+        if ctx is None:
+            ctx = TaskContext(task_idx=0, op_name="fused_read")
+            TaskContext.set_current(ctx)
         output_iter = map_transformer.apply_transform([block], ctx)
         builder = None
         for out_block in output_iter:
