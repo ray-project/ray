@@ -413,7 +413,7 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
-dask==2023.6.1 ; python_version < "3.12"
+dask==2023.6.1
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
@@ -453,7 +453,7 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2023.6.1 ; python_version < "3.12"
+distributed==2023.6.1
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
