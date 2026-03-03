@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import gymnasium as gym
+
 from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
@@ -9,7 +10,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import get_device
-
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -122,8 +122,7 @@ class InferenceActor:
             ),
         }
 
-    def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[
-        str, Any]:
+    def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Pass batch to the RLModule."""
         return self.module._forward_exploration(batch, **kwargs)
 

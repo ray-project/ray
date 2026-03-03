@@ -83,6 +83,7 @@ from ray.rllib.evaluation.metrics import (
     summarize_episodes,
 )
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.inference.inference_actor import InferenceActor
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
     DirectMethod,
@@ -112,8 +113,6 @@ from ray.rllib.utils.checkpoints import (
     get_checkpoint_info,
     try_import_msgpack,
 )
-
-from ray.rllib.inference.inference_actor import InferenceActor
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import try_import_tf
@@ -1199,7 +1198,9 @@ class Algorithm(Checkpointable, Trainable):
             inference_actor = inference_actors_cls.remote(config=self.config)
 
             self.env_runner_group.foreach_env_runner(
-                func=lambda er: er.register_inference_actor(inference_actor_handle=inference_actor),
+                func=lambda er: er.register_inference_actor(
+                    inference_actor_handle=inference_actor
+                ),
                 local_env_runner=False,
             )
 

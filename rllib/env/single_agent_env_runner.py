@@ -339,9 +339,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                                 )
                             )
                         else:
-                            to_env = self.module.forward_inference(
-                                batch=to_module
-                            )
+                            to_env = self.module.forward_inference(batch=to_module)
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
