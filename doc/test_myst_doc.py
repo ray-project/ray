@@ -6,6 +6,7 @@ in the converted python script.
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -80,5 +81,9 @@ if __name__ == "__main__":
     remainder.insert(0, name)
     remainder.insert(0, sys.executable)
 
-    # Run the notebook
-    subprocess.run(remainder, check=True)
+    # Run the notebook with PYTHONPATH stripped so that the subprocess
+    # resolves `import ray` from the installed package (which includes the
+    # compiled _raylet.so) rather than from Bazel's runfiles tree.
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    subprocess.run(remainder, check=True, env=env)
