@@ -89,20 +89,20 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
                                         std::chrono::milliseconds interval,
                                         std::chrono::milliseconds timeout) {
   // Create an OTLP exporter
-  opentelemetry::exporter::otlp::OtlpGrpcMetricExporterOptions exporter_options;
-  exporter_options.endpoint = endpoint;
+  exporter_options_.endpoint = endpoint;
   // This line ensures that only the delta values for count and sum are exported during
   // each collection interval. This is necessary because the dashboard agent already
   // accumulates these metrics—re-accumulating them during export would lead to double
   // counting.
-  exporter_options.aggregation_temporality =
+  exporter_options_.aggregation_temporality =
       opentelemetry::exporter::otlp::PreferredAggregationTemporality::kDelta;
   // Add authentication token to metadata if auth is enabled
   if (rpc::GetAuthenticationMode() == rpc::AuthenticationMode::TOKEN) {
     auto token = rpc::AuthenticationTokenLoader::instance().GetToken();
     if (token && !token->empty()) {
-      exporter_options.metadata.insert(
-          {std::string(kAuthTokenKey), token->ToAuthorizationHeaderValue()});
+      const std::string auth_key(kAuthTokenKey);
+      exporter_options_.metadata.erase(auth_key);
+      exporter_options_.metadata.insert({auth_key, token->ToAuthorizationHeaderValue()});
     }
   }
   // Configure TLS/SSL credentials to match how Ray's gRPC servers are configured.
@@ -110,7 +110,7 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
   // OpenTelemetry exporter must also use SSL to connect successfully.
   // See https://github.com/ray-project/ray/issues/59968
   if (RayConfig::instance().USE_TLS()) {
-    exporter_options.use_ssl_credentials = true;
+    exporter_options_.use_ssl_credentials = true;
 
     // Load CA certificate for server verification.
     // Reuse ReadCert from ray/rpc/common.h for consistency with other TLS code paths.
@@ -119,7 +119,7 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
       std::string ca_cert = rpc::ReadCert(ca_cert_file);
       RAY_CHECK(!ca_cert.empty())
           << "Failed to read CA certificate file: " << ca_cert_file;
-      exporter_options.ssl_credentials_cacert_as_string = std::move(ca_cert);
+      exporter_options_.ssl_credentials_cacert_as_string = std::move(ca_cert);
     }
 
 #ifdef ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW
@@ -138,13 +138,13 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
       std::string client_cert = rpc::ReadCert(client_cert_file);
       RAY_CHECK(!client_cert.empty())
           << "Failed to read client certificate file: " << client_cert_file;
-      exporter_options.ssl_client_cert_string = std::move(client_cert);
+      exporter_options_.ssl_client_cert_string = std::move(client_cert);
     }
     if (!client_key_file.empty()) {
       std::string client_key = rpc::ReadCert(client_key_file);
       RAY_CHECK(!client_key.empty())
           << "Failed to read client key file: " << client_key_file;
-      exporter_options.ssl_client_key_string = std::move(client_key);
+      exporter_options_.ssl_client_key_string = std::move(client_key);
     }
     RAY_LOG(INFO) << "OpenTelemetry metric exporter configured with TLS and mTLS enabled";
 #else
@@ -157,8 +157,15 @@ void OpenTelemetryMetricRecorder::Start(const std::string &endpoint,
         << "ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW). Ray's gRPC servers require "
         << "client certificates when TLS is enabled.";
 #endif
+  } else {
+    exporter_options_.use_ssl_credentials = false;
+    exporter_options_.ssl_credentials_cacert_as_string.clear();
+#ifdef ENABLE_OTLP_GRPC_SSL_MTLS_PREVIEW
+    exporter_options_.ssl_client_cert_string.clear();
+    exporter_options_.ssl_client_key_string.clear();
+#endif
   }
-  auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options);
+  auto exporter = std::make_unique<OpenTelemetryMetricExporter>(exporter_options_);
 
   // Initialize the OpenTelemetry SDK and create a Meter
   opentelemetry::sdk::metrics::PeriodicExportingMetricReaderOptions reader_options;

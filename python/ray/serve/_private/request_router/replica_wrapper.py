@@ -30,6 +30,10 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.generated.serve_pb2_grpc import ASGIServiceStub
 from ray.util.annotations import PublicAPI
+from ray.util.tracing.tracing_helper import (
+    _DictPropagator,
+    _is_tracing_enabled,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -134,6 +138,13 @@ class gRPCReplicaWrapper(ReplicaWrapper):
         serializer = RPCSerializer.get_cached_serializer(
             request_serialization, response_serialization
         )
+
+        # When using gRPC transport, requests go over the network rather than through
+        # Ray's actor RPC. Ray's tracing decorators inject _ray_trace_ctx for actor
+        # calls, but that doesn't apply here. We must manually inject the current
+        # trace context so it propagates to the replica (matching the actor path).
+        if _is_tracing_enabled():
+            pr.kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
         asgi_request = ASGIRequest(
             pickled_request_metadata=pickle.dumps(pr.metadata),
