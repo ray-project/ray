@@ -767,7 +767,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
     Expectations:
     - With two servers per backend, healthz returns 200 (all backends have a primary UP).
     - Disabling one primary in each backend keeps health at 200 (the other primary is UP).
-    - Disabling all servers in each backend results in healthz 503.
+    - Disabling all servers in each backend results in healthz 200 (the fallback proxy is UP).
     """
     ray.init(num_cpus=8)
     serve.start()
@@ -856,7 +856,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
 
     wait_health(200, timeout=20)
 
-    # Disable the remaining primary per backend, should become unhealthy (no servers UP)
+    # Disable the remaining primary per backend, should remain healthy (the fallback proxy is UP).
     disabled_all = []
     for be in backends:
         servers = list_primary_servers(be)
@@ -867,9 +867,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
                 disabled_all.append((be, sv))
                 break
 
-    wait_health(503, timeout=20)
+    # The fallback proxy is UP.
+    wait_health(200, timeout=20)
 
-    # Re-enable all servers and expect health back to 200
+    # Re-enable all servers and expect health to be 200.
     for be, sv in disabled_servers + disabled_all:
         set_server_state(be, sv, "ready")
     wait_health(200, timeout=20)
