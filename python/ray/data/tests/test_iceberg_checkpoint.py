@@ -1,13 +1,13 @@
 import pandas as pd
 import pyarrow as pa
-from pyiceberg import schema as pyi_schema
-from pyiceberg import types as pyi_types
+from pyiceberg import schema as pyi_schema, types as pyi_types
 from pyiceberg.catalog.sql import SqlCatalog
 
 import ray
 from ray.data import read_iceberg
-from ray.data.checkpoint import CheckpointConfig, CheckpointBackend
+from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.data.context import DataContext
+
 
 def test_iceberg_checkpoint_with_iceberg_backend(tmp_path):
     """End-to-end validation for Iceberg-backed checkpoints.
@@ -102,3 +102,9 @@ def test_iceberg_checkpoint_with_iceberg_backend(tmp_path):
     assert [r["id"] for r in rows] == [3, 4]
 
     ctx.checkpoint_config = None
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

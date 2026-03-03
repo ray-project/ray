@@ -3,7 +3,6 @@ import warnings
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 from ray import ObjectRef
-
 from ray.data._internal.execution.execution_callback import add_execution_callback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
