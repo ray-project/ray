@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import gymnasium as gym
+from gymnasium.wrappers.vector import DictInfoToList
 
 from ray.rllib.connectors.env_to_module import (
     NumpyToTensor,
@@ -16,6 +17,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
 from ray.rllib.utils.framework import get_device
@@ -67,6 +69,13 @@ class InferenceActor:
                 )
 
         env_config = self.config.env_config
+        if not isinstance(env_config, EnvContext):
+            env_ctx = EnvContext(
+                env_config,
+                worker_index=0,
+            )
+        else:
+            env_ctx = env_config
 
         # No env provided -> Error.
         if not self.config.env:
@@ -84,28 +93,42 @@ class InferenceActor:
             entry_point = _global_registry.get(ENV_CREATOR, self.config.env)
             gym.register(
                 id=env_name,
-                entry_point=lambda: entry_point(env_config),
+                entry_point=lambda: entry_point(env_ctx),
+                vector_entry_point=lambda num_envs: entry_point(
+                    env_ctx | {"num_envs": num_envs}
+                ),
             )
             env_config = {}
         elif callable(self.config.env):
             env_name = "rllib-single-agent-env-inference-v0"
             gym.register(
                 id=env_name,
-                entry_point=lambda: self.config.env(env_config),
+                entry_point=lambda: self.config.env(env_ctx),
+                vector_entry_point=lambda num_envs: self.config.env(
+                    env_ctx | {"num_envs": num_envs}
+                ),
             )
             env_config = {}
         else:
             env_name = self.config.env
 
+        vectorize_mode = gym.VectorizeMode(self.config.gym_env_vectorize_mode)
         try:
-            self.env = gym.make(
-                id=env_name,
-                **env_config,
+            self.env = DictInfoToList(
+                gym.make_vec(
+                    id=env_name,
+                    num_envs=self.config.num_envs_per_env_runner,
+                    vectorization_mode=vectorize_mode,
+                    **env_config,
+                )
             )
         except gym.error.Error as e:
             raise EnvError(
                 ERR_MSG_INVALID_ENV_DESCRIPTOR.format(self.config.env)
             ) from e
+
+        self.num_envs: int = self.env.num_envs
+        assert self.num_envs == self.config.num_envs_per_env_runner
 
     def make_module(self):
         env = self.env.unwrapped if self.env is not None else None
@@ -128,12 +151,12 @@ class InferenceActor:
         return {
             INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
             INPUT_ENV_SINGLE_SPACES: (
-                self.env.observation_space,
-                self.env.action_space,
+                self.env.single_observation_space,
+                self.env.single_action_space,
             ),
             DEFAULT_MODULE_ID: (
-                self.env.observation_space,
-                self.env.action_space,
+                self.env.single_observation_space,
+                self.env.single_action_space,
             ),
         }
 
