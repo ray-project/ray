@@ -129,8 +129,9 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
     def get(self) -> ClusterUtil:
         """Get the average cluster utilization based on global usage / global limits."""
         return ClusterUtil(
-            cpu=self._cluster_cpu_util_calculator.get_average(),
-            gpu=self._cluster_gpu_util_calculator.get_average(),
-            memory=self._cluster_mem_util_calculator.get_average(),
-            object_store_memory=self._cluster_obj_mem_util_calculator.get_average(),
+            cpu=self._cluster_cpu_util_calculator.get_average() or 0,
+            gpu=self._cluster_gpu_util_calculator.get_average() or 0,
+            memory=self._cluster_mem_util_calculator.get_average() or 0,
+            object_store_memory=self._cluster_obj_mem_util_calculator.get_average()
+            or 0,
         )
