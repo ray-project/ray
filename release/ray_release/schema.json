@@ -1,0 +1,218 @@
+{
+	"$schema": "http://json-schema.org/draft-06/schema#",
+	"$ref": "#/definitions/Test",
+	"definitions": {
+		"Test": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"group": {
+					"type": "string"
+				},
+				"working_dir": {
+					"type": "string"
+				},
+				"repeated_run": {
+					"type": "integer"
+				},
+				"env": {
+					"type": "string"
+				},
+				"stable": {
+					"type": "boolean"
+				},
+				"python": {
+					"type": "string",
+					"enum": [
+						"3.10",
+						"3.11",
+						"3.12",
+						"3.13"
+					]
+				},
+				"frequency": {
+					"type": "string",
+					"enum": [
+						"manual",
+						"nightly",
+						"nightly-3x",
+						"weekly",
+						"monthly"
+					]
+				},
+				"team": {
+					"type": "string"
+				},
+				"cluster": {
+					"$ref": "#/definitions/Cluster"
+				},
+				"run": {
+					"$ref": "#/definitions/Run"
+				},
+				"smoke_test": {
+					"$ref": "#/definitions/SmokeTest"
+				},
+				"alert": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"cluster",
+				"frequency",
+				"name",
+				"run",
+				"team",
+				"working_dir"
+			],
+			"title": "Test"
+		},
+		"Cluster": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"ray_version": {
+					"type": "string"
+				},
+				"cluster_compute": {
+					"type": "string"
+				},
+				"autosuspend_mins": {
+					"type": "integer",
+					"minimum": -1
+				},
+				"cloud_id": {
+					"type": "string"
+				},
+				"project_id": {
+					"type": "string"
+				},
+				"byod": {
+					"$ref": "#/definitions/Byod"
+				}
+			},
+			"required": [
+				"cluster_compute"
+			],
+			"title": "Cluster"
+		},
+		"Byod": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"type": {
+					"type": "string"
+				},
+				"post_build_script": {
+					"type": "string"
+				},
+				"python_depset": {
+					"type": "string"
+				},
+				"runtime_env": {
+					"type": "array"
+				}
+			},
+			"required": [],
+			"title": "Byod"
+		},
+		"Run": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"type": {
+					"type": "string",
+					"enum": [
+						"command",
+						"sdk_command",
+						"job",
+						"client",
+						"anyscale_job"
+					]
+				},
+				"wait_for_nodes": {
+					"$ref": "#/definitions/WaitForNodes"
+				},
+				"prepare": {
+					"type": "string"
+				},
+				"prepare_timeout": {
+					"type": "integer"
+				},
+				"script": {
+					"type": "string"
+				},
+				"timeout": {
+					"type": "integer"
+				},
+				"long_running": {
+					"type": "boolean"
+				},
+				"artifact_path": {
+					"type": "string"
+				},
+				"num_retries": {
+					"type": "integer"
+				}
+			},
+			"required": [
+				"script",
+				"timeout"
+			],
+			"title": "Run"
+		},
+		"WaitForNodes": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"num_nodes": {
+					"type": "integer"
+				},
+				"timeout": {
+					"type": "integer"
+				}
+			},
+			"required": [
+				"num_nodes"
+			],
+			"title": "WaitForNodes"
+		},
+		"SmokeTest": {
+			"type": "object",
+			"additionalProperties": false,
+			"title": "SmokeTest",
+			"properties": {
+				"working_dir": {
+					"type": "string"
+				},
+				"env": {
+					"type": "string"
+				},
+				"cluster": {
+					"type": "object"
+				},
+				"run": {
+					"type": "object"
+				},
+				"alert": {
+					"type": "string"
+				},
+				"frequency": {
+					"type": "string",
+					"enum": [
+						"manual",
+						"nightly",
+						"nightly-3x",
+						"weekly",
+						"monthly"
+					]
+				}
+			},
+			"required": [
+				"frequency"
+			]
+		}
+	}
+}

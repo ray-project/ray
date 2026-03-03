@@ -1,0 +1,19 @@
+# GCE autoscaling GPU compute config for multi-stage batch inference.
+# Uses n1-standard-16 with 1 NVIDIA T4 GPU (16 vCPUs, 60GB RAM, 1 GPU).
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs:
+    - us-west1-b
+
+head_node_type:
+    name: head-node
+    instance_type: n2-standard-8
+    resources:
+      cpu: 0
+
+worker_node_types:
+    - name: worker-node
+      instance_type: n1-standard-16-nvidia-tesla-t4-1
+      min_workers: 0
+      max_workers: 300
+      use_spot: true

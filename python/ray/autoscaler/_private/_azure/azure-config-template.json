@@ -1,0 +1,137 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "clusterId": {
+            "type": "string",
+            "metadata": {
+                "description": "Unique string appended to resource names to isolate resources from different ray clusters."
+            }
+        },
+        "subnet": {
+            "type": "string",
+            "metadata": {
+                "description": "Subnet parameters."
+            }
+        },
+        "msiName": {
+            "type": "string",
+            "metadata": {
+                "description": "Managed service identity."
+            }
+        },
+        "msiResourceGroup": {
+            "type": "string",
+            "metadata": {
+                "description": "Managed service identity resource group."
+            }
+        },
+        "createMsi": {
+            "type": "bool",
+            "defaultValue": "true"
+        },
+        "roleAssignmentGuid": {
+            "type": "string",
+            "metadata": {
+                "description": "Deterministic resource name for the MSI role assignment."
+            }
+        }
+    },
+    "variables": {
+        "contributor": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "location": "[resourceGroup().location]",
+        "roleAssignmentName": "[concat('ray-', parameters('clusterId'), '-ra')]",
+        "nsgName": "[concat('ray-', parameters('clusterId'), '-nsg')]",
+        "nsg": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
+        "vnetName": "[concat('ray-', parameters('clusterId'), '-vnet')]",
+        "subnetName": "[concat('ray-', parameters('clusterId'), '-subnet')]"
+    },
+    "resources": [
+       {
+            "condition": "[parameters('createMsi')]",
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "apiVersion": "2024-11-30",
+            "location": "[variables('location')]",
+            "name": "[parameters('msiName')]"
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[parameters('roleAssignmentGuid')]",
+            "properties": {
+                "principalId": "[reference(resourceId(parameters('msiResourceGroup'), 'Microsoft.ManagedIdentity/userAssignedIdentities', parameters('msiName')), '2024-11-30').principalId]",
+                "roleDefinitionId": "[variables('contributor')]",
+                "scope": "[resourceGroup().id]",
+                "principalType": "ServicePrincipal",
+                "description": "[concat('Ray autoscaler cluster ', parameters('clusterId'))]"
+            },
+            "dependsOn": [
+                "[parameters('msiName')]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2024-10-01",
+            "name": "[variables('nsgName')]",
+            "location": "[variables('location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "SSH",
+                        "properties": {
+                            "priority": 1000,
+                            "protocol": "Tcp",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "22"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2024-10-01",
+            "name": "[variables('vnetName')]",
+            "location": "[variables('location')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('subnet')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnetName')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet')]",
+                            "networkSecurityGroup": {
+                                "id": "[variables('nsg')]"
+                              }
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[variables('nsg')]"
+            ]
+        }
+    ],
+    "outputs": {
+        "subnet": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+        },
+        "nsg": {
+            "type": "string",
+            "value": "[variables('nsg')]"
+        },
+        "msi": {
+            "type": "string",
+            "value": "[resourceId(parameters('msiResourceGroup'), 'Microsoft.ManagedIdentity/userAssignedIdentities', parameters('msiName'))]"
+        }
+    }
+}

@@ -1,0 +1,584 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/autoscaler.proto";
+import "src/ray/protobuf/public/runtime_environment.proto";
+
+message WorkerBacklogReport {
+  // LeaseSpec indicating the scheduling class.
+  // Cannot send scheduling class directly
+  // since it's local to each process.
+  LeaseSpec lease_spec = 1;
+  // Size of the backlog for the above scheduling class.
+  int64 backlog_size = 2;
+}
+
+message ReportWorkerBacklogRequest {
+  // Unique id of the worker that's reporting the backlog
+  bytes worker_id = 1;
+  // Backlog report per scheduling class
+  repeated WorkerBacklogReport backlog_reports = 2;
+}
+
+message ReportWorkerBacklogReply {}
+
+// Request a worker from the raylet with the specified resources.
+message RequestWorkerLeaseRequest {
+  // LeaseSpec containing the requested resources.
+  LeaseSpec lease_spec = 1;
+  // Worker's backlog size for this spec's shape.
+  int64 backlog_size = 2;
+  // If it's true, either grant the lease if the task is
+  // locally schedulable or reject the request.
+  // Else, the raylet may return another raylet at which to retry the request.
+  bool grant_or_reject = 3;
+  // If it's true, then the current raylet is selected
+  // due to the locality of task arguments.
+  bool is_selected_based_on_locality = 4;
+}
+
+message RequestWorkerLeaseReply {
+  enum SchedulingFailureType {
+    // The default failure type is "not failed".
+    NOT_FAILED = 0;
+    // Scheduling is failed on this node.
+    SCHEDULING_FAILED = 1;
+    // Scheduling is cancelled because task/actor's placement is removed.
+    SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED = 2;
+    // Scheduling is cancelled because task/actor's runtime environment setup is failed
+    SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED = 3;
+    // Scheduling is cancelled because task/actor is intentionally cancelled. E.g.,
+    // ray.kill or ray.cancel
+    SCHEDULING_CANCELLED_INTENDED = 4;
+    // Scheduling is cancelled because the task/actor is no longer schedulable.
+    SCHEDULING_CANCELLED_UNSCHEDULABLE = 5;
+  }
+
+  // Address of the leased worker. If this is empty, then the request should be
+  // retried at the provided raylet address.
+  Address worker_address = 1;
+  // Address of the raylet to spill back to, if any.
+  Address retry_at_raylet_address = 2;
+  // Resource mapping ids acquired by the leased worker.
+  repeated ResourceMapEntry resource_mapping = 3;
+  // Whether this lease request was canceled.
+  bool canceled = 4;
+  // PID of the worker process.
+  uint32 worker_pid = 6;
+  // Whether the request was rejected because of insufficient resources.
+  bool rejected = 7;
+  // The (normal task) resources data to be carried by the Reply.
+  ResourcesData resources_data = 8;
+  // Scheduling failure type.
+  // Must be set only when canceled is set.
+  SchedulingFailureType failure_type = 9;
+  // The error message explaining why scheduling has failed.
+  // Must be an empty string if failure_type is `NOT_FAILED`.
+  string scheduling_failure_message = 10;
+}
+
+// Request to prestart workers. At this time we don't yet know the resource, or task type.
+message PrestartWorkersRequest {
+  Language language = 1;
+  // Job ID for the workers. Note: root_detached_actor_id is not supported.
+  optional bytes job_id = 2;
+  RuntimeEnvInfo runtime_env_info = 3;
+  // Started idle workers will be kept alive for this duration. Reset on task assignment.
+  uint64 keep_alive_duration_secs = 4;
+  // Raylet will try to start `num_workers` workers.
+  uint64 num_workers = 5;
+}
+
+message PrestartWorkersReply {}
+
+message PrepareBundleResourcesRequest {
+  // Bundles that containing the requested resources.
+  repeated Bundle bundle_specs = 1;
+}
+
+message PrepareBundleResourcesReply {
+  // The status if prepare request was successful.
+  bool success = 1;
+}
+
+message CommitBundleResourcesRequest {
+  // Bundles containing the requested resources.
+  repeated Bundle bundle_specs = 1;
+}
+
+message CommitBundleResourcesReply {}
+
+message CancelResourceReserveRequest {
+  // Bundle containing the requested resources.
+  Bundle bundle_spec = 1;
+}
+
+message CancelResourceReserveReply {}
+
+message ResizeLocalResourceInstancesRequest {
+  // Map of resource names to their desired total quantities
+  // For example: {"CPU": 4, "memory": 1000000}
+  map<string, double> resources = 1;
+}
+
+message ResizeLocalResourceInstancesReply {
+  // Current total resources after the resize operation
+  map<string, double> total_resources = 1;
+}
+
+// Release a worker back to its raylet.
+message ReturnWorkerLeaseRequest {
+  // Port of the leased worker that we are now returning.
+  int32 worker_port = 1;
+  // The lease id of the lease we are now returning.
+  bytes lease_id = 2;
+  // If true, there was some unrecoverable error and the raylet should
+  // disconnect the worker.
+  bool disconnect_worker = 3;
+  // Whether the worker is exiting and cannot be reused.
+  bool worker_exiting = 4;
+  // The error message for disconnect_worker.
+  string disconnect_worker_error_detail = 5;
+}
+
+message ReturnWorkerLeaseReply {}
+
+message ReleaseUnusedActorWorkersRequest {
+  repeated bytes worker_ids_in_use = 1;
+}
+
+message ReleaseUnusedActorWorkersReply {}
+
+message ShutdownRayletRequest {
+  /// Whether the shutdown request is graceful or not.
+  bool graceful = 1;
+}
+
+message ShutdownRayletReply {}
+
+message CancelWorkerLeaseRequest {
+  // The lease to cancel.
+  bytes lease_id = 1;
+}
+
+message CancelWorkerLeaseReply {
+  // Whether the cancellation request was successful. Cancellation
+  // succeeds if the node manager has the task queued upon receiving
+  // the cancellation request, and the node manager has not yet
+  // granted the lease.
+  bool success = 1;
+}
+
+message PinObjectIDsRequest {
+  // Address of the owner to ask when to unpin the objects.
+  Address owner_address = 1;
+  // ObjectIDs to pin.
+  repeated bytes object_ids = 2;
+  // For object IDs that were generated dynamically during task execution. The
+  // owner learns of these ObjectRefs at task execution time instead of at
+  // ray.put() or f.remote() time. This is the outer ObjectID that the
+  // dynamically generated ObjectRefs are stored inside. We need this information
+  // so that we can notify the owner about the nested ObjectRefs, in case the
+  // owner does not know about them yet.
+  optional bytes generator_id = 3;
+}
+
+message PinObjectIDsReply {
+  // Whether pinning the corresponding object succeeded or not.
+  // Pin can fail if the object is already evicted.
+  repeated bool successes = 1;
+}
+
+message GetNodeStatsRequest {
+  // Whether to include memory stats. This could be large since it includes
+  // metadata for all live object references.
+  bool include_memory_info = 1;
+}
+
+// Object store stats, which may be reported per-node or aggregated across
+// multiple nodes in the cluster (values are additive).
+message ObjectStoreStats {
+  // The amount of wall time total where spilling was happening.
+  double spill_time_total_s = 1;
+  // The number of bytes spilled total.
+  int64 spilled_bytes_total = 2;
+  // The number of objects spilled total.
+  int64 spilled_objects_total = 3;
+  // The amount of wall time total where object restore was happening.
+  double restore_time_total_s = 4;
+  // The number of bytes restored total.
+  int64 restored_bytes_total = 5;
+  // The number of objects restored total.
+  int64 restored_objects_total = 6;
+  // The current usage of the object store.
+  int64 object_store_bytes_used = 7;
+  // The max capacity of the object store.
+  int64 object_store_bytes_avail = 8;
+  // The number of bytes pinned as the primary copy of objects.
+  int64 object_store_bytes_primary_copy = 9;
+  // The number of bytes allocated from the filesystem (fallback allocs).
+  int64 object_store_bytes_fallback = 10;
+  // The number of local objects total.
+  int64 num_local_objects = 11;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory.
+  bool object_pulls_queued = 12;
+  // The number of primary copies of objects in the local node.
+  int64 num_object_store_primary_copies = 13;
+  // The total number of objects that have been allocated to plasma.
+  int64 cumulative_created_objects = 14;
+  // The total number of bytes that have been allocated to plasma objects.
+  int64 cumulative_created_bytes = 15;
+}
+
+message GetNodeStatsReply {
+  repeated CoreWorkerStats core_workers_stats = 1;
+  uint32 num_workers = 3;
+  ObjectStoreStats store_stats = 6;
+}
+
+message GlobalGCRequest {}
+
+message GlobalGCReply {}
+
+// Accumulates memory info across all nodes. To access per-node memory info,
+// use GetNodeStats() calls instead.
+message FormatGlobalMemoryInfoRequest {
+  // Whether or not the reply should include memory summary.
+  // If it is true, it will add extra overhead to the system
+  // because getting memory info requires to ping every core worker
+  // in the cluster.
+  bool include_memory_info = 1;
+}
+
+message FormatGlobalMemoryInfoReply {
+  // A tabular summary of the memory stats. To get this data in structured form,
+  // you can instead use GetNodeStats() directly.
+  string memory_summary = 1;
+  // Aggregate store stats across all nodes. To get the individual node data,
+  // you can instead use GetNodeStats() directly.
+  ObjectStoreStats store_stats = 2;
+}
+
+message ReleaseUnusedBundlesRequest {
+  repeated Bundle bundles_in_use = 1;
+}
+
+message ReleaseUnusedBundlesReply {}
+
+message GetSystemConfigRequest {}
+
+message GetSystemConfigReply {
+  string system_config = 1;
+}
+
+message GetObjectsInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
+}
+
+message GetObjectsInfoReply {
+  repeated CoreWorkerStats core_workers_stats = 1;
+  // Length of the corresponding resource without truncation.
+  int64 total = 2;
+}
+
+message GetResourceLoadRequest {}
+
+message GetResourceLoadReply {
+  ResourcesData resources = 1;
+}
+
+message CancelLeasesWithResourceShapesRequest {
+  message ResourceShape {
+    // A map from resource name to the quantity of that resource. This map represents
+    // the resource request shape of a task.
+    map<string, double> resource_shape = 1;
+  }
+  // The resource shapes of the tasks to cancel.
+  repeated ResourceShape resource_shapes = 1;
+}
+
+message CancelLeasesWithResourceShapesReply {
+  // Empty
+}
+
+message NotifyGCSRestartRequest {}
+
+message NotifyGCSRestartReply {}
+
+message GetWorkerFailureCauseRequest {
+  bytes lease_id = 1;
+}
+
+message GetWorkerFailureCauseReply {
+  optional RayErrorInfo failure_cause = 1;
+  bool fail_task_immediately = 2;
+}
+
+message DrainRayletRequest {
+  // The reason why the node will be drained.
+  // This information will be used to
+  // decide whether the request is rejectable.
+  ray.rpc.autoscaler.DrainNodeReason reason = 1;
+  // The detailed drain reason message.
+  // Used for observability.
+  string reason_message = 2;
+  /// Timestamp when the node to be drained will be force killed.
+  /// This is a hint to Ray that it should drain everything before the deadline.
+  int64 deadline_timestamp_ms = 3;
+}
+
+message DrainRayletReply {
+  // Whether the drain request is accepted.
+  bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
+}
+
+message RegisterMutableObjectRequest {
+  bytes writer_object_id = 1;
+  int64 num_readers = 2;
+  bytes reader_object_id = 3;
+}
+
+message RegisterMutableObjectReply {
+  // Nothing for now.
+}
+
+message PushMutableObjectRequest {
+  // The object ID of the object written to on the writer node.
+  bytes writer_object_id = 1;
+  // The total size of the data (across all chunks).
+  uint64 total_data_size = 2;
+  // The total size of the metadata (across all chunks).
+  uint64 total_metadata_size = 3;
+
+  // The offset of the chunk (in bytes) within the object's data.
+  uint64 offset = 4;
+  // The size of data payload chunk.
+  uint64 chunk_size = 5;
+  // The data payload.
+  bytes data = 6;
+  // The metadata payload. Note that the size of metadata is minimal.
+  bytes metadata = 7;
+}
+
+message PushMutableObjectReply {
+  // The receiver sets this to true once it has received all chunks for a mutable object
+  // write, false otherwise (i.e., the receiver still expects to receive more chunks).
+  bool done = 1;
+}
+
+message IsLocalWorkerDeadRequest {
+  // Binary worker id of the target worker.
+  bytes worker_id = 1;
+}
+
+message IsLocalWorkerDeadReply {
+  // Whether the target worker is dead or not.
+  bool is_dead = 1;
+}
+
+message GetWorkerPIDsRequest {}
+
+message GetWorkerPIDsReply {
+  // PIDs of all drivers and workers managed by the local raylet.
+  repeated int32 pids = 1;
+}
+
+message GetAgentPIDsRequest {}
+
+message GetAgentPIDsReply {
+  // All agent pids
+  optional int32 dashboard_agent_pid = 1;
+  optional int32 runtime_env_agent_pid = 2;
+}
+
+message KillLocalActorRequest {
+  // ID of the actor that is intended to be killed.
+  bytes intended_actor_id = 1;
+  // ID of the worker the actor is on
+  bytes worker_id = 2;
+  // Whether to force kill the actor.
+  bool force_kill = 3;
+  // The precise reason why this actor receives a kill request.
+  ActorDeathCause death_cause = 4;
+}
+
+message KillLocalActorReply {}
+
+message CancelLocalTaskRequest {
+  // ID of task that should be killed.
+  bytes intended_task_id = 1;
+  // Whether to kill the worker.
+  bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
+  // The worker ID of the caller.
+  bytes caller_worker_id = 4;
+  // The worker ID of the executor.
+  bytes executor_worker_id = 5;
+}
+
+message CancelLocalTaskReply {
+  // Whether the requested task is the currently running task.
+  bool requested_task_running = 1;
+  // Whether the task is canceled.
+  bool attempt_succeeded = 2;
+}
+
+// Service for inter-node-manager communication.
+service NodeManagerService {
+  // Handle the case when GCS restarted.
+  // Failure: TODO: Needs to be retried, need to check/make idempotent.
+  rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
+  // Get the resource load of the raylet.
+  // Failure: Doesn't need to be retried since it will keep getting periodically called,
+  // and is not critical.
+  rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
+  // Cancel tasks that require certain resource shapes. This method is intended to only
+  // used for cancelling infeasible tasks. To make it a general-purpose task
+  // cancellation method, we need to add the failure type and failure message to the
+  // request.
+  // Failure: This doesn't explicitly retry, only logs on failure, but autoscaler will
+  // keep calling this so it will be retried at a layer above.
+  rpc CancelLeasesWithResourceShapes(CancelLeasesWithResourceShapesRequest)
+      returns (CancelLeasesWithResourceShapesReply);
+  // Request a worker from the raylet.
+  // Failure: Retries, it's idempotent.
+  rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
+  // Request to prestart workers.
+  // Failure: Shouldn't fail because always sends to local raylet. Has a log on failure to
+  // send.
+  rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
+  // Report task backlog information from a worker to the raylet
+  // Failure: Doesn't need to be retried since it will keep getting periodically called,
+  // and is not critical.
+  rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
+  // Return a worker lease back to its raylet.
+  // Failure: Retries, it's idempotent.
+  rpc ReturnWorkerLease(ReturnWorkerLeaseRequest) returns (ReturnWorkerLeaseReply);
+  // This method is only used by GCS, and the purpose is to release leased workers
+  // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
+  // in the previous lifecycle. In this case, GCS will send a list of worker ids that
+  // are still needed. And Raylet will release other leased workers.
+  // Failure: TODO: We log warning, but need to fix to retry.
+  rpc ReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest)
+      returns (ReleaseUnusedActorWorkersReply);
+  // Shutdown the raylet (node manager).
+  // Failure: TODO: This + DrainRaylet should retry behavior needs to be thought of from
+  // oss autoscaler level.
+  rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
+  // Request to drain the raylet.
+  // Failure: TODO: See above todo + gcs autoscaler manager will call this, think about
+  // whether gcs -> raylet retry should stay at autoscaler level or move to gcs level.
+  rpc DrainRaylet(DrainRayletRequest) returns (DrainRayletReply);
+  // Request a raylet to lock resources for a bundle.
+  // Failure: This is the first phase of 2PC protocol for atomic placement group creation.
+  // We'll add back to pending queue if the request fails.
+  rpc PrepareBundleResources(PrepareBundleResourcesRequest)
+      returns (PrepareBundleResourcesReply);
+  // Commit bundle resources to a raylet.
+  // Failure: This is the second phase of 2PC protocol for atomic placement group
+  // creation. Same as above for failure behavior.
+  rpc CommitBundleResources(CommitBundleResourcesRequest)
+      returns (CommitBundleResourcesReply);
+  // Return resource for the raylet.
+  // Failure: Has retry behavior, could be improved to just use retriable grpc client.
+  rpc CancelResourceReserve(CancelResourceReserveRequest)
+      returns (CancelResourceReserveReply);
+  // Adjust the total number of local resource instances on the raylet to match the
+  // specified values.
+  // Success: Returns the updated total resources for the node. If downsizing would make
+  // available resources negative, the raylet clamps the reduction so that available
+  // becomes zero.
+  // Failure: Returns INVALID_ARGUMENT if the request attempts to resize a unit instance
+  // resource (e.g., GPU), as these cannot be resized by this API. In the cases of
+  // network errors, the caller should retry the request.
+  rpc ResizeLocalResourceInstances(ResizeLocalResourceInstancesRequest)
+      returns (ResizeLocalResourceInstancesReply);
+  // Cancel a pending lease request. This only returns success if the
+  // lease request was not yet granted.
+  // Failure: Retries, it's idempotent.
+  rpc CancelWorkerLease(CancelWorkerLeaseRequest) returns (CancelWorkerLeaseReply);
+  // Pin the provided object IDs.
+  // Failure: Retries, it's idempotent.
+  rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
+  // Get the current node stats.
+  // Failure: For observability, periodically called so failure is ok.
+  rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
+  // Trigger garbage collection in all workers across the cluster.
+  // Failure: Requests are sent periodically sent, so failure is ok.
+  rpc GlobalGC(GlobalGCRequest) returns (GlobalGCReply);
+  // Get global object reference stats in formatted form.
+  // Failure: For observability, caller can retry on failure.
+  rpc FormatGlobalMemoryInfo(FormatGlobalMemoryInfoRequest)
+      returns (FormatGlobalMemoryInfoReply);
+  // This method is only used by GCS, and the purpose is to release bundles
+  // that may be leaked. When GCS restarts, it doesn't know which bundles it has leased
+  // in the previous lifecycle. In this case, GCS will send a list of bundles that
+  // are still needed. And Raylet will release other bundles.
+  // Failure: Retries, it's idempotent.
+  rpc ReleaseUnusedBundles(ReleaseUnusedBundlesRequest)
+      returns (ReleaseUnusedBundlesReply);
+  // Get the system config.
+  // Failure: Sends to local raylet, so should never fail. Has failure logging.
+  rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
+  // [State API] Get the all object information of the node.
+  // Failure: State API user can retry.
+  rpc GetObjectsInfo(GetObjectsInfoRequest) returns (GetObjectsInfoReply);
+  // Gets the worker failure cause. May contain a result if
+  // the worker executing the task failed.
+  // Failure: Gives user error message on failure.
+  rpc GetWorkerFailureCause(GetWorkerFailureCauseRequest)
+      returns (GetWorkerFailureCauseReply);
+  // Failure: TODO: Handle network failure for cgraphs.
+  rpc RegisterMutableObject(RegisterMutableObjectRequest)
+      returns (RegisterMutableObjectReply);
+  // Failure: TODO: Handle network failure for cgraphs.
+  rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
+  // Failure: Is currently only used when grpc channel is unavailable for retryable core
+  // worker clients. The unavailable callback will eventually be retried so if this fails.
+  rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
+  // Get the PIDs of all workers currently alive that are managed by the local Raylet.
+  // This includes connected driver processes but excludes system drivers (with namespace
+  // prefix "_ray_internal_")
+  // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
+  // list.
+  rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Get the PIDs of dashboard and runtime env agent currently alive that are managed by
+  // the local Raylet. Failure: Will retry with the default timeout 1000ms. If fails,
+  // reply return an empty list.
+  rpc GetAgentPIDs(GetAgentPIDsRequest) returns (GetAgentPIDsReply);
+  // Request from the GCS actor manager or actor scheduler that the worker shut down
+  // without completing outstanding work.
+  // Failure: Retries, it's idempotent.
+  rpc KillLocalActor(KillLocalActorRequest) returns (KillLocalActorReply);
+  // Cancels a task on the local node. If the reply is OK, the task is canceled.
+  // If force_kill is true, the worker executing the task will be killed. We will
+  // initially try to gracefully kill the worker, and will escalate to a SIGKILL
+  // in the case of a hang.
+  // If force_kill is false, the worker remains alive for subsequent tasks.
+  // Failure: Retries, it's idempotent.
+  rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
+}

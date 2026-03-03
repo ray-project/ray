@@ -1,0 +1,108 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/export_runtime_env.proto";
+import "src/ray/protobuf/profile_events.proto";
+
+// ExportTaskEventData defines the event_data stored by the export API
+// for EXPORT_TASK type events. This schema is public and any changes must
+// be backward compatible.
+message ExportTaskEventData {
+  /// The information per ray error type.
+  message RayErrorInfo {
+    string error_message = 1;
+    // The type of error that caused the exception.
+    ErrorType error_type = 2;
+  }
+
+  message TaskLogInfo {
+    // stdout log file absolute path.
+    optional string stdout_file = 1;
+    // stderr log file absolute path.
+    optional string stderr_file = 2;
+    // Start offset of stdout when task starts.
+    optional int32 stdout_start = 3;
+    // End offset of stdout when task finishes.
+    optional int32 stdout_end = 4;
+    // Start offset of stderr when task starts.
+    optional int32 stderr_start = 5;
+    // End offset of stderr when task finishes.
+    optional int32 stderr_end = 6;
+  }
+
+  message TaskStateUpdate {
+    // Node that runs the task.
+    optional bytes node_id = 1;
+    // Worker that runs the task.
+    optional bytes worker_id = 2;
+    // Task failure info.
+    optional RayErrorInfo error_info = 3;
+    // Task logs info.
+    optional TaskLogInfo task_log_info = 4;
+    // Worker Pid.
+    optional int32 worker_pid = 5;
+    // Is task paused by debugger.
+    optional bool is_debugger_paused = 6;
+    // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
+    // Value is the timestamp when status changes to the target status indicated by the
+    // key.
+    map<int32, int64> state_ts_ns = 7;
+  }
+
+  message TaskInfoEntry {
+    // Type of this task. TaskType is already public enum
+    TaskType type = 1;
+    // Language of this task.
+    Language language = 2;
+    string func_or_class_name = 3;
+    // Task ID of the task.
+    bytes task_id = 4;
+    // Task ID of the parent task.
+    bytes parent_task_id = 5;
+    // Quantities of the different resources required by this task.
+    map<string, double> required_resources = 6;
+    // Runtime environment for this task.
+    ExportRuntimeEnvInfo runtime_env_info = 7;
+    // The actor id for this task.
+    // If the task type is Actor creation task or Actor task
+    // this is set. Otherwise, it is empty.
+    optional bytes actor_id = 8;
+    // The placement group id of this task.
+    // If the task/actor is created within a placement group,
+    // this value is configured.
+    optional bytes placement_group_id = 9;
+    // The key-value labels for task and actor.
+    map<string, string> labels = 10;
+    // The key-value label constraints of the node to schedule this task or actor on.
+    map<string, string> label_selector = 11;
+  }
+
+  // Metadata shared by all event types.
+  bytes task_id = 1;
+  // The current retry attempt number for the task.
+  int32 attempt_number = 2;
+  // Task Info.
+  optional TaskInfoEntry task_info = 3;
+  // Task state updates.
+  optional TaskStateUpdate state_updates = 4;
+  // Task profiling events.
+  optional ProfileEvents profile_events = 5;
+  // Job id of the task
+  bytes job_id = 6;
+}

@@ -1,0 +1,15 @@
+.example-gallery-link {
+  padding: 1em 2em 1em 2em;
+  text-decoration: none !important;
+  color: var(--pst-color-text-base);
+  display: flex;
+  align-items: center;
+}
+
+svg.star-icon path.star-icon-path {
+  fill: var(--pst-color-text-base);
+}
+
+svg.star-icon {
+  margin-right: 1em;
+}

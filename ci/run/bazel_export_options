@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+mkdir -p /tmp/bazel_event_logs
+if [[ "${OSTYPE}" == "msys" ]]; then
+  artifact_mount_path="/c/artifact-mount"
+else
+  artifact_mount_path="/artifact-mount"
+fi
+event_json_flag=--build_event_json_file=$(mktemp /tmp/bazel_event_logs/bazel_log.XXXXX)
+logs_archive_flag=--test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR="${artifact_mount_path}"/failed_test_logs
+summary_directory_flag=--test_env=RAY_TEST_SUMMARY_DIR="${artifact_mount_path}"/test-summaries
+summary_directory_host_flag=--test_env=RAY_TEST_SUMMARY_DIR_HOST=/tmp/artifacts/test-summaries
+mujoco_env_var="--test_env=LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin"
+
+echo "${event_json_flag} ${logs_archive_flag} ${summary_directory_flag} ${summary_directory_host_flag} ${mujoco_env_var}"

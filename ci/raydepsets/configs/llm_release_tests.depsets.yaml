@@ -1,0 +1,38 @@
+build_arg_sets:
+  cu128:
+    PYTHON_VERSION: py311
+    PYTHON_VERSION_STR: "3.11"
+    CUDA_CODE: cu128
+  cu129_py312:
+    PYTHON_VERSION: py312
+    PYTHON_VERSION_STR: "3.12"
+    CUDA_CODE: cu129
+
+
+.common_settings: &common_settings
+  append_flags:
+    - --python-version=${PYTHON_VERSION_STR}
+    - --unsafe-package ray
+    - --python-platform=x86_64-manylinux_2_31
+    - --index https://download.pytorch.org/whl/${CUDA_CODE}
+  build_arg_sets:
+    - cu128
+    - cu129_py312
+
+depsets:
+  - name: subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: subset
+    source_depset: compiled_ray_llm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    requirements:
+      - python/requirements.txt
+    output: python/deplocks/llm/rayllm_subset_${PYTHON_VERSION}_${CUDA_CODE}.lock
+
+  - name: llm_batch_single_node_benchmark_${PYTHON_VERSION}_${CUDA_CODE}
+    operation: expand
+    depsets:
+      - subset_rayllm_depset_${PYTHON_VERSION}_${CUDA_CODE}
+    <<: *common_settings
+    requirements:
+      - release/llm_tests/batch/requirements.in
+    output: release/ray_release/byod/llm_batch/llm_batch_single_node_benchmark_${PYTHON_VERSION}_${CUDA_CODE}.lock

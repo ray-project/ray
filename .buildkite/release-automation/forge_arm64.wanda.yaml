@@ -1,0 +1,4 @@
+name: "forge-arm64"
+froms:
+  - ubuntu:20.04
+dockerfile: .buildkite/release-automation/forge_arm64.Dockerfile

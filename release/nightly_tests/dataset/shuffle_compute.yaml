@@ -1,0 +1,28 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+max_workers: 999
+
+advanced_configurations_json:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 500
+
+head_node_type:
+    name: head_node
+    instance_type: g3.4xlarge
+
+worker_node_types:
+    - name: worker_node
+      instance_type: g3.4xlarge
+      min_workers: 4
+      max_workers: 4
+      use_spot: false
+    - name: worker_node_2
+      instance_type: c5.9xlarge
+      min_workers: 2
+      max_workers: 2
+      use_spot: false

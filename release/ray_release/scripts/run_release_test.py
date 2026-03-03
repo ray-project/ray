@@ -1,0 +1,155 @@
+import os
+import sys
+from pathlib import Path
+from typing import Optional, Tuple
+
+import click
+
+from ray_release.aws import maybe_fetch_api_token
+from ray_release.config import (
+    RELEASE_TEST_CONFIG_FILES,
+    as_smoke_test,
+    find_test,
+    read_and_validate_release_test_collection,
+)
+from ray_release.configs.global_config import init_global_config
+from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
+from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
+from ray_release.glue import run_release_test
+from ray_release.logger import logger
+from ray_release.reporter.artifacts import ArtifactsReporter
+from ray_release.reporter.db import DBReporter
+from ray_release.reporter.log import LogReporter
+from ray_release.reporter.ray_test_db import RayTestDBReporter
+from ray_release.result import Result
+
+
+@click.command()
+@click.argument("test_name", required=True, type=str)
+@click.option(
+    "--test-collection-file",
+    multiple=True,
+    type=str,
+    help="Test collection file, relative path to ray repo.",
+)
+@click.option(
+    "--smoke-test",
+    default=False,
+    type=bool,
+    is_flag=True,
+    help="Finish quickly for testing",
+)
+@click.option(
+    "--report",
+    default=False,
+    type=bool,
+    is_flag=True,
+    help="Report results to database",
+)
+@click.option(
+    "--env",
+    default=None,
+    # Get the names without suffixes of all files in "../environments"
+    type=click.Choice(
+        [x.stem for x in (Path(__file__).parent.parent / "environments").glob("*.env")]
+    ),
+    help="Environment to use. Will overwrite environment used in test config.",
+)
+@click.option(
+    "--global-config",
+    default="oss_config.yaml",
+    type=click.Choice(
+        [x.name for x in (Path(__file__).parent.parent / "configs").glob("*.yaml")]
+    ),
+    help="Global config to use for test execution.",
+)
+@click.option(
+    "--test-definition-root",
+    default=None,
+    type=str,
+    help="Root of the test definition files. Default is the root of the repo.",
+)
+@click.option(
+    "--image",
+    default=None,
+    type=str,
+    help="Image to use for the test.",
+)
+def main(
+    test_name: str,
+    test_collection_file: Tuple[str],
+    smoke_test: bool = False,
+    report: bool = False,
+    env: Optional[str] = None,
+    global_config: str = "oss_config.yaml",
+    test_definition_root: Optional[str] = None,
+    image: Optional[str] = None,
+):
+    global_config_file = os.path.join(
+        os.path.dirname(__file__), "..", "configs", global_config
+    )
+    init_global_config(global_config_file)
+    test_collection = read_and_validate_release_test_collection(
+        test_collection_file or RELEASE_TEST_CONFIG_FILES,
+        test_definition_root,
+    )
+    test = find_test(test_collection, test_name)
+
+    if not test:
+        raise ReleaseTestCLIError(
+            f"Test `{test_name}` not found in collection file: "
+            f"{test_collection_file}"
+        )
+
+    if smoke_test:
+        test = as_smoke_test(test)
+
+    env_to_use = env or test.get("env", DEFAULT_ENVIRONMENT)
+    env_dict = load_environment(env_to_use)
+    populate_os_env(env_dict)
+    anyscale_project = os.environ.get("ANYSCALE_PROJECT", None)
+    if not test.is_kuberay() and not anyscale_project:
+        raise ReleaseTestCLIError(
+            "You have to set the ANYSCALE_PROJECT environment variable!"
+        )
+
+    maybe_fetch_api_token()
+
+    result = Result()
+
+    reporters = [LogReporter()]
+
+    if "BUILDKITE" in os.environ:
+        reporters.append(ArtifactsReporter())
+
+    if report:
+        reporters.append(DBReporter())
+
+    # TODO(can): this env var is used as a feature flag, in case we need to turn this
+    # off quickly. We should remove this when the new db reporter is stable.
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        reporters.append(RayTestDBReporter())
+
+    try:
+        result = run_release_test(
+            test=test,
+            anyscale_project=anyscale_project,
+            result=result,
+            reporters=reporters,
+            smoke_test=smoke_test,
+            test_definition_root=test_definition_root,
+            image=image,
+        )
+        return_code = result.return_code
+    except ReleaseTestError as e:
+        logger.exception(e)
+        return_code = e.exit_code.value
+    logger.info(
+        f"Release test pipeline for test {test['name']} completed. "
+        f"Returning with exit code = {return_code}"
+    )
+    sys.exit(return_code)
+
+
+if __name__ == "__main__":
+    main()

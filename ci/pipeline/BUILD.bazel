@@ -1,0 +1,6 @@
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "determine_tests_to_run",
+    srcs = ["determine_tests_to_run.py"],
+)

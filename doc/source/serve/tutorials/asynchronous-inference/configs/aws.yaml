@@ -1,0 +1,7 @@
+head_node_type:
+  name: head
+  instance_type: m5.2xlarge
+worker_node_types: []
+auto_select_worker_config: true
+flags:
+  allow-cross-zone-autoscaling: true

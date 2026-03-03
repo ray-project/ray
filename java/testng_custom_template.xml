@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="RAY suite" verbose="2" configfailurepolicy="continue">
+    <test name = "RAY test">
+        <classes>
+            <class name="io.ray.test.CrossLanguageInvocationTest">
+                <methods>
+                    <include name="testPythonCallJavaFunction" />
+                </methods>
+            </class>
+        </classes>
+    </test>
+    <listeners>
+        <listener class-name="io.ray.test.RayAlterSuiteListener" />
+        <listener class-name="io.ray.test.TestProgressListener" />
+        <listener class-name="io.ray.test.SystemPropertyListener" />
+    </listeners>
+</suite>

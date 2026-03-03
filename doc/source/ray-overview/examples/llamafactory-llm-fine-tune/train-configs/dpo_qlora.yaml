@@ -1,0 +1,63 @@
+# dpo_qlora.yaml
+
+### model
+trust_remote_code: true
+model_name_or_path: Qwen/Qwen2.5-7B-Instruct
+
+### method
+# If you instead want to use just LoRA, or a pre-quantized model like Qwen/Qwen2.5-7B-Instruct-AWQ, then omit the quantization_bit/method keys below
+quantization_bit: 4 # 4-bit base weights (QLoRA). Use 8 for 8-bit; omit for FP16/BF16
+quantization_method: bnb  # QLoRA via BitsAndBytes or hqq / eetq
+
+stage: dpo
+do_train: true
+finetuning_type: lora
+lora_rank: 8
+lora_target: all
+pref_beta: 0.1
+pref_loss: sigmoid  # choices: [sigmoid (dpo), orpo, simpo]
+
+# local dataset
+dataset: my_ultrafeedback
+dataset_dir: /mnt/cluster_storage
+
+template: qwen
+cutoff_len: 1024
+max_samples: 1000
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+### output
+output_dir: qwen2.5_7b_qlora_dpo
+logging_steps: 5
+save_steps: 5              # For tensorboard logging purpose too. Can increase if not using tensorboard
+plot_loss: true
+report_to: tensorboard  # or none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 2
+num_train_epochs: 3.0  # Low for demo purpose; adjust as needed
+learning_rate: 5.0e-6
+bf16: true
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+ddp_timeout: 180000000
+
+### ray
+ray_run_name: qwen2.5_7b_qlora_dpo
+ray_storage_path: /mnt/cluster_storage/
+ray_num_workers: 4  # Number of GPUs to use.
+resources_per_worker:
+  GPU: 1
+  anyscale/accelerator_shape:4xL4: 0.001  # Use this to specify a specific node shape.
+  # accelerator_type:L4: 0.001            # Or use this to simply specify a GPU type.
+  # See https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types.
+
+ray_init_kwargs:
+  runtime_env:
+    env_vars:
+      # If using gated models like meta-llama/Llama-3.1-8B-Instruct
+      # HF_TOKEN: <your_huggingface_token>
+      # Enable faster downloads if hf_transfer is installed:
+      HF_HUB_ENABLE_HF_TRANSFER: '1'

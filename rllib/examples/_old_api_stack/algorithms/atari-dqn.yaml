@@ -1,0 +1,39 @@
+# @OldAPIStack
+# Runs on a single g3.4xl node
+# See https://github.com/ray-project/rl-experiments for results
+atari-basic-dqn:
+    env:
+        grid_search:
+            - ale_py:ALE/Breakout-v5
+            - ale_py:ALE/BeamRider-v5
+            - ale_py:ALE/Qbert-v5
+            - ale_py:ALE/SpaceInvaders-v5
+    run: DQN
+    config:
+        # Works for both torch and tf.
+        framework: torch
+        # Make analogous to old v4 + NoFrameskip.
+        env_config:
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          capacity: 1000000
+        num_steps_sampled_before_learning_starts: 20000
+        n_step: 1
+        target_network_update_freq: 8000
+        lr: .0000625
+        adam_epsilon: .00015
+        hiddens: [512]
+        rollout_fragment_length: 4
+        train_batch_size: 32
+        exploration_config:
+          epsilon_timesteps: 200000
+          final_epsilon: 0.01
+        num_gpus: 0.2
+        min_sample_timesteps_per_iteration: 10000

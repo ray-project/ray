@@ -1,0 +1,15 @@
+{
+    "_peak_memory": 4.92,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n190\t1.49GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n1993\t0.86GiB\tpython distributed/test_many_actors.py\n215\t0.17GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dash\n284\t0.11GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n80\t0.09GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n2034\t0.06GiB\tray::MemoryMonitorActor.run()\n208\t0.05GiB\t/home/ray/anaconda3/bin/python -m ray.util.client.server --address=172.31.86.122:9031 --host=0.0.0.0\n253\t0.05GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/log_m\n79\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=0337e08c\n246\t0.03GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/raylet/raylet --raylet_socket_name=",
+    "actors_per_second": 509.8730848414243,
+    "num_actors": 10000,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "actors_per_second",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 509.8730848414243
+        }
+    ],
+    "success": "1",
+    "time": 19.61272382736206
+}

@@ -1,0 +1,130 @@
+# flake8: noqa
+# isort: skip_file
+
+from pathlib import Path
+import tempfile
+
+import ray.train
+from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+
+
+def train_fn(config):
+    for i in range(3):
+        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+            Path(temp_checkpoint_dir).joinpath("model.pt").touch()
+            ray.train.report(
+                {"loss": i},
+                checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
+            )
+
+
+trainer = DataParallelTrainer(
+    train_fn, scaling_config=ray.train.ScalingConfig(num_workers=2)
+)
+
+
+# __run_config_start__
+import os
+
+from ray.train import RunConfig
+
+run_config = RunConfig(
+    # Name of the training run (directory name).
+    name="my_train_run",
+    # The experiment results will be saved to: storage_path/name
+    storage_path=os.path.expanduser("~/ray_results"),
+    # storage_path="s3://my_bucket/tune_results",
+)
+# __run_config_end__
+
+# __checkpoint_config_start__
+from ray.train import RunConfig, CheckpointConfig
+
+# Example 1: Only keep the 2 *most recent* checkpoints and delete the others.
+run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=2))
+
+
+# Example 2: Only keep the 2 *best* checkpoints and delete the others.
+run_config = RunConfig(
+    checkpoint_config=CheckpointConfig(
+        num_to_keep=2,
+        # *Best* checkpoints are determined by these params:
+        checkpoint_score_attribute="mean_accuracy",
+        checkpoint_score_order="max",
+    ),
+    # This will store checkpoints on S3.
+    storage_path="s3://remote-bucket/location",
+)
+# __checkpoint_config_end__
+
+
+# __result_metrics_start__
+result = trainer.fit()
+
+print("Observed metrics:", result.metrics)
+# __result_metrics_end__
+
+
+# __result_dataframe_start__
+df = result.metrics_dataframe
+print("Minimum loss", min(df["loss"]))
+# __result_dataframe_end__
+
+
+# __result_checkpoint_start__
+print("Last checkpoint:", result.checkpoint)
+
+with result.checkpoint.as_directory() as tmpdir:
+    # Load model from directory
+    ...
+# __result_checkpoint_end__
+
+# __result_best_checkpoint_start__
+# Print available checkpoints
+for checkpoint, metrics in result.best_checkpoints:
+    print("Loss", metrics["loss"], "checkpoint", checkpoint)
+
+# Get checkpoint with minimal loss
+best_checkpoint = min(
+    result.best_checkpoints, key=lambda checkpoint: checkpoint[1]["loss"]
+)[0]
+
+with best_checkpoint.as_directory() as tmpdir:
+    # Load model from directory
+    ...
+# __result_best_checkpoint_end__
+
+import pyarrow
+
+# __result_path_start__
+result_path: str = result.path
+result_filesystem: pyarrow.fs.FileSystem = result.filesystem
+
+print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
+# __result_path_end__
+
+
+# TODO(justinvyu): Result.from_path is not supported in Train V2 yet.
+# __result_restore_start__
+# from ray.train import Result
+
+# restored_result = Result.from_path(result_path)
+# print("Restored loss", result.metrics["loss"])
+# __result_restore_end__
+
+
+def error_train_fn(config):
+    raise RuntimeError("Simulated training error")
+
+
+trainer = DataParallelTrainer(
+    error_train_fn, scaling_config=ray.train.ScalingConfig(num_workers=1)
+)
+
+# __result_error_start__
+try:
+    result = trainer.fit()
+except ray.train.TrainingFailedError as e:
+    if isinstance(e, ray.train.WorkerGroupError):
+        print(e.worker_failures)
+# __result_error_end__

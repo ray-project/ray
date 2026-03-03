@@ -1,0 +1,7 @@
+head_node_type:
+  name: head_node_type
+  instance_type: g2-standard-48-nvidia-l4-4
+
+worker_node_types: []
+
+max_workers: 0

@@ -1,0 +1,85 @@
+# This is an example config file to start a local
+# multi-node cluster using Docker compose.
+# It requires the ``docker compose`` plugin to be installed:
+# https://docs.docker.com/compose/cli-command/#installing-compose-v2
+# The resulting cluster will consist of docker containers
+# scheduled via docker compose. These containers behave just like
+# regular Ray nodes, have their own IPs, and can SSH into each other.
+# They are mostly used to test multi-node setups and autoscaling on
+# a single node.
+
+# Example command to start a cluster with this config:
+#
+# python docker_monitor.py example_docker.yaml &
+# RAY_FAKE_DOCKER=1 ray up -y example_docker.yaml
+cluster_name: fake_docker
+max_workers: 8
+provider:
+    type: fake_multinode_docker
+    disable_launch_config_check: True
+    disable_node_updaters: True
+    # Docker-compose config
+    project_name: fake_docker
+    image: rayproject/ray:nightly
+    shared_volume_dir: /tmp/fake_docker
+
+    # For now, this has to be set here separately again:
+    head_resources:
+      CPU: 4
+      GPU: 0
+
+auth:
+  ssh_user: ubuntu
+
+available_node_types:
+    ray.head.default:
+        # You must set this manually to your "head" node resources!! The head
+        # node is launched via `ray start` and hence the autoscaler cannot
+        # configure its resources. The resources specified for its node type
+        # must line up with what Ray detects/is configured with on start.
+        resources:
+            CPU: 4
+            GPU: 0
+        node_config: {}
+        max_workers: 0
+    ray.worker.cpu:
+        resources:
+            CPU: 2
+            object_store_memory: 1000000000
+        node_config: {}
+        min_workers: 1
+        max_workers: 4
+    ray.worker.gpu:
+        resources:
+            CPU: 4
+            GPU: 1
+            object_store_memory: 1000000000
+        node_config: {}
+        min_workers: 1
+        max_workers: 2
+head_node_type: ray.head.default
+upscaling_speed: 1.0
+idle_timeout_minutes: 0.1
+
+# The start commands currently don't work - docker doesn't seem to like docker exec
+# and Ray only works when including it in the docker-compose command
+head_start_ray_commands: []
+worker_start_ray_commands: []
+
+# The docker config is currently not propagated to the node provider config.
+# Thus, docker-specific configuration is expected to go into the provider part
+# as demonstrated above.
+docker: {}
+
+#
+# !!! Configurations below are not supported in fake cluster mode !!!
+#
+initialization_commands: []
+setup_commands: []
+head_setup_commands: []
+worker_setup_commands: []
+file_mounts: {}
+cluster_synced_files: []
+file_mounts_sync_continuously: false
+rsync_exclude: []
+rsync_filter: []

@@ -1,0 +1,4 @@
+2021-04-06 00:50:08,299 INFO tune.py:549 -- Total run time: 110.36 seconds (109.79 seconds for the tuning loop).
+The result throughput single node test took 110.42 seconds, which is below the budget of 120.00 seconds. Test successful. 
+
+--- PASSED: RESULT THROUGHPUT SINGLE NODE ::: 110.42 <= 120.00 ---

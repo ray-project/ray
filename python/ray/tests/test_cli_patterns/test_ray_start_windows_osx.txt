@@ -1,0 +1,32 @@
+Usage stats collection is enabled by default without user confirmation because this terminal is detected to be non-interactive\..+
+
+Local node IP: .+
+
+--------------------
+Ray runtime started.
+--------------------
+
+Next steps
+  To add another node to this Ray cluster, run
+    RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1 ray start --address='.+'
+
+  To connect to this Ray cluster:
+    import ray
+    ray\.init\(\)
+
+  To submit a Ray job using the Ray Jobs CLI:
+    RAY_API_SERVER_ADDRESS='http://.+:8265' ray job submit --working-dir \. -- python my_script\.py
+
+  See https://docs\.ray\.io/en/latest/cluster/running-applications/job-submission/index\.html
+  for more information on submitting Ray jobs to the Ray cluster.
+
+  To terminate the Ray runtime, run
+    ray stop
+
+  To view the status of the cluster, use
+    ray status
+
+  To monitor and debug Ray, view the dashboard at
+    127.0.0.1:8265
+
+  If connection to the dashboard fails, check your firewall settings and network configuration.

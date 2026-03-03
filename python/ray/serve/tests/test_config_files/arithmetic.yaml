@@ -1,0 +1,20 @@
+applications:
+  - name: default
+    import_path: "dir.subdir.a.add_and_sub.serve_dag"
+
+    runtime_env:
+      # Keep these pinned remote URIs in sync with tests/common/remote_uris.py.
+      working_dir: "https://github.com/ray-project/test_dag/archive/203140040e4ab50b9d35b4773ec5c22615c034b3.zip"
+
+    deployments:
+      - name: "Router"
+        graceful_shutdown_timeout_s: 0.0001
+      - name: "Add"
+        graceful_shutdown_timeout_s: 0.0001
+      - name: "Subtract"
+        graceful_shutdown_timeout_s: 0.0001
+        ray_actor_options:
+          runtime_env:
+            # Keep these pinned remote URIs in sync with tests/common/remote_uris.py.
+            py_modules:
+              - "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"

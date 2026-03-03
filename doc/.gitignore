@@ -1,0 +1,29 @@
+# Generated documentation files
+_build
+source/_static/thumbs
+.ipynb_checkpoints/
+
+# Ignore generated gallery txt files
+eco-gallery.txt
+
+# Ignore CSS linter
+node_modules/
+package-lock.json
+
+# Ignore generated API files
+source/data/api/doc/
+source/cluster/running-applications/job-submission/doc/
+source/serve/api/doc/
+source/workflows/api/doc/
+source/data/api/ray.data.*.rst
+
+# Ignore generated examples files
+source/data/examples.rst
+source/train/examples.rst
+source/serve/examples.rst
+
+# Ignore generated versions
+source/_static/versions.json
+
+# Ignore rllib generated files
+source/rllib/package_ref/

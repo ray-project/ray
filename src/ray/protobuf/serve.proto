@@ -1,0 +1,492 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.serve;
+
+option java_package = "io.ray.serve.generated";
+
+option java_outer_classname = "ServeProtos";
+
+option java_multiple_files = true;
+
+// Configuration options for Serve's autoscaling policy
+message AutoscalingPolicy {
+  // Policy function needs to be a string import path.
+  string policy_function = 1;
+
+  // The cloudpickled policy definition.
+  bytes _serialized_policy_def = 2;
+
+  // Keyword arguments for class-based policies (cloudpickled dict).
+  bytes policy_kwargs = 3;
+}
+
+// Configuration options for Serve's replica autoscaler.
+message AutoscalingConfig {
+  // Minimal number of replicas, must be a non-negative integer.
+  uint32 min_replicas = 1;
+
+  // Maximal number of replicas, must be a non-negative integer and greater or equals
+  // to min_replicas.
+  uint32 max_replicas = 2;
+
+  // [DEPRECATED] The frequency of how long does each replica sending metrics to
+  // autoscaler, but this will be replaced by the environment variables
+  // RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S and
+  // RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S in a future release.
+  double metrics_interval_s = 3;
+
+  // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
+  double look_back_period_s = 4;
+
+  // [DEPRECATED] Use `upscaling_factor` and/or `downscaling_factor` instead.
+  double smoothing_factor = 5;
+
+  // How long to wait before scaling down replicas.
+  double downscale_delay_s = 6;
+
+  // How long to wait before scaling up replicas.
+  double upscale_delay_s = 7;
+
+  // Initial number of replicas deployment should start with. Must be non-negative.
+  optional uint32 initial_replicas = 8;
+
+  // [DEPRECATED] Use `upscaling_factor` instead.
+  optional double upscale_smoothing_factor = 9;
+
+  // [DEPRECATED] Use `downscaling_factor` instead.
+  optional double downscale_smoothing_factor = 10;
+
+  // The autoscaling policy definition.
+  AutoscalingPolicy policy = 11;
+
+  // Target number of in flight requests per replica. This is the primary configuration
+  // knob for replica autoscaler. Lower the number, the more rapidly the replicas
+  // scales up. Must be a non-negative integer.
+  double target_ongoing_requests = 12;
+
+  // The multiplicative "gain" factor to limit upscale.
+  optional double upscaling_factor = 13;
+
+  // The multiplicative "gain" factor to limit downscale.
+  optional double downscaling_factor = 14;
+
+  // How long to wait before scaling down replicas from 1 to 0
+  optional double downscale_to_zero_delay_s = 15;
+
+  // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
+  string aggregation_function = 16;
+}
+
+//[Begin] LOGGING CONFIG
+// Encoding type
+enum EncodingType {
+  TEXT = 0;
+  JSON = 1;
+}
+
+message LoggingConfig {
+  EncodingType encoding = 1;
+  string log_level = 2;
+  string logs_dir = 3;
+  bool enable_access_log = 4;
+  repeated string additional_log_standard_attrs = 5;
+}
+
+//[End] Logging Config
+
+//[Begin] ROUTING CONFIG
+message RequestRouterConfig {
+  // Cloudpickled request router definition.
+  bytes _serialized_request_router_cls = 1;
+
+  // The import path of the request router if user passed a string. It's the
+  // concatenation of the request router module and the request router name
+  // if user passed a callable.
+  string request_router_class = 2;
+
+  // Frequency at which the controller records routing stats for a replica.
+  double request_routing_stats_period_s = 3;
+
+  // Timeout after which a replica started a record routing stats without a response.
+  double request_routing_stats_timeout_s = 4;
+
+  // kwargs which Ray Serve passes to the router class' initialize_state method.
+  bytes request_router_kwargs = 5;
+}
+//[End] ROUTING CONFIG
+
+//[Begin] GANG SCHEDULING CONFIG
+// Placement strategy for replicas within a gang.
+enum GangPlacementStrategy {
+  PACK = 0;
+  SPREAD = 1;
+}
+
+// Policy for handling runtime failures of replicas in a gang.
+enum GangRuntimeFailurePolicy {
+  RESTART_GANG = 0;
+  RESTART_REPLICA = 1;
+}
+
+// Configuration for gang scheduling of deployment replicas.
+message GangSchedulingConfig {
+  // Number of replicas per gang. num_replicas must be a multiple of gang_size.
+  int32 gang_size = 1;
+
+  // Placement strategy for replicas within a gang.
+  GangPlacementStrategy gang_placement_strategy = 2;
+
+  // What to do when a replica fails after gang is running.
+  GangRuntimeFailurePolicy runtime_failure_policy = 3;
+}
+//[End] GANG SCHEDULING CONFIG
+
+// Configuration options for a deployment, to be set by the user.
+message DeploymentConfig {
+  // The number of processes to start up that will handle requests to this deployment.
+  int32 num_replicas = 1;
+
+  // The maximum number of queries that will be sent to a replica of this deployment
+  // without receiving a response.
+  int32 max_ongoing_requests = 2;
+
+  // The maximum number of requests that will be queued in deployment handles.
+  int32 max_queued_requests = 3;
+
+  // Arguments to pass to the reconfigure method of the deployment. The reconfigure method
+  // is called if user_config is not None.
+  bytes user_config = 4;
+
+  // Duration that deployment replicas will wait until there is no more work to be done
+  // before shutting down.
+  double graceful_shutdown_wait_loop_s = 5;
+
+  // Controller waits for this duration to forcefully kill the replica for shutdown.
+  double graceful_shutdown_timeout_s = 6;
+
+  // Frequency at which the controller health checks replicas.
+  double health_check_period_s = 7;
+
+  // Timeout after which a replica is marked unhealthy without a response.
+  double health_check_timeout_s = 8;
+
+  // Is the construction of deployment is cross language?
+  bool is_cross_language = 9;
+
+  // The deployment's programming language.
+  DeploymentLanguage deployment_language = 10;
+
+  // The deployment's autoscaling configuration.
+  AutoscalingConfig autoscaling_config = 11;
+
+  string version = 12;
+
+  repeated string user_configured_option_names = 13;
+
+  LoggingConfig logging_config = 14;
+
+  // The deployment's routing configuration.
+  RequestRouterConfig request_router_config = 19;
+
+  // The maximum number of retries in case the deployment constructor results in failure
+  int32 max_constructor_retry_count = 20;
+
+  // Gang scheduling configuration for atomic replica scheduling.
+  GangSchedulingConfig gang_scheduling_config = 21;
+}
+
+// Deployment language.
+enum DeploymentLanguage {
+  PYTHON = 0;
+  JAVA = 1;
+}
+
+message RequestMetadata {
+  string request_id = 1;
+
+  string internal_request_id = 2;
+
+  string call_method = 3;
+
+  map<string, string> context = 4;
+
+  string multiplexed_model_id = 5;
+
+  string route = 6;
+}
+
+message RequestWrapper {
+  bytes body = 1;
+}
+
+message UpdatedObject {
+  bytes object_snapshot = 1;
+  int32 snapshot_id = 2;
+}
+
+message LongPollRequest {
+  map<string, int32> keys_to_snapshot_ids = 1;
+}
+
+message LongPollResult {
+  map<string, UpdatedObject> updated_objects = 1;
+}
+
+message EndpointInfo {
+  string endpoint_name = 1;
+  string route = 2;
+  map<string, string> config = 3;
+}
+
+message EndpointSet {
+  map<string, EndpointInfo> endpoints = 1;
+}
+
+// Now Actor handle can be transferred across language through ray call, but the list of
+// Actor handles can't. So we use this message wrapped a Actor name list to pass actor
+// list across language. When Actor handle list supports across language, this message can
+// be replaced.
+message ActorNameList {
+  repeated string names = 1;
+}
+
+message DeploymentTargetInfo {
+  repeated string replica_names = 1;
+  bool is_available = 2;
+}
+
+message DeploymentVersion {
+  string code_version = 1;
+  DeploymentConfig deployment_config = 2;
+  string ray_actor_options = 3;
+  string placement_group_bundles = 4;
+  string placement_group_strategy = 5;
+  int32 max_replicas_per_node = 6;
+  string placement_group_bundle_label_selector = 7;
+  string placement_group_fallback_strategy = 8;
+}
+
+message ReplicaConfig {
+  string deployment_def_name = 1;
+  bytes deployment_def = 2;
+  bytes init_args = 3;
+  bytes init_kwargs = 4;
+  string ray_actor_options = 5;
+  string placement_group_bundles = 6;
+  string placement_group_strategy = 7;
+  int32 max_replicas_per_node = 8;
+  string placement_group_bundle_label_selector = 9;
+  string placement_group_fallback_strategy = 10;
+}
+
+enum TargetCapacityDirection {
+  UNSET = 0;
+  UP = 1;
+  DOWN = 2;
+}
+
+message DeploymentInfo {
+  string name = 1;
+  DeploymentConfig deployment_config = 2;
+  ReplicaConfig replica_config = 3;
+  int64 start_time_ms = 4;
+  string actor_name = 5;
+  string version = 6;
+  int64 end_time_ms = 7;
+  double target_capacity = 8;
+  TargetCapacityDirection target_capacity_direction = 9;
+}
+
+// Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
+message DeploymentRoute {
+  DeploymentInfo deployment_info = 1;
+  string route = 2;
+}
+
+// Wrap a list for DeploymentRoute.
+message DeploymentRouteList {
+  repeated DeploymentRoute deployment_routes = 1;
+}
+
+enum DeploymentStatus {
+  // Keep frontend code of ServeDeploymentStatus in dashboard/client/src/type/serve.ts
+  // in sync with this enum
+  DEPLOYMENT_STATUS_UPDATING = 0;
+  DEPLOYMENT_STATUS_HEALTHY = 1;
+  DEPLOYMENT_STATUS_UNHEALTHY = 2;
+  DEPLOYMENT_STATUS_DEPLOY_FAILED = 3;
+  DEPLOYMENT_STATUS_UPSCALING = 4;
+  DEPLOYMENT_STATUS_DOWNSCALING = 5;
+}
+
+enum DeploymentStatusTrigger {
+  DEPLOYMENT_STATUS_TRIGGER_UNSPECIFIED = 0;
+  DEPLOYMENT_STATUS_TRIGGER_CONFIG_UPDATE_STARTED = 1;
+  DEPLOYMENT_STATUS_TRIGGER_CONFIG_UPDATE_COMPLETED = 2;
+  DEPLOYMENT_STATUS_TRIGGER_UPSCALE_COMPLETED = 3;
+  DEPLOYMENT_STATUS_TRIGGER_DOWNSCALE_COMPLETED = 4;
+  DEPLOYMENT_STATUS_TRIGGER_AUTOSCALING = 5;
+  DEPLOYMENT_STATUS_TRIGGER_REPLICA_STARTUP_FAILED = 6;
+  DEPLOYMENT_STATUS_TRIGGER_HEALTH_CHECK_FAILED = 7;
+  DEPLOYMENT_STATUS_TRIGGER_INTERNAL_ERROR = 8;
+  DEPLOYMENT_STATUS_TRIGGER_DELETING = 9;
+}
+
+message DeploymentStatusInfo {
+  string name = 1;
+  DeploymentStatus status = 2;
+  string message = 3;
+  DeploymentStatusTrigger status_trigger = 4;
+}
+
+// Wrap a list for DeploymentStatusInfo.
+message DeploymentStatusInfoList {
+  repeated DeploymentStatusInfo deployment_status_infos = 1;
+}
+
+enum ApplicationStatus {
+  // Keep frontend code of ServeApplicationStatus in dashboard/client/src/type/serve.ts
+  // in sync with this enum
+  APPLICATION_STATUS_DEPLOYING = 0;
+  APPLICATION_STATUS_RUNNING = 1;
+  APPLICATION_STATUS_DEPLOY_FAILED = 2;
+  APPLICATION_STATUS_DELETING = 3;
+  APPLICATION_STATUS_NOT_STARTED = 5;
+  APPLICATION_STATUS_UNHEALTHY = 6;
+}
+
+message ApplicationStatusInfo {
+  ApplicationStatus status = 1;
+  string message = 2;
+  double deployment_timestamp = 3;
+}
+
+message StatusOverview {
+  ApplicationStatusInfo app_status = 1;
+  DeploymentStatusInfoList deployment_statuses = 2;
+  string name = 3;
+}
+
+// Used for gRPC proxy health check
+message ListApplicationsRequest {}
+
+message ListApplicationsResponse {
+  repeated string application_names = 1;
+}
+
+message HealthzRequest {}
+
+message HealthzResponse {
+  string message = 1;
+}
+
+service RayServeAPIService {
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse);
+  rpc Healthz(HealthzRequest) returns (HealthzResponse);
+}
+
+// Used for gRPC related tests
+message UserDefinedMessage {
+  string name = 1;
+  string foo = 2;
+  int64 num = 3;
+}
+
+message UserDefinedResponse {
+  string greeting = 1;
+  int64 num_x2 = 2;
+}
+
+message UserDefinedMessage2 {}
+
+message UserDefinedResponse2 {
+  string greeting = 1;
+}
+
+message FruitAmounts {
+  int64 orange = 1;
+  int64 apple = 2;
+  int64 banana = 3;
+}
+
+message FruitCosts {
+  float costs = 1;
+}
+
+service UserDefinedService {
+  rpc __call__(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method2(UserDefinedMessage2) returns (UserDefinedResponse2);
+  rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+  rpc ClientStreaming(stream UserDefinedMessage) returns (UserDefinedResponse);
+  rpc BidiStreaming(stream UserDefinedMessage) returns (stream UserDefinedResponse);
+}
+
+service FruitService {
+  rpc FruitStand(FruitAmounts) returns (FruitCosts);
+}
+
+// Used for gRPC benchmark
+message ArrayData {
+  repeated float nums = 1;
+}
+
+message StringData {
+  string data = 1;
+}
+
+message ModelOutput {
+  float output = 1;
+}
+
+service RayServeBenchmarkService {
+  rpc grpc_call(ArrayData) returns (ModelOutput);
+  rpc call_with_string(StringData) returns (ModelOutput);
+}
+
+// The required deployment parameters when deploying an application.
+message DeploymentArgs {
+  string deployment_name = 1;
+  bytes deployment_config = 2;
+  bytes replica_config = 3;
+  string deployer_job_id = 4;
+  optional string route_prefix = 5;
+  bool ingress = 6;
+  optional string docs_path = 7;
+}
+
+message ApplicationArgs {
+  bool external_scaler_enabled = 1;
+}
+
+message ASGIRequest {
+  bytes pickled_request_metadata = 1;
+  bytes request_args = 2;
+  bytes request_kwargs = 3;
+}
+
+message ASGIResponse {
+  bytes serialized_message = 1;
+  bool is_error = 2;
+}
+
+service ASGIService {
+  rpc HandleRequest(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestStreaming(ASGIRequest) returns (stream ASGIResponse);
+  rpc HandleRequestWithRejection(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestWithRejectionStreaming(ASGIRequest) returns (stream ASGIResponse);
+}

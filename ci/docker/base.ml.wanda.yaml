@@ -1,0 +1,24 @@
+name: "oss-ci-base_ml-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON"]
+dockerfile: ci/docker/base.ml.Dockerfile
+srcs:
+  - .bazelrc
+  - ci/ci.sh
+  - ci/env/install-dependencies.sh
+  - ci/env/install-llvm-binaries.sh
+  - ci/suppress_output
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/rllib-requirements.txt
+  - python/requirements/ml/rllib-test-requirements.txt
+  - python/requirements/ml/train-requirements.txt
+  - python/requirements/ml/train-test-requirements.txt
+  - python/requirements/ml/tune-requirements.txt
+  - python/requirements/ml/tune-test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/core-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_TEST=cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON
+tags:
+  - cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON

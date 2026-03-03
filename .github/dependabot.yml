@@ -1,0 +1,43 @@
+version: 2
+updates:
+  # ML Requirements.
+  - package-ecosystem: "pip"
+    # If we want to add more requirements here (Core, Serve, etc.), then we should
+    # make additional subdirectories for each one.
+    directory: "/python/requirements/ml"
+    schedule:
+      # Automatic upgrade checks Saturday at 12 AM.
+      # Dependabot updates can still be manually triggered via Github at any time.
+      interval: "weekly"
+      day: "saturday"
+      # 12 AM
+      time: "00:00"
+      # Use Pacific Standard Time.
+      timezone: "America/Los_Angeles"
+    commit-message:
+      prefix: "[air]"
+      include: "scope"
+    # Only 5 upgrade PRs open at a time.
+    open-pull-requests-limit: 5
+    reviewers:
+      - "ray-project/ray-tune"
+  # Data Requirements.
+  - package-ecosystem: "pip"
+    directory: "/python/requirements/data_processing"
+    schedule:
+      # Automatic upgrade checks Saturday at 12 AM.
+      # Dependabot updates can still be manually triggered via Github at any time.
+      interval: "weekly"
+      day: "saturday"
+      # 12 AM
+      time: "00:00"
+      # Use Pacific Standard Time.
+      timezone: "America/Los_Angeles"
+    commit-message:
+      prefix: "[data]"
+      include: "scope"
+    # Only 5 upgrade PRs open at a time.
+    open-pull-requests-limit: 5
+    reviewers:
+      - "scv119"
+      - "clarkzinzow"

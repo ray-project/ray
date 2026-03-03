@@ -1,0 +1,34 @@
+commit 2d6bc609769eaa4a70a6dd384351f54c6633f3a9
+Author: dentiny <dentinyhao@gmail.com>
+Date:   Thu Dec 19 17:17:56 2024 +0000
+
+    patch spdlog rotation filename
+
+    Signed-off-by: dentiny <dentinyhao@gmail.com>
+
+diff --git a/include/spdlog/sinks/rotating_file_sink-inl.h b/include/spdlog/sinks/rotating_file_sink-inl.h
+index cf8b9d5c..7580c06f 100644
+--- a/include/spdlog/sinks/rotating_file_sink-inl.h
++++ b/include/spdlog/sinks/rotating_file_sink-inl.h
+@@ -49,7 +49,7 @@ SPDLOG_INLINE rotating_file_sink<Mutex>::rotating_file_sink(
+ }
+ 
+ // calc filename according to index and file extension if exists.
+-// e.g. calc_filename("logs/mylog.txt, 3) => "logs/mylog.3.txt".
++// e.g. calc_filename("logs/mylog.txt, 3) => "logs/mylog.txt.3".
+ template <typename Mutex>
+ SPDLOG_INLINE filename_t rotating_file_sink<Mutex>::calc_filename(const filename_t &filename,
+                                                                   std::size_t index) {
+@@ -57,10 +57,7 @@ SPDLOG_INLINE filename_t rotating_file_sink<Mutex>::calc_filename(const filename
+         return filename;
+     }
+ 
+-    filename_t basename;
+-    filename_t ext;
+-    std::tie(basename, ext) = details::file_helper::split_by_extension(filename);
+-    return fmt_lib::format(SPDLOG_FMT_STRING(SPDLOG_FILENAME_T("{}.{}{}")), basename, index, ext);
++    return fmt_lib::format(SPDLOG_FMT_STRING(SPDLOG_FILENAME_T("{}.{}")), filename, index);
+ }
+ 
+ template <typename Mutex>
+

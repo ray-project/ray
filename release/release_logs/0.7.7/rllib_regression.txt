@@ -1,0 +1,24 @@
++----------------------------------------+------------+-------+--------+------------------+-------------+----------+
+| Trial name                             | status     | loc   |   iter |   total time (s) |   timesteps |   reward |
+|----------------------------------------+------------+-------+--------+------------------+-------------+----------|
+| IMPALA_BreakoutNoFrameskip-v4_4445a400 | TERMINATED |       |    294 |          3600.28 |     6183500 |   352.15 |
+| IMPALA_BreakoutNoFrameskip-v4_44461b92 | TERMINATED |       |    292 |          3610.1  |     6178500 |   147.14 |
+| IMPALA_BreakoutNoFrameskip-v4_44467b28 | TERMINATED |       |    293 |          3611.05 |     6200500 |   275.1  |
+| IMPALA_BreakoutNoFrameskip-v4_4446e1bc | TERMINATED |       |    294 |          3611.16 |     6161500 |   322.95 |
+| PPO_BreakoutNoFrameskip-v4_44474a4e    | TERMINATED |       |    549 |          3603.09 |     2745000 |    36.41 |
+| PPO_BreakoutNoFrameskip-v4_4447b740    | TERMINATED |       |    545 |          3604.43 |     2725000 |    16.83 |
+| PPO_BreakoutNoFrameskip-v4_44481ea6    | TERMINATED |       |    549 |          3605.4  |     2745000 |    52.36 |
+| PPO_BreakoutNoFrameskip-v4_444885a8    | TERMINATED |       |    546 |          3605.27 |     2730000 |    34.94 |
+| APEX_BreakoutNoFrameskip-v4_4448feac   | TERMINATED |       |    113 |          3629.93 |     3552960 |    13.47 |
+| APEX_BreakoutNoFrameskip-v4_44497684   | TERMINATED |       |    112 |          3615.5  |     3539360 |    28.65 |
+| APEX_BreakoutNoFrameskip-v4_4449f01e   | TERMINATED |       |    113 |          3621.85 |     3524640 |    28.17 |
+| APEX_BreakoutNoFrameskip-v4_444a5dd8   | TERMINATED |       |    112 |          3616.41 |     3447520 |    20.56 |
+| A2C_BreakoutNoFrameskip-v4_444acb7e    | TERMINATED |       |    349 |          3604.38 |     2981000 |   108.8  |
+| A2C_BreakoutNoFrameskip-v4_444b3a50    | TERMINATED |       |    349 |          3602.3  |     2967500 |   145.82 |
+| A2C_BreakoutNoFrameskip-v4_444b9ebe    | TERMINATED |       |    349 |          3605.71 |     2990500 |   127.3  |
+| A2C_BreakoutNoFrameskip-v4_444c0016    | TERMINATED |       |    349 |          3602.58 |     2970000 |   112.92 |
+| DQN_BreakoutNoFrameskip-v4_444c6830    | TERMINATED |       |     30 |          3662.81 |      300000 |    18.71 |
+| DQN_BreakoutNoFrameskip-v4_444cdeb4    | TERMINATED |       |     30 |          3608.95 |      300000 |    17.45 |
+| DQN_BreakoutNoFrameskip-v4_444d5038    | TERMINATED |       |     31 |          3658.65 |      310000 |    17.43 |
+| DQN_BreakoutNoFrameskip-v4_444dbfb4    | TERMINATED |       |     31 |          3696.8  |      310000 |    18.63 |
++----------------------------------------+------------+-------+--------+------------------+-------------+----------+

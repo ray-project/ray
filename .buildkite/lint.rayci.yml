@@ -1,0 +1,35 @@
+group: lint
+steps:
+  - label: ":lint-roller: lint: {{matrix}}"
+    key: lint-small
+    tags:
+      - lint
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - clang_format
+      - pre_commit
+      - semgrep_lint
+      - banned_words
+      - doc_readme
+      - dashboard_format
+      - copyright_format
+      - bazel_team
+      - bazel_buildifier
+      - pytest_format
+      - test_coverage
+      - documentation_style
+
+  - label: ":lint-roller: pre-commit pydoclint"
+    key: pydoclint-small
+    tags:
+      - oss
+      - lint
+      - always
+    depends_on:
+      - forge
+    commands:
+      - ./ci/lint/lint.sh pre_commit_pydoclint

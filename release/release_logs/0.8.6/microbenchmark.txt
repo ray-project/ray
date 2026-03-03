@@ -1,0 +1,19 @@
+single client get calls (Plasma Store) per second 8746.49 +- 454.49
+single client put calls (Plasma Store) per second 5449.42 +- 86.57
+single client put gigabytes per second 13.59 +- 3.27
+multi client put calls (Plasma Store) per second 11662.1 +- 153.21
+multi client put gigabytes per second 17.26 +- 7.94
+single client tasks sync per second 1272.57 +- 33.26
+single client tasks async per second 14621.87 +- 200.32
+multi client tasks async per second 41588.79 +- 4142.82
+1:1 actor calls sync per second 1914.85 +- 20.58
+1:1 actor calls async per second 6541.67 +- 127.36
+1:1 actor calls concurrent per second 5663.49 +- 155.04
+1:n actor calls async per second 10495.3 +- 133.15
+n:n actor calls async per second 34453.12 +- 329.25
+n:n actor calls with arg async per second 12500.39 +- 167.03
+1:1 async-actor calls sync per second 1291.48 +- 48.9
+1:1 async-actor calls async per second 3510.1 +- 48.84
+1:1 async-actor calls with args async per second 2321.3 +- 70.18
+1:n async-actor calls async per second 8961.23 +- 111.43
+n:n async-actor calls async per second 27483.48 +- 113.91

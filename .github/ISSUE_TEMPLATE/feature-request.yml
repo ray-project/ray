@@ -1,0 +1,25 @@
+name: Ray feature request
+description: Suggest an idea for Ray project
+title: "[<Ray component: Core|RLlib|etc...>] "
+labels: [enhancement, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for finding the time to propose a new feature!
+        We really appreciate the community efforts to improve Ray.
+
+  - type: textarea
+    attributes:
+      label: Description
+      description: A short description of your feature
+
+  - type: textarea
+    attributes:
+      label: Use case
+      description: >
+        Describe the use case of your feature request. It will help us understand and
+        prioritize the feature request.
+      placeholder: >
+        Rather than telling us how you might implement this feature, try to take a
+        step back and describe what you are trying to achieve.

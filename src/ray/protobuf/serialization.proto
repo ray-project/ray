@@ -1,0 +1,94 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.serialization;
+
+// This is the protocol for python object serialization with pickle5.
+//
+// ## About Pickle 5 Protocol
+// Pickle5 will create two things during serialization:
+//   1. Inband data. This is the framed pickle data for most objects.
+//   2. Buffers. They are python buffers wrapping internal data chunks of objects.
+//       They contain metadata of the buffer and a native pointer, which is
+//       intended for zero-copy serialization.
+//
+// ## Protobuf object
+// A PythonObject protobuf object will be created for each python object.
+// Unfortunately, protobuf object has a 2GB memory limit and cannot support zero-copy,
+// so we have to put inband data and raw buffer contents outside. Thus PythonObject
+// will only store buffer metadata, the offset and size of inband data, and the
+// offset and length of raw buffers object.
+//
+// ## Python object serialization memory layout
+// This section describes the memory layout in the Plasma store buffer.
+// ---------------------
+// i64 len(inband_data):
+//     Length of the inband data.
+// i64 len(PythonObject):
+//     Length of the PythonObject.
+// inband_data
+//     Inband data, padded with 64 bytes for the alignment of buffers.
+// PythonObject
+//     PythonObject protobuf defined as below.
+// buffers | aligned(64)
+//     Raw data of buffers, this section is 64-byte aligned.
+//     Inside the section, large buffers (>=2048 bytes) are aligned
+//     to 64 bytes for faster SIMD, small buffers (<2048 bytes) are
+//     aligned to 8 bytes.
+
+// ---------------------
+
+// The message for metadata of python buffer objects.
+message PythonBuffer {
+  // The offset of the buffer relative to the beginning of the raw buffer section,
+  // which is stored in 'PythonObject'.
+  uint64 address = 1;
+  // The length of the buffer.
+  // It should be equal to 'product(*shape) * itemsize'.
+  // 'int64' represents 'Py_ssize_t' of the corresponding python interface.
+  int64 length = 2;
+  // The size of every element in the buffer.
+  // 'int64' represents 'Py_ssize_t' of the corresponding python interface.
+  int64 itemsize = 3;
+  // The dimensions of the object (for example, number of tensor axises).
+  int32 ndim = 4;
+  // Readonly flag for this object.
+  bool readonly = 5;
+  // The format string for every item. This is optional.
+  // If this is NULL, "B" (unsigned bytes) is assumed.
+  string format = 6;
+  // The shape of the object per dimension. This is NULL when ndim == 0
+  // The length of the shape should be equal to 'ndim'.
+  // 'int64' represents 'Py_ssize_t' of the corresponding python interface.
+  repeated int64 shape = 7;
+  // The stride of the object per dimension. This is NULL when ndim == 0
+  // The length of the strides should be equal to 'ndim'.
+  // 'int64' represents 'Py_ssize_t' of the corresponding python interface.
+  repeated int64 strides = 8;
+  // 'suboffsets' is ignored since it is required to be NULL by the pickle5 protocol.
+}
+
+// The message for pickle5 serialized python object.
+message PythonObject {
+  // The size of the inband data section.
+  uint64 inband_data_size = 1;
+  // The size of the buffers section. It is not used in deserialization
+  // because we already have the length and address of every buffer. However, it could
+  // be useful for debugging or future adjustment, so we just keep it.
+  uint64 raw_buffers_size = 2;
+  // The metadata of python buffer objects.
+  repeated PythonBuffer buffer = 3;
+}

@@ -1,0 +1,34 @@
+# Tool for listening on Bazel actions and generate compile commands database.
+#
+# Using Bazel aspect to generate compile commands would be faster. Also Bazel
+# action listeners are deprecated. We can switch to that if a stable solution
+# exists, e.g. https://github.com/grailbio/bazel-compilation-database
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "extract_compile_command",
+    srcs = ["extract_compile_command.cc"],
+    # Build fails on Windows, and not part of Ray either.
+    tags = ["manual"],
+    deps = [
+        "//:extra_actions_cc_proto_lib",
+        "@com_google_protobuf//:protobuf",
+        "@rapidjson",
+    ],
+)
+
+action_listener(
+    name = "compile_command_listener",
+    extra_actions = [":compile_command_action"],
+    mnemonics = ["CppCompile"],
+)
+
+extra_action(
+    name = "compile_command_action",
+    cmd = "$(location :extract_compile_command) \
+        $(EXTRA_ACTION_FILE) \
+        $(output $(ACTION_ID).compile_command.json)",
+    out_templates = ["$(ACTION_ID).compile_command.json"],
+    tools = [":extract_compile_command"],
+)

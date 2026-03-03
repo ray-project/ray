@@ -1,0 +1,11 @@
+diff -u bazel/repositories.bzl /tmp/repositories.bzl 
+--- bazel/repositories.bzl
++++ bazel/repositories.bzl
+@@ -56,4 +56,7 @@
+             "https://zlib.net/zlib-1.2.11.tar.gz",
+         ],
+         build_file = "@com_github_jupp0r_prometheus_cpp//bazel:zlib.BUILD",
++        patches = [
++            "@io_ray//thirdparty/patches:zlib-fdopen.patch",
++        ]
+     )
