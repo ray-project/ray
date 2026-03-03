@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.runtime_env import RuntimeEnv
-from ray.train import DataConfig, DefaultBackendConfig
+from ray.train import BackendConfig, DataConfig
 from ray.train.v2._internal.callbacks.state_manager import (
     StateManagerCallback,
     TrainingFramework,
@@ -477,7 +477,7 @@ def test_train_state_manager_run_lifecycle(ray_start_regular):
         ),
         train_loop_config={"epochs": 10},
         scaling_config=ScalingConfig(num_workers=2),
-        backend_config=DefaultBackendConfig(),
+        backend_config=BackendConfig(),
         datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
         dataset_config=DataConfig(datasets_to_split="all"),
     )
@@ -530,7 +530,7 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
         ),
         train_loop_config={"epochs": 10},
         scaling_config=ScalingConfig(num_workers=2),
-        backend_config=DefaultBackendConfig(),
+        backend_config=BackendConfig(),
         datasets={"dataset_1": ray.data.from_items([1, 2, 3])},
         dataset_config=DataConfig(datasets_to_split="all"),
     )
@@ -831,7 +831,7 @@ def test_get_framework_version(ray_start_regular, fw):
 
     # Create backend config for this framework (assumes frameworks are importable).
     if fw is None:
-        backend_config = DefaultBackendConfig()
+        backend_config = BackendConfig()
     elif fw == TrainingFramework.TORCH.value:
         from ray.train.torch import TorchConfig
 

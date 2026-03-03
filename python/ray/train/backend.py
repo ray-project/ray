@@ -1,5 +1,4 @@
 import logging
-from abc import ABC, abstractmethod
 from contextlib import nullcontext
 from typing import Any, Dict, TypeVar
 
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class BackendConfig(ABC):
+class BackendConfig:
     """Parent class for configurations of training backend."""
 
     @property
@@ -32,17 +31,14 @@ class BackendConfig(ABC):
     def _repr_html_(self) -> str:
         return make_table_html_repr(obj=self, title=type(self).__name__)
 
-    @abstractmethod
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize this backend config to a dict for runtime use."""
-        pass
+        """
+        Returns serializable dictionary representation of the backend config.
+        Subclasses can override this to expose framework-specific configuration.
 
-
-@DeveloperAPI
-class DefaultBackendConfig(BackendConfig):
-    """Default no-op backend config used when none is provided."""
-
-    def to_dict(self) -> Dict[str, Any]:
+        The fields here are used for state export of the backend config.
+        If a field is not serializable, it should be excluded.
+        """
         return {}
 
 

@@ -168,17 +168,13 @@ def test_to_human_readable_json_complex_dict():
             self.a = 1
             self.b = "hello"
 
-    class StrFallback:
-        __slots__ = ()
-
         def __str__(self) -> str:
-            return "fallback"
+            return "UserObj(a=1, b=hello)"
 
     obj = {
         "user_obj": UserObj(),
-        "nested_dict": {"level1": {"level2": 2}},
-        "str_fallback": StrFallback(),
-        "list": [UserObj(), {"x": 3}, StrFallback(), 4],
+        "nested_dict": {"level1": 2},
+        "list": [UserObj(), 3, 4],
         "json_native_types": {
             "str": "t",
             "int": 1,
@@ -189,16 +185,11 @@ def test_to_human_readable_json_complex_dict():
     }
 
     expected = {
-        "user_obj": {
-            "__type__": "UserObj",
-            "attributes": {"a": 1, "b": "hello"},
-        },
-        "nested_dict": {"level1": {"level2": 2}},
-        "str_fallback": "fallback",
+        "user_obj": "UserObj(a=1, b=hello)",
+        "nested_dict": {"level1": 2},
         "list": [
-            {"__type__": "UserObj", "attributes": {"a": 1, "b": "hello"}},
-            {"x": 3},
-            "fallback",
+            "UserObj(a=1, b=hello)",
+            3,
             4,
         ],
         "json_native_types": {
@@ -211,6 +202,46 @@ def test_to_human_readable_json_complex_dict():
     }
 
     assert json.loads(_to_human_readable_json(obj)) == expected
+
+
+def test_to_human_readable_json_max_depth():
+    """Test that _to_human_readable_json respects the max_depth argument, truncating
+    nested structures and custom objects appropriately."""
+
+    class CustomObj:
+        def __str__(self) -> str:
+            return "CustomObj"
+
+    obj = {
+        "native": 42,
+        "sequence": [1, CustomObj()],
+        "nested": {"inner": {"deep": 99}},
+        "obj": CustomObj(),
+    }
+
+    # max_depth=2
+    assert json.loads(_to_human_readable_json(obj, max_depth=2)) == {
+        "native": 42,
+        "nested": {"inner": "..."},
+        "obj": "CustomObj",
+        "sequence": ["..."],
+    }
+
+    # max_depth=3
+    assert json.loads(_to_human_readable_json(obj, max_depth=3)) == {
+        "native": 42,
+        "nested": {"inner": {"deep": "..."}},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+    }
+
+    # max_depth=5
+    assert json.loads(_to_human_readable_json(obj, max_depth=5)) == {
+        "native": 42,
+        "nested": {"inner": {"deep": 99}},
+        "obj": "CustomObj",
+        "sequence": [1, "CustomObj"],
+    }
 
 
 def test_export_oneof_datasets_to_split(enable_export_api_write):

@@ -270,7 +270,7 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
     Returns:
         TrainRunContext: A standardized TrainRunContext instance for testing.
     """
-    from ray.train import DataConfig, DefaultBackendConfig
+    from ray.train import BackendConfig, DataConfig
     from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2.api.config import RunConfig, ScalingConfig
 
@@ -278,7 +278,7 @@ def create_dummy_run_context(**kwargs: dict) -> TrainRunContext:
         run_config=RunConfig(name="test"),
         train_loop_config={},
         scaling_config=ScalingConfig(num_workers=1),
-        backend_config=DefaultBackendConfig(),
+        backend_config=BackendConfig(),
         datasets={},
         dataset_config=DataConfig(),
     )

@@ -14,7 +14,6 @@ from ray.train import (
     BackendConfig,
     Checkpoint,
     DataConfig,
-    DefaultBackendConfig,
     Result,
     RunConfig,
     ScalingConfig,
@@ -91,7 +90,7 @@ class DataParallelTrainer:
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
         self.scaling_config = scaling_config or ScalingConfig()
-        self.backend_config = backend_config or DefaultBackendConfig()
+        self.backend_config = backend_config or BackendConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 

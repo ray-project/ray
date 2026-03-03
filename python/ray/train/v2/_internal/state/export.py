@@ -69,16 +69,16 @@ _TRAINING_FRAMEWORK_MAP = {
 logger = logging.getLogger(__name__)
 
 # Helper conversion functions
-def _to_human_readable_json(obj: Any, *, max_depth: int = 10) -> str:
+def _to_human_readable_json(obj: Any, *, max_depth: int = 3) -> str:
     """
     Convert arbitrary Python objects into a human-readable, JSON-serializable string.
 
     Use to convert user-defined dicts containing variable field types, custom objects,
-    complex nesting to standard JSON string for protobuf serialization.
+    or complex nesting to standard JSON string for protobuf serialization.
 
     Args:
         obj: The object to convert into a JSON-serializable form.
-        max_depth: Maximum recursion depth; deeper structures are replaced with "<truncated>".
+        max_depth: Maximum recursion depth; deeper structures are replaced with ``"..."``.
 
     Returns:
         A JSON string representation of the converted object.
@@ -91,22 +91,26 @@ def _to_human_readable_json(obj: Any, *, max_depth: int = 10) -> str:
             self.lr = lr
             self.tags = ["a", "b"]
 
-    # Input: mixed types (nested dict + custom object)
-    cfg = {"epochs": 3, "custom": MyConfig(lr=0.001)}
+        def __str__(self):
+            return f"MyConfig(lr={self.lr})"
+
+    # Input: mixed types (nested dict + custom object + list)
+    cfg = {"epochs": 3, "custom": MyConfig(lr=0.001), "steps": [1, 2, 3]}
 
     json_str = _to_human_readable_json(cfg)
 
-    # Output: JSON string safe to export/store (example)
+    # Output: JSON string safe to export/store
     # {
-    #   "custom": {"__type__": "MyConfig", "attributes": {"lr": 0.001, "tags": ["a", "b"]}},
-    #   "epochs": 3
+    #   "custom": "MyConfig(lr=0.001)",
+    #   "epochs": 3,
+    #   "steps": [1, 2, 3]
     # }
     ```
     """
 
     def to_human_readable(value, depth):
         if depth <= 0:
-            return "<truncated>"
+            return "..."
 
         # JSON-native types
         if value is None or isinstance(value, (bool, int, float, str)):
@@ -118,14 +122,11 @@ def _to_human_readable_json(obj: Any, *, max_depth: int = 10) -> str:
 
         # List / tuple / set
         if isinstance(value, (list, tuple, set)):
-            return [to_human_readable(v, depth - 1) for v in value]
-
-        # Objects with __dict__
-        if hasattr(value, "__dict__"):
-            return {
-                "__type__": value.__class__.__name__,
-                "attributes": to_human_readable(vars(value), depth - 1),
-            }
+            if depth - 1 <= 0:
+                # Collapse the list/tuple/set to "..."
+                return ["..."]
+            else:
+                return [to_human_readable(v, depth - 1) for v in value]
 
         # Fallback: string representation
         return str(value)
@@ -133,7 +134,7 @@ def _to_human_readable_json(obj: Any, *, max_depth: int = 10) -> str:
     try:
         human_readable_json = to_human_readable(obj, max_depth)
     except Exception as e:
-        logger.debug(f"Failed to convert value to JSON for export: {e}")
+        logger.warning(f"Failed to convert value to JSON for export: {e}")
         human_readable_json = "N/A"
 
     return json.dumps(
