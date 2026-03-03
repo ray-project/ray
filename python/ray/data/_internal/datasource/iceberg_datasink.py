@@ -133,10 +133,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                     f"Removed '{invalid_param}' from overwrite_kwargs: {reason}"
                 )
 
-        if "name" in self._catalog_kwargs:
-            self._catalog_name = self._catalog_kwargs.pop("name")
-        else:
-            self._catalog_name = "default"
+        self._catalog_name = self._catalog_kwargs.get("name", "default")
 
         self._table: "Table" = None
         self._io: "FileIO" = None
@@ -176,10 +173,12 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
         )
 
     def _get_catalog(self) -> "Catalog":
-        from pyiceberg import catalog
+        from ray.data._internal.datasource.iceberg_datasource import (
+            _get_iceberg_catalog,
+        )
 
         return self._with_retry(
-            lambda: catalog.load_catalog(self._catalog_name, **self._catalog_kwargs),
+            lambda: _get_iceberg_catalog(self._catalog_kwargs),
             description=f"load Iceberg catalog '{self._catalog_name}'",
         )
 
@@ -341,6 +340,34 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 Write operator. Used to evolve the table schema before writing
                 to avoid PyIceberg name mapping errors.
         """
+        cat = self._get_catalog()
+
+        # Check if table exists to avoid relying on NoSuchTableError
+        if not self._with_retry(
+            lambda: cat.table_exists(self.table_identifier),
+            description=f"check existence of Iceberg table '{self.table_identifier}'",
+        ):
+            if schema is None:
+                raise ValueError(
+                    f"Iceberg table '{self.table_identifier}' does not exist and no schema provided."
+                )
+
+            # Create table if it doesn't exist
+            from pyiceberg.io import pyarrow as pyi_pa_io
+
+            # Use visitor to create a fresh Iceberg schema without field IDs.
+            # We avoid pyarrow_to_schema() here because it expects field IDs in metadata
+            # when converting back to Iceberg, which fresh Ray schemas don't have.
+            iceberg_schema = pyi_pa_io.visit_pyarrow(
+                schema, pyi_pa_io._ConvertToIcebergWithoutIDs()
+            )
+
+            self._with_retry(
+                lambda: cat.create_table(self.table_identifier, schema=iceberg_schema),
+                description=f"create Iceberg table '{self.table_identifier}'",
+            )
+
+        # Always reload to ensure we have the latest table instance
         self._reload_table()
 
         # Evolve schema BEFORE any files are written

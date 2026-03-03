@@ -89,13 +89,20 @@ class CheckpointLoader:
 
         if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
             # Read checkpoint via PyIceberg directly to avoid catalog-parallelism edge cases.
-            from pyiceberg.catalog import load_catalog
+            from ray.data._internal.datasource.iceberg_datasource import (
+                _get_iceberg_catalog,
+            )
+            from pyiceberg.exceptions import NoSuchTableError
 
-            catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
-            catalog_name = catalog_kwargs.pop("name", "default")
-            catalog = load_catalog(catalog_name, **catalog_kwargs)
-            table = catalog.load_table(self.checkpoint_path)
-            arrow_tbl = table.scan().select(self.id_column).to_arrow()
+            catalog = _get_iceberg_catalog(self.ckpt_config.catalog_kwargs)
+            try:
+                table = catalog.load_table(self.checkpoint_path)
+                arrow_tbl = table.scan().select(self.id_column).to_arrow()
+            except NoSuchTableError:
+                # If the table doesn't exist, it means no checkpoint data exists.
+                # We return an empty table.
+                arrow_tbl = pyarrow.Table.from_pydict({self.id_column: []})
+
             checkpoint_ds = ray.data.from_arrow(arrow_tbl)
         else:
             # Load the checkpoint data
@@ -201,11 +208,11 @@ class BatchBasedCheckpointFilter(CheckpointFilter):
 
     def delete_checkpoint(self) -> None:
         if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
-            from pyiceberg.catalog import load_catalog
+            from ray.data._internal.datasource.iceberg_datasource import (
+                _get_iceberg_catalog,
+            )
 
-            catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
-            catalog_name = catalog_kwargs.pop("name", "default")
-            catalog = load_catalog(catalog_name, **catalog_kwargs)
+            catalog = _get_iceberg_catalog(self.ckpt_config.catalog_kwargs)
             catalog.drop_table(self.checkpoint_path)
         else:
             self.filesystem.delete_dir(self.checkpoint_path_unwrapped)

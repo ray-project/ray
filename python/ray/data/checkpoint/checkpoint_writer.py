@@ -58,51 +58,25 @@ class IcebergCheckpointWriter(CheckpointWriter):
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
-        import pyarrow as pa
-        from pyiceberg.catalog import load_catalog
-        from pyiceberg.exceptions import NoSuchTableError
-
         from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 
-        # Try to load or create the table
-        catalog_kwargs = self.ckpt_config.catalog_kwargs.copy()
-        catalog_name = catalog_kwargs.pop("name", "default")
-        catalog = load_catalog(catalog_name, **catalog_kwargs)
-
         table_identifier = self.ckpt_config.checkpoint_path
-        # on_write_start needs to be called to initialize the table and schema
-        # We'll use a simple schema for the checkpoint table
-        schema = pa.schema([(self.id_col, pa.int64())])
-
-        try:
-            catalog.load_table(table_identifier)
-        except NoSuchTableError:
-            # Create the table if it doesn't exist
-            from pyiceberg.schema import Schema
-            from pyiceberg.types import LongType, NestedField
-
-            iceberg_schema = Schema(
-                NestedField(
-                    field_id=1, name=self.id_col, field_type=LongType(), required=True
-                )
-            )
-            catalog.create_table(table_identifier, schema=iceberg_schema)
 
         self.datasink = IcebergDatasink(
             table_identifier=table_identifier,
             catalog_kwargs=self.ckpt_config.catalog_kwargs,
         )
-        self.datasink.on_write_start(schema)
 
     def write_block_checkpoint(self, block: BlockAccessor):
         if block.num_rows() == 0:
             return
 
-        # Ensure table is loaded (needed when running on worker after unpickling)
-        if self.datasink._table is None:
-            self.datasink._reload_table()
-
         checkpoint_ids_block = block.select(columns=[self.id_col])
+        # Ensure table is initialized/created
+        # We need the schema from the block
+        schema = BlockAccessor.for_block(checkpoint_ids_block).to_arrow().schema
+        self.datasink.on_write_start(schema)
+
         # Use TaskContext for worker-side write
         from ray.data._internal.execution.interfaces.task_context import TaskContext
 
