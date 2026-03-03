@@ -583,6 +583,7 @@ def _union_array_to_array_payload(a: "pyarrow.UnionArray") -> "PicklableArrayPay
         children=children,
     )
 
+
 def _dictionary_array_to_array_payload(
     a: "pyarrow.DictionaryArray",
 ) -> "PicklableArrayPayload":
