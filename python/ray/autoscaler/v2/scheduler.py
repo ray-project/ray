@@ -105,6 +105,70 @@ class IResourceScheduler(ABC):
         pass
 
 
+class NodeStateCache:
+    """
+    Caches the scheduling states of nodes to avoid redundant try_schedule calls
+    for identical nodes.
+    """
+
+    def __init__(self):
+        self.seen_states = set()
+
+    def is_duplicate(
+        self, node: "SchedulingNode", source: "ResourceRequestSource"
+    ) -> bool:
+        """
+        Generates a deterministic signature of the node's scheduling capacity.
+        Returns True if this exact state has already been seen, otherwise adds it
+        to the cache and returns False.
+        """
+        avail_res = node.get_available_resources(source)
+        state_key = (
+            node.node_type,
+            node.node_kind,
+            frozenset(node.total_resources.items()),
+            frozenset(avail_res.items()),
+            frozenset(node.labels.items()),
+        )
+
+        if state_key in self.seen_states:
+            return True
+
+        self.seen_states.add(state_key)
+        return False
+
+
+class UnschedulableRequestCache:
+    """
+    Caches resource requests that have failed to schedule on a node.
+    """
+
+    def __init__(self):
+        self.shapes = set()
+        self.last_r_id = None
+        self.last_shape_key = None
+
+    def contains(self, request: ResourceRequest) -> bool:
+        current_id = id(request)
+        if current_id == self.last_r_id:
+            shape_key = self.last_shape_key
+        else:
+            shape_key = request.SerializeToString(deterministic=True)
+            self.last_r_id = current_id
+            self.last_shape_key = shape_key
+
+        return shape_key in self.shapes
+
+    def add(self, request: ResourceRequest) -> None:
+        assert self.last_r_id == id(request)
+        self.shapes.add(self.last_shape_key)
+
+    def clear(self) -> None:
+        self.shapes.clear()
+        self.last_r_id = None
+        self.last_shape_key = None
+
+
 class SchedulingNodeStatus(Enum):
     """
     The status of a scheduling node (`SchedulingNode`)
@@ -429,26 +493,12 @@ class SchedulingNode:
         # Track the resource requests that cannot be scheduled on this node.
         unschedulable_requests = []
 
-        # Track request shapes that have already failed to schedule on this node.
-        # This prevents O(N^2 * M) iteration by returning early for identical failing requests.
-        unavailable_shapes = set()
-
-        # Track the last serialization to bypass Protobuf overhead
-        last_r_id = None
-        last_shape_key = None
+        # Cache to prevent O(N^2 * M) iteration by returning early for identical requests.
+        unfittable_cache = UnschedulableRequestCache()
 
         # Sort the requests and try schedule them one by one.
         for r in requests:
-            current_id = id(r)
-            if current_id == last_r_id:
-                shape_key = last_shape_key
-            else:
-                # Use the serialized Protobuf representation as a deterministic, hashable key.
-                shape_key = r.SerializeToString(deterministic=True)
-                last_r_id = current_id
-                last_shape_key = shape_key
-
-            if shape_key in unavailable_shapes:
+            if unfittable_cache.contains(r):
                 unschedulable_requests.append(r)
                 continue
 
@@ -457,13 +507,13 @@ class SchedulingNode:
             num_labels_before = len(self.labels)
 
             if not self._try_schedule_one(r, resource_request_source):
-                unavailable_shapes.add(shape_key)
+                unfittable_cache.add(r)
                 unschedulable_requests.append(r)
             else:
                 # If the request successfully scheduled and added a label to the node,
                 # it might have expanded feasibility so we invalidate the unavailable cache.
                 if len(self.labels) > num_labels_before:
-                    unavailable_shapes.clear()
+                    unfittable_cache.clear()
 
         score = self._compute_score(resource_request_source)
 
@@ -1630,25 +1680,14 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Track node states we've already simulated in this pass. Since we only
         # select one best node to return, we skip the heavy deepcopy/simulation
         # overhead for duplicates
-        seen_node_states = set()
+        node_cache = NodeStateCache()
 
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
         for idx, node in enumerate(nodes):
-            # Generate a deterministic signature of the node's scheduling capacity.
-            avail_res = node.get_available_resources(resource_request_source)
-            state_key = (
-                node.node_type,
-                node.node_kind,
-                frozenset(node.total_resources.items()),
-                frozenset(avail_res.items()),
-                frozenset(node.labels.items()),
-            )
-
-            # Skip this node if we've already evaluated the exact state.
-            if state_key in seen_node_states:
+            # Skip this node if we've already evaluated its exact state.
+            if node_cache.is_duplicate(node, resource_request_source):
                 continue
-            seen_node_states.add(state_key)
 
             node_copy = copy.deepcopy(node)
 
