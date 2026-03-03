@@ -62,8 +62,8 @@ _KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
 
 KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
 KAFKA_QUERY_OFFSET_TIMEOUT_S = 10
-# Cap each poll interval to keep responsiveness of timeout/position checks.
-KAFKA_POLL_MAX_MS = 10_000  # 10 seconds per poll
+# Cap each consume timeout to keep responsiveness of timeout/position checks.
+KAFKA_CONSUME_TIMEOUT_MAX_MS = 10_000  # 10 seconds per consume call
 
 KAFKA_MSG_SCHEMA = pa.schema(
     [
@@ -623,51 +623,64 @@ class KafkaDatasource(Datasource):
                                     max(0, timeout_seconds - elapsed_time_s) * 1000
                                 )
                                 poll_timeout_ms = min(
-                                    remaining_timeout_ms, KAFKA_POLL_MAX_MS
+                                    remaining_timeout_ms,
+                                    KAFKA_CONSUME_TIMEOUT_MAX_MS,
                                 )
-                                poll_timeout_s = poll_timeout_ms / 1000.0
+                                consume_timeout_s = poll_timeout_ms / 1000.0
 
-                                msg = consumer.poll(timeout=poll_timeout_s)
+                                remaining = resolved_end - next_offset
+                                batch_size = min(
+                                    remaining,
+                                    KafkaDatasource.BATCH_SIZE_FOR_YIELD,
+                                )
+                                msgs = consumer.consume(
+                                    num_messages=batch_size,
+                                    timeout=consume_timeout_s,
+                                )
 
-                                if msg is None:
+                                if not msgs:
                                     continue
-                                if msg.error():
-                                    # In confluent-kafka, errors are delivered as messages.
-                                    # Only skip on partition EOF events, raise others.
-                                    err = msg.error()
-                                    if err.code() == KafkaError._PARTITION_EOF:
-                                        continue
-                                    raise KafkaException(err)
 
-                                # Stop once we reached the end offset (exclusive)
-                                if msg.offset() >= resolved_end:
-                                    partition_done = True
-                                    break
+                                for msg in msgs:
+                                    if msg.error():
+                                        # In confluent-kafka, errors are delivered
+                                        # as messages. Only skip partition EOF
+                                        # events, raise others.
+                                        err = msg.error()
+                                        if err.code() == KafkaError._PARTITION_EOF:
+                                            continue
+                                        raise KafkaException(err)
 
-                                ts_type, ts_ms = msg.timestamp()
-                                headers_list = msg.headers() or []
-                                headers_dict = dict(headers_list)
-                                records.append(
-                                    {
-                                        "offset": msg.offset(),
-                                        "key": msg.key(),
-                                        "value": msg.value(),
-                                        "topic": msg.topic(),
-                                        "partition": msg.partition(),
-                                        "timestamp": ts_ms,
-                                        "timestamp_type": ts_type,
-                                        "headers": headers_dict,
-                                    }
-                                )
+                                    # Stop once we reached the end offset
+                                    # (exclusive).
+                                    if msg.offset() >= resolved_end:
+                                        partition_done = True
+                                        break
 
-                                next_offset = msg.offset() + 1
+                                    ts_type, ts_ms = msg.timestamp()
+                                    headers_list = msg.headers() or []
+                                    headers_dict = dict(headers_list)
+                                    records.append(
+                                        {
+                                            "offset": msg.offset(),
+                                            "key": msg.key(),
+                                            "value": msg.value(),
+                                            "topic": msg.topic(),
+                                            "partition": msg.partition(),
+                                            "timestamp": ts_ms,
+                                            "timestamp_type": ts_type,
+                                            "headers": headers_dict,
+                                        }
+                                    )
+
+                                    next_offset = msg.offset() + 1
 
                                 if len(records) >= KafkaDatasource.BATCH_SIZE_FOR_YIELD:
                                     table = pa.Table.from_pylist(records)
                                     output_buffer.add_block(table)
                                     while output_buffer.has_next():
                                         yield output_buffer.next()
-                                    records = []  # Clear for next batch
+                                    records = []
 
                         # Yield any remaining records
                         if records:
