@@ -1,27 +1,27 @@
 """Iceberg release benchmark"""
 
 import argparse
-import os
 import uuid
 
-from pyiceberg import schema as pyi_schema, types as pyi_types
-from pyiceberg.catalog.sql import SqlCatalog
+from pyiceberg import catalog as pyi_catalog, schema as pyi_schema, types as pyi_types
 
 import ray
 from benchmark import Benchmark, BenchmarkMetric
 from ray.data import SaveMode
 
-NUM_ROWS = 1_000_000
-UPSERT_ROWS = 200_000
-OVERWRITE_ROWS = 500_000
-DEFAULT_WAREHOUSE_PATH = "s3://ray-benchmark-data/iceberg_benchmark/"
+NUM_ROWS = 100_000_000
+UPSERT_ROWS = 20_000_000
+OVERWRITE_ROWS = 50_000_000
+EMBEDDING_DIM = 16
+TOKEN_IDS_DIM = 8
+LOGITS_DIM = 4
+DEFAULT_WAREHOUSE_PATH = "s3://ray-benchmark-data-internal-us-west-2/iceberg_benchmark/"
 
 _RUN_ID = uuid.uuid4().hex[:12]
 _CATALOG_NAME = f"ray_catalog_{_RUN_ID}"
 _DB_NAME = "ray_db"
 _TABLE_NAME = f"bench_{_RUN_ID}"
 _TABLE_ID = f"{_DB_NAME}.{_TABLE_NAME}"
-_CATALOG_DB_DIR = f"/tmp/iceberg_catalog/{_RUN_ID}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,16 +39,17 @@ def parse_args() -> argparse.Namespace:
 def _get_catalog_kwargs(warehouse_path: str) -> dict:
     return {
         "name": _CATALOG_NAME,
-        "type": "sql",
-        "uri": f"sqlite:///{_CATALOG_DB_DIR}/iceberg_benchmark_catalog.db",
+        "type": "glue",
+        "client.region": "us-west-2",
         "warehouse": warehouse_path,
     }
 
 
 def _setup_catalog(catalog_kwargs: dict):
     """Create catalog, namespace, and table"""
-    os.makedirs(_CATALOG_DB_DIR, exist_ok=True)
-    catalog = SqlCatalog(**catalog_kwargs)
+    catalog_name = catalog_kwargs["name"]
+    catalog_properties = {k: v for k, v in catalog_kwargs.items() if k != "name"}
+    catalog = pyi_catalog.load_catalog(catalog_name, **catalog_properties)
     if (_DB_NAME,) not in catalog.list_namespaces():
         catalog.create_namespace(_DB_NAME)
     catalog.create_table(
@@ -69,6 +70,48 @@ def _setup_catalog(catalog_kwargs: dict):
                 field_type=pyi_types.LongType(),
                 required=False,
             ),
+            pyi_types.NestedField(
+                field_id=4,
+                name="embedding",
+                field_type=pyi_types.ListType(
+                    element_id=7,
+                    element_type=pyi_types.DoubleType(),
+                    element_required=False,
+                ),
+                required=False,
+            ),
+            pyi_types.NestedField(
+                field_id=5,
+                name="token_ids",
+                field_type=pyi_types.ListType(
+                    element_id=8,
+                    element_type=pyi_types.LongType(),
+                    element_required=False,
+                ),
+                required=False,
+            ),
+            pyi_types.NestedField(
+                field_id=6,
+                name="logits",
+                field_type=pyi_types.ListType(
+                    element_id=9,
+                    element_type=pyi_types.DoubleType(),
+                    element_required=False,
+                ),
+                required=False,
+            ),
+            pyi_types.NestedField(
+                field_id=10,
+                name="score",
+                field_type=pyi_types.DoubleType(),
+                required=False,
+            ),
+            pyi_types.NestedField(
+                field_id=11,
+                name="confidence",
+                field_type=pyi_types.DoubleType(),
+                required=False,
+            ),
         ),
     )
     assert (_DB_NAME, _TABLE_NAME) in catalog.list_tables(
@@ -83,6 +126,13 @@ def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
             "id": row["id"],
             "value": f"{value_prefix}{row['id']}",
             "part": row["id"] % 10,
+            "embedding": [
+                float((row["id"] + i) % 100) / 100.0 for i in range(EMBEDDING_DIM)
+            ],
+            "token_ids": [(row["id"] + i) % 1024 for i in range(TOKEN_IDS_DIM)],
+            "logits": [float((row["id"] * (i + 1)) % 7) for i in range(LOGITS_DIM)],
+            "score": float(row["id"] % 1000) / 1000.0,
+            "confidence": float((row["id"] % 100) + 1) / 100.0,
         }
     )
 
@@ -146,9 +196,7 @@ def main(args: argparse.Namespace):
             mode=SaveMode.OVERWRITE,
         )
         count = _read_table(catalog_kwargs).count()
-        assert (
-            count == OVERWRITE_ROWS
-        ), f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
+        assert count == OVERWRITE_ROWS, f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
         return {BenchmarkMetric.NUM_ROWS: OVERWRITE_ROWS}
 
     benchmark.run_fn("overwrite", overwrite)
