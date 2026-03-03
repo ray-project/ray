@@ -18,6 +18,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
+from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -1539,6 +1540,106 @@ class TestGangScaling:
 
         smaller, larger = sorted([initial_gang_ids, final_gang_ids], key=len)
         assert smaller.issubset(larger)
+
+        serve.delete("app")
+        serve.shutdown()
+
+    def test_rolling_update(self, ray_cluster):
+        """Verifies that rolling update replaces complete gangs atomically.
+
+        During the update, RUNNING replicas must always form complete gangs.
+        """
+        GANG_SIZE = 2
+        NUM_REPLICAS = 4
+
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            name="D",
+            num_replicas=NUM_REPLICAS,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class V1:
+            def __call__(self):
+                return "v1"
+
+        handle = serve.run(V1.bind(), name="app")
+        wait_for_condition(check_apps_running, apps=["app"])
+        assert handle.remote().result() == "v1"
+
+        client = _get_global_client()
+        controller = client._controller
+        deployment_id = DeploymentID(name="D", app_name="app")
+
+        # Collect initial gang_ids.
+        replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == NUM_REPLICAS
+        initial_gang_ids = {r.gang_context.gang_id for r in running}
+        assert len(initial_gang_ids) == NUM_REPLICAS // GANG_SIZE
+
+        # New code version triggers requires_actor_restart -> rolling update
+        @serve.deployment(
+            name="D",
+            num_replicas=NUM_REPLICAS,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class V2:
+            def __call__(self):
+                return "v2"
+
+        # Issue the update in a background thread so we can poll
+        # intermediate controller state from the main thread.
+        update_done = threading.Event()
+
+        def update():
+            serve.run(V2.bind(), name="app")
+            update_done.set()
+
+        t = threading.Thread(target=update, daemon=True)
+        t.start()
+
+        # Poll the controller until the update is complete.
+        # At every observable point, RUNNING replicas of old gangs must
+        # form complete gangs (never partially torn down).
+        def update_complete_with_gang_integrity():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+
+            gang_counts: dict = {}
+            for r in running:
+                if r.gang_context is not None:
+                    gid = r.gang_context.gang_id
+                    gang_counts[gid] = gang_counts.get(gid, 0) + 1
+
+            for gid, count in gang_counts.items():
+                if gid in initial_gang_ids:
+                    assert count == GANG_SIZE
+
+            # Done when all replicas are running with new gang_ids.
+            if len(running) != NUM_REPLICAS:
+                return False
+            return True
+
+        wait_for_condition(
+            update_complete_with_gang_integrity, timeout=60, retry_interval_ms=200
+        )
+        t.join(timeout=10)
+
+        # Confirm all replicas serve the new version.
+        for _ in range(20):
+            assert handle.remote().result() == "v2"
 
         serve.delete("app")
         serve.shutdown()
