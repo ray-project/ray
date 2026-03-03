@@ -28,11 +28,18 @@ config = (
     )
     .env_runners(
         use_inference_actors=True,
+        num_env_runners=2,
+        num_gpus_per_env_runner=0,
     )
     .inference(
         num_inference_actors=1,
         inference_num_cpus_per_actor=1,
-        inference_num_gpus_per_actor=0,
+        inference_num_gpus_per_actor=0.2,
+    )
+    .learners(
+        num_learners=0,
+        num_gpus_per_learner=0,
+
     )
 )
 
