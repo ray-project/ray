@@ -828,7 +828,6 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  // Test FilterCandidateNodes: should return INFEASIBLE with empty candidates.
   auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager,
                                                                [](auto) { return true; });
   auto options = SchedulingOptions::BundlePack();
@@ -840,7 +839,6 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
   ASSERT_TRUE(filter_result.status.IsInfeasible());
   ASSERT_EQ(filter_result.candidates.size(), 0);
 
-  // Test CompositeBundleSchedulingPolicy: propagates INFEASIBLE from domain tier.
   auto composite = CompositeBundleSchedulingPolicy(*cluster_resource_manager,
                                                    [](auto) { return true; });
   auto result =
