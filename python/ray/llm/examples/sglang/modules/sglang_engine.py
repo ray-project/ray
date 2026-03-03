@@ -17,9 +17,14 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingCompletionRequest,
     EmbeddingRequest,
     EmbeddingResponse,
+    TokenizeCompletionRequest,
+    TokenizeRequest,
+    TokenizeResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 
@@ -466,6 +471,51 @@ class SGLangServer:
         )
 
         yield resp
+
+    async def tokenize(
+        self,
+        request: TokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[TokenizeResponse, None]:
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        if tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is not available. The tokenize endpoint is not "
+                "supported when SGLang is initialized with --skip-tokenizer-init."
+            )
+
+        if isinstance(request, TokenizeCompletionRequest):
+            prompt = request.prompt
+        else:
+            # Chat tokenize request - render messages to prompt string
+            chat_messages = self._build_chat_messages(request.messages)
+            prompt = self._render_chat_prompt(request, chat_messages)
+
+        add_special_tokens = getattr(request, "add_special_tokens", True)
+        tokens = tokenizer.encode(prompt, add_special_tokens=add_special_tokens)
+
+        max_model_len = getattr(self.engine.server_args, "context_length", None) or 0
+
+        yield TokenizeResponse(
+            tokens=tokens,
+            count=len(tokens),
+            max_model_len=max_model_len,
+        )
+
+    async def detokenize(
+        self,
+        request: DetokenizeRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[DetokenizeResponse, None]:
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        if tokenizer is None:
+            raise RuntimeError(
+                "Tokenizer is not available. The detokenize endpoint is not "
+                "supported when SGLang is initialized with --skip-tokenizer-init."
+            )
+        prompt = tokenizer.decode(request.tokens)
+
+        yield DetokenizeResponse(prompt=prompt)
 
     async def llm_config(self) -> Optional[LLMConfig]:
         return self._llm_config
