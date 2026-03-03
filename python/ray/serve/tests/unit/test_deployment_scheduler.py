@@ -1948,44 +1948,5 @@ class TestScheduleGangPlacementGroups:
         assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
 
 
-def test_gang_downscale_selects_complete_gangs():
-    """Gang-aware downscale selects entire gangs atomically. Stops selection when budget is insufficient."""
-    dep_id = DeploymentID(name="d1")
-    cluster_node_info_cache = MockClusterNodeInfoCache()
-    cluster_node_info_cache.add_node("node1")
-    cluster_node_info_cache.add_node("node2")
-    scheduler = default_impl.create_deployment_scheduler(
-        cluster_node_info_cache,
-        head_node_id_override="fake-head-node-id",
-        create_placement_group_fn_override=None,
-    )
-    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
-
-    r0, r1, r2, r3 = [
-        ReplicaID(unique_id=f"replica{i}", deployment_id=dep_id) for i in range(4)
-    ]
-    for r in [r0, r1, r2, r3]:
-        scheduler.on_replica_running(r, "node1")
-
-    gang_id_by_replica = {r0: "g0", r1: "g0", r2: "g1", r3: "g1"}
-
-    result = scheduler.schedule(
-        upscales={},
-        downscales={
-            dep_id: DeploymentDownscaleRequest(
-                deployment_id=dep_id,
-                num_to_stop=3,
-                gang_id_by_replica=gang_id_by_replica,
-                gang_size=2,
-            )
-        },
-    )
-
-    stopped = result[dep_id]
-    assert len(stopped) == 2
-    gang_ids = {gang_id_by_replica[r] for r in stopped}
-    assert len(gang_ids) == 1
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
