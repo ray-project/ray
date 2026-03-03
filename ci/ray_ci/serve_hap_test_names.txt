@@ -33,7 +33,7 @@
 //python/ray/serve/tests:test_logging
 //python/ray/serve/tests:test_model_composition
 //python/ray/serve/tests:test_replica_request_context
-//python/ray/serve/tests:test_replica_sync_methods
+//python/ray/serve/tests:test_replica_sync_methods_with_run_sync_in_threadpool
 //python/ray/serve/tests:test_request_timeout
 //python/ray/serve/tests:test_streaming_response
 //python/ray/serve/tests:test_target_capacity
