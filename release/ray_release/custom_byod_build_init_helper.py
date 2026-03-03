@@ -62,6 +62,9 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         raise ValueError(
             "byod_ecr_region, byod_ecr, and aws2gce_credentials must be set in the config"
         )
+    byod_ecr_region = config.get("byod_ecr_region")
+    byod_ecr = config.get("byod_ecr")
+    aws2gce_credentials = config.get("aws2gce_credentials")
     custom_byod_images, custom_image_test_names_map = get_images_from_tests(
         tests, "$$RAYCI_BUILD_ID"
     )
@@ -108,11 +111,11 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             "mount_buildkite_agent": True,
             "commands": [
                 f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
-                f"bash release/gcloud_docker_login.sh {config['aws2gce_credentials']}",
+                f"bash release/gcloud_docker_login.sh {aws2gce_credentials}",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 "bash release/azure_docker_login.sh",
                 f"az acr login --name {AZURE_REGISTRY_NAME}",
-                f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
+                f"aws ecr get-login-password --region {byod_ecr_region} | docker login --username AWS --password-stdin {byod_ecr}",
                 build_cmd,
             ],
         }
