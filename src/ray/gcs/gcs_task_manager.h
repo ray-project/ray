@@ -234,12 +234,12 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     /// failed time.
     void MarkTasksFailedOnJobEnds(const JobID &job_id, int64_t job_finish_time_ns);
 
-    /// Mark tasks from a worker as failed as worker dies.
+    /// Mark the whole tree of child tasks FAILED for each task on the dead worker.
     ///
     /// \param worker_id Worker ID
     /// \param worker_failure_data Worker failure data.
-    void MarkTasksFailedOnWorkerDead(const WorkerID &worker_id,
-                                     const rpc::WorkerTableData &worker_failure_data);
+    void MarkChildTasksFailedOnWorkerDead(
+        const WorkerID &worker_id, const rpc::WorkerTableData &worker_failure_data);
 
     /// Get the job task summary given a job id.
     ///
@@ -465,6 +465,21 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
         job_index_;
     absl::flat_hash_map<WorkerID, absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
         worker_index_;
+
+    // Tracks a TaskId to its child tasks. Used by MarkChildTasksFailedOnWorkerDead to
+    // mark the task tree of owner FAILED on worker death. The should ideally be
+    // TaskAttempt instead of TaskId, to mark only the child tasks that are created for
+    // that attempt as FAILED. But task events dont store parent task's attempt number
+    // currently.
+    //
+    // TODO(karticam): Keying by TaskId rather than TaskAttempt can mark wrong tasks as
+    // failed. Consider this race - attempt 0's worker dies, attempt 1's worker starts and
+    // spawns new children before GCS processes the death notification. The map would
+    // contain children from both attempts under the same TaskId. The DFS triggered by
+    // attempt 0's death would then incorrectly mark attempt 1's live children as FAILED.
+    // Fix can be take in a separate PR.
+    absl::flat_hash_map<TaskID, absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
+        parent_to_child_index_;
 
     // A summary for per job stats.
     absl::flat_hash_map<JobID, JobTaskSummary> job_task_summary_;
