@@ -30,11 +30,11 @@ class LoadCheckpointCallback(ExecutionCallback):
 
     def _delete_checkpoint(self):
         if self._config.backend == CheckpointBackend.ICEBERG:
-            from pyiceberg.catalog import load_catalog
+            from ray.data._internal.datasource.iceberg_datasource import (
+                _get_iceberg_catalog,
+            )
 
-            catalog_kwargs = self._config.catalog_kwargs.copy()
-            catalog_name = catalog_kwargs.pop("name", "default")
-            catalog = load_catalog(catalog_name, **catalog_kwargs)
+            catalog = _get_iceberg_catalog(self._config.catalog_kwargs)
             catalog.drop_table(self._config.checkpoint_path)
         else:
             checkpoint_path_unwrapped = _unwrap_protocol(self._config.checkpoint_path)

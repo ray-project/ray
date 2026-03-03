@@ -71,7 +71,9 @@ def test_iceberg_checkpoint_with_iceberg_backend(tmp_path):
     assert set(ids_list) == {1, 2}
     assert len(ids_list) == len(set(ids_list))
     # Check the checkpoint table is readable via Ray's Iceberg reader.
-    ds_ckpt = read_iceberg(table_identifier=ckpt_table_identifier, catalog_kwargs=_CATALOG_KWARGS)
+    ds_ckpt = read_iceberg(
+        table_identifier=ckpt_table_identifier, catalog_kwargs=_CATALOG_KWARGS
+    )
     assert ds_ckpt.count() == 2
     ckpt_rows = sorted(ds_ckpt.take_all(), key=lambda r: r["id"])
     assert ckpt_rows[0]["id"] == 1 and ckpt_rows[1]["id"] == 2
@@ -90,21 +92,77 @@ def test_iceberg_checkpoint_with_iceberg_backend(tmp_path):
         table_identifier_extra, catalog_kwargs=_CATALOG_KWARGS
     )
     ctx.checkpoint_config = prev_ckpt
-    ds_old = read_iceberg(table_identifier=table_identifier, catalog_kwargs=_CATALOG_KWARGS)
-    ds_extra = read_iceberg(table_identifier=table_identifier_extra, catalog_kwargs=_CATALOG_KWARGS)
+    ds_old = read_iceberg(
+        table_identifier=table_identifier, catalog_kwargs=_CATALOG_KWARGS
+    )
+    ds_extra = read_iceberg(
+        table_identifier=table_identifier_extra, catalog_kwargs=_CATALOG_KWARGS
+    )
     ds_combined = ds_old.union(ds_extra).repartition(1)
     # Use a write as the execution root so READ-side filtering is applied.
     # Only new ids (3,4) should be written.
     out_dir = str(tmp_path / "filtered_out")
     ds_combined.write_parquet(out_dir)
     out_ds = ray.data.read_parquet(out_dir)
+    assert out_ds.count() == 2
     rows = sorted(out_ds.take_all(), key=lambda r: r["id"])
-    assert [r["id"] for r in rows] == [3, 4]
+    assert rows[0]["id"] == 3 and rows[1]["id"] == 4
 
-    ctx.checkpoint_config = None
+
+def test_iceberg_checkpoint_with_string_id(tmp_path):
+    _DB_NAME = "ray_db_string"
+    _TABLE_NAME = "ray_test_string"
+    _CKPT_TABLE_NAME = "ray_ckpt_string"
+    _WAREHOUSE_PATH = f"file://{tmp_path}"
+    _CATALOG_KWARGS = {
+        "name": "ray_catalog_string",
+        "type": "sql",
+        "uri": f"sqlite:///{tmp_path}/catalog_string.db",
+        "warehouse": _WAREHOUSE_PATH,
+    }
+
+    catalog = SqlCatalog(**_CATALOG_KWARGS)
+    catalog.create_namespace(_DB_NAME)
+
+    table_identifier = f"{_DB_NAME}.{_TABLE_NAME}"
+    ckpt_table_identifier = f"{_DB_NAME}.{_CKPT_TABLE_NAME}"
+
+    # Use string ID
+    schema = pyi_schema.Schema(
+        pyi_types.NestedField(1, "id", pyi_types.StringType(), required=False),
+        pyi_types.NestedField(2, "val", pyi_types.IntegerType(), required=False),
+    )
+    catalog.create_table(table_identifier, schema=schema)
+
+    checkpoint_config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path=ckpt_table_identifier,
+        override_backend=CheckpointBackend.ICEBERG,
+        catalog_kwargs=_CATALOG_KWARGS,
+        delete_checkpoint_on_success=False,
+    )
+
+    ctx = DataContext.get_current()
+    ctx.checkpoint_config = checkpoint_config
+
+    df1 = pd.DataFrame({"id": ["a", "b"], "val": [1, 2]})
+    ds1 = ray.data.from_pandas(df1)
+
+    ds1.write_iceberg(table_identifier, catalog_kwargs=_CATALOG_KWARGS)
+
+    # Verify checkpoint table schema
+    ckpt_table = catalog.load_table(ckpt_table_identifier)
+    arrow_tbl = ckpt_table.scan().to_arrow()
+
+    assert set(arrow_tbl.schema.names) == {"id"}
+    assert arrow_tbl.schema.field("id").type == pa.string()
+
+    ids_list = sorted(arrow_tbl.column(0).to_pylist())
+    assert ids_list == ["a", "b"]
 
 
 if __name__ == "__main__":
     import sys
+
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
