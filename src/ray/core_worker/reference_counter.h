@@ -17,6 +17,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <string_view>  // Changed for read-only string parameters
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -69,7 +70,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool OwnedByUs(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void AddLocalReference(const ObjectID &object_id, const std::string &call_site) override
+  void AddLocalReference(const ObjectID &object_id,
+                         std::string_view call_site) override  // Changed: read-only param
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void RemoveLocalReference(const ObjectID &object_id,
@@ -97,7 +99,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const ObjectID &object_id,
       const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address,
-      const std::string &call_site,
+      std::string_view call_site,  // Changed: read-only param
       const int64_t object_size,
       LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
@@ -231,7 +233,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   bool HandleObjectSpilled(const ObjectID &object_id,
-                           const std::string &spilled_url,
+                           std::string_view spilled_url,  // Changed: read-only param
                            const NodeID &spilled_node_id) override;
 
   std::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const override;
@@ -520,7 +522,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool AddOwnedObjectInternal(const ObjectID &object_id,
                               const std::vector<ObjectID> &contained_ids,
                               const rpc::Address &owner_address,
-                              const std::string &call_site,
+                              std::string_view call_site,  // Changed: read-only param
                               const int64_t object_size,
                               LineageReconstructionEligibility lineage_eligibility,
                               bool add_local_ref,
