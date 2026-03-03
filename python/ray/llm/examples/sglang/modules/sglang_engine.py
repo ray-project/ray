@@ -174,19 +174,26 @@ class SGLangServer:
         # this integration does not run. Keep the protocol hook as a no-op.
         return
 
+    def _build_generate_kwargs(
+        self, request: Any, prompt: Any, stream: bool
+    ) -> dict[str, Any]:
+        """Build kwargs dict for engine.async_generate."""
+        generate_kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "stream": stream,
+        }
+        sampling_params = self._build_sampling_params(request)
+        if sampling_params:
+            generate_kwargs["sampling_params"] = sampling_params
+        return generate_kwargs
+
     async def _generate_raw(
         self,
         request: Any,
         prompt: Any,
     ) -> dict[str, Any]:
         """Run generation and return raw engine output payload."""
-        sampling_params = self._build_sampling_params(request)
-        generate_kwargs = {
-            "prompt": prompt,
-            "stream": False,
-        }
-        if sampling_params:
-            generate_kwargs["sampling_params"] = sampling_params
+        generate_kwargs = self._build_generate_kwargs(request, prompt, stream=False)
         return await self.engine.async_generate(**generate_kwargs)
 
     @staticmethod
@@ -239,14 +246,7 @@ class SGLangServer:
         SGLang returns cumulative text in each chunk, so this method
         tracks the previous text and yields only the incremental delta.
         """
-        sampling_params = self._build_sampling_params(request)
-        generate_kwargs: dict[str, Any] = {
-            "prompt": prompt,
-            "stream": True,
-        }
-        if sampling_params:
-            generate_kwargs["sampling_params"] = sampling_params
-
+        generate_kwargs = self._build_generate_kwargs(request, prompt, stream=True)
         stream = await self.engine.async_generate(**generate_kwargs)
 
         previous_text = ""
