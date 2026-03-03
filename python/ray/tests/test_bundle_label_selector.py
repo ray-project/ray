@@ -352,7 +352,7 @@ def test_gpu_domain_scheduling_infeasible_after_node_kill(ray_start_cluster):
     ray.init(address=cluster.address)
 
     rack_labels = {
-        "ray.io/gpu-domain": "rack-2",
+        "ray.io/gpu-domain": "rack-1",
         "ray.io/accelerator-type": "GB300",
     }
 

@@ -695,7 +695,7 @@ TEST_F(SchedulingPolicyTest, StrictSpreadBundleLabelSelectorInfeasibleTest) {
 
 TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   // We have two racks, rack-1 has 18 nodes, rack-2 has 2 nodes
-  // Each node has 4 GPUs and 1 CPUs.
+  // Each node has 4 GPUs and 2 CPUs.
   // When requesting 15 bundles of {4 GPU, 2 CPU}, the request is only feasible on rack-1.
   // We then request the remaining 3 bundles of {4 GPU, 2 CPU} on rack-1.
 
@@ -731,7 +731,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
-  // FilterCandidateNodes should return SUCCESS with one candidate that the nodes in
+  // FilterCandidateNodes should return SUCCESS with one candidate and the nodes in
   // rack-1
   auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager,
                                                                [](auto) { return true; });

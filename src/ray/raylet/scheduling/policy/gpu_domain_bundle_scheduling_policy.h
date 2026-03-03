@@ -35,10 +35,7 @@ struct GpuDomainFilterResult {
 /// Domain-level scheduling tier for GPU-domain-aware placement groups.
 ///
 /// Groups candidate nodes by their `ray.io/gpu-domain` label and returns
-/// all feasible domains as candidates.  Each candidate passes both an
-/// individual-bundle feasibility check and an aggregate-resource check.
-/// The composite policy then tries the node-level strategy on each
-/// candidate domain until one succeeds.
+/// all feasible domains as candidates.
 class GpuDomainStrictPackSchedulingPolicy : public BundleSchedulingPolicy {
  public:
   static constexpr const char *kGpuDomainLabelKey = "ray.io/gpu-domain";
@@ -51,8 +48,7 @@ class GpuDomainStrictPackSchedulingPolicy : public BundleSchedulingPolicy {
   /// \param options Contains target_gpu_domain_ for partial-failure
   ///   rescheduling (empty for fresh domain selection).
   /// \param candidate_nodes All available candidate nodes.
-  /// \return A GpuDomainFilterResult with candidate domains that pass both
-  ///   IsRequestFeasible and aggregate resource checks, or
+  /// \return A GpuDomainFilterResult with candidate domains or
   ///   a failure/infeasible status if none qualify.
   GpuDomainFilterResult FilterCandidateNodes(
       const std::vector<const ResourceRequest *> &resource_request_list,
@@ -61,7 +57,7 @@ class GpuDomainStrictPackSchedulingPolicy : public BundleSchedulingPolicy {
 
  private:
   /// Checks that the aggregate resource demand of all bundles does not
-  /// exceed the aggregate available resources across the given nodes.
+  /// exceed the aggregate total resources across the given nodes.
   bool HasSufficientAggregateResources(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;
