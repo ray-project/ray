@@ -3524,7 +3524,7 @@ class AlgorithmConfig(_Config):
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
-                is: `(agent_id, episode, worker, **kwargs) -> PolicyID`.
+                is: `(agent_id, episode, **kwargs) -> PolicyID`.
             policies_to_train: Determines those policies that should be updated.
                 Options are:
                 - None, for training all policies.

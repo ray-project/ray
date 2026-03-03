@@ -6,6 +6,10 @@ from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
 
+__all__ = [
+    "Write",
+]
+
 
 class Write(AbstractMap):
     """Logical operator for write."""

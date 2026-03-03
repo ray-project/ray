@@ -860,8 +860,17 @@ class vLLMEngineStage(StatefulStage):
         pp_size = engine_kwargs.get("pipeline_parallel_size", 1)
         num_bundles_per_replica = tp_size * pp_size
 
-        # Use the MP backend by default.
-        engine_kwargs.setdefault("distributed_executor_backend", "mp")
+        # Select distributed executor backend:
+        # - "uni": Single-process executor for single-GPU inference. Avoids unnecessary
+        #   process spawning and IPC overhead which is noticeable for small models
+        #   or short decode lengths.
+        # - "ray": Ray-based executor for multi-GPU (TP/PP > 1) with better resource
+        #   cleanup, unification with multi-node pipeline parallelism, and advanced control
+        #   over the placement group.
+        engine_kwargs.setdefault(
+            "distributed_executor_backend",
+            "uni" if num_bundles_per_replica == 1 else "ray",
+        )
         executor_backend = engine_kwargs.get("distributed_executor_backend")
 
         # When Ray is used in the vLLM engine, we set num_devices to 0 so that

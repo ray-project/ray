@@ -355,13 +355,10 @@ class AnyscaleJobRunner(CommandRunner):
             upload_path=self.upload_path,
             timeout=int(timeout),
         )
-        try:
-            error = self.job_manager.last_job_result.state.error
-        except AttributeError:
-            error = None
+        error_message = self.job_manager.job_error_message()
 
         self._handle_command_output(
-            job_status_code, error, raise_on_timeout=raise_on_timeout
+            job_status_code, error_message, raise_on_timeout=raise_on_timeout
         )
 
         return time_taken

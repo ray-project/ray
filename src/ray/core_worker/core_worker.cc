@@ -387,13 +387,11 @@ CoreWorker::CoreWorker(
           RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(args, tag))
               << "WaitForActorCallArgs IPC failed unexpectedly";
         });
-    task_receiver_ = std::make_unique<TaskReceiver>(
-        task_execution_service_,
-        *task_event_buffer_,
-        execute_task,
-        *actor_task_execution_arg_waiter_,
-        options_.initialize_thread_callback,
-        [this] { return raylet_ipc_client_->ActorCreationTaskDone(); });
+    task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
+                                                    *task_event_buffer_,
+                                                    execute_task,
+                                                    *actor_task_execution_arg_waiter_,
+                                                    options_.initialize_thread_callback);
   }
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
@@ -3014,6 +3012,11 @@ Status CoreWorker::ExecuteTask(
   }
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
       << "Finished executing task, status=" << status;
+
+  if (!options_.is_local_mode && task_spec.IsActorCreationTask()) {
+    RAY_CHECK_OK(raylet_ipc_client_->ActorCreationTaskDone())
+        << "Unexpected error in IPC to the Raylet; the Raylet has most likely crashed.";
+  }
 
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {

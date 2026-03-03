@@ -1225,30 +1225,49 @@ def test_ingress_direct_inheritance(serve_instance):
 
 
 @pytest.mark.parametrize(
-    "app_root_path,serve_root_path",
+    "app_root_path,serve_root_path,expected_params_1,expected_params_2",
     [
-        ("", ""),  # http://127.0.0.1:8000/hello, request.scope["root_path"] == ""
+        ("", "", ["/hello", "", "/hello"], []),
         (
             "/app_root_path",
             "",
-        ),  # http://127.0.0.1:8000/hello, request.scope["root_path"] == "/app_root_path"
+            ["/hello", "/app_root_path", "/hello"],
+            ["/app_root_path/hello", "/app_root_path", "/app_root_path/hello"],
+        ),
         (
             "",
             "/serve_root_path",
-        ),  # http://127.0.0.1:8000/serve_root_path/hello, request.scope["root_path"] == "/serve_root_path"
-        # ("/app_root_path", "/serve_root_path"), # doesn't work for uvicorn versions before and after `0.26.0`
-        (
-            "/root_path",
-            "/root_path",
-        ),  # http://127.0.0.1:8000/root_path/hello, request.scope["root_path"] == "/root_path"
+            ["/hello", "/serve_root_path", "/serve_root_path/hello"],
+            [],
+        ),
+        ("/app_root_path", "/serve_root_path", [], []),
+        ("/root_path", "/root_path", ["/hello", "/root_path", "/root_path/hello"], []),
     ],
 )
-def test_root_path(ray_shutdown, app_root_path, serve_root_path):
+def test_root_path(
+    ray_shutdown, app_root_path, serve_root_path, expected_params_1, expected_params_2
+):
+    """
+    The test works across uvicorn versions (before and after uvicorn 0.26.0 version which introduces breaking changes for the scope root_path).
+
+    Reference: https://github.com/Kludex/uvicorn/pull/2213
+
+    | Case | `app_root_path`  | `serve_root_path`  | Expected Working URL #1 (suffix) | `root_path` (req.scope) | `path` (req.scope)       | Expected Working URL #2 (suffix) | `root_path` #2   | `path` #2              |
+    | ---: | ---------------- | ------------------ | -------------------------------- | ----------------------- | ------------------------ | -------------------------------- | ---------------- | ---------------------- |
+    |    1 | `""`             | `""`               | `/hello`                         | `""`                    | `/hello`                 | —                                | —                | —                      |
+    |    2 | `/app_root_path` | `""`               | `/hello`                         | `/app_root_path`        | `/hello`                 | `/app_root_path/hello`           | `/app_root_path` | `/app_root_path/hello` |
+    |    3 | `""`             | `/serve_root_path` | `/hello`                         | `/serve_root_path`      | `/serve_root_path/hello` | —                                | —                | —                      |
+    |    4 | `/app_root_path` | `/serve_root_path` | *(none)*                         | —                       | —                        | —                                | —                | —                      |
+    |    5 | `/root_path`     | `/root_path`       | `/hello`                         | `/root_path`            | `/root_path/hello`       | —                                | —                | —                      |
+    """
     app = FastAPI(root_path=app_root_path)
 
     @app.get("/hello")
     def func(request: Request):
-        return {"hello": request.scope.get("root_path")}
+        return {
+            "root_path": request.scope.get("root_path"),
+            "path": request.scope.get("path"),
+        }
 
     @serve.deployment
     @serve.ingress(app)
@@ -1258,13 +1277,46 @@ def test_root_path(ray_shutdown, app_root_path, serve_root_path):
     serve.start(http_options={"root_path": serve_root_path})
     serve.run(App.bind())
 
-    url = get_application_url("HTTP")
-    if serve_root_path != "":
-        url += serve_root_path
-    url += "/hello"
-    resp = httpx.get(url)
-    scope_root_path = app_root_path or serve_root_path
-    assert resp.json() == {"hello": scope_root_path}
+    base = get_application_url("HTTP")
+    test_urls = [
+        f"{base}/hello",
+        f"{base}{app_root_path}/hello",
+        f"{base}{serve_root_path}/hello",
+        f"{base}{app_root_path}{serve_root_path}/hello",
+        f"{base}{serve_root_path}{app_root_path}/hello",
+        f"{base}{app_root_path}{app_root_path}/hello",
+        f"{base}{serve_root_path}{serve_root_path}/hello",
+    ]
+
+    tested = set()
+    working_url_params = []
+    for test_url in test_urls:
+        if test_url not in tested:
+            response = httpx.get(test_url)
+            if response.status_code == 200:
+                body = response.json()
+                params = {}
+                params["url"] = test_url
+                params["root_path"] = body["root_path"]
+                params["path"] = body["path"]
+                working_url_params.append(params)
+            tested.add(test_url)
+    if expected_params_1:
+        assert (
+            len(working_url_params) > 0
+        ), "working urls array is expected to have at least 1 item!"
+        assert working_url_params[0]["url"].endswith(expected_params_1[0])
+        assert working_url_params[0]["root_path"] == expected_params_1[1]
+        assert working_url_params[0]["path"] == expected_params_1[2]
+        if expected_params_2:
+            assert (
+                len(working_url_params) > 1
+            ), "working urls array is expected to have at least 2 items!"
+            assert working_url_params[1]["url"].endswith(expected_params_2[0])
+            assert working_url_params[1]["root_path"] == expected_params_2[1]
+            assert working_url_params[1]["path"] == expected_params_2[2]
+    else:
+        assert len(working_url_params) == 0
 
 
 if __name__ == "__main__":

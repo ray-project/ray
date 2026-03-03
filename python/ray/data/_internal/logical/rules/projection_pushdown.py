@@ -6,7 +6,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
     Rule,
 )
-from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.operators import Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnSubstitutionVisitor,
@@ -18,6 +18,10 @@ from ray.data.expressions import (
     Expr,
     StarExpr,
 )
+
+__all__ = [
+    "ProjectionPushdown",
+]
 
 
 def _collect_referenced_columns(exprs: List[Expr]) -> Optional[List[str]]:

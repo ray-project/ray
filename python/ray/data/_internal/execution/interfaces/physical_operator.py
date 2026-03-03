@@ -445,7 +445,7 @@ class PhysicalOperator(Operator):
             internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
 
         # NOTE: We check for (internal_output_queue_size == 0) and
-        # (not self.has_next()) because _OrderedOutputQueue can
+        # (not self.has_next()) because ReorderingBundleQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
         return (

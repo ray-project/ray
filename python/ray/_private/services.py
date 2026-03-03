@@ -523,13 +523,8 @@ def get_node_to_connect_for_driver(
     filtered_node_to_connect_infos = []
     for node_info in node_to_connect_infos:
         if (
-            (
-                node_ip_address is None
-                or node_info.node_manager_address == node_ip_address
-            )
-            and (node_name is None or node_info.node_name == node_name)
-            and (temp_dir is None or node_info.temp_dir == temp_dir)
-        ):
+            node_ip_address is None or node_info.node_manager_address == node_ip_address
+        ) and (node_name is None or node_info.node_name == node_name):
             filtered_node_to_connect_infos.append(node_info)
 
     if not filtered_node_to_connect_infos:
@@ -939,7 +934,7 @@ def start_ray_process(
 
         # TODO(suquark): Any better temp file creation here?
         gdb_init_path = os.path.join(
-            ray._common.utils.get_default_ray_temp_dir(),
+            ray._common.utils.get_ray_temp_dir(),
             f"gdb_init_{process_type}_{time.time()}",
         )
         ray_process_path = command[0]
@@ -2125,7 +2120,6 @@ def determine_plasma_store_config(
 
     Args:
         object_store_memory: The object store memory to use.
-        temp_dir: The user-specified temp directory parameter (defaults to <system_temp_dir>/ray).
         plasma_directory: The user-specified plasma directory parameter.
         fallback_directory: The path extracted from the object_spilling_config when the
                             object spilling config is set and the spilling type is to
@@ -2170,7 +2164,7 @@ def determine_plasma_store_config(
                     )
                 )
             else:
-                plasma_directory = temp_dir
+                plasma_directory = ray._common.utils.get_user_temp_dir()
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
@@ -2180,13 +2174,13 @@ def determine_plasma_store_config(
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
                     "sure to set this to more than 30% of available RAM.".format(
-                        temp_dir,
+                        ray._common.utils.get_user_temp_dir(),
                         shm_avail,
                         object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
-            plasma_directory = temp_dir
+            plasma_directory = ray._common.utils.get_user_temp_dir()
 
         # Do some sanity checks.
         if object_store_memory > system_memory:

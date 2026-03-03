@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -45,10 +46,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             input_ops: Operators generating input data for this operator to zip.
         """
         assert len(input_ops) >= 2
-        self._input_buffers: List[collections.deque[RefBundle]] = [
-            collections.deque() for _ in range(len(input_ops))
+        self._input_buffers: List[FIFOBundleQueue] = [
+            FIFOBundleQueue() for _ in range(len(input_ops))
         ]
-        self._output_buffer: collections.deque[RefBundle] = collections.deque()
+        self._output_buffer: FIFOBundleQueue = FIFOBundleQueue()
         self._stats: StatsDict = {}
         super().__init__(
             data_context,
@@ -80,56 +81,53 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return num_rows
 
     def internal_input_queue_num_blocks(self) -> int:
-        return sum(
-            len(bundle.block_refs) for buf in self._input_buffers for bundle in buf
-        )
+        return sum(buf.num_blocks() for buf in self._input_buffers)
 
     def internal_input_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for buf in self._input_buffers for bundle in buf)
+        return sum(buf.estimate_size_bytes() for buf in self._input_buffers)
 
     def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(bundle.block_refs) for bundle in self._output_buffer)
+        return self._output_buffer.num_blocks()
 
     def internal_output_queue_num_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._output_buffer)
+        return self._output_buffer.estimate_size_bytes()
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
         for input_buffer in self._input_buffers:
-            while input_buffer:
-                bundle = input_buffer.popleft()
+            while input_buffer.has_next():
+                bundle = input_buffer.get_next()
                 self._metrics.on_input_dequeued(bundle)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
-        while self._output_buffer:
-            bundle = self._output_buffer.popleft()
+        while self._output_buffer.has_next():
+            bundle = self._output_buffer.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
-        self._input_buffers[input_index].append(refs)
+        self._input_buffers[input_index].add(refs)
         self._metrics.on_input_queued(refs)
 
     def all_inputs_done(self) -> None:
         assert len(self._output_buffer) == 0, len(self._output_buffer)
 
         # Start with the first input buffer
-        while self._input_buffers[0]:
-            refs = self._input_buffers[0].popleft()
-            self._output_buffer.append(refs)
+        while self._input_buffers[0].has_next():
+            refs = self._input_buffers[0].get_next()
+            self._output_buffer.add(refs)
             self._metrics.on_input_dequeued(refs)
 
         # Process each additional input buffer
         for input_buffer in self._input_buffers[1:]:
-            self._output_buffer, self._stats = self._zip(
-                self._output_buffer, input_buffer
-            )
+            output_buffer, self._stats = self._zip(self._output_buffer, input_buffer)
+            self._output_buffer = FIFOBundleQueue(bundles=output_buffer)
 
             # Clear the input buffer AFTER using it in _zip
-            while input_buffer:
-                refs = input_buffer.popleft()
+            while input_buffer.has_next():
+                refs = input_buffer.get_next()
                 self._metrics.on_input_dequeued(refs)
 
         # Mark outputs as ready
@@ -142,7 +140,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         return len(self._output_buffer) > 0
 
     def _get_next_inner(self) -> RefBundle:
-        refs = self._output_buffer.popleft()
+        refs = self._output_buffer.get_next()
         self._metrics.on_output_dequeued(refs)
         return refs
 
@@ -151,8 +149,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def _zip(
         self,
-        left_input: collections.deque[RefBundle],
-        right_input: collections.deque[RefBundle],
+        left_input: FIFOBundleQueue,
+        right_input: FIFOBundleQueue,
     ) -> Tuple[collections.deque[RefBundle], StatsDict]:
         """Zip the RefBundles from `left_input` and `right_input` together.
 

@@ -51,7 +51,7 @@ import ray.scripts.scripts as scripts
 import ray.tests.aws.utils.helpers as aws_helpers
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
-from ray._common.utils import get_default_ray_temp_dir
+from ray._common.utils import get_ray_temp_dir
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.util import prepare_config
 from ray.cluster_utils import cluster_not_supported
@@ -348,13 +348,14 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-def test_ray_start_worker_can_specify_temp_dir(configure_lang, tmp_path, cleanup_ray):
+def test_ray_start_worker_cannot_specify_temp_dir(
+    configure_lang, tmp_path, cleanup_ray
+):
     """
-    Verify that ray start --temp-dir works on worker nodes independently of head node.
+    Verify ray start --temp-dir raises an exception when it is used without --head.
     """
     runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
-
-    # Start head node without specifying temp-dir
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,
         [
@@ -363,33 +364,12 @@ def test_ray_start_worker_can_specify_temp_dir(configure_lang, tmp_path, cleanup
     )
     print(result.output)
     _die_on_error(result)
-
-    # Start worker node with temp-dir specified
-    worker_temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,
-        [
-            f"--address=localhost:{ray_constants.DEFAULT_PORT}",
-            f"--temp-dir={worker_temp_dir}",
-        ],
+        [f"--address=localhost:{ray_constants.DEFAULT_PORT}", f"--temp-dir={temp_dir}"],
     )
-    _die_on_error(result)
-
-    # Check that worker temp-dir was created at the specified location
-    assert os.path.isfile(os.path.join(worker_temp_dir, "ray_current_cluster"))
-    assert os.path.isdir(os.path.join(worker_temp_dir, "session_latest"))
-
-    # Check that we can rerun `ray start` even though the cluster address file
-    # is already written.
-    _die_on_error(
-        runner.invoke(
-            scripts.start,
-            [
-                f"--address=localhost:{ray_constants.DEFAULT_PORT}",
-                f"--temp-dir={worker_temp_dir}",
-            ],
-        )
-    )
+    assert result.exit_code == 0
+    assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
 
 
 def _ray_start_hook(ray_params, head):
@@ -499,7 +479,7 @@ def test_ray_start_head_block_and_signals(
 
     exit_log = Path(
         os.path.join(
-            get_default_ray_temp_dir(),
+            get_ray_temp_dir(),
             ray_constants.SESSION_LATEST,
             "logs",
             "ray_process_exit.log",

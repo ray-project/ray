@@ -3,17 +3,6 @@ This file serves as a documentation example and CI test for basic LLM batch infe
 
 """
 
-# Dependency setup
-import subprocess
-import sys
-
-subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "ray[llm]"])
-subprocess.check_call(
-    [sys.executable, "-m", "pip", "install", "--upgrade", "transformers"]
-)
-subprocess.check_call([sys.executable, "-m", "pip", "install", "numpy==1.26.4"])
-
-
 # __basic_llm_example_start__
 import ray
 from ray.data.llm import vLLMEngineProcessorConfig, build_processor

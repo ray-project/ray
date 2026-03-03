@@ -162,8 +162,7 @@ class LLMConfig(BaseModelExtended):
         description=(
             "Additional keyword arguments for the engine. In case of vLLM, "
             "this will include all the configuration knobs they provide out "
-            "of the box, except for tensor-parallelism which is set "
-            "automatically from Ray Serve configs."
+            "of the box"
         ),
     )
 

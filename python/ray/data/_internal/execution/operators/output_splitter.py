@@ -1,10 +1,10 @@
 import math
 import time
-from collections import deque
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from ray._private.ray_constants import env_float
 from ray.data._internal.execution.bundle_queue import (
+    FIFOBundleQueue,
     HashLinkedQueue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -60,7 +60,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: HashLinkedQueue = HashLinkedQueue()
         # The outputted bundles with output_split attribute set.
-        self._output_queue: deque[RefBundle] = deque()
+        self._output_queue: FIFOBundleQueue = FIFOBundleQueue()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
         # The time of the overhead for the output splitter (operator level)
@@ -118,10 +118,10 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return True
 
     def has_next(self) -> bool:
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        output = self._output_queue.popleft()
+        output = self._output_queue.get_next()
         self._metrics.on_output_dequeued(output)
         return output
 
@@ -180,7 +180,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             bundles = self._split_from_buffer(count)
             for b in bundles:
                 b.output_split_idx = i
-                self._output_queue.append(b)
+                self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
         self._buffer.clear()
 
@@ -191,10 +191,10 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return self._buffer.estimate_size_bytes()
 
     def internal_output_queue_num_blocks(self) -> int:
-        return sum(len(b.block_refs) for b in self._output_queue)
+        return self._output_queue.num_blocks()
 
     def internal_output_queue_num_bytes(self) -> int:
-        return sum(b.size_bytes() for b in self._output_queue)
+        return self._output_queue.estimate_size_bytes()
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queue."""
@@ -204,8 +204,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
-        while self._output_queue:
-            bundle = self._output_queue.popleft()
+        while self._output_queue.has_next():
+            bundle = self._output_queue.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def progress_str(self) -> str:
@@ -261,7 +261,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             target_bundle.output_split_idx = target_output_index
 
             self._num_output[target_output_index] += target_bundle.num_rows()
-            self._output_queue.append(target_bundle)
+            self._output_queue.add(target_bundle)
             self._metrics.on_output_queued(target_bundle)
 
             if self._locality_hints:
