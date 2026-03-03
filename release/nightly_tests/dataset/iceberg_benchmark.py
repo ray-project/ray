@@ -8,6 +8,7 @@ from pyiceberg import catalog as pyi_catalog, schema as pyi_schema, types as pyi
 import ray
 from benchmark import Benchmark, BenchmarkMetric
 from ray.data import SaveMode
+# Comment for CI
 
 NUM_ROWS = 50_000_000
 UPSERT_ROWS = 4_000_000
