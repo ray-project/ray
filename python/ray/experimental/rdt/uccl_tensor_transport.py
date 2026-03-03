@@ -83,8 +83,6 @@ class UCCLTensorTransport(TensorTransportManager):
     def _get_uccl_endpoint(self):
         """
         Creates a UCCL P2P endpoint with passive accept if not already created.
-        Both sender and receiver endpoints need start_passive_accept() because
-        RDMA connection setup is bidirectional.
         """
         if self._uccl_endpoint is not None:
             return self._uccl_endpoint
@@ -171,7 +169,7 @@ class UCCLTensorTransport(TensorTransportManager):
 
             ret = UCCLTransportMetadata(
                 tensor_meta=tensor_meta,
-                tensor_device=device,
+                tensor_device=device.type if device else None,
                 uccl_serialized_descs=serialized_descs,
                 uccl_endpoint_meta=endpoint_meta,
                 uccl_endpoint_name=endpoint_name,
@@ -192,12 +190,15 @@ class UCCLTensorTransport(TensorTransportManager):
         obj_id: str,
         tensor_transport_metadata: TensorTransportMetadata,
         communicator_metadata: CommunicatorMetadata,
+        target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
         from ray.experimental.gpu_object_manager.util import (
             create_empty_tensors_from_metadata,
         )
 
-        tensors = create_empty_tensors_from_metadata(tensor_transport_metadata)
+        tensors = target_buffers or create_empty_tensors_from_metadata(
+            tensor_transport_metadata
+        )
 
         assert isinstance(tensor_transport_metadata, UCCLTransportMetadata)
         assert isinstance(communicator_metadata, UCCLCommunicatorMetadata)
@@ -211,6 +212,7 @@ class UCCLTensorTransport(TensorTransportManager):
             return []
 
         local_descs = None
+        remote_name = None
         try:
             ep = self._get_uccl_endpoint()
 
@@ -231,6 +233,7 @@ class UCCLTensorTransport(TensorTransportManager):
                     and len(self._remote_endpoints)
                     >= UCCL_REMOTE_ENDPOINT_CACHE_MAXSIZE
                 ):
+                    # TODO: check if need to destory the endpoint
                     self._remote_endpoints.popitem(last=False)
 
                 success, conn_id = ep.add_remote_endpoint(remote_meta)
@@ -276,6 +279,10 @@ class UCCLTensorTransport(TensorTransportManager):
         finally:
             with self._aborted_transfer_obj_ids_lock:
                 self._aborted_transfer_obj_ids.discard(obj_id)
+            # TODO: check if need to destory the endpoint
+            if local_descs:
+                with self._cache_lock:
+                    ep.deregister_memory(local_descs)
 
         return tensors
 
@@ -301,6 +308,7 @@ class UCCLTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta:
                 return
             self._managed_meta.pop(obj_id, None)
+            ep = self._get_uccl_endpoint()
             for tensor in tensors:
                 key = tensor.data_ptr()
                 if key in self._tensor_desc_cache:
@@ -308,6 +316,7 @@ class UCCLTensorTransport(TensorTransportManager):
                     tensor_desc.metadata_count -= 1
                     if tensor_desc.metadata_count == 0:
                         self._tensor_desc_cache.pop(key)
+                        ep.deregister_memory([tensor_desc.desc])
 
     def abort_transport(
         self,
