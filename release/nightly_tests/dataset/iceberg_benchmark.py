@@ -9,10 +9,10 @@ import ray
 from benchmark import Benchmark, BenchmarkMetric
 from ray.data import SaveMode
 
-NUM_ROWS = 100_000_000
-UPSERT_ROWS = 20_000_000
-OVERWRITE_ROWS = 50_000_000
-EMBEDDING_DIM = 16
+NUM_ROWS = 50_000_000
+UPSERT_ROWS = 4_000_000
+OVERWRITE_ROWS = 25_000_000
+EMBEDDING_DIM = 32
 TOKEN_IDS_DIM = 8
 LOGITS_DIM = 4
 DEFAULT_WAREHOUSE_PATH = "s3://ray-benchmark-data-internal-us-west-2/iceberg_benchmark/"
