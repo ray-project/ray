@@ -1,7 +1,9 @@
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
+from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.autoscaling_policy import (
@@ -12,7 +14,7 @@ from ray.serve.autoscaling_policy import (
     _apply_scaling_factors,
     replica_queue_length_autoscaling_policy,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingContext
+from ray.serve.config import AutoscalingConfig, AutoscalingContext, GangSchedulingConfig
 
 wrapped_replica_queue_length_autoscaling_policy = _apply_autoscaling_config(
     replica_queue_length_autoscaling_policy
@@ -1105,6 +1107,79 @@ class TestAppLevelPolicyWithDefaultParameters:
         decisions, _ = simple_app_level_policy(contexts)
         assert decisions[d1] == 1
         assert decisions[d2] == 1
+
+
+class TestGangSchedulingAutoscaling:
+    def _create_state(self, gang_size, min_replicas, max_replicas, running=0):
+        dep_id = DeploymentID(name="test", app_name="app")
+        state = DeploymentAutoscalingState(dep_id)
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        )
+        info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
+            gang_size=gang_size,
+        )
+        info.target_capacity = None
+        info.target_capacity_direction = None
+        info.config_changed.return_value = False
+
+        state.register(info, curr_target_num_replicas=min_replicas)
+        # In reality, running_replicas are ReplicaIDs, but for testing purposes, we use a list of integers
+        state._running_replicas = list(range(running))
+        return state
+
+    def test_scale_up_rounds_up(self):
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=16, running=4
+        )
+        assert state.apply_bounds(5) == 8
+        assert state.apply_bounds(9) == 12
+        assert state.apply_bounds(4) == 4
+        assert state.apply_bounds(8) == 8
+
+    def test_scale_down_rounds_down(self):
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=16, running=12
+        )
+        assert state.apply_bounds(10) == 8
+        assert state.apply_bounds(5) == 4
+        assert state.apply_bounds(8) == 8
+        assert state.apply_bounds(4) == 4
+
+    def test_scale_down_respects_min(self):
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=16, running=8
+        )
+        assert state.apply_bounds(5) == 4
+        assert state.apply_bounds(4) == 4
+
+    def test_scale_up_respects_max(self):
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=8, running=4
+        )
+        assert state.apply_bounds(7) == 8
+        assert state.apply_bounds(9) == 8
+
+    def test_no_gang(self):
+        dep_id = DeploymentID(name="test", app_name="app")
+        state = DeploymentAutoscalingState(dep_id)
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=10,
+        )
+        info.deployment_config.gang_scheduling_config = None
+        info.target_capacity = None
+        info.target_capacity_direction = None
+        info.config_changed.return_value = False
+
+        state.register(info, curr_target_num_replicas=1)
+        assert state.apply_bounds(5) == 5
+        assert state.apply_bounds(7) == 7
 
 
 if __name__ == "__main__":

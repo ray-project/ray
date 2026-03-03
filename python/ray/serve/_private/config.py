@@ -263,8 +263,10 @@ class DeploymentConfig(BaseModel):
     def validate_gang_scheduling_config(self):
         if self.gang_scheduling_config is None:
             return self
+        # Skip the num_replicas alignment check when autoscaling is enabled
         if (
-            self.num_replicas is not None
+            self.autoscaling_config is None
+            and self.num_replicas is not None
             and self.num_replicas % self.gang_scheduling_config.gang_size != 0
         ):
             raise ValueError(
