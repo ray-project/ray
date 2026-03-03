@@ -67,6 +67,10 @@ logger = logging.getLogger(__name__)
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
 
+# Maximum string/sequence length for DataContext logging. Set high to avoid truncation
+# while still protecting against pathological cases.
+DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 1000
+
 # Visible for testing.
 _num_shutdown = 0
 
@@ -198,7 +202,10 @@ class StreamingExecutor(Executor, threading.Thread):
             ):
                 logger.debug(
                     f"Data Context for dataset {self._dataset_id}:\n%s",
-                    sanitize_for_struct(self._data_context),
+                    sanitize_for_struct(
+                        self._data_context,
+                        truncate_length=DATA_CONTEXT_LOG_TRUNCATE_LENGTH,
+                    ),
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
