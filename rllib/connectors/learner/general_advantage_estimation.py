@@ -98,7 +98,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
 
         # Build bootstrap obs batches: for each module, collect the last observation
         # of each non-terminated episode. These are already stored in the episode
-        # (episode.observations[-1] = s_L); no episode mutation needed.
+        # (episode.observations[-1] = s_L).
         bootstrap_obs_per_module = {}  # module_id -> np.ndarray (N_bootstrap, obs_dim)
         bootstrap_mask_per_module = (
             {}
@@ -118,7 +118,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
             eps_for_module = [
                 e for e in sa_episodes_list if e.module_id in [None, module_id]
             ]
-            stacked_bootstrap_obs = (shared_data or {}).get("stacked_bootstrap_obs", {})
+            stacked_bootstrap_obs = shared_data["stacked_bootstrap_obs"]
             obs_list = []
             mask = []
             for ep in eps_for_module:
@@ -133,10 +133,8 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     mask.append(True)
                 else:
                     mask.append(False)
-            bootstrap_obs_per_module[module_id] = (
-                tree.map_structure(lambda *s: np.stack(s, axis=0), *obs_list)
-                if obs_list
-                else None
+            bootstrap_obs_per_module[module_id] = tree.map_structure(
+                lambda *s: np.stack(s, axis=0), *obs_list
             )
             bootstrap_mask_per_module[module_id] = mask
 
