@@ -19,32 +19,58 @@ package ray.rpc.events;
 import "google/protobuf/timestamp.proto";
 
 message PlacementGroupLifecycleEvent {
+  // State of the placement group itself.
   enum State {
+    // Placement group is pending creation or scheduling.
     PENDING = 0;
+    // Placement group resources are prepared on selected nodes.
     PREPARED = 1;
+    // Placement group is fully created.
     CREATED = 2;
+    // Placement group is removed.
     REMOVED = 3;
+    // Placement group is being rescheduled (for example, after node failure).
     RESCHEDULING = 4;
   }
 
+  // Scheduler-level state associated with a placement group transition.
   enum SchedulingState {
+    // Queued for scheduling.
     QUEUED = 0;
+    // Scheduling canceled because the placement group was removed.
     SCHEDULING_REMOVED = 1;
+    // Scheduling has started for the current attempt.
     SCHEDULING_STARTED = 2;
+    // Scheduling failed because no node has sufficient resources.
     NO_RESOURCES = 3;
+    // Scheduling failed because resource requests are infeasible.
     INFEASIBLE = 4;
+    // Scheduling failed while committing resources (e.g., node failures).
     FAILED_TO_COMMIT_RESOURCES = 5;
+    // Scheduling finished successfully.
     FINISHED = 6;
   }
 
+  // Snapshot of lifecycle state and scheduler stats at emission time.
   message StateTransition {
+    // Placement group lifecycle state for this transition.
     State state = 1;
+    // Timestamp when this transition event is emitted.
     google.protobuf.Timestamp timestamp = 2;
+    // Scheduler state observed at this transition.
     SchedulingState scheduling_state = 3;
+    // Scheduling attempt counter during this transition.
     uint32 scheduling_attempt = 4;
+    // Maximum retry backoff delay observed so far, in milliseconds.
     double highest_retry_delay_ms = 5;
+    // Scheduling start timestamp for the current attempt.
+    // This value is per-attempt and reset on each retry.
     int64 scheduling_started_time_ns = 6;
+    // Scheduling latency in microseconds for successful creation.
+    // Populated only when state == CREATED.
     int64 scheduling_latency_us = 7;
+    // End-to-end creation latency from initial create request to successful creation,
+    // in microseconds. Populated only when state == CREATED.
     int64 end_to_end_creation_latency_us = 8;
   }
 
