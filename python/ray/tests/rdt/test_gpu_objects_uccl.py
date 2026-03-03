@@ -133,6 +133,16 @@ def test_p2p(ray_start_regular):
     result = dst_actor.sum.remote(ref, "cuda")
     assert tensor.sum().item() == ray.get(result)
 
+@pytest.mark.skip(
+    "CPU to CPU transfer is a work-in-progress by UCCL."
+)
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_p2p_cpu_to_cpu(ray_start_regular):
+    num_actors = 2
+    actors = [UCCLGPUTestActor.remote() for _ in range(num_actors)]
+
+    src_actor, dst_actor = actors[0], actors[1]
+
     # Test CPU to CPU transfer
     tensor1 = torch.tensor([4, 5, 6])
     ref1 = src_actor.echo.remote(tensor1, "cpu")
@@ -337,8 +347,7 @@ def test_uccl_endpoint_reuse_with_partial_tensors(ray_start_regular):
 def test_data_ptr_level_reference_count(ray_start_regular):
     """Test that UCCL uses data_ptr() as the cache key for tensor deduplication.
 
-    Unlike NIXL (which keys by untyped_storage().data_ptr()), UCCL keys by
-    data_ptr(). Registering the same tensor under two object IDs increments
+    Registering the same tensor under two object IDs increments
     the metadata_count. When each obj ref goes out of scope via garbage_collect,
     the count decrements. After both are freed, the cache entry is removed.
     """
