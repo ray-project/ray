@@ -72,8 +72,8 @@ GroupByOwnerIdWorkerKillingPolicy::Policy(
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
-  // Prioritize killing workers that don't have any lease granted and occupy
-  // a large amount of memory first.
+  // Prioritize killing the largest workers that exceeds the idle threshold and
+  // don't have a granted lease.
   std::shared_ptr<WorkerInterface> idle_worker_to_kill = nullptr;
   int64_t max_idle_worker_used_memory = 0;
   for (const std::shared_ptr<WorkerInterface> &worker : workers) {
