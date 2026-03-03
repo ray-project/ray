@@ -73,7 +73,6 @@ from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 from ray.util.tpu import (
