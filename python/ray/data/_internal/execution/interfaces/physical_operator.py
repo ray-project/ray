@@ -124,7 +124,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[BlockMetadata]], None
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
-        operator_name: Optional[str] = None,
+        operator_name: str = "Unknown",
     ):
         """Create a DataOpTask
         Args:
@@ -257,13 +257,13 @@ class DataOpTask(OpTask):
             except ray.exceptions.GetTimeoutError:
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
-                operator_name = self._operator_name or self.__class__.__name__
                 logger.warning(
-                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for "
-                    f"operator '{operator_name}' (ref={self._pending_meta_ref.hex()}). "
-                    f"Possible causes: slow task, worker crashed, or cluster overloaded. "
+                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
+                    f"operator '{self._operator_name}' "
+                    f"(metadata_ref={self._pending_meta_ref.hex()}). "
+                    f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
                     f"Will retry next iteration. "
-                    f"If this repeats, check task/worker logs and cluster resources."
+                    f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
                 )
                 break
 
