@@ -48,7 +48,7 @@ async def build_agent():
     Build the weather agent with MCP tools.
 
     Returns:
-        A LangGraph agent configured with weather MCP tools.
+        A LangChain agent configured with weather MCP tools.
     """
     return await build_mcp_agent(
         system_prompt=PROMPT,
