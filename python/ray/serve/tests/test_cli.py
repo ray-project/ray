@@ -821,7 +821,8 @@ def test_deploy_gang_scheduling(serve_instance):
     )
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
-        lambda: httpx.post(f"{get_application_url(app_name='gang_app')}/").status_code == 200
+        lambda: httpx.post(f"{get_application_url(app_name='gang_app')}/").status_code
+        == 200
     )
 
 
@@ -847,9 +848,7 @@ def test_deploy_gang_scaling(serve_instance, initial_replicas, final_replicas):
     # First deploy.
     subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])
     app_url = get_application_url(app_name="gang_app")
-    wait_for_condition(
-        lambda: httpx.post(f"{app_url}/").status_code == 200, timeout=30
-    )
+    wait_for_condition(lambda: httpx.post(f"{app_url}/").status_code == 200, timeout=30)
 
     # Collect initial gang IDs.
     initial_num_gangs = initial_replicas // gang_size
