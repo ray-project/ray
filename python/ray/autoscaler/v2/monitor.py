@@ -41,7 +41,6 @@ from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
 from ray.exceptions import AuthenticationError
-from ray.experimental.internal_kv import _initialize_internal_kv
 
 try:
     import prometheus_client
@@ -168,15 +167,6 @@ class AutoscalerMonitor:
         except Exception:
             logger.exception("Error reporting autoscaling state to GCS.")
 
-    def _recreate_gcs_client(self):
-        """Recreate a GCS Client and refresh state"""
-        self.gcs_client = GcsClient(self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
-        self._session_name = self._get_session_name(self.gcs_client)
-        logger.info(f"session_name: {self._session_name}")
-        if self.autoscaler:
-            self.autoscaler._gcs_client = self.gcs_client
-
     def _run(self):
         """Run the monitor loop."""
 
@@ -190,10 +180,8 @@ class AutoscalerMonitor:
                     logger.warning("No autoscaling state to report.")
             except AuthenticationError as e:
                 if "WrongClusterID" in str(e):
-                    logger.warning("WrongClusterID detected, recreating GcsClient")
-                    self._recreate_gcs_client()
-                else:
-                    raise
+                    logger.warning("WrongClusterID detected, restarting autoscaler...")
+                raise
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

@@ -240,35 +240,19 @@ class TestAutoscalerMonitor(AutoscalerMonitor):
         self._session_name = "test"
 
 
-def test_WrongClusterID_recovery_v2(make_autoscaler):
+def test_raise_WrongClusterID_error_v2(make_autoscaler):
     autoscaler = make_autoscaler(DEFAULT_AUTOSCALING_CONFIG)
-    old_client = autoscaler._gcs_client
-    gcs_address = old_client.address
+    gcs_client = autoscaler._gcs_client
+    gcs_address = gcs_client.address
 
-    monitor = TestAutoscalerMonitor(gcs_address, old_client, autoscaler)
-
-    calls = 0
-    original_update_autoscaling_state = autoscaler.update_autoscaling_state
+    monitor = TestAutoscalerMonitor(gcs_address, gcs_client, autoscaler)
 
     def flaky():
-        nonlocal calls
-        if calls == 0:
-            calls += 1
-            raise ray.exceptions.AuthenticationError("WrongClusterID")
-        return original_update_autoscaling_state()
-
-    # replace time.sleep(AUTOSCALER_UPDATE_INTERVAL_S) in monitor._run()
-    def raise_stop(_):
-        raise RuntimeError("stop")
+        raise ray.exceptions.AuthenticationError("WrongClusterID")
 
     with patch.object(autoscaler, "update_autoscaling_state", side_effect=flaky):
-        with patch.object(time, "sleep", side_effect=raise_stop):
-            with pytest.raises(RuntimeError):
-                monitor._run()
-
-    # assert the gcs client is refreshed on both monitor and autoscaler
-    assert monitor.gcs_client is not old_client
-    assert autoscaler._gcs_client is not old_client
+        with pytest.raises(ray.exceptions.AuthenticationError):
+            monitor._run()
 
 
 if __name__ == "__main__":

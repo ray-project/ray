@@ -368,15 +368,6 @@ class Monitor:
             except Exception:
                 logger.exception("Error parsing resource requests")
 
-    def recreate_gcs_client(self):
-        """Recreate a GCS Client and refresh state"""
-        self.gcs_client = GcsClient(self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
-        self._session_name = self.get_session_name(self.gcs_client)
-        logger.info(f"session_name: {self._session_name}")
-        if self.autoscaler:
-            self.autoscaler.gcs_client = self.gcs_client
-
     def _run(self):
         """Run the monitor loop."""
 
@@ -448,12 +439,10 @@ class Monitor:
                     )
             except AuthenticationError as e:
                 if "WrongClusterID" in str(e):
-                    logger.warning("WrongClusterID detected, recreating GcsClient...")
-                    self.recreate_gcs_client()
+                    logger.warning("WrongClusterID detected, restarting autoscaler...")
+                    raise
                 elif self.retry_on_failure:
-                    logger.exception(
-                        "Monitor: AuthenticationError exception. Trying again..."
-                    )
+                    logger.exception("AuthenticationError exception. Trying again...")
                 else:
                     raise
             except Exception:
