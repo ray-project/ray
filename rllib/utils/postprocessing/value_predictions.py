@@ -1,9 +1,15 @@
 import numpy as np
 
+from ray._common.deprecation import Deprecated
 from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
+@Deprecated(
+    error=False,
+    old="ray.rllib.utils.postprocessing.value_predictions.compute_value_targets",
+    new="ray.rllib.utils.postprocessing.value_predictions.compute_value_targets_with_bootstrap",
+)
 def compute_value_targets(
     values,
     rewards,
@@ -68,18 +74,19 @@ def compute_value_targets_with_bootstrap(
         lambda_: GAE lambda parameter.
 
     Returns:
-        Value targets, shape (T,), dtype float32.
+        Value targets, shape (T,), same dtype as `values`.
     """
     T = len(values)
-    advantages = np.zeros(T, dtype=np.float32)
+    advantages = np.zeros_like(values)
     last_gae = 0.0
+    next_val = bootstrap_value
     for t in reversed(range(T)):
-        next_val = float(values[t + 1]) if t < T - 1 else bootstrap_value
         nonterminal = 1.0 - terminateds[t]
         delta = rewards[t] + gamma * next_val * nonterminal - values[t]
         last_gae = delta + gamma * lambda_ * nonterminal * last_gae
         advantages[t] = last_gae
-    return (advantages + values).astype(np.float32)
+        next_val = values[t]
+    return advantages + values
 
 
 def extract_bootstrapped_values(vf_preds, episode_lengths, T):

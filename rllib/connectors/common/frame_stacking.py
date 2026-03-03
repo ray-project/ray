@@ -130,8 +130,9 @@ class FrameStacking(ConnectorV2):
                     def _bootstrap_map_fn(s, _sa_episode=sa_episode):
                         s = np.squeeze(s, axis=-1)
                         # One extra timestep compared to the training slice.
-                        T_plus_1 = len(_sa_episode) + 1
-                        new_shape = (T_plus_1, self.num_frames) + s.shape[1:]
+                        new_shape = (len(_sa_episode) + 1, self.num_frames) + s.shape[
+                            1:
+                        ]
                         new_strides = (s.strides[0],) + s.strides
                         # Take only the last row (the bootstrap timestep) and
                         # transpose from (num_frames, H, W) to (H, W, num_frames).
