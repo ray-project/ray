@@ -1116,7 +1116,7 @@ First, install the required dependencies:
 
 .. code-block:: console
 
-    pip install kafka-python
+    pip install confluent-kafka
 
 Then, specify your Kafka configuration and read from topics.
 
@@ -1150,20 +1150,16 @@ Then, specify your Kafka configuration and read from topics.
         end_offset=datetime(2025, 1, 2),
     )
 
-    # Read with authentication
-    from ray.data import KafkaAuthConfig
-
-    auth_config = KafkaAuthConfig(
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_plain_username="your-username",
-        sasl_plain_password="your-password",
-    )
-
+    # Read with authentication (Confluent/librdkafka options)
     ds = ray.data.read_kafka(
         topics="secure-topic",
         bootstrap_servers="localhost:9092",
-        kafka_auth_config=auth_config,
+        consumer_config={
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanism": "PLAIN",
+            "sasl.username": "your-username",
+            "sasl.password": "your-password",
+        },
     )
 
     print(ds.schema())
