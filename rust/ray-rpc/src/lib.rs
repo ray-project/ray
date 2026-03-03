@@ -16,4 +16,6 @@
 pub mod auth;
 pub mod call_manager;
 pub mod client;
+pub mod core_worker_client;
+pub mod object_manager_client;
 pub mod server;

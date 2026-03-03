@@ -178,6 +178,7 @@ pub mod metric_defs {
 }
 
 pub mod exporter;
+pub mod http_server;
 
 #[cfg(test)]
 mod tests {

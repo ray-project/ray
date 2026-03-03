@@ -118,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         resources,
         labels,
         session_name: args.session_name,
+        auth_token: None,
     };
 
     let node_manager = Arc::new(NodeManager::new(config));

@@ -222,9 +222,38 @@ impl TransportLoop {
 
         let mut sent = 0;
         for (node_id, object_id, chunk_index) in &chunks {
-            // In a real implementation, we'd read the chunk data from
-            // the plasma store here. For now, use an empty buffer.
-            let chunk_data = Vec::new();
+            // Read the object data from the plasma store and extract the chunk.
+            let chunk_data = {
+                let om = self.object_manager.lock();
+                let chunk_size = om.config().object_chunk_size as usize;
+                match om.get_object_data(object_id) {
+                    Some((data, metadata)) => {
+                        let total_size = data.len() + metadata.len();
+                        let start = (*chunk_index as usize) * chunk_size;
+                        if start >= total_size {
+                            Vec::new()
+                        } else {
+                            let end = (start + chunk_size).min(total_size);
+                            // Slice across data + metadata boundary.
+                            if start < data.len() {
+                                let data_end = end.min(data.len());
+                                let mut chunk = data[start..data_end].to_vec();
+                                if end > data.len() {
+                                    let meta_start = 0;
+                                    let meta_end = end - data.len();
+                                    chunk.extend_from_slice(&metadata[meta_start..meta_end]);
+                                }
+                                chunk
+                            } else {
+                                let meta_start = start - data.len();
+                                let meta_end = end - data.len();
+                                metadata[meta_start..meta_end].to_vec()
+                            }
+                        }
+                    }
+                    None => Vec::new(),
+                }
+            };
             if send_cb(node_id, object_id, *chunk_index, &chunk_data) {
                 let mut om = self.object_manager.lock();
                 om.push_manager_mut().chunk_sent(*node_id, *object_id);
@@ -481,6 +510,80 @@ mod tests {
         // Push should be cancelled.
         let om_lock = om.lock();
         assert!(!om_lock.push_manager().is_pushing(&make_nid(2), &make_oid(1)));
+    }
+
+    #[test]
+    fn test_push_sends_real_object_data() {
+        use crate::common::ObjectInfo;
+
+        // Create a PlasmaStore with a real allocator so we get valid memory.
+        let dir = tempfile::tempdir().unwrap();
+        let allocator = Arc::new(crate::plasma::allocator::PlasmaAllocator::new(
+            1024 * 1024,
+            dir.path().to_str().unwrap(),
+            "",
+            false,
+        ));
+        let store_config = crate::plasma::store::PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: dir.path().to_str().unwrap().to_string(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let store = Arc::new(PlasmaStore::new(allocator.clone(), &store_config));
+
+        // Create and seal an object. With a real allocator, mmap'd memory
+        // is zero-initialized, so we can verify the callback receives
+        // the correct number of zero bytes.
+        let oid = make_oid(42);
+        let data_size: i64 = 128;
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size,
+            metadata_size: 0,
+            ..Default::default()
+        };
+        store
+            .create_object(info.clone(), crate::common::ObjectSource::CreatedByWorker, allocator.as_ref())
+            .unwrap();
+        store.seal_object(&oid).unwrap();
+
+        // Verify PlasmaStore can read the data.
+        let (obj_data, _meta) = store.get_object_data(&oid).unwrap();
+        assert_eq!(obj_data.len(), data_size as usize);
+
+        // Create ObjectManager with this store.
+        let mut om = ObjectManager::new(
+            crate::common::ObjectManagerConfig::default(),
+            make_nid(1),
+            store,
+        );
+        om.object_added(info);
+
+        let om = Arc::new(Mutex::new(om));
+
+        // Start a push for this object.
+        {
+            let mut om_lock = om.lock();
+            om_lock.push_manager_mut().start_push(make_nid(2), oid, data_size as u64);
+        }
+
+        // Track what data the send callback receives.
+        let received_data = Arc::new(Mutex::new(Vec::new()));
+        let rd = received_data.clone();
+
+        let mut tl = TransportLoop::new(TransportConfig::default(), om);
+        tl.set_send_chunk_callback(Arc::new(move |_nid, _oid, _chunk, data| {
+            rd.lock().extend_from_slice(data);
+            true
+        }));
+
+        tl.tick(0.0);
+
+        let data = received_data.lock();
+        // The callback should have received exactly data_size bytes (not empty).
+        assert_eq!(data.len(), data_size as usize,
+            "Push should send real object data, not empty chunks");
     }
 
     #[tokio::test]

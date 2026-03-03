@@ -19,16 +19,23 @@ use ray_proto::ray::rpc::{Address, TaskSpec};
 use crate::actor_handle::ActorHandle;
 use crate::actor_manager::ActorManager;
 use crate::actor_task_submitter::ActorTaskSubmitter;
+use crate::back_pressure::{BackPressureConfig, BackPressureController};
 use crate::context::WorkerContext;
 use crate::dependency_resolver::DependencyResolver;
+use crate::direct_transport::{DirectActorTransport, DirectTransportConfig};
 use crate::error::{CoreWorkerError, CoreWorkerResult};
+use crate::future_resolver::FutureResolver;
 use crate::memory_store::{CoreWorkerMemoryStore, RayObject};
 use crate::normal_task_submitter::NormalTaskSubmitter;
 use crate::options::CoreWorkerOptions;
+use crate::object_recovery_manager::ObjectRecoveryManager;
+use crate::ownership_directory::OwnershipDirectory;
 use crate::reference_counter::ReferenceCounter;
 use crate::task_event_buffer::TaskEventBuffer;
 use crate::task_manager::TaskManager;
 use crate::task_receiver::TaskReceiver;
+use ray_object_manager::spill_manager::{SpillManager, SpillManagerConfig};
+use ray_pubsub::Publisher;
 
 /// The core worker orchestrating task submission, object management,
 /// actor management, and reference counting.
@@ -36,6 +43,11 @@ pub struct CoreWorker {
     context: WorkerContext,
     memory_store: Arc<CoreWorkerMemoryStore>,
     reference_counter: Arc<ReferenceCounter>,
+    future_resolver: Arc<FutureResolver>,
+    ownership_directory: Arc<OwnershipDirectory>,
+    object_recovery_manager: Arc<ObjectRecoveryManager>,
+    back_pressure: Arc<BackPressureController>,
+    direct_transport: Arc<DirectActorTransport>,
     actor_manager: Arc<ActorManager>,
     normal_task_submitter: NormalTaskSubmitter,
     actor_task_submitter: ActorTaskSubmitter,
@@ -43,6 +55,8 @@ pub struct CoreWorker {
     task_receiver: TaskReceiver,
     task_manager: Arc<TaskManager>,
     task_event_buffer: Arc<TaskEventBuffer>,
+    spill_manager: Arc<SpillManager>,
+    publisher: Arc<Publisher>,
     worker_address: Address,
 }
 
@@ -80,10 +94,41 @@ impl CoreWorker {
             task_event_buffer.clone(),
         ));
 
+        let future_resolver = Arc::new(FutureResolver::new(
+            memory_store.clone(),
+            reference_counter.clone(),
+        ));
+        let ownership_directory = Arc::new(OwnershipDirectory::new());
+        let object_recovery_manager = Arc::new(ObjectRecoveryManager::new(
+            reference_counter.clone(),
+            3, // max recovery attempts
+        ));
+
+        let back_pressure = Arc::new(BackPressureController::new(
+            BackPressureConfig::default(),
+        ));
+
+        let direct_transport = Arc::new(DirectActorTransport::new(
+            DirectTransportConfig::default(),
+        ));
+
+        let spill_manager = Arc::new(SpillManager::new(SpillManagerConfig::default()));
+
+        let publisher = Arc::new(Publisher::new(ray_pubsub::PublisherConfig::default()));
+        // Register standard channels.
+        publisher.register_channel(0, true);  // WorkerObjectEviction (droppable)
+        publisher.register_channel(1, false); // WorkerRefRemovedChannel
+        publisher.register_channel(2, true);  // WorkerObjectLocationsChannel (droppable)
+
         Self {
             context,
             memory_store,
             reference_counter,
+            future_resolver,
+            ownership_directory,
+            object_recovery_manager,
+            back_pressure,
+            direct_transport,
             actor_manager: Arc::new(ActorManager::new()),
             normal_task_submitter,
             actor_task_submitter: ActorTaskSubmitter::new(),
@@ -91,6 +136,8 @@ impl CoreWorker {
             task_receiver,
             task_manager,
             task_event_buffer,
+            spill_manager,
+            publisher,
             worker_address,
         }
     }
@@ -106,12 +153,15 @@ impl CoreWorker {
     ) -> CoreWorkerResult<()> {
         let obj = RayObject::new(data, metadata, Vec::new());
         self.memory_store.put(object_id, obj)?;
-        // Track as owned.
+        // Track as owned in both reference counter and ownership directory.
         self.reference_counter.add_owned_object(
             object_id,
             self.worker_address.clone(),
             vec![],
         );
+        self.ownership_directory
+            .add_owned_object(object_id, self.worker_address.clone());
+        self.ownership_directory.mark_object_created(&object_id);
         self.dependency_resolver.object_available(&object_id);
         Ok(())
     }
@@ -272,6 +322,34 @@ impl CoreWorker {
 
     pub fn dependency_resolver(&self) -> &DependencyResolver {
         &self.dependency_resolver
+    }
+
+    pub fn future_resolver(&self) -> &Arc<FutureResolver> {
+        &self.future_resolver
+    }
+
+    pub fn ownership_directory(&self) -> &Arc<OwnershipDirectory> {
+        &self.ownership_directory
+    }
+
+    pub fn object_recovery_manager(&self) -> &Arc<ObjectRecoveryManager> {
+        &self.object_recovery_manager
+    }
+
+    pub fn back_pressure(&self) -> &Arc<BackPressureController> {
+        &self.back_pressure
+    }
+
+    pub fn direct_transport(&self) -> &Arc<DirectActorTransport> {
+        &self.direct_transport
+    }
+
+    pub fn spill_manager(&self) -> &Arc<SpillManager> {
+        &self.spill_manager
+    }
+
+    pub fn publisher(&self) -> &Arc<Publisher> {
+        &self.publisher
     }
 
     /// Number of normal pending tasks.

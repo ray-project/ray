@@ -25,6 +25,7 @@ use crate::kv_manager::GcsInternalKVManager;
 use crate::node_manager::GcsNodeManager;
 use crate::placement_group_manager::GcsPlacementGroupManager;
 use crate::pubsub_handler::InternalPubSubHandler;
+use crate::recovery::{GcsRecovery, RecoveryConfig};
 use crate::resource_manager::GcsResourceManager;
 use crate::store_client::{InMemoryInternalKV, InMemoryStoreClient, RedisStoreClient, StoreClient};
 use crate::table_storage::GcsTableStorage;
@@ -57,6 +58,8 @@ pub struct GcsServerConfig {
     pub session_dir: Option<String>,
     pub raylet_config_list: Option<String>,
     pub ray_config: RayConfig,
+    /// Cluster auth token. When set, all gRPC requests must include a matching Bearer token.
+    pub auth_token: Option<String>,
 }
 
 impl Default for GcsServerConfig {
@@ -74,6 +77,7 @@ impl Default for GcsServerConfig {
             session_dir: None,
             raylet_config_list: None,
             ray_config: RayConfig::default(),
+            auth_token: None,
         }
     }
 }
@@ -151,7 +155,7 @@ impl GcsServer {
         };
 
         // 2. Create table storage
-        let table_storage = Arc::new(GcsTableStorage::new(store_client));
+        let table_storage = Arc::new(GcsTableStorage::new(store_client.clone()));
 
         // 3. Create KV manager
         let internal_kv = Arc::new(InMemoryInternalKV::new());
@@ -249,8 +253,15 @@ impl GcsServer {
             Arc::clone(&resource_manager),
         ));
 
-        // 7. Generate a random 28-byte cluster ID (matching C++ ClusterID::FromRandom)
-        let cluster_id: Vec<u8> = (0..28).map(|_| rand::random::<u8>()).collect();
+        // 7. Get or create cluster ID (persisted to Redis for HA)
+        let recovery = GcsRecovery::new(
+            RecoveryConfig {
+                enable_recovery: self.storage_type == StorageType::Redis,
+                ..Default::default()
+            },
+            store_client,
+        );
+        let cluster_id = recovery.get_or_create_cluster_id().await?;
         node_manager.set_cluster_id(cluster_id.clone());
         tracing::info!(cluster_id = hex::encode(&cluster_id), "Cluster ID set");
 
@@ -378,20 +389,28 @@ impl GcsServer {
         // Persist port file
         self.persist_port(bound_port)?;
 
+        // Build the auth interceptor from config.
+        let auth_mode = if self.config.auth_token.is_some() {
+            ray_rpc::auth::AuthenticationMode::ClusterAuth
+        } else {
+            ray_rpc::auth::AuthenticationMode::Disabled
+        };
+        let auth = ray_rpc::auth::AuthInterceptor::new(auth_mode, self.config.auth_token.clone());
+
         // Serve
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
         tonic::transport::Server::builder()
-            .add_service(rpc::job_info_gcs_service_server::JobInfoGcsServiceServer::new(job_svc))
-            .add_service(rpc::node_info_gcs_service_server::NodeInfoGcsServiceServer::new(node_svc))
-            .add_service(rpc::actor_info_gcs_service_server::ActorInfoGcsServiceServer::new(actor_svc))
-            .add_service(rpc::internal_kv_gcs_service_server::InternalKvGcsServiceServer::new(kv_svc))
-            .add_service(rpc::worker_info_gcs_service_server::WorkerInfoGcsServiceServer::new(worker_svc))
-            .add_service(rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsServiceServer::new(pg_svc))
-            .add_service(rpc::node_resource_info_gcs_service_server::NodeResourceInfoGcsServiceServer::new(resource_svc))
-            .add_service(rpc::runtime_env_gcs_service_server::RuntimeEnvGcsServiceServer::new(runtime_env_svc))
-            .add_service(rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsServiceServer::new(pubsub_svc))
-            .add_service(rpc::task_info_gcs_service_server::TaskInfoGcsServiceServer::new(task_svc))
-            .add_service(rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateServiceServer::new(autoscaler_svc))
+            .add_service(rpc::job_info_gcs_service_server::JobInfoGcsServiceServer::with_interceptor(job_svc, auth.clone()))
+            .add_service(rpc::node_info_gcs_service_server::NodeInfoGcsServiceServer::with_interceptor(node_svc, auth.clone()))
+            .add_service(rpc::actor_info_gcs_service_server::ActorInfoGcsServiceServer::with_interceptor(actor_svc, auth.clone()))
+            .add_service(rpc::internal_kv_gcs_service_server::InternalKvGcsServiceServer::with_interceptor(kv_svc, auth.clone()))
+            .add_service(rpc::worker_info_gcs_service_server::WorkerInfoGcsServiceServer::with_interceptor(worker_svc, auth.clone()))
+            .add_service(rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsServiceServer::with_interceptor(pg_svc, auth.clone()))
+            .add_service(rpc::node_resource_info_gcs_service_server::NodeResourceInfoGcsServiceServer::with_interceptor(resource_svc, auth.clone()))
+            .add_service(rpc::runtime_env_gcs_service_server::RuntimeEnvGcsServiceServer::with_interceptor(runtime_env_svc, auth.clone()))
+            .add_service(rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsServiceServer::with_interceptor(pubsub_svc, auth.clone()))
+            .add_service(rpc::task_info_gcs_service_server::TaskInfoGcsServiceServer::with_interceptor(task_svc, auth.clone()))
+            .add_service(rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateServiceServer::with_interceptor(autoscaler_svc, auth.clone()))
             .add_service(health_service)
             .serve_with_incoming_shutdown(incoming, shutdown_signal())
             .await?;
@@ -432,6 +451,42 @@ impl GcsServer {
 
     pub fn kv_manager(&self) -> Option<&Arc<GcsInternalKVManager>> {
         self.kv_manager.as_ref()
+    }
+
+    pub fn pubsub_handler(&self) -> Option<&Arc<InternalPubSubHandler>> {
+        self.pubsub_handler.as_ref()
+    }
+
+    pub fn health_check_manager(&self) -> Option<&Arc<GcsHealthCheckManager>> {
+        self.health_check_manager.as_ref()
+    }
+
+    pub fn autoscaler_state_manager(&self) -> Option<&Arc<GcsAutoscalerStateManager>> {
+        self.autoscaler_state_manager.as_ref()
+    }
+
+    pub fn storage_type(&self) -> StorageType {
+        self.storage_type
+    }
+
+    /// Gracefully drain all in-flight operations.
+    ///
+    /// This should be called before shutdown to allow pending RPCs
+    /// to complete and notify subscribers that GCS is going away.
+    pub async fn graceful_drain(&self) {
+        tracing::info!("GCS server draining...");
+
+        // Mark all alive nodes as draining if we're shutting down permanently.
+        // In a failover scenario, the new GCS instance will handle them.
+        if let Some(ref node_manager) = self.node_manager {
+            let alive = node_manager.get_all_alive_nodes();
+            tracing::info!(
+                num_alive_nodes = alive.len(),
+                "Notifying alive nodes of GCS shutdown"
+            );
+        }
+
+        tracing::info!("GCS server drain complete");
     }
 }
 

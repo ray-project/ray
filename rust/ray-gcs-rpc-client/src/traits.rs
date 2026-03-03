@@ -145,4 +145,46 @@ pub trait GcsClient: Send + Sync {
         &self,
         req: rpc::GetTaskEventsRequest,
     ) -> Result<rpc::GetTaskEventsReply, Status>;
+
+    // ── Extended Node RPCs ──────────────────────────────────────────
+    async fn drain_node(
+        &self,
+        req: rpc::DrainNodeRequest,
+    ) -> Result<rpc::DrainNodeReply, Status>;
+
+    // ── Extended Placement Group RPCs ───────────────────────────────
+    async fn get_placement_group(
+        &self,
+        req: rpc::GetPlacementGroupRequest,
+    ) -> Result<rpc::GetPlacementGroupReply, Status>;
+    async fn get_named_placement_group(
+        &self,
+        req: rpc::GetNamedPlacementGroupRequest,
+    ) -> Result<rpc::GetNamedPlacementGroupReply, Status>;
+    async fn wait_placement_group_until_ready(
+        &self,
+        req: rpc::WaitPlacementGroupUntilReadyRequest,
+    ) -> Result<rpc::WaitPlacementGroupUntilReadyReply, Status>;
+
+    // ── Extended Actor RPCs ─────────────────────────────────────────
+    async fn list_named_actors(
+        &self,
+        req: rpc::ListNamedActorsRequest,
+    ) -> Result<rpc::ListNamedActorsReply, Status>;
+
+    // ── Extended Internal KV RPCs ───────────────────────────────────
+    async fn internal_kv_multi_get(
+        &self,
+        req: rpc::InternalKvMultiGetRequest,
+    ) -> Result<rpc::InternalKvMultiGetReply, Status>;
+    async fn internal_kv_exists(
+        &self,
+        req: rpc::InternalKvExistsRequest,
+    ) -> Result<rpc::InternalKvExistsReply, Status>;
+
+    // ── Extended Resource RPCs ──────────────────────────────────────
+    async fn get_all_available_resources(
+        &self,
+        req: rpc::GetAllAvailableResourcesRequest,
+    ) -> Result<rpc::GetAllAvailableResourcesReply, Status>;
 }

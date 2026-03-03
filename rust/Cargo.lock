@@ -1464,12 +1464,22 @@ name = "ray-conformance-tests"
 version = "3.0.0-dev"
 dependencies = [
  "hex",
+ "parking_lot",
  "prost",
  "ray-common",
+ "ray-core-worker",
+ "ray-gcs",
+ "ray-gcs-rpc-client",
+ "ray-object-manager",
  "ray-proto",
+ "ray-raylet",
+ "ray-rpc",
  "ray-test-utils",
  "serde",
  "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tonic",
 ]
 
 [[package]]
@@ -1605,6 +1615,8 @@ dependencies = [
  "nix",
  "parking_lot",
  "ray-common",
+ "ray-gcs-rpc-client",
+ "ray-proto",
  "ray-stats",
  "ray-util",
  "serde",
@@ -1654,6 +1666,7 @@ dependencies = [
  "clap",
  "dashmap",
  "hex",
+ "nix",
  "parking_lot",
  "rand 0.8.5",
  "ray-common",
@@ -1702,6 +1715,7 @@ dependencies = [
  "anyhow",
  "futures",
  "hyper",
+ "parking_lot",
  "ray-common",
  "ray-proto",
  "ray-util",

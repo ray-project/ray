@@ -15,9 +15,18 @@ use ray_common::id;
 use std::hash::{Hash, Hasher};
 
 /// Macro to generate a Python-facing wrapper for a Ray ID type.
+///
+/// When the `python` feature is enabled, the struct gets `#[pyclass]` and
+/// a `#[pymethods]` impl block providing Python dunder methods.
 macro_rules! py_id_wrapper {
+    // Base variant: no extra pymethods.
     ($py_name:ident, $inner:ty) => {
+        py_id_wrapper!($py_name, $inner, {});
+    };
+    // Extended variant: with extra pymethods block.
+    ($py_name:ident, $inner:ty, { $($extra:tt)* }) => {
         #[derive(Debug, Clone)]
+        #[cfg_attr(feature = "python", pyo3::pyclass(module = "_raylet"))]
         pub struct $py_name {
             inner: $inner,
         }
@@ -93,18 +102,102 @@ macro_rules! py_id_wrapper {
                 self.inner.hash(state);
             }
         }
+
+        #[cfg(feature = "python")]
+        #[pyo3::pymethods]
+        impl $py_name {
+            /// Construct from raw binary bytes.
+            #[new]
+            fn py_new(binary: &[u8]) -> Self {
+                Self::new(binary)
+            }
+
+            /// Return a nil (all-zeroes) ID.
+            #[staticmethod]
+            fn py_nil() -> Self {
+                Self::nil()
+            }
+
+            /// Construct from a hex string.
+            #[staticmethod]
+            fn py_from_hex(hex_str: &str) -> Self {
+                Self::from_hex(hex_str)
+            }
+
+            /// Construct a random ID.
+            #[staticmethod]
+            fn py_from_random() -> Self {
+                Self::from_random()
+            }
+
+            /// Return the raw bytes.
+            #[pyo3(name = "binary")]
+            fn py_binary(&self) -> Vec<u8> {
+                self.binary()
+            }
+
+            /// Return the hex representation.
+            #[pyo3(name = "hex")]
+            fn py_hex(&self) -> String {
+                self.hex()
+            }
+
+            /// Check if this is a nil ID.
+            #[pyo3(name = "is_nil")]
+            fn py_is_nil(&self) -> bool {
+                self.is_nil()
+            }
+
+            /// Return the byte size of this ID type.
+            #[pyo3(name = "size")]
+            fn py_size(&self) -> usize {
+                self.size()
+            }
+
+            fn __repr__(&self) -> String {
+                self.repr()
+            }
+
+            fn __eq__(&self, other: &Self) -> bool {
+                self.inner == other.inner
+            }
+
+            fn __hash__(&self) -> u64 {
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                self.inner.hash(&mut hasher);
+                hasher.finish()
+            }
+
+            fn __bool__(&self) -> bool {
+                !self.is_nil()
+            }
+
+            $($extra)*
+        }
     };
 }
 
 py_id_wrapper!(PyObjectID, id::ObjectID);
 py_id_wrapper!(PyTaskID, id::TaskID);
 py_id_wrapper!(PyActorID, id::ActorID);
-py_id_wrapper!(PyJobID, id::JobID);
+py_id_wrapper!(PyJobID, id::JobID, {
+    /// Construct a JobID from an integer.
+    #[staticmethod]
+    fn py_from_int(value: u32) -> Self {
+        Self { inner: id::JobID::from_int(value) }
+    }
+
+    /// Convert to the integer representation.
+    #[pyo3(name = "to_int")]
+    fn py_to_int(&self) -> u32 {
+        self.inner.to_int()
+    }
+});
 py_id_wrapper!(PyWorkerID, id::WorkerID);
 py_id_wrapper!(PyNodeID, id::NodeID);
 py_id_wrapper!(PyPlacementGroupID, id::PlacementGroupID);
 
-// Extra methods for PyJobID.
+// Extra methods for PyJobID (Rust-only).
 impl PyJobID {
     pub fn from_int(value: u32) -> Self {
         Self {

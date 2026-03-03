@@ -912,6 +912,7 @@ mod tests {
             ]),
             labels: std::collections::HashMap::new(),
             session_name: String::new(),
+            auth_token: None,
         }
     }
 

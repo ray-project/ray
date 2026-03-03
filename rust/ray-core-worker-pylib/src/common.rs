@@ -12,10 +12,11 @@ use ray_core_worker::CoreWorkerError;
 
 /// Python-facing language enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "python", pyo3::pyclass(module = "_raylet", eq, eq_int))]
 pub enum PyLanguage {
-    Python,
-    Java,
-    Cpp,
+    Python = 0,
+    Java = 1,
+    Cpp = 2,
 }
 
 impl PyLanguage {
@@ -37,13 +38,26 @@ impl PyLanguage {
     }
 }
 
+#[cfg(feature = "python")]
+#[pyo3::pymethods]
+impl PyLanguage {
+    fn __repr__(&self) -> &'static str {
+        match self {
+            PyLanguage::Python => "Language.PYTHON",
+            PyLanguage::Java => "Language.JAVA",
+            PyLanguage::Cpp => "Language.CPP",
+        }
+    }
+}
+
 /// Python-facing worker type enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "python", pyo3::pyclass(module = "_raylet", eq, eq_int))]
 pub enum PyWorkerType {
-    Worker,
-    Driver,
-    SpillWorker,
-    RestoreWorker,
+    Worker = 0,
+    Driver = 1,
+    SpillWorker = 2,
+    RestoreWorker = 3,
 }
 
 impl PyWorkerType {
@@ -67,6 +81,19 @@ impl PyWorkerType {
     }
 }
 
+#[cfg(feature = "python")]
+#[pyo3::pymethods]
+impl PyWorkerType {
+    fn __repr__(&self) -> &'static str {
+        match self {
+            PyWorkerType::Worker => "WorkerType.WORKER",
+            PyWorkerType::Driver => "WorkerType.DRIVER",
+            PyWorkerType::SpillWorker => "WorkerType.SPILL_WORKER",
+            PyWorkerType::RestoreWorker => "WorkerType.RESTORE_WORKER",
+        }
+    }
+}
+
 /// Convert a `CoreWorkerError` to a Python-compatible error string and category.
 ///
 /// Returns `(exception_type, message)` where exception_type is one of:
@@ -83,6 +110,19 @@ pub fn classify_error(err: &CoreWorkerError) -> (&'static str, String) {
         CoreWorkerError::RayStatus(e) => ("RuntimeError", e.to_string()),
         CoreWorkerError::Internal(msg) => ("RuntimeError", msg.clone()),
         CoreWorkerError::Other(msg) => ("RuntimeError", msg.clone()),
+    }
+}
+
+/// Convert a `CoreWorkerError` into a `PyErr` using the appropriate Python exception type.
+#[cfg(feature = "python")]
+pub fn to_py_err(err: CoreWorkerError) -> pyo3::PyErr {
+    use pyo3::exceptions::*;
+    let (ty, msg) = classify_error(&err);
+    match ty {
+        "KeyError" => PyKeyError::new_err(msg),
+        "TimeoutError" => PyTimeoutError::new_err(msg),
+        "ValueError" => PyValueError::new_err(msg),
+        _ => PyRuntimeError::new_err(msg),
     }
 }
 

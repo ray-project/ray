@@ -34,6 +34,8 @@ struct Reference {
     object_locations: HashSet<String>,
     contained_in: HashSet<ObjectID>,
     contains: HashSet<ObjectID>,
+    /// Spill URL if the object was spilled to external storage.
+    spill_url: Option<String>,
 }
 
 impl Reference {
@@ -49,6 +51,7 @@ impl Reference {
             object_locations: HashSet::new(),
             contained_in: HashSet::new(),
             contains: HashSet::new(),
+            spill_url: None,
         }
     }
 
@@ -148,6 +151,16 @@ impl ReferenceCounter {
         let entry = refs.entry(object_id).or_insert_with(Reference::new);
         entry.is_owned_by_us = false;
         entry.owner_address = Some(owner_address);
+    }
+
+    /// Get all object IDs that we own.
+    pub fn get_all_owned_objects(&self) -> Vec<ObjectID> {
+        self.refs
+            .lock()
+            .iter()
+            .filter(|(_, r)| r.is_owned_by_us)
+            .map(|(oid, _)| *oid)
+            .collect()
     }
 
     /// Check if we own the given object.
@@ -291,6 +304,21 @@ impl ReferenceCounter {
             .unwrap_or(-1)
     }
 
+    /// Set the spill URL for an object (after it's been spilled to external storage).
+    pub fn set_spill_url(&self, object_id: &ObjectID, url: String) {
+        if let Some(entry) = self.refs.lock().get_mut(object_id) {
+            entry.spill_url = Some(url);
+        }
+    }
+
+    /// Get the spill URL for an object, if it has been spilled.
+    pub fn get_spill_url(&self, object_id: &ObjectID) -> Option<String> {
+        self.refs
+            .lock()
+            .get(object_id)
+            .and_then(|e| e.spill_url.clone())
+    }
+
     /// Mark whether an object is pending creation.
     pub fn update_object_pending_creation(&self, object_id: &ObjectID, pending: bool) {
         if let Some(entry) = self.refs.lock().get_mut(object_id) {
@@ -319,6 +347,16 @@ impl ReferenceCounter {
             .lock()
             .iter()
             .map(|(id, r)| (*id, (r.local_ref_count, r.submitted_task_ref_count)))
+            .collect()
+    }
+
+    /// Get all object IDs with zero total reference count (candidates for GC).
+    pub fn get_zero_reference_objects(&self) -> Vec<ObjectID> {
+        self.refs
+            .lock()
+            .iter()
+            .filter(|(_, r)| r.should_delete())
+            .map(|(id, _)| *id)
             .collect()
     }
 

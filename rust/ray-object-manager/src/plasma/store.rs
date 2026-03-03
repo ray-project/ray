@@ -152,6 +152,42 @@ impl PlasmaStore {
             .map(|obj| obj.object_info().clone())
     }
 
+    /// Get the raw data and metadata bytes for a sealed object.
+    ///
+    /// Returns `Some((data, metadata))` if the object exists and is sealed,
+    /// `None` otherwise. For null-pointer allocations (test stubs), returns
+    /// zero-filled buffers of the correct size.
+    pub fn get_object_data(&self, object_id: &ObjectID) -> Option<(Vec<u8>, Vec<u8>)> {
+        let inner = self.inner.lock();
+        let obj = inner.object_store.get_object(object_id)?;
+        if !obj.is_sealed() {
+            return None;
+        }
+
+        let alloc = obj.allocation();
+        let data_size = obj.data_size() as usize;
+        let metadata_size = obj.metadata_size() as usize;
+
+        if alloc.address.is_null() {
+            // Null address (test allocator) — return zeroed buffers.
+            return Some((vec![0u8; data_size], vec![0u8; metadata_size]));
+        }
+
+        // Safety: The allocation address points to a valid mmap'd region of at
+        // least data_size + metadata_size bytes. The object is sealed (immutable),
+        // so there are no concurrent writes. The Allocation's lifetime is managed
+        // by the ObjectStore, which we hold under lock.
+        unsafe {
+            let data = std::slice::from_raw_parts(alloc.address, data_size).to_vec();
+            let metadata = if metadata_size > 0 {
+                std::slice::from_raw_parts(alloc.address.add(data_size), metadata_size).to_vec()
+            } else {
+                Vec::new()
+            };
+            Some((data, metadata))
+        }
+    }
+
     /// Begin access to an object (increments ref count, pins it).
     pub fn begin_object_access(&self, object_id: &ObjectID) -> Result<(), PlasmaError> {
         let mut inner = self.inner.lock();
@@ -293,5 +329,106 @@ mod tests {
         // Delete
         store.delete_object(&oid, allocator.as_ref()).unwrap();
         assert!(!store.contains(&oid));
+    }
+
+    #[test]
+    fn test_get_object_data_sealed() {
+        let allocator = Arc::new(TestAllocator);
+        let config = PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: String::new(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let store = PlasmaStore::new(allocator.clone(), &config);
+
+        let oid = make_oid(10);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 256,
+            metadata_size: 32,
+            ..Default::default()
+        };
+
+        store
+            .create_object(info, ObjectSource::CreatedByWorker, allocator.as_ref())
+            .unwrap();
+
+        // Not sealed yet — should return None.
+        assert!(store.get_object_data(&oid).is_none());
+
+        store.seal_object(&oid).unwrap();
+
+        // Sealed — should return Some with correct sizes (zeroed for TestAllocator).
+        let (data, metadata) = store.get_object_data(&oid).unwrap();
+        assert_eq!(data.len(), 256);
+        assert_eq!(metadata.len(), 32);
+    }
+
+    #[test]
+    fn test_get_object_data_nonexistent() {
+        let allocator = Arc::new(TestAllocator);
+        let config = PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: String::new(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let store = PlasmaStore::new(allocator, &config);
+
+        assert!(store.get_object_data(&make_oid(99)).is_none());
+    }
+
+    #[test]
+    fn test_get_object_data_with_real_allocator() {
+        let dir = tempfile::tempdir().unwrap();
+        let allocator = Arc::new(crate::plasma::allocator::PlasmaAllocator::new(
+            1024 * 1024,
+            dir.path().to_str().unwrap(),
+            "",
+            false,
+        ));
+        let config = PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: dir.path().to_str().unwrap().to_string(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let store = PlasmaStore::new(allocator.clone(), &config);
+
+        let oid = make_oid(20);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 64,
+            metadata_size: 8,
+            ..Default::default()
+        };
+
+        store
+            .create_object(info, ObjectSource::CreatedByWorker, allocator.as_ref())
+            .unwrap();
+
+        // Write some data into the allocation via get_object_info + pointer.
+        // The real allocator gives us a valid pointer.
+        {
+            let inner = store.inner.lock();
+            let obj = inner.object_store.get_object(&oid).unwrap();
+            let alloc = obj.allocation();
+            assert!(!alloc.address.is_null());
+            unsafe {
+                // Write data region: 64 bytes of 0xAA
+                std::ptr::write_bytes(alloc.address, 0xAA, 64);
+                // Write metadata region: 8 bytes of 0xBB
+                std::ptr::write_bytes(alloc.address.add(64), 0xBB, 8);
+            }
+        }
+
+        store.seal_object(&oid).unwrap();
+
+        let (data, metadata) = store.get_object_data(&oid).unwrap();
+        assert_eq!(data.len(), 64);
+        assert_eq!(metadata.len(), 8);
+        assert!(data.iter().all(|&b| b == 0xAA));
+        assert!(metadata.iter().all(|&b| b == 0xBB));
     }
 }

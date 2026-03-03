@@ -11,6 +11,7 @@
 //! Replaces `src/ray/object_manager/plasma/` (25 files).
 
 pub mod allocator;
+pub mod client;
 pub mod eviction;
 pub mod fling;
 pub mod object_store;

@@ -9,10 +9,20 @@ description = "Golden-file conformance tests ensuring Rust matches C++ behavior"
 ray-common = { workspace = true }
 ray-proto = { workspace = true }
 ray-test-utils = { workspace = true }
+ray-gcs = { workspace = true }
+ray-gcs-rpc-client = { workspace = true }
+ray-rpc = { workspace = true }
+ray-raylet = { workspace = true }
+ray-object-manager = { workspace = true }
+ray-core-worker = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 prost = { workspace = true }
 hex = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+parking_lot = { workspace = true }
 
 [lib]
 doctest = false

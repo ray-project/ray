@@ -327,6 +327,110 @@ impl WorkerPool {
     pub fn next_worker_counter(&self) -> u64 {
         self.next_worker_counter.fetch_add(1, Ordering::Relaxed)
     }
+
+    /// Pop an idle worker or start a new one for the given language and job.
+    ///
+    /// This combines pop_worker() + start_worker_process() into a single
+    /// convenience method. Returns (worker_id, is_new) where is_new indicates
+    /// whether a new process was started.
+    pub fn pop_or_start_worker(
+        &self,
+        language: Language,
+        job_id: &JobID,
+    ) -> PopOrStartResult {
+        // First try to pop an existing idle worker.
+        let result = self.pop_worker(language, job_id);
+        if result.status == PopWorkerStatus::Ok {
+            let worker_id = result.worker.as_ref().map(|w| w.worker_id);
+            return PopOrStartResult {
+                worker: result.worker,
+                worker_id,
+                status: PopWorkerStatus::Ok,
+                is_new_process: false,
+            };
+        }
+
+        // No idle worker — try to start a new one.
+        if result.status == PopWorkerStatus::WorkerPendingRegistration {
+            if let Some(wid) = self.start_worker_process(language, job_id) {
+                return PopOrStartResult {
+                    worker: None,
+                    worker_id: Some(wid),
+                    status: PopWorkerStatus::WorkerPendingRegistration,
+                    is_new_process: true,
+                };
+            } else {
+                return PopOrStartResult {
+                    worker: None,
+                    worker_id: None,
+                    status: PopWorkerStatus::TooManyStartingWorkerProcesses,
+                    is_new_process: false,
+                };
+            }
+        }
+
+        // Some other status (job not found, etc.)
+        PopOrStartResult {
+            worker: None,
+            worker_id: None,
+            status: result.status,
+            is_new_process: false,
+        }
+    }
+
+    /// Pop any idle worker for the given language, regardless of job ID.
+    ///
+    /// This is used for work stealing or when a task can run on any worker.
+    pub fn pop_any_idle_worker(&self, language: Language) -> Option<WorkerInfo> {
+        let mut states = self.states.write();
+        let state = states.entry(language).or_default();
+
+        if let Some(worker_id) = state.idle_workers.pop_front() {
+            self.all_workers.read().get(&worker_id).cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Get the number of idle workers for a specific language.
+    pub fn num_idle_workers_for_language(&self, language: Language) -> usize {
+        self.states
+            .read()
+            .get(&language)
+            .map(|s| s.idle_workers.len())
+            .unwrap_or(0)
+    }
+
+    /// Get the number of active jobs.
+    pub fn num_active_jobs(&self) -> usize {
+        self.active_jobs.read().len()
+    }
+
+    /// Check if a job is active.
+    pub fn is_job_active(&self, job_id: &JobID) -> bool {
+        self.active_jobs.read().contains(job_id)
+    }
+
+    /// Get worker IDs for all idle workers.
+    pub fn idle_worker_ids(&self) -> Vec<WorkerID> {
+        self.states
+            .read()
+            .values()
+            .flat_map(|s| s.idle_workers.iter().copied())
+            .collect()
+    }
+}
+
+/// Result of a pop-or-start operation.
+pub struct PopOrStartResult {
+    /// The worker if an idle one was found.
+    pub worker: Option<WorkerInfo>,
+    /// The worker ID (either existing or newly started).
+    pub worker_id: Option<WorkerID>,
+    /// Status of the operation.
+    pub status: PopWorkerStatus,
+    /// Whether a new process was started.
+    pub is_new_process: bool,
 }
 
 #[cfg(test)]
@@ -538,6 +642,119 @@ mod tests {
         let result = pool.pop_worker(Language::Python, &job);
         assert_eq!(result.status, PopWorkerStatus::Ok);
         assert!(result.worker.is_some());
+    }
+
+    #[test]
+    fn test_pop_or_start_idle_worker() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let worker = make_worker(1, Language::Python, job);
+        let wid = worker.worker_id;
+        pool.register_worker(worker).unwrap();
+        pool.push_worker(wid, Language::Python);
+
+        let result = pool.pop_or_start_worker(Language::Python, &job);
+        assert_eq!(result.status, PopWorkerStatus::Ok);
+        assert!(result.worker.is_some());
+        assert!(!result.is_new_process);
+    }
+
+    #[test]
+    fn test_pop_or_start_new_worker() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let result = pool.pop_or_start_worker(Language::Python, &job);
+        assert_eq!(result.status, PopWorkerStatus::WorkerPendingRegistration);
+        assert!(result.worker.is_none());
+        assert!(result.worker_id.is_some());
+        assert!(result.is_new_process);
+    }
+
+    #[test]
+    fn test_pop_any_idle_worker() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let worker = make_worker(1, Language::Python, job);
+        let wid = worker.worker_id;
+        pool.register_worker(worker).unwrap();
+        pool.push_worker(wid, Language::Python);
+
+        let result = pool.pop_any_idle_worker(Language::Python);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().worker_id, wid);
+        assert_eq!(pool.num_idle_workers(), 0);
+    }
+
+    #[test]
+    fn test_pop_any_idle_worker_empty() {
+        let pool = WorkerPool::new(10, 100);
+        let result = pool.pop_any_idle_worker(Language::Python);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_num_idle_workers_per_language() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        for i in 1..=3 {
+            let w = make_worker(i, Language::Python, job);
+            let wid = w.worker_id;
+            pool.register_worker(w).unwrap();
+            pool.push_worker(wid, Language::Python);
+        }
+        let w = make_worker(10, Language::Java, job);
+        let wid = w.worker_id;
+        pool.register_worker(w).unwrap();
+        pool.push_worker(wid, Language::Java);
+
+        assert_eq!(pool.num_idle_workers_for_language(Language::Python), 3);
+        assert_eq!(pool.num_idle_workers_for_language(Language::Java), 1);
+        assert_eq!(pool.num_idle_workers_for_language(Language::Cpp), 0);
+    }
+
+    #[test]
+    fn test_job_lifecycle() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+
+        assert!(!pool.is_job_active(&job));
+        pool.handle_job_started(job);
+        assert!(pool.is_job_active(&job));
+        assert_eq!(pool.num_active_jobs(), 1);
+
+        pool.handle_job_finished(&job);
+        assert!(!pool.is_job_active(&job));
+        assert_eq!(pool.num_active_jobs(), 0);
+    }
+
+    #[test]
+    fn test_idle_worker_ids() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let w1 = make_worker(1, Language::Python, job);
+        let wid1 = w1.worker_id;
+        pool.register_worker(w1).unwrap();
+        pool.push_worker(wid1, Language::Python);
+
+        let w2 = make_worker(2, Language::Java, job);
+        let wid2 = w2.worker_id;
+        pool.register_worker(w2).unwrap();
+        pool.push_worker(wid2, Language::Java);
+
+        let ids = pool.idle_worker_ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&wid1));
+        assert!(ids.contains(&wid2));
     }
 
     #[test]

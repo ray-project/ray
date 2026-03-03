@@ -22,11 +22,15 @@ use ray_rpc::client::RetryConfig;
 
 use crate::cluster_resource_manager::ClusterResourceManager;
 use crate::cluster_resource_scheduler::ClusterResourceScheduler;
-use crate::lease_manager::ClusterLeaseManager;
+use crate::demand_calculator::{DemandCalculator, DemandCalculatorConfig};
+use crate::dependency_manager::DependencyManager;
+use crate::lease_manager::{ClusterLeaseManager, WorkerLeaseTracker};
+use crate::local_object_manager::{LocalObjectManager, LocalObjectManagerConfig};
 use crate::local_resource_manager::LocalResourceManager;
 use crate::placement_group_resource_manager::PlacementGroupResourceManager;
 use crate::wait_manager::WaitManager;
 use crate::worker_pool::WorkerPool;
+use crate::worker_reaper::{WorkerReaper, WorkerReaperConfig};
 
 /// Wait for SIGTERM or SIGINT for graceful shutdown.
 async fn shutdown_signal() {
@@ -59,6 +63,8 @@ pub struct RayletConfig {
     pub resources: HashMap<String, f64>,
     pub labels: HashMap<String, String>,
     pub session_name: String,
+    /// Cluster auth token. When set, all gRPC requests must include a matching Bearer token.
+    pub auth_token: Option<String>,
 }
 
 /// The main raylet node manager.
@@ -67,7 +73,12 @@ pub struct NodeManager {
     scheduler: Arc<ClusterResourceScheduler>,
     worker_pool: Arc<WorkerPool>,
     lease_manager: Arc<ClusterLeaseManager>,
+    worker_lease_tracker: Arc<WorkerLeaseTracker>,
+    worker_reaper: Arc<WorkerReaper>,
+    dependency_manager: Arc<DependencyManager>,
     wait_manager: Arc<WaitManager>,
+    local_object_manager: Arc<parking_lot::Mutex<LocalObjectManager>>,
+    demand_calculator: Arc<DemandCalculator>,
     placement_group_resource_manager: Arc<PlacementGroupResourceManager>,
 }
 
@@ -99,7 +110,19 @@ impl NodeManager {
             200, // num_workers_soft_limit (default)
         ));
 
+        let worker_lease_tracker = Arc::new(WorkerLeaseTracker::default());
+        let worker_reaper = Arc::new(WorkerReaper::new(WorkerReaperConfig::default()));
+        let dependency_manager = Arc::new(DependencyManager::new());
+
         let wait_manager = Arc::new(WaitManager::new());
+
+        let local_object_manager = Arc::new(parking_lot::Mutex::new(
+            LocalObjectManager::new(LocalObjectManagerConfig::default()),
+        ));
+
+        let demand_calculator = Arc::new(DemandCalculator::new(
+            DemandCalculatorConfig::default(),
+        ));
 
         let placement_group_resource_manager =
             Arc::new(PlacementGroupResourceManager::new(local_resource_manager));
@@ -109,7 +132,12 @@ impl NodeManager {
             scheduler,
             worker_pool,
             lease_manager,
+            worker_lease_tracker,
+            worker_reaper,
+            dependency_manager,
             wait_manager,
+            local_object_manager,
+            demand_calculator,
             placement_group_resource_manager,
         }
     }
@@ -130,8 +158,28 @@ impl NodeManager {
         &self.lease_manager
     }
 
+    pub fn worker_lease_tracker(&self) -> &Arc<WorkerLeaseTracker> {
+        &self.worker_lease_tracker
+    }
+
+    pub fn worker_reaper(&self) -> &Arc<WorkerReaper> {
+        &self.worker_reaper
+    }
+
+    pub fn dependency_manager(&self) -> &Arc<DependencyManager> {
+        &self.dependency_manager
+    }
+
     pub fn wait_manager(&self) -> &Arc<WaitManager> {
         &self.wait_manager
+    }
+
+    pub fn local_object_manager(&self) -> &Arc<parking_lot::Mutex<LocalObjectManager>> {
+        &self.local_object_manager
+    }
+
+    pub fn demand_calculator(&self) -> &Arc<DemandCalculator> {
+        &self.demand_calculator
     }
 
     pub fn placement_group_resource_manager(&self) -> &Arc<PlacementGroupResourceManager> {
@@ -251,8 +299,27 @@ impl NodeManager {
             session_name: self.config.session_name.clone(),
             python_worker_command: None,
         };
+        // Create cgroup manager if enabled.
+        let cgroup_manager: Option<std::sync::Arc<dyn ray_common::cgroup::CgroupManager>> = {
+            let cgm = ray_common::cgroup::create_cgroup_manager(
+                &self.config.node_id,
+                self.config.ray_config.enable_cgroup,
+            );
+            if cgm.is_cgroup_v2_available() {
+                if let Err(e) = cgm.initialize() {
+                    tracing::warn!(error = %e, "Failed to initialize cgroup hierarchy");
+                }
+                Some(std::sync::Arc::from(cgm))
+            } else {
+                None
+            }
+        };
+
         self.worker_pool
-            .set_start_worker_callback(crate::worker_spawner::make_spawn_callback(spawner_config));
+            .set_start_worker_callback(crate::worker_spawner::make_spawn_callback(
+                spawner_config,
+                cgroup_manager,
+            ));
 
         // Register with GCS if an address is configured.
         let gcs_state = if !self.config.gcs_address.is_empty() {
@@ -278,10 +345,21 @@ impl NodeManager {
             >>()
             .await;
 
+        // Build the auth interceptor from config.
+        let auth_mode = if self.config.auth_token.is_some() {
+            ray_rpc::auth::AuthenticationMode::ClusterAuth
+        } else {
+            ray_rpc::auth::AuthenticationMode::Disabled
+        };
+        let auth = ray_rpc::auth::AuthInterceptor::new(
+            auth_mode,
+            self.config.auth_token.clone(),
+        );
+
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
         tonic::transport::Server::builder()
             .add_service(
-                rpc::node_manager_service_server::NodeManagerServiceServer::new(svc),
+                rpc::node_manager_service_server::NodeManagerServiceServer::with_interceptor(svc, auth),
             )
             .add_service(health_service)
             .serve_with_incoming_shutdown(incoming, shutdown_signal())
@@ -316,6 +394,7 @@ mod tests {
             ]),
             labels: HashMap::from([("region".to_string(), "us-east".to_string())]),
             session_name: "test-session".to_string(),
+            auth_token: None,
         }
     }
 

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "ray-rust-raylet"
+version = "3.0.0.dev0"
+description = "Rust-based Ray worker runtime (replacement for _raylet.so)"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+
+[tool.maturin]
+features = ["python"]
+module-name = "ray._raylet"

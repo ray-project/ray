@@ -130,6 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         session_dir: args.session_dir,
         raylet_config_list: decoded_config_list,
         ray_config,
+        auth_token: None,
     };
 
     let mut server = GcsServer::new(config);

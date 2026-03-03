@@ -17,6 +17,7 @@
 
 pub mod common;
 pub mod grpc_service;
+pub mod memory_monitor;
 pub mod object_buffer_pool;
 pub mod object_directory;
 pub mod object_manager;

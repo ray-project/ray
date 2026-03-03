@@ -86,6 +86,9 @@ pub struct RayConfig {
     // ─── Worker ───────────────────────────────────────────────
     pub worker_register_timeout_seconds: i64,
     pub task_retry_delay_ms: i64,
+
+    // ─── Cgroup ───────────────────────────────────────────────
+    pub enable_cgroup: bool,
 }
 
 impl Default for RayConfig {
@@ -116,6 +119,7 @@ impl Default for RayConfig {
             raylet_heartbeat_period_milliseconds: 1_000,
             worker_register_timeout_seconds: 60,
             task_retry_delay_ms: 0,
+            enable_cgroup: false,
         }
     }
 }

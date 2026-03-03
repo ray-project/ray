@@ -92,6 +92,11 @@ impl CoreWorkerMemoryStore {
         self.objects.lock().len()
     }
 
+    /// Return all object IDs currently in the store.
+    pub fn all_object_ids(&self) -> Vec<ObjectID> {
+        self.objects.lock().keys().copied().collect()
+    }
+
     /// Get an object, or wait for it to arrive, up to a timeout.
     ///
     /// Returns `Ok(object)` if found, or `Err(TimedOut)` if the timeout expires.

@@ -312,6 +312,72 @@ impl GcsClient for GcsRpcClient {
     ) -> Result<rpc::GetTaskEventsReply, Status> {
         impl_gcs_rpc!(self, task, get_task_events, req)
     }
+
+    // ── Extended Node RPCs ──────────────────────────────────────────
+
+    async fn drain_node(
+        &self,
+        req: rpc::DrainNodeRequest,
+    ) -> Result<rpc::DrainNodeReply, Status> {
+        impl_gcs_rpc!(self, node, drain_node, req)
+    }
+
+    // ── Extended Placement Group RPCs ───────────────────────────────
+
+    async fn get_placement_group(
+        &self,
+        req: rpc::GetPlacementGroupRequest,
+    ) -> Result<rpc::GetPlacementGroupReply, Status> {
+        impl_gcs_rpc!(self, pg, get_placement_group, req)
+    }
+
+    async fn get_named_placement_group(
+        &self,
+        req: rpc::GetNamedPlacementGroupRequest,
+    ) -> Result<rpc::GetNamedPlacementGroupReply, Status> {
+        impl_gcs_rpc!(self, pg, get_named_placement_group, req)
+    }
+
+    async fn wait_placement_group_until_ready(
+        &self,
+        req: rpc::WaitPlacementGroupUntilReadyRequest,
+    ) -> Result<rpc::WaitPlacementGroupUntilReadyReply, Status> {
+        impl_gcs_rpc!(self, pg, wait_placement_group_until_ready, req)
+    }
+
+    // ── Extended Actor RPCs ─────────────────────────────────────────
+
+    async fn list_named_actors(
+        &self,
+        req: rpc::ListNamedActorsRequest,
+    ) -> Result<rpc::ListNamedActorsReply, Status> {
+        impl_gcs_rpc!(self, actor, list_named_actors, req)
+    }
+
+    // ── Extended Internal KV RPCs ───────────────────────────────────
+
+    async fn internal_kv_multi_get(
+        &self,
+        req: rpc::InternalKvMultiGetRequest,
+    ) -> Result<rpc::InternalKvMultiGetReply, Status> {
+        impl_gcs_rpc!(self, kv, internal_kv_multi_get, req)
+    }
+
+    async fn internal_kv_exists(
+        &self,
+        req: rpc::InternalKvExistsRequest,
+    ) -> Result<rpc::InternalKvExistsReply, Status> {
+        impl_gcs_rpc!(self, kv, internal_kv_exists, req)
+    }
+
+    // ── Extended Resource RPCs ──────────────────────────────────────
+
+    async fn get_all_available_resources(
+        &self,
+        req: rpc::GetAllAvailableResourcesRequest,
+    ) -> Result<rpc::GetAllAvailableResourcesReply, Status> {
+        impl_gcs_rpc!(self, resource, get_all_available_resources, req)
+    }
 }
 
 /// A fake GCS client for testing that records requests and returns canned responses.
@@ -583,6 +649,62 @@ pub mod fake {
         ) -> Result<rpc::GetTaskEventsReply, Status> {
             self.record_all("get_task_events");
             Ok(rpc::GetTaskEventsReply::default())
+        }
+        async fn drain_node(
+            &self,
+            _req: rpc::DrainNodeRequest,
+        ) -> Result<rpc::DrainNodeReply, Status> {
+            self.record(&self.node_requests, "drain_node");
+            Ok(rpc::DrainNodeReply::default())
+        }
+        async fn get_placement_group(
+            &self,
+            _req: rpc::GetPlacementGroupRequest,
+        ) -> Result<rpc::GetPlacementGroupReply, Status> {
+            self.record_all("get_placement_group");
+            Ok(rpc::GetPlacementGroupReply::default())
+        }
+        async fn get_named_placement_group(
+            &self,
+            _req: rpc::GetNamedPlacementGroupRequest,
+        ) -> Result<rpc::GetNamedPlacementGroupReply, Status> {
+            self.record_all("get_named_placement_group");
+            Ok(rpc::GetNamedPlacementGroupReply::default())
+        }
+        async fn wait_placement_group_until_ready(
+            &self,
+            _req: rpc::WaitPlacementGroupUntilReadyRequest,
+        ) -> Result<rpc::WaitPlacementGroupUntilReadyReply, Status> {
+            self.record_all("wait_placement_group_until_ready");
+            Ok(rpc::WaitPlacementGroupUntilReadyReply::default())
+        }
+        async fn list_named_actors(
+            &self,
+            _req: rpc::ListNamedActorsRequest,
+        ) -> Result<rpc::ListNamedActorsReply, Status> {
+            self.record(&self.actor_requests, "list_named_actors");
+            Ok(rpc::ListNamedActorsReply::default())
+        }
+        async fn internal_kv_multi_get(
+            &self,
+            _req: rpc::InternalKvMultiGetRequest,
+        ) -> Result<rpc::InternalKvMultiGetReply, Status> {
+            self.record_all("internal_kv_multi_get");
+            Ok(rpc::InternalKvMultiGetReply::default())
+        }
+        async fn internal_kv_exists(
+            &self,
+            _req: rpc::InternalKvExistsRequest,
+        ) -> Result<rpc::InternalKvExistsReply, Status> {
+            self.record_all("internal_kv_exists");
+            Ok(rpc::InternalKvExistsReply::default())
+        }
+        async fn get_all_available_resources(
+            &self,
+            _req: rpc::GetAllAvailableResourcesRequest,
+        ) -> Result<rpc::GetAllAvailableResourcesReply, Status> {
+            self.record_all("get_all_available_resources");
+            Ok(rpc::GetAllAvailableResourcesReply::default())
         }
     }
 }

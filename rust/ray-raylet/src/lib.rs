@@ -15,8 +15,11 @@
 
 pub mod cluster_resource_manager;
 pub mod cluster_resource_scheduler;
+pub mod demand_calculator;
+pub mod dependency_manager;
 pub mod grpc_service;
 pub mod lease_manager;
+pub mod local_object_manager;
 pub mod local_resource_manager;
 pub mod node_manager;
 pub mod placement_group_resource_manager;
@@ -24,4 +27,5 @@ pub mod scheduling_policy;
 pub mod scheduling_resources;
 pub mod wait_manager;
 pub mod worker_pool;
+pub mod worker_reaper;
 pub mod worker_spawner;

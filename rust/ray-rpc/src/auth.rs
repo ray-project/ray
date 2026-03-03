@@ -174,6 +174,13 @@ impl AuthInterceptor {
     }
 }
 
+impl tonic::service::Interceptor for AuthInterceptor {
+    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+        self.validate_request(&request)?;
+        Ok(request)
+    }
+}
+
 /// Result of a token review (K8s TokenReview API).
 #[derive(Debug, Clone)]
 pub struct TokenReviewResult {
@@ -562,6 +569,41 @@ mod tests {
         assert!(config.read_ca_cert().is_none());
         assert!(config.read_client_cert().is_none());
         assert!(config.read_client_key().is_none());
+    }
+
+    #[test]
+    fn test_interceptor_trait_disabled() {
+        let mut auth = AuthInterceptor::new(AuthenticationMode::Disabled, None);
+        let request = Request::new(());
+        // Disabled auth should pass through.
+        use tonic::service::Interceptor;
+        let result = auth.call(request);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_interceptor_trait_rejects_unauthenticated() {
+        let mut auth =
+            AuthInterceptor::new(AuthenticationMode::ClusterAuth, Some("secret".into()));
+        let request = Request::new(());
+        // No auth header — should be rejected.
+        use tonic::service::Interceptor;
+        let result = auth.call(request);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::Unauthenticated);
+    }
+
+    #[test]
+    fn test_interceptor_trait_accepts_valid_token() {
+        let mut auth =
+            AuthInterceptor::new(AuthenticationMode::ClusterAuth, Some("secret".into()));
+        let mut request = Request::new(());
+        request
+            .metadata_mut()
+            .insert("authorization", "Bearer secret".parse().unwrap());
+        use tonic::service::Interceptor;
+        let result = auth.call(request);
+        assert!(result.is_ok());
     }
 
     #[test]

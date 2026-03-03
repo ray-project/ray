@@ -109,6 +109,7 @@ async fn test_raylet_registers_with_gcs() {
         resources: HashMap::from([("CPU".to_string(), 4.0)]),
         labels: HashMap::from([("env".to_string(), "test".to_string())]),
         session_name: "integration-test".to_string(),
+        auth_token: None,
     };
 
     let nm = Arc::new(NodeManager::new(config));

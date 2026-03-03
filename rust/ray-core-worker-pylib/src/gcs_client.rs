@@ -19,6 +19,7 @@ use ray_rpc::client::RetryConfig;
 ///
 /// Wraps a real `GcsRpcClient` (via the `GcsClient` trait) and a tokio runtime.
 /// All async gRPC calls are bridged to sync via `runtime.block_on()`.
+#[cfg_attr(feature = "python", pyo3::pyclass(module = "_raylet"))]
 pub struct PyGcsClient {
     gcs_address: String,
     client: Box<dyn GcsClient>,
@@ -212,6 +213,100 @@ impl PyGcsClient {
     /// Access the runtime (for advanced usage).
     pub fn runtime(&self) -> &tokio::runtime::Runtime {
         &self.runtime
+    }
+}
+
+// ─── PyO3 methods (only when "python" feature is enabled) ────────────
+
+#[cfg(feature = "python")]
+#[pyo3::pymethods]
+impl PyGcsClient {
+    /// Connect to GCS at the given address (e.g. "127.0.0.1:6379").
+    #[new]
+    fn py_new(gcs_address: String) -> Self {
+        Self::new(gcs_address)
+    }
+
+    /// Get the GCS address.
+    #[pyo3(name = "address")]
+    fn py_address(&self) -> String {
+        self.gcs_address.clone()
+    }
+
+    // ─── Internal KV ─────────────────────────────────────────────────
+
+    /// Get a value from the internal KV store.
+    #[pyo3(name = "internal_kv_get")]
+    fn py_internal_kv_get(&self, namespace: &str, key: &str) -> Option<Vec<u8>> {
+        self.internal_kv_get(namespace, key)
+    }
+
+    /// Put a value into the internal KV store. Returns true if added.
+    #[pyo3(name = "internal_kv_put")]
+    fn py_internal_kv_put(
+        &self,
+        namespace: &str,
+        key: &str,
+        value: &[u8],
+        overwrite: bool,
+    ) -> bool {
+        self.internal_kv_put(namespace, key, value, overwrite)
+    }
+
+    /// Delete a key from the internal KV store.
+    #[pyo3(name = "internal_kv_del")]
+    fn py_internal_kv_del(&self, namespace: &str, key: &str) -> bool {
+        self.internal_kv_del(namespace, key)
+    }
+
+    /// List keys matching a prefix.
+    #[pyo3(name = "internal_kv_keys")]
+    fn py_internal_kv_keys(&self, namespace: &str, prefix: &str) -> Vec<String> {
+        self.internal_kv_keys(namespace, prefix)
+    }
+
+    /// Check if a key exists.
+    #[pyo3(name = "internal_kv_exists")]
+    fn py_internal_kv_exists(&self, namespace: &str, key: &str) -> bool {
+        self.internal_kv_exists(namespace, key)
+    }
+
+    // ─── Cluster Info ────────────────────────────────────────────────
+
+    /// Get node count.
+    #[pyo3(name = "get_node_count")]
+    fn py_get_node_count(&self) -> usize {
+        self.get_all_node_info().len()
+    }
+
+    /// Get all node IP addresses.
+    #[pyo3(name = "get_node_addresses")]
+    fn py_get_node_addresses(&self) -> Vec<String> {
+        self.get_all_node_info()
+            .iter()
+            .map(|n| n.node_manager_address.clone())
+            .collect()
+    }
+
+    /// Get all job info as a list of (job_id_bytes, is_dead) tuples.
+    #[pyo3(name = "get_job_info")]
+    fn py_get_job_info(&self) -> Vec<(Vec<u8>, bool)> {
+        self.get_all_job_info()
+            .into_iter()
+            .map(|j| (j.job_id.clone(), j.is_dead))
+            .collect()
+    }
+
+    /// Check if specific nodes are alive.
+    #[pyo3(name = "check_alive")]
+    fn py_check_alive(&self, node_ids: Vec<Vec<u8>>) -> Vec<bool> {
+        self.check_alive(&node_ids)
+    }
+
+    /// Drain nodes (stub).
+    #[pyo3(name = "drain_nodes")]
+    fn py_drain_nodes(&self, node_ids: Vec<Vec<u8>>) -> Vec<bool> {
+        self.drain_nodes(&node_ids)
     }
 }
 
@@ -513,6 +608,67 @@ mod tests {
         ) -> Result<rpc::GetTaskEventsReply, Status> {
             self.check_fail()?;
             Ok(rpc::GetTaskEventsReply::default())
+        }
+        async fn drain_node(
+            &self,
+            _: rpc::DrainNodeRequest,
+        ) -> Result<rpc::DrainNodeReply, Status> {
+            self.check_fail()?;
+            Ok(rpc::DrainNodeReply::default())
+        }
+        async fn get_placement_group(
+            &self,
+            _: rpc::GetPlacementGroupRequest,
+        ) -> Result<rpc::GetPlacementGroupReply, Status> {
+            self.check_fail()?;
+            Ok(rpc::GetPlacementGroupReply::default())
+        }
+        async fn get_named_placement_group(
+            &self,
+            _: rpc::GetNamedPlacementGroupRequest,
+        ) -> Result<rpc::GetNamedPlacementGroupReply, Status> {
+            self.check_fail()?;
+            Ok(rpc::GetNamedPlacementGroupReply::default())
+        }
+        async fn wait_placement_group_until_ready(
+            &self,
+            _: rpc::WaitPlacementGroupUntilReadyRequest,
+        ) -> Result<rpc::WaitPlacementGroupUntilReadyReply, Status> {
+            self.check_fail()?;
+            Ok(rpc::WaitPlacementGroupUntilReadyReply::default())
+        }
+        async fn list_named_actors(
+            &self,
+            _: rpc::ListNamedActorsRequest,
+        ) -> Result<rpc::ListNamedActorsReply, Status> {
+            self.check_fail()?;
+            Ok(rpc::ListNamedActorsReply::default())
+        }
+        async fn internal_kv_multi_get(
+            &self,
+            _: rpc::InternalKvMultiGetRequest,
+        ) -> Result<rpc::InternalKvMultiGetReply, Status> {
+            self.check_fail()?;
+            Ok(rpc::InternalKvMultiGetReply::default())
+        }
+        async fn internal_kv_exists(
+            &self,
+            req: rpc::InternalKvExistsRequest,
+        ) -> Result<rpc::InternalKvExistsReply, Status> {
+            self.check_fail()?;
+            let store = self.kv_store.lock().unwrap();
+            let exists = store.contains_key(&(req.namespace, req.key));
+            Ok(rpc::InternalKvExistsReply {
+                exists,
+                ..Default::default()
+            })
+        }
+        async fn get_all_available_resources(
+            &self,
+            _: rpc::GetAllAvailableResourcesRequest,
+        ) -> Result<rpc::GetAllAvailableResourcesReply, Status> {
+            self.check_fail()?;
+            Ok(rpc::GetAllAvailableResourcesReply::default())
         }
     }
 

@@ -9,6 +9,8 @@ description = "Observability and event recording for Ray"
 ray-util = { workspace = true }
 ray-stats = { workspace = true }
 ray-common = { workspace = true }
+ray-gcs-rpc-client = { workspace = true }
+ray-proto = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }

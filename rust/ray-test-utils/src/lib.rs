@@ -206,6 +206,7 @@ pub async fn start_test_raylet_server() -> TestRayletServer {
         resources: HashMap::new(),
         labels: HashMap::new(),
         session_name: String::new(),
+        auth_token: None,
     };
 
     let nm = Arc::new(NodeManager::new(config));

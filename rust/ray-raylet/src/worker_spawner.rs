@@ -13,7 +13,9 @@
 
 use std::collections::HashMap;
 use std::process::Command;
+use std::sync::Arc;
 
+use ray_common::cgroup::CgroupManager;
 use ray_common::id::{JobID, WorkerID};
 
 use crate::worker_pool::{Language, StartWorkerCallback};
@@ -105,16 +107,32 @@ pub fn spawn_worker_process(
 }
 
 /// Create a `StartWorkerCallback` that spawns real OS processes.
-pub fn make_spawn_callback(config: WorkerSpawnerConfig) -> StartWorkerCallback {
+///
+/// If a `cgroup_manager` is provided, workers are added to the workers cgroup
+/// immediately after spawning.
+pub fn make_spawn_callback(
+    config: WorkerSpawnerConfig,
+    cgroup_manager: Option<Arc<dyn CgroupManager>>,
+) -> StartWorkerCallback {
     Box::new(move |language, job_id, worker_id| {
-        spawn_worker_process(&config, language, job_id, worker_id)
+        let pid = spawn_worker_process(&config, language, job_id, worker_id);
+        if let (Some(pid), Some(ref cgm)) = (pid, &cgroup_manager) {
+            if let Err(e) = cgm.add_process_to_workers_cgroup(pid) {
+                tracing::warn!(
+                    pid,
+                    error = %e,
+                    "Failed to add worker to cgroup"
+                );
+            }
+        }
+        pid
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
+    use std::sync::{atomic::{AtomicU32, Ordering}};
 
     #[test]
     fn test_make_spawn_callback_called() {
@@ -133,6 +151,43 @@ mod tests {
 
         assert_eq!(pid, Some(12345));
         assert_eq!(call_count.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn test_make_spawn_callback_with_noop_cgroup() {
+        let config = WorkerSpawnerConfig {
+            node_ip_address: "127.0.0.1".to_string(),
+            raylet_port: 12345,
+            gcs_address: "127.0.0.1:6379".to_string(),
+            node_id: "test-node".to_string(),
+            session_name: "test".to_string(),
+            python_worker_command: Some("__nonexistent_binary__".to_string()),
+        };
+
+        // NoopCgroupManager should be accepted without errors.
+        let cgm: Arc<dyn CgroupManager> =
+            Arc::new(ray_common::cgroup::NoopCgroupManager::new("test-node"));
+        let callback = make_spawn_callback(config, Some(cgm));
+
+        // Spawning will fail (nonexistent binary), but the cgroup code path is exercised.
+        let pid = callback(Language::Python, &JobID::from_int(1), &WorkerID::from_random());
+        assert!(pid.is_none());
+    }
+
+    #[test]
+    fn test_make_spawn_callback_without_cgroup() {
+        let config = WorkerSpawnerConfig {
+            node_ip_address: "127.0.0.1".to_string(),
+            raylet_port: 12345,
+            gcs_address: "127.0.0.1:6379".to_string(),
+            node_id: "test-node".to_string(),
+            session_name: "test".to_string(),
+            python_worker_command: Some("__nonexistent_binary__".to_string()),
+        };
+
+        let callback = make_spawn_callback(config, None);
+        let pid = callback(Language::Python, &JobID::from_int(1), &WorkerID::from_random());
+        assert!(pid.is_none());
     }
 
     #[test]

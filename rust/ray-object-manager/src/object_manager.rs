@@ -19,6 +19,7 @@ use std::sync::Arc;
 use ray_common::id::{NodeID, ObjectID};
 
 use crate::common::{ObjectInfo, ObjectManagerConfig};
+use crate::memory_monitor::{MemoryMonitor, MemoryMonitorConfig};
 use crate::object_buffer_pool::ObjectBufferPool;
 use crate::plasma::store::PlasmaStore;
 use crate::pull_manager::{BundlePriority, PullManager};
@@ -51,6 +52,10 @@ pub struct ObjectManager {
     local_objects: HashMap<ObjectID, LocalObjectInfo>,
     /// Reference to the plasma store.
     plasma_store: Arc<PlasmaStore>,
+    /// Memory usage monitor.
+    memory_monitor: Arc<MemoryMonitor>,
+    /// Running sum of used memory (data + metadata).
+    used_memory: i64,
 }
 
 impl ObjectManager {
@@ -62,6 +67,11 @@ impl ObjectManager {
         let chunk_size = config.object_chunk_size;
         let max_bytes = config.max_bytes_in_flight;
 
+        let memory_monitor = Arc::new(MemoryMonitor::new(MemoryMonitorConfig {
+            object_store_capacity: config.object_store_memory,
+            ..Default::default()
+        }));
+
         Self {
             config,
             self_node_id,
@@ -70,6 +80,8 @@ impl ObjectManager {
             buffer_pool: ObjectBufferPool::new(chunk_size),
             local_objects: HashMap::new(),
             plasma_store,
+            memory_monitor,
+            used_memory: 0,
         }
     }
 
@@ -99,6 +111,10 @@ impl ObjectManager {
     /// Handle notification that an object is now available locally.
     pub fn object_added(&mut self, object_info: ObjectInfo) {
         let object_id = object_info.object_id;
+        let size = object_info.data_size + object_info.metadata_size;
+        self.used_memory += size;
+        self.memory_monitor
+            .object_added(object_info.data_size, object_info.metadata_size, false);
         self.local_objects.insert(
             object_id,
             LocalObjectInfo {
@@ -111,7 +127,15 @@ impl ObjectManager {
 
     /// Handle notification that an object was deleted locally.
     pub fn object_deleted(&mut self, object_id: &ObjectID) {
-        self.local_objects.remove(object_id);
+        if let Some(info) = self.local_objects.remove(object_id) {
+            let size = info.object_info.data_size + info.object_info.metadata_size;
+            self.used_memory -= size;
+            self.memory_monitor.object_deleted(
+                info.object_info.data_size,
+                info.object_info.metadata_size,
+                false,
+            );
+        }
     }
 
     /// Handle an incoming push request (object chunk from remote node).
@@ -153,6 +177,11 @@ impl ObjectManager {
         self.local_objects.get(object_id)
     }
 
+    /// Get the raw data and metadata bytes for a sealed object from the plasma store.
+    pub fn get_object_data(&self, object_id: &ObjectID) -> Option<(Vec<u8>, Vec<u8>)> {
+        self.plasma_store.get_object_data(object_id)
+    }
+
     pub fn self_node_id(&self) -> &NodeID {
         &self.self_node_id
     }
@@ -191,6 +220,21 @@ impl ObjectManager {
     /// Access the push manager (mutable).
     pub fn push_manager_mut(&mut self) -> &mut PushManager {
         &mut self.push_manager
+    }
+
+    /// Access the memory monitor.
+    pub fn memory_monitor(&self) -> &Arc<MemoryMonitor> {
+        &self.memory_monitor
+    }
+
+    /// Running sum of used memory (data + metadata).
+    pub fn used_memory(&self) -> i64 {
+        self.used_memory
+    }
+
+    /// Used memory as a fraction of capacity.
+    pub fn used_memory_fraction(&self) -> f64 {
+        self.memory_monitor.usage_fraction()
     }
 }
 

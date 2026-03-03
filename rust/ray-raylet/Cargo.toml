@@ -34,6 +34,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 rand = "0.8"
 hex = { workspace = true }
+nix = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
