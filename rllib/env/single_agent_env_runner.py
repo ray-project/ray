@@ -106,6 +106,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._env_to_module = self.config.build_env_to_module_connector(
             env=self.env, spaces=self.spaces, device=self._device
         )
+
+        # Run NumpyToTensor on InferenceActor (cpu -> gpu)
+        if self.config.use_inference_actors:
+            self._env_to_module.remove("NumpyToTensor")
+
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
         # processed (and maybe postprocessed and re-stored into the episode).
@@ -124,6 +129,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._module_to_env = self.config.build_module_to_env_connector(
             env=self.env, spaces=self.spaces
         )
+
+        # Run GetActions and TensorToNumpy on InferenceActor (gpu -> cpu)
+        if self.config.use_inference_actors:
+            self._module_to_env.remove("GetActions")
+            self._module_to_env.remove("TensorToNumpy")
+
 
         self._needs_initial_reset: bool = True
         self._ongoing_episodes: List[Optional[SingleAgentEpisode]] = [
