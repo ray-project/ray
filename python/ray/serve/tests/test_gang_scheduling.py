@@ -1,6 +1,8 @@
 import os
 import sys
 import tempfile
+import threading
+import time
 
 import pytest
 
@@ -1214,10 +1216,13 @@ class TestGangControllerRecovery:
             serve.delete(app_name)
         serve.shutdown()
 
-
-class TestGangPGLeakDetection:
-    def test_gcs_failure_skip_pg_leak_detection(self, ray_cluster):
-        """Gang PG leak detection is skipped when GCS is unavailable."""
+    @pytest.mark.parametrize("same_gang", [True, False])
+    def test_gang_replica_crash_during_controller_downtime(
+        self, ray_cluster, same_gang
+    ):
+        """When gang replicas crash while the controller is down, the controller
+        recovers and reschedules the affected gangs.
+        """
         cluster = ray_cluster
         cluster.add_node(num_cpus=2)
         cluster.wait_for_nodes()
@@ -1226,36 +1231,201 @@ class TestGangPGLeakDetection:
 
         @serve.deployment(
             num_replicas=4,
-            ray_actor_options={"num_cpus": 0.25},
+            ray_actor_options={"num_cpus": 0.1},
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            health_check_period_s=1,
         )
         class GangApp:
             def __call__(self):
                 return os.getpid()
 
-        app_name = "gang_pg_leak_gcs_fail"
+        app_name = "gang_crash_app"
+        dep_id = DeploymentID(name="GangApp", app_name=app_name)
         serve.run(GangApp.bind(), name=app_name)
         wait_for_condition(check_apps_running, apps=[app_name])
 
-        gang_pg_names_before = [
-            name
-            for name in get_all_live_placement_group_names()
-            if name.startswith(GANG_PG_NAME_PREFIX)
-        ]
-        assert len(gang_pg_names_before) > 0
-
-        # Invoke leak detection inside the controller process with
-        # get_active_placement_group_ids replaced by a function that raises.
-        # This hits the except-branch that skips gang PG leak detection.
         controller = serve.context._get_global_client()._controller
-        ray.get(controller._detect_leaked_pgs_with_gcs_failure_for_testing.remote())
 
-        gang_pg_names_after = [
-            name
-            for name in get_all_live_placement_group_names()
-            if name.startswith(GANG_PG_NAME_PREFIX)
+        # Record initial replicas and group by gang.
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(dep_id))
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == 4
+
+        gangs = {}
+        for r in running:
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
+        gang_ids = list(gangs.keys())
+        assert len(gang_ids) == 2
+
+        # Pick 2 victims
+        if same_gang:
+            victims = gangs[gang_ids[0]]
+        else:
+            victims = [gangs[gang_ids[0]][0], gangs[gang_ids[1]][0]]
+
+        victim_ids = {v.replica_id.unique_id for v in victims}
+
+        # Kill the controller, then kill the victims while it is down.
+        ray.kill(controller, no_restart=False)
+        for v in victims:
+            handle = ray.get_actor(v.replica_id.to_full_id_str(), namespace="serve")
+            ray.kill(handle, no_restart=True)
+
+        # Wait for the controller to restart and the app to recover.
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        new_controller = serve.context._get_global_client()._controller
+
+        def fully_recovered():
+            replicas = ray.get(
+                new_controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != 4:
+                return False
+            for r in running:
+                if r.gang_context is None:
+                    return False
+            return True
+
+        wait_for_condition(fully_recovered)
+
+        # The killed replicas should have been replaced by new ones.
+        replicas = ray.get(
+            new_controller._dump_replica_states_for_testing.remote(dep_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        recovered_ids = {r.replica_id.unique_id for r in running}
+        assert victim_ids.isdisjoint(recovered_ids)
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangNodeFailure:
+    @pytest.mark.parametrize(
+        "strategy", [GangPlacementStrategy.SPREAD, GangPlacementStrategy.PACK]
+    )
+    def test_worker_node_failure_restarts_gang(self, ray_cluster, strategy):
+        """Killing a node restarts the affected gang with no request
+        downtime (surviving gang keeps serving) and no leaked PGs.
+        """
+        cluster = ray_cluster
+        # Head and workers each get 1 CPU. Each PG (2 × 0.5 CPU = 1.0 CPU)
+        # fills exactly one node for PACK, and SPREAD distributes one bundle
+        # per node. At most 1 PG fits on the head, so at least 1 PG must
+        # land on a worker, giving the test a killable target. The extra
+        # nodes provide recovery capacity after one worker is removed.
+        cluster.add_node(num_cpus=1)
+        workers = [cluster.add_node(num_cpus=1) for _ in range(3)]
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        num_replicas = 4
+        gang_size = 2
+
+        @serve.deployment(
+            num_replicas=num_replicas,
+            ray_actor_options={"num_cpus": 0.5},
+            gang_scheduling_config=GangSchedulingConfig(
+                gang_size=gang_size,
+                gang_placement_strategy=strategy,
+            ),
+            health_check_period_s=1,
+        )
+        class GangApp:
+            def __call__(self):
+                return ray.get_runtime_context().get_node_id()
+
+        app_name = "node_kill_app"
+        dep_id = DeploymentID(name="GangApp", app_name=app_name)
+        handle = serve.run(GangApp.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        controller = serve.context._get_global_client()._controller
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(dep_id))
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == num_replicas
+
+        # Group replicas by gang
+        gangs = {}
+        for r in running:
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
+
+        # Pick a worker to kill that (a) hosts at least one gang member and
+        # (b) leaves at least one gang fully intact on the surviving nodes.
+        node_to_kill = None
+        affected_gangs = []
+        for worker in workers:
+            affected_gangs = [
+                gid
+                for gid, members in gangs.items()
+                if any(r.actor_node_id == worker.node_id for r in members)
+            ]
+            surviving = [
+                gid
+                for gid, members in gangs.items()
+                if all(r.actor_node_id != worker.node_id for r in members)
+            ]
+            if affected_gangs and surviving:
+                node_to_kill = worker
+                break
+
+        assert node_to_kill is not None
+        assert len(affected_gangs) > 0
+
+        # Continuously send requests in a background thread.
+        stop = threading.Event()
+        errors = []
+        successes = []
+
+        def send_requests():
+            while not stop.is_set():
+                try:
+                    result = handle.remote().result()
+                    successes.append(result)
+                except Exception as e:
+                    errors.append(e)
+                time.sleep(0.1)
+
+        sender = threading.Thread(target=send_requests, daemon=True)
+        sender.start()
+        time.sleep(1)
+
+        cluster.remove_node(node_to_kill)
+
+        # Wait for full recovery.
+        def fully_recovered():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != num_replicas:
+                return False
+            for r in running:
+                if r.gang_context is None:
+                    return False
+            return True
+
+        wait_for_condition(fully_recovered, timeout=60)
+
+        time.sleep(1)
+        stop.set()
+        sender.join(timeout=5)
+
+        assert len(errors) == 0
+        assert len(successes) > 0
+
+        # Verify no leaked PGs.
+        gang_pg_names = [
+            n
+            for n in get_all_live_placement_group_names()
+            if n.startswith(GANG_PG_NAME_PREFIX)
         ]
-        assert set(gang_pg_names_before) == set(gang_pg_names_after)
+        assert len(gang_pg_names) == num_replicas // gang_size
+
+        wait_for_condition(check_apps_running, apps=[app_name])
 
         serve.delete(app_name)
         serve.shutdown()

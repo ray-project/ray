@@ -3226,6 +3226,8 @@ class DeploymentState:
             return upscale
 
         gang_pgs = gang_reservation_result.gang_pgs
+        gang_ids = gang_reservation_result.gang_ids
+        gang_pg_names = gang_reservation_result.gang_pg_names
         gang_size = gang_config.gang_size
         num_gangs = len(gang_pgs)
         replicas_to_add = num_gangs * gang_size
@@ -3242,11 +3244,7 @@ class DeploymentState:
             f"(gang_size={gang_size}, {num_gangs} gang(s))."
         )
 
-        for gang_pg, gang_id, pg_name in zip(
-            gang_pgs,
-            gang_reservation_result.gang_ids,
-            gang_reservation_result.gang_pg_names,
-        ):
+        for gang_pg, gang_id, pg_name in zip(gang_pgs, gang_ids, gang_pg_names):
             member_replica_ids = [
                 ReplicaID(get_random_string(), deployment_id=self._id)
                 for _ in range(gang_size)
@@ -3590,22 +3588,24 @@ class DeploymentState:
         healthy_replicas: List[DeploymentReplica],
         unhealthy_replicas: List[DeploymentReplica],
     ) -> Tuple[List[DeploymentReplica], List[DeploymentReplica]]:
-        """Forcefully stop all replicas belonging to gangs that contain at least
-        one unhealthy replica. This prevents the existence of partial gangs by not
-        allowing individual replicas to gracefully stop or drain on their own;
-        instead, all related gang members are force-stopped as a group whenever any
-        member is unhealthy.
+        """Forcefully stop all replicas in gangs that have any unhealthy or missing member.
 
-        This differs from normal (single-replica scheduling) unhealthy-replica
-        handling in two ways:
+        Under the RESTART_GANG policy, when any replica in a gang fails its health check,
+        every member of that gang, including healthy ones, must be torn down so the gang
+        can be rescheduled atomically.
+
+        A gang is also restarted when any of its expected members, listed in
+        gang_context.member_replica_ids, are missing entirely from the replica manager.
+        This handles the case where a gang member dies while the controller is down:
+        on recovery, the dead member is never tracked, leaving an incomplete gang that
+        would block upscaling (the replica deficit would not be divisible by gang_size).
+
+        This differs from normal (single-replica scheduling) unhealthy-replica handling
+        in two ways:
 
         1. Healthy siblings are also force-stopped.
         2. Force-stop is always used (graceful_stop=False), regardless
            of the FORCE_STOP_UNHEALTHY_REPLICAS setting.
-
-        Args:
-            healthy_replicas: A list of healthy replicas.
-            unhealthy_replicas: A list of unhealthy replicas.
 
         Returns:
             A (remaining_healthy, remaining_unhealthy) tuple containing only
@@ -3617,6 +3617,25 @@ class DeploymentState:
             if replica.gang_context is not None
         }
 
+        # Detect incomplete gangs: gang members that are missing entirely from
+        # the replica manager. The healthy/unhealthy lists were popped from
+        # self._replicas in check_and_update_replicas, so we must include them
+        # explicitly to get the full set of tracked replica IDs.
+        all_tracked_replica_ids: Set[str] = (
+            {replica.replica_id.unique_id for replica in self._replicas.get()}
+            | {replica.replica_id.unique_id for replica in healthy_replicas}
+            | {replica.replica_id.unique_id for replica in unhealthy_replicas}
+        )
+
+        for replica in healthy_replicas:
+            gc = replica.gang_context
+            if gc is None or gc.gang_id in gang_ids_to_restart:
+                continue
+            for member_id in gc.member_replica_ids:
+                if member_id not in all_tracked_replica_ids:
+                    gang_ids_to_restart.add(gc.gang_id)
+                    break
+
         if len(gang_ids_to_restart) == 0:
             return healthy_replicas, unhealthy_replicas
 
@@ -3627,10 +3646,10 @@ class DeploymentState:
                 and replica.gang_context.gang_id in gang_ids_to_restart
             ):
                 logger.warning(
-                    f"Replica {replica.replica_id} is healthy but its gang "
-                    f"(gang_id={replica.gang_context.gang_id}) has an "
-                    "unhealthy member. Forcefully stopping it because "
-                    "RESTART_GANG runtime failure policy is enabled."
+                    f"Replica {replica.replica_id} belongs to gang "
+                    f"(gang_id={replica.gang_context.gang_id}) that has an "
+                    "unhealthy or missing member. Forcefully stopping it "
+                    "because RESTART_GANG runtime failure policy is enabled."
                 )
                 self._stop_replica_mark_unhealthy_if_target_version(replica, False)
             else:
@@ -4176,17 +4195,11 @@ class DeploymentStateManager:
                 if name.startswith(GANG_PG_NAME_PREFIX):
                     gang_pg_name_to_id[name] = pg_id_hex
 
-            try:
-                occupied_pg_ids = get_active_placement_group_ids()
-            except Exception:
-                logger.exception(
-                    "Skipping gang PG leak detection due to GCS query failure."
-                )
-            else:
-                for gang_pg_name in gang_pg_names_in_cluster:
-                    pg_id = gang_pg_name_to_id.get(gang_pg_name)
-                    if pg_id is not None and pg_id not in occupied_pg_ids:
-                        leaked_pg_names.append(gang_pg_name)
+            occupied_pg_ids = get_active_placement_group_ids()
+            for gang_pg_name in gang_pg_names_in_cluster:
+                pg_id = gang_pg_name_to_id.get(gang_pg_name)
+                if pg_id is not None and pg_id not in occupied_pg_ids:
+                    leaked_pg_names.append(gang_pg_name)
 
         if len(leaked_pg_names) > 0:
             logger.warning(
