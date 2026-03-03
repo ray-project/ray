@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
+    RAY_SERVE_HAPROXY_DISABLE_NAGLE,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL,
@@ -350,6 +351,7 @@ class HAProxyConfig:
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
     reload_id: Optional[str] = None  # Unique ID for each reload
+    disable_nagle: bool = RAY_SERVE_HAPROXY_DISABLE_NAGLE
     enable_so_reuseport: bool = (
         os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "0") == "1"
     )

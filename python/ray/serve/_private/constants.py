@@ -668,6 +668,13 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
     else None
 )
 
+# When enabled, adds 'http-request set-nodelay' and 'http-response set-nodelay'
+# to the HAProxy config, explicitly disabling Nagle's algorithm (TCP_NODELAY)
+# on both client and server connections.
+RAY_SERVE_HAPROXY_DISABLE_NAGLE = (
+    os.environ.get("RAY_SERVE_HAPROXY_DISABLE_NAGLE", "0") == "1"
+)
+
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
