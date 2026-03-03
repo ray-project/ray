@@ -3573,7 +3573,6 @@ class DeploymentState:
         self, replica: DeploymentReplica, graceful_stop: bool
     ):
         """Stop the replica and mark deployment as UNHEALTHY if the replica is the target version."""
-        self._set_health_gauge(replica.replica_id.unique_id, 0)
         self._stop_replica(replica, graceful_stop=graceful_stop)
         if replica.version == self._target_state.version:
             self._curr_status_info = self._curr_status_info.handle_transition(
