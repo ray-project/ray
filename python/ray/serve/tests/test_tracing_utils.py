@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import time
 import uuid
 from pathlib import Path
 from threading import Thread
@@ -488,7 +489,8 @@ def test_tracing_e2e(
     assert proxy_spans == expected_proxy_spans
     assert replica_spans == expected_replica_spans
 
-    shutil.rmtree(spans_dir)
+    _shutdown_tracing()
+    _rmtree_with_retry(spans_dir)
 
 
 @pytest.mark.parametrize(
@@ -712,7 +714,8 @@ def test_tracing_e2e_with_errors(
         else:
             assert False, "Invalid protocol"
     # Clean up
-    shutil.rmtree(spans_dir)
+    _shutdown_tracing()
+    _rmtree_with_retry(spans_dir)
 
 
 def custom_tracing_exporter():
@@ -738,6 +741,7 @@ def load_spans(file_path):
     with open(file_path, "r") as file:
         file_contents = file.read()
 
+    file_contents = file_contents.replace("\r\n", "\n")
     raw_spans = file_contents.split("}\n{")
     spans = []
     for i, raw_span in enumerate(raw_spans):
@@ -769,6 +773,34 @@ def sanitize_spans(spans):
         for k, _ in span["attributes"].items():
             if "_id" in k:
                 span["attributes"][k] = ""
+
+
+def _shutdown_tracing():
+    """Shut down the tracer provider to flush and close exporter file handles.
+
+    On Windows, open file handles prevent file/directory deletion. The
+    ConsoleSpanExporter holds file handles open until the TracerProvider is
+    shut down, so this must be called before removing the spans directory.
+    """
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "shutdown"):
+        provider.shutdown()
+
+
+def _rmtree_with_retry(path, retries=5, delay=1.0):
+    """Remove a directory tree, retrying on failure for Windows compatibility.
+
+    On Windows, file handles may not be released immediately after process
+    termination (e.g. antivirus scanning, indexing, or delayed actor cleanup).
+    """
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError:
+            if attempt == retries - 1:
+                raise
+            time.sleep(delay)
 
 
 def validate_span_associations_in_trace(spans):
@@ -1022,7 +1054,8 @@ def test_batched_span_attached_to_first_request_trace():
         len(batch_indices) == 2
     ), f"Expected two distinct batch indices, got {batch_indices}"
 
-    shutil.rmtree(spans_dir)
+    _shutdown_tracing()
+    _rmtree_with_retry(spans_dir)
 
 
 if __name__ == "__main__":
