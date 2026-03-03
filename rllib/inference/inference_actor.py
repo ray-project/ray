@@ -165,7 +165,6 @@ class InferenceActor:
 
         Handle parts of the EnvToModule and ModuleToEnv pipelines that can be run on GPUs
         """
-
         batch = self.numpy_to_tensor(
             rl_module=self.module,
             batch=batch,
@@ -186,7 +185,23 @@ class InferenceActor:
 
     def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Pass batch to the RLModule."""
-        return self.module._forward_inference(batch, **kwargs)
+        batch = self.numpy_to_tensor(
+            rl_module=self.module,
+            batch=batch,
+            episodes=None,
+        )
+
+        to_env = self.module._forward_inference(batch, **kwargs)
+        to_env = self.gpu_to_cpu_pipeline(
+            rl_module=self.module,
+            batch=to_env,
+            episodes=[
+                SingleAgentEpisode(),
+            ],  # hack
+            explore=self.explore,
+        )
+
+        return to_env
 
     def _build_gpu_to_cpu_pipeline(self):
         env = self.env
