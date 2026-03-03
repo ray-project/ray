@@ -3607,6 +3607,10 @@ class DeploymentState:
         2. Force-stop is always used (graceful_stop=False), regardless
            of the FORCE_STOP_UNHEALTHY_REPLICAS setting.
 
+        Args:
+            healthy_replicas: A list of healthy replicas.
+            unhealthy_replicas: A list of unhealthy replicas.
+
         Returns:
             A (remaining_healthy, remaining_unhealthy) tuple containing only
             replicas that follow single-replica scheduling logic.
