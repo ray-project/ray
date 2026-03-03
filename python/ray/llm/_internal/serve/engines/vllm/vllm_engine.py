@@ -310,19 +310,21 @@ class VLLMEngine(LLMEngine):
 
         args = _dict_to_namespace(merged)
 
+        # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
+        # Without this, vLLM falls back to 'generate' only.
+        init_kwargs: dict[str, Any] = dict(
+            state=state,
+            args=args,
+        )
+        if "supported_tasks" in inspect.signature(init_app_state).parameters:
+            if hasattr(self._engine_client, "get_supported_tasks"):
+                supported_tasks = await self._engine_client.get_supported_tasks()
+                init_kwargs["supported_tasks"] = supported_tasks
+
         if "vllm_config" in inspect.signature(init_app_state).parameters:
-            await init_app_state(
-                self._engine_client,
-                vllm_config=vllm_engine_config,
-                state=state,
-                args=args,
-            )
-        else:
-            await init_app_state(
-                self._engine_client,
-                state=state,
-                args=args,
-            )
+            init_kwargs["vllm_config"] = vllm_engine_config
+
+        await init_app_state(self._engine_client, **init_kwargs)
 
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
