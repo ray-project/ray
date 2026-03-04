@@ -951,12 +951,8 @@ class ApplicationState:
                 and self._target_state.config.logging_config
                 and deploy_info.deployment_config.logging_config is None
             ):
-                # Convert LoggingConfig to dict for assignment to deployment_config
-                logging_config = self._target_state.config.logging_config
                 deploy_info.deployment_config.logging_config = (
-                    logging_config.model_dump()
-                    if hasattr(logging_config, "model_dump")
-                    else logging_config
+                    self._target_state.config.logging_config.model_dump()
                 )
             target_state_changed = (
                 self.apply_deployment_info(deployment_name, deploy_info)

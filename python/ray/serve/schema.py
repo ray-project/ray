@@ -263,13 +263,13 @@ class RayActorOptionsSchema(BaseModel):
             "See :ref:`accelerator types <accelerator_types>`."
         ),
     )
-    label_selector: Dict[str, str] = Field(
+    label_selector: Optional[Dict[str, str]] = Field(
         default=None,
         description=(
             "If specified, requires that the actor run on a node with the specified labels."
         ),
     )
-    fallback_strategy: List[Dict[str, Any]] = Field(
+    fallback_strategy: Optional[List[Dict[str, Any]]] = Field(
         default=None,
         description=(
             "If specified, expresses soft constraints through a list of decorator "
@@ -280,10 +280,8 @@ class RayActorOptionsSchema(BaseModel):
     @field_validator("runtime_env")
     @classmethod
     def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote
-
         if v is None:
-            return
+            return v
 
         uris = v.get("py_modules", [])
         if "working_dir" in v:
@@ -730,7 +728,7 @@ class ServeApplicationSchema(BaseModel):
         default={},
         description="Arguments that will be passed to the application builder.",
     )
-    logging_config: LoggingConfig = Field(
+    logging_config: Optional[LoggingConfig] = Field(
         default=None,
         description="Logging config for configuring serve application logs.",
     )
@@ -749,9 +747,8 @@ class ServeApplicationSchema(BaseModel):
     @field_validator("runtime_env")
     @classmethod
     def runtime_env_contains_remote_uris(cls, v):
-        # Ensure that all uris in py_modules and working_dir are remote.
         if v is None:
-            return
+            return v
 
         uris = v.get("py_modules", [])
         if "working_dir" in v:
@@ -774,7 +771,7 @@ class ServeApplicationSchema(BaseModel):
     @classmethod
     def import_path_format_valid(cls, v: str):
         if v is None:
-            return
+            return v
 
         if ":" in v:
             if v.count(":") > 1:
@@ -966,7 +963,7 @@ class ServeDeploySchema(BaseModel):
     grpc_options: gRPCOptionsSchema = Field(
         default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
-    logging_config: LoggingConfig = Field(
+    logging_config: Optional[LoggingConfig] = Field(
         default=None,
         description="Logging config for configuring serve components logs.",
     )
@@ -1027,7 +1024,7 @@ class ServeDeploySchema(BaseModel):
                     f"`{app_config.name}`. Please remove it and set host in the top "
                     "level deploy config only."
                 )
-            if "port" in app_config.model_dump(exclude_unset=True):
+            if "port" in app_config.model_fields_set:
                 raise ValueError(
                     f"Port {app_config.port} is set in the config for application "
                     f"`{app_config.name}`. Please remove it and set port in the top "

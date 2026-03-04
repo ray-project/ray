@@ -286,9 +286,10 @@ class RequestRouterConfig(BaseModel):
 
     def __hash__(self):
         """Override hash to match __eq__ behavior."""
-        # Handle request_router_kwargs which might be dict or bytes
         if isinstance(self.request_router_kwargs, dict):
-            kwargs_hashable = tuple(sorted(self.request_router_kwargs.items()))
+            kwargs_hashable = json.dumps(
+                self.request_router_kwargs, sort_keys=True, default=str
+            )
         elif isinstance(self.request_router_kwargs, bytes):
             kwargs_hashable = self.request_router_kwargs
         else:
@@ -436,9 +437,10 @@ class AutoscalingPolicy(BaseModel):
 
     def __hash__(self):
         """Override hash to match __eq__ behavior."""
-        # Convert policy_kwargs dict to sorted tuple for hashing
         kwargs_hashable = (
-            tuple(sorted(self.policy_kwargs.items())) if self.policy_kwargs else ()
+            json.dumps(self.policy_kwargs, sort_keys=True, default=str)
+            if self.policy_kwargs
+            else ()
         )
         return hash((self.policy_function, kwargs_hashable))
 

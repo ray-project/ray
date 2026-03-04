@@ -480,7 +480,7 @@ class TestDeploymentSchema:
         deployment_schema["gang_scheduling_config"] = {"gang_size": gang_size}
 
         with pytest.raises(ValidationError):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config(self):
         deployment_schema = self.get_minimal_deployment_schema()
@@ -493,7 +493,7 @@ class TestDeploymentSchema:
                 "gang_scheduling_config is provided."
             ),
         ):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
     def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config(
         self,
@@ -508,7 +508,7 @@ class TestDeploymentSchema:
                 "gang_scheduling_config is provided."
             ),
         ):
-            DeploymentSchema.parse_obj(deployment_schema)
+            DeploymentSchema.model_validate(deployment_schema)
 
 
 class TestServeApplicationSchema:
