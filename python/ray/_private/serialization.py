@@ -100,8 +100,8 @@ def _object_ref_deserializer(
 def _rdt_ref_deserializer(
     binary: bytes,
     call_site: str,
-    owner_address: Optional[str],
-    object_status: int,
+    owner_address: bytes,
+    object_status: bytes,
     tensor_transport: str,
     rdt_meta: "ray.experimental.rdt.rdt_manager.RDTMeta",
 ) -> "ray.ObjectRef":
