@@ -327,7 +327,9 @@ class SGLangServer:
             prompt = request.input
         else:
             # Chat embedding request - convert messages to prompt
-            prompt = format_messages_to_prompt(request.messages)
+            prompt = self._render_fallback_prompt(
+                self._build_chat_messages(request.messages)
+            )
 
         # async_encode handles both single strings and lists of strings
         results = await self.engine.async_encode(prompt)
