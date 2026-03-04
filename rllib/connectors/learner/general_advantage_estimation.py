@@ -64,6 +64,19 @@ class GeneralAdvantageEstimation(ConnectorV2):
         # vf targets) into tensors.
         self._numpy_to_tensor_connector = None
 
+    def _init_numpy_to_tensor_connector(self, vf_preds: Dict[str, Any]):
+        """Initialize the numpy-to-tensor connector.
+
+        NumpyToTensor is used to convert the GAE results (advantages and vf targets) into tensors.
+        We therefore
+        """
+        device = next((v.device for v in vf_preds.values() if v is not None), None)
+        assert device is not None, "Device is not set"
+
+        self._numpy_to_tensor_connector = NumpyToTensor(
+            as_learner_connector=True, device=device
+        )
+
     @override(ConnectorV2)
     def __call__(
         self,
@@ -74,19 +87,11 @@ class GeneralAdvantageEstimation(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ):
-        # Device to place all GAE result tensors (advantages and value targets) on.
-        device = None
-
-        # Extract all single-agent episodes.
         sa_episodes_list = list(
             self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
         )
 
-        # Perform the value nets' forward passes on the main batch.
-        # TODO (sven): We need to check here in the pipeline already, whether a module
-        #  should even be updated or not (which we usually do after(!) the Learner
-        #  pipeline). This is an open TODO to move this filter into a connector as well.
-        #  For now, we'll just check, whether `mid` is in batch and skip if it isn't.
+        # Main VF forward pass on the full training batch.
         vf_preds = rl_module.foreach_module(
             func=lambda mid, module: (
                 module.compute_values(batch[mid])
@@ -95,123 +100,37 @@ class GeneralAdvantageEstimation(ConnectorV2):
             ),
             return_dict=True,
         )
+        # Filter Non-VF modules (modules that are not ValueFunctionAPI return None above)
+        vf_preds = {mid: preds for mid, preds in vf_preds.items() if preds is not None}
 
-        # Build bootstrap obs batches: for each module, collect the last observation
-        # of each non-terminated episode. These are already stored in the episode
-        # (episode.observations[-1] = s_L).
-        bootstrap_obs_per_module = {}  # module_id -> np.ndarray (N_bootstrap, obs_dim)
-        bootstrap_mask_per_module = (
-            {}
-        )  # module_id -> list[bool] (True = needs bootstrap)
+        # Eagerly initialize the numpy-to-tensor connector (needed for the bootstrap
+        # forward pass below). Device is taken from the first available VF prediction.
+        if self._numpy_to_tensor_connector is None:
+            self._init_numpy_to_tensor_connector(vf_preds)
+
+        # Pre-compute per-module episode lists (used for both bootstrap and GAE).
+        eps_per_module = {
+            mid: [e for e in sa_episodes_list if e.module_id in (None, mid)]
+            for mid in vf_preds.keys()
+        }
+
+        # Compute bootstrap values for non-terminated episodes via a small VF pass.
+        bootstrap_values = self._compute_bootstrap_values(
+            rl_module, vf_preds, eps_per_module, episodes, shared_data
+        )
+
+        # Per-module GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
             if module_vf_preds is None:
                 continue
-            module = rl_module[module_id]
-            if module.is_stateful():
-                # Stateful (LSTM) modules need the last hidden state for the bootstrap
-                # forward pass, which requires additional handling. Fall back to the
-                # old path (not implemented here); skip separate bootstrap pass.
-                bootstrap_obs_per_module[module_id] = None
-                bootstrap_mask_per_module[module_id] = None
-                continue
-
-            eps_for_module = [
-                e for e in sa_episodes_list if e.module_id in [None, module_id]
-            ]
-            stacked_bootstrap_obs = shared_data["stacked_bootstrap_obs"]
-            obs_list = []
-            mask = []
-            for ep in eps_for_module:
-                if not ep.is_terminated:
-                    # Use the frame-stacked bootstrap obs pre-computed by
-                    # FrameStackingLearner if available; otherwise fall back to
-                    # the raw last observation (correct for non-frame-stacked setups).
-                    stacked = stacked_bootstrap_obs.get(ep.id_)
-                    obs_list.append(
-                        stacked if stacked is not None else ep.get_observations(-1)
-                    )
-                    mask.append(True)
-                else:
-                    mask.append(False)
-            bootstrap_obs_per_module[module_id] = tree.map_structure(
-                lambda *s: np.stack(s, axis=0), *obs_list
-            )
-            bootstrap_mask_per_module[module_id] = mask
-
-        # Run the bootstrap forward pass for non-stateful modules.
-        # This is a small pass (N_non_terminated x obs_dim) compared to the main batch.
-        bootstrap_vf_preds_per_module = {}
-        for module_id, bootstrap_obs in bootstrap_obs_per_module.items():
-            if bootstrap_obs is None:
-                bootstrap_vf_preds_per_module[module_id] = None
-                continue
-            # Lazily create the numpy-to-tensor connector (needs a device).
-            module = rl_module[module_id]
-            if self._numpy_to_tensor_connector is None:
-                # We'll set the device after the first successful VF forward pass below.
-                pass
-            # Convert bootstrap obs to a tensor batch and run compute_values.
-            if self._numpy_to_tensor_connector is not None:
-                bs_tensor_batch = self._numpy_to_tensor_connector(
-                    rl_module=rl_module,
-                    batch={module_id: {Columns.OBS: bootstrap_obs}},
-                    episodes=episodes,
-                )
-                # module may be wrapped in a DDP wrapper (TorchDDPRLModule), so we need to unwrap it to access compute_values.
-                bs_vf = module.unwrapped().compute_values(bs_tensor_batch[module_id])
-                bootstrap_vf_preds_per_module[module_id] = convert_to_numpy(bs_vf)
-            else:
-                # _numpy_to_tensor_connector not yet initialised; will be set below
-                # after the first module is processed.
-                bootstrap_vf_preds_per_module[module_id] = None
-
-        # Loop through all modules and perform each one's GAE computation.
-        for module_id, module_vf_preds in vf_preds.items():
-            # Skip those outputs of RLModules that are not implementers of
-            # `ValueFunctionAPI`.
-            if module_vf_preds is None:
-                continue
 
             module = rl_module[module_id]
-            device = module_vf_preds.device
+            eps = eps_per_module[module_id]
+            episode_lens = [len(e) for e in eps]
 
-            # Initialise the numpy-to-tensor connector on first use.
-            if self._numpy_to_tensor_connector is None:
-                self._numpy_to_tensor_connector = NumpyToTensor(
-                    as_learner_connector=True, device=device
-                )
-                # Now that the connector is available, redo any bootstrap passes that
-                # were skipped above (i.e., the first module).
-                for mid2, bs_obs in bootstrap_obs_per_module.items():
-                    if (
-                        bs_obs is not None
-                        and bootstrap_vf_preds_per_module[mid2] is None
-                    ):
-                        bs_tensor_batch = self._numpy_to_tensor_connector(
-                            rl_module=rl_module,
-                            batch={mid2: {Columns.OBS: bs_obs}},
-                            episodes=episodes,
-                        )
-                        # module may be wrapped in a DDP wrapper (TorchDDPRLModule), so we need to unwrap it to access compute_values.
-                        bs_vf = (
-                            rl_module[mid2]
-                            .unwrapped()
-                            .compute_values(bs_tensor_batch[mid2])
-                        )
-                        bootstrap_vf_preds_per_module[mid2] = convert_to_numpy(bs_vf)
-
-            # Convert main VF preds to numpy.
-            module_vf_preds_np = convert_to_numpy(module_vf_preds)
-
-            # Collect episode lengths for this module.
-            eps_for_module = [
-                e for e in sa_episodes_list if e.module_id in [None, module_id]
-            ]
-            episode_lens = [len(e) for e in eps_for_module]
-
-            # Remove zero-padding (for stateful/LSTM modules) before GAE.
+            # Convert to numpy, removing zero-padding (for stateful modules).
             module_vf_preds_np = unpad_data_if_necessary(
-                episode_lens, module_vf_preds_np
+                episode_lens, convert_to_numpy(module_vf_preds)
             )
             rewards_np = unpad_data_if_necessary(
                 episode_lens,
@@ -222,39 +141,16 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 convert_to_numpy(batch[module_id][Columns.TERMINATEDS]),
             )
 
-            # Build per-episode bootstrap values.
-            bs_preds = bootstrap_vf_preds_per_module.get(module_id)
-            bs_mask = bootstrap_mask_per_module.get(module_id)
-            if bs_preds is not None and bs_mask is not None:
-                # Non-stateful path: use the bootstrap forward pass results.
-                bs_idx = 0
-                bootstrap_values = []
-                for needs_bootstrap in bs_mask:
-                    if needs_bootstrap:
-                        bootstrap_values.append(float(bs_preds[bs_idx]))
-                        bs_idx += 1
-                    else:
-                        bootstrap_values.append(0.0)
-            else:
-                # Stateful / fallback path: use 0 as bootstrap (conservative).
-                # TODO: implement proper LSTM bootstrap using STATE_OUT.
-                bootstrap_values = [
-                    0.0 if ep.is_terminated else 0.0 for ep in eps_for_module
-                ]
-
             # Per-episode GAE.
             all_targets = []
             pos = 0
-            for i, ep in enumerate(eps_for_module):
+            for i, ep in enumerate(eps):
                 L = episode_lens[i]
-                ep_values = module_vf_preds_np[pos : pos + L]
-                ep_rewards = rewards_np[pos : pos + L]
-                ep_terminateds = terminateds_np[pos : pos + L]
                 targets = compute_value_targets_with_bootstrap(
-                    values=ep_values,
-                    rewards=ep_rewards,
-                    terminateds=ep_terminateds,
-                    bootstrap_value=bootstrap_values[i],
+                    values=module_vf_preds_np[pos : pos + L],
+                    rewards=rewards_np[pos : pos + L],
+                    terminateds=terminateds_np[pos : pos + L],
+                    bootstrap_value=bootstrap_values[module_id][i],
                     gamma=self.gamma,
                     lambda_=self.lambda_,
                 )
@@ -271,13 +167,14 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 1e-4, module_advantages.std()
             )
 
-            # Zero-pad the new computations, if necessary (stateful modules).
+            # Re-apply zero-padding for stateful modules.
             if module.is_stateful():
+                max_seq_len = module.model_config["max_seq_len"]
                 module_advantages = np.stack(
                     split_and_zero_pad_n_episodes(
                         module_advantages,
                         episode_lens=episode_lens,
-                        max_seq_len=module.model_config["max_seq_len"],
+                        max_seq_len=max_seq_len,
                     ),
                     axis=0,
                 )
@@ -285,10 +182,11 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     split_and_zero_pad_n_episodes(
                         module_value_targets,
                         episode_lens=episode_lens,
-                        max_seq_len=module.model_config["max_seq_len"],
+                        max_seq_len=max_seq_len,
                     ),
                     axis=0,
                 )
+
             batch[module_id][Postprocessing.ADVANTAGES] = module_advantages
             batch[module_id][Postprocessing.VALUE_TARGETS] = module_value_targets
 
@@ -297,18 +195,86 @@ class GeneralAdvantageEstimation(ConnectorV2):
             rl_module=rl_module,
             batch={
                 mid: {
-                    Postprocessing.ADVANTAGES: module_batch[Postprocessing.ADVANTAGES],
-                    Postprocessing.VALUE_TARGETS: (
-                        module_batch[Postprocessing.VALUE_TARGETS]
-                    ),
+                    Postprocessing.ADVANTAGES: batch[mid][Postprocessing.ADVANTAGES],
+                    Postprocessing.VALUE_TARGETS: batch[mid][
+                        Postprocessing.VALUE_TARGETS
+                    ],
                 }
-                for mid, module_batch in batch.items()
-                if vf_preds.get(mid) is not None
+                for mid, preds in vf_preds.items()
+                if preds is not None
             },
             episodes=episodes,
         )
-        # Move converted tensors back to `batch`.
         for mid, module_batch in tensor_results.items():
             batch[mid].update(module_batch)
 
         return batch
+
+    def _compute_bootstrap_values(
+        self, rl_module, vf_preds, eps_per_module, episodes, shared_data
+    ):
+        """Compute per-episode bootstrap values for each module.
+
+        Returns a dict mapping module_id -> list[float] of bootstrap values (one per
+        episode). Terminated episodes get 0.0; non-terminated episodes get V(last_obs)
+        from a small forward pass.
+        """
+        result = {}
+
+        for module_id, eps in eps_per_module.items():
+            module = rl_module[module_id]
+
+            if module.is_stateful():
+                # TODO: implement proper LSTM bootstrap using STATE_OUT.
+                result[module_id] = [0.0] * len(eps)
+                continue
+
+            # Collect last observations for non-terminated episodes.
+            obs_list = []
+            all_terminated = True
+            needs_bootstrap = []
+            for ep in eps:
+                if not ep.is_terminated:
+                    # Use frame-stacked bootstrap obs if pre-computed by
+                    # FrameStackingLearner; otherwise use the raw last observation.
+                    if "stacked_bootstrap_obs" in shared_data:
+                        obs = shared_data["stacked_bootstrap_obs"]["ep.id_"]
+                    else:
+                        obs = ep.get_observations(-1)
+                    obs_list.append(obs)
+                    needs_bootstrap.append(True)
+                else:
+                    needs_bootstrap.append(False)
+                    all_terminated = False
+
+            if all_terminated:
+                # Fast path: all episodes terminated; bootstrap values are all zero.
+                # All episodes terminated; bootstrap values are all zero.
+                result[module_id] = [0.0] * len(eps)
+                continue
+
+            # Stack bootstrap obs and run a batched VF forward pass.
+            bootstrap_obs = tree.map_structure(
+                lambda *s: np.stack(s, axis=0), *obs_list
+            )
+            bs_tensor_batch = self._numpy_to_tensor_connector(
+                rl_module=rl_module,
+                batch={module_id: {Columns.OBS: bootstrap_obs}},
+                episodes=episodes,
+            )
+            bs_preds = convert_to_numpy(
+                module.unwrapped().compute_values(bs_tensor_batch[module_id])
+            )
+
+            # Scatter bootstrap predictions back into per-episode order.
+            bs_idx = 0
+            values = []
+            for flag in needs_bootstrap:
+                if flag:
+                    values.append(float(bs_preds[bs_idx]))
+                    bs_idx += 1
+                else:
+                    values.append(0.0)
+            result[module_id] = values
+
+        return result
