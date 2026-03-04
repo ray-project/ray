@@ -4789,10 +4789,6 @@ pillow==10.4.0 \
     #   matplotlib
     #   tensorboard
     #   torchvision
-pip==26.0.1 \
-    --hash=sha256:bdb1b08f4274833d62c1aa29e20907365a2ceb950410df15fc9521bad440122b \
-    --hash=sha256:c4037d8a277c89b320abe636d59f91e6d0922d08a05b60e85e53b296613346d8
-    # via open-spiel
 platformdirs==3.11.0 \
     --hash=sha256:cf8ee52a3afdb965072dcc652433e0c7e3e40cf5ea1477cd4b3b1d2eb75495b3 \
     --hash=sha256:e9d171d00af68be50e9202731309c4e658fd8bc76f55c11c7dd760d023bda68e
@@ -8438,3 +8434,4 @@ zstandard==0.23.0 \
 # The following packages were excluded from the output:
 # setuptools
 # ray
+# pip

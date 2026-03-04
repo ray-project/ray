@@ -18,6 +18,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+      - --unsafe-package pip
     build_arg_sets:
       - py310
       - py312
@@ -46,6 +47,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --unsafe-package pip
       - --override python/deplocks/ci/ml-build-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
@@ -75,6 +77,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --unsafe-package pip
       - --override python/deplocks/ci/ml-gpubuild-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
@@ -94,6 +97,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --unsafe-package pip
     build_arg_sets:
       - py310
       - py312
