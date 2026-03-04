@@ -101,7 +101,6 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles_to_schedule.size();
-  auto bundles = bundles_to_schedule;
 
   auto scheduling_result =
       TrySchedule(placement_group, bundles_to_schedule, placement_group->GetStrategy());
@@ -162,7 +161,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     placement_group->UpdateActiveBundles(
         selected_strategy_index, scheduling_strategies.Get(selected_strategy_index));
   }
-  bundles = bundles_to_schedule;
+  auto bundles = std::move(bundles_to_schedule);
 
   RAY_LOG(DEBUG) << "Can schedule a placement group "
                  << placement_group->GetPlacementGroupID()
