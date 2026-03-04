@@ -569,6 +569,9 @@ class JobManager:
                 ]
             )
             label_selector = await self._get_label_selector(resources_specified)
+            if entrypoint_label_selector:
+                label_selector = {**label_selector, **entrypoint_label_selector}
+
             if self.event_logger:
                 self.event_logger.info(
                     f"Started a ray job {submission_id}.", submission_id=submission_id
@@ -591,8 +594,6 @@ class JobManager:
                 # know about.
                 enable_task_events=False,
             )
-            if entrypoint_label_selector:
-                supervisor_options["label_selector"] = entrypoint_label_selector
             supervisor = self._supervisor_actor_cls.options(
                 **supervisor_options
             ).remote(
