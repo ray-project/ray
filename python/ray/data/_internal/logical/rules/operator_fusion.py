@@ -296,6 +296,20 @@ class FuseOperators(Rule):
         ):
             return False
 
+        # Do not fuse MapOperator into RandomShuffleOperator when either
+        # operator has custom resources. Hash shuffle's aggregator actors may
+        # consume CPU on nodes where the fused shuffle task is pinned,
+        # causing a scheduling deadlock.
+        if isinstance(down_op, RandomShuffleOperator):
+            up_resources = getattr(up_logical_op, "ray_remote_args", {}).get(
+                "resources", {}
+            )
+            down_resources = getattr(down_logical_op, "ray_remote_args", {}).get(
+                "resources", {}
+            )
+            if up_resources or down_resources:
+                return False
+
         # Do not fuse if either op specifies a `ray_remote_args_fn`,
         # since it is not known whether the generated args will be compatible.
         if getattr(up_logical_op, "ray_remote_args_fn", None) or getattr(
@@ -730,12 +744,29 @@ class FuseOperators(Rule):
         input_op = input_deps[0]
 
         assert up_op.data_context is down_op.data_context
+
+        # Merge ray_remote_args from both operators so that the fused shuffle
+        # tasks carry the upstream operator's resource requirements (e.g.,
+        # custom resources for scheduling on specific nodes).
+        merged_ray_remote_args = {
+            **up_logical_op.ray_remote_args,
+            **down_logical_op.ray_remote_args,
+        }
+        # Filter out args that are handled separately by the shuffle operator
+        # (num_cpus and memory are computed internally).
+        shuffle_ray_remote_args = {
+            k: v
+            for k, v in merged_ray_remote_args.items()
+            if k not in ("num_cpus", "memory")
+        }
+
         op = RandomShuffleOperator(
             input_op,
             down_op.data_context,
             seed=down_op._seed,
             num_partitions=down_op._num_partitions,
             input_block_transformer=block_transformer,
+            shuffle_ray_remote_args_override=shuffle_ray_remote_args or None,
         )
         op._name = name
 
@@ -743,7 +774,8 @@ class FuseOperators(Rule):
         logical_op = RandomShuffle(
             up_logical_op,
             name=name,
-            ray_remote_args=up_logical_op.ray_remote_args,
+            seed=down_logical_op.seed,
+            ray_remote_args=merged_ray_remote_args,
         )
         self._op_map[op] = logical_op
         return op

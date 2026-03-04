@@ -571,6 +571,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         partition_size_hint: Optional[int] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        shuffle_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         shuffle_progress_bar_name: Optional[str] = None,
         finalize_progress_bar_name: Optional[str] = None,
         disallow_block_splitting: bool = False,
@@ -681,6 +682,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._shuffling_resource_usage = ExecutionResources.zero()
 
         self._input_block_transformer = input_block_transformer
+        self._shuffle_ray_remote_args_override = shuffle_ray_remote_args_override or {}
 
         self._next_shuffle_tasks_idx: int = 0
         # Shuffling tasks are mapped like following
@@ -771,6 +773,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
                         or DEFAULT_TARGET_MAX_BLOCK_SIZE
                     ),
                 ),
+                **self._shuffle_ray_remote_args_override,
             }
 
             cur_shuffle_task_idx = self._next_shuffle_tasks_idx
@@ -1487,6 +1490,7 @@ class RandomShuffleOperator(HashShufflingOperatorBase, SubProgressBarMixin):
         seed: int,
         num_partitions: Optional[int] = None,
         aggregator_ray_remote_args_override: Optional[Dict[str, Any]] = None,
+        shuffle_ray_remote_args_override: Optional[Dict[str, Any]] = None,
         input_block_transformer: Optional[BlockTransformer] = None,
     ):
         self._seed = seed
@@ -1504,6 +1508,7 @@ class RandomShuffleOperator(HashShufflingOperatorBase, SubProgressBarMixin):
             num_input_seqs=1,
             num_partitions=num_partitions,
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
+            shuffle_ray_remote_args_override=shuffle_ray_remote_args_override,
             partition_aggregation_factory=_create_random_shuffle_aggregation,
             shuffle_progress_bar_name="Shuffle",
             input_block_transformer=input_block_transformer,
