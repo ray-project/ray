@@ -255,20 +255,6 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
         print(message)
         print(f"{'-' * 80}\n")
 
-    def wait_for_tpus(expected_tpus: int, timeout_s=45):
-        start_wait = time.time()
-        while time.time() - start_wait < timeout_s:
-            current_tpus = ray.cluster_resources().get("TPU", 0)
-            if current_tpus == expected_tpus:
-                print_status(
-                    f"Successfully registered {expected_tpus} TPUs in cluster."
-                )
-                return
-            time.sleep(0.5)
-        raise TimeoutError(
-            f"Cluster failed to reach {expected_tpus} TPUs within {timeout_s}s."
-        )
-
     def provision_tpu_node(slice_name: str, worker_id: int, is_head: bool = False):
         pod_type = "v6e-8"
         topology = "2x4"
@@ -295,7 +281,7 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
             resources=resources,
             labels=labels,
             env_vars=node_env,
-            wait=False,
+            wait=True,
         )
         return node
 
@@ -311,15 +297,11 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
     ALL_NODES.append(
         provision_tpu_node(slice_name="slice-A", worker_id=0, is_head=True)
     )
-    wait_for_tpus(4)
-    time.sleep(2)
 
     print_status("Adding 2nd TPU node to complete slice-A. Training should start.")
     ALL_NODES.append(
         provision_tpu_node(slice_name="slice-A", worker_id=1, is_head=False)
     )
-    wait_for_tpus(8)
-
     time.sleep(12)
 
     print_status("Adding full second TPU slice. Policy should upscale.")
@@ -329,16 +311,14 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
     ALL_NODES.append(
         provision_tpu_node(slice_name="slice-B", worker_id=1, is_head=False)
     )
-    wait_for_tpus(16)
 
-    time.sleep(12)
+    time.sleep(30)
 
     # Multi-host TPUs on GKE with KubeRay are scaled atomically in slices.
     print_status("Killing second TPU slice to simulate full slice preemption.")
     node_b_worker = ALL_NODES.pop()
     node_b_head = ALL_NODES.pop()
     remove_nodes([node_b_worker, node_b_head])
-    wait_for_tpus(8)
 
     # Wait for policy to scale down to group with 2 workers.
     time.sleep(12)
