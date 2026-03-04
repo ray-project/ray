@@ -3146,12 +3146,10 @@ class DeploymentState:
 
             if gang_config is not None:
                 # Build gang membership map so the scheduler can select complete gangs
-                gang_id_by_replica = {}
-                for replica in self._replicas.get():
-                    if replica.gang_context is not None:
-                        gang_id_by_replica[
-                            replica.replica_id
-                        ] = replica.gang_context.gang_id
+                gang_id_by_replica = {
+                    replica.replica_id: replica.gang_context.gang_id
+                    for replica in self._replicas.get()
+                }
 
             removed_replicas = f"{to_remove} replica{'s' if to_remove > 1 else ''}"
             logger.info(f"Removing {removed_replicas} from {self._id}.")
