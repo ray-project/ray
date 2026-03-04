@@ -221,6 +221,10 @@ class GeneralAdvantageEstimation(ConnectorV2):
         """
         result = {}
 
+        stacked_bootstrap_obs = (
+            shared_data is not None and "stacked_bootstrap_obs" in shared_data
+        )
+
         for module_id, eps in eps_per_module.items():
             module = rl_module[module_id]
 
@@ -234,7 +238,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 if not ep.is_terminated:
                     # Use frame-stacked bootstrap obs if pre-computed by
                     # FrameStackingLearner; otherwise use the raw last observation.
-                    if "stacked_bootstrap_obs" in shared_data:
+                    if stacked_bootstrap_obs:
                         obs = shared_data["stacked_bootstrap_obs"][ep.id_]
                     else:
                         obs = ep.get_observations(-1)

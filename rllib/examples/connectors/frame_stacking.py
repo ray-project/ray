@@ -131,6 +131,7 @@ if __name__ == "__main__":
         return FrameStackingEnvToModule(
             num_frames=args.num_frames,
             multi_agent=args.num_agents > 0,
+            used_together_with_gae=True,  # You can turn this off if you don't use the GAE connector.
         )
 
     def _make_learner_connector(input_observation_space, input_action_space):
