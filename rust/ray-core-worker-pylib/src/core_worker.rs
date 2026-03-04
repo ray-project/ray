@@ -154,23 +154,37 @@ impl PyCoreWorker {
     ///   node_ip_address: e.g. "127.0.0.1"
     ///   gcs_address: "host:port" of the GCS server
     ///   job_id_int: integer job ID
+    ///   worker_id: optional PyWorkerID (random if None)
+    ///   node_id: optional PyNodeID (nil if None)
     #[new]
+    #[pyo3(signature = (worker_type, node_ip_address, gcs_address, job_id_int, worker_id=None, node_id=None))]
     fn py_new(
         worker_type: i32,
         node_ip_address: String,
         gcs_address: String,
         job_id_int: u32,
+        worker_id: Option<&crate::ids::PyWorkerID>,
+        node_id: Option<&crate::ids::PyNodeID>,
     ) -> pyo3::PyResult<Self> {
         use crate::common::PyWorkerType;
+        use ray_common::id::NodeID;
         let wt = PyWorkerType::from_i32(worker_type)
             .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(
                 format!("invalid worker_type: {}", worker_type),
             ))?;
+        let wid = worker_id
+            .map(|w| *w.inner())
+            .unwrap_or_else(WorkerID::from_random);
+        let nid = node_id
+            .map(|n| *n.inner())
+            .unwrap_or_else(NodeID::nil);
         let options = CoreWorkerOptions {
             worker_type: wt.to_core(),
             node_ip_address,
             gcs_address,
             job_id: JobID::from_int(job_id_int),
+            worker_id: wid,
+            node_id: nid,
             ..CoreWorkerOptions::default()
         };
         Ok(Self::new(options))
@@ -316,5 +330,193 @@ impl PyCoreWorker {
     #[pyo3(name = "num_executing_tasks")]
     fn py_num_executing_tasks(&self) -> usize {
         self.inner.num_executing_tasks()
+    }
+
+    /// Set a Python callable as the task execution callback.
+    ///
+    /// The callback receives (method_name: str, args: list[bytes]) and must
+    /// return bytes (the result data).
+    #[pyo3(name = "set_task_callback")]
+    fn py_set_task_callback(&self, callback: pyo3::PyObject) -> pyo3::PyResult<()> {
+        use ray_core_worker::error::CoreWorkerError;
+        use ray_core_worker::task_receiver::{TaskExecutionCallback, TaskResult};
+        use ray_proto::ray::rpc as task_rpc;
+
+        let cb: TaskExecutionCallback = Arc::new(move |spec: &task_rpc::TaskSpec| {
+            let name = spec.name.clone();
+            let args: Vec<Vec<u8>> = spec.args.iter().map(|a| a.data.clone()).collect();
+
+            let result_bytes = pyo3::Python::with_gil(|py| -> Result<Vec<u8>, CoreWorkerError> {
+                // Convert args to Python list of bytes objects.
+                let py_args: Vec<pyo3::PyObject> = args
+                    .iter()
+                    .map(|a| {
+                        pyo3::types::PyBytes::new_bound(py, a).into()
+                    })
+                    .collect();
+                let py_args_list = pyo3::types::PyList::new_bound(py, &py_args);
+                let result = callback
+                    .call1(py, (&name, py_args_list))
+                    .map_err(|e| CoreWorkerError::Internal(format!("Python callback error: {}", e)))?;
+                // Extract bytes from the result.
+                let bytes: Vec<u8> = result
+                    .extract(py)
+                    .map_err(|e| CoreWorkerError::Internal(format!("callback must return bytes: {}", e)))?;
+                Ok(bytes)
+            })?;
+
+            let return_oid = ObjectID::from_random();
+            Ok(TaskResult {
+                return_objects: vec![task_rpc::ReturnObject {
+                    object_id: return_oid.binary(),
+                    data: result_bytes,
+                    metadata: b"python".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        self.inner.set_task_execution_callback(cb);
+        Ok(())
+    }
+
+    /// Start a gRPC server for this CoreWorker and return the bound port.
+    #[pyo3(name = "start_grpc_server")]
+    fn py_start_grpc_server(&self) -> pyo3::PyResult<u16> {
+        use ray_core_worker::grpc_service::CoreWorkerServiceImpl;
+        use ray_proto::ray::rpc as grpc_rpc;
+
+        let core_worker = Arc::clone(&self.inner);
+        let port = self.runtime.block_on(async {
+            let svc = CoreWorkerServiceImpl { core_worker };
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .map_err(|e| {
+                    pyo3::exceptions::PyRuntimeError::new_err(format!("bind failed: {}", e))
+                })?;
+            let addr = listener.local_addr().map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("local_addr failed: {}", e))
+            })?;
+            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+            tokio::spawn(async move {
+                tonic::transport::Server::builder()
+                    .add_service(
+                        grpc_rpc::core_worker_service_server::CoreWorkerServiceServer::new(svc),
+                    )
+                    .serve_with_incoming(incoming)
+                    .await
+                    .ok();
+            });
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            Ok::<u16, pyo3::PyErr>(addr.port())
+        })?;
+        Ok(port)
+    }
+
+    /// Set up an actor on this (driver) CoreWorker.
+    ///
+    /// Creates the actor handle, sets the gRPC task send callback, and connects
+    /// the actor to the given worker address.
+    #[pyo3(name = "setup_actor")]
+    #[allow(clippy::too_many_arguments)]
+    fn py_setup_actor(
+        &self,
+        actor_id: &crate::ids::PyActorID,
+        name: &str,
+        namespace: &str,
+        worker_ip: &str,
+        worker_port: u16,
+        node_id: &crate::ids::PyNodeID,
+        worker_id: &crate::ids::PyWorkerID,
+    ) -> pyo3::PyResult<()> {
+        use ray_proto::ray::rpc as actor_rpc;
+
+        let aid = *actor_id.inner();
+        let nid = *node_id.inner();
+        let wid = *worker_id.inner();
+
+        // Create and register actor handle.
+        let handle = ray_core_worker::actor_handle::ActorHandle::from_proto(actor_rpc::ActorHandle {
+            actor_id: aid.binary(),
+            name: name.to_string(),
+            ray_namespace: namespace.to_string(),
+            ..Default::default()
+        });
+        self.inner
+            .create_actor(aid, handle)
+            .map_err(crate::common::to_py_err)?;
+
+        // Set actor task send callback: gRPC PushTask via tokio::spawn.
+        let endpoint = format!("http://{}:{}", worker_ip, worker_port);
+        let worker_id_bytes = wid.binary();
+        self.inner
+            .set_actor_task_send_callback(Box::new(move |spec, _addr| {
+                let endpoint = endpoint.clone();
+                let spec_clone = spec.clone();
+                let wid_bytes = worker_id_bytes.clone();
+                tokio::spawn(async move {
+                    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+                        .unwrap()
+                        .connect()
+                        .await
+                        .unwrap();
+                    let mut client =
+                        actor_rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
+                    client
+                        .push_task(actor_rpc::PushTaskRequest {
+                            intended_worker_id: wid_bytes,
+                            task_spec: Some(spec_clone),
+                            ..Default::default()
+                        })
+                        .await
+                        .unwrap();
+                });
+                Ok(())
+            }));
+
+        // Connect actor to worker address.
+        let address = actor_rpc::Address {
+            node_id: nid.binary(),
+            ip_address: worker_ip.to_string(),
+            port: worker_port as i32,
+            worker_id: wid.binary(),
+        };
+        self.inner.connect_actor(&aid, address);
+
+        Ok(())
+    }
+
+    /// Submit an actor method call.
+    ///
+    /// Arguments:
+    ///   actor_id: the actor to call
+    ///   method_name: the method name (e.g. "increment")
+    ///   args: list of byte arrays (each is a serialized argument)
+    #[pyo3(name = "submit_actor_method")]
+    fn py_submit_actor_method(
+        &self,
+        actor_id: &crate::ids::PyActorID,
+        method_name: &str,
+        args: Vec<Vec<u8>>,
+    ) -> pyo3::PyResult<()> {
+        use ray_proto::ray::rpc as submit_rpc;
+
+        let aid = *actor_id.inner();
+        let task_args: Vec<submit_rpc::TaskArg> = args
+            .into_iter()
+            .map(|data| submit_rpc::TaskArg {
+                data,
+                ..Default::default()
+            })
+            .collect();
+        let spec = submit_rpc::TaskSpec {
+            task_id: TaskID::from_random().binary(),
+            name: method_name.to_string(),
+            args: task_args,
+            ..Default::default()
+        };
+        self.runtime
+            .block_on(self.inner.submit_actor_task(&aid, spec))
+            .map_err(crate::common::to_py_err)
     }
 }

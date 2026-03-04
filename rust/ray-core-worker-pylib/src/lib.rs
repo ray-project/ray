@@ -12,6 +12,7 @@
 //! Will be built with maturin to produce `_raylet.so`.
 
 pub mod common;
+pub mod cluster;
 pub mod ids;
 pub mod object_ref;
 pub mod core_worker;
@@ -95,6 +96,10 @@ fn _raylet(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<object_ref::PyObjectRef>()?;
     m.add_class::<core_worker::PyCoreWorker>()?;
     m.add_class::<gcs_client::PyGcsClient>()?;
+    m.add_class::<cluster::PyClusterHandle>()?;
+
+    // ─── Cluster functions ───────────────────────────────────────
+    m.add_function(wrap_pyfunction!(cluster::start_cluster, m)?)?;
 
     // ─── Constants ───────────────────────────────────────────────
     m.add("RAY_VERSION", ray_common::constants::RAY_VERSION)?;

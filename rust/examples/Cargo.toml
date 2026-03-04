@@ -24,3 +24,7 @@ tracing-subscriber = { workspace = true }
 [[bin]]
 name = "add-two-numbers"
 path = "src/add_two_numbers.rs"
+
+[[bin]]
+name = "actor-counter"
+path = "src/actor_counter.rs"

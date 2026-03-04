@@ -34,6 +34,9 @@ impl PyGcsClient {
             .build()
             .expect("failed to create tokio runtime");
 
+        // Enter the runtime context so that tonic/hyper can find the Tokio reactor
+        // when creating a lazy channel.
+        let _guard = runtime.enter();
         let endpoint = format!("http://{}", gcs_address);
         let channel = tonic::transport::Channel::from_shared(endpoint)
             .expect("invalid GCS address")
@@ -307,6 +310,57 @@ impl PyGcsClient {
     #[pyo3(name = "drain_nodes")]
     fn py_drain_nodes(&self, node_ids: Vec<Vec<u8>>) -> Vec<bool> {
         self.drain_nodes(&node_ids)
+    }
+
+    /// Register a new actor with GCS and return its actor ID.
+    ///
+    /// Arguments:
+    ///   name: the actor class name (e.g. "Counter")
+    ///   namespace: the Ray namespace (e.g. "default")
+    #[pyo3(name = "register_actor")]
+    fn py_register_actor(
+        &self,
+        name: &str,
+        namespace: &str,
+    ) -> pyo3::PyResult<crate::ids::PyActorID> {
+        use ray_common::id::{ActorID, TaskID};
+
+        let actor_id = ActorID::from_random();
+        let req = rpc::RegisterActorRequest {
+            task_spec: Some(rpc::TaskSpec {
+                task_id: TaskID::from_random().binary(),
+                name: format!("{}.__init__", name),
+                actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                    actor_id: actor_id.binary(),
+                    name: name.to_string(),
+                    ray_namespace: namespace.to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        };
+
+        let reply = self
+            .runtime
+            .block_on(self.client.register_actor(req))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "register_actor failed: {}",
+                    e
+                ))
+            })?;
+
+        // Check status.
+        if let Some(ref status) = reply.status {
+            if status.code != 0 {
+                return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "register_actor returned error: {:?}",
+                    status
+                )));
+            }
+        }
+
+        Ok(crate::ids::PyActorID::from_inner(actor_id))
     }
 }
 
