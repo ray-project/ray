@@ -106,9 +106,14 @@ class InfiniteLookbackBuffer:
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
         if self.finalized:
-            self.data = tree.map_structure(
-                lambda d, i: np.concatenate([d, [i]], axis=0), self.data, item
-            )
+            if isinstance(self.data, np.ndarray):
+                self.data = np.concatenate(
+                    [self.data, np.asarray(item)[np.newaxis]], axis=0
+                )
+            else:
+                self.data = tree.map_structure(
+                    lambda d, i: np.concatenate([d, [i]], axis=0), self.data, item
+                )
         else:
             self.data.append(item)
 
@@ -361,6 +366,8 @@ class InfiniteLookbackBuffer:
 
     def len_incl_lookback(self):
         if self.finalized:
+            if isinstance(self.data, np.ndarray):
+                return len(self.data)
             return len(tree.flatten(self.data)[0])
         else:
             return len(self.data)
@@ -389,6 +396,36 @@ class InfiniteLookbackBuffer:
         _ignore_last_ts=False,
         _add_last_ts_value=None,
     ):
+        # Fast path: finalized simple numpy array with no special options.
+        if (
+            self.finalized
+            and isinstance(self.data, np.ndarray)
+            and fill is None
+            and not one_hot_discrete
+            and not _ignore_last_ts
+            and _add_last_ts_value is None
+        ):
+            start = slice_.start
+            stop = slice_.stop
+            step = slice_.step
+            lb = self.lookback
+            # Ultra-fast inline for the common case: positive-only, no step.
+            if (
+                not neg_index_as_lookback
+                and step is None
+                and (start is None or start >= 0)
+                and (stop is None or stop >= 0)
+            ):
+                abs_start = lb if start is None else lb + start
+                abs_stop = len(self.data) if stop is None else lb + stop
+                return self.data[abs_start:abs_stop]
+            adj_slice, _, _, _ = self._interpret_slice(
+                slice_,
+                neg_index_as_lookback,
+                len_self_plus_lookback=len(self.data),
+            )
+            return self.data[adj_slice]
+
         data_to_use = self.data
         if _ignore_last_ts:
             if self.finalized:
@@ -530,6 +567,20 @@ class InfiniteLookbackBuffer:
         _ignore_last_ts=False,
         _add_last_ts_value=None,
     ):
+        # Fast path: finalized simple numpy array with no special options.
+        if (
+            self.finalized
+            and isinstance(self.data, np.ndarray)
+            and fill is None
+            and not one_hot_discrete
+            and not _ignore_last_ts
+            and _add_last_ts_value is None
+        ):
+            actual_idx = (
+                (self.lookback + idx) if (idx >= 0 or neg_index_as_lookback) else idx
+            )
+            return self.data[actual_idx]
+
         data_to_use = self.data
         if _ignore_last_ts:
             if self.finalized:
