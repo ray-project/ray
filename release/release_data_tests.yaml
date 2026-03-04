@@ -117,14 +117,19 @@
 # Iceberg tests
 ###############
 
-- name: iceberg_benchmark
+- name: "iceberg_benchmark_{{mode}}"
   python: "3.10"
   cluster:
     byod:
       post_build_script: byod_install_pyiceberg.sh
+
+  matrix:
+    setup:
+      mode: [append, upsert, overwrite]
+
   run:
     timeout: 3600
-    script: python iceberg_benchmark.py
+    script: python iceberg_benchmark.py --mode {{mode}}
 
 ###################
 # Aggregation tests

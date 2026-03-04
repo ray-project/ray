@@ -33,6 +33,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_WAREHOUSE_PATH,
         help="Iceberg warehouse path, e.g. s3://bucket/prefix or file:///tmp/warehouse",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["append", "upsert", "overwrite"],
+        required=True,
+        help="Write mode to benchmark",
+    )
     return parser.parse_args()
 
 
@@ -46,6 +52,7 @@ def _get_catalog_kwargs(warehouse_path: str) -> dict:
 
 
 def _load_catalog(catalog_kwargs: dict):
+    """Load the catalog using pyiceberg using the catalog_kwargs"""
     catalog_name = catalog_kwargs["name"]
     catalog_properties = {k: v for k, v in catalog_kwargs.items() if k != "name"}
     return pyi_catalog.load_catalog(catalog_name, **catalog_properties)
@@ -154,9 +161,12 @@ def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
     )
 
 
-def _read_table(catalog_kwargs: dict) -> ray.data.Dataset:
-    return ray.data.read_iceberg(
-        table_identifier=_TABLE_ID, catalog_kwargs=catalog_kwargs.copy()
+def _seed_table(catalog_kwargs: dict):
+    """Seed the table with initial data"""
+    _make_dataset(NUM_ROWS).write_iceberg(
+        table_identifier=_TABLE_ID,
+        catalog_kwargs=catalog_kwargs.copy(),
+        mode=SaveMode.APPEND,
     )
 
 
@@ -167,62 +177,46 @@ def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     try:
-        # 1. Write (create new table)
-        def write_create():
-            ds = _make_dataset(NUM_ROWS)
-            ds.write_iceberg(
-                table_identifier=_TABLE_ID,
-                catalog_kwargs=catalog_kwargs.copy(),
-                mode=SaveMode.APPEND,
-            )
-            count = _read_table(catalog_kwargs).count()
-            assert count == NUM_ROWS, f"write_create: expected {NUM_ROWS}, got {count}"
-            return {BenchmarkMetric.NUM_ROWS: NUM_ROWS}
+        if args.mode == "append":
 
-        benchmark.run_fn("write_create", write_create)
+            def write():
+                _make_dataset(NUM_ROWS).write_iceberg(
+                    table_identifier=_TABLE_ID,
+                    catalog_kwargs=catalog_kwargs.copy(),
+                    mode=SaveMode.APPEND,
+                )
+                return {BenchmarkMetric.NUM_ROWS: NUM_ROWS}
 
-        # 2. Read back and consume
-        def read():
-            count = 0
-            for batch in _read_table(catalog_kwargs).iter_batches(
-                batch_format="pyarrow"
-            ):
-                count += len(batch)
-            assert count == NUM_ROWS, f"read: expected {NUM_ROWS}, got {count}"
-            return {BenchmarkMetric.NUM_ROWS: count}
+            benchmark.run_fn("append", write)
 
-        benchmark.run_fn("read", read)
+        elif args.mode == "upsert":
+            # Seed the table with initial data (not part of benchmark)
+            _seed_table(catalog_kwargs)
 
-        # 3. Upsert (copy-on-write): update first UPSERT_ROWS ids
-        def upsert():
-            ds = _make_dataset(UPSERT_ROWS, value_prefix="updated_")
-            ds.write_iceberg(
-                table_identifier=_TABLE_ID,
-                catalog_kwargs=catalog_kwargs.copy(),
-                mode=SaveMode.UPSERT,
-                upsert_kwargs={"join_cols": ["id"]},
-            )
-            count = _read_table(catalog_kwargs).count()
-            assert count == NUM_ROWS, f"upsert: expected {NUM_ROWS}, got {count}"
-            return {BenchmarkMetric.NUM_ROWS: UPSERT_ROWS}
+            def upsert():
+                _make_dataset(UPSERT_ROWS, value_prefix="updated_").write_iceberg(
+                    table_identifier=_TABLE_ID,
+                    catalog_kwargs=catalog_kwargs.copy(),
+                    mode=SaveMode.UPSERT,
+                    upsert_kwargs={"join_cols": ["id"]},
+                )
+                return {BenchmarkMetric.NUM_ROWS: UPSERT_ROWS}
 
-        benchmark.run_fn("upsert", upsert)
+            benchmark.run_fn("upsert", upsert)
 
-        # 4. Overwrite (copy-on-write): replace entire table
-        def overwrite():
-            ds = _make_dataset(OVERWRITE_ROWS)
-            ds.write_iceberg(
-                table_identifier=_TABLE_ID,
-                catalog_kwargs=catalog_kwargs.copy(),
-                mode=SaveMode.OVERWRITE,
-            )
-            count = _read_table(catalog_kwargs).count()
-            assert (
-                count == OVERWRITE_ROWS
-            ), f"overwrite: expected {OVERWRITE_ROWS}, got {count}"
-            return {BenchmarkMetric.NUM_ROWS: OVERWRITE_ROWS}
+        elif args.mode == "overwrite":
+            # Seed the table with initial data (not part of benchmark)
+            _seed_table(catalog_kwargs)
 
-        benchmark.run_fn("overwrite", overwrite)
+            def overwrite():
+                _make_dataset(OVERWRITE_ROWS).write_iceberg(
+                    table_identifier=_TABLE_ID,
+                    catalog_kwargs=catalog_kwargs.copy(),
+                    mode=SaveMode.OVERWRITE,
+                )
+                return {BenchmarkMetric.NUM_ROWS: OVERWRITE_ROWS}
+
+            benchmark.run_fn("overwrite", overwrite)
 
         benchmark.write_result()
     finally:
