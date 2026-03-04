@@ -628,6 +628,14 @@ class KafkaDatasource(Datasource):
                                             f"end_offset {resolved_end} was not reached. Returning {len(records)} messages collected in this read task so far."
                                         )
                                         break
+                                    remaining_timeout_s = (
+                                        timeout_seconds - elapsed_time_s
+                                    )
+                                    consume_timeout_s = min(
+                                        remaining_timeout_s, KAFKA_CONSUME_TIMEOUT_MAX_S
+                                    )
+                                else:
+                                    consume_timeout_s = KAFKA_CONSUME_TIMEOUT_MAX_S
 
                                 remaining = resolved_end - next_offset
                                 batch_size = min(
@@ -636,7 +644,7 @@ class KafkaDatasource(Datasource):
                                 )
                                 msgs = consumer.consume(
                                     num_messages=batch_size,
-                                    timeout=KAFKA_CONSUME_TIMEOUT_MAX_S,
+                                    timeout=consume_timeout_s,
                                 )
 
                                 if not msgs:
