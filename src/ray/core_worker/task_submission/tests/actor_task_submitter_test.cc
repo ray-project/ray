@@ -341,6 +341,61 @@ TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   }
 }
 
+TEST_P(ActorTaskSubmitterTest, TestTaskDependencyFailedUnblocksQueue) {
+  auto allow_out_of_order_execution = GetParam();
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id,
+                                      -1,
+                                      allow_out_of_order_execution,
+                                      /*fail_if_actor_unreachable*/ true,
+                                      /*owned*/ false);
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+
+  ActorID dep_actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 1);
+  actor_creator_.actor_pending = true;
+  auto task_a = CreateActorTaskHelper(actor_id, worker_id, 0);
+  auto ref = task_a.GetMutableMessage().add_args()->add_nested_inlined_refs();
+  ref->set_object_id(ObjectID::ForActorHandle(dep_actor_id).Binary());
+
+  auto task_b = CreateActorTaskHelper(actor_id, worker_id, 1);
+
+  submitter_.SubmitTask(task_a);
+  ASSERT_EQ(io_context.poll_one(), 1);
+  submitter_.SubmitTask(task_b);
+  ASSERT_EQ(io_context.poll_one(), 1);
+
+  if (allow_out_of_order_execution) {
+    ASSERT_EQ(worker_client_->callbacks.size(), 1);
+    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
+
+    EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task_a.TaskId(), _, _, _, _, _))
+        .Times(1);
+    ASSERT_EQ(actor_creator_.callbacks.size(), 1);
+    auto callback = actor_creator_.callbacks.front();
+    actor_creator_.callbacks.pop_front();
+    callback(Status::IOError("Actor registration failed"));
+
+    ASSERT_EQ(worker_client_->callbacks.size(), 1);
+  } else {
+    ASSERT_EQ(worker_client_->callbacks.size(), 0);
+
+    EXPECT_CALL(*task_manager_, FailOrRetryPendingTask(task_a.TaskId(), _, _, _, _, _))
+        .Times(1);
+
+    ASSERT_EQ(actor_creator_.callbacks.size(), 1);
+    auto callback = actor_creator_.callbacks.front();
+    actor_creator_.callbacks.pop_front();
+    callback(Status::IOError("Actor registration failed"));
+
+    ASSERT_EQ(worker_client_->callbacks.size(), 1);
+    ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(1));
+  }
+}
+
 TEST_P(ActorTaskSubmitterTest, TestActorDead) {
   auto allow_out_of_order_execution = GetParam();
   rpc::Address addr;
