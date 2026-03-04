@@ -23,12 +23,11 @@ ray-test-utils = { workspace = true }
 ray-util = { workspace = true }
 ray-rpc = { workspace = true }
 ray-proto = { workspace = true }
+ray-raylet-rpc-client = { workspace = true }
 pyo3 = { version = "0.22", features = ["extension-module"], optional = true }
 tonic = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 bytes = { workspace = true }
-
-[dev-dependencies]
 async-trait = { workspace = true }

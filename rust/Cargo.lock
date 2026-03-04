@@ -1528,6 +1528,7 @@ dependencies = [
  "ray-gcs-rpc-client",
  "ray-proto",
  "ray-raylet",
+ "ray-raylet-rpc-client",
  "ray-rpc",
  "ray-test-utils",
  "ray-util",

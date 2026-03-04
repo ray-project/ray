@@ -352,6 +352,11 @@ impl CoreWorker {
         &self.publisher
     }
 
+    /// Access the normal task submitter.
+    pub fn normal_task_submitter(&self) -> &NormalTaskSubmitter {
+        &self.normal_task_submitter
+    }
+
     /// Number of normal pending tasks.
     pub fn num_pending_normal_tasks(&self) -> usize {
         self.normal_task_submitter.num_pending_tasks()
