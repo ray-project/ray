@@ -8,7 +8,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from jinja2 import Environment
 
@@ -1098,6 +1098,11 @@ class HAProxyManager(ProxyActorInterface):
         pass
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
+        raise NotImplementedError("Receive is handled by the ingress replicas.")
+
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
         raise NotImplementedError("Receive is handled by the ingress replicas.")
 
     def _get_http_options(self) -> HTTPOptions:
