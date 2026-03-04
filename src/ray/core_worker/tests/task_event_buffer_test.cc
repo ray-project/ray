@@ -973,49 +973,10 @@ TEST_F(TaskEventBufferTest, TestTaskLogInfoInLifecycleEvent) {
   task_log_info.set_stderr_start(0);
   task_log_info.set_stderr_end(50);
 
+  // Generate the event
   auto task_id = RandomTaskId();
-  NodeID submitter_node_id = NodeID::FromRandom();
-  NodeID executor_node_id = NodeID::FromRandom();
-
-  // For SUBMITTED_TO_WORKER, node_id should be set to the executor's node (not the
-  // submitter's).
-  TaskStatusEvent::TaskStateUpdate submitted_state_update(executor_node_id,
-                                                          WorkerID::FromRandom());
-  auto submitted_event =
-      std::make_unique<TaskStatusEvent>(task_id,
-                                        JobID::FromInt(0),
-                                        /*attempt_number=*/0,
-                                        rpc::TaskStatus::SUBMITTED_TO_WORKER,
-                                        /*timestamp=*/1,
-                                        /*is_actor_task_event=*/false,
-                                        "test_session_name",
-                                        submitter_node_id,
-                                        nullptr,
-                                        submitted_state_update);
-
-  RayEventsTuple submitted_ray_events;
-  submitted_event->ToRpcRayEvents(submitted_ray_events);
-  ASSERT_TRUE(submitted_ray_events.task_lifecycle_event.has_value());
-  const auto &submitted_lifecycle =
-      submitted_ray_events.task_lifecycle_event->task_lifecycle_event();
-  EXPECT_EQ(submitted_lifecycle.node_id(), executor_node_id.Binary())
-      << "node_id should be the executor's node for SUBMITTED_TO_WORKER";
-  EXPECT_NE(submitted_lifecycle.node_id(), submitter_node_id.Binary())
-      << "node_id should not be the submitter's node";
-
-  // For RUNNING (no state_update node_id), node_id should NOT be set in the lifecycle
-  // event — the submitter's node must not leak into the lifecycle event's node_id field.
   TaskStatusEvent::TaskStateUpdate state_update(task_log_info);
-  auto task_event = std::make_unique<TaskStatusEvent>(task_id,
-                                                      JobID::FromInt(0),
-                                                      /*attempt_number=*/0,
-                                                      rpc::TaskStatus::RUNNING,
-                                                      /*timestamp=*/2,
-                                                      /*is_actor_task_event=*/false,
-                                                      "test_session_name",
-                                                      submitter_node_id,
-                                                      nullptr,
-                                                      state_update);
+  auto task_event = GenStatusTaskEvent(task_id, 0, 1, state_update);
 
   // Convert to RayEvents format
   RayEventsTuple ray_events_tuple;
@@ -1034,9 +995,65 @@ TEST_F(TaskEventBufferTest, TestTaskLogInfoInLifecycleEvent) {
   EXPECT_EQ(log_info.stdout_end(), 100);
   EXPECT_EQ(log_info.stderr_start(), 0);
   EXPECT_EQ(log_info.stderr_end(), 50);
+}
 
-  EXPECT_TRUE(lifecycle_event.node_id().empty())
-      << "node_id should not be set to the submitter's node in lifecycle event";
+// Tests that TaskLifecycleEvent.node_id is only set to the executor's node ID
+// (available at SUBMITTED_TO_WORKER), never the submitter's node ID.
+TEST_F(TaskEventBufferTest, TestTaskLifecycleEventNodeId) {
+  auto task_id = RandomTaskId();
+  NodeID submitter_node_id = NodeID::FromRandom();
+  NodeID executor_node_id = NodeID::FromRandom();
+
+  // For SUBMITTED_TO_WORKER, node_id should be set to the executor's node (not the
+  // submitter's).
+  {
+    TaskStatusEvent::TaskStateUpdate submitted_state_update(executor_node_id,
+                                                            WorkerID::FromRandom());
+    auto submitted_event =
+        std::make_unique<TaskStatusEvent>(task_id,
+                                          JobID::FromInt(0),
+                                          /*attempt_number=*/0,
+                                          rpc::TaskStatus::SUBMITTED_TO_WORKER,
+                                          /*timestamp=*/1,
+                                          /*is_actor_task_event=*/false,
+                                          "test_session_name",
+                                          submitter_node_id,
+                                          nullptr,
+                                          submitted_state_update);
+
+    RayEventsTuple submitted_ray_events;
+    submitted_event->ToRpcRayEvents(submitted_ray_events);
+    ASSERT_TRUE(submitted_ray_events.task_lifecycle_event.has_value());
+    const auto &submitted_lifecycle =
+        submitted_ray_events.task_lifecycle_event->task_lifecycle_event();
+    EXPECT_EQ(submitted_lifecycle.node_id(), executor_node_id.Binary())
+        << "node_id should be the executor's node for SUBMITTED_TO_WORKER";
+    EXPECT_NE(submitted_lifecycle.node_id(), submitter_node_id.Binary())
+        << "node_id should not be the submitter's node";
+  }
+
+  // For RUNNING (no state_update node_id), node_id should NOT be set — the submitter's
+  // node must not leak into the lifecycle event's node_id field.
+  {
+    auto task_event = std::make_unique<TaskStatusEvent>(task_id,
+                                                        JobID::FromInt(0),
+                                                        /*attempt_number=*/0,
+                                                        rpc::TaskStatus::RUNNING,
+                                                        /*timestamp=*/2,
+                                                        /*is_actor_task_event=*/false,
+                                                        "test_session_name",
+                                                        submitter_node_id,
+                                                        nullptr,
+                                                        /*state_update=*/absl::nullopt);
+
+    RayEventsTuple ray_events_tuple;
+    task_event->ToRpcRayEvents(ray_events_tuple);
+    ASSERT_TRUE(ray_events_tuple.task_lifecycle_event.has_value());
+    const auto &lifecycle_event =
+        ray_events_tuple.task_lifecycle_event->task_lifecycle_event();
+    EXPECT_TRUE(lifecycle_event.node_id().empty())
+        << "node_id should not be set to the submitter's node in lifecycle event";
+  }
 }
 
 TEST_F(TaskEventBufferTest, TestGracefulDestruction) {
