@@ -452,6 +452,14 @@ ARROW_VIEW_BYTE_SIZE = 16
 def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
     """Serialize binary (variable-sized binary view, string view) arrays to
     PicklableArrayPayload.
+
+    Arrow arrays support zero-copy slices by storing an offset and length. Other serialization
+    functions in this file only serialize bytes referenced by the slice. Doing so for a binary or
+    string view is challenging because each view may refer to an arbitrary slice of an arbitrary
+    buffer. This function does a naive one-pass algorithm to overestimate the number of bytes
+    referenced by views in this array. If this estimate is less than half of the total bytes
+    allocated for this array, we compact the views (which requires copying data out of the buffers).
+
     """
     import pyarrow as pa
     import pyarrow.compute as pc
