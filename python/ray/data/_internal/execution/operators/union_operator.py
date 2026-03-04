@@ -46,6 +46,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         self._current_input_index = 0
         super().__init__(data_context, *input_ops)
 
+    def throttling_disabled(self) -> bool:
+        return True
+
     def start(self, options: ExecutionOptions):
         # Whether to preserve deterministic ordering of output blocks.
         # When True, blocks are emitted in round-robin order across inputs,
@@ -99,6 +102,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
+        refs.input_index = input_index
         if self._preserve_order:
             self._input_buffers[input_index].add(refs)
             self._metrics.on_input_queued(refs, input_index=input_index)

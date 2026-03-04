@@ -211,6 +211,64 @@ def test_per_input_inqueue_attribution_for_union():
     assert input2_usage == 20
 
 
+def test_union_ext_outqueue_per_input_attribution():
+    """Test that Union's external output queue memory is attributed per-input
+    to upstream operators, avoiding double-counting.
+
+    When Union is ineligible (throttling_disabled=True), its memory is rolled
+    into upstream operators via _get_downstream_ineligible_ops_usage. With
+    per-input tracking on RefBundle.input_index, each upstream only gets
+    charged for the bytes it contributed to Union's ext output queue.
+    """
+    # Topology:
+    #   input1 ───┐
+    #             ├─▶ union_op
+    #   input2 ───┘
+    input1 = PhysicalOperator("op1", [], DataContext.get_current())
+    input2 = PhysicalOperator("op2", [], DataContext.get_current())
+    union_op = UnionOperator(DataContext.get_current(), input1, input2)
+    topology = build_streaming_topology(union_op, ExecutionOptions())
+
+    total_resources = ExecutionResources(cpu=0, object_store_memory=200)
+    resource_manager = ResourceManager(
+        topology, ExecutionOptions(), lambda: total_resources, DataContext.get_current()
+    )
+
+    # Create RefBundles tagged with input_index (as Union._add_input_inner does).
+    block_ref1 = ray.ObjectRef(b"1" * 28)
+    block_ref2 = ray.ObjectRef(b"2" * 28)
+    meta1 = BlockMetadata(num_rows=1, size_bytes=10, input_files=None, exec_stats=None)
+    meta2 = BlockMetadata(num_rows=1, size_bytes=30, input_files=None, exec_stats=None)
+    bundle1 = RefBundle(
+        [(block_ref1, meta1)], owns_blocks=True, schema=None, input_index=0
+    )
+    bundle2 = RefBundle(
+        [(block_ref2, meta2)], owns_blocks=True, schema=None, input_index=1
+    )
+
+    # Add to Union's ext output queue (simulating process_completed_tasks drain).
+    topology[union_op].add_output(bundle1)
+    topology[union_op].add_output(bundle2)
+    resource_manager.update_usages()
+
+    # Union is ineligible, so its memory is attributed to upstream ops.
+    # input1 should only be charged for bundle1 (10 bytes).
+    # input2 should only be charged for bundle2 (30 bytes).
+    input1_usage = resource_manager.get_op_usage(
+        input1, include_ineligible_downstream=True
+    ).object_store_memory
+    input2_usage = resource_manager.get_op_usage(
+        input2, include_ineligible_downstream=True
+    ).object_store_memory
+
+    assert input1_usage == 10, f"Expected 10, got {input1_usage}"
+    assert input2_usage == 30, f"Expected 30, got {input2_usage}"
+
+    # Total should be 40, not 80 (which would happen with double-counting).
+    total = input1_usage + input2_usage
+    assert total == 40, f"Expected 40, got {total}"
+
+
 if __name__ == "__main__":
     import sys
 

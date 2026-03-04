@@ -64,6 +64,11 @@ class RefBundle:
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
 
+    # Tracks which input dependency this bundle originated from in multi-input
+    # operators (e.g., Union). Used for per-input memory attribution in the
+    # external output queue.
+    input_index: Optional[int] = None
+
     # Object metadata (size, locations, spilling status)
     _cached_object_meta: Optional[Dict[ObjectRef, "_ObjectMetadata"]] = None
 

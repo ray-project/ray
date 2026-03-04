@@ -3,7 +3,6 @@ import math
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from functools import reduce
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ray._common.utils import env_bool, env_float
@@ -318,11 +317,44 @@ class ResourceManager:
     def _get_downstream_ineligible_ops_usage(
         self, op: PhysicalOperator
     ) -> ExecutionResources:
-        return reduce(
-            lambda x, y: x.add(y),
-            [self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)],
-            ExecutionResources.zero(),
-        )
+        """Get the total resource usage of downstream ineligible operators,
+        attributed to the given upstream operator.
+
+        For multi-input ineligible operators (e.g., Union), only the portion
+        of the external output queue originating from `op` is attributed,
+        rather than the full output queue.
+        """
+        total = ExecutionResources.zero()
+        for next_op in op.output_dependencies:
+            if not self.is_op_eligible(next_op):
+                usage = self._get_ineligible_op_usage_for_input(next_op, op)
+                total = total.add(usage)
+                # Continue down the ineligible chain.
+                total = total.add(self._get_downstream_ineligible_ops_usage(next_op))
+        return total
+
+    def _get_ineligible_op_usage_for_input(
+        self,
+        ineligible_op: PhysicalOperator,
+        upstream_op: PhysicalOperator,
+    ) -> ExecutionResources:
+        """Get the resource usage of an ineligible op attributed to a specific
+        upstream input.
+
+        For multi-input operators, adjusts the object store memory to only
+        include the portion of the external output queue from `upstream_op`.
+        """
+        usage = self.get_op_usage(ineligible_op)
+        if len(ineligible_op.input_dependencies) > 1:
+            input_idx = ineligible_op.input_dependencies.index(upstream_op)
+            state = self._topology[ineligible_op]
+            total_ext_outqueue = state.output_queue_bytes()
+            per_input_ext_outqueue = state.output_queue_bytes(input_index=input_idx)
+            adjustment = per_input_ext_outqueue - total_ext_outqueue
+            usage = usage.copy(
+                object_store_memory=max(0, usage.object_store_memory + adjustment)
+            )
+        return usage
 
     def get_mem_op_internal(self, op: PhysicalOperator) -> int:
         """Return the memory usage of pending task outputs for the given operator."""

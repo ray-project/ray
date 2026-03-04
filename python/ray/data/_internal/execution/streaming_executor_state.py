@@ -60,6 +60,8 @@ class OpBufferQueue:
         self._lock = threading.Lock()
         # Used to buffer output RefBundles indexed by output splits.
         self._outputs_by_split = defaultdict(create_bundle_queue)
+        # Per-input-index memory tracking for multi-input operators (e.g., Union).
+        self._memory_per_input_index: defaultdict = defaultdict(int)
         super().__init__()
 
     @property
@@ -105,6 +107,8 @@ class OpBufferQueue:
             self._num_blocks += len(ref.blocks)
             if ref.output_split_idx is not None:
                 self._num_per_split[ref.output_split_idx] += 1
+            if ref.input_index is not None:
+                self._memory_per_input_index[ref.input_index] += ref.size_bytes()
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
@@ -145,13 +149,21 @@ class OpBufferQueue:
             self._num_blocks -= len(ret.blocks)
             if ret.output_split_idx is not None:
                 self._num_per_split[ret.output_split_idx] -= 1
+            if ret.input_index is not None:
+                self._memory_per_input_index[ret.input_index] -= ret.size_bytes()
         return ret
+
+    def memory_usage_for_input(self, input_index: int) -> int:
+        """Return the memory usage of bundles from a specific input index."""
+        with self._lock:
+            return self._memory_per_input_index.get(input_index, 0)
 
     def clear(self):
         with self._lock:
             self._queue.clear()
             self._num_blocks = 0
             self._num_per_split.clear()
+            self._memory_per_input_index.clear()
 
 
 @dataclass
@@ -353,8 +365,19 @@ class OpState:
                 total += inq.memory_usage
         return total
 
-    def output_queue_bytes(self) -> int:
-        """Return the object store memory of this operator's outqueue."""
+    def output_queue_bytes(self, input_index: Optional[int] = None) -> int:
+        """Return the object store memory of this operator's outqueue.
+
+        Args:
+            input_index: If specified, only return bytes attributable to the
+                given input dependency index. Used for per-input memory
+                attribution in multi-input operators like Union.
+
+        Returns:
+            The object store memory usage in bytes.
+        """
+        if input_index is not None:
+            return self.output_queue.memory_usage_for_input(input_index)
         return self.output_queue.memory_usage
 
     def mark_finished(self, exception: Optional[Exception] = None):
