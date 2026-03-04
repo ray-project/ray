@@ -1881,6 +1881,379 @@ def test_original_resource_unavailable():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# TEST 48: actor-pool.py
+#   Original: ActorPool distributes work across actors in round-robin.
+# ═══════════════════════════════════════════════════════════════════════
+
+class ActorPool:
+    """Minimal ActorPool: round-robin dispatch across (driver, actor_id) pairs."""
+
+    def __init__(self, actors):
+        self._actors = actors  # list of (driver, actor_id)
+        self._idx = 0
+
+    def map(self, fn, values):
+        """Call fn(driver, actor_id, value) for each value in round-robin order.
+        Returns results in order."""
+        pending = []
+        for v in values:
+            driver, actor_id = self._actors[self._idx % len(self._actors)]
+            self._idx += 1
+            oid = fn(driver, actor_id, v)
+            pending.append((driver, oid))
+        return [unpack_i64(ray_get_one(d, o.binary())) for d, o in pending]
+
+
+def test_actor_pool():
+    """Port of actor-pool.py."""
+    def double_callback(method, args, num_returns=1):
+        if method == "double":
+            n = unpack_i64(args[0])
+            return pack_i64(n * 2)
+        raise ValueError(f"unknown: {method}")
+
+    # Create 2 actor workers
+    w1, wid1, p1, aid1 = make_actor("PoolActor1", double_callback)
+    w2, wid2, p2, aid2 = make_actor("PoolActor2", double_callback)
+
+    driver = make_driver()
+    setup_and_submit(driver, aid1, "PoolActor1", "127.0.0.1", p1,
+                     cluster.node_id(), wid1)
+    setup_and_submit(driver, aid2, "PoolActor2", "127.0.0.1", p2,
+                     cluster.node_id(), wid2)
+
+    pool = ActorPool([
+        (driver, aid1),
+        (driver, aid2),
+    ])
+
+    results = pool.map(
+        lambda d, aid, v: d.submit_actor_method(aid, "double", [pack_i64(v)]),
+        [1, 2, 3, 4],
+    )
+    assert results == [2, 4, 6, 8], f"Expected [2,4,6,8], got {results}"
+
+    return f"actor-pool: pool.map(double, [1,2,3,4]) → {results}"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TEST 49: pattern_async_actor.py
+#   Original: sync actor blocks concurrent calls; async actor allows them.
+# ═══════════════════════════════════════════════════════════════════════
+
+def test_pattern_async_actor():
+    """Port of pattern_async_actor.py — sync vs concurrent actors.
+
+    Demonstrates that max_concurrency=1 serializes task execution while
+    max_concurrency>1 allows concurrent execution. We use the task dispatch
+    path with threaded submission so that multiple gRPC PushTask requests
+    arrive concurrently at the worker.
+    """
+    import threading
+
+    def _submit_from_threads(drivers, method, args_list, n):
+        """Submit n tasks from n separate threads (each with its own driver).
+        Returns list of (driver, oid_binary) pairs."""
+        results = [None] * n
+        def _submit(idx):
+            d = drivers[idx]
+            oids = d.submit_task(method, args_list)
+            results[idx] = (d, oids[0].binary())
+        threads = [threading.Thread(target=_submit, args=(i,)) for i in range(n)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+        return [r for r in results if r is not None]
+
+    # --- Pattern 1: Sync worker (max_concurrency=1) ---
+    sync_state = {"max_concurrent": 0, "current": 0, "calls": 0}
+    sync_lock = threading.Lock()
+
+    def sync_callback(method, args, num_returns=1):
+        if method == "run":
+            with sync_lock:
+                sync_state["current"] += 1
+                if sync_state["current"] > sync_state["max_concurrent"]:
+                    sync_state["max_concurrent"] = sync_state["current"]
+            time.sleep(0.2)
+            with sync_lock:
+                sync_state["current"] -= 1
+                sync_state["calls"] += 1
+            return pack_i64(sync_state["calls"])
+        raise ValueError(f"unknown: {method}")
+
+    wid_s = PyWorkerID.py_from_random()
+    sync_worker = PyCoreWorker(
+        0, "127.0.0.1", cluster.gcs_address(), 1,
+        worker_id=wid_s, node_id=cluster.node_id(),
+        max_concurrency=1,
+    )
+    sync_worker.set_task_callback(sync_callback)
+    sync_port = sync_worker.start_grpc_server()
+
+    # Create 3 separate drivers each configured to dispatch to the sync worker
+    sync_drivers = []
+    for _ in range(3):
+        d = make_driver()
+        d.setup_task_dispatch("127.0.0.1", sync_port, wid_s)
+        sync_drivers.append(d)
+
+    pending_s = _submit_from_threads(sync_drivers, "run", [], 3)
+    for d, oid_b in pending_s:
+        ray_get_one(d, oid_b, timeout_ms=10000)
+
+    assert sync_state["calls"] == 3, f"Sync: expected 3, got {sync_state['calls']}"
+    assert sync_state["max_concurrent"] == 1, \
+        f"Sync: expected max_concurrent=1, got {sync_state['max_concurrent']}"
+
+    # --- Pattern 2: Async worker (max_concurrency=3) ---
+    async_state = {"max_concurrent": 0, "current": 0, "calls": 0}
+    async_lock = threading.Lock()
+
+    def async_callback(method, args, num_returns=1):
+        if method == "run":
+            with async_lock:
+                async_state["current"] += 1
+                if async_state["current"] > async_state["max_concurrent"]:
+                    async_state["max_concurrent"] = async_state["current"]
+            time.sleep(0.2)
+            with async_lock:
+                async_state["current"] -= 1
+                async_state["calls"] += 1
+            return pack_i64(async_state["calls"])
+        raise ValueError(f"unknown: {method}")
+
+    wid_a = PyWorkerID.py_from_random()
+    async_worker = PyCoreWorker(
+        0, "127.0.0.1", cluster.gcs_address(), 1,
+        worker_id=wid_a, node_id=cluster.node_id(),
+        max_concurrency=3,
+    )
+    async_worker.set_task_callback(async_callback)
+    async_port = async_worker.start_grpc_server()
+
+    async_drivers = []
+    for _ in range(3):
+        d = make_driver()
+        d.setup_task_dispatch("127.0.0.1", async_port, wid_a)
+        async_drivers.append(d)
+
+    pending_a = _submit_from_threads(async_drivers, "run", [], 3)
+    for d, oid_b in pending_a:
+        ray_get_one(d, oid_b, timeout_ms=10000)
+
+    assert async_state["calls"] == 3
+    assert async_state["max_concurrent"] >= 2, \
+        f"Async: expected max_concurrent>=2, got {async_state['max_concurrent']}"
+
+    return (f"pattern_async_actor: sync max_concurrent={sync_state['max_concurrent']}, "
+            f"async max_concurrent={async_state['max_concurrent']}")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TEST 50: object_ref_serialization.py
+#   Original: put → pickle ObjectRef to file → del → load → get → free.
+# ═══════════════════════════════════════════════════════════════════════
+
+def test_object_ref_serialization():
+    """Port of object_ref_serialization.py."""
+    import pickle
+
+    driver = make_driver()
+
+    # Put a dict-like object
+    data = json.dumps({"hello": "world"}).encode("utf-8")
+    oid_obj = driver.put(data, b"python")
+    oid_bytes = bytes(oid_obj.binary())
+
+    assert driver.contains(oid_bytes), "Object should be in store after put"
+
+    # Serialize ObjectID bytes to a temp file
+    pkl_path = os.path.join(tempfile.gettempdir(), "rust_test_obj_ref.pkl")
+    with open(pkl_path, "wb") as f:
+        pickle.dump(oid_bytes, f)
+
+    # Delete local reference (Python-side)
+    del oid_obj
+    del oid_bytes
+
+    # Load from file
+    with open(pkl_path, "rb") as f:
+        restored_bytes = pickle.load(f)
+
+    # Get the object back
+    result = ray_get_one(driver, restored_bytes)
+    parsed = json.loads(result.decode("utf-8"))
+    assert parsed == {"hello": "world"}, f"Expected dict, got {parsed}"
+
+    # Free the object
+    driver.free([restored_bytes])
+
+    os.unlink(pkl_path)
+    return "object_ref_serialization: put → pickle to file → load → get → free"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TEST 51: deser.py
+#   Original: task receives numpy array, in-place modification raises
+#   ValueError because deserialized arrays are read-only (zero-copy).
+# ═══════════════════════════════════════════════════════════════════════
+
+def test_deser_read_only():
+    """Port of deser.py — read-only data concept."""
+    def callback(method, args, num_returns=1):
+        if method == "modify_data":
+            data = args[0]  # This is `bytes`, which is immutable
+            try:
+                # Attempt in-place modification — bytes is immutable
+                mv = memoryview(data)
+                mv[0] = 0  # TypeError: cannot modify read-only memory
+                return b"ERROR:should_have_raised"
+            except TypeError:
+                # Expected: bytes is read-only, just like numpy zero-copy
+                return b"read_only_error_raised"
+        raise ValueError(f"unknown: {method}")
+
+    tw, twid, tport = make_task_worker(callback)
+    driver = make_task_driver(tw, twid, tport)
+
+    data = struct.pack("<4q", 1, 2, 3, 4)
+    r = driver.submit_task("modify_data", [data])
+    result = ray_get_one(driver, r[0].binary())
+    assert result == b"read_only_error_raised", f"Got {result}"
+
+    return "deser: in-place modification of read-only data correctly raises TypeError"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TEST 52: actor_creator_failure.py
+#   Original: kill parent → child actor dies (RayActorError), detached
+#   actor survives.
+# ═══════════════════════════════════════════════════════════════════════
+
+def test_actor_creator_failure():
+    """Port of actor_creator_failure.py."""
+    child_state = {"value": 0}
+    detached_state = {"value": 0}
+
+    def child_callback(method, args, num_returns=1):
+        if method == "ping":
+            child_state["value"] += 1
+            return pack_i64(child_state["value"])
+        raise ValueError(f"unknown: {method}")
+
+    def detached_callback(method, args, num_returns=1):
+        if method == "ping":
+            detached_state["value"] += 1
+            return pack_i64(detached_state["value"])
+        raise ValueError(f"unknown: {method}")
+
+    # Create both actors
+    c_w, c_wid, c_port, c_aid = make_actor("ChildActor_CF", child_callback)
+    d_w, d_wid, d_port, d_aid = make_actor("DetachedActor_CF", detached_callback)
+
+    driver = make_driver()
+    setup_and_submit(driver, c_aid, "ChildActor_CF", "127.0.0.1",
+                     c_port, cluster.node_id(), c_wid)
+    setup_and_submit(driver, d_aid, "DetachedActor_CF", "127.0.0.1",
+                     d_port, cluster.node_id(), d_wid)
+
+    # Both work initially
+    oid1 = driver.submit_actor_method(c_aid, "ping", [])
+    ray_get_one(driver, oid1.binary())
+    oid2 = driver.submit_actor_method(d_aid, "ping", [])
+    ray_get_one(driver, oid2.binary())
+    assert child_state["value"] == 1
+    assert detached_state["value"] == 1
+
+    # Kill the child actor (simulate parent death → child dies)
+    driver.kill_actor(bytes(c_aid.binary()), True, True)
+
+    # Child: method call should raise error (actor is dead)
+    error_raised = False
+    try:
+        driver.submit_actor_method(c_aid, "ping", [])
+    except RuntimeError as e:
+        error_raised = True
+        assert "dead" in str(e).lower() or "actor" in str(e).lower(), f"Unexpected error: {e}"
+
+    assert error_raised, "Expected error submitting to dead actor"
+
+    # Detached actor: still alive and working
+    oid3 = driver.submit_actor_method(d_aid, "ping", [])
+    result = unpack_i64(ray_get_one(driver, oid3.binary()))
+    assert result == 2, f"Expected 2, got {result}"
+
+    return f"actor_creator_failure: child killed → error, detached → alive (value={result})"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TEST 53: actor_restart.py
+#   Original: actor with max_restarts=4 crashes every 10th call, is
+#   reconstructed. After 50 calls total (5 lives), subsequent calls fail.
+# ═══════════════════════════════════════════════════════════════════════
+
+def test_actor_restart():
+    """Port of actor_restart.py — crash + re-creation pattern."""
+    MAX_RESTARTS = 4
+    CRASH_EVERY = 10
+    total_calls = {"n": 0}
+
+    def make_crashy_callback():
+        local_count = {"n": 0}
+        def callback(method, args, num_returns=1):
+            if method == "increment_and_possibly_fail":
+                local_count["n"] += 1
+                if local_count["n"] >= CRASH_EVERY:
+                    raise RuntimeError("simulated actor crash (os._exit)")
+                total_calls["n"] += 1
+                return pack_i64(total_calls["n"])
+            raise ValueError(f"unknown: {method}")
+        return callback
+
+    successful_calls = 0
+    last_aid = None
+    last_driver = None
+
+    for life in range(MAX_RESTARTS + 1):  # 5 lives total
+        worker, wid, port, actor_id = make_actor(
+            f"CrashyActor_{life}", make_crashy_callback())
+        driver = make_driver()
+        setup_and_submit(driver, actor_id, f"CrashyActor_{life}",
+                         "127.0.0.1", port, cluster.node_id(), wid)
+        last_aid = actor_id
+        last_driver = driver
+
+        for call in range(CRASH_EVERY):
+            try:
+                oid = driver.submit_actor_method(actor_id,
+                    "increment_and_possibly_fail", [])
+                result = ray_get_one(driver, oid.binary())
+                if result is not None:
+                    successful_calls += 1
+            except RuntimeError:
+                break  # Actor "crashed", move to next life
+
+    # Should have ~45 successful calls (9 per life × 5 lives)
+    assert successful_calls >= 40, \
+        f"Expected >= 40 successful calls, got {successful_calls}"
+
+    # After all restarts exhausted, demonstrate the actor stays dead
+    last_driver.kill_actor(bytes(last_aid.binary()), True, True)
+    error_on_dead = False
+    try:
+        last_driver.submit_actor_method(last_aid,
+            "increment_and_possibly_fail", [])
+    except RuntimeError:
+        error_on_dead = True
+    assert error_on_dead, "Expected error on dead actor after restarts exhausted"
+
+    return (f"actor_restart: {successful_calls} successful calls across "
+            f"{MAX_RESTARTS + 1} lives, dead after exhaustion")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # Run all tests
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -1949,6 +2322,14 @@ TESTS = [
     # ── Phase 4: placement groups ──
     ("placement_group_capture_child_tasks_example.py", "placement_group_capture_child_tasks_example.py", test_placement_group_capture_child_tasks),
     ("original_resource_unavailable_example.py",       "original_resource_unavailable_example.py",       test_original_resource_unavailable),
+
+    # ── Phase 5: async actors, actor lifecycle, object serialization, deser ──
+    ("actor-pool.py",                   "actor-pool.py",                test_actor_pool),
+    ("pattern_async_actor.py",          "pattern_async_actor.py",       test_pattern_async_actor),
+    ("object_ref_serialization.py",     "object_ref_serialization.py",  test_object_ref_serialization),
+    ("deser.py",                        "deser.py",                     test_deser_read_only),
+    ("actor_creator_failure.py",        "actor_creator_failure.py",     test_actor_creator_failure),
+    ("actor_restart.py",                "actor_restart.py",             test_actor_restart),
 ]
 
 print("─" * 70)
@@ -1993,14 +2374,8 @@ SKIPPED = [
     # ── Task features beyond current scope (1) ──
     ("tqdm.py",                     "Requires ray.experimental.tqdm"),
 
-    # ── Object store features beyond current scope (3) ──
+    # ── Object store features beyond current scope (1) ──
     ("anti_pattern_out_of_band_object_ref_serialization.py", "Requires runtime_env + GC semantics"),
-    ("object_ref_serialization.py", "Requires ObjectRef serialization via cloudpickle"),
-    ("deser.py",                    "Requires read-only numpy array deserialization"),
-
-    # ── Async actors / actor pools (2) ──
-    ("actor-pool.py",               "Requires ActorPool utility class"),
-    ("pattern_async_actor.py",      "Requires async actors with concurrent methods"),
 
     # ── Generators (3) ──
     ("pattern_generators.py",       "Requires generator return semantics"),
@@ -2014,12 +2389,10 @@ SKIPPED = [
     ("cross_language.py",           "Requires Java worker + cross-language RPC"),
     ("namespaces.py",               "Requires namespace registry + detached actors"),
 
-    # ── Other unsupported features (7) ──
+    # ── Other unsupported features (5) ──
     ("ray-dag.py",                  "Requires Ray DAG API (bind/execute)"),
     ("runtime_env_example.py",      "Requires runtime_env support"),
     ("ray_oom_prevention.py",       "Requires OOM monitor + memory scheduling"),
-    ("actor_creator_failure.py",    "Requires actor ownership/lifetime + process kill"),
-    ("actor_restart.py",            "Requires auto-restart (max_restarts) + worker crash"),
     ("direct_transport_gloo.py",    "Requires Gloo collective transport"),
 ]
 

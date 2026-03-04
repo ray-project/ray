@@ -84,7 +84,7 @@ impl CoreWorker {
         let task_receiver = TaskReceiver::new(
             options.worker_id,
             memory_store.clone(),
-            0, // unlimited concurrency by default
+            options.max_concurrency,
         );
 
         let task_event_buffer = Arc::new(TaskEventBuffer::new(100_000));
@@ -267,9 +267,14 @@ impl CoreWorker {
         &self,
         actor_id: &ActorID,
         _force_kill: bool,
-        _no_restart: bool,
+        no_restart: bool,
     ) -> CoreWorkerResult<()> {
-        self.actor_task_submitter.disconnect_actor(actor_id);
+        if no_restart {
+            // Permanently dead: submits get "actor is dead" error.
+            self.actor_task_submitter.mark_actor_dead(actor_id);
+        } else {
+            self.actor_task_submitter.disconnect_actor(actor_id);
+        }
         self.actor_manager.remove_actor_handle(actor_id);
         Ok(())
     }

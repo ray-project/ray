@@ -86,6 +86,8 @@ pub struct CoreWorkerOptions {
     pub cluster_id: ClusterID,
     pub session_name: String,
     pub num_workers: usize,
+    /// Maximum concurrent task execution. 0 = unlimited.
+    pub max_concurrency: usize,
 }
 
 impl Default for CoreWorkerOptions {
@@ -103,6 +105,7 @@ impl Default for CoreWorkerOptions {
             cluster_id: ClusterID::nil(),
             session_name: String::new(),
             num_workers: 1,
+            max_concurrency: 0,
         }
     }
 }

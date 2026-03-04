@@ -157,7 +157,7 @@ impl PyCoreWorker {
     ///   worker_id: optional PyWorkerID (random if None)
     ///   node_id: optional PyNodeID (nil if None)
     #[new]
-    #[pyo3(signature = (worker_type, node_ip_address, gcs_address, job_id_int, worker_id=None, node_id=None))]
+    #[pyo3(signature = (worker_type, node_ip_address, gcs_address, job_id_int, worker_id=None, node_id=None, max_concurrency=0))]
     fn py_new(
         worker_type: i32,
         node_ip_address: String,
@@ -165,6 +165,7 @@ impl PyCoreWorker {
         job_id_int: u32,
         worker_id: Option<&crate::ids::PyWorkerID>,
         node_id: Option<&crate::ids::PyNodeID>,
+        max_concurrency: usize,
     ) -> pyo3::PyResult<Self> {
         use crate::common::PyWorkerType;
         use ray_common::id::NodeID;
@@ -185,6 +186,7 @@ impl PyCoreWorker {
             job_id: JobID::from_int(job_id_int),
             worker_id: wid,
             node_id: nid,
+            max_concurrency,
             ..CoreWorkerOptions::default()
         };
         Ok(Self::new(options))
@@ -513,6 +515,15 @@ impl PyCoreWorker {
                             .await
                             .map_err(|e| format!("push_task failed: {}", e))?;
                         let reply = response.into_inner();
+                        // Check for task execution error (actor callback crashed).
+                        if !reply.task_execution_error.is_empty()
+                            && reply.return_objects.is_empty()
+                        {
+                            return Err(format!(
+                                "ACTOR_TASK_ERROR:{}",
+                                reply.task_execution_error
+                            ));
+                        }
                         for ret_obj in &reply.return_objects {
                             let oid = ObjectID::from_binary(&ret_obj.object_id);
                             let ray_obj = RayObject::new(

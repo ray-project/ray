@@ -33,6 +33,7 @@ fn make_test_core_worker() -> Arc<CoreWorker> {
         cluster_id: ClusterID::nil(),
         session_name: "test".to_string(),
         num_workers: 1,
+        max_concurrency: 0,
     }))
 }
 
