@@ -1050,6 +1050,13 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         if self._router is None:
             raise RuntimeError("Router is not initialized")
 
+        self.request_counter.inc(
+            tags={
+                "route": metadata.route,
+                "application": metadata.app_name,
+            }
+        )
+
         future = self._router.broadcast(metadata, *args, **kwargs)
         return DeploymentBroadcastResponse(
             future,

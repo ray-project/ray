@@ -1039,8 +1039,8 @@ class AsyncioRouter:
         results: List[ReplicaResult] = []
         for replica in replicas:
             replica_pr = PendingRequest(
-                args=pr.args,
-                kwargs=pr.kwargs,
+                args=list(pr.args),
+                kwargs=dict(pr.kwargs),
                 metadata=replace(
                     request_meta,
                     internal_request_id=generate_request_id(),
