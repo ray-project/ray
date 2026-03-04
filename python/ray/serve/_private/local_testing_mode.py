@@ -353,8 +353,14 @@ class LocalRouter(Router):
         )
         # Wrap the single replica result in a list to match the broadcast API.
         wrapper_future = concurrent.futures.Future()
-        replica_result = result_future.result()
-        wrapper_future.set_result([replica_result])
+
+        def _on_done(fut: concurrent.futures.Future):
+            try:
+                wrapper_future.set_result([fut.result()])
+            except Exception as e:
+                wrapper_future.set_exception(e)
+
+        result_future.add_done_callback(_on_done)
         return wrapper_future
 
     def shutdown(self):

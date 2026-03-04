@@ -9,6 +9,7 @@ from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import contextmanager
+from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
     Any,
@@ -1009,6 +1010,13 @@ class AsyncioRouter:
         directly to every replica. Waits for the request router to be
         initialized so the replica set is populated.
         """
+        # Propagate tracing context, matching assign_request behavior.
+        if is_span_recording():
+            propagate_context = create_propagated_context()
+            request_meta.tracing_context = propagate_context
+        else:
+            request_meta.tracing_context = None
+
         await self._request_router_initialized.wait()
 
         if not self._deployment_available:
@@ -1020,25 +1028,26 @@ class AsyncioRouter:
         if not replicas:
             raise DeploymentUnavailableError(self.deployment_id)
 
+        # Resolve arguments (e.g. DeploymentResponse objects) before sending.
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=dict(request_kwargs),
+            metadata=request_meta,
+        )
+        await self._resolve_request_arguments(pr)
+
         results: List[ReplicaResult] = []
         for replica in replicas:
-            pr = PendingRequest(
-                args=list(request_args),
-                kwargs=dict(request_kwargs),
-                metadata=RequestMetadata(
-                    request_id=request_meta.request_id,
+            replica_pr = PendingRequest(
+                args=pr.args,
+                kwargs=pr.kwargs,
+                metadata=replace(
+                    request_meta,
                     internal_request_id=generate_request_id(),
-                    call_method=request_meta.call_method,
-                    route=request_meta.route,
-                    app_name=request_meta.app_name,
-                    is_streaming=request_meta.is_streaming,
-                    _by_reference=request_meta._by_reference,
-                    request_serialization=request_meta.request_serialization,
-                    response_serialization=request_meta.response_serialization,
                 ),
             )
-            pr.resolved = True
-            result = replica.try_send_request(pr, with_rejection=False)
+            replica_pr.resolved = True
+            result = replica.try_send_request(replica_pr, with_rejection=False)
             results.append(result)
 
         return results

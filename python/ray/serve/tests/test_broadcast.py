@@ -3,9 +3,7 @@ import sys
 
 import pytest
 
-import ray
 from ray import serve
-from ray._common.test_utils import wait_for_condition
 
 
 def test_broadcast_basic(serve_instance):
@@ -19,11 +17,8 @@ def test_broadcast_basic(serve_instance):
     serve.run(D.bind())
     handle = serve.get_deployment_handle("D", "default")
 
-    # Wait for all replicas to be available.
-    wait_for_condition(lambda: handle.running_replicas_populated(), timeout=15)
-
-    response = handle.broadcast("get_pid")
-    pids = response.results(timeout_s=10)
+    # broadcast() internally waits for replicas to be available.
+    pids = handle.broadcast("get_pid").results(timeout_s=10)
 
     assert len(pids) == 3
     # Each replica should have a unique PID.
@@ -40,10 +35,8 @@ def test_broadcast_with_args(serve_instance):
 
     serve.run(D.bind())
     handle = serve.get_deployment_handle("D", "default")
-    wait_for_condition(lambda: handle.running_replicas_populated(), timeout=15)
 
-    response = handle.broadcast("add", 1, b=2)
-    results = response.results(timeout_s=10)
+    results = handle.broadcast("add", 1, b=2).results(timeout_s=10)
 
     assert len(results) == 2
     assert all(r == 3 for r in results)
@@ -66,7 +59,6 @@ def test_broadcast_stateful(serve_instance):
 
     serve.run(D.bind())
     handle = serve.get_deployment_handle("D", "default")
-    wait_for_condition(lambda: handle.running_replicas_populated(), timeout=15)
 
     # All replicas should start with cache size 1.
     sizes = handle.broadcast("get_cache_size").results(timeout_s=10)
@@ -92,10 +84,8 @@ async def test_broadcast_async(serve_instance):
 
     serve.run(D.bind())
     handle = serve.get_deployment_handle("D", "default")
-    wait_for_condition(lambda: handle.running_replicas_populated(), timeout=15)
 
-    response = handle.broadcast("get_pid")
-    pids = await response.results_async()
+    pids = await handle.broadcast("get_pid").results_async()
 
     assert len(pids) == 2
     assert len(set(pids)) == 2
@@ -111,7 +101,6 @@ def test_broadcast_single_replica(serve_instance):
 
     serve.run(D.bind())
     handle = serve.get_deployment_handle("D", "default")
-    wait_for_condition(lambda: handle.running_replicas_populated(), timeout=15)
 
     results = handle.broadcast("ping").results(timeout_s=10)
     assert results == ["pong"]

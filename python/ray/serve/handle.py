@@ -772,18 +772,43 @@ class DeploymentBroadcastResponse:
 
     def __init__(
         self,
-        replica_results_future: concurrent.futures.Future[List[ReplicaResult]],
+        replica_results_future: Union[
+            concurrent.futures.Future[List[ReplicaResult]],
+            asyncio.Future[List[ReplicaResult]],
+        ],
+        _is_router_running_in_separate_loop: bool = True,
     ):
         self._replica_results_future = replica_results_future
         self._replica_results: Optional[List[ReplicaResult]] = None
+        self._is_router_running_in_separate_loop = (
+            _is_router_running_in_separate_loop
+        )
 
-    def _fetch_replica_results(
+    def _fetch_replica_results_sync(
         self, timeout_s: Optional[float] = None
     ) -> List[ReplicaResult]:
         if self._replica_results is None:
-            self._replica_results = self._replica_results_future.result(
-                timeout=timeout_s
+            # When _is_router_running_in_separate_loop is True, the future
+            # is a concurrent.futures.Future (not asyncio.Future).
+            sync_future = cast(
+                concurrent.futures.Future[List[ReplicaResult]],
+                self._replica_results_future,
             )
+            self._replica_results = sync_future.result(timeout=timeout_s)
+        return self._replica_results
+
+    async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
+        if self._replica_results is None:
+            if self._is_router_running_in_separate_loop:
+                self._replica_results = await asyncio.wrap_future(
+                    self._replica_results_future
+                )
+            else:
+                async_future = cast(
+                    asyncio.Future[List[ReplicaResult]],
+                    self._replica_results_future,
+                )
+                self._replica_results = await async_future
         return self._replica_results
 
     def results(self, *, timeout_s: Optional[float] = None) -> List[Any]:
@@ -798,9 +823,15 @@ class DeploymentBroadcastResponse:
         Raises:
             TimeoutError: If the timeout is exceeded.
         """
+        if is_running_in_asyncio_loop():
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response.results_async()` instead."
+            )
+
         start_time_s = time.time()
         try:
-            replica_results = self._fetch_replica_results(timeout_s)
+            replica_results = self._fetch_replica_results_sync(timeout_s)
         except concurrent.futures.TimeoutError:
             raise TimeoutError(
                 "Timed out waiting for broadcast results."
@@ -821,7 +852,7 @@ class DeploymentBroadcastResponse:
 
         Returns a list of results, one per replica.
         """
-        replica_results = await asyncio.wrap_future(self._replica_results_future)
+        replica_results = await self._fetch_replica_results_async()
         return [await rr.get_async() for rr in replica_results]
 
     def __repr__(self) -> str:
@@ -1020,4 +1051,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             raise RuntimeError("Router is not initialized")
 
         future = self._router.broadcast(metadata, *args, **kwargs)
-        return DeploymentBroadcastResponse(future)
+        return DeploymentBroadcastResponse(
+            future,
+            _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
+        )
