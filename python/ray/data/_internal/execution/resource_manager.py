@@ -395,10 +395,15 @@ class ResourceManager:
             verbose = LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE
 
         if verbose:
+            own_out = self.get_mem_op_outputs(op)
+            total_out = self.get_mem_op_outputs(op, include_ineligible_downstream=True)
             usage_str += (
                 f" (in={memory_string(self.get_mem_op_internal(op))},"
-                f"out={memory_string(self.get_mem_op_outputs(op))})"
+                f"out={memory_string(own_out)}"
             )
+            if total_out != own_out:
+                usage_str += f",out+downstream={memory_string(total_out)}"
+            usage_str += ")"
             if self._op_resource_allocator is not None:
                 allocation = self._op_resource_allocator.get_allocation(op)
                 if allocation:
@@ -932,13 +937,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if op not in self._op_budgets:
             return None
 
-        res = self._op_budgets[op].object_store_memory
-        # Add the remaining of `_reserved_for_op_outputs`.
+        budget_obj_store = self._op_budgets[op].object_store_memory
+        # The total output ceiling is the general budget plus the output reservation.
+        # Subtract current output usage to get how much more can be read.
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
 
-        res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
+        res = max(
+            budget_obj_store + self._reserved_for_op_outputs[op] - op_outputs_usage, 0
+        )
         if math.isinf(res):
             self._output_budgets[op] = res
             return None
