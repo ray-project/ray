@@ -32,7 +32,7 @@ message PlacementGroupDefinitionEvent {
   bytes placement_group_id = 1;
   // User-provided placement group name.
   string name = 2;
-  // Placement group namespace.
+  // Placement group namespace. This is the ray namespace from the job that created the placement group.
   string ray_namespace = 3;
   // Scheduling strategy (PACK/SPREAD/STRICT_PACK/STRICT_SPREAD).
   ray.rpc.PlacementStrategy strategy = 4;
