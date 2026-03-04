@@ -42,14 +42,6 @@ RayPlacementGroupLifecycleEvent::RayPlacementGroupLifecycleEvent(
         ConvertSchedulingState(stats.scheduling_state()));
     state_transition.set_scheduling_attempt(stats.scheduling_attempt());
     state_transition.set_highest_retry_delay_ms(stats.highest_retry_delay_ms());
-    state_transition.set_scheduling_started_time_ns(stats.scheduling_started_time_ns());
-
-    // Set latency fields only when PG is successfully created
-    if (state == rpc::events::PlacementGroupLifecycleEvent::CREATED) {
-      state_transition.set_scheduling_latency_us(stats.scheduling_latency_us());
-      state_transition.set_end_to_end_creation_latency_us(
-          stats.end_to_end_creation_latency_us());
-    }
   }
 
   data_.mutable_state_transitions()->Add(std::move(state_transition));

@@ -52,13 +52,8 @@ rpc::PlacementGroupTableData CreateTestPlacementGroupTableData(
   auto *stats = data.mutable_stats();
   stats->set_scheduling_state(scheduling_state);
   stats->set_creation_request_received_ns(1000000000);
-  stats->set_scheduling_started_time_ns(1000100000);
   stats->set_scheduling_attempt(3);
   stats->set_highest_retry_delay_ms(100.5);
-  if (state == rpc::PlacementGroupTableData::CREATED) {
-    stats->set_scheduling_latency_us(500);
-    stats->set_end_to_end_creation_latency_us(1000);
-  }
 
   return data;
 }
@@ -262,7 +257,7 @@ TEST_P(EventMergingTest, TestMergeMultipleTransitions) {
 
 INSTANTIATE_TEST_SUITE_P(TransitionCounts, EventMergingTest, ::testing::Values(2, 3, 5));
 
-TEST_F(RayPlacementGroupLifecycleEventTest, TestCreatedStateIncludesLatencies) {
+TEST_F(RayPlacementGroupLifecycleEventTest, TestCreatedStateIncludesSchedulingStats) {
   auto data = CreateTestPlacementGroupTableData(rpc::PlacementStrategy::PACK,
                                                 rpc::PlacementGroupTableData::CREATED,
                                                 rpc::PlacementGroupStats::FINISHED);
@@ -277,14 +272,11 @@ TEST_F(RayPlacementGroupLifecycleEventTest, TestCreatedStateIncludesLatencies) {
   ASSERT_EQ(transition.state(), rpc::events::PlacementGroupLifecycleEvent::CREATED);
   ASSERT_EQ(transition.scheduling_state(),
             rpc::events::PlacementGroupLifecycleEvent::FINISHED);
-  ASSERT_EQ(transition.scheduling_latency_us(), 500);
-  ASSERT_EQ(transition.end_to_end_creation_latency_us(), 1000);
   ASSERT_EQ(transition.scheduling_attempt(), 3);
   ASSERT_DOUBLE_EQ(transition.highest_retry_delay_ms(), 100.5);
-  ASSERT_EQ(transition.scheduling_started_time_ns(), 1000100000);
 }
 
-TEST_F(RayPlacementGroupLifecycleEventTest, TestNonCreatedStateOmitsLatencies) {
+TEST_F(RayPlacementGroupLifecycleEventTest, TestNonCreatedStateIncludesSchedulingStats) {
   auto data = CreateTestPlacementGroupTableData(rpc::PlacementStrategy::PACK,
                                                 rpc::PlacementGroupTableData::PENDING,
                                                 rpc::PlacementGroupStats::NO_RESOURCES);
@@ -297,10 +289,8 @@ TEST_F(RayPlacementGroupLifecycleEventTest, TestNonCreatedStateOmitsLatencies) {
   const auto &transition = pg_life.state_transitions(0);
 
   ASSERT_EQ(transition.state(), rpc::events::PlacementGroupLifecycleEvent::PENDING);
-  // Latencies should not be set for non-CREATED states
-  ASSERT_EQ(transition.scheduling_latency_us(), 0);
-  ASSERT_EQ(transition.end_to_end_creation_latency_us(), 0);
-  // But other stats should still be present
+  ASSERT_EQ(transition.scheduling_state(),
+            rpc::events::PlacementGroupLifecycleEvent::NO_RESOURCES);
   ASSERT_EQ(transition.scheduling_attempt(), 3);
   ASSERT_DOUBLE_EQ(transition.highest_retry_delay_ms(), 100.5);
 }
