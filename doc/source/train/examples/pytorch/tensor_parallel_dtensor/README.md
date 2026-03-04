@@ -643,7 +643,7 @@ train_loop_config = {
 
 # Create experiment name
 experiment_name = f"tp_dtensor_{uuid.uuid4().hex[:8]}"
-storage_path = "/tmp/ray_train_tp_dtensor"  # Use persistent/shared storage in production
+storage_path = "/mnt/cluster_storage"  # Use persistent/shared storage in production
 
 # Configure run settings
 run_config = RunConfig(
