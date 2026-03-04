@@ -45,7 +45,7 @@ __all__ = [
 
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)
@@ -731,7 +731,7 @@ def are_remote_args_compatible(
 
     all_keys = prev_args.keys() | next_args.keys()
     for key in all_keys:
-        if key in ("label_selector", "scheduling_strategy"):
+        if key in INHERITABLE_REMOTE_ARGS:
             # Scheduling-related arguments are not checked for compatibility here,
             # they are merged with specific precedence rules during the merge.
             continue
