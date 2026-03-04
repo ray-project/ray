@@ -114,7 +114,7 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         from ray.data.block import BlockMetadataWithSchema
 
-        meta = block.get_metadata(exec_stats=stats.build())
+        meta = block.get_metadata(block_exec_stats=stats.build())
         schema = block.schema()
         meta_with_schema = BlockMetadataWithSchema(metadata=meta, schema=schema)
         return slices + [meta_with_schema]
