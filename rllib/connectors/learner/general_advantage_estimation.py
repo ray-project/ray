@@ -116,7 +116,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
 
         # Compute bootstrap values for non-terminated episodes via a small VF pass.
         bootstrap_values = self._compute_bootstrap_values(
-            rl_module, vf_preds, eps_per_module, episodes, shared_data
+            rl_module, eps_per_module, episodes, shared_data
         )
 
         # Loop through all modules and perform each one's GAE computation.
@@ -211,7 +211,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         return batch
 
     def _compute_bootstrap_values(
-        self, rl_module, vf_preds, eps_per_module, episodes, shared_data
+        self, rl_module, eps_per_module, episodes, shared_data
     ):
         """Compute per-episode bootstrap values for each module.
 
