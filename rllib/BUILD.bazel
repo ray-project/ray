@@ -3199,6 +3199,25 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# connectors/ directory
+#
+# Tag: connectors
+#
+# NOTE: Add tests alphabetically into this list.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "connectors/common/tests/test_frame_stacking",
+    size = "small",
+    srcs = ["connectors/common/tests/test_frame_stacking"],
+    main = "connectors/common/tests/test_frame_stacking",
+    tags = [
+        "no_main",
+        "team:rllib",
+    ],
+)
+
+# --------------------------------------------------------------------
 # examples/ directory
 #
 # Tag: examples
