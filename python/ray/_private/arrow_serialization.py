@@ -493,6 +493,15 @@ def _binary_view_array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPa
         if not is_valid:
             continue
 
+        # https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-view-layout
+        #
+        # Each element of a string or binary view array is a 16-byte "view". The first four bytes
+        # are a signed 32-bit integer indicating the length of the string element. If the string
+        # element contains twelve or fewer bytes, it is stored in-line. Otherwise, the next 12 bytes
+        # comprise the string element's 4-byte prefix, the index of the buffer containing this
+        # string, and the offset within that buffer of this string.
+        #
+        # The buffer index and offset are also 32-bit signed integers.
         view: tuple[int, int, int, int] = struct.unpack(
             "<iiii",
             view_buf[
