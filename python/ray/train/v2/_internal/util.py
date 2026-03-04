@@ -101,6 +101,28 @@ class TrainingFramework(Enum):
     XGBOOST = "xgboost"
     LIGHTGBM = "lightgbm"
 
+    def module_names(self) -> tuple[str, ...]:
+        """Return importable module names to collect versions for.
+
+        These module names are used by Train state version collection (see
+        `_get_framework_version`) to gather versions of key framework-related packages.
+
+        Note: If adding a new module, make sure to use the module name rather than
+        the distribution name. (e.g. sklearn instead of scikit-learn)
+        """
+        if self is TrainingFramework.TORCH:
+            return ("torch",)
+        if self is TrainingFramework.JAX:
+            return ("jax", "jaxlib")
+        if self is TrainingFramework.TENSORFLOW:
+            return ("tensorflow", "keras")
+        if self is TrainingFramework.XGBOOST:
+            return ("xgboost",)
+        if self is TrainingFramework.LIGHTGBM:
+            return ("lightgbm",)
+
+        return (self.value,)
+
 
 class ObjectRefWrapper(Generic[T]):
     """Thin wrapper around ray.put to manually control dereferencing."""

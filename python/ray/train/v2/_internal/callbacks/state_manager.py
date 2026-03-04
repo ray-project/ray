@@ -51,17 +51,16 @@ def _get_framework_version(framework: Optional[TrainingFramework]):
     if framework is None:
         return versions
 
-    module_name = framework.value
-    try:
-        module = importlib.import_module(module_name)
-        versions[module_name] = module.__version__
-    except ImportError:
-        logger.warning(
-            f"Failed to collect {module_name} version on worker "
-            f"(could not import '{module_name}')."
-        )
-    except Exception:
-        logger.warning(f"Failed to collect {module_name} version on worker.")
+    for module_name in framework.module_names():
+        try:
+            module = importlib.import_module(module_name)
+            versions[module_name] = module.__version__
+        except ModuleNotFoundError:
+            # Module is not installed, skip without recording a version.
+            continue
+        except Exception:
+            logger.warning(f"Failed to collect {module_name} version on worker.")
+            continue
 
     return versions
 

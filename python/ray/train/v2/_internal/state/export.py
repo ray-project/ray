@@ -227,13 +227,11 @@ def to_proto_scaling_config(
     if scaling_config.resources_per_worker is not None:
         proto.resources_per_worker.values.update(scaling_config.resources_per_worker)
 
-    # optional scalar fields: assign only if not None
     if scaling_config.accelerator_type is not None:
         proto.accelerator_type = scaling_config.accelerator_type
     if scaling_config.topology is not None:
         proto.topology = scaling_config.topology
 
-    # Normalize bundle label selector to protobuf format
     if scaling_config.bundle_label_selector is not None:
         selectors = scaling_config.bundle_label_selector
         if isinstance(selectors, dict):
