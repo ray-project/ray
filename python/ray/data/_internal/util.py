@@ -1821,7 +1821,7 @@ def make_epoch_seed(seed: int, execution_idx: int) -> int:
 
     Modulo ensures the result is in valid NumPy seed range [0, 2**32 - 1].
     """
-    return hash((seed, execution_idx)) % (2**32)
+    return (seed + execution_idx) % (2**32)
 
 
 def get_max_task_capacity(

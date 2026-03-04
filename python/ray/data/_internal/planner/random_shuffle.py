@@ -38,6 +38,11 @@ def generate_random_shuffle_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
     ) -> AllToAllTransformFnResult:
+        from ray.data._internal.util import make_epoch_seed
+
+        execution_idx = data_context._execution_idx if data_context is not None else 0
+        epoch_seed = make_epoch_seed(seed, execution_idx)
+
         num_input_blocks = sum(len(r.blocks) for r in refs)
 
         # If map_transformer is specified (e.g. from fusing
@@ -63,7 +68,7 @@ def generate_random_shuffle_fn(
                 ctx.target_max_block_size_override or data_context.target_max_block_size
             ),
             random_shuffle=True,
-            random_seed=seed,
+            random_seed=epoch_seed,
             upstream_map_fn=upstream_map_fn,
         )
 
