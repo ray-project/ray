@@ -1,7 +1,6 @@
 import copy
 import signal
 import time
-from enum import Enum
 from typing import (
     Any,
     AsyncGenerator,
@@ -15,41 +14,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    EmbeddingCompletionRequest,
+    EmbeddingRequest,
+    EmbeddingResponse,
 )
-
-
-class ChatRole(str, Enum):
-    user = "user"
-    assistant = "assistant"
-    system = "system"
-
-
-def format_messages_to_prompt(messages: List[Any]) -> str:
-    prompt = "A conversation between a user and an assistant.\n"
-
-    for message in messages:
-        # Handle dicts (standard OpenAI format) or objects (if Ray passes wrappers)
-        if isinstance(message, dict):
-            role = message.get("role")
-            content = message.get("content")
-            if content is None:
-                content = ""
-        else:
-            # Fallback for object access if it's a Pydantic model
-            role = getattr(message, "role", "user")
-            content = getattr(message, "content", "") or ""
-
-        role_str = str(role)
-
-        if role_str == ChatRole.system.value:
-            prompt += f"### System: {content.strip()}\n"
-        elif role_str == ChatRole.user.value:
-            prompt += f"### User: {content.strip()}\n"
-        elif role_str == ChatRole.assistant.value:
-            prompt += f"### Assistant: {content.strip()}\n"
-
-    prompt += "### Assistant:"
-    return prompt
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 
 
 class SGLangServer:
@@ -66,6 +35,8 @@ class SGLangServer:
                 "`pip install sglang[all]` to install required dependencies."
             ) from e
 
+        # TODO(issue-61108): remove this once sglang#18752 is merged and included
+        # in the minimum supported SGLang version for this example.
         original_signal_func = signal.signal
 
         def noop_signal_handler(sig, action):
@@ -79,47 +50,138 @@ class SGLangServer:
         finally:
             signal.signal = original_signal_func
 
-    async def _generate_and_extract_metadata(
-        self, request: Any, prompt_string: str
-    ) -> dict[str, Any]:
-        """
-        Handles parameter extraction, calls the SGLang engine, and processes the
-        raw response to extract common metadata and generated text.
-        """
-        temp = getattr(request, "temperature", None)
-        if temp is None:
-            temp = 0.7
+    @staticmethod
+    def _build_sampling_params(request: Any) -> dict[str, Any]:
+        sampling_params: dict[str, Any] = {}
+        model_fields_set = getattr(request, "model_fields_set", None)
+        has_model_fields_set = model_fields_set is not None
+        fields_set = set(model_fields_set) if has_model_fields_set else set()
 
+        def was_explicitly_set(field_name: str) -> bool:
+            # Use model_fields_set when available to avoid injecting defaults for
+            # fields omitted by the caller.
+            if has_model_fields_set:
+                return field_name in fields_set
+            return getattr(request, field_name, None) is not None
+
+        temperature = getattr(request, "temperature", None)
         top_p = getattr(request, "top_p", None)
-        if top_p is None:
-            top_p = 1.0
-
         max_tokens = getattr(request, "max_tokens", None)
-        if max_tokens is None:
-            max_tokens = 128
+        stop = getattr(request, "stop", None)
 
-        stop_sequences = getattr(request, "stop", None)
+        if was_explicitly_set("temperature") and temperature is not None:
+            sampling_params["temperature"] = temperature
+        if was_explicitly_set("top_p") and top_p is not None:
+            sampling_params["top_p"] = top_p
+        if was_explicitly_set("max_tokens") and max_tokens is not None:
+            sampling_params["max_new_tokens"] = max_tokens
+        if was_explicitly_set("stop") and stop is not None:
+            sampling_params["stop"] = stop
 
-        sampling_params = {
-            "temperature": temp,
-            "max_new_tokens": max_tokens,
-            "stop": stop_sequences,
-            "top_p": top_p,
-        }
+        return sampling_params
 
-        raw = await self.engine.async_generate(
-            prompt=prompt_string,
-            sampling_params=sampling_params,
-            stream=False,
+    @staticmethod
+    def _build_chat_messages(messages: List[Any]) -> List[dict[str, Any]]:
+        converted_messages: List[dict[str, Any]] = []
+        for message in messages:
+            if isinstance(message, dict):
+                message_dict = dict(message)
+            elif hasattr(message, "model_dump") and callable(message.model_dump):
+                message_dict = dict(message.model_dump())
+            else:
+                message_dict = {
+                    "role": getattr(message, "role", "user"),
+                    "content": getattr(message, "content", ""),
+                }
+
+            message_dict["role"] = str(message_dict.get("role", "user"))
+            converted_messages.append(message_dict)
+        return converted_messages
+
+    @staticmethod
+    def _build_chat_template_kwargs(request: ChatCompletionRequest) -> dict[str, Any]:
+        """
+        Build optional chat-template kwargs using request fields when present.
+        This mirrors SGLang's chat-serving pipeline semantics without directly
+        coupling to its internal server classes.
+        """
+        kwargs: dict[str, Any] = {}
+
+        tools = getattr(request, "tools", None)
+        if tools is not None:
+            kwargs["tools"] = tools
+
+        reasoning_effort = getattr(request, "reasoning_effort", None)
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
+
+        chat_template_kwargs = getattr(request, "chat_template_kwargs", None)
+        if isinstance(chat_template_kwargs, dict):
+            kwargs.update(chat_template_kwargs)
+
+        return kwargs
+
+    def _render_chat_prompt(
+        self,
+        request: ChatCompletionRequest,
+        messages: List[dict[str, Any]],
+    ) -> str:
+        tokenizer = self.engine.tokenizer_manager.tokenizer
+        # SGLang supports --skip-tokenizer-init, where tokenizer is intentionally
+        # None and text prompt rendering is not available.
+        if tokenizer is None:
+            return self._render_fallback_prompt(messages)
+
+        template_kwargs = self._build_chat_template_kwargs(request)
+        return tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            **template_kwargs,
         )
 
-        if isinstance(raw, list):
-            if not raw:
-                raise RuntimeError(
-                    "SGLang engine returned an empty response list during generation."
-                )
-            raw = raw[0]
+    @staticmethod
+    def _render_fallback_prompt(messages: List[dict[str, Any]]) -> str:
+        # Fallback prompt format for tokenizers without chat-template support.
+        prompt_lines: List[str] = []
+        for message in messages:
+            role = str(message.get("role", "user"))
+            content = message.get("content", "")
+            if content is None:
+                content = ""
+            prompt_lines.append(f"{role}: {content}")
+        prompt_lines.append("assistant:")
+        return "\n".join(prompt_lines)
 
+    async def start(self) -> None:
+        # Engine is initialized in __init__; keep start idempotent for protocol
+        # compatibility.
+        return
+
+    async def check_health(self) -> None:
+        # SGLang's in-process Engine API does not expose a health-check method.
+        # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
+        # this integration does not run. Keep the protocol hook as a no-op.
+        return
+
+    async def _generate_raw(
+        self,
+        request: Any,
+        prompt: Any,
+    ) -> dict[str, Any]:
+        """Run generation and return raw engine output payload."""
+        sampling_params = self._build_sampling_params(request)
+        generate_kwargs = {
+            "prompt": prompt,
+            "stream": False,
+        }
+        if sampling_params:
+            generate_kwargs["sampling_params"] = sampling_params
+        return await self.engine.async_generate(**generate_kwargs)
+
+    @staticmethod
+    def _extract_generation_metadata(raw: dict[str, Any]) -> dict[str, Any]:
+        """Extract normalized generation metadata from one raw engine payload."""
         text: str = raw.get("text", "")
         meta: dict[str, Any] = raw.get("meta_info", {}) or {}
         finish_reason_info = meta.get("finish_reason", {}) or {}
@@ -143,13 +205,36 @@ class SGLangServer:
             "total_tokens": total_tokens,
         }
 
+    async def _generate_and_extract_metadata(
+        self,
+        request: Any,
+        prompt: Any,
+    ) -> dict[str, Any]:
+        """
+        Handles parameter extraction, calls the SGLang engine, and processes the
+        raw response to extract common metadata and generated text.
+        """
+        raw = await self._generate_raw(request, prompt)
+        if isinstance(raw, list):
+            if not raw:
+                raise RuntimeError(
+                    "SGLang engine returned an empty response list during generation."
+                )
+            raw = raw[0]
+        return self._extract_generation_metadata(raw)
+
     async def chat(
-        self, request: ChatCompletionRequest, raw_request: Optional[Any] = None
+        self,
+        request: ChatCompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[ChatCompletionResponse, None]:
+        chat_messages = self._build_chat_messages(request.messages)
+        prompt = self._render_chat_prompt(request, chat_messages)
 
-        prompt_string = format_messages_to_prompt(request.messages)
-
-        metadata = await self._generate_and_extract_metadata(request, prompt_string)
+        metadata = await self._generate_and_extract_metadata(
+            request,
+            prompt,
+        )
 
         usage_data = {
             "prompt_tokens": metadata["prompt_tokens"],
@@ -159,7 +244,7 @@ class SGLangServer:
 
         choice_data = {
             "index": 0,
-            "message": {"role": ChatRole.assistant.value, "content": metadata["text"]},
+            "message": {"role": "assistant", "content": metadata["text"]},
             "finish_reason": metadata["finish_reason"],
         }
 
@@ -175,9 +260,10 @@ class SGLangServer:
         yield resp
 
     async def completions(
-        self, request: CompletionRequest, raw_request: Optional[Any] = None
+        self,
+        request: CompletionRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[CompletionResponse, None]:
-
         prompt_input = request.prompt
 
         prompts_to_process: List[str] = []
@@ -228,6 +314,57 @@ class SGLangServer:
             model=getattr(request, "model", "default_model"),
             choices=all_choices,
             usage=usage_data,
+        )
+
+        yield resp
+
+    async def embeddings(
+        self, request: EmbeddingRequest, raw_request: Optional[Any] = None
+    ) -> AsyncGenerator[EmbeddingResponse, None]:
+        # Input handling follows SGLang's OpenAIServingEmbedding pattern:
+        # https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/openai/serving_embedding.py
+        if isinstance(request, EmbeddingCompletionRequest):
+            prompt = request.input
+        else:
+            # Chat embedding request - convert messages to prompt
+            prompt = self._render_fallback_prompt(
+                self._build_chat_messages(request.messages)
+            )
+
+        # async_encode handles both single strings and lists of strings
+        results = await self.engine.async_encode(prompt)
+        if not isinstance(results, list):
+            results = [results]
+
+        if not results:
+            raise RuntimeError(
+                "SGLang engine returned an empty response for embedding request."
+            )
+
+        # Build response following SGLang's _build_embedding_response pattern
+        data = []
+        total_prompt_tokens = 0
+
+        for idx, ret_item in enumerate(results):
+            data.append(
+                {
+                    "index": idx,
+                    "object": "embedding",
+                    "embedding": ret_item.get("embedding", []),
+                }
+            )
+            meta = ret_item.get("meta_info", {}) or {}
+            total_prompt_tokens += int(meta.get("prompt_tokens", 0))
+
+        resp = EmbeddingResponse(
+            object="list",
+            model=request.model or "",
+            data=data,
+            usage={
+                "prompt_tokens": total_prompt_tokens,
+                "total_tokens": total_prompt_tokens,
+                "completion_tokens": 0,
+            },
         )
 
         yield resp
