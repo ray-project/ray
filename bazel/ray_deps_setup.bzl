@@ -91,8 +91,8 @@ def ray_deps_setup():
     # Pinned grpc version: v23.4
     auto_http_archive(
         name = "com_google_protobuf",
-        sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
-        url = "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
+        sha256 = "d0e3a75876a81e1536028bb9cf9181382b198da4cc6fa6aef86879ef629ac807",
+        url = "https://github.com/protocolbuffers/protobuf/archive/74211c0dfc2777318ab53c2cd2c317a2ef9012de.tar.gz",
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
         ],
@@ -277,11 +277,10 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.1.tar.gz",
-        sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.76.0.tar.gz",
+        sha256 = "0af37b800953130b47c075b56683ee60bdc3eda3c37fc6004193f5b569758204",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
-            "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
         ],
     )
@@ -321,11 +320,11 @@ def ray_deps_setup():
     auto_http_archive(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
+        # https://github.com/grpc/grpc/blob/v1.76.0/bazel/grpc_deps.bzl
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
-        url = "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
+        sha256 = "b717df72df0023933a729bac00fa422a222949cfa84eb8500f3a9af34441fb6e",
+        url = "https://github.com/google/boringssl/archive/c63fadbde60a2224c22189d14c4001bbd2a3a629.tar.gz",
     )
 
     # The protobuf version we use to auto generate python and java code.

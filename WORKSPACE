@@ -12,21 +12,27 @@ http_archive(
 
 http_archive(
     name = "rules_java",
-    sha256 = "302bcd9592377bf9befc8e41aa97ec02df12813d47af9979e4764f3ffdcc5da8",
+    sha256 = "5449ed36d61269579dd9f4b0e532cd131840f285b389b3795ae8b4d717387dd8",
     urls = [
-        "https://github.com/bazelbuild/rules_java/releases/download/7.12.4/rules_java-7.12.4.tar.gz",
+        "https://github.com/bazelbuild/rules_java/releases/download/8.7.0/rules_java-8.7.0.tar.gz",
     ],
 )
-
-load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
-
-rules_java_dependencies()
-
-rules_java_toolchains()
 
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
+
+load(
+    "@rules_java//java:rules_java_deps.bzl",
+    "compatibility_proxy_repo",
+    rules_java_deps = "rules_java_dependencies",
+)
+compatibility_proxy_repo()
+load("@rules_java//java:repositories.bzl", "rules_java_toolchains")
+
+rules_java_deps()
+
+rules_java_toolchains()
 
 load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
 
@@ -59,17 +65,12 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
-load("@python3_10//:defs.bzl", python310 = "interpreter")
-load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
-
-pip_install_dependencies()
-
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 # For CI scripts use only; not for ray testing.
 pip_parse(
     name = "py_deps_py310",
-    python_interpreter_target = python310,
+    python_interpreter_target = "@python3_10//:python3",
     requirements_lock = "//release:requirements_py310.txt",
 )
 
