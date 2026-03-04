@@ -155,13 +155,13 @@ def test_read_datasource_compute_strategy(
     # Verify the compute strategy type on the logical operator
     assert read_op is not None, "Could not find Read operator in logical plan"
     assert isinstance(
-        read_op._compute, expected_strategy_type
-    ), f"Expected {expected_strategy_type}, got {type(read_op._compute)}"
+        read_op.compute, expected_strategy_type
+    ), f"Expected {expected_strategy_type}, got {type(read_op.compute)}"
 
     # If concurrency was specified, verify it takes precedence
     if concurrency is not None:
-        assert isinstance(read_op._compute, TaskPoolStrategy)
-        assert read_op._compute.size == concurrency
+        assert isinstance(read_op.compute, TaskPoolStrategy)
+        assert read_op.compute.size == concurrency
 
 
 @pytest.mark.parametrize(
