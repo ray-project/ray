@@ -362,6 +362,38 @@ impl PyGcsClient {
 
         Ok(crate::ids::PyActorID::from_inner(actor_id))
     }
+
+    /// Look up a named actor by name and namespace.
+    ///
+    /// Returns the actor ID if found, or None if no actor with that name exists.
+    #[pyo3(name = "get_named_actor")]
+    fn py_get_named_actor(
+        &self,
+        name: &str,
+        namespace: &str,
+    ) -> pyo3::PyResult<Option<crate::ids::PyActorID>> {
+        use ray_common::id::ActorID;
+
+        let req = rpc::GetNamedActorInfoRequest {
+            name: name.to_string(),
+            ray_namespace: namespace.to_string(),
+        };
+        match self.runtime.block_on(self.client.get_named_actor_info(req)) {
+            Ok(reply) => {
+                if let Some(ref info) = reply.actor_table_data {
+                    if info.actor_id.is_empty() {
+                        Ok(None)
+                    } else {
+                        let aid = ActorID::from_binary(&info.actor_id);
+                        Ok(Some(crate::ids::PyActorID::from_inner(aid)))
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+            Err(_) => Ok(None),
+        }
+    }
 }
 
 #[cfg(test)]

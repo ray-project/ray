@@ -231,16 +231,26 @@ impl PyCoreWorker {
             self.get_objects(&oids, timeout_ms)
         })
         .map_err(crate::common::to_py_err)?;
-        Ok(results
-            .into_iter()
-            .map(|opt| {
-                opt.map(|obj| {
-                    let data = pyo3::types::PyBytes::new_bound(py, &obj.data).into();
-                    let meta = pyo3::types::PyBytes::new_bound(py, &obj.metadata).into();
-                    (data, meta)
-                })
-            })
-            .collect())
+        let mut out = Vec::with_capacity(results.len());
+        for opt in results {
+            match opt {
+                Some(obj) if obj.metadata.as_ref() == b"ERROR" => {
+                    let msg = String::from_utf8_lossy(&obj.data);
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(
+                        format!("RayTaskError: {}", msg),
+                    ));
+                }
+                Some(obj) => {
+                    let data =
+                        pyo3::types::PyBytes::new_bound(py, &obj.data).into();
+                    let meta =
+                        pyo3::types::PyBytes::new_bound(py, &obj.metadata).into();
+                    out.push(Some((data, meta)));
+                }
+                None => out.push(None),
+            }
+        }
+        Ok(out)
     }
 
     /// Wait for at least num_objects to be ready.
@@ -355,9 +365,10 @@ impl PyCoreWorker {
 
         let cb: TaskExecutionCallback = Arc::new(move |spec: &task_rpc::TaskSpec| {
             let name = spec.name.clone();
+            let num_returns = std::cmp::max(spec.num_returns, 1) as usize;
             let args: Vec<Vec<u8>> = spec.args.iter().map(|a| a.data.clone()).collect();
 
-            let result_bytes = pyo3::Python::with_gil(|py| -> Result<Vec<u8>, CoreWorkerError> {
+            let result_data = pyo3::Python::with_gil(|py| -> Result<Vec<Vec<u8>>, CoreWorkerError> {
                 // Convert args to Python list of bytes objects.
                 let py_args: Vec<pyo3::PyObject> = args
                     .iter()
@@ -367,24 +378,36 @@ impl PyCoreWorker {
                     .collect();
                 let py_args_list = pyo3::types::PyList::new_bound(py, &py_args);
                 let result = callback
-                    .call1(py, (&name, py_args_list))
+                    .call1(py, (&name, py_args_list, num_returns))
                     .map_err(|e| CoreWorkerError::Internal(format!("Python callback error: {}", e)))?;
-                // Extract bytes from the result.
-                let bytes: Vec<u8> = result
-                    .extract(py)
-                    .map_err(|e| CoreWorkerError::Internal(format!("callback must return bytes: {}", e)))?;
-                Ok(bytes)
+                if num_returns <= 1 {
+                    // Single return: callback returns bytes.
+                    let bytes: Vec<u8> = result
+                        .extract(py)
+                        .map_err(|e| CoreWorkerError::Internal(format!("callback must return bytes: {}", e)))?;
+                    Ok(vec![bytes])
+                } else {
+                    // Multi-return: callback returns list[bytes].
+                    let list: Vec<Vec<u8>> = result
+                        .extract(py)
+                        .map_err(|e| CoreWorkerError::Internal(format!("callback must return list[bytes] for multi-return: {}", e)))?;
+                    Ok(list)
+                }
             })?;
 
             let task_id = TaskID::from_binary(&spec.task_id);
-            let return_oid = ObjectID::from_index(&task_id, 1);
-            Ok(TaskResult {
-                return_objects: vec![task_rpc::ReturnObject {
-                    object_id: return_oid.binary(),
-                    data: result_bytes,
+            let return_objects: Vec<task_rpc::ReturnObject> = result_data
+                .into_iter()
+                .enumerate()
+                .map(|(i, data)| task_rpc::ReturnObject {
+                    object_id: ObjectID::from_index(&task_id, (i + 1) as u32).binary(),
+                    data,
                     metadata: b"python".to_vec(),
                     ..Default::default()
-                }],
+                })
+                .collect();
+            Ok(TaskResult {
+                return_objects,
                 ..Default::default()
             })
         });
@@ -636,6 +659,15 @@ impl PyCoreWorker {
                         .await
                         .map_err(|e| format!("push_task failed: {}", e))?;
                     let reply = response.into_inner();
+                    // Check for task execution error (e.g. Python callback raised).
+                    if !reply.task_execution_error.is_empty()
+                        && reply.return_objects.is_empty()
+                    {
+                        return Err(format!(
+                            "TASK_ERROR:{}",
+                            reply.task_execution_error
+                        ));
+                    }
                     for ret_obj in &reply.return_objects {
                         let oid = ObjectID::from_binary(&ret_obj.object_id);
                         let ray_obj = RayObject::new(
@@ -668,15 +700,17 @@ impl PyCoreWorker {
     ///   name: the function name (e.g. "square")
     ///   args: list of byte arrays (each is a serialized argument)
     ///   num_returns: number of return values (default 1)
+    ///   max_retries: max retry attempts on task failure (default 0)
     ///
     /// Returns a list of ObjectIDs for the return values.
-    #[pyo3(name = "submit_task", signature = (name, args, num_returns=1))]
+    #[pyo3(name = "submit_task", signature = (name, args, num_returns=1, max_retries=0))]
     fn py_submit_task(
         &self,
         py: pyo3::Python<'_>,
         name: &str,
         args: Vec<Vec<u8>>,
         num_returns: u64,
+        max_retries: i32,
     ) -> pyo3::PyResult<Vec<crate::ids::PyObjectID>> {
         use ray_proto::ray::rpc as task_rpc;
 
@@ -703,11 +737,47 @@ impl PyCoreWorker {
 
         // Release the GIL during block_on: the dispatch callback blocks on
         // rx.recv() while the worker's Python callback needs the GIL.
-        py.allow_threads(|| {
-            self.runtime
-                .block_on(self.inner.submit_task(&spec))
-        })
-        .map_err(crate::common::to_py_err)?;
+        let mut retries_left = max_retries;
+        loop {
+            let submit_result = py.allow_threads(|| {
+                self.runtime
+                    .block_on(self.inner.submit_task(&spec))
+            });
+            match submit_result {
+                Ok(()) => break,
+                Err(ref e) if retries_left > 0 => {
+                    let msg = format!("{}", e);
+                    if msg.contains("TASK_ERROR:") {
+                        retries_left -= 1;
+                        tracing::debug!(
+                            retries_left,
+                            "Task failed, retrying"
+                        );
+                        continue;
+                    }
+                    // Non-task errors (e.g. connection) — don't retry.
+                    return Err(crate::common::to_py_err(submit_result.unwrap_err()));
+                }
+                Err(e) => {
+                    // Final failure — store error objects so py_get returns error.
+                    let msg = format!("{}", e);
+                    let error_msg = msg
+                        .strip_prefix("TASK_ERROR:")
+                        .unwrap_or(&msg);
+                    let store = self.inner.memory_store();
+                    for oid in &return_oids {
+                        let error_obj =
+                            ray_core_worker::memory_store::RayObject::new(
+                                bytes::Bytes::from(error_msg.to_string()),
+                                bytes::Bytes::from_static(b"ERROR"),
+                                Vec::new(),
+                            );
+                        let _ = store.put(*oid, error_obj);
+                    }
+                    break;
+                }
+            }
+        }
 
         Ok(return_oids
             .into_iter()

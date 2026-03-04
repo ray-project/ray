@@ -185,8 +185,30 @@ impl TaskReceiver {
 
         self.num_executing.fetch_add(1, Ordering::Relaxed);
 
-        // Execute the task.
-        let result = self.execute_task(&task_spec, &cancel_token);
+        // Execute the task on a blocking thread so that the callback can
+        // call `block_on()` on a *different* tokio runtime (e.g. for nested
+        // task dispatch) without triggering "Cannot start a runtime from
+        // within a runtime".
+        let result = {
+            let callback = self.execute_callback.lock().clone();
+            let cancel_flag = cancel_token.clone();
+            tokio::task::spawn_blocking(move || {
+                if cancel_flag.is_cancelled() {
+                    return Ok(TaskResult {
+                        error_message: "task cancelled before execution".into(),
+                        ..Default::default()
+                    });
+                }
+                let callback = callback
+                    .as_ref()
+                    .ok_or(CoreWorkerError::NotInitialized)?;
+                callback(&task_spec)
+            })
+            .await
+            .map_err(|e| {
+                CoreWorkerError::Internal(format!("task execution join error: {}", e))
+            })?
+        };
 
         self.num_executing.fetch_sub(1, Ordering::Relaxed);
         self.total_executed.fetch_add(1, Ordering::Relaxed);
