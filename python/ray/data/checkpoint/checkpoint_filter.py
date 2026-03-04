@@ -89,10 +89,10 @@ class CheckpointLoader:
 
         if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
             # Read checkpoint via PyIceberg directly to avoid catalog-parallelism edge cases.
+            from pyiceberg.exceptions import NoSuchTableError
             from ray.data._internal.datasource.iceberg_datasource import (
                 _get_iceberg_catalog,
             )
-            from pyiceberg.exceptions import NoSuchTableError
 
             catalog = _get_iceberg_catalog(self.ckpt_config.catalog_kwargs)
             try:

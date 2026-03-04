@@ -353,6 +353,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 )
 
             # Create table if it doesn't exist
+            from pyiceberg.exceptions import TableAlreadyExistsError
             from pyiceberg.io import pyarrow as pyi_pa_io
 
             # Use visitor to create a fresh Iceberg schema without field IDs.
@@ -362,10 +363,14 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 schema, pyi_pa_io._ConvertToIcebergWithoutIDs()
             )
 
-            self._with_retry(
-                lambda: cat.create_table(self.table_identifier, schema=iceberg_schema),
-                description=f"create Iceberg table '{self.table_identifier}'",
-            )
+            try:
+                self._with_retry(
+                    lambda: cat.create_table(self.table_identifier, schema=iceberg_schema),
+                    description=f"create Iceberg table '{self.table_identifier}'",
+                )
+            except TableAlreadyExistsError:
+                # Table was created by another worker concurrently.
+                pass
 
         # Always reload to ensure we have the latest table instance
         self._reload_table()
