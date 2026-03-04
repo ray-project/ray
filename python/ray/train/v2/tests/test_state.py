@@ -1,3 +1,4 @@
+import importlib
 import time
 from collections import OrderedDict
 from unittest.mock import MagicMock, patch
@@ -822,75 +823,35 @@ def test_callback_log_file_paths(
     assert attempt.workers[0].log_file_path == mock_worker.log_file_path
 
 
-@pytest.mark.parametrize(
-    "fw",
-    [
-        None,
-        TrainingFramework.TORCH.value,
-        TrainingFramework.LIGHTGBM.value,
-        TrainingFramework.XGBOOST.value,
-        TrainingFramework.TENSORFLOW.value,
-        TrainingFramework.JAX.value,
-    ],
-)
-def test_get_framework_version(ray_start_regular, fw):
-    """Validate version reporting and framework lookup per framework, assuming frameworks are installed."""
-    manager = TrainStateManager()
+def test_training_framework_module_names():
+    """Verify module_names() returns the expected modules for every framework."""
+    assert TrainingFramework.TORCH.module_names() == ("torch",)
+    assert TrainingFramework.JAX.module_names() == ("jax", "jaxlib")
+    assert TrainingFramework.TENSORFLOW.module_names() == ("tensorflow", "keras")
+    assert TrainingFramework.XGBOOST.module_names() == ("xgboost",)
+    assert TrainingFramework.LIGHTGBM.module_names() == ("lightgbm",)
 
-    # Create backend config for this framework (assumes frameworks are importable).
-    if fw is None:
-        backend_config = BackendConfig()
-    elif fw == TrainingFramework.TORCH.value:
-        from ray.train.torch import TorchConfig
 
-        backend_config = TorchConfig()
-    elif fw == TrainingFramework.LIGHTGBM.value:
-        from ray.train.lightgbm.config import LightGBMConfig
+def test_get_framework_version():
+    """Test _get_framework_version with None and every TrainingFramework value."""
+    # None should return only the ray version.
+    versions = _get_framework_version(None)
+    assert list(versions.keys()) == ["ray"]
+    assert versions["ray"] == ray.__version__
 
-        backend_config = LightGBMConfig()
-    elif fw == TrainingFramework.XGBOOST.value:
-        from ray.train.xgboost.config import XGBoostConfig
+    # Each framework should return ray + versions for all importable modules.
+    for framework in TrainingFramework:
+        versions = _get_framework_version(framework)
+        assert "ray" in versions
+        assert versions["ray"] == ray.__version__
 
-        backend_config = XGBoostConfig()
-    elif fw == TrainingFramework.TENSORFLOW.value:
-        from ray.train.tensorflow.config import TensorflowConfig
-
-        backend_config = TensorflowConfig()
-    elif fw == TrainingFramework.JAX.value:
-        from ray.train.v2.jax.config import JaxConfig
-
-        backend_config = JaxConfig()
-    else:
-        raise AssertionError("Unknown framework parameter")
-
-    run_id = "fw_run_param"
-    manager.create_train_run(
-        id=run_id,
-        name="train",
-        job_id="job_id",
-        controller_actor_id="controller_id",
-        controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
-        run_config=RunConfig(name="train"),
-        train_loop_config={},
-        scaling_config=ScalingConfig(num_workers=1),
-        backend_config=backend_config,
-        datasets={},
-        dataset_config=DataConfig(),
-    )
-
-    # Validate the framework is set correctly
-    framework = manager.get_train_run_framework(run_id)
-    if framework is not None:
-        assert framework.value == fw
-
-    # Validate the framework version is set correctly
-    versions = _get_framework_version(None if fw is None else framework)
-
-    assert "ray" in versions
-    if fw is None:
-        assert list(versions.keys()) == ["ray"]
-    else:
-        assert fw in versions
+        for module_name in framework.module_names():
+            try:
+                module = importlib.import_module(module_name)
+                assert module_name in versions
+                assert versions[module_name] == module.__version__
+            except ModuleNotFoundError:
+                assert module_name not in versions
 
 
 def test_execution_options_to_dict_defaults_and_custom():

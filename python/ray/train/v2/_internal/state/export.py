@@ -217,7 +217,7 @@ def to_proto_scaling_config(
     scaling_config: ScalingConfig,
 ) -> ProtoTrainRun.ScalingConfig:
     """Convert ScalingConfig to protobuf format."""
-    proto = ProtoTrainRun.ScalingConfig(
+    proto_scaling_config = ProtoTrainRun.ScalingConfig(
         num_workers=scaling_config.num_workers,
         use_gpu=scaling_config.use_gpu,
         placement_strategy=scaling_config.placement_strategy,
@@ -225,42 +225,82 @@ def to_proto_scaling_config(
     )
 
     if scaling_config.resources_per_worker is not None:
-        proto.resources_per_worker.values.update(scaling_config.resources_per_worker)
+        proto_scaling_config.resources_per_worker.values.update(
+            scaling_config.resources_per_worker
+        )
 
     if scaling_config.accelerator_type is not None:
-        proto.accelerator_type = scaling_config.accelerator_type
+        proto_scaling_config.accelerator_type = scaling_config.accelerator_type
     if scaling_config.topology is not None:
-        proto.topology = scaling_config.topology
+        proto_scaling_config.topology = scaling_config.topology
 
     if scaling_config.bundle_label_selector is not None:
         selectors = scaling_config.bundle_label_selector
         if isinstance(selectors, dict):
             selectors = [selectors]
-        proto.bundle_label_selector.extend(
+        proto_scaling_config.bundle_label_selector.extend(
             [ProtoTrainRun.ScalingConfig.StringMap(values=s) for s in selectors]
         )
 
-    return proto
+    return proto_scaling_config
 
 
 def to_proto_data_config(data_config: DataConfig) -> ProtoTrainRun.DataConfig:
     """Convert DataConfig to protobuf format."""
-    proto = ProtoTrainRun.DataConfig(
+    proto_data_config = ProtoTrainRun.DataConfig(
         enable_shard_locality=data_config.enable_shard_locality,
     )
 
     if data_config.datasets_to_split == "all":
-        proto.all.SetInParent()
+        proto_data_config.all.SetInParent()
     else:
-        proto.datasets.values.extend(data_config.datasets_to_split)
+        proto_data_config.datasets.values.extend(data_config.datasets_to_split)
 
     if data_config.execution_options is not None:
         human_readable_execution_options = json.loads(
             _to_human_readable_json(data_config.execution_options)
         )
-        proto.execution_options.update(human_readable_execution_options)
+        proto_data_config.execution_options.update(human_readable_execution_options)
 
-    return proto
+    return proto_data_config
+
+
+def _to_proto_failure_config(run_config: RunConfig) -> ProtoTrainRun.FailureConfig:
+    """Convert RunConfig.failure_config to protobuf format."""
+    return ProtoTrainRun.FailureConfig(
+        max_failures=run_config.failure_config.max_failures,
+        controller_failure_limit=run_config.failure_config.controller_failure_limit,
+    )
+
+
+def _to_proto_worker_runtime_env(run_config: RunConfig) -> Struct:
+    """Convert RunConfig.worker_runtime_env to protobuf Struct."""
+    proto_worker_runtime_env = Struct()
+    human_readable_worker_runtime_env = json.loads(
+        _to_human_readable_json(run_config.worker_runtime_env)
+    )
+    proto_worker_runtime_env.update(human_readable_worker_runtime_env)
+    return proto_worker_runtime_env
+
+
+def _to_proto_checkpoint_config(
+    run_config: RunConfig,
+) -> ProtoTrainRun.CheckpointConfig:
+    """Convert RunConfig.checkpoint_config to protobuf format."""
+    checkpoint_score_order = ProtoTrainRun.CheckpointConfig.CheckpointScoreOrder.Value(
+        run_config.checkpoint_config.checkpoint_score_order.upper()
+    )
+
+    proto_checkpoint_config = ProtoTrainRun.CheckpointConfig(
+        checkpoint_score_order=checkpoint_score_order
+    )
+    if run_config.checkpoint_config.num_to_keep is not None:
+        proto_checkpoint_config.num_to_keep = run_config.checkpoint_config.num_to_keep
+    if run_config.checkpoint_config.checkpoint_score_attribute is not None:
+        proto_checkpoint_config.checkpoint_score_attribute = (
+            run_config.checkpoint_config.checkpoint_score_attribute
+        )
+    return proto_checkpoint_config
 
 
 def to_proto_run_config(
@@ -268,35 +308,10 @@ def to_proto_run_config(
 ) -> ProtoTrainRun.RunConfig:
     """Convert RunConfig to protobuf format."""
 
-    failure_config = ProtoTrainRun.FailureConfig(
-        max_failures=run_config.failure_config.max_failures,
-        controller_failure_limit=run_config.failure_config.controller_failure_limit,
-    )
-
-    worker_runtime_env = Struct()
-    human_readable_worker_runtime_env = json.loads(
-        _to_human_readable_json(run_config.worker_runtime_env)
-    )
-    worker_runtime_env.update(human_readable_worker_runtime_env)
-
-    checkpoint_score_order = ProtoTrainRun.CheckpointConfig.CheckpointScoreOrder.Value(
-        run_config.checkpoint_config.checkpoint_score_order.upper()
-    )
-
-    checkpoint_config = ProtoTrainRun.CheckpointConfig(
-        checkpoint_score_order=checkpoint_score_order
-    )
-    if run_config.checkpoint_config.num_to_keep is not None:
-        checkpoint_config.num_to_keep = run_config.checkpoint_config.num_to_keep
-    if run_config.checkpoint_config.checkpoint_score_attribute is not None:
-        checkpoint_config.checkpoint_score_attribute = (
-            run_config.checkpoint_config.checkpoint_score_attribute
-        )
-
     return ProtoTrainRun.RunConfig(
-        failure_config=failure_config,
-        worker_runtime_env=worker_runtime_env,
-        checkpoint_config=checkpoint_config,
+        failure_config=_to_proto_failure_config(run_config),
+        worker_runtime_env=_to_proto_worker_runtime_env(run_config),
+        checkpoint_config=_to_proto_checkpoint_config(run_config),
         storage_path=run_config.storage_path,
     )
 
@@ -304,7 +319,7 @@ def to_proto_run_config(
 def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettings:
     """Convert RunSettings to protobuf format."""
 
-    proto = ProtoTrainRun.RunSettings(
+    proto_run_settings = ProtoTrainRun.RunSettings(
         backend_config=to_proto_backend_config(run_settings.backend_config),
         scaling_config=to_proto_scaling_config(run_settings.scaling_config),
         datasets=run_settings.datasets,
@@ -313,22 +328,22 @@ def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettin
     )
 
     if run_settings.train_loop_config is not None:
-        proto.train_loop_config = _to_human_readable_json(
+        proto_run_settings.train_loop_config = _to_human_readable_json(
             run_settings.train_loop_config
         )
 
-    return proto
+    return proto_run_settings
 
 
 def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     """Convert TrainRun to protobuf format."""
 
-    train_run_panels_proto = [_to_proto_dashboard_panel(p) for p in TRAIN_RUN_PANELS]
-    train_worker_panels_proto = [
+    proto_train_run_panels = [_to_proto_dashboard_panel(p) for p in TRAIN_RUN_PANELS]
+    proto_train_worker_panels = [
         _to_proto_dashboard_panel(p) for p in TRAIN_WORKER_PANELS
     ]
 
-    proto_run = ProtoTrainRun(
+    proto_train_run = ProtoTrainRun(
         schema_version=TRAIN_SCHEMA_VERSION,
         ray_train_version=RAY_TRAIN_VERSION,
         id=run.id,
@@ -340,10 +355,10 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
         start_time_ns=run.start_time_ns,
         end_time_ns=run.end_time_ns,
         controller_log_file_path=run.controller_log_file_path,
-        train_run_panels=train_run_panels_proto,
-        train_worker_panels=train_worker_panels_proto,
+        train_run_panels=proto_train_run_panels,
+        train_worker_panels=proto_train_worker_panels,
         framework_versions=run.framework_versions,
         run_settings=_to_proto_run_settings(run.run_settings),
     )
 
-    return proto_run
+    return proto_train_run
