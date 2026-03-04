@@ -56,13 +56,13 @@ class CollectiveTensorTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List["torch.Tensor"],
+        rdt_object: List["torch.Tensor"],
     ) -> CollectiveTransportMetadata:
         tensor_meta = []
         device = None
-        if gpu_object:
-            device = gpu_object[0].device
-            for t in gpu_object:
+        if rdt_object:
+            device = rdt_object[0].device
+            for t in rdt_object:
                 if t.device.type != device.type:
                     raise ValueError(
                         "All tensors in an RDT object must have the same device type."

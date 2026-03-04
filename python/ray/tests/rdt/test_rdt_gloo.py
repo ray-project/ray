@@ -47,16 +47,14 @@ class GPUTestActor:
         return data
 
     def get_out_of_band_tensors(self, obj_id: str, timeout=None):
-        gpu_object_store = (
-            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
-        )
+        rdt_store = ray._private.worker.global_worker.rdt_manager.rdt_store
         if timeout is None:
             timeout = 0
-        return gpu_object_store.wait_and_get_object(obj_id, timeout)
+        return rdt_store.wait_and_get_object(obj_id, timeout)
 
-    def get_num_gpu_objects(self):
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        return gpu_object_manager.gpu_object_store.get_num_objects()
+    def get_num_rdt_objects(self):
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
+        return rdt_manager.rdt_store.get_num_objects()
 
     def fail(self, error_message):
         raise Exception(error_message)
@@ -71,14 +69,12 @@ class ErrorActor:
     def recv(self, tensor):
         return tensor
 
-    def clear_gpu_object_store(self):
-        gpu_object_store = (
-            ray._private.worker.global_worker.gpu_object_manager.gpu_object_store
-        )
+    def clear_rdt_store(self):
+        rdt_store = ray._private.worker.global_worker.rdt_manager.rdt_store
 
-        with gpu_object_store._lock:
-            assert len(gpu_object_store._gpu_object_store) > 0
-            gpu_object_store._gpu_object_store.clear()
+        with rdt_store._lock:
+            assert len(rdt_store._rdt_store) > 0
+            rdt_store._rdt_store.clear()
 
     @ray.method(concurrency_group="_ray_system")
     def block_background_thread(self):
@@ -89,7 +85,7 @@ class ErrorActor:
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
-def test_gc_gpu_object(ray_start_regular, data_size_bytes):
+def test_gc_rdt_object(ray_start_regular, data_size_bytes):
     """
     For small data, GPU objects are inlined, but the actual data lives
     on the remote actor. Therefore, if we decrement the reference count
@@ -121,7 +117,7 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     assert result[1] == cpu_data * 2
 
     wait_for_condition(
-        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(receiver.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -129,26 +125,26 @@ def test_gc_gpu_object(ray_start_regular, data_size_bytes):
     del ref1
 
     wait_for_condition(
-        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(sender.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
 
 
-def test_gc_gpu_object_metadata(ray_start_regular):
+def test_gc_rdt_metadata(ray_start_regular):
     actors = [GPUTestActor.remote() for _ in range(2)]
     create_collective_group(actors, backend="gloo")
 
     tensor = torch.randn((100, 100))
     ref = actors[0].echo.remote(tensor)
     gpu_obj_id = ref.hex()
-    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    assert gpu_object_manager.is_managed_object(gpu_obj_id)
+    rdt_manager = ray._private.worker.global_worker.rdt_manager
+    assert rdt_manager.is_managed_object(gpu_obj_id)
     ray.get(actors[1].double.remote(ref))
     del ref
 
     wait_for_condition(
-        lambda: not gpu_object_manager.is_managed_object(gpu_obj_id),
+        lambda: not rdt_manager.is_managed_object(gpu_obj_id),
     )
 
 
@@ -178,18 +174,18 @@ def test_gc_del_ref_before_recv_finish(ray_start_regular, data_size_bytes):
     assert result[1] == cpu_data * 2
 
     wait_for_condition(
-        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(receiver.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
     wait_for_condition(
-        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(sender.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
 
 
-def test_gc_intra_actor_gpu_object(ray_start_regular):
+def test_gc_intra_actor_rdt_object(ray_start_regular):
     """
     This test checks that passes a GPU object ref to the same actor multiple times.
     """
@@ -208,7 +204,7 @@ def test_gc_intra_actor_gpu_object(ray_start_regular):
     del ref
 
     wait_for_condition(
-        lambda: ray.get(actor.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(actor.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -231,7 +227,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
     assert ray.get(result2) == pytest.approx(small_tensor * 2)
 
     wait_for_condition(
-        lambda: ray.get(actor2.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(actor2.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -239,7 +235,7 @@ def test_gc_pass_ref_to_same_and_different_actors(ray_start_regular):
     del ref
 
     wait_for_condition(
-        lambda: ray.get(actor1.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(actor1.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -364,7 +360,7 @@ def test_send_same_ref_to_same_actor_task_multiple_times(ray_start_regular):
     assert ray.get(result) == pytest.approx(small_tensor * 2)
 
     wait_for_condition(
-        lambda: ray.get(receiver.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(receiver.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -522,16 +518,14 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert len(ret_val_src) == 1
     assert torch.equal(ret_val_src[0], tensor)
 
-    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.add_gpu_object_ref(gpu_ref, src_actor, "GLOO")
+    rdt_manager = ray._private.worker.global_worker.rdt_manager
+    rdt_manager.add_rdt_ref(gpu_ref, src_actor, "GLOO")
 
     # Trigger out-of-band tensor transfer from src_actor to dst_actor.
     task_args = (gpu_ref,)
-    gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
-        dst_actor, task_args
-    )
+    rdt_manager.queue_or_trigger_out_of_band_tensor_transfer(dst_actor, task_args)
 
-    gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
+    rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
         gpu_obj_id,
         CollectiveTransportMetadata(
             tensor_meta=[(tensor.shape, tensor.dtype)],
@@ -548,7 +542,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     assert torch.equal(ret_val_dst[0], tensor)
 
 
-def test_fetch_gpu_object_to_driver(ray_start_regular):
+def test_fetch_rdt_object_to_driver(ray_start_regular):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="gloo")
 
@@ -641,7 +635,7 @@ def test_nested_tensordict(ray_start_regular):
     not support_tensordict,
     reason="tensordict is not supported on this platform",
 )
-def test_tensor_extracted_from_tensordict_in_gpu_object_store(ray_start_regular):
+def test_tensor_extracted_from_tensordict_in_rdt_store(ray_start_regular):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="gloo")
 
@@ -808,50 +802,50 @@ def test_write_after_save(ray_start_regular):
 def test_wait_tensor_freed(ray_start_regular):
     """Unit test for ray.experimental.wait_tensor_freed. Check that the call
     returns when the tensor has been freed from the GPU object store."""
-    gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
+    rdt_store = ray.worker.global_worker.rdt_manager.rdt_store
     obj_id = "random_id"
     tensor = torch.randn((1,))
-    gpu_object_store.add_object_primary(obj_id, [tensor], "GLOO")
+    rdt_store.add_object_primary(obj_id, [tensor], "GLOO")
 
-    assert gpu_object_store.has_object(obj_id)
+    assert rdt_store.has_object(obj_id)
     with pytest.raises(TimeoutError):
         ray.experimental.wait_tensor_freed(tensor, timeout=1)
-    assert gpu_object_store.has_object(obj_id)
+    assert rdt_store.has_object(obj_id)
 
     # Simulate garbage collection in a background thread.
     def gc():
         time.sleep(0.1)
-        gpu_object_store.pop_object(obj_id)
+        rdt_store.pop_object(obj_id)
 
     gc_thread = threading.Thread(target=gc)
     gc_thread.start()
     # Now the wait_tensor_freed call should be able to return.
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
-    assert not gpu_object_store.has_object(obj_id)
+    assert not rdt_store.has_object(obj_id)
 
 
 def test_wait_tensor_freed_double_tensor(ray_start_regular):
     """Unit test for ray.experimental.wait_tensor_freed when multiple objects
     contain the same tensor."""
-    gpu_object_store = ray.worker.global_worker.gpu_object_manager.gpu_object_store
+    rdt_store = ray.worker.global_worker.rdt_manager.rdt_store
     obj_id1 = "random_id1"
     obj_id2 = "random_id2"
     tensor = torch.randn((1,))
-    gpu_object_store.add_object_primary(obj_id1, [tensor], "GLOO")
-    gpu_object_store.add_object_primary(obj_id2, [tensor], "GLOO")
+    rdt_store.add_object_primary(obj_id1, [tensor], "GLOO")
+    rdt_store.add_object_primary(obj_id2, [tensor], "GLOO")
 
-    assert gpu_object_store.has_object(obj_id1)
-    assert gpu_object_store.has_object(obj_id2)
+    assert rdt_store.has_object(obj_id1)
+    assert rdt_store.has_object(obj_id2)
     with pytest.raises(TimeoutError):
         ray.experimental.wait_tensor_freed(tensor, timeout=1)
-    assert gpu_object_store.has_object(obj_id1)
-    assert gpu_object_store.has_object(obj_id2)
+    assert rdt_store.has_object(obj_id1)
+    assert rdt_store.has_object(obj_id2)
 
     # Simulate garbage collection in a background thread.
     def gc(obj_id):
         time.sleep(0.1)
-        gpu_object_store.pop_object(obj_id)
+        rdt_store.pop_object(obj_id)
 
     # Free one object. Tensor should still be stored.
     gc_thread = threading.Thread(target=gc, args=(obj_id1,))
@@ -859,7 +853,7 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     with pytest.raises(TimeoutError):
         ray.experimental.wait_tensor_freed(tensor, timeout=1)
     gc_thread.join()
-    assert not gpu_object_store.has_object(obj_id1)
+    assert not rdt_store.has_object(obj_id1)
 
     # Free the other object. Now the wait_tensor_freed call should be able to
     # return.
@@ -867,7 +861,7 @@ def test_wait_tensor_freed_double_tensor(ray_start_regular):
     gc_thread.start()
     ray.experimental.wait_tensor_freed(tensor)
     gc_thread.join()
-    assert not gpu_object_store.has_object(obj_id2)
+    assert not rdt_store.has_object(obj_id2)
 
 
 def test_send_back_and_dst_warning(ray_start_regular):
@@ -956,7 +950,7 @@ def test_send_fails(ray_start_regular):
     # The gpu object will be gone when we trigger the transfer
     # so the send will error out
     gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
-    ray.get(actors[0].clear_gpu_object_store.remote())
+    ray.get(actors[0].clear_rdt_store.remote())
     result_ref = actors[1].recv.remote(gpu_obj_ref)
 
     with pytest.raises(ray.exceptions.ActorDiedError):

@@ -51,11 +51,11 @@ class GPUTestActor:
         tensor = torch.tensor([1, 2, 3]).to("cuda")
         ref = ray.put(tensor, _tensor_transport="nixl")
         obj_id = ref.hex()
-        gpu_manager = ray._private.worker.global_worker.gpu_object_manager
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
         nixl_transport = get_tensor_transport_manager("NIXL")
 
-        assert gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert gpu_manager.is_managed_object(obj_id)
+        assert rdt_manager.rdt_store.has_tensor(tensor)
+        assert rdt_manager.is_managed_object(obj_id)
         assert obj_id in nixl_transport._managed_meta_nixl
         # Tensor-level metadata counting: the tensor should have metadata_count=1
         key = tensor.untyped_storage().data_ptr()
@@ -64,9 +64,9 @@ class GPUTestActor:
 
         del ref
 
-        gpu_manager.gpu_object_store.wait_tensor_freed(tensor, timeout=10)
-        assert not gpu_manager.gpu_object_store.has_tensor(tensor)
-        assert not gpu_manager.is_managed_object(obj_id)
+        rdt_manager.rdt_store.wait_tensor_freed(tensor, timeout=10)
+        assert not rdt_manager.rdt_store.has_tensor(tensor)
+        assert not rdt_manager.is_managed_object(obj_id)
         assert obj_id not in nixl_transport._managed_meta_nixl
         assert key not in nixl_transport._tensor_desc_cache
         return "Success"
@@ -82,9 +82,9 @@ class GPUTestActor:
     def sum_dict(self, dict):
         return sum(v.sum().item() for v in dict.values())
 
-    def get_num_gpu_objects(self):
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        return gpu_object_manager.gpu_object_store.get_num_objects()
+    def get_num_rdt_objects(self):
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
+        return rdt_manager.rdt_store.get_num_objects()
 
     def get_num_managed_meta_nixl(self):
 
@@ -222,7 +222,7 @@ def test_send_duplicate_tensor(ray_start_regular):
     del ref1
     del ref2
     wait_for_condition(
-        lambda: ray.get(src_actor.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(src_actor.get_num_rdt_objects.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -280,13 +280,11 @@ def test_nixl_del_before_creating(ray_start_regular):
     ray.get(signal_actor.send.remote())
 
     wait_for_condition(
-        lambda: ray._private.worker.global_worker.gpu_object_manager.get_gpu_object_metadata(
-            obj_id
-        )
+        lambda: ray._private.worker.global_worker.rdt_manager.get_rdt_metadata(obj_id)
         is None,
     )
     wait_for_condition(
-        lambda: ray.get(actor.get_num_gpu_objects.remote()) == 0,
+        lambda: ray.get(actor.get_num_rdt_objects.remote()) == 0,
     )
 
 
@@ -526,7 +524,7 @@ def test_register_nixl_memory(ray_start_regular):
     """
     Test that register_nixl_memory persists the NIXL memory registration when the object ref goes out of scope
     """
-    from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+    from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
     )
 

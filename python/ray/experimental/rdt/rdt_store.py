@@ -26,12 +26,10 @@ def __ray_send__(
     """Helper function that runs on the src actor to send tensors to the dst actor."""
     from ray._private.worker import global_worker
 
-    gpu_object_store = global_worker.gpu_object_manager._gpu_object_store
-    assert gpu_object_store.has_object(
-        obj_id
-    ), f"obj_id={obj_id} not found in GPU object store"
+    rdt_store = global_worker.rdt_manager._rdt_store
+    assert rdt_store.has_object(obj_id), f"obj_id={obj_id} not found in RDT store"
 
-    tensors = gpu_object_store.get_object(obj_id)
+    tensors = rdt_store.get_object(obj_id)
 
     device = tensor_transport_meta.tensor_device
     tensor_meta = tensor_transport_meta.tensor_meta
@@ -93,7 +91,7 @@ def __ray_recv__(
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
-    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
+    rdt_store = global_worker.rdt_manager.rdt_store
     try:
         device = tensor_transport_meta.tensor_device
         tensor_meta = tensor_transport_meta.tensor_meta
@@ -115,10 +113,10 @@ def __ray_recv__(
             target_buffers,
         )
         assert len(tensors) == len(tensor_meta)
-        gpu_object_store.add_object(obj_id, tensors)
+        rdt_store.add_object(obj_id, tensors)
     except Exception as e:
-        # Store the error as a gpu object if the recv fails, so waiters will raise the error.
-        gpu_object_store.add_object(obj_id, e)
+        # Store the error as an RDT object if the recv fails, so waiters will raise the error.
+        rdt_store.add_object(obj_id, e)
 
 
 def __ray_abort_transport__(
@@ -141,40 +139,40 @@ def __ray_free__(
         tensor_transport_manager = get_tensor_transport_manager(
             tensor_transport_backend
         )
-        gpu_object_manager = global_worker.gpu_object_manager
-        gpu_object_store = gpu_object_manager.gpu_object_store
+        rdt_manager = global_worker.rdt_manager
+        rdt_store = rdt_manager.rdt_store
 
-        if not gpu_object_store.has_object(obj_id):
+        if not rdt_store.has_object(obj_id):
             return
-        tensors = gpu_object_store.get_object(obj_id)
+        tensors = rdt_store.get_object(obj_id)
         tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta, tensors)
 
-        gpu_object_store.pop_object(obj_id)
+        rdt_store.pop_object(obj_id)
     except AssertionError:
         # This could fail if this is a retry and it's already been freed.
         pass
 
 
-def __ray_fetch_gpu_object__(self, obj_id: str):
-    """Helper function that runs on the src actor to fetch tensors from the GPU object store via the object store."""
+def __ray_fetch_rdt_object__(self, obj_id: str):
+    """Helper function that runs on the src actor to fetch tensors from the RDT store via the object store."""
     from ray._private.worker import global_worker
 
-    gpu_object_store = global_worker.gpu_object_manager.gpu_object_store
-    gpu_object = gpu_object_store.wait_and_get_object(obj_id)
-    return gpu_object
+    rdt_store = global_worker.rdt_manager.rdt_store
+    rdt_object = rdt_store.wait_and_get_object(obj_id)
+    return rdt_object
 
 
 @dataclass
-class _GPUObject:
-    # A list of tensors representing the GPU object.
+class _RDTObject:
+    # A list of tensors representing the RDT object.
     data: List[Any]
-    # Whether the GPU object is the primary copy.
+    # Whether the RDT object is the primary copy.
     is_primary: bool
     # If a recv failed, we store the error here.
     error: Optional[Exception] = None
 
 
-class GPUObjectStore:
+class RDTStore:
     """
     This class is thread-safe. The GPU object store is meant to be read and
     written by the following threads:
@@ -189,13 +187,13 @@ class GPUObjectStore:
     def __init__(self):
         # A dictionary that maps from an object ID to a queue of tensor lists.
         #
-        # Note: Currently, `_gpu_object_store` is only supported for Ray Actors.
-        self._gpu_object_store: Dict[str, deque[_GPUObject]] = defaultdict(deque)
+        # Note: Currently, `_rdt_store` is only supported for Ray Actors.
+        self._rdt_store: Dict[str, deque[_RDTObject]] = defaultdict(deque)
         # Mapping from tensor data pointer to the IDs of objects that contain it.
         self._tensor_to_object_ids: Dict[int, Set[str]] = defaultdict[int, Set[str]](
             set
         )
-        # Synchronization for GPU object store.
+        # Synchronization for the RDT store.
         self._lock = threading.RLock()
         # Signal when an object becomes present in the object store.
         self._object_present_cv = threading.Condition(self._lock)
@@ -204,9 +202,9 @@ class GPUObjectStore:
 
     def has_object(self, obj_id: str) -> bool:
         with self._lock:
-            existed = obj_id in self._gpu_object_store
+            existed = obj_id in self._rdt_store
             if existed:
-                return len(self._gpu_object_store[obj_id]) > 0
+                return len(self._rdt_store[obj_id]) > 0
             return existed
 
     def has_tensor(self, tensor: Any) -> bool:
@@ -216,36 +214,36 @@ class GPUObjectStore:
 
     def get_object(self, obj_id: str) -> Optional[List[Any]]:
         with self._lock:
-            if self._gpu_object_store[obj_id][0].error:
-                raise self._gpu_object_store[obj_id][0].error
-            return self._gpu_object_store[obj_id][0].data
+            if self._rdt_store[obj_id][0].error:
+                raise self._rdt_store[obj_id][0].error
+            return self._rdt_store[obj_id][0].data
 
     def add_object(
         self,
         obj_id: str,
-        gpu_object: Union[List[Any], Exception],
+        rdt_object: Union[List[Any], Exception],
         is_primary: bool = False,
     ):
         """
-        Add a GPU object to the GPU object store.
+        Add an RDT object to the RDT store.
 
         Args:
-            obj_id: The object ID of the GPU object.
-            gpu_object: A list of tensors representing the GPU object.
-            is_primary: Whether the GPU object is the primary copy.
+            obj_id: The object ID of the RDT object.
+            rdt_object: A list of tensors representing the RDT object.
+            is_primary: Whether the RDT object is the primary copy.
         """
         with self._object_present_cv:
-            if isinstance(gpu_object, Exception):
-                self._gpu_object_store[obj_id].append(
-                    _GPUObject([], is_primary, error=gpu_object)
+            if isinstance(rdt_object, Exception):
+                self._rdt_store[obj_id].append(
+                    _RDTObject([], is_primary, error=rdt_object)
                 )
             else:
-                for tensor in gpu_object:
+                for tensor in rdt_object:
                     self._tensor_to_object_ids[id(tensor)].add(obj_id)
                 # Append to the queue instead of overwriting
-                self._gpu_object_store[obj_id].append(
-                    _GPUObject(
-                        gpu_object,
+                self._rdt_store[obj_id].append(
+                    _RDTObject(
+                        rdt_object,
                         is_primary,
                     )
                 )
@@ -263,24 +261,22 @@ class GPUObjectStore:
 
     def is_primary_copy(self, obj_id: str) -> bool:
         with self._lock:
-            return (
-                self.has_object(obj_id) and self._gpu_object_store[obj_id][0].is_primary
-            )
+            return self.has_object(obj_id) and self._rdt_store[obj_id][0].is_primary
 
     def wait_and_get_object(
         self, obj_id: str, timeout: Optional[float] = None
     ) -> List[Any]:
-        """Atomically waits for the GPU object to be present in the GPU object
+        """Atomically waits for the RDT object to be present in the RDT
         store, then gets it. If the object is not present after the optional
         timeout, raise a TimeoutError.
 
         Args:
             obj_id: The object ID to wait for.
             timeout: The maximum time in seconds to wait for the object to be
-                present in the GPU object store. If not specified, wait indefinitely.
+                present in the RDT store. If not specified, wait indefinitely.
 
         Returns:
-            The tensors in the GPU object.
+            The tensors in the RDT object.
         """
         with self._lock:
             self._wait_object(obj_id, timeout)
@@ -289,33 +285,31 @@ class GPUObjectStore:
     def wait_and_pop_object(
         self, obj_id: str, timeout: Optional[float] = None
     ) -> List[Any]:
-        """Atomically waits for the GPU object to be present in the GPU object
+        """Atomically waits for the RDT object to be present in the RDT
         store, then pops it.  If the object is not present after the optional
         timeout, raise a TimeoutError.
 
         Args:
             obj_id: The object ID to wait for.
             timeout: The maximum time in seconds to wait for the object to be
-                present in the GPU object store. If not specified, wait
-                indefinitely.
+                present in the RDT store. If not specified, wait indefinitely.
 
         Returns:
-            The GPU object.
+            The RDT object.
         """
         with self._lock:
             self._wait_object(obj_id, timeout)
             return self.pop_object(obj_id)
 
     def _wait_object(self, obj_id: str, timeout: Optional[float] = None) -> None:
-        """Helper method to wait for the GPU object to be present in the GPU object store.
+        """Helper method to wait for the RDT object to be present in the RDT store.
         If the object is not present after the optional timeout, raise a
         TimeoutError.
 
         Args:
             obj_id: The object ID to wait for.
             timeout: The maximum time in seconds to wait for the object to be
-                present in the GPU object store. If not specified, wait
-                indefinitely.
+                present in the RDT store. If not specified, wait indefinitely.
         """
         with self._object_present_cv:
             if not self._object_present_cv.wait_for(
@@ -328,23 +322,23 @@ class GPUObjectStore:
 
     def pop_object(self, obj_id: str) -> List[Any]:
         with self._lock:
-            queue = self._gpu_object_store.get(obj_id)
-            assert queue is not None, f"obj_id={obj_id} not found in GPU object store"
-            gpu_object = queue.popleft()
+            queue = self._rdt_store.get(obj_id)
+            assert queue is not None, f"obj_id={obj_id} not found in RDT store"
+            rdt_object = queue.popleft()
             if len(queue) == 0:
-                del self._gpu_object_store[obj_id]
-            if gpu_object.error:
-                raise gpu_object.error
-            for tensor in gpu_object.data:
+                del self._rdt_store[obj_id]
+            if rdt_object.error:
+                raise rdt_object.error
+            for tensor in rdt_object.data:
                 self._tensor_to_object_ids[id(tensor)].remove(obj_id)
                 if len(self._tensor_to_object_ids[id(tensor)]) == 0:
                     self._tensor_to_object_ids.pop(id(tensor))
             self._object_freed_cv.notify_all()
-            return gpu_object.data
+            return rdt_object.data
 
     def wait_tensor_freed(self, tensor: Any, timeout: Optional[float] = None) -> None:
         """
-        Wait for the object to be freed from the GPU object store.
+        Wait for the object to be freed from the RDT store.
         """
         with self._object_freed_cv:
             if not self._object_freed_cv.wait_for(
@@ -357,8 +351,8 @@ class GPUObjectStore:
 
     def get_num_objects(self) -> int:
         """
-        Return the number of objects in the GPU object store.
+        Return the number of objects in the RDT store.
         """
         with self._lock:
             # Count total objects across all queues
-            return sum(len(queue) for queue in self._gpu_object_store.values())
+            return sum(len(queue) for queue in self._rdt_store.values())

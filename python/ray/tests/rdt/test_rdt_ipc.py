@@ -21,9 +21,9 @@ class GPUTestActor:
         return data
 
     def wait_tensor_freed(self):
-        gpu_manager = ray.worker.global_worker.gpu_object_manager
+        rdt_manager = ray.worker.global_worker.rdt_manager
         ray.experimental.wait_tensor_freed(self.tensor, timeout=10)
-        assert not gpu_manager.gpu_object_store.has_tensor(self.tensor)
+        assert not rdt_manager.rdt_store.has_tensor(self.tensor)
         return "freed"
 
 

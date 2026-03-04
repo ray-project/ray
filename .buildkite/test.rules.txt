@@ -98,7 +98,7 @@ python/ray/dag/
 python/ray/experimental/channel/
 python/ray/experimental/rdt/
 python/ray/experimental/collective/
-python/ray/tests/gpu_objects/
+python/ray/tests/rdt/
 @ python cgraphs_direct_transport
 ;
 
