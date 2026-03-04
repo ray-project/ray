@@ -862,14 +862,22 @@ def concat(
             f"{schemas_to_unify}"
         ) from e
 
+    matched_blocks: List[pa.Table] = []
+    mismatched_blocks: List[pa.Table] = []
+    for block in blocks:
+        if block.schema == schema:
+            matched_blocks.append(block)
+        else:
+            mismatched_blocks.append(block)
+
     # Fast path: all blocks already share the unified schema.
-    if all(block.schema == schema for block in blocks):
+    if len(matched_blocks) == len(blocks):
         return pa.concat_tables(blocks)
 
     if preserve_order is None:
         preserve_order = DataContext.get_current().execution_options.preserve_order
 
-    if preserve_order:
+    if preserve_order or len(matched_blocks) <= 1:
         return _concat_mismatched_blocks(
             blocks,
             schema=schema,
@@ -880,19 +888,10 @@ def concat(
     # When order doesn't matter, split blocks into schema-matching (fast
     # path) and mismatched (slow path) groups, concat each group, then
     # combine.
-    matched_blocks: List[pa.Table] = []
-    mismatched_blocks: List[pa.Table] = []
-    for block in blocks:
-        if block.schema == schema:
-            matched_blocks.append(block)
-        else:
-            mismatched_blocks.append(block)
-
-    if matched_blocks:
-        mismatched_blocks.append(pa.concat_tables(matched_blocks))
+    single_matched_block = pa.concat_tables(matched_blocks)
 
     return _concat_mismatched_blocks(
-        mismatched_blocks,
+        mismatched_blocks + [single_matched_block],
         schema=schema,
         tensor_types=tensor_types,
         promote_types=promote_types,
@@ -910,6 +909,8 @@ def _concat_mismatched_blocks(
     Handles struct alignment, ``list<null>`` resolution, and per-column
     reconciliation for tensor / object extension types before delegating
     remaining columns to ``pa.concat_tables``.
+
+    NOTE: Concatenates blocks in the same order as input (preserve_order).
 
     Args:
         blocks: Tables that do not all share the same schema.
