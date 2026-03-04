@@ -1309,9 +1309,9 @@ filelock==3.17.0 \
     #   transformers
     #   virtualenv
     #   vllm
-flashinfer-python==0.6.1 \
-    --hash=sha256:610dd4ac15e7a0874b79e7577d027cb35133e8dc31dc3137c2f2d6497fe46f18 \
-    --hash=sha256:8dc2fc5dc187fc70151d5f39ef560fde8a38117a4f6cf40dce0ddb09cbd4f0bf
+flashinfer-python==0.6.3 \
+    --hash=sha256:0fe2de934a4b3690c543dafb03f38d7bb4a762431abe8ae4f7292d6fef10c65d \
+    --hash=sha256:84a762538247a86bc52ff31d9505d161ce1ec059174c1821c87c3ed1e44670fc
     # via vllm
 fqdn==1.5.1 \
     --hash=sha256:105ed3677e767fb5ca086a0c1f4bb66ebc3c100be518f0e0d755d9eae164d89f \
@@ -3714,18 +3714,18 @@ proto-plus==1.26.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   google-api-core
-protobuf==5.29.5 \
-    --hash=sha256:3f1c6468a2cfd102ff4703976138844f78ebd1fb45f49011afc5139e9e283079 \
-    --hash=sha256:3f76e3a3675b4a4d867b52e4a5f5b78a2ef9565549d4037e06cf7b0942b1d3fc \
-    --hash=sha256:470f3af547ef17847a28e1f47200a1cbf0ba3ff57b7de50d22776607cd2ea353 \
-    --hash=sha256:63848923da3325e1bf7e9003d680ce6e14b07e55d0473253a690c3a8b8fd6e61 \
-    --hash=sha256:6cf42630262c59b2d8de33954443d94b746c952b01434fc58a417fdbd2e84bd5 \
-    --hash=sha256:6f642dc9a61782fa72b90878af134c5afe1917c89a568cd3476d758d3c3a0736 \
-    --hash=sha256:7318608d56b6402d2ea7704ff1e1e4597bee46d760e7e4dd42a3d45e24b87f2e \
-    --hash=sha256:bc1463bafd4b0929216c35f437a8e28731a2b7fe3d98bb77a600efced5a15c84 \
-    --hash=sha256:e38c5add5a311f2a6eb0340716ef9b039c1dfa428b28f25a7838ac329204a671 \
-    --hash=sha256:ef91363ad4faba7b25d844ef1ada59ff1604184c0bcd8b39b8a6bef15e1af238 \
-    --hash=sha256:fa18533a299d7ab6c55a238bf8629311439995f2e7eca5caaff08663606e9015
+protobuf==5.29.6 \
+    --hash=sha256:36ade6ff88212e91aef4e687a971a11d7d24d6948a66751abc1b3238648f5d05 \
+    --hash=sha256:62e8a3114992c7c647bce37dcc93647575fc52d50e48de30c6fcb28a6a291eb1 \
+    --hash=sha256:6b9edb641441b2da9fa8f428760fc136a49cf97a52076010cf22a2ff73438a86 \
+    --hash=sha256:76e07e6567f8baf827137e8d5b8204b6c7b6488bbbff1bf0a72b383f77999c18 \
+    --hash=sha256:7e6ad413275be172f67fdee0f43484b6de5a904cc1c3ea9804cb6fe2ff366eda \
+    --hash=sha256:831e2da16b6cc9d8f1654c041dd594eda43391affd3c03a91bea7f7f6da106d6 \
+    --hash=sha256:a8866b2cff111f0f863c1b3b9e7572dc7eaea23a7fae27f6fc613304046483e6 \
+    --hash=sha256:b5a169e664b4057183a34bdc424540e86eea47560f3c123a0d64de4e137f9269 \
+    --hash=sha256:cb4c86de9cd8a7f3a256b9744220d87b847371c6b2f10bde87768918ef33ba49 \
+    --hash=sha256:da9ee6a5424b6b30fd5e45c5ea663aef540ca95f9ad99d1e887e819cdf9b8723 \
+    --hash=sha256:e3387f44798ac1106af0233c04fb8abf543772ff241169946f698b3a9a3d3ab9
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
@@ -5910,9 +5910,10 @@ virtualenv==20.29.1 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
-vllm==0.15.0 \
-    --hash=sha256:faa6d7bc5f65b1b6f8b1e6a028759f78246113294fbc7e6633d25459d652d2a7 \
-    --hash=sha256:fd03371687568c511be2f9204932b3d76fd432ccaf4c19632cd53e98b0eb53c8
+vllm==0.16.0 \
+    --hash=sha256:1f684bb31fbef59d862e2fe666e23a41f1d39d93f86215ce1ce1db89a8f5665b \
+    --hash=sha256:dfaa14846608fd229dda9d372e2ad3f13854fd09147c2ba36b40579cf3c03804 \
+    --hash=sha256:f066b2a2f8597a4a3ada8fbbfd122b59086864b2260ca42dc81bf9fb57af0c42
     # via -r python/requirements/llm/llm-requirements.txt
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \

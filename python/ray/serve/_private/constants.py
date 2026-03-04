@@ -668,6 +668,12 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
     else None
 )
 
+# When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
+# setting TCP_NODELAY on both client and server connections.
+RAY_SERVE_HAPROXY_TCP_NODELAY = (
+    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "0") == "1"
+)
+
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
