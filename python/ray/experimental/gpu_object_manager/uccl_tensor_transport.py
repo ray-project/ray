@@ -56,6 +56,7 @@ class TensorDesc:
 class UCCLTensorTransport(TensorTransportManager):
     def __init__(self):
         self._uccl_endpoint = None
+        self._endpoint_name = None
         self._aborted_transfer_obj_ids = set()
         self._aborted_transfer_obj_ids_lock = threading.Lock()
         # Mapping from tensor data pointer to the UCCL descriptor and reference count.
@@ -92,6 +93,15 @@ class UCCLTensorTransport(TensorTransportManager):
 
         gpu_idx = torch.cuda.current_device() if torch.cuda.is_available() else 0
         self._uccl_endpoint = p2p.Endpoint(gpu_idx, UCCL_NUM_CPUS)
+
+        ctx = ray.get_runtime_context()
+        actor_id = ctx.get_actor_id()
+        if actor_id is None:
+            import uuid
+
+            actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
+        self._endpoint_name = actor_id
+
         return self._uccl_endpoint
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
@@ -154,14 +164,7 @@ class UCCLTensorTransport(TensorTransportManager):
 
                 serialized_descs = ep.get_serialized_descs(all_descs)
                 endpoint_meta = ep.get_metadata()
-
-                ctx = ray.get_runtime_context()
-                actor_id = ctx.get_actor_id()
-                if actor_id is None:
-                    import uuid
-
-                    actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
-                endpoint_name = actor_id
+                endpoint_name = self._endpoint_name
             else:
                 serialized_descs = None
                 endpoint_meta = None
@@ -280,9 +283,9 @@ class UCCLTensorTransport(TensorTransportManager):
             with self._aborted_transfer_obj_ids_lock:
                 self._aborted_transfer_obj_ids.discard(obj_id)
             # TODO: check if need to destory the endpoint
-            if local_descs:
-                with self._cache_lock:
-                    ep.deregister_memory(local_descs)
+            # if local_descs:
+            #     with self._cache_lock:
+            #         ep.deregister_memory(local_descs)
 
         return tensors
 
@@ -316,7 +319,7 @@ class UCCLTensorTransport(TensorTransportManager):
                     tensor_desc.metadata_count -= 1
                     if tensor_desc.metadata_count == 0:
                         self._tensor_desc_cache.pop(key)
-                        ep.deregister_memory([tensor_desc.desc])
+                        # ep.deregister_memory([tensor_desc.desc])
 
     def abort_transport(
         self,
@@ -342,23 +345,16 @@ class UCCLTensorTransport(TensorTransportManager):
         """
         Register tensors with the UCCL endpoint and cache their descriptors.
         If a tensor is already registered (by data_ptr), its reference count is
-        incremented. New tensors are batch-registered via register_memory.
+        incremented. New tensors are registered one at a time so that duplicates
+        within the same input list are detected immediately via the cache.
         """
-        new_tensors = []
-        new_keys = []
-
+        ep = self._get_uccl_endpoint()
         for tensor in tensors:
             key = tensor.data_ptr()
             if key in self._tensor_desc_cache:
                 self._tensor_desc_cache[key].metadata_count += 1
             else:
-                new_tensors.append(tensor)
-                new_keys.append(key)
-
-        if new_tensors:
-            ep = self._get_uccl_endpoint()
-            new_descs = ep.register_memory(new_tensors)
-            for key, desc in zip(new_keys, new_descs):
+                descs = ep.register_memory([tensor])
                 self._tensor_desc_cache[key] = TensorDesc(
-                    desc=desc, metadata_count=1
+                    desc=descs[0], metadata_count=1
                 )
