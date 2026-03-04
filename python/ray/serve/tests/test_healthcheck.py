@@ -11,6 +11,7 @@ from ray.serve._private.constants import (
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve.config import GangSchedulingConfig
 
 
 class Counter:
@@ -289,6 +290,129 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
     # Check that deployment stays unhealthy
     for _ in range(5):
         assert check_status(DeploymentStatus.UNHEALTHY)
+
+
+def test_gang_health_check_restarts_gang(serve_instance):
+    """RESTART_GANG tears down the entire gang on failure while the deployment
+    keeps serving traffic with no downtime."""
+
+    class Toggle:
+        def __init__(self):
+            self._should_fail = False
+
+        def set_should_fail(self):
+            self._should_fail = True
+
+        def unset_should_fail(self):
+            self._should_fail = False
+
+        def should_fail(self):
+            return self._should_fail
+
+    toggle = ray.remote(Toggle).remote()
+
+    @serve.deployment(health_check_period_s=1, health_check_timeout_s=1)
+    class GangPatient:
+        def __init__(self):
+            self._fail = False
+
+        def check_health(self):
+            if self._fail and ray.get(toggle.should_fail.remote()):
+                raise Exception("intended to fail")
+
+        def __call__(self):
+            ctx = ray.serve.context._get_internal_replica_context()
+            gc = ctx.gang_context
+            return {
+                "replica_id": ctx.replica_id.unique_id,
+                "gang_id": gc.gang_id if gc else None,
+            }
+
+        def set_should_fail(self):
+            self._fail = True
+            ctx = ray.serve.context._get_internal_replica_context()
+            gc = ctx.gang_context
+            return {
+                "replica_id": ctx.replica_id.unique_id,
+                "gang_id": gc.gang_id if gc else None,
+            }
+
+    num_replicas = 4
+    gang_size = 2
+    num_gangs = num_replicas // gang_size
+
+    h = serve.run(
+        GangPatient.options(
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        ).bind()
+    )
+
+    # Collect initial replica state.
+    initial_replicas = {}
+    for _ in range(100):
+        result = h.remote().result()
+        initial_replicas[result["replica_id"]] = result
+        if len(initial_replicas) == num_replicas:
+            break
+    assert len(initial_replicas) == num_replicas
+
+    # Identify the two distinct gang IDs.
+    gang_ids = {r["gang_id"] for r in initial_replicas.values()}
+    assert len(gang_ids) == num_gangs
+
+    # Make one replica fail health checks.
+    fail_info = h.set_should_fail.remote().result()
+    target_gang_id = fail_info["gang_id"]
+    surviving_gang_id = (gang_ids - {target_gang_id}).pop()
+    ray.get(toggle.set_should_fail.remote())
+
+    # Wait for deployment to become UNHEALTHY.
+    def check_unhealthy():
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert (
+            app_status.deployments["GangPatient"].status == DeploymentStatus.UNHEALTHY
+        )
+        return True
+
+    wait_for_condition(check_unhealthy, timeout=10)
+
+    # Zero-downtime check.
+    # While the failed gang is being torn down and before the replacement
+    # gang comes up, the surviving gang must keep serving traffic.
+    for _ in range(30):
+        result = h.remote().result()
+        assert result["gang_id"] == surviving_gang_id
+
+    # Turn off failures so replacement replicas start healthy.
+    ray.get(toggle.unset_should_fail.remote())
+
+    # Wait for deployment to recover.
+    def check_healthy():
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app_status.status == "RUNNING"
+        assert app_status.deployments["GangPatient"].status == DeploymentStatus.HEALTHY
+        return True
+
+    wait_for_condition(check_healthy, timeout=10)
+
+    # Collect final replica state.
+    final_replicas = {}
+    for _ in range(100):
+        result = h.remote().result()
+        final_replicas[result["replica_id"]] = result
+        if len(final_replicas) == num_replicas:
+            break
+    assert len(final_replicas) == num_replicas
+
+    # Both replicas from the failed gang should have been replaced.
+    old_gang_ids = {
+        r["replica_id"]
+        for r in initial_replicas.values()
+        if r["gang_id"] == target_gang_id
+    }
+    assert len(old_gang_ids) == gang_size
+    assert old_gang_ids.isdisjoint(final_replicas.keys())
 
 
 if __name__ == "__main__":
