@@ -1,9 +1,88 @@
 import numpy as np
 
 from ray.rllib.utils.postprocessing.value_predictions import (
+    compute_value_targets_batched,
     compute_value_targets_with_bootstrap,
 )
 from ray.rllib.utils.test_utils import check
+
+
+class TestComputeValueTargetsBatched:
+    """Tests for the vectorized batched GAE computation."""
+
+    def test_matches_per_episode_single(self):
+        """Single episode: batched matches per-episode function."""
+        values = np.array([1.0, 2.0, 3.0])
+        rewards = np.array([10.0, 20.0, 30.0])
+        terminateds = np.array([False, False, True], dtype=np.float32)
+        bootstrap = 0.0
+        gamma, lambda_ = 0.9, 1.0
+
+        expected = compute_value_targets_with_bootstrap(
+            values, rewards, terminateds, bootstrap, gamma, lambda_
+        )
+        result = compute_value_targets_batched(
+            values,
+            rewards,
+            terminateds,
+            episode_lens=[3],
+            bootstrap_values=[bootstrap],
+            gamma=gamma,
+            lambda_=lambda_,
+        )
+        check(result, expected, atol=1e-5)
+
+    def test_matches_per_episode_multiple(self):
+        """Multiple heterogeneous episodes: batched matches per-episode."""
+        # Episode 1: terminated, length 3
+        v1 = np.array([1.0, 2.0, 3.0])
+        r1 = np.array([10.0, 20.0, 30.0])
+        t1 = np.array([0.0, 0.0, 1.0])
+        bs1 = 0.0
+        # Episode 2: truncated, length 4
+        v2 = np.array([1.0, 2.0, 3.0, 4.0])
+        r2 = np.array([0.5, 1.5, 2.5, 3.5])
+        t2 = np.array([0.0, 0.0, 0.0, 0.0])
+        bs2 = 5.0
+        # Episode 3: terminated, length 1
+        v3 = np.array([7.0])
+        r3 = np.array([42.0])
+        t3 = np.array([1.0])
+        bs3 = 0.0
+
+        gamma, lambda_ = 0.99, 0.95
+
+        expected = np.concatenate(
+            [
+                compute_value_targets_with_bootstrap(v1, r1, t1, bs1, gamma, lambda_),
+                compute_value_targets_with_bootstrap(v2, r2, t2, bs2, gamma, lambda_),
+                compute_value_targets_with_bootstrap(v3, r3, t3, bs3, gamma, lambda_),
+            ]
+        )
+
+        result = compute_value_targets_batched(
+            values=np.concatenate([v1, v2, v3]),
+            rewards=np.concatenate([r1, r2, r3]),
+            terminateds=np.concatenate([t1, t2, t3]),
+            episode_lens=[3, 4, 1],
+            bootstrap_values=[bs1, bs2, bs3],
+            gamma=gamma,
+            lambda_=lambda_,
+        )
+        check(result, expected, atol=1e-5)
+
+    def test_empty(self):
+        """Empty input returns empty array."""
+        result = compute_value_targets_batched(
+            values=np.array([]),
+            rewards=np.array([]),
+            terminateds=np.array([]),
+            episode_lens=[],
+            bootstrap_values=[],
+            gamma=0.99,
+            lambda_=0.95,
+        )
+        assert len(result) == 0
 
 
 class TestComputeValueTargetsWithBootstrap:

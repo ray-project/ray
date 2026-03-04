@@ -12,7 +12,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import (
-    compute_value_targets_with_bootstrap,
+    compute_value_targets_batched,
 )
 from ray.rllib.utils.postprocessing.zero_padding import (
     split_and_zero_pad_n_episodes,
@@ -125,40 +125,32 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 continue
 
             module = rl_module[module_id]
+            is_stateful = module.is_stateful()
             eps = eps_per_module[module_id]
             episode_lens = [len(e) for e in eps]
 
-            # Convert to numpy, removing zero-padding (for stateful modules).
-            module_vf_preds_np = unpad_data_if_necessary(
-                episode_lens, convert_to_numpy(module_vf_preds)
-            )
-            rewards_np = unpad_data_if_necessary(
-                episode_lens,
-                convert_to_numpy(batch[module_id][Columns.REWARDS]),
-            )
-            terminateds_np = unpad_data_if_necessary(
-                episode_lens,
-                convert_to_numpy(batch[module_id][Columns.TERMINATEDS]),
-            )
-
-            # Per-episode GAE.
-            all_targets = []
-            pos = 0
-            for i, ep in enumerate(eps):
-                L = episode_lens[i]
-                targets = compute_value_targets_with_bootstrap(
-                    values=module_vf_preds_np[pos : pos + L],
-                    rewards=rewards_np[pos : pos + L],
-                    terminateds=terminateds_np[pos : pos + L],
-                    bootstrap_value=bootstrap_values[module_id][i],
-                    gamma=self.gamma,
-                    lambda_=self.lambda_,
+            # Convert to numpy
+            module_vf_preds_np = convert_to_numpy(module_vf_preds)
+            rewards_np = convert_to_numpy(batch[module_id][Columns.REWARDS])
+            terminateds_np = convert_to_numpy(batch[module_id][Columns.TERMINATEDS])
+            # Remove zero-padding for stateful modules.
+            if is_stateful:
+                module_vf_preds_np = unpad_data_if_necessary(
+                    episode_lens, module_vf_preds_np
                 )
-                all_targets.append(targets)
-                pos += L
+                rewards_np = unpad_data_if_necessary(episode_lens, rewards_np)
+                terminateds_np = unpad_data_if_necessary(episode_lens, terminateds_np)
 
-            module_value_targets = np.concatenate(all_targets)
-            assert module_value_targets.shape[0] == sum(episode_lens)
+            # Vectorized GAE across all episodes.
+            module_value_targets = compute_value_targets_batched(
+                values=module_vf_preds_np,
+                rewards=rewards_np,
+                terminateds=terminateds_np,
+                episode_lens=episode_lens,
+                bootstrap_values=bootstrap_values[module_id],
+                gamma=self.gamma,
+                lambda_=self.lambda_,
+            )
 
             module_advantages = module_value_targets - module_vf_preds_np
             # Standardize advantages (used for more stable and better weighted
@@ -168,7 +160,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
             )
 
             # Re-apply zero-padding for stateful modules.
-            if module.is_stateful():
+            if is_stateful:
                 max_seq_len = module.model_config["max_seq_len"]
                 module_advantages = np.stack(
                     split_and_zero_pad_n_episodes(
@@ -200,8 +192,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
                         Postprocessing.VALUE_TARGETS
                     ],
                 }
-                for mid, preds in vf_preds.items()
-                if preds is not None
+                for mid in vf_preds.keys()
             },
             episodes=episodes,
         )
