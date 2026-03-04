@@ -215,6 +215,7 @@ ci/docker/forge.aarch64.wanda.yaml
 .buildkite/release/
 .buildkite/release-automation/
 build-wheel.sh
+build-image.sh
 @ tools
 ;
 
@@ -227,7 +228,6 @@ ci/docker/manylinux.aarch64.wanda.yaml
 ci/docker/windows.build.Dockerfile
 ci/docker/windows.build.wanda.yaml
 build-docker.sh
-build-image.sh
 @ docker linux_wheels tools
 ;
 
