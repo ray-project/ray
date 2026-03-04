@@ -494,7 +494,9 @@ class SGLangServer:
         add_special_tokens = getattr(request, "add_special_tokens", True)
         tokens = tokenizer.encode(prompt, add_special_tokens=add_special_tokens)
 
-        max_model_len = getattr(self.engine.server_args, "context_length", None) or 0
+        max_model_len = getattr(
+            self.engine.tokenizer_manager, "context_len", None
+        ) or getattr(self.engine.server_args, "context_length", None) or 0
 
         yield TokenizeResponse(
             tokens=tokens,
