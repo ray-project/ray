@@ -483,12 +483,23 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # Resource accounting
     # ------------------------------------------------------------------
 
+    def current_logical_usage(self) -> ExecutionResources:
+        return ExecutionResources(gpu=self._rank_pool.nranks)
+
     @property
     def base_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(gpu=self._rank_pool.nranks)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(gpu=1)
+
+    def get_actor_info(self):
+        from ray.data._internal.execution.interfaces.physical_operator import (
+            _ActorPoolInfo,
+        )
+
+        n = len(self._rank_pool.actors)
+        return _ActorPoolInfo(running=n, pending=0, restarting=0)
 
     # ------------------------------------------------------------------
     # SubProgressBarMixin
