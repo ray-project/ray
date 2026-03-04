@@ -10,6 +10,7 @@ from typing import (
     Generator,
     Generic,
     Iterator,
+    List,
     Optional,
     Tuple,
     TypeVar,
@@ -753,6 +754,80 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
         return replica_result.to_object_ref_gen()
 
 
+@PublicAPI(stability="alpha")
+class DeploymentBroadcastResponse:
+    """Wraps the results of a broadcast call to all replicas of a deployment.
+
+    Collects results from all replicas in parallel.
+
+    Example:
+
+    .. code-block:: python
+
+        handle = serve.get_deployment_handle("MyDeployment", "app")
+        response = handle.broadcast("reset_cache")
+        results = response.results()
+
+    """
+
+    def __init__(
+        self,
+        replica_results_future: concurrent.futures.Future[List[ReplicaResult]],
+    ):
+        self._replica_results_future = replica_results_future
+        self._replica_results: Optional[List[ReplicaResult]] = None
+
+    def _fetch_replica_results(
+        self, timeout_s: Optional[float] = None
+    ) -> List[ReplicaResult]:
+        if self._replica_results is None:
+            self._replica_results = self._replica_results_future.result(
+                timeout=timeout_s
+            )
+        return self._replica_results
+
+    def results(self, *, timeout_s: Optional[float] = None) -> List[Any]:
+        """Fetch results from all replicas synchronously.
+
+        Returns a list of results, one per replica. The order corresponds
+        to the internal replica ordering at the time the broadcast was issued.
+
+        Args:
+            timeout_s: Timeout in seconds. If ``None``, blocks indefinitely.
+
+        Raises:
+            TimeoutError: If the timeout is exceeded.
+        """
+        start_time_s = time.time()
+        try:
+            replica_results = self._fetch_replica_results(timeout_s)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(
+                "Timed out waiting for broadcast results."
+            ) from None
+
+        collected = []
+        for rr in replica_results:
+            remaining = calculate_remaining_timeout(
+                timeout_s=timeout_s,
+                start_time_s=start_time_s,
+                curr_time_s=time.time(),
+            )
+            collected.append(rr.get(remaining))
+        return collected
+
+    async def results_async(self) -> List[Any]:
+        """Fetch results from all replicas asynchronously.
+
+        Returns a list of results, one per replica.
+        """
+        replica_results = await asyncio.wrap_future(self._replica_results_future)
+        return [await rr.get_async() for rr in replica_results]
+
+    def __repr__(self) -> str:
+        return "DeploymentBroadcastResponse()"
+
+
 @PublicAPI(stability="stable")
 class DeploymentHandle(_DeploymentHandleBase[T]):
     """A handle used to make requests to a deployment at runtime.
@@ -894,3 +969,55 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
             )
+
+    def broadcast(
+        self,
+        method_name: str,
+        *args,
+        **kwargs,
+    ) -> DeploymentBroadcastResponse:
+        """Call a method on all replicas of this deployment in parallel.
+
+        Unlike ``remote()``, which routes the request to a single replica
+        via load balancing, ``broadcast()`` fans the call out to **every**
+        running replica concurrently.
+
+        This is useful for coordinated operations such as cache resets,
+        configuration updates, or state synchronization across replicas.
+
+        Example:
+
+        .. code-block:: python
+
+            handle = serve.get_deployment_handle("MyDeployment", "app")
+
+            # Call reset_cache on every replica and collect results.
+            response = handle.broadcast("reset_cache")
+            results = response.results()
+
+            # Pass arguments to the broadcast call.
+            response = handle.broadcast("update_config", new_value=42)
+            results = response.results()
+
+        Args:
+            method_name: The name of the method to call on each replica.
+            *args: Positional arguments passed to the method.
+            **kwargs: Keyword arguments passed to the method.
+
+        Returns:
+            A :class:`DeploymentBroadcastResponse` that can be used to
+            collect results from all replicas.
+        """
+        if not self.is_initialized:
+            self._init()
+
+        metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options,
+            self.handle_options.copy_and_update(method_name=method_name),
+        )
+
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
+
+        future = self._router.broadcast(metadata, *args, **kwargs)
+        return DeploymentBroadcastResponse(future)

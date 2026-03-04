@@ -495,6 +495,15 @@ class Router(ABC):
         pass
 
     @abstractmethod
+    def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[List[ReplicaResult]]:
+        pass
+
+    @abstractmethod
     def shutdown(self) -> concurrent.futures.Future:
         pass
 
@@ -988,6 +997,52 @@ class AsyncioRouter:
                     if exc:
                         set_span_exception(exc, escaped=True)
 
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        """Send a request to all running replicas in parallel.
+
+        Bypasses the normal load-balancing path and sends the request
+        directly to every replica. Waits for the request router to be
+        initialized so the replica set is populated.
+        """
+        await self._request_router_initialized.wait()
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        replicas: List[RunningReplica] = list(
+            self.request_router.curr_replicas.values()
+        )
+        if not replicas:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        results: List[ReplicaResult] = []
+        for replica in replicas:
+            pr = PendingRequest(
+                args=list(request_args),
+                kwargs=dict(request_kwargs),
+                metadata=RequestMetadata(
+                    request_id=request_meta.request_id,
+                    internal_request_id=generate_request_id(),
+                    call_method=request_meta.call_method,
+                    route=request_meta.route,
+                    app_name=request_meta.app_name,
+                    is_streaming=request_meta.is_streaming,
+                    _by_reference=request_meta._by_reference,
+                    request_serialization=request_meta.request_serialization,
+                    response_serialization=request_meta.response_serialization,
+                ),
+            )
+            pr.resolved = True
+            result = replica.try_send_request(pr, with_rejection=False)
+            results.append(result)
+
+        return results
+
     async def shutdown(self):
         await self._metrics_manager.shutdown()
 
@@ -1132,6 +1187,19 @@ class SingletonThreadRouter(Router):
         self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
         return concurrent_future
 
+    def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[List[ReplicaResult]]:
+        return asyncio.run_coroutine_threadsafe(
+            self._asyncio_router.broadcast(
+                request_meta, *request_args, **request_kwargs
+            ),
+            loop=self._asyncio_loop,
+        )
+
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
@@ -1246,6 +1314,18 @@ class CurrentLoopRouter(Router):
     ) -> asyncio.Future[ReplicaResult]:
         return self._asyncio_loop.create_task(
             self._asyncio_router.assign_request(
+                request_meta, *request_args, **request_kwargs
+            ),
+        )
+
+    def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> asyncio.Future[List[ReplicaResult]]:
+        return self._asyncio_loop.create_task(
+            self._asyncio_router.broadcast(
                 request_meta, *request_args, **request_kwargs
             ),
         )
