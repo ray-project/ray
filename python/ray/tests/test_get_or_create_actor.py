@@ -120,7 +120,7 @@ def test_get_or_create_actor_with_placement_group_validation(shutdown_only):
     # This should raise a ValueError with a clear message about resource mismatch
     with pytest.raises(
         ValueError,
-        match=r"Cannot schedule test_get_or_create_actor_with_placement_group_validation\.<locals>\.Actor with the placement group because the resource request \{'CPU': 1, 'GPU': 8\} cannot fit into any bundles for the placement group, \[\{'CPU': 1\.0\}\]\.",
+        match=r"Cannot schedule test_get_or_create_actor_with_placement_group_validation\.<locals>\.Actor with the placement group because the resource request \{'CPU': 1, 'GPU': 8\} cannot fit into any bundles across all scheduling strategies for the placement group, \[\[\{'CPU': 1\.0\}\]\]\.",
     ):
         Actor.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
