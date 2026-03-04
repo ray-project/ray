@@ -226,6 +226,7 @@ class DeploymentSchedulingInfo:
     deployment_id: DeploymentID
     scheduling_policy: Any
     actor_resources: Optional[Resources] = None
+    actor_options: Optional[Dict] = None
     placement_group_bundles: Optional[List[Resources]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
@@ -283,7 +284,7 @@ class LaunchingReplicaInfo:
 
 
 def _flatten(
-    deployment_to_replicas: Dict[DeploymentID, Dict[ReplicaID, Any]]
+    deployment_to_replicas: Dict[DeploymentID, Dict[ReplicaID, Any]],
 ) -> Dict[ReplicaID, Any]:
     """Flattens a dict of {deployment_id: {replica_id: val}} to {replica_id: val}."""
 
@@ -355,6 +356,7 @@ class DeploymentScheduler(ABC):
 
         info = self._deployments[deployment_id]
         info.actor_resources = Resources(replica_config.resource_dict)
+        info.actor_options = copy.deepcopy(replica_config.ray_actor_options)
         info.max_replicas_per_node = replica_config.max_replicas_per_node
         if replica_config.placement_group_bundles:
             info.placement_group_bundles = [
@@ -828,8 +830,7 @@ class DeploymentScheduler(ABC):
             return GangReservationResult(
                 success=False,
                 error_message=(
-                    f"Failed to create any gang placement groups "
-                    f"for {deployment_id}."
+                    f"Failed to create any gang placement groups for {deployment_id}."
                 ),
             )
 
@@ -1101,6 +1102,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             )
         )
 
+        actor_options = self._deployments[deployment_id].actor_options or {}
+        primary_labels: Dict[str, str] = actor_options.get("label_selector", {})
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
@@ -1117,15 +1120,23 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replica_id
             )
 
+        # Priority scaling down non-matching primary labels replica first
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
-        def key(node_and_num_running_replicas_of_all_deployments):
-            return (
-                len(node_and_num_running_replicas_of_all_deployments[1])
-                if node_and_num_running_replicas_of_all_deployments[0]
-                != self._head_node_id
-                else sys.maxsize
+        def key(
+            node_and_num_running_replicas_of_all_deployments: Tuple[
+                str, Set[ReplicaID]
+            ],
+        ) -> Tuple[int, int]:
+            node_id, replica_set = node_and_num_running_replicas_of_all_deployments
+            node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
+            no_match_primary_labels = int(
+                not node_labels_match_selector(node_labels, primary_labels)
             )
+            num_replicas = (
+                len(replica_set) if node_id != self._head_node_id else sys.maxsize
+            )
+            return no_match_primary_labels, num_replicas
 
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=key
