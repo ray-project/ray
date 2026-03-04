@@ -4407,7 +4407,7 @@ def read_kafka(
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
-    timeout_ms: int = 10000,
+    timeout_ms: Optional[int] = None,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4473,9 +4473,10 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-            it has read so far.
+        timeout_ms: Optional timeout in milliseconds for every read task to poll until reaching end_offset.
+            If None (default), no task-level timeout is applied and each read task
+            will poll until it reaches end_offset. If set, the read task will stop
+            polling after the timeout and return the messages it has read so far.
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
