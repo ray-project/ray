@@ -289,7 +289,11 @@ def convert_to_pyarrow_array(
         ) and log_once("_fallback_to_arrow_object_extension_type_warning"):
             logger.warning(
                 f"Failed to convert column '{column_name}' into pyarrow "
-                f"array due to: {ace}; {object_ext_type_detail}",
+                f"array; {object_ext_type_detail}. To see the full "
+                f"error, set logging level to DEBUG.",
+            )
+            logger.debug(
+                f"Arrow conversion error for column '{column_name}': {ace}",
                 exc_info=ace,
             )
 
