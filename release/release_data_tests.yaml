@@ -119,6 +119,9 @@
 
 - name: iceberg_benchmark
   python: "3.10"
+  cluster:
+    byod:
+      post_build_script: byod_install_pyiceberg.sh
   run:
     timeout: 3600
     script: python iceberg_benchmark.py
