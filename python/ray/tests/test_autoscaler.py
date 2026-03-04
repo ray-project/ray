@@ -3869,22 +3869,6 @@ class AutoscalingTest(unittest.TestCase):
         events = autoscaler.summary()
         assert events.failed_nodes == [("172.0.0.0", "ray.worker.default")]
 
-    def testRaiseWrongClusterIDErrorV1(self):
-        ray.init()
-        gcs_address = ray._private.worker.global_worker.gcs_client.address
-        monitor = Monitor(
-            address=gcs_address,
-            autoscaling_config=None,
-            log_dir=self.tmpdir,
-        )
-
-        def flaky():
-            raise ray.exceptions.AuthenticationError("WrongClusterID")
-
-        with patch.object(monitor, "update_load_metrics", side_effect=flaky):
-            with self.assertRaises(ray.exceptions.AuthenticationError):
-                monitor._run()
-
 
 def test_import():
     """This test ensures that all the autoscaler imports work as expected to

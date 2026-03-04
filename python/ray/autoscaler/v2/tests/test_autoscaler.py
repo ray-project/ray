@@ -240,7 +240,7 @@ class TestAutoscalerMonitor(AutoscalerMonitor):
         self._session_name = "test"
 
 
-def test_raise_WrongClusterID_error_v2(make_autoscaler):
+def test_raise_AuthenticationError_v2(make_autoscaler):
     autoscaler = make_autoscaler(DEFAULT_AUTOSCALING_CONFIG)
     gcs_client = autoscaler._gcs_client
     gcs_address = gcs_client.address

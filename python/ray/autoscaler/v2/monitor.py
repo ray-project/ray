@@ -40,7 +40,6 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
-from ray.exceptions import AuthenticationError
 
 try:
     import prometheus_client
@@ -171,17 +170,12 @@ class AutoscalerMonitor:
         """Run the monitor loop."""
 
         while True:
-            try:
-                autoscaling_state = self.autoscaler.update_autoscaling_state()
-                if autoscaling_state:
-                    # report autoscaling state
-                    self._report_autoscaling_state(self.gcs_client, autoscaling_state)
-                else:
-                    logger.warning("No autoscaling state to report.")
-            except AuthenticationError as e:
-                if "WrongClusterID" in str(e):
-                    logger.warning("WrongClusterID detected, restarting autoscaler...")
-                raise
+            autoscaling_state = self.autoscaler.update_autoscaling_state()
+            if autoscaling_state:
+                # report autoscaling state
+                self._report_autoscaling_state(self.gcs_client, autoscaling_state)
+            else:
+                logger.warning("No autoscaling state to report.")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

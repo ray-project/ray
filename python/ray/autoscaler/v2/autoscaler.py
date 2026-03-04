@@ -219,7 +219,8 @@ class Autoscaler:
                 autoscaling_config=autoscaling_config,
                 metrics_reporter=self._metrics_reporter,
             )
-        except AuthenticationError:
+        except AuthenticationError as e:
+            logger.warning(f"AuthenticationError detected, restarting autoscaler: {e}")
             raise
         except Exception as e:
             logger.exception(e)

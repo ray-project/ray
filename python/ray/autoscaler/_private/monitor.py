@@ -38,7 +38,6 @@ from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated import gcs_pb2
 from ray.core.generated.event_pb2 import Event as RayEvent
-from ray.exceptions import AuthenticationError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -437,14 +436,6 @@ class Monitor:
                     _internal_kv_put(
                         ray_constants.DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True
                     )
-            except AuthenticationError as e:
-                if "WrongClusterID" in str(e):
-                    logger.warning("WrongClusterID detected, restarting autoscaler...")
-                    raise
-                elif self.retry_on_failure:
-                    logger.exception("AuthenticationError exception. Trying again...")
-                else:
-                    raise
             except Exception:
                 # By default, do not exit the monitor on failure.
                 if self.retry_on_failure:
