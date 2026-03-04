@@ -283,6 +283,7 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
+            "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
         ],
     )
 
