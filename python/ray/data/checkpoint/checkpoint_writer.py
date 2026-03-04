@@ -66,16 +66,50 @@ class IcebergCheckpointWriter(CheckpointWriter):
             table_identifier=table_identifier,
             catalog_kwargs=self.ckpt_config.catalog_kwargs,
         )
+        self._initialized = False
+
+    def _ensure_table_initialized(self, schema):
+        # Ensure checkpoint table exists and initialize datasink once.
+        from pyiceberg.exceptions import TableAlreadyExistsError
+        from pyiceberg.io import pyarrow as pyi_pa_io
+
+        cat = self.datasink._get_catalog()
+        exists = self.datasink._with_retry(
+            lambda: cat.table_exists(self.ckpt_config.checkpoint_path),
+            description=f"check existence of Iceberg table '{self.ckpt_config.checkpoint_path}'",
+        )
+        if not exists:
+            if schema is None:
+                raise ValueError(
+                    f"Iceberg table '{self.ckpt_config.checkpoint_path}' does not exist and no schema provided."
+                )
+            iceberg_schema = pyi_pa_io.visit_pyarrow(
+                schema, pyi_pa_io._ConvertToIcebergWithoutIDs()
+            )
+            try:
+                self.datasink._with_retry(
+                    lambda: cat.create_table(
+                        self.ckpt_config.checkpoint_path, schema=iceberg_schema
+                    ),
+                    description=f"create Iceberg table '{self.ckpt_config.checkpoint_path}'",
+                )
+            except TableAlreadyExistsError:
+                # Another worker created it concurrently.
+                pass
+
+        # Initialize datasink (loads table and evolves schema once)
+        self.datasink.on_write_start(schema)
+        self._initialized = True
 
     def write_block_checkpoint(self, block: BlockAccessor):
         if block.num_rows() == 0:
             return
 
         checkpoint_ids_block = block.select(columns=[self.id_col])
-        # Ensure table is initialized/created
-        # We need the schema from the block
-        schema = BlockAccessor.for_block(checkpoint_ids_block).to_arrow().schema
-        self.datasink.on_write_start(schema)
+        # Lazily initialize once to avoid repeated catalog and schema operations.
+        if not self._initialized:
+            schema = BlockAccessor.for_block(checkpoint_ids_block).to_arrow().schema
+            self._ensure_table_initialized(schema)
 
         # Use TaskContext for worker-side write
         from ray.data._internal.execution.interfaces.task_context import TaskContext

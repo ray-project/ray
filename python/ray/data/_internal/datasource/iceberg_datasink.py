@@ -340,39 +340,6 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 Write operator. Used to evolve the table schema before writing
                 to avoid PyIceberg name mapping errors.
         """
-        cat = self._get_catalog()
-
-        # Check if table exists to avoid relying on NoSuchTableError
-        if not self._with_retry(
-            lambda: cat.table_exists(self.table_identifier),
-            description=f"check existence of Iceberg table '{self.table_identifier}'",
-        ):
-            if schema is None:
-                raise ValueError(
-                    f"Iceberg table '{self.table_identifier}' does not exist and no schema provided."
-                )
-
-            # Create table if it doesn't exist
-            from pyiceberg.exceptions import TableAlreadyExistsError
-            from pyiceberg.io import pyarrow as pyi_pa_io
-
-            # Use visitor to create a fresh Iceberg schema without field IDs.
-            # We avoid pyarrow_to_schema() here because it expects field IDs in metadata
-            # when converting back to Iceberg, which fresh Ray schemas don't have.
-            iceberg_schema = pyi_pa_io.visit_pyarrow(
-                schema, pyi_pa_io._ConvertToIcebergWithoutIDs()
-            )
-
-            try:
-                self._with_retry(
-                    lambda: cat.create_table(self.table_identifier, schema=iceberg_schema),
-                    description=f"create Iceberg table '{self.table_identifier}'",
-                )
-            except TableAlreadyExistsError:
-                # Table was created by another worker concurrently.
-                pass
-
-        # Always reload to ensure we have the latest table instance
         self._reload_table()
 
         # Evolve schema BEFORE any files are written
