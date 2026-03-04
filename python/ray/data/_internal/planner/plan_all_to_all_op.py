@@ -160,7 +160,10 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
-        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        if data_context.shuffle_strategy in (
+            ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.GPU_SHUFFLE,
+        ):
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(

@@ -12,8 +12,9 @@ Dependencies (all optional at import time):
 Import errors are deferred to actor construction so that CPU-only environments
 can still ``import ray.data`` without failure.
 """
-
+import functools
 import logging
+import typing
 from collections import deque
 from typing import (
     Deque,
@@ -25,8 +26,11 @@ from typing import (
     Union,
 )
 
+import pyarrow as pa
+
 import ray
 from ray.actor import ActorHandle
+from ray.data import ExecutionOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -36,6 +40,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     OpTask,
+    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.hash_shuffle import (
     _get_total_cluster_resources,
@@ -44,6 +49,11 @@ from ray.data._internal.execution.operators.sub_progress import SubProgressBarMi
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data.block import BlockStats, to_stats
 from ray.data.context import DataContext
+
+if typing.TYPE_CHECKING:
+    import cudf
+
+    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +67,15 @@ logger = logging.getLogger(__name__)
 class GPUShuffleActor:
     """One GPU rank in a RAPIDS MPF-based distributed shuffle.
 
-    Each instance wraps a ``BulkRapidsMPFShuffler`` (from the ``rapidsmpf``
-    package).  Actors are arranged in a virtual communicator ring coordinated
+    Each instance wraps a ``BulkRapidsMPFShuffler`` via composition rather than
+    inheritance to keep CPU-only environments unaffected.
+
+    Actors are arranged in a virtual communicator ring coordinated
     through UCXX; data never passes through the Ray object store or the CPU
     after initial ingestion.
 
     Constructor is intentionally lightweight — expensive UCXX setup happens in
     :meth:`setup_worker`, which is called once from :class:`GPURankPool`.
-
-    ``BulkRapidsMPFShuffler`` is held by composition rather than inheritance so
-    that importing this module does not require ``rapidsmpf``/``cudf`` at module
-    load time, keeping CPU-only environments unaffected.
     """
 
     def __init__(
@@ -95,7 +103,7 @@ class GPUShuffleActor:
     # UCXX communicator setup
     # ------------------------------------------------------------------
 
-    def setup_root(self) -> "tuple[int, bytes]":
+    def setup_root(self) -> tuple[int, bytes]:
         """Initialize the root communicator and return ``(rank, root_address_bytes)``.
 
         Only called on rank 0; the returned address is broadcast to all ranks
@@ -116,14 +124,14 @@ class GPUShuffleActor:
     # Insert / extract interface (called by GPUShuffleOperator)
     # ------------------------------------------------------------------
 
-    def insert_batch(self, batch) -> int:
-        """Hash-partition *batch* (Arrow Table) and route shards to peers.
+    def insert_batch(self, batch: Union[pa.Table, "cudf.DataFrame"]) -> int:
+        """Hash-partition *batch* (Arrow Table or cuDF DataFrame) and route
+        shards to peers.
 
         Returns the number of rows in the incoming batch so the driver can
         track throughput without serialising the data back.
         """
         import cudf
-        import pyarrow as pa
 
         if isinstance(batch, pa.Table):
             df = cudf.DataFrame.from_arrow(batch)
@@ -166,7 +174,7 @@ class GPUShuffleActor:
             stats = yield block
             if stats:
                 exec_stats.block_ser_time_s = stats.object_creation_dur_s
-            yield BlockMetadataWithSchema.from_block(block, stats=exec_stats)
+            yield BlockMetadataWithSchema.from_block(block, block_exec_stats=exec_stats)
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +350,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def start(self, options) -> None:
+    def start(self, options: ExecutionOptions) -> None:
         super().start(options)
         self._rank_pool.start()
 
@@ -363,9 +371,12 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 task_index=task_idx,
                 object_ref=insert_ref,
                 task_done_callback=_on_insert_done,
-                task_resource_bundle=ExecutionResources(gpu=1),
+                task_resource_bundle=None,
             )
             self._insert_tasks[task_idx] = task
+            self._reduce_metrics.on_task_submitted(
+                task_idx, bundle, task_id=task.get_task_id()
+            )
 
             if self._shuffle_bar is not None:
                 self._shuffle_bar.update(total=self._next_block_idx)
@@ -380,6 +391,37 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         self._finalization_started = True
 
+        def _on_bundle_ready(partition_id: int, bundle: RefBundle) -> None:
+            # Add finalized block to the output queue
+            self._output_queue.append(bundle)
+
+            # Update Finalize Metrics on task output generated
+            self._reduce_metrics.on_output_queued(bundle)
+            self._reduce_metrics.on_task_output_generated(
+                task_index=partition_id, output=bundle
+            )
+            _, num_outputs, num_rows = estimate_total_num_of_blocks(
+                partition_id + 1,
+                self.upstream_op_num_outputs(),
+                self._reduce_metrics,
+                total_num_tasks=self._num_partitions,
+            )
+            self._estimated_num_output_bundles = num_outputs
+            self._estimated_output_num_rows = num_rows
+
+            # Update Finalize progress bar
+            self._reduce_bar.update(
+                increment=bundle.num_rows() or 0, total=self.num_output_rows_total()
+            )
+
+        def _on_extraction_done(
+            exc: Optional[Exception],
+            worker_stats=None,
+            driver_stats=None,
+            rank: int = -1,
+        ) -> None:
+            self._extraction_tasks.pop(rank, None)
+
         for rank_idx, actor in enumerate(self._rank_pool.actors):
             # Fire-and-forget: Ray serialises actor tasks per actor, so
             # insert_finished is guaranteed to run before extract_partitions.
@@ -388,27 +430,15 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 num_returns="streaming"
             ).remote()
 
-            def _on_bundle_ready(bundle: RefBundle, rank: int = rank_idx) -> None:
-                self._output_queue.append(bundle)
-                self._reduce_metrics.on_output_queued(bundle)
-
-            def _on_extraction_done(
-                exc: Optional[Exception], rank: int = rank_idx
-            ) -> None:
-                self._extraction_tasks.pop(rank, None)
-
             data_task = DataOpTask(
                 task_index=rank_idx,
                 streaming_gen=block_gen,
-                output_ready_callback=_on_bundle_ready,
-                task_done_callback=_on_extraction_done,
+                output_ready_callback=functools.partial(_on_bundle_ready, rank_idx),
+                task_done_callback=functools.partial(
+                    _on_extraction_done, rank=rank_idx
+                ),
             )
             self._extraction_tasks[rank_idx] = data_task
-
-            empty_bundle = RefBundle([], schema=None, owns_blocks=False)
-            self._reduce_metrics.on_task_submitted(
-                rank_idx, empty_bundle, task_id=data_task.get_task_id()
-            )
 
     # ------------------------------------------------------------------
     # Output interface
@@ -467,7 +497,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def get_sub_progress_bar_names(self) -> List[str]:
         return ["GPU Shuffle", "GPU Reduce"]
 
-    def set_sub_progress_bar(self, name: str, pg) -> None:
+    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
         if name == "GPU Shuffle":
             self._shuffle_bar = pg
         elif name == "GPU Reduce":
