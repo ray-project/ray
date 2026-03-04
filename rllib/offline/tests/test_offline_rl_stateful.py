@@ -119,6 +119,10 @@ class OfflineRLStatefulTest(unittest.TestCase):
         if Columns.STATE_IN in episodes[0].extra_model_outputs.keys():
             del episodes[0].extra_model_outputs[Columns.STATE_IN]
 
+        # Numpy'ize episodes before passing to the learner connector.
+        for ep in episodes:
+            ep.to_numpy()
+
         # Build the learner connector.
         obs_space, action_space = self.algo.offline_data.spaces[INPUT_ENV_SPACES]
         learner_connector = self.algo.config.build_learner_connector(
@@ -216,6 +220,10 @@ class OfflineRLStatefulTest(unittest.TestCase):
 
         # Assert the episode has a decent return.
         assert episodes[0].get_return() > 350.0, "Return must be >350.0"
+
+        # Numpy'ize episodes before passing to the learner connector.
+        for ep in episodes:
+            ep.to_numpy()
 
         # Build the learner connector.
         obs_space, action_space = self.algo.offline_data.spaces[INPUT_ENV_SPACES]
