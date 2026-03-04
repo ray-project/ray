@@ -51,7 +51,7 @@ def _load_catalog(catalog_kwargs: dict):
     return pyi_catalog.load_catalog(catalog_name, **catalog_properties)
 
 
-def _setup_catalog(catalog):
+def _setup_catalog(catalog: pyi_catalog.Catalog):
     """Create catalog, namespace, and table"""
     if (_DB_NAME,) not in catalog.list_namespaces():
         catalog.create_namespace(_DB_NAME)
@@ -122,7 +122,7 @@ def _setup_catalog(catalog):
     ), f"Failed to create table {_TABLE_ID}"
 
 
-def _teardown_catalog(catalog):
+def _teardown_catalog(catalog: pyi_catalog.Catalog):
     """Drop benchmark resources to avoid accumulating metadata and data files."""
     if (_DB_NAME,) not in catalog.list_namespaces():
         return
