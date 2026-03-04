@@ -94,12 +94,12 @@ def upload_worker_process_setup_hook_if_needed(
         runtime_env: The runtime_env. The value will be modified
             when returned.
         worker: ray.worker instance.
-        decoder: GCS requires the function key to be bytes. However,
-            we cannot json serialize (which is required to serialize
-            runtime env) the bytes. So the key should be decoded to
-            a string. The given decoder is used to decode the function
-            key.
     """
+    # Ensure idempotency: Already processed (e.g. inherited from job supervisor) — skip.
+    env_vars = runtime_env.get("env_vars", {})
+    if ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR in env_vars:
+        return runtime_env
+
     setup_func = runtime_env.get("worker_process_setup_hook")
 
     if setup_func is None:

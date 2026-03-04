@@ -8,7 +8,11 @@ import threading
 import pytest
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray._common.test_utils import wait_for_condition
+from ray._private.runtime_env.setup_hook import (
+    upload_worker_process_setup_hook_if_needed,
+)
 from ray._private.test_utils import format_web_url
 from ray.job_submission import JobStatus, JobSubmissionClient
 
@@ -254,6 +258,20 @@ ray.get(f.remote())
             os.remove(file_path)
         if temp_dir:
             os.rmdir(temp_dir)
+
+
+def test_upload_hook_idempotent():
+    runtime_env = {
+        "worker_process_setup_hook": "my.module.hook",
+        "env_vars": {
+            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: "my.module.hook",
+        },
+    }
+    result = upload_worker_process_setup_hook_if_needed(runtime_env, worker=None)
+    assert (
+        result["env_vars"][ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR]
+        == "my.module.hook"
+    )
 
 
 if __name__ == "__main__":
