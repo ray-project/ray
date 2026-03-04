@@ -43,11 +43,9 @@ message PlacementGroupLifecycleEvent {
     SchedulingState scheduling_state = 3;
     uint32 scheduling_attempt = 4;
     double highest_retry_delay_ms = 5;
-    int64 scheduling_started_time_ns = 6;
-    int64 scheduling_latency_us = 7;
-    int64 end_to_end_creation_latency_us = 8;
   }
 
   bytes placement_group_id = 1;
+  // Latencies can be derived from timestamps across these transitions.
   repeated StateTransition state_transitions = 2;
 }
