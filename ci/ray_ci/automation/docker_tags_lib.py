@@ -64,6 +64,8 @@ def _get_python_version_tag(python_version: str) -> str:
 def _get_platform_tag(platform: str) -> str:
     if platform == "cpu":
         return "-cpu"
+    if platform == "tpu":
+        return "-tpu"
     versions = platform.split(".")
     return f"-{versions[0]}{versions[1]}"  # cu11.8.0-cudnn8 -> cu118
 

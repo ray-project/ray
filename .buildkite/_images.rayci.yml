@@ -30,6 +30,21 @@ steps:
       ARCH_SUFFIX: ""
     depends_on: raycpubase
 
+  - name: raytpubase
+    label: "wanda: ray-py{{matrix}}-tpu-base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: docker/base-deps/tpu.wanda.yaml
+    matrix:
+      - "3.10"
+      - "3.11"
+      - "3.12"
+      - "3.13"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+      ARCH_SUFFIX: ""
+
   - name: raycudabase
     label: "wanda: ray-py{{matrix.python}}-cu{{matrix.cuda}}-base"
     tags:

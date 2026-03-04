@@ -46,6 +46,8 @@ from ray._raylet import (
     WorkerID,
     persist_port,
 )
+from ray.autoscaler.v2.sdk import get_cluster_status
+from ray.autoscaler.v2.utils import _count_by, is_autoscaler_v2
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -361,6 +363,13 @@ METRICS_GAUGES = {
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes",
         "Active nodes on the cluster",
+        "count",
+        CLUSTER_TAG_KEYS,
+    ),
+    # cluster_idle_nodes is only available for v2 autoscaler
+    "cluster_idle_nodes": Gauge(
+        "cluster_idle_nodes",
+        "Idle nodes on the cluster",
         "count",
         CLUSTER_TAG_KEYS,
     ),
@@ -1423,6 +1432,18 @@ class ReporterAgent(
                     )
                 )
 
+            # Emit cluster_idle_nodes only for autoscaler v2 (v1 has no "idle" state).
+            idle_nodes = cluster_stats.get("autoscaler_report", {}).get("idle_nodes")
+            if idle_nodes is not None:
+                for node_type, idle_node_count in idle_nodes.items():
+                    records_reported.append(
+                        Record(
+                            gauge=METRICS_GAUGES["cluster_idle_nodes"],
+                            value=idle_node_count,
+                            tags={"node_type": node_type},
+                        )
+                    )
+
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
             failed_nodes_dict = {}
             for node_ip, node_type in failed_nodes:
@@ -1784,14 +1805,23 @@ class ReporterAgent(
             try:
                 # Fetch autoscaler debug status
                 autoscaler_status_json_bytes: Optional[bytes] = None
+                autoscaler_v2_enabled = False
                 if self._is_head_node:
-                    autoscaler_status_json_bytes = (
-                        await self._gcs_client.async_internal_kv_get(
-                            DEBUG_AUTOSCALING_STATUS.encode(),
-                            None,
-                            timeout=GCS_RPC_TIMEOUT_SECONDS,
-                        )
+                    # Check autoscaler version once
+                    autoscaler_v2_enabled = is_autoscaler_v2(
+                        gcs_client=self._gcs_client
                     )
+
+                    # Autoscaler v1 writes DEBUG_AUTOSCALING_STATUS to the internal KV; v2 does not.
+                    if not autoscaler_v2_enabled:
+                        autoscaler_status_json_bytes = (
+                            await self._gcs_client.async_internal_kv_get(
+                                DEBUG_AUTOSCALING_STATUS.encode(),
+                                None,
+                                timeout=GCS_RPC_TIMEOUT_SECONDS,
+                            )
+                        )
+
                     self._gcs_pid = await self._gcs_client.async_internal_kv_get(
                         GCS_PID_KEY.encode(),
                         None,
@@ -1807,6 +1837,7 @@ class ReporterAgent(
                     self._executor,
                     self._run_in_executor,
                     autoscaler_status_json_bytes,
+                    autoscaler_v2_enabled,
                 )
 
                 await self._gcs_client.async_publish_node_resource_usage(
@@ -1818,13 +1849,22 @@ class ReporterAgent(
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
-    def _run_in_executor(self, cluster_autoscaling_stats_json: Optional[bytes]) -> str:
+    def _run_in_executor(
+        self,
+        cluster_autoscaling_stats_json: Optional[bytes],
+        autoscaler_v2_enabled: bool,
+    ) -> str:
         return asyncio.run(
-            self._async_compose_stats_payload(cluster_autoscaling_stats_json)
+            self._async_compose_stats_payload(
+                cluster_autoscaling_stats_json,
+                autoscaler_v2_enabled,
+            )
         )
 
     async def _async_compose_stats_payload(
-        self, cluster_autoscaling_stats_json: Optional[bytes]
+        self,
+        cluster_autoscaling_stats_json: Optional[bytes],
+        autoscaler_v2_enabled: bool,
     ) -> str:
         stats = await self._async_collect_stats()
 
@@ -1835,6 +1875,10 @@ class ReporterAgent(
                 if cluster_autoscaling_stats_json
                 else {}
             )
+
+            # Autoscaler v2 only - get cluster_status from gcs via RPC(get_cluster_status())
+            if self._is_head_node and autoscaler_v2_enabled:
+                cluster_stats = self._get_cluster_stats_v2()
 
             records = self._to_records(stats, cluster_stats)
 
@@ -1858,6 +1902,32 @@ class ReporterAgent(
             self._metrics_agent.clean_all_dead_worker_metrics()
 
         return self._generate_stats_payload(stats)
+
+    def _get_cluster_stats_v2(self) -> dict:
+        # Get cluster_status from gcs via RPC(get_cluster_status())
+        cluster_status = get_cluster_status(self.gcs_address)
+
+        # Aggregate node counts by ray_node_type_name
+        active_nodes = _count_by(cluster_status.active_nodes, "ray_node_type_name")
+        idle_nodes = _count_by(cluster_status.idle_nodes, "ray_node_type_name")
+
+        # Keep tuple schemas expected by _to_records()
+        pending_nodes = [
+            (n.ip_address, n.ray_node_type_name, str(n.details or "PENDING"))
+            for n in cluster_status.pending_nodes
+        ]
+        failed_nodes = [
+            (n.ip_address, n.ray_node_type_name) for n in cluster_status.failed_nodes
+        ]
+
+        return {
+            "autoscaler_report": {
+                "active_nodes": dict(active_nodes),
+                "idle_nodes": dict(idle_nodes),
+                "pending_nodes": pending_nodes,
+                "failed_nodes": failed_nodes,
+            },
+        }
 
     def _generate_stats_payload(self, stats: dict) -> str:
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility
