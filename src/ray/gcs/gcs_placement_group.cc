@@ -157,7 +157,11 @@ google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
 }
 
 int GcsPlacementGroup::GetActiveStrategyIndex() const {
-  return placement_group_table_data_.active_scheduling_strategy_index();
+  if (placement_group_table_data_.has_active_scheduling_strategy_index()) {
+    return placement_group_table_data_.active_scheduling_strategy_index();
+  }
+  // Default to -1 if not explicitly set.
+  return -1;
 }
 
 void GcsPlacementGroup::UpdateActiveBundles(
