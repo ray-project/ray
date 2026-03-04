@@ -5,11 +5,10 @@ Building Ray from Source
 
 To contribute to the Ray repository, follow the instructions below to build from the latest master branch.
 
-.. tip::
+Depending on your goal, you may not need all sections on this page:
 
-  If you are only editing Python files, follow instructions for :ref:`python-develop` to avoid long build times.
-
-  If you already followed the instructions in :ref:`python-develop` and want to switch to the Full build in this section, you will need to first uninstall.
+- **Python-only development (fast loop, no C++)** - edit Python files without compiling C++ (see :ref:`python-develop`).
+- **Full source build (C++ + dashboard + editable install)** - make C++ changes or build all of Ray (see :ref:`full-source-build`).
 
 .. contents::
   :local:
@@ -93,9 +92,9 @@ Building Ray (Python Only)
 
 RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally without building Ray.
 
-1. Make sure you have a clone of Ray's git repository as explained above.
+1. Make sure you have a clone of Ray's git repository (see :ref:`fork-ray-repo`).
 
-2. Make sure you activate the Python (virtual) environment as described above.
+2. Make sure you activate the Python (virtual) environment (see :ref:`prepare-venv`).
 
 3. Pip install the **latest Ray wheels.** See :ref:`install-nightlies` for instructions.
 
@@ -119,6 +118,8 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     # This links all folders except "_private" and "dashboard" without user prompt.
     python python/ray/setup-dev.py -y --skip _private dashboard
 
+.. _python-develop-uninstall:
+
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 
 .. code-block:: shell
@@ -132,6 +133,11 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 
 Full Source Build
 -----------------
+
+.. tip::
+
+  If you already followed the instructions in :ref:`python-develop` and want to switch
+  to the Full build, you will need to first uninstall Ray (see :ref:`uninstallation steps <python-develop-uninstall>`).
 
 Preparing to build Ray on Linux
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -185,7 +191,7 @@ To build Ray on MacOS, first install these dependencies:
 Building Ray on Linux & MacOS (full)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Make sure you have a local clone of Ray's git repository as explained above. You will also need to install NodeJS_ to build the dashboard.
+Make sure you have a local clone of Ray's git repository (see :ref:`fork-ray-repo`). You will also need to install NodeJS_ to build the dashboard.
 
 Enter into the project directory, for example:
 
@@ -213,7 +219,7 @@ After that, you can now move back to the top level Ray directory:
   cd -
 
 
-Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment you could be using as described above.
+Now let's build Ray for Python. Make sure you activate any Python virtual (or conda) environment (see :ref:`prepare-venv`).
 
 Enter into the ``python/`` directory inside of the Ray project directory and install the project with ``pip``:
 
