@@ -115,7 +115,7 @@ class NodeStateCache:
         self.seen_states = set()
 
     def is_duplicate(
-        self, node: "SchedulingNode", source: "ResourceRequestSource"
+        self, node: "SchedulingNode"
     ) -> bool:
         """
         Generates a deterministic signature of the node's scheduling capacity.
