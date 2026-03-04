@@ -394,6 +394,110 @@ impl PyGcsClient {
             Err(_) => Ok(None),
         }
     }
+
+    /// Create a placement group with the given bundle resource requirements.
+    ///
+    /// Args:
+    ///   bundles: list of dicts, each mapping resource name to quantity
+    ///            e.g. [{"CPU": 2.0}]
+    ///   strategy: one of "PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"
+    ///
+    /// Returns the placement group ID.
+    #[pyo3(name = "create_placement_group")]
+    fn py_create_placement_group(
+        &self,
+        bundles: Vec<std::collections::HashMap<String, f64>>,
+        strategy: &str,
+    ) -> pyo3::PyResult<crate::ids::PyPlacementGroupID> {
+        use ray_common::id::PlacementGroupID;
+
+        let pg_id = PlacementGroupID::from_random();
+        let strategy_val = match strategy {
+            "PACK" => 0,
+            "SPREAD" => 1,
+            "STRICT_PACK" => 2,
+            "STRICT_SPREAD" => 3,
+            _ => 0, // default to PACK
+        };
+
+        let proto_bundles: Vec<rpc::Bundle> = bundles
+            .into_iter()
+            .enumerate()
+            .map(|(i, resources)| rpc::Bundle {
+                bundle_id: Some(rpc::bundle::BundleIdentifier {
+                    placement_group_id: pg_id.binary(),
+                    bundle_index: i as i32,
+                }),
+                unit_resources: resources,
+                ..Default::default()
+            })
+            .collect();
+
+        let req = rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.binary(),
+                bundles: proto_bundles,
+                strategy: strategy_val,
+                ..Default::default()
+            }),
+        };
+
+        self.runtime
+            .block_on(self.client.create_placement_group(req))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "create_placement_group failed: {}",
+                    e
+                ))
+            })?;
+
+        Ok(crate::ids::PyPlacementGroupID::from_inner(pg_id))
+    }
+
+    /// Wait for a placement group to become ready.
+    ///
+    /// Returns True if the placement group is ready, False on timeout.
+    #[pyo3(name = "wait_placement_group_until_ready")]
+    fn py_wait_placement_group_until_ready(
+        &self,
+        pg_id_bytes: Vec<u8>,
+        timeout_seconds: f64,
+    ) -> pyo3::PyResult<bool> {
+        let _ = timeout_seconds; // timeout handled server-side
+        let req = rpc::WaitPlacementGroupUntilReadyRequest {
+            placement_group_id: pg_id_bytes,
+        };
+        match self
+            .runtime
+            .block_on(self.client.wait_placement_group_until_ready(req))
+        {
+            Ok(reply) => {
+                // code == 0 means ready.
+                Ok(reply.status.map(|s| s.code == 0).unwrap_or(false))
+            }
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// Remove a placement group.
+    #[pyo3(name = "remove_placement_group")]
+    fn py_remove_placement_group(
+        &self,
+        pg_id_bytes: Vec<u8>,
+    ) -> pyo3::PyResult<()> {
+        let req = rpc::RemovePlacementGroupRequest {
+            placement_group_id: pg_id_bytes,
+        };
+        self.runtime
+            .block_on(self.client.remove_placement_group(req))
+            .map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "remove_placement_group failed: {}",
+                    e
+                ))
+            })?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

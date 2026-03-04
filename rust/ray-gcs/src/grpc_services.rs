@@ -705,6 +705,8 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
                 creator_job_dead: spec.creator_job_dead,
                 creator_actor_dead: spec.creator_actor_dead,
                 is_detached: spec.is_detached,
+                // Mark as Created immediately (single-node: no 2PC needed).
+                state: 1, // PlacementGroupState::Created
                 ..Default::default()
             };
             self.placement_group_manager
@@ -770,12 +772,28 @@ impl rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService
 
     async fn wait_placement_group_until_ready(
         &self,
-        _req: Request<rpc::WaitPlacementGroupUntilReadyRequest>,
+        req: Request<rpc::WaitPlacementGroupUntilReadyRequest>,
     ) -> Result<Response<rpc::WaitPlacementGroupUntilReadyReply>, Status> {
-        // TODO: implement async wait with channel pattern (like actor creation)
-        Ok(Response::new(
-            rpc::WaitPlacementGroupUntilReadyReply::default(),
-        ))
+        let request = req.into_inner();
+        let pg = self
+            .placement_group_manager
+            .handle_get_placement_group(&request.placement_group_id);
+        // Ready if state == Created (1). Encode in GcsStatus: code=0 means ready.
+        let ready = pg.map(|p| p.state == 1).unwrap_or(false);
+        let status = if ready {
+            Some(rpc::GcsStatus {
+                code: 0,
+                message: "ready".into(),
+            })
+        } else {
+            Some(rpc::GcsStatus {
+                code: 1,
+                message: "not ready".into(),
+            })
+        };
+        Ok(Response::new(rpc::WaitPlacementGroupUntilReadyReply {
+            status,
+        }))
     }
 }
 

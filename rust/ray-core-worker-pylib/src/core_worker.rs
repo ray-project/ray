@@ -701,9 +701,16 @@ impl PyCoreWorker {
     ///   args: list of byte arrays (each is a serialized argument)
     ///   num_returns: number of return values (default 1)
     ///   max_retries: max retry attempts on task failure (default 0)
+    ///   placement_group_id: optional PG ID bytes for PG scheduling
+    ///   placement_group_bundle_index: bundle index within the PG (default -1 = any)
+    ///   placement_group_capture_child_tasks: inherit PG in child tasks (default false)
     ///
     /// Returns a list of ObjectIDs for the return values.
-    #[pyo3(name = "submit_task", signature = (name, args, num_returns=1, max_retries=0))]
+    #[pyo3(name = "submit_task", signature = (
+        name, args, num_returns=1, max_retries=0,
+        placement_group_id=None, placement_group_bundle_index=-1,
+        placement_group_capture_child_tasks=false
+    ))]
     fn py_submit_task(
         &self,
         py: pyo3::Python<'_>,
@@ -711,6 +718,9 @@ impl PyCoreWorker {
         args: Vec<Vec<u8>>,
         num_returns: u64,
         max_retries: i32,
+        placement_group_id: Option<Vec<u8>>,
+        placement_group_bundle_index: i64,
+        placement_group_capture_child_tasks: bool,
     ) -> pyo3::PyResult<Vec<crate::ids::PyObjectID>> {
         use ray_proto::ray::rpc as task_rpc;
 
@@ -727,11 +737,26 @@ impl PyCoreWorker {
             })
             .collect();
 
+        let scheduling_strategy = placement_group_id.as_ref().map(|pg_bytes| {
+            task_rpc::SchedulingStrategy {
+                scheduling_strategy: Some(
+                    task_rpc::scheduling_strategy::SchedulingStrategy::PlacementGroupSchedulingStrategy(
+                        task_rpc::PlacementGroupSchedulingStrategy {
+                            placement_group_id: pg_bytes.clone(),
+                            placement_group_bundle_index,
+                            placement_group_capture_child_tasks,
+                        },
+                    ),
+                ),
+            }
+        });
+
         let spec = task_rpc::TaskSpec {
             task_id: task_id.binary(),
             name: name.to_string(),
             num_returns: num_returns,
             args: task_args,
+            scheduling_strategy,
             ..Default::default()
         };
 
