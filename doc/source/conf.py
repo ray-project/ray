@@ -82,12 +82,8 @@ extensions = [
 
 # -- sphinx-collections: pull external template files at build time -----------
 
-_ANYSCALE_HOST = os.environ.get(
-    "ANYSCALE_HOST", "https://console.anyscale.com"
-)
-_TEMPLATE_README_API = (
-    _ANYSCALE_HOST + "/api/v2/experimental_workspaces/template/readme/{name}"
-)
+_TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
+_TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
 _TEMPLATE_COLLECTIONS = {
     "deployment-serve-llm": {
@@ -97,14 +93,16 @@ _TEMPLATE_COLLECTIONS = {
 
 
 def _resolve_template_url(name):
-    """Fetch the build zip URL for a template from the readme API."""
-    api_url = _TEMPLATE_README_API.format(name=name)
+    """Fetch the build zip URL for a template from the channel API."""
+    api_url = _TEMPLATE_CHANNEL_API.format(name=name)
     logger.info("sphinx-collections: resolving template URL from %s", api_url)
     with urlopen(api_url) as resp:
         data = json.loads(resp.read())
-    url = data["result"]["url"]
-    # The readme API returns a preview.zip; swap to build.zip for docs builds.
-    url = url.replace("/preview.zip", "/build.zip")
+    url = data["url"]
+    # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
+    url = url.replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
+    # Append /build.zip to get the docs build archive.
+    url = url.rstrip("/") + "/build.zip"
     logger.info("sphinx-collections: resolved URL %s", url)
     return url
 
