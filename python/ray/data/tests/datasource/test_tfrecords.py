@@ -668,7 +668,7 @@ def test_readback_tfrecords_empty_features(
 
 
 def test_write_tfrecords_tensor(
-    ray_start_regular_shared_2_cpus, tmp_path, restore_data_context, tensor_format
+    ray_start_regular_shared_2_cpus, tmp_path, tensor_format_context
 ):
     """Test that write_tfrecords handles tensor data by serializing
     tensors to bytes via tf.io.serialize_tensor, preserving shape and dtype."""
