@@ -35,7 +35,11 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
-from ray.serve.config import ProxyLocation, RequestRouterConfig
+from ray.serve.config import (
+    GangSchedulingConfig,
+    ProxyLocation,
+    RequestRouterConfig,
+)
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -254,6 +258,19 @@ class RayActorOptionsSchema(BaseModel):
             "See :ref:`accelerator types <accelerator_types>`."
         ),
     )
+    label_selector: Dict[str, str] = Field(
+        default=None,
+        description=(
+            "If specified, requires that the actor run on a node with the specified labels."
+        ),
+    )
+    fallback_strategy: List[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "If specified, expresses soft constraints through a list of decorator "
+            "options to fall back on when scheduling on a node."
+        ),
+    )
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
@@ -395,6 +412,17 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         ),
     )
 
+    placement_group_bundle_label_selector: List[Dict[str, str]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "A list of label selectors to apply to the placement group "
+            "on a per-bundle level."
+        ),
+    )
+
+    # TODO(ryanaoleary@): Support placement_group_fallback_strategy here when
+    # support is added for that field to placement group options.
+
     max_replicas_per_node: int = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -410,6 +438,15 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
     request_router_config: Union[Dict, RequestRouterConfig] = Field(
         default=DEFAULT.VALUE,
         description="Config for the request router used for this deployment.",
+    )
+    gang_scheduling_config: Optional[Union[Dict, GangSchedulingConfig]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Configuration for gang scheduling of deployment replicas. "
+            "Gang scheduling ensures that groups of replicas are scheduled "
+            "together atomically. Specify gang_size (required), and optionally "
+            "gang_placement_strategy and runtime_failure_policy."
+        ),
     )
 
     @root_validator
@@ -435,6 +472,33 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         return values
 
     @root_validator
+    def validate_gang_scheduling_config(cls, values):
+        gang_config = values.get("gang_scheduling_config", None)
+        if gang_config in [None, DEFAULT.VALUE]:
+            return values
+
+        if isinstance(gang_config, dict):
+            gang_config = GangSchedulingConfig(**gang_config)
+            values["gang_scheduling_config"] = gang_config
+
+        num_replicas = values.get("num_replicas", None)
+
+        if num_replicas == "auto":
+            raise ValueError(
+                'num_replicas="auto" is not allowed when '
+                "gang_scheduling_config is provided. Please set num_replicas "
+                "to a fixed multiple of gang_size."
+            )
+
+        if isinstance(num_replicas, int) and num_replicas % gang_config.gang_size != 0:
+            raise ValueError(
+                f"num_replicas ({num_replicas}) must be a multiple of "
+                f"gang_size ({gang_config.gang_size})."
+            )
+
+        return values
+
+    @root_validator
     def validate_max_replicas_per_node_and_placement_group_bundles(cls, values):
         max_replicas_per_node = values.get("max_replicas_per_node", None)
         placement_group_bundles = values.get("placement_group_bundles", None)
@@ -447,6 +511,65 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
                 "Setting max_replicas_per_node is not allowed when "
                 "placement_group_bundles is provided."
             )
+
+        return values
+
+    @root_validator
+    def validate_max_replicas_per_node_and_gang_scheduling_config(cls, values):
+        max_replicas_per_node = values.get("max_replicas_per_node", None)
+        gang_scheduling_config = values.get("gang_scheduling_config", None)
+
+        if max_replicas_per_node not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        return values
+
+    @root_validator
+    def validate_placement_group_strategy_and_gang_scheduling_config(cls, values):
+        placement_group_strategy = values.get("placement_group_strategy", None)
+        gang_scheduling_config = values.get("gang_scheduling_config", None)
+
+        if placement_group_strategy not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting placement_group_strategy is not allowed when "
+                "gang_scheduling_config is provided. Use "
+                "gang_scheduling_config.gang_placement_strategy instead."
+            )
+
+        return values
+
+    @root_validator
+    def validate_bundle_label_selector(cls, values):
+        placement_group_bundles = values.get("placement_group_bundles", None)
+        bundle_label_selector = values.get(
+            "placement_group_bundle_label_selector", None
+        )
+
+        if bundle_label_selector not in [DEFAULT.VALUE, None]:
+            if placement_group_bundles in [DEFAULT.VALUE, None]:
+                raise ValueError(
+                    "Setting bundle_label_selector is not allowed when "
+                    "placement_group_bundles is not provided."
+                )
+
+            if len(bundle_label_selector) != 1 and len(bundle_label_selector) != len(
+                placement_group_bundles
+            ):
+                raise ValueError(
+                    f"The `placement_group_bundle_label_selector` list must contain either "
+                    f"a single selector (to apply to all bundles) or match the number of "
+                    f"`placement_group_bundles`. Got {len(bundle_label_selector)} "
+                    f"selectors for {len(placement_group_bundles)} bundles."
+                )
 
         return values
 
@@ -502,6 +625,11 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         schema.autoscaling_config = info.deployment_config.autoscaling_config.dict()
     else:
         schema.num_replicas = info.deployment_config.num_replicas
+
+    if info.deployment_config.gang_scheduling_config is not None:
+        schema.gang_scheduling_config = (
+            info.deployment_config.gang_scheduling_config.dict()
+        )
 
     return schema
 
@@ -1315,6 +1443,7 @@ class TargetGroup(BaseModel, frozen=True):
     targets: List[Target] = Field(description="List of targets for the given route.")
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
+    app_name: str = Field("", description="Name of the application.")
 
 
 @PublicAPI(stability="stable")

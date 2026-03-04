@@ -129,7 +129,7 @@ A callable, taking a EnvContext object
 and `remote`) and returning an env object (or None if no env is used).
 """
 
-AgentID = Hashable
+AgentID = Hashable | str
 """Represents a generic identifier for an agent (e.g., "agent1")."""
 
 PolicyID = str  # @OldAPIStack

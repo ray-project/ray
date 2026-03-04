@@ -5,9 +5,11 @@ build_arg_sets:
   py311:
     PYTHON_VERSION: "3.11"
     PYTHON_SHORT: "311"
+    CUDA_CODE: cu128
   py312:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
+    CUDA_CODE: cu129
   py313:
     PYTHON_VERSION: "3.13"
     PYTHON_SHORT: "313"
@@ -64,11 +66,13 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_extra_testdeps/ray-llm-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
+      - --index https://download.pytorch.org/whl/${CUDA_CODE}
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     build_arg_sets:
       - py311
+      - py312
 
   - name: ray_base_extra_testdeps_gpu_${PYTHON_SHORT}
     operation: expand
@@ -82,7 +86,7 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_extra_testdeps/ray-gpu-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --index https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
@@ -101,7 +105,7 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_extra_testdeps/ray-ml-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cu128
+      - --index https://download.pytorch.org/whl/cu128
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
@@ -139,6 +143,27 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
+    build_arg_sets:
+      - py310
+      - py311
+      - py312
+      - py313
+    include_setuptools: true
+
+  # TPU base deps: extends CPU base deps with jax[tpu] dependencies
+  - name: ray_base_deps_tpu_${PYTHON_SHORT}
+    operation: expand
+    requirements:
+      - docker/base-deps/requirements.in
+      - docker/base-deps/requirements_tpu.in
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    output: python/deplocks/base_deps/ray_base_deps_tpu_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --unsafe-package ray
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --index https://storage.googleapis.com/libtpu-releases/index.html
     build_arg_sets:
       - py310
       - py311

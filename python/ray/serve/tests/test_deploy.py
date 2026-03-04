@@ -147,7 +147,7 @@ def test_reconfigure_with_exception(serve_instance):
 def test_redeploy_single_replica(serve_instance, use_handle):
     """Tests redeploying a deployment with a single replica.
 
-    The new replica should should start without waiting for the
+    The new replica should start without waiting for the
     old version replica to completely shut down.
     """
 

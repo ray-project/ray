@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,20 +19,33 @@ package ray.rpc.events;
 import "src/ray/protobuf/common.proto";
 
 message BundleSpec {
+  // Zero-based bundle index within this placement group.
   int32 bundle_index = 1;
+  // Resource requirements for this bundle (e.g. {"CPU": 1, "GPU": 0.5}).
   map<string, double> unit_resources = 2;
+  // Label constraints that candidate nodes must satisfy for this bundle.
   map<string, string> label_selector = 3;
 }
 
 message PlacementGroupDefinitionEvent {
+  // Binary ID of the placement group.
   bytes placement_group_id = 1;
+  // User-provided placement group name.
   string name = 2;
+  // Placement group namespace. This is the ray namespace from the job that created the placement group.
   string ray_namespace = 3;
+  // Scheduling strategy (PACK/SPREAD/STRICT_PACK/STRICT_SPREAD).
   ray.rpc.PlacementStrategy strategy = 4;
+  // Whether this placement group is detached from creator lifetime.
   bool is_detached = 5;
+  // Job ID of the creator.
   bytes creator_job_id = 6;
+  // Actor ID of the creator (if any).
   bytes creator_actor_id = 7;
+  // Bundle specifications that define this placement group.
   repeated BundleSpec bundles = 8;
+  // Preferred target node for STRICT_PACK; scheduler may place elsewhere if needed.
   bytes soft_target_node_id = 9;
+  // Time when GCS first received creation request (ns since epoch).
   int64 creation_request_received_ns = 10;
 }

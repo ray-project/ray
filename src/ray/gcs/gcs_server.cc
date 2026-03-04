@@ -325,6 +325,11 @@ void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
 
+    // Flush any remaining events before stopping.
+    if (ray_event_recorder_) {
+      ray_event_recorder_->StopExportingEvents();
+    }
+
     io_context_provider_.StopAllDedicatedIOContexts();
 
     ray_syncer_.reset();

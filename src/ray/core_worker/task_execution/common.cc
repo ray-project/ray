@@ -21,32 +21,24 @@
 namespace ray {
 namespace core {
 
-TaskToExecute::TaskToExecute() {}
-
 TaskToExecute::TaskToExecute(
-    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
-        accept_callback,
-    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
-        reject_callback,
-    rpc::SendReplyCallback send_reply_callback,
+    std::function<void(const TaskSpecification &)> execute_callback,
+    std::function<void(const TaskSpecification &, const Status &)> cancel_callback,
     TaskSpecification task_spec)
-    : accept_callback_(std::move(accept_callback)),
-      reject_callback_(std::move(reject_callback)),
-      send_reply_callback_(std::move(send_reply_callback)),
+    : execute_callback_(std::move(execute_callback)),
+      cancel_callback_(std::move(cancel_callback)),
       task_spec_(std::move(task_spec)),
       pending_dependencies_(task_spec_.GetDependencies()) {}
 
-void TaskToExecute::Accept() {
-  accept_callback_(task_spec_, std::move(send_reply_callback_));
-}
+void TaskToExecute::Execute() { execute_callback_(task_spec_); }
 
-void TaskToExecute::Cancel(const Status &status) {
-  reject_callback_(task_spec_, status, std::move(send_reply_callback_));
-}
+void TaskToExecute::Cancel(const Status &status) { cancel_callback_(task_spec_, status); }
 
 ray::TaskID TaskToExecute::TaskID() const { return task_spec_.TaskId(); }
 
 uint64_t TaskToExecute::AttemptNumber() const { return task_spec_.AttemptNumber(); }
+
+bool TaskToExecute::IsRetry() const { return task_spec_.IsRetry(); }
 
 const std::string &TaskToExecute::ConcurrencyGroupName() const {
   return task_spec_.ConcurrencyGroupName();
@@ -73,7 +65,7 @@ ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
 void ActorTaskExecutionArgWaiter::AsyncWait(const std::vector<rpc::ObjectReference> &args,
                                             std::function<void()> on_args_ready) {
   auto tag = next_tag_++;
-  in_flight_waits_[tag] = on_args_ready;
+  in_flight_waits_.emplace(tag, std::move(on_args_ready));
   async_wait_for_args_(args, tag);
 }
 
