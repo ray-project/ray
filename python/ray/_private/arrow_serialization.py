@@ -154,10 +154,9 @@ def _arrow_table_reduce(t: "pyarrow.Table"):
             # Delegate to ChunkedArray reducer.
             reduced_column = _arrow_chunked_array_reduce(column)
         except Exception as e:
-            if not _is_dense_union(column.type) and is_in_test():
-                # If running in a test and the column is not a dense union array
-                # (which we expect to need a fallback), we want to raise the error,
-                # not fall back.
+            if is_in_test():
+                # In tests, surface optimized serialization failures instead of
+                # silently falling back to IPC serialization.
                 raise e from None
             if type(column.type) not in _serialization_fallback_set:
                 logger.warning(
