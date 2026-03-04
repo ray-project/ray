@@ -119,7 +119,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
             rl_module, vf_preds, eps_per_module, episodes, shared_data
         )
 
-        # Per-module GAE computation.
+        # Loop through all modules and perform each one's GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
             if module_vf_preds is None:
                 continue
@@ -224,14 +224,11 @@ class GeneralAdvantageEstimation(ConnectorV2):
         for module_id, eps in eps_per_module.items():
             module = rl_module[module_id]
 
-            if module.is_stateful():
-                # TODO: implement proper LSTM bootstrap using STATE_OUT.
-                result[module_id] = [0.0] * len(eps)
-                continue
-
-            # Collect last observations for non-terminated episodes.
+            # Collect last observations (and states for stateful modules)
+            # for non-terminated episodes.
+            is_stateful = module.is_stateful()
             obs_list = []
-            all_terminated = True
+            state_list = []
             needs_bootstrap = []
             for ep in eps:
                 if not ep.is_terminated:
@@ -242,29 +239,53 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     else:
                         obs = ep.get_observations(-1)
                     obs_list.append(obs)
+                    if is_stateful:
+                        state_list.append(
+                            ep.get_extra_model_outputs(
+                                key=Columns.STATE_OUT, indices=-1
+                            )
+                        )
                     needs_bootstrap.append(True)
                 else:
                     needs_bootstrap.append(False)
-                    all_terminated = False
 
-            if all_terminated:
-                # Fast path: all episodes terminated; bootstrap values are all zero.
+            if not obs_list:
                 # All episodes terminated; bootstrap values are all zero.
                 result[module_id] = [0.0] * len(eps)
                 continue
 
             # Stack bootstrap obs and run a batched VF forward pass.
-            bootstrap_obs = tree.map_structure(
-                lambda *s: np.stack(s, axis=0), *obs_list
-            )
+            if is_stateful:
+                # Stateful modules expect (B, T, ...) obs with T=1 for a
+                # single-step bootstrap.
+                bootstrap_obs = tree.map_structure(
+                    lambda *s: np.stack(s, axis=0)[:, np.newaxis], *obs_list
+                )
+                bootstrap_states = tree.map_structure(
+                    lambda *s: np.stack(s, axis=0), *state_list
+                )
+                bs_batch = {
+                    module_id: {
+                        Columns.OBS: bootstrap_obs,
+                        Columns.STATE_IN: bootstrap_states,
+                    }
+                }
+            else:
+                bootstrap_obs = tree.map_structure(
+                    lambda *s: np.stack(s, axis=0), *obs_list
+                )
+                bs_batch = {module_id: {Columns.OBS: bootstrap_obs}}
+
             bs_tensor_batch = self._numpy_to_tensor_connector(
                 rl_module=rl_module,
-                batch={module_id: {Columns.OBS: bootstrap_obs}},
+                batch=bs_batch,
                 episodes=episodes,
             )
             bs_preds = convert_to_numpy(
                 module.unwrapped().compute_values(bs_tensor_batch[module_id])
             )
+            # Stateful modules return (B, T) with T=1; flatten to (B,).
+            bs_preds = bs_preds.reshape(-1)
 
             # Scatter bootstrap predictions back into per-episode order.
             bs_idx = 0
