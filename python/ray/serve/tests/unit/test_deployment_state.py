@@ -6643,6 +6643,79 @@ class TestScaleDeploymentGangReplicas:
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
+    def test_gang_downscale_prefers_pending_gang(self, mock_deployment_state_manager):
+        """Downscaling prefers the gang that still has a pending replica."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        gang_size = 2
+        initial_replicas = 4
+        deployment_id = DeploymentID(name="gang_downscale_pending", app_name="app")
+
+        info, version = deployment_info(
+            num_replicas=initial_replicas,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(deployment_id, info)
+        ds = dsm._deployment_states[deployment_id]
+
+        # First update creates all 4 replicas in STARTING state
+        dsm.update()
+        starting = ds._replicas.get([ReplicaState.STARTING])
+        assert len(starting) == initial_replicas
+
+        # Mark 3 of 4 replicas ready, leaving 1 replica from the second gang still pending.
+        gangs: dict = {}
+        for replica in starting:
+            gangs.setdefault(replica.gang_context.gang_id, []).append(replica)
+        gang_id1, gang_id2 = list(gangs.keys())
+
+        for replica in gangs[gang_id1]:
+            replica._actor.set_ready()
+        gangs[gang_id2][0]._actor.set_ready()
+
+        dsm.update()
+        check_counts(
+            ds,
+            total=initial_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, 3, version),
+                (ReplicaState.STARTING, 1, version),
+            ],
+        )
+
+        # Downscale to 2 replicas — should prefer gang 2 (has a pending member)
+        new_info, new_version = deployment_info(
+            num_replicas=2,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(deployment_id, new_info)
+        dsm.update()
+
+        stopping = ds._replicas.get([ReplicaState.STOPPING])
+        running = ds._replicas.get([ReplicaState.RUNNING])
+        assert len(stopping) == 2
+        assert len(running) == 2
+
+        stopping_gang_ids = {r.gang_context.gang_id for r in stopping}
+        assert stopping_gang_ids == {gang_id2}
+        running_gang_ids = {r.gang_context.gang_id for r in running}
+        assert running_gang_ids == {gang_id1}
+
+        # Complete stopping and verify recovery to HEALTHY
+        for replica in ds._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.RUNNING, 2, new_version)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
 
 class TestGangHealthCheck:
     def _deploy_gang(self, mock_deployment_state_manager, gang_size, num_replicas):

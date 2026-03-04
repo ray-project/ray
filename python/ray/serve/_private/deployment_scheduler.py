@@ -215,8 +215,9 @@ class DeploymentDownscaleRequest:
     deployment_id: DeploymentID
     num_to_stop: int
 
-    # The scheduler uses this to select complete gangs to stop.
+    # The scheduler uses these to select complete gangs to stop.
     gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None
+    replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None
     gang_size: Optional[int] = None
 
 
@@ -903,6 +904,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 downscale.deployment_id,
                 downscale.num_to_stop,
                 gang_id_by_replica=downscale.gang_id_by_replica,
+                replicas_by_gang_id=downscale.replicas_by_gang_id,
                 gang_size=downscale.gang_size,
             )
 
@@ -1073,6 +1075,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         deployment_id: DeploymentID,
         max_num_to_stop: int,
         gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None,
+        replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None,
         gang_size: Optional[int] = None,
     ) -> Set[ReplicaID]:
         """Prioritize replicas running on a node with fewest replicas of
@@ -1136,10 +1139,6 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         if gang_id_by_replica is not None:
             # Gang scheduling is enabled: select entire gangs to stop atomically
-            gang_members: Dict[str, Set[ReplicaID]] = defaultdict(set)
-            for replica_id, gang_id in gang_id_by_replica.items():
-                gang_members[gang_id].add(replica_id)
-
             replicas_to_stop: Set[ReplicaID] = set()
             selected_gangs: Set[str] = set()
             for replica_id in replicas_priority:
@@ -1149,7 +1148,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 if len(replicas_to_stop) + gang_size > max_num_to_stop:
                     break
                 selected_gangs.add(gang_id)
-                replicas_to_stop.update(gang_members[gang_id])
+                replicas_to_stop.update(replicas_by_gang_id[gang_id])
         else:
             # Single-replica scheduling: select individual replicas to stop
             replicas_to_stop: Set[ReplicaID] = set()
