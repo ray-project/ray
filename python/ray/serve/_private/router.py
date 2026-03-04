@@ -1049,8 +1049,12 @@ class AsyncioRouter:
             replica_pr.resolved = True
             result = replica.try_send_request(replica_pr, with_rejection=False)
 
-            # Register callback for replica death detection, matching
-            # the pattern in _route_and_send_request_once.
+            # Track running requests and register callback for completion
+            # handling, matching the pattern in _route_and_send_request_once.
+            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                self._metrics_manager.inc_num_running_requests_for_replica(
+                    replica.replica_id
+                )
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
