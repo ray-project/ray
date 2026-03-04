@@ -1049,6 +1049,9 @@ class AsyncioRouter:
             replica_pr.resolved = True
             result = replica.try_send_request(replica_pr, with_rejection=False)
 
+            # Proactively update the queue length cache.
+            self.request_router.on_send_request(replica.replica_id)
+
             # Track running requests and register callback for completion
             # handling, matching the pattern in _route_and_send_request_once.
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
