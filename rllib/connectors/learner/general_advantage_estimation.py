@@ -235,7 +235,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     # Use frame-stacked bootstrap obs if pre-computed by
                     # FrameStackingLearner; otherwise use the raw last observation.
                     if "stacked_bootstrap_obs" in shared_data:
-                        obs = shared_data["stacked_bootstrap_obs"]["ep.id_"]
+                        obs = shared_data["stacked_bootstrap_obs"][ep.id_]
                     else:
                         obs = ep.get_observations(-1)
                     obs_list.append(obs)

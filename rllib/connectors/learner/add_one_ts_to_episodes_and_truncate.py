@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 
+from ray._common.deprecation import Deprecated
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -11,6 +12,11 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
+@Deprecated(
+    error=False,
+    old="ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate.AddOneTsToEpisodesAndTruncate",
+    help="Use GeneralAdvantageEstimation connector standalone instead",
+)
 class AddOneTsToEpisodesAndTruncate(ConnectorV2):
     """Adds an artificial timestep to all incoming episodes at the end.
 
