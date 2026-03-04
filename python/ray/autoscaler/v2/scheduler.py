@@ -111,18 +111,17 @@ class NodeStateCache:
     for identical nodes.
     """
 
-    def __init__(self):
+    def __init__(self, source: "ResourceRequestSource"):
         self.seen_states = set()
+        self.source = source
 
-    def was_seen_or_mark(
-        self, node: "SchedulingNode"
-    ) -> bool:
+    def was_seen_or_mark(self, node: "SchedulingNode") -> bool:
         """
         Generates a deterministic signature of the node's scheduling capacity.
         Returns True if this exact state has already been seen, otherwise adds it
         to the cache and returns False.
         """
-        avail_res = node.get_available_resources(source)
+        avail_res = node.get_available_resources(self.source)
         state_key = (
             node.node_type,
             node.node_kind,
@@ -1680,13 +1679,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Track node states we've already simulated in this pass. Since we only
         # select one best node to return, we skip the heavy deepcopy/simulation
         # overhead for duplicates
-        node_cache = NodeStateCache()
+        node_cache = NodeStateCache(resource_request_source)
 
         # Iterate through each node and modify the node's available resources
         # if the requests are schedulable.
         for idx, node in enumerate(nodes):
             # Skip this node if we've already evaluated its exact state.
-            if node_cache.is_duplicate(node, resource_request_source):
+            if node_cache.was_seen_or_mark(node):
                 continue
 
             node_copy = copy.deepcopy(node)
