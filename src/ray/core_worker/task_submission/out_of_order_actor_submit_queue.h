@@ -63,7 +63,7 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
-  bool Empty() override;
+  bool Empty() const override;
 
  private:
   /// Per-concurrency-group pending queues (dependency not yet resolved).

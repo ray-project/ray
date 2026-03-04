@@ -71,7 +71,7 @@ class IActorSubmitQueue {
   ///   - a pair of task and bool represents the task to be send and if the receiver
   ///     should SKIP THE SCHEDULING QUEUE while executing it.
   virtual std::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() = 0;
-  virtual bool Empty() = 0;
+  virtual bool Empty() const = 0;
 };
 }  // namespace core
 }  // namespace ray

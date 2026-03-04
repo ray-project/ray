@@ -93,7 +93,7 @@ void OutofOrderActorSubmitQueue::MarkTaskCanceled(const std::string &concurrency
   }
 }
 
-bool OutofOrderActorSubmitQueue::Empty() {
+bool OutofOrderActorSubmitQueue::Empty() const {
   for (const auto &[_, queue] : pending_queue_per_group_) {
     if (!queue.empty()) {
       return false;
@@ -125,14 +125,14 @@ void OutofOrderActorSubmitQueue::MarkDependencyResolved(
 
 std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
   std::vector<TaskID> task_ids;
-  for (auto &[_, queue] : pending_queue_per_group_) {
-    for (auto &[__, spec] : queue) {
+  for (const auto &[_, queue] : pending_queue_per_group_) {
+    for (const auto &[__, spec] : queue) {
       task_ids.push_back(spec.first.TaskId());
     }
   }
   pending_queue_per_group_.clear();
-  for (auto &[_, queue] : sending_queue_per_group_) {
-    for (auto &[__, spec] : queue) {
+  for (const auto &[_, queue] : sending_queue_per_group_) {
+    for (const auto &[__, spec] : queue) {
       task_ids.push_back(spec.first.TaskId());
     }
   }

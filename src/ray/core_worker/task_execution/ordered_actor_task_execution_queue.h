@@ -83,7 +83,7 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
     absl::flat_hash_set<int64_t> seq_no_to_skip;
     /// The next sequence number we are waiting for to arrive in this group.
     int64_t next_seq_no = 0;
-    /// Waiting for an earlier seq no to arrive for this group. If this times
+    /// Waiting for an earlier seq no to arrive for this group. If this times out
     /// for any group, we will cancel all tasks across ALL groups for this client.
     boost::asio::deadline_timer wait_timer_;
   };

@@ -53,7 +53,7 @@ bool SequentialActorSubmitQueue::Contains(const std::string &concurrency_group,
   return false;
 }
 
-bool SequentialActorSubmitQueue::Empty() {
+bool SequentialActorSubmitQueue::Empty() const {
   return requests_per_group_.empty() && retry_requests_per_group_.empty();
 }
 

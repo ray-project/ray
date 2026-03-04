@@ -511,7 +511,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
 
   // Track accepted tasks as (group_name, seq_no) pairs.
   std::vector<std::pair<std::string, int64_t>> accepted;
-  std::atomic<int> n_accept = 0;
+  int n_accept = 0;
   auto fn_ok = [&accepted, &n_accept](const TaskSpecification &task_spec) {
     accepted.emplace_back(task_spec.ConcurrencyGroupName(),
                           task_spec.ConcurrencyGroupSequenceNumber());
