@@ -69,7 +69,7 @@ DEBUG_LOG_INTERVAL_SECONDS = 5
 
 # Maximum string/sequence length for DataContext logging. Set high to avoid truncation
 # while still protecting against pathological cases.
-DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 1000
+DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 
 # Visible for testing.
 _num_shutdown = 0
