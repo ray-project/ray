@@ -31,29 +31,6 @@ from ray.util.debug import reset_log_once
 from ray.util.state import list_actors
 
 
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "unit_in_integration: mark a test as intentionally kept in the integration directory despite having no Ray cluster dependency",
-    )
-
-
-@pytest.fixture(autouse=True)
-def warn_if_unit_in_integration(request):
-    """this fixture is only applied to tests in the integration test directory."""
-    integration_test_directory = pathlib.Path(__file__).parent
-
-    if request.fspath.dirpath() != integration_test_directory:
-        yield
-        return
-
-    if request.node.get_closest_marker("unit_in_integration"):
-        yield
-        return
-
-    # Warn if the test is a unit test but not marked as unit_in_integration
-
-
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
     """Create a mock AllToAllOperator for testing.
 
@@ -779,3 +756,53 @@ def assert_blocks_expected_in_plasma(
 @pytest.fixture(autouse=True, scope="function")
 def log_internal_stack_trace_to_stdout(restore_data_context):
     ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+
+
+# Files opted into the unit-test placement warning.
+# TODO: Once all integration test files have been added, this set can be removed.
+MIGRATED_FILES = {
+    "test_arrow_block.py",
+    "test_transform_pyarrow.py",
+}
+
+
+# Developers should manually add the markers to their tests
+def pytest_configure(config):
+    """
+    Register custom markers for test categorization.
+
+    `unit_in_integration`: Marks tests that are unit tests but are
+    intentionally kept in the integration test directory.
+
+    `integration`: Marks tests that are integration tests requiring a Ray cluster.
+    """
+    config.addinivalue_line(
+        "markers",
+        "unit_in_integration: mark a test as intentionally kept in the integration directory despite having no Ray cluster dependency",
+    )
+    config.addinivalue_line(
+        "markers",
+        "integration: mark a test as an integration test that requires a Ray cluster",
+    )
+
+
+@pytest.fixture(autouse=True)
+def warn_if_unit_in_integration(request):
+    """this fixture is only applied to tests in the integration test directory."""
+    _INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
+
+    # Skip if the test is not in the integration test directory
+    if request.fspath.dirpath() != _INTEGRATION_TEST_DIR:
+        yield
+        return
+
+    # Skip if the test file is in the set of migrated files that are known to be unit tests
+    if request.fspath.basename in MIGRATED_FILES:
+        yield
+        return
+
+    if request.node.get_closest_marker("unit_in_integration"):
+        yield
+        return
+
+    # Warn if the test is a unit test but not marked as unit_in_integration
