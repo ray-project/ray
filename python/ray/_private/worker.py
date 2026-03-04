@@ -2420,6 +2420,9 @@ def listen_error_messages(worker, threads_stopped):
             error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
+        expected_job_ids = frozenset(
+            [worker.current_job_id.binary(), JobID.nil().binary()]
+        )
         while True:
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
@@ -2428,10 +2431,10 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] is not None and error_data["job_id"] not in [
-                worker.current_job_id.binary(),
-                JobID.nil().binary(),
-            ]:
+            if (
+                error_data["job_id"] is not None
+                and error_data["job_id"] not in expected_job_ids
+            ):
                 continue
 
             error_message = error_data["error_message"]
