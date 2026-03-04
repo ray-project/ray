@@ -9,10 +9,12 @@ from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
 from ray.data._internal.logical.operators import RandomizeBlocks
+from ray.data.context import DataContext
 
 
 def generate_randomize_blocks_fn(
     op: RandomizeBlocks,
+    data_context: DataContext,
 ) -> AllToAllTransformFn:
     """Generate function to randomize order of blocks."""
 
@@ -36,9 +38,7 @@ def generate_randomize_blocks_fn(
         else:
             if op.seed is not None:
                 from ray.data._internal.util import make_epoch_seed
-                from ray.data.context import DataContext
 
-                data_context = DataContext.get_current()
                 execution_idx = (
                     data_context._execution_idx if data_context is not None else 0
                 )
