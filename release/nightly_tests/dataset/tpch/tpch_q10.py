@@ -110,7 +110,7 @@ def main(args):
             to_f64(col("l_extendedprice")) * (1 - to_f64(col("l_discount"))),
         )
 
-        # Aggregate by customer key, customer name, address, phone, account balance, nation, and region
+        # Aggregate by customer key, customer name, address, phone, account balance, and nation
         _ = (
             ds.groupby(
                 [
