@@ -780,9 +780,7 @@ class DeploymentBroadcastResponse:
     ):
         self._replica_results_future = replica_results_future
         self._replica_results: Optional[List[ReplicaResult]] = None
-        self._is_router_running_in_separate_loop = (
-            _is_router_running_in_separate_loop
-        )
+        self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
 
     def _fetch_replica_results_sync(
         self, timeout_s: Optional[float] = None
@@ -833,9 +831,7 @@ class DeploymentBroadcastResponse:
         try:
             replica_results = self._fetch_replica_results_sync(timeout_s)
         except concurrent.futures.TimeoutError:
-            raise TimeoutError(
-                "Timed out waiting for broadcast results."
-            ) from None
+            raise TimeoutError("Timed out waiting for broadcast results.") from None
 
         collected = []
         for rr in replica_results:
@@ -853,9 +849,7 @@ class DeploymentBroadcastResponse:
         Returns a list of results, one per replica.
         """
         replica_results = await self._fetch_replica_results_async()
-        return list(
-            await asyncio.gather(*[rr.get_async() for rr in replica_results])
-        )
+        return list(await asyncio.gather(*[rr.get_async() for rr in replica_results]))
 
     def __repr__(self) -> str:
         return "DeploymentBroadcastResponse()"
