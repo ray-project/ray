@@ -447,13 +447,13 @@ impl PyCoreWorker {
             .map_err(crate::common::to_py_err)?;
 
         // Set actor task send callback: gRPC PushTask via tokio::spawn.
-        let endpoint = format!("http://{}:{}", worker_ip, worker_port);
-        let worker_id_bytes = wid.binary();
+        // The callback uses the addr parameter (set per-actor by connect_actor)
+        // to route tasks to the correct worker, supporting multiple actors.
         self.inner
-            .set_actor_task_send_callback(Box::new(move |spec, _addr| {
-                let endpoint = endpoint.clone();
+            .set_actor_task_send_callback(Box::new(move |spec, addr| {
+                let endpoint = format!("http://{}:{}", addr.ip_address, addr.port);
                 let spec_clone = spec.clone();
-                let wid_bytes = worker_id_bytes.clone();
+                let wid_bytes = addr.worker_id.clone();
                 tokio::spawn(async move {
                     let channel = tonic::transport::Endpoint::from_shared(endpoint)
                         .unwrap()
