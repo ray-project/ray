@@ -1650,9 +1650,9 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
         # Verify config file contains the tcp_nodelay directive
         with open(config_file_path, "r") as f:
             config_content = f.read()
-            assert "option http-no-delay" in config_content, (
-                "Config should contain 'option http-no-delay' when tcp_nodelay=True"
-            )
+            assert (
+                "option http-no-delay" in config_content
+            ), "Config should contain 'option http-no-delay' when tcp_nodelay=True"
 
         await api.stop()
 
