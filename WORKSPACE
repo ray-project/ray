@@ -18,6 +18,19 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "rules_python",
+    sha256 = "778aaeab3e6cfd56d681c89f5c10d7ad6bf8d2f1a72de9de55b23081b2d31618",
+    strip_prefix = "rules_python-0.34.0",
+    urls = [
+        "https://github.com/bazel-contrib/rules_python/releases/download/0.34.0/rules_python-0.34.0.tar.gz",
+    ],
+    patches = [
+        "@io_ray//thirdparty/patches:rules-python-python-package.patch",
+    ],
+    patch_args = ["-p1"],
+)
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
@@ -65,12 +78,13 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
+load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 # For CI scripts use only; not for ray testing.
 pip_parse(
     name = "py_deps_py310",
-    python_interpreter_target = "@python3_10//:python3",
+    python_interpreter_target = python310,
     requirements_lock = "//release:requirements_py310.txt",
 )
 

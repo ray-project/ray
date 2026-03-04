@@ -1,0 +1,6 @@
+diff --git a/python/BUILD.bazel b/python/BUILD.bazel
+new file mode 100644
+--- /dev/null
++++ b/python/BUILD.bazel
+@@ -0,0 +1 @@
++# Package marker for loading @rules_python//python:*.bzl on Bazel 6.

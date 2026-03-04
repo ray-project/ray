@@ -1,0 +1,51 @@
+diff -u opencensus/proto/resource/v1/BUILD.bazel
+--- opencensus/proto/resource/v1/BUILD.bazel
++++ opencensus/proto/resource/v1/BUILD.bazel
+@@ -17,7 +17,6 @@ package(default_visibility = ["//visibility:public"])
+ 
+ load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
+ 
+ proto_library(
+     name = "resource_proto",
+@@ -39,8 +38,3 @@ go_proto_library(
+     importpath = "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1",
+     proto = ":resource_proto",
+ )
+-
+-py_proto_library(
+-    name = "resource_proto_py",
+-    srcs = ["resource.proto"],
+-)
+diff -u opencensus/proto/trace/v1/BUILD.bazel
+--- opencensus/proto/trace/v1/BUILD.bazel
++++ opencensus/proto/trace/v1/BUILD.bazel
+@@ -18,7 +18,6 @@ package(default_visibility = ["//visibility:public"])
+ 
+ load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+ load("@io_bazel_rules_go//go:def.bzl", "go_library")
+-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
+ 
+ proto_library(
+     name = "trace_proto",
+@@ -69,20 +68,6 @@ go_proto_library(
+     proto = ":trace_config_proto",
+ )
+ 
+-py_proto_library(
+-    name = "trace_proto_py",
+-    srcs = ["trace.proto"],
+-    deps = [
+-        "//opencensus/proto/resource/v1:resource_proto_py",
+-        "@com_google_protobuf//:protobuf_python",
+-    ],
+-)
+-
+-py_proto_library(
+-    name = "trace_config_proto_py",
+-    srcs = ["trace_config.proto"],
+-)
+-
+ # This a workaround because `trace_proto_go` and `trace_config_proto_go` have
+ # the same importpath, and so cause a compile issue if both are depended on
+ # directly by another `go_proto_library` (such as `trace_service_proto_go`).

@@ -97,6 +97,10 @@ def ray_deps_setup():
             "@com_github_grpc_grpc//third_party:protobuf.patch",
         ],
         patch_args = ["-p1"],
+        repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
+            "@googletest": "@com_google_googletest",
+        },
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
@@ -364,6 +368,9 @@ def ray_deps_setup():
         strip_prefix = "opencensus-proto-0.3.0/src",
         url = "https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz",
         sha256 = "b7e13f0b4259e80c3070b583c2f39e53153085a6918718b1c710caf7037572b0",
+        patches = [
+            "@io_ray//thirdparty/patches:opencensus-proto-remove-py-proto.patch",
+        ],
     )
 
     auto_http_archive(
