@@ -114,7 +114,7 @@ class NodeStateCache:
     def __init__(self):
         self.seen_states = set()
 
-    def is_duplicate(
+    def was_seen_or_mark(
         self, node: "SchedulingNode"
     ) -> bool:
         """
