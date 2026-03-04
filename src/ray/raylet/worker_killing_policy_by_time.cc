@@ -129,8 +129,9 @@ TimeBasedWorkerKillingPolicy::Policy(
       memory_left_to_free -= worker_pid_entry->second;
     } else {
       RAY_LOG(WARNING) << absl::StrFormat(
-          "Killing worker with PID: %d, but can't account for memory usage of this "
-          "worker to kill.",
+          "Attempting to kill worker with PID: %d, but can't account for memory usage of "
+          "this "
+          "worker to kill. The underlying process may have already been killed or died.",
           worker_pid);
     }
     sorted_worker_it++;

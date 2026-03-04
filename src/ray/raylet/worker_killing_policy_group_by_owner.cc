@@ -155,7 +155,10 @@ std::string GroupByOwnerIdWorkerKillingPolicy::PolicyDebugString(
         used_memory = pid_entry->second;
       } else {
         RAY_LOG_EVERY_MS(INFO, 60000) << absl::StrFormat(
-            "Can't find memory usage for PID, reporting zero. PID: %d", pid);
+            "Can't find memory usage for PID: %d when selecting workers to kill, "
+            "reporting zero. "
+            "The underlying process may have already been killed or died.",
+            pid);
       }
       const LeaseSpecification &lease_spec =
           worker->GetGrantedLease().GetLeaseSpecification();
