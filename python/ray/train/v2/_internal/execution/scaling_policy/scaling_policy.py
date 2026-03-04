@@ -1,6 +1,6 @@
 import abc
-from dataclasses import dataclass, field
-from typing import Dict, Optional
+from dataclasses import dataclass
+from typing import Dict
 
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.worker_group import (
@@ -24,7 +24,6 @@ class NoopDecision(ScalingDecision):
 class ResizeDecision(ScalingDecision):
     num_workers: int
     resources_per_worker: Dict[str, float]
-    poll_status: Optional[WorkerGroupPollStatus] = field(default=None)
 
 
 class ScalingPolicy(abc.ABC, ControllerCallback):

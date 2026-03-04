@@ -48,6 +48,13 @@ class WorkerGroupPollStatus:
     worker_rank_to_replica_group_rank: Optional[Dict[int, int]] = None
 
     @property
+    def all_replica_group_indices(self) -> Set[int]:
+        """Return the set of all replica group indices."""
+        if self.worker_rank_to_replica_group_rank is None:
+            return set()
+        return set(self.worker_rank_to_replica_group_rank.values())
+
+    @property
     def failing_replica_group_indices(self) -> Set[int]:
         """Return the set of replica group indices that have failing workers."""
         if self.worker_rank_to_replica_group_rank is None:

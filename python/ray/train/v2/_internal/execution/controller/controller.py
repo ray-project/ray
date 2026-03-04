@@ -249,40 +249,35 @@ class TrainController:
         current_num_workers = (
             len(self._worker_group.get_workers()) if self._worker_group else 0
         )
+        poll_status = (
+            self._worker_group.get_latest_poll_status() if self._worker_group else None
+        )
+        optional_controller_error = None
+        failing_rgs = (
+            poll_status.failing_replica_group_indices if poll_status else set()
+        )
+        all_rgs = poll_status.all_replica_group_indices if poll_status else set()
         if (
             self._has_replica_groups
-            and decision.poll_status is not None
-            and bool(decision.poll_status.failing_replica_group_indices)
+            and bool(failing_rgs)
+            and failing_rgs != all_rgs
             and self._worker_group
             # TODO: relax this after integrating replica groups with elastic training.
             and decision.num_workers == current_num_workers
         ):
             # Torchft: replace only failing replica groups.
             try:
-                self._replace_bad_workers(decision.poll_status)
+                self._replace_bad_workers(poll_status)
             except Exception as e:
                 optional_controller_error = ControllerError(e)
-                failure_decision = self._failure_policy.make_decision(
-                    training_failed_error=optional_controller_error,
-                )
-                return self._execute_failure_decision(
-                    failure_decision,
-                    training_failed_error=optional_controller_error,
-                )
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=self._state,
-                next_state=RunningState(),
+        else:
+            # Standard: full restart.
+            if self._worker_group:
+                self._shutdown_worker_group()
+            optional_controller_error = self._start_worker_group(
+                num_workers=decision.num_workers,
+                resources_per_worker=decision.resources_per_worker,
             )
-
-        # Standard: full restart.
-        if self._worker_group:
-            self._shutdown_worker_group()
-
-        optional_controller_error = self._start_worker_group(
-            num_workers=decision.num_workers,
-            resources_per_worker=decision.resources_per_worker,
-        )
 
         if optional_controller_error:
             failure_decision = self._failure_policy.make_decision(

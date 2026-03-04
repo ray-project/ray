@@ -58,6 +58,8 @@ class DummyWorkerGroup(WorkerGroup):
         self._num_workers = worker_group_context.num_workers
         self._worker_group_state = None
         self._worker_statuses = {}
+        self._replaced_replica_groups: List[int] = []
+        self._latest_poll_status: Optional[WorkerGroupPollStatus] = None
 
     def poll_status(self, *args, **kwargs) -> WorkerGroupPollStatus:
         if self._poll_failure:
@@ -88,7 +90,15 @@ class DummyWorkerGroup(WorkerGroup):
     def abort(self):
         pass
 
+    def replace_replica_group(self, replica_group_index: int):
+        self._replaced_replica_groups.append(replica_group_index)
+
     # === Test methods ===
+    def clear_worker(self):
+        for worker_status in self._worker_statuses.values():
+            worker_status.error = None
+            worker_status.running = True
+
     def error_worker(self, worker_index):
         status = self._worker_statuses[worker_index]
         status.error = RuntimeError(f"Worker {worker_index} failed")

@@ -1,9 +1,14 @@
+from unittest.mock import create_autospec
+
 import pytest
 
+import ray
 from ray.train.v2._internal.execution.worker_group.poll import (
     ERR_CHAR_LIMIT,
+    PollTask,
     WorkerGroupPollStatus,
     WorkerStatus,
+    WorldRankToOngoingPoll,
     _normalize_error_string,
 )
 
@@ -84,6 +89,77 @@ File "/tmp/ray/session_2025-08-07_23-49-55_617067_2585/runtime_resources/working
 File "/home/ray/default/train_benchmark.py", line <NUM>, in train_fn_per_worker
 File "/tmp/ray/session_<NUM>-<NUM>-<NUM>_<NUM>-<NUM>-<NUM>_<NUM>_<NUM>/runtime_resources/working_dir_files/_ray_pkg_<NUM>abd<NUM>ca<NUM>ba<NUM>ed<NUM>/runner.py", line <NUM>, in run"""
     )
+
+
+def test_world_rank_to_ongoing_poll():
+    """Test all methods on WorldRankToOngoingPoll class."""
+    polls = WorldRankToOngoingPoll()
+
+    # Empty state
+    assert polls.get(0) is None
+    assert 0 not in polls
+
+    # setdefault inserts and returns the task
+    task0 = PollTask(start_time=1.0, task=create_autospec(ray.ObjectRef, instance=True))
+    result = polls.setdefault(0, task0)
+    assert result is task0
+    assert polls.get(0) is task0
+    assert 0 in polls
+
+    # setdefault does not overwrite existing entry
+    task0_new = PollTask(
+        start_time=2.0, task=create_autospec(ray.ObjectRef, instance=True)
+    )
+    result = polls.setdefault(0, task0_new)
+    assert result is task0
+
+    # pop removes and returns the task
+    popped = polls.pop(0)
+    assert popped is task0
+    assert 0 not in polls
+
+    # pop on missing rank returns None
+    assert polls.pop(99) is None
+
+    # remove_ranks removes specified ranks
+    task1 = PollTask(start_time=1.0, task=create_autospec(ray.ObjectRef, instance=True))
+    task2 = PollTask(start_time=2.0, task=create_autospec(ray.ObjectRef, instance=True))
+    task3 = PollTask(start_time=3.0, task=create_autospec(ray.ObjectRef, instance=True))
+    polls.setdefault(1, task1)
+    polls.setdefault(2, task2)
+    polls.setdefault(3, task3)
+    polls.remove_ranks([1, 3])
+    assert 1 not in polls
+    assert 2 in polls
+    assert 3 not in polls
+
+    # clear removes all
+    polls.clear()
+    assert 2 not in polls
+
+
+def test_failing_replica_group_indices():
+    """Test that failing_replica_group_indices maps worker failures to replica groups."""
+    statuses = {
+        0: WorkerStatus(running=True),
+        1: WorkerStatus(running=True),
+        2: WorkerStatus(running=True),
+        3: WorkerStatus(running=False, error=RuntimeError("Worker 3 failed")),
+    }
+    poll_status = WorkerGroupPollStatus(
+        worker_statuses=statuses,
+        worker_rank_to_replica_group_rank={0: 0, 1: 0, 2: 1, 3: 1},
+    )
+    assert poll_status.failing_replica_group_indices == {1}
+
+
+def test_failing_replica_group_indices_no_mapping():
+    """Test that failing_replica_group_indices returns empty set when no mapping."""
+    statuses = {
+        0: WorkerStatus(running=False, error=RuntimeError("fail")),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    assert poll_status.failing_replica_group_indices == set()
 
 
 if __name__ == "__main__":

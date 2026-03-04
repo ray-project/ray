@@ -20,7 +20,10 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckTimeoutError,
 )
-from ray.train.v2._internal.execution.callback import WorkerGroupCallback
+from ray.train.v2._internal.execution.callback import (
+    ReplicaGroupCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
@@ -83,6 +86,75 @@ def test_worker_group_create():
     worker_group.shutdown()
     with pytest.raises(ValueError, match="Worker group is not active"):
         worker_group.get_workers()
+
+
+def test_replace_replica_group():
+    """Test that replace_replica_group correctly replaces a failing replica group."""
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # Remember old state.
+    old_workers = wg.get_workers()
+    old_state = wg.get_worker_group_state()
+    old_replica_groups = wg.get_replica_groups()
+    old_rg0_workers = old_replica_groups[0].get_workers()
+    old_rg1_workers = old_replica_groups[1].get_workers()
+
+    # Replace replica group 0 and get new state.
+    wg.replace_replica_group(0)
+    new_workers = wg.get_workers()
+    new_state = wg.get_worker_group_state()
+    new_replica_groups = wg.get_replica_groups()
+
+    # Assert most of WorkerGroupState is preserved.
+    assert len(new_workers) == len(old_workers)
+    assert new_state.start_time == old_state.start_time
+    assert new_state.placement_group_handle is old_state.placement_group_handle
+    assert new_state.sync_actor is old_state.sync_actor
+
+    # Assert replica group 0 workers are replaced but with same distributed contexts.
+    new_rg0_workers = new_replica_groups[0].get_workers()
+    for old_w, new_w in zip(old_rg0_workers, new_rg0_workers):
+        assert new_w is not old_w
+    new_rg1_workers = new_replica_groups[1].get_workers()
+    for old_w, new_w in zip(old_rg1_workers, new_rg1_workers):
+        assert new_w is old_w
+    for old_w, new_w in zip(old_rg0_workers, new_rg0_workers):
+        assert (
+            new_w.distributed_context.world_rank == old_w.distributed_context.world_rank
+        )
+
+    # Assert other state is as expected.
+    for w in new_rg0_workers:
+        assert (
+            wg._worker_rank_to_replica_group_rank[w.distributed_context.world_rank] == 0
+        )
+    for old_w in old_rg0_workers:
+        assert (
+            old_w.distributed_context.world_rank not in wg._world_rank_to_ongoing_poll
+        )
+
+    wg.shutdown()
+
+
+def test_replace_replica_group_failure():
+    """Test that replace_replica_group raises WorkerGroupStartupFailedError
+    when a replacement worker fails to initialize."""
+
+    class FailingWorker(RayTrainWorker):
+        def __init__(self):
+            raise RuntimeError("Replacement worker failed to start.")
+
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    # Swap the worker class so replacement workers will fail.
+    wg._worker_cls = FailingWorker
+
+    with pytest.raises(WorkerGroupStartupFailedError):
+        wg.replace_replica_group(0)
+
+    wg.shutdown()
 
 
 @pytest.mark.parametrize(
@@ -260,6 +332,10 @@ def test_insufficient_cluster_resources_startup_failure(monkeypatch):
         wg._start()
 
 
+# TODO: consider test_poll_status methods that verify that _world_rank_to_ongoing_poll
+# is updated correctly.
+
+
 def test_poll_status_running():
     worker_group_context = _default_worker_group_context(
         train_fn_ref=DummyObjectRefWrapper(lambda: time.sleep(60)),
@@ -272,6 +348,8 @@ def test_poll_status_running():
     assert len(status.worker_statuses) == 4
     assert not status.finished
     assert not status.errors
+    assert status.worker_rank_to_replica_group_rank == {0: 0, 1: 1, 2: 2, 3: 3}
+    assert status.failing_replica_group_indices == set()
 
 
 def test_poll_status_finished():
@@ -292,6 +370,8 @@ def test_poll_status_finished():
     assert len(status.worker_statuses) == 4
     assert status.finished
     assert not status.errors
+    assert status.worker_rank_to_replica_group_rank == {0: 0, 1: 1, 2: 2, 3: 3}
+    assert status.failing_replica_group_indices == set()
 
 
 @pytest.mark.parametrize("actor_failure", [True, False])
@@ -326,6 +406,8 @@ def test_poll_status_failures(monkeypatch, tmp_path, actor_failure):
 
     assert len(status.worker_statuses) == 4
     assert status.finished
+    assert status.worker_rank_to_replica_group_rank == {0: 0, 1: 1, 2: 2, 3: 3}
+    assert status.failing_replica_group_indices == {0, 1, 2, 3}
     if actor_failure:
         assert len(status.errors) == 4
         assert [
@@ -366,6 +448,7 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
                 for error in status.errors.values()
             ]
         )
+        assert status.failing_replica_group_indices == {0, 1, 2, 3}
 
         wg.shutdown()
 
@@ -525,7 +608,8 @@ def test_local_rank_assignment():
     setup_and_check_worker_group(**gpu_workers_multiple_gpus_config)
 
 
-def test_setup_worker_group(tmp_path):
+@pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
+def test_setup_worker_group(tmp_path, replace_rg):
     num_workers = 4
     worker_group = WorkerGroup(
         train_run_context=create_dummy_run_context(
@@ -534,6 +618,9 @@ def test_setup_worker_group(tmp_path):
         worker_group_context=_default_worker_group_context(num_workers=num_workers),
     )
     worker_group._start()
+
+    if replace_rg:
+        worker_group.replace_replica_group(0)
 
     def get_world_size():
         return ray.train.get_context().get_world_size()
@@ -591,16 +678,55 @@ def test_worker_group_callback():
     assert hooks.after_worker_group_shutdown_hook_called
 
 
-def test_worker_log_file_paths():
+@pytest.mark.parametrize("replace_rg", [False, True], ids=["start", "replace_rg"])
+def test_worker_log_file_paths(replace_rg):
     """Test that log file paths are correctly assigned to workers."""
     wg = _default_inactive_worker_group()
     wg._start()
+
+    if replace_rg:
+        wg.replace_replica_group(0)
 
     # Check that all workers have log file paths assigned
     workers = wg.get_workers()
     for worker in workers:
         assert worker.log_file_path is not None
         assert "ray-train-app-worker" in worker.log_file_path
+
+    wg.shutdown()
+
+
+def test_replica_group_callback():
+    """Check that replica group callback hooks are called during replace_replica_group."""
+
+    class AssertCallback(ReplicaGroupCallback):
+        def __init__(self):
+            self.shutdown_rg = None
+            self.start_rg = None
+            self.init_context_workers = None
+
+        def before_replica_group_shutdown(self, replica_group):
+            self.shutdown_rg = replica_group
+
+        def after_replica_group_start(self, replica_group):
+            self.start_rg = replica_group
+
+        def before_init_train_context(self, workers):
+            self.init_context_workers = workers
+            return {}
+
+    hooks = AssertCallback()
+    wg = _default_inactive_worker_group(callbacks=[hooks])
+    wg._start()
+
+    old_rg = wg.get_replica_groups()[0]
+    wg.replace_replica_group(0)
+    new_rg = wg.get_replica_groups()[0]
+
+    assert hooks.shutdown_rg is old_rg
+    assert hooks.start_rg is new_rg
+    assert hooks.start_rg is not hooks.shutdown_rg
+    assert hooks.init_context_workers == new_rg.get_workers()
 
     wg.shutdown()
 
