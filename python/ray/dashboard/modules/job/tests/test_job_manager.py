@@ -87,7 +87,7 @@ async def test_get_scheduling_strategy(
     )
     options = await _submit_and_get_options()
     assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
-    assert "ray._raylet.RAY_NODE_ID_NAME_KEY" not in options.get("label_selector", {})
+    assert "ray.io/node-id" not in options.get("label_selector", {})
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_client.async_internal_kv_put(
