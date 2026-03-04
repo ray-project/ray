@@ -280,7 +280,6 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
         std::move(state_transition);
   }
 
-  lifecycle_event_data.set_node_id(node_id_.Binary());
   lifecycle_event_data.set_job_id(job_id_.Binary());
 
   // Task property updates
