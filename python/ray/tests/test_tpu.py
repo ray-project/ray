@@ -408,26 +408,26 @@ def test_get_tpu_num_slices_for_workers(
     assert num_slices == expected_slices
 
 
-def _make_mock_tpu_node(alive: bool, pod_type: str, slice_name: str, worker_id: int):
+def _make_mock_tpu_node(alive, pod_type, slice_name, worker_id, tpu_chips=4):
     """Helper to mock a Ray Node dictionary returned by ray.nodes()."""
     return {
         "Alive": alive,
         "Labels": {
-            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: pod_type,
-            ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
-            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(worker_id),
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-slice-name": slice_name,
+            "ray.io/tpu-worker-id": str(worker_id),
         },
+        "Resources": {"TPU": tpu_chips},
     }
 
 
 @pytest.mark.parametrize(
-    "topology, accelerator_type, resources_per_worker, cluster_resources, mock_nodes, expected_ready",
+    "topology, accelerator_type, cluster_resources, mock_nodes, expected_ready",
     [
-        # Single, ready v4 slice (v4 2x2x2 = 8 chips, 4 chips/host -> 2 hosts, pod_type: v4-16)
+        # 1 fully intact v4 slice (2 physical hosts).
         (
             "2x2x2",
             "v4",
-            None,  # Fallback to default host math
             {"TPU-v4-16-head": 1},
             [
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0),
@@ -435,11 +435,10 @@ def _make_mock_tpu_node(alive: bool, pod_type: str, slice_name: str, worker_id: 
             ],
             1,
         ),
-        # v4-16 slice with missing head resource -> not ready.
+        # Missing the cluster-level head resource -> 0 ready slices.
         (
             "2x2x2",
             "v4",
-            None,
             {"TPU-v4-32-head": 1},  # Wrong pod type
             [
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0),
@@ -447,11 +446,10 @@ def _make_mock_tpu_node(alive: bool, pod_type: str, slice_name: str, worker_id: 
             ],
             0,
         ),
-        # Incomplete v4 slice -> not ready.
+        # Fractured slice (missing a physical host) -> 0 ready slices.
         (
             "2x2x2",
             "v4",
-            None,
             {"TPU-v4-16-head": 1},
             [
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0),
@@ -459,11 +457,10 @@ def _make_mock_tpu_node(alive: bool, pod_type: str, slice_name: str, worker_id: 
             ],
             0,
         ),
-        # v4 slice with correct # of workers but missing worker 0 -> not ready.
+        # Correct number of hosts, but missing the head node (rank 0) -> 0 ready slices.
         (
             "2x2x2",
             "v4",
-            None,
             {"TPU-v4-16-head": 1},
             [
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 1),
@@ -471,11 +468,10 @@ def _make_mock_tpu_node(alive: bool, pod_type: str, slice_name: str, worker_id: 
             ],
             0,
         ),
-        # TPU slice with dead worker -> not ready.
+        # Fractured slice (one physical host is dead) -> 0 ready slices.
         (
             "2x2x2",
             "v4",
-            None,
             {"TPU-v4-16-head": 1},
             [
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0),
@@ -483,11 +479,10 @@ def _make_mock_tpu_node(alive: bool, pod_type: str, slice_name: str, worker_id: 
             ],
             0,
         ),
-        # Multiple slices, one ready slice and one missing a worker.
+        # 2 slices total: one intact, one fractured -> 1 ready slice.
         (
             "2x2x2",
             "v4",
-            None,
             {"TPU-v4-16-head": 2},
             [
                 _make_mock_tpu_node(True, "v4-16", "slice-A", 0),
@@ -497,31 +492,41 @@ def _make_mock_tpu_node(alive: bool, pod_type: str, slice_name: str, worker_id: 
             ],
             1,
         ),
-        # A 2x4 (8-chip) slice split across 2 nodes (4 chips per node)
+        # 1 fully intact v6e 2x4 slice (single-host).
         (
             "2x4",
             "v6e",
-            {
-                "TPU": 4
-            },  # Specify 4 chip TPU or this would default to single-host (8 chip)
             {"TPU-v6e-8-head": 1},
             [
-                _make_mock_tpu_node(True, "v6e-8", "slice-1", 0),
-                _make_mock_tpu_node(True, "v6e-8", "slice-1", 1),
+                _make_mock_tpu_node(True, "v6e-8", "slice-1", 0, tpu_chips=8),
             ],
             1,
         ),
-        # 2 ready slices of v6e-16 nodes
+        # 1 fully intact v6e 2x4 slice (2 physical hosts).
+        (
+            "2x4",
+            "v6e",
+            {"TPU-v6e-8-head": 1},
+            [
+                _make_mock_tpu_node(True, "v6e-8", "slice-1", 0, tpu_chips=4),
+                _make_mock_tpu_node(True, "v6e-8", "slice-1", 1, tpu_chips=4),
+            ],
+            1,
+        ),
+        # 2 fully intact v6e slices.
         (
             "4x4",
             "v6e",
-            None,
             {"TPU-v6e-16-head": 2},
             [
                 _make_mock_tpu_node(True, "v6e-16", "slice-1", 0),
                 _make_mock_tpu_node(True, "v6e-16", "slice-1", 1),
+                _make_mock_tpu_node(True, "v6e-16", "slice-1", 2),
+                _make_mock_tpu_node(True, "v6e-16", "slice-1", 3),
                 _make_mock_tpu_node(True, "v6e-16", "slice-2", 0),
                 _make_mock_tpu_node(True, "v6e-16", "slice-2", 1),
+                _make_mock_tpu_node(True, "v6e-16", "slice-2", 2),
+                _make_mock_tpu_node(True, "v6e-16", "slice-2", 3),
             ],
             2,
         ),
@@ -536,7 +541,6 @@ def test_get_num_ready_tpu_slices_calculation(
     mock_is_initialized,
     topology,
     accelerator_type,
-    resources_per_worker,
     cluster_resources,
     mock_nodes,
     expected_ready,
@@ -549,7 +553,6 @@ def test_get_num_ready_tpu_slices_calculation(
     actual_ready = ray.util.tpu.get_num_ready_tpu_slices(
         topology=topology,
         accelerator_type=accelerator_type,
-        resources_per_worker=resources_per_worker,
     )
     assert actual_ready == expected_ready
 

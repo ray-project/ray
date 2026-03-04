@@ -265,7 +265,6 @@ def get_tpu_nodes_for_slice(
 def get_num_ready_tpu_slices(
     topology: str,
     accelerator_type: str,
-    resources_per_worker: Optional[Dict[str, float]] = None,
 ) -> int:
     """
     Checks the cluster state to determine how many full TPU slices of the
@@ -274,8 +273,6 @@ def get_num_ready_tpu_slices(
     Args:
         topology: The TPU topology string (e.g. "2x4").
         accelerator_type: The accelerator type string (e.g. "TPU-V6E").
-        resources_per_worker: Optional dictionary specifying the resources
-            expected per worker node.
 
     Returns:
         The integer count of fully ready and intact TPU slices.
@@ -288,13 +285,8 @@ def get_num_ready_tpu_slices(
         if not pod_type:
             return 0
 
-        expected_nodes_per_slice, _ = get_tpu_worker_resources(
-            topology=topology,
-            accelerator_type=accelerator_type,
-            resources_per_unit=resources_per_worker,
-            num_slices=1,
-        )
-        if expected_nodes_per_slice <= 0:
+        total_chips_expected = get_num_chips_from_topology(topology)
+        if total_chips_expected <= 0:
             return 0
 
     except Exception as e:
@@ -319,7 +311,10 @@ def get_num_ready_tpu_slices(
 
     ready_slices = 0
     for slice_name, nodes in slice_to_nodes.items():
-        if len(nodes) == expected_nodes_per_slice:
+        # Sum the physical TPU chips across all alive VMs in this slice.
+        slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
+        # Check if the total chips match the topology requirement.
+        if slice_tpu_chips == total_chips_expected:
             # A ready TPU slice must have an available TPU head (worker rank 0) node.
             has_head = any(
                 n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
@@ -403,7 +398,9 @@ class SlicePlacementGroup:
         num_slices: int = 1,
     ):
         self._topology = topology.strip().lower()
-        self._accelerator_version = accelerator_version.strip().lower()
+        self._accelerator_version = get_tpu_version_from_type(
+            accelerator_version.strip()
+        )
         self._resources_per_bundle = resources_per_bundle or {}
         self._num_slices = num_slices
 
@@ -435,16 +432,9 @@ class SlicePlacementGroup:
             lifetime,
         )
 
-    def _accelerator_version_check(self, accelerator_version: str):
-        if accelerator_version not in VALID_TPU_TYPES:
-            raise ValueError(
-                f"Invalid accelerator version: {accelerator_version}. Must be one of: {VALID_TPU_TYPES}"
-            )
-
     def _validate_tpu_config(self):
         # Should validate topology and generation values and return a
         # ValueError if invalid.
-        self._accelerator_version_check(self.accelerator_version)
         if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
             tpu_accelerator_version=self.accelerator_version,
             tpu_topology=self._topology,
