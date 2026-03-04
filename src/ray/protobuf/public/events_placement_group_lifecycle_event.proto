@@ -66,6 +66,5 @@ message PlacementGroupLifecycleEvent {
   }
 
   bytes placement_group_id = 1;
-  // Latencies can be derived from timestamps across these transitions.
   repeated StateTransition state_transitions = 2;
 }
