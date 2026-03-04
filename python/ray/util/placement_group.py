@@ -96,12 +96,16 @@ class PlacementGroup:
         return self._scheduling_options_cache or []
 
     def _fill_bundle_cache_if_needed(self) -> None:
-        if self.bundle_cache is None:
-            self.bundle_cache = _get_bundle_cache(self.id)
+        if not self.bundle_cache:
+            bundles = _get_bundle_cache(self.id)
+            if bundles:
+                self.bundle_cache = bundles
 
     def _fill_scheduling_options_cache_if_needed(self) -> None:
-        if self._scheduling_options_cache is None:
-            self._scheduling_options_cache = _get_all_scheduling_options(self.id)
+        if not self._scheduling_options_cache:
+            options = _get_all_scheduling_options(self.id)
+            if options:
+                self._scheduling_options_cache = options
 
     def __eq__(self, other):
         if not isinstance(other, PlacementGroup):
