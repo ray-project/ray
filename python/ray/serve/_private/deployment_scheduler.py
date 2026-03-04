@@ -1130,13 +1130,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ) -> Tuple[int, int]:
             node_id, replica_set = node_and_num_running_replicas_of_all_deployments
             node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
-            no_match_primary_labels = int(
-                not node_labels_match_selector(node_labels, primary_labels)
+            match_primary_labels = int(
+                node_labels_match_selector(node_labels, primary_labels)
             )
             num_replicas = (
                 len(replica_set) if node_id != self._head_node_id else sys.maxsize
             )
-            return no_match_primary_labels, num_replicas
+            return match_primary_labels, num_replicas
 
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=key
