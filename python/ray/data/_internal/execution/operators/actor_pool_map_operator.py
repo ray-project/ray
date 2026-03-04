@@ -342,7 +342,7 @@ class ActorPoolMapOperator(MapOperator):
         self._notify_first_input(bundle)
         # Enqueue input bundle
         self._bundle_queue.add(bundle)
-        self._metrics.on_input_queued(bundle)
+        self._metrics.on_input_queued(bundle, input_index=0)
 
         if strict:
             # NOTE: In case of strict input handling protocol at least 1 task
@@ -370,7 +370,7 @@ class ActorPoolMapOperator(MapOperator):
             strict=strict,
         ):
             # Submit the map task.
-            self._metrics.on_input_dequeued(bundle)
+            self._metrics.on_input_dequeued(bundle, input_index=0)
             input_blocks = [block for block, _ in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
 
@@ -474,7 +474,7 @@ class ActorPoolMapOperator(MapOperator):
 
         while self._bundle_queue.has_next():
             bundle = self._bundle_queue.get_next()
-            self._metrics.on_input_dequeued(bundle)
+            self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
@@ -590,9 +590,7 @@ class ActorPoolMapOperator(MapOperator):
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         return [self._actor_pool]
 
-    def per_task_resource_allocation(
-        self: "PhysicalOperator",
-    ) -> ExecutionResources:
+    def per_task_resource_allocation(self) -> ExecutionResources:
         # For Actor tasks resource allocation is determined as:
         #   - Per actor resource allocation divided by
         #   - Actor's max task concurrency
@@ -600,9 +598,7 @@ class ActorPoolMapOperator(MapOperator):
         per_actor_resource_usage = self._actor_pool.per_actor_resource_usage()
         return per_actor_resource_usage.scale(1 / max_concurrency)
 
-    def min_scheduling_resources(
-        self: "PhysicalOperator",
-    ) -> ExecutionResources:
+    def min_scheduling_resources(self) -> ExecutionResources:
         return self._actor_pool.per_actor_resource_usage()
 
     def update_resource_usage(self) -> None:
