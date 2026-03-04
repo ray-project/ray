@@ -853,7 +853,9 @@ class DeploymentBroadcastResponse:
         Returns a list of results, one per replica.
         """
         replica_results = await self._fetch_replica_results_async()
-        return [await rr.get_async() for rr in replica_results]
+        return list(
+            await asyncio.gather(*[rr.get_async() for rr in replica_results])
+        )
 
     def __repr__(self) -> str:
         return "DeploymentBroadcastResponse()"

@@ -1048,6 +1048,16 @@ class AsyncioRouter:
             )
             replica_pr.resolved = True
             result = replica.try_send_request(replica_pr, with_rejection=False)
+
+            # Register callback for replica death detection, matching
+            # the pattern in _route_and_send_request_once.
+            callback = partial(
+                self._process_finished_request,
+                replica.replica_id,
+                replica_pr.metadata.internal_request_id,
+            )
+            result.add_done_callback(callback)
+
             results.append(result)
 
         return results
