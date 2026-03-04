@@ -26,15 +26,22 @@ set -x
 
 ./ci/env/install-hdfs.sh
 
+# Install system packages for doc testing (not in base image which lacks DOC_TESTING=1)
+sudo apt-get update -qq && sudo apt-get install -y graphviz tesseract-ocr
+
 # Install HEBO for testing (not supported on Python 3.12+)
 if [[ "${PYTHON-}" != "3.12" ]]; then
   pip install HEBO==0.3.5
 fi
 
-# install thirdparty dependencies
+# Install doc-testing Python packages not covered by depsets
+pip install pydot pytesseract==0.3.13
+
+# Install thirdparty dependencies
 mkdir -p python/ray/thirdparty_files
 uv pip install -r /home/ray/thirdparty_depset.lock --no-deps --target=python/ray/thirdparty_files
 
+# Install Python dependencies from depset lock file
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
 # Inject our own mirror for the CIFAR10 dataset

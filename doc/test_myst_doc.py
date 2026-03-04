@@ -81,9 +81,13 @@ if __name__ == "__main__":
     remainder.insert(0, name)
     remainder.insert(0, sys.executable)
 
-    # Run the notebook with PYTHONPATH stripped so that the subprocess
-    # resolves `import ray` from the installed package (which includes the
-    # compiled _raylet.so) rather than from Bazel's runfiles tree.
+    # Run the notebook in a subprocess. Use cwd=script_dir and strip PYTHONPATH
+    # so "import ray" resolves to the installed Ray (e.g. from pip install -e in
+    # CI), not a runfiles or repo copy that may be incomplete (no ray.init).
+    script_dir = str(Path(name).resolve().parent)
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
-    subprocess.run(remainder, check=True, env=env)
+    for key in list(env):
+        if key.startswith("RUNFILES_") or key == "PYTHONRUNFILES":
+            env.pop(key, None)
+    subprocess.run(remainder, check=True, env=env, cwd=script_dir)
