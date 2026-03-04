@@ -293,11 +293,6 @@ def get_num_ready_tpu_slices(
         logger.warning(f"Failed to parse TPU topology for readiness check: {e}")
         return 0
 
-    head_resource = f"TPU-{pod_type}-head"
-    if int(ray.cluster_resources().get(head_resource, 0)) == 0:
-        # Return early if there are no TPU head nodes in the cluster.
-        return 0
-
     slice_to_nodes = {}
     for node in ray.nodes():
         # Build a mapping of currently alive Ray nodes and

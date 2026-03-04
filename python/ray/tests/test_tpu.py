@@ -435,17 +435,6 @@ def _make_mock_tpu_node(alive, pod_type, slice_name, worker_id, tpu_chips=4):
             ],
             1,
         ),
-        # Missing the cluster-level head resource -> 0 ready slices.
-        (
-            "2x2x2",
-            "v4",
-            {"TPU-v4-32-head": 1},  # Wrong pod type
-            [
-                _make_mock_tpu_node(True, "v4-16", "slice-1", 0),
-                _make_mock_tpu_node(True, "v4-16", "slice-1", 1),
-            ],
-            0,
-        ),
         # Fractured slice (missing a physical host) -> 0 ready slices.
         (
             "2x2x2",
