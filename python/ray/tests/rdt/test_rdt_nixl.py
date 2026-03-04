@@ -118,7 +118,7 @@ class GPUTestActor:
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_ray_get_gpu_ref_created_by_actor_task(ray_start_regular):
+def test_ray_get_rdt_ref_created_by_actor_task(ray_start_regular):
     actor = GPUTestActor.remote()
     tensor = torch.tensor([1, 2, 3]).to("cuda")
     ref1 = actor.echo.remote(tensor, "cuda")
@@ -162,7 +162,7 @@ def test_p2p(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_intra_gpu_tensor_transfer(ray_start_regular):
+def test_intra_rdt_tensor_transfer(ray_start_regular):
     actor = GPUTestActor.remote()
 
     tensor = torch.tensor([1, 2, 3])

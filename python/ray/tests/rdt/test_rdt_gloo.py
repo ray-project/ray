@@ -137,14 +137,14 @@ def test_gc_rdt_metadata(ray_start_regular):
 
     tensor = torch.randn((100, 100))
     ref = actors[0].echo.remote(tensor)
-    gpu_obj_id = ref.hex()
+    rdt_ref_id = ref.hex()
     rdt_manager = ray._private.worker.global_worker.rdt_manager
-    assert rdt_manager.is_managed_object(gpu_obj_id)
+    assert rdt_manager.is_managed_object(rdt_ref_id)
     ray.get(actors[1].double.remote(ref))
     del ref
 
     wait_for_condition(
-        lambda: not rdt_manager.is_managed_object(gpu_obj_id),
+        lambda: not rdt_manager.is_managed_object(rdt_ref_id),
     )
 
 
@@ -383,7 +383,7 @@ def test_send_same_ref_to_same_actor_multiple_times(ray_start_regular):
     assert ray.get(result) == pytest.approx(small_tensor * 2)
 
 
-def test_intra_gpu_tensor_transfer(ray_start_regular):
+def test_intra_rdt_tensor_transfer(ray_start_regular):
     actor = GPUTestActor.remote()
     create_collective_group([actor], backend="gloo")
 
@@ -509,24 +509,24 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
     src_actor, dst_actor = actors[0], actors[1]
 
     tensor = torch.tensor([1, 2, 3])
-    gpu_ref = src_actor.echo.remote(tensor)
-    gpu_obj_id = gpu_ref.hex()
+    rdt_ref = src_actor.echo.remote(tensor)
+    rdt_ref_id = rdt_ref.hex()
 
     # Check src_actor has the GPU object
-    ret_val_src = ray.get(src_actor.get_out_of_band_tensors.remote(gpu_obj_id))
+    ret_val_src = ray.get(src_actor.get_out_of_band_tensors.remote(rdt_ref_id))
     assert ret_val_src is not None
     assert len(ret_val_src) == 1
     assert torch.equal(ret_val_src[0], tensor)
 
     rdt_manager = ray._private.worker.global_worker.rdt_manager
-    rdt_manager.add_rdt_ref(gpu_ref, src_actor, "GLOO")
+    rdt_manager.add_rdt_ref(rdt_ref, src_actor, "GLOO")
 
     # Trigger out-of-band tensor transfer from src_actor to dst_actor.
-    task_args = (gpu_ref,)
+    task_args = (rdt_ref,)
     rdt_manager.queue_or_trigger_out_of_band_tensor_transfer(dst_actor, task_args)
 
     rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(
-        gpu_obj_id,
+        rdt_ref_id,
         CollectiveTransportMetadata(
             tensor_meta=[(tensor.shape, tensor.dtype)],
             tensor_device=tensor.device.type,
@@ -535,7 +535,7 @@ def test_trigger_out_of_band_tensor_transfer(ray_start_regular):
 
     # Check dst_actor has the GPU object
     ret_val_dst = ray.get(
-        dst_actor.get_out_of_band_tensors.remote(gpu_obj_id, timeout=10)
+        dst_actor.get_out_of_band_tensors.remote(rdt_ref_id, timeout=10)
     )
     assert ret_val_dst is not None
     assert len(ret_val_dst) == 1
@@ -623,8 +623,8 @@ def test_nested_tensordict(ray_start_regular):
     )
     sender = actors[0]
     receiver = actors[1]
-    gpu_ref = sender.echo.remote(outer_td)
-    ret_val_src = ray.get(receiver.double.remote(gpu_ref))
+    rdt_ref = sender.echo.remote(outer_td)
+    ret_val_src = ray.get(receiver.double.remote(rdt_ref))
     assert ret_val_src is not None
     assert torch.equal(ret_val_src["inner_td"]["action"], inner_td["action"] * 2)
     assert torch.equal(ret_val_src["inner_td"]["reward"], inner_td["reward"] * 2)
@@ -642,11 +642,11 @@ def test_tensor_extracted_from_tensordict_in_rdt_store(ray_start_regular):
     td = TensorDict(
         {"action": torch.randn((2,)), "reward": torch.randn((2,))}, batch_size=[2]
     ).to("cpu")
-    gpu_ref = actor.echo.remote(td)
+    rdt_ref = actor.echo.remote(td)
 
     # Since the tensor is extracted from the tensordict, the `ret_val_src` will be a list of tensors
     # instead of a tensordict.
-    ret_val_src = ray.get(actor.get_out_of_band_tensors.remote(gpu_ref.hex()))
+    ret_val_src = ray.get(actor.get_out_of_band_tensors.remote(rdt_ref.hex()))
     assert ret_val_src is not None
     assert len(ret_val_src) == 2
     assert torch.equal(ret_val_src[0], td["action"])
@@ -874,7 +874,7 @@ def test_send_back_and_dst_warning(ray_start_regular):
 
     tensor = torch.tensor([1, 2, 3])
 
-    warning_message = r"GPU ObjectRef\(.+\)"
+    warning_message = r"RDT ObjectRef\(.+\)"
 
     with pytest.warns(UserWarning, match=warning_message):
         t = src_actor.echo.remote(tensor)
@@ -949,9 +949,9 @@ def test_send_fails(ray_start_regular):
 
     # The gpu object will be gone when we trigger the transfer
     # so the send will error out
-    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    rdt_ref = actors[0].send.remote(torch.randn((100, 100)))
     ray.get(actors[0].clear_rdt_store.remote())
-    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    result_ref = actors[1].recv.remote(rdt_ref)
 
     with pytest.raises(ray.exceptions.ActorDiedError):
         ray.get(result_ref)
@@ -961,13 +961,13 @@ def test_send_actor_dies_before_sending(ray_start_regular):
     actors = [ErrorActor.remote() for _ in range(2)]
     create_collective_group(actors, backend="torch_gloo")
 
-    gpu_obj_ref = actors[0].send.remote(torch.randn(100, 100))
+    rdt_ref = actors[0].send.remote(torch.randn(100, 100))
     # Wait for the object to actually be created on the sender
-    ray.wait([gpu_obj_ref])
+    ray.wait([rdt_ref])
     # Block the background thread before triggering the transfer
     # so the send doesn't happen before the actor is killed
     actors[0].block_background_thread.remote()
-    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    result_ref = actors[1].recv.remote(rdt_ref)
     ray.kill(actors[0])
 
     with pytest.raises(ray.exceptions.ActorDiedError):
@@ -980,9 +980,9 @@ def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
 
     # Do a transfer with the receiver's background thread blocked,
     # so the recv doesn't happen before the actor is killed
-    gpu_obj_ref = actors[0].send.remote(torch.randn((100, 100)))
+    rdt_ref = actors[0].send.remote(torch.randn((100, 100)))
     actors[1].block_background_thread.remote()
-    result_ref = actors[1].recv.remote(gpu_obj_ref)
+    result_ref = actors[1].recv.remote(rdt_ref)
     ray.kill(actors[1])
 
     def check_logs():
