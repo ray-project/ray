@@ -5,6 +5,7 @@ import torch
 
 import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
+from ray.experimental import set_target_for_ref
 from ray.experimental.gpu_object_manager.util import get_tensor_transport_manager
 
 
@@ -477,6 +478,47 @@ def test_wait_tensor_freed_views(ray_start_regular):
     actor = WaitTensorFreedActor.remote()
     result = ray.get(actor.test_wait_tensor_freed_views.remote())
     assert result == "Success"
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_get_into_tensor_buffers(ray_start_regular):
+    @ray.remote(num_gpus=1, num_cpus=0)
+    class GPUTestActor:
+        def __init__(self):
+            self.tensor_list = [
+                torch.tensor([1, 2, 3]).to("cuda"),
+                torch.tensor([4, 5, 6]).to("cuda"),
+            ]
+
+        def get_ref(self):
+            return ray.put(self.tensor_list, _tensor_transport="nixl")
+
+        def get_with_buffers(self, refs):
+            set_target_for_ref(refs[0], self.tensor_list)
+            tensors = ray.get(refs[0])
+            # Make sure we ray.get-ted into the buffers
+            for new_tensor, tensor_buffer in zip(tensors, self.tensor_list):
+                assert id(new_tensor) == id(tensor_buffer)
+            return True
+
+        def get_with_wrong_buffers(self, refs):
+            wrong_tensor_buffer = [
+                torch.tensor([1, 2]).to("cuda"),
+                torch.tensor([4, 5]).to("cuda"),
+            ]
+            set_target_for_ref(refs[0], wrong_tensor_buffer)
+            with pytest.raises(ValueError) as excinfo:
+                ray.get(refs[0])
+            assert "Shape of tensor_buffer at index 0" in str(excinfo.value)
+            return True
+
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    ref = ray.get(actors[0].get_ref.remote())
+    result = actors[1].get_with_buffers.remote([ref])
+    assert ray.get(result)
+
+    result = actors[1].get_with_wrong_buffers.remote([ref])
+    assert ray.get(result)
 
 
 if __name__ == "__main__":

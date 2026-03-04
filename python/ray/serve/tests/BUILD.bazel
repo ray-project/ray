@@ -109,13 +109,13 @@ py_test_module_list(
         "test_callback.py",
         "test_cluster.py",
         "test_controller.py",
+        "test_controller_benchmark.py",
         "test_controller_recovery.py",
         "test_deploy_2.py",
         "test_deployment_scheduler.py",
         "test_deployment_topology.py",
         "test_failure.py",
         "test_failure_2.py",
-        "test_gang_scheduling.py",
         "test_grpc_e2e.py",
         "test_grpc_replica_wrapper.py",
         "test_handle.py",
@@ -163,7 +163,6 @@ py_test_module_list(
         "test_gcs_failure.py",
         "test_gradio.py",
         "test_replica_ranks.py",
-        "test_replica_sync_methods.py",
     ],
     tags = [
         "exclusive",
@@ -206,6 +205,7 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_fastapi.py",
+        "test_gang_scheduling.py",
         "test_grpc.py",
         "test_logging.py",
         "test_logging_2.py",
@@ -565,6 +565,27 @@ py_test_module_list(
         "test_handle_streaming.py",
     ],
     name_suffix = "_with_local_testing_mode",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Test currently off-by-default behavior to run replica sync methods in a threadpool.
+# TODO(edoakes): remove this once the FF is flipped on by default.
+py_test_module_list(
+    size = "medium",
+    env = {"RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1"},
+    files = [
+        "test_replica_sync_methods.py",
+    ],
+    name_suffix = "_with_run_sync_in_threadpool",
     tags = [
         "exclusive",
         "no_windows",

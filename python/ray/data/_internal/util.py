@@ -691,6 +691,52 @@ def get_compute_strategy(
             return TaskPoolStrategy()
 
 
+def get_compute_strategy_for_read_api(
+    compute: Optional["ComputeStrategy"] = None,
+    concurrency: Optional[int] = None,
+) -> "ComputeStrategy":
+    """Get `ComputeStrategy` for read APIs.
+
+    This function is used to support both TaskPoolStrategy and ActorPoolStrategy for read APIs.
+    The default behavior is to use TaskPoolStrategy, with size set to ``concurrency`` (integer).
+    To use ActorPoolStrategy, pass an ActorPoolStrategy instance to the ``compute`` parameter. The
+    ``concurrency`` parameter takes precedence over the ``compute`` parameter.
+
+    Args:
+        compute: The compute strategy to use for reading. Pass an
+            :class:`~ray.data.ActorPoolStrategy` instance to use an actor pool,
+            or a :class:`~ray.data.TaskPoolStrategy` instance (default) to use Ray tasks.
+            If not specified, defaults to ``TaskPoolStrategy(concurrency)``.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This parameter takes precedence
+            over the ``compute`` parameter. If both are specified, the ``concurrency`` parameter
+            is used.
+
+    Returns:
+        The `ComputeStrategy` for reading.
+    """
+    from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+
+    # ``concurrency`` parameter takes precedence over the ``compute`` parameter.
+    if concurrency is not None:
+        if compute is not None:
+            logger.warning(
+                "Both ``compute`` and ``concurrency`` are specified. The ``compute`` parameter will be ignored."
+            )
+        return TaskPoolStrategy(concurrency)
+
+    # When ``concurrency`` is not specified:
+    if compute is None:
+        return TaskPoolStrategy()
+    elif isinstance(compute, ComputeStrategy):
+        return compute
+    else:
+        raise ValueError(
+            f"compute must be a ComputeStrategy instance (e.g. ActorPoolStrategy or TaskPoolStrategy), but "
+            f"got {compute}"
+        )
+
+
 def capfirst(s: str):
     """Capitalize the first letter of a string
 
@@ -722,7 +768,9 @@ def pandas_df_to_arrow_block(
 
     block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(
+        block, block_exec_stats=stats.build()
+    )
 
 
 def ndarray_to_block(
@@ -734,7 +782,9 @@ def ndarray_to_block(
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    return block, BlockMetadataWithSchema.from_block(block, stats=stats.build())
+    return block, BlockMetadataWithSchema.from_block(
+        block, block_exec_stats=stats.build()
+    )
 
 
 def get_table_block_metadata_schema(
@@ -743,7 +793,7 @@ def get_table_block_metadata_schema(
     from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
     stats = BlockExecStats.builder()
-    return BlockMetadataWithSchema.from_block(table, stats=stats.build())
+    return BlockMetadataWithSchema.from_block(table, block_exec_stats=stats.build())
 
 
 def unify_block_metadata_schema(
