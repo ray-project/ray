@@ -473,7 +473,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
 def test_custom_arrow_data_serializer_fallback(
     ray_start_regular_shared, propagate_logs, caplog
 ):
-    # Reset serialization fallback set so warning is logged.
+    # Reset serialization fallback set so this test can assert no fallback occurs.
     import ray._private.arrow_serialization as arrow_ser_module
 
     arrow_ser_module._serialization_fallback_set = set()
@@ -499,21 +499,15 @@ def test_custom_arrow_data_serializer_fallback(
         buf_size = data.get_total_buffer_size()
     # Create a zero-copy slice view of data.
     view = data.slice(10, 10)
-    # Confirm that (1) fallback works, and (2) warning is logged.
+    # Dense unions now have an optimized serializer path and should not fallback.
     with caplog.at_level(
         logging.WARNING,
-        logger="ray.data._internal.arrow_serialization",
+        logger="ray._private.arrow_serialization",
     ):
         s_arr = pickle.dumps(data)
-    assert "Failed to complete optimized serialization" in caplog.text
-    caplog.clear()
-    # Confirm that we only warn once per process.
-    with caplog.at_level(
-        logging.WARNING,
-        logger="ray.data._internal.arrow_serialization",
-    ):
         s_view = pickle.dumps(view)
     assert "Failed to complete optimized serialization" not in caplog.text
+    assert not arrow_ser_module._serialization_fallback_set
     post_slice = pickle.loads(s_view)
     post_slice.validate()
     # Check for round-trip equality.
