@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import uuid
 from pathlib import Path
 from threading import Thread
@@ -55,6 +56,12 @@ except ImportError:
     )
 
 CUSTOM_EXPORTER_OUTPUT_FILENAME = "spans.txt"
+
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Tracing is not supported on Windows.",
+)
 
 
 @pytest.fixture

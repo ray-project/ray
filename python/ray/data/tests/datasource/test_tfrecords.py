@@ -360,7 +360,7 @@ def test_read_tfrecords(
     with_tf_schema,
     tfx_read,
     compression,
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     import pandas as pd
@@ -466,7 +466,7 @@ def mock_ray_data_read_tfrecords(mocker):
 
 @pytest.mark.parametrize("num_cpus", [1, 2, 4])
 def test_read_tfrecords_ray_remote_args(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     mock_ray_data_read_tfrecords,
     tmp_path,
     num_cpus,
@@ -492,7 +492,7 @@ def test_read_tfrecords_ray_remote_args(
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords(
     with_tf_schema,
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     """Test that write_tfrecords writes TFRecords correctly.
@@ -546,7 +546,7 @@ def test_write_tfrecords(
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_write_tfrecords_empty_features(
     with_tf_schema,
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     """Test that write_tfrecords writes TFRecords with completely empty features
@@ -600,7 +600,7 @@ def test_write_tfrecords_empty_features(
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_readback_tfrecords(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
     with_tf_schema,
 ):
@@ -632,7 +632,7 @@ def test_readback_tfrecords(
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
 def test_readback_tfrecords_empty_features(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
     with_tf_schema,
 ):
@@ -668,7 +668,7 @@ def test_readback_tfrecords_empty_features(
 
 
 def test_write_tfrecords_tensor(
-    ray_start_regular_shared, tmp_path, tensor_format_context
+    ray_start_regular_shared_2_cpus, tmp_path, restore_data_context, tensor_format
 ):
     """Test that write_tfrecords handles tensor data by serializing
     tensors to bytes via tf.io.serialize_tensor, preserving shape and dtype."""
@@ -698,7 +698,7 @@ def test_write_tfrecords_tensor(
         np.testing.assert_array_equal(result, expected)
 
 
-def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
+def test_write_invalid_tfrecords(ray_start_regular_shared_2_cpus, tmp_path):
     """
     If we try to write a dataset with invalid TFRecord datatypes,
     ValueError should be raised.
@@ -711,7 +711,7 @@ def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("tfx_read", (True, False))
-def test_read_invalid_tfrecords(ray_start_regular_shared, tfx_read, tmp_path):
+def test_read_invalid_tfrecords(ray_start_regular_shared_2_cpus, tfx_read, tmp_path):
     file_path = os.path.join(tmp_path, "file.json")
     with open(file_path, "w") as file:
         json.dump({"number": 0, "string": "foo"}, file)
@@ -724,7 +724,7 @@ def test_read_invalid_tfrecords(ray_start_regular_shared, tfx_read, tmp_path):
 
 
 def test_read_with_invalid_schema(
-    ray_start_regular_shared,
+    ray_start_regular_shared_2_cpus,
     tmp_path,
 ):
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -778,7 +778,9 @@ def test_read_with_invalid_schema(
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
-def test_write_min_rows_per_file(tmp_path, ray_start_regular_shared, min_rows_per_file):
+def test_write_min_rows_per_file(
+    tmp_path, ray_start_regular_shared_2_cpus, min_rows_per_file
+):
     ray.data.range(100, override_num_blocks=20).write_tfrecords(
         tmp_path, min_rows_per_file=min_rows_per_file
     )

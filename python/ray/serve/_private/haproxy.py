@@ -8,7 +8,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from jinja2 import Environment
 
@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
     RAY_SERVE_HAPROXY_SYSLOG_PORT,
+    RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
@@ -350,6 +351,7 @@ class HAProxyConfig:
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
     reload_id: Optional[str] = None  # Unique ID for each reload
+    tcp_nodelay: bool = RAY_SERVE_HAPROXY_TCP_NODELAY
     enable_so_reuseport: bool = (
         os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "0") == "1"
     )
@@ -1098,6 +1100,11 @@ class HAProxyManager(ProxyActorInterface):
         pass
 
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
+        raise NotImplementedError("Receive is handled by the ingress replicas.")
+
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
         raise NotImplementedError("Receive is handled by the ingress replicas.")
 
     def _get_http_options(self) -> HTTPOptions:
