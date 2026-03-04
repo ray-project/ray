@@ -92,7 +92,12 @@ def test_ingress_wrapper_preserves_metadata():
 
 
 def test_ingress_async_init(serve_instance):
-    """Test that async __init__ works correctly with @serve.ingress."""
+    """Test that async __init__ works correctly with @serve.ingress.
+
+    Without the fix, cls.__init__() returns a coroutine that is silently
+    discarded, so self.msg is never set and the /check endpoint raises
+    AttributeError.
+    """
     app = FastAPI()
 
     @serve.deployment
