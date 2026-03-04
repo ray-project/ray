@@ -94,6 +94,9 @@ def upload_worker_process_setup_hook_if_needed(
         runtime_env: The runtime_env. The value will be modified
             when returned.
         worker: ray.worker instance.
+
+    Returns:
+        The modified runtime_env with the setup hook processed into an env var.
     """
     # Ensure idempotency: Already processed (e.g. inherited from job supervisor) — skip.
     env_vars = runtime_env.get("env_vars", {})
