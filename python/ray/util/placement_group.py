@@ -364,7 +364,7 @@ def check_placement_group_index(
         # Fetch the updated scheduling options first.
         strategies = placement_group._get_scheduling_options_bundles()
 
-        valid_count = max((len(strategy) for strategy in strategies), default=0)
+        valid_count = min((len(strategy) for strategy in strategies), default=0)
 
         if bundle_index >= valid_count or bundle_index < -1:
             raise ValueError(
