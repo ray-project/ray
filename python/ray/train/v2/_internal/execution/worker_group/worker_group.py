@@ -143,6 +143,9 @@ class WorkerGroup(ExecutionGroup):
         self._replica_group_callbacks = [
             c for c in callbacks if isinstance(c, ReplicaGroupCallback)
         ]
+        self._execution_group_callbacks = [
+            c for c in callbacks if isinstance(c, ExecutionGroupCallback)
+        ]
         # Group of callbacks that will be propagated and called on the worker actors.
         self._worker_callbacks_to_propagate = [
             c
@@ -325,7 +328,7 @@ class WorkerGroup(ExecutionGroup):
             # To prevent the driver from crashing, catch all `RayActorError`s and
             # raise a specially handled error to the controller.
             try:
-                self._init_train_context(workers, sync_actor, self._callbacks)
+                self._init_train_context(workers, sync_actor)
 
                 self._worker_group_state = worker_group_state_builder.build()
 
@@ -434,7 +437,6 @@ class WorkerGroup(ExecutionGroup):
         self,
         workers: List[Worker],
         sync_actor: ActorHandle,
-        callbacks: List[ExecutionGroupCallback],
     ) -> None:
         """Collect train context args from callbacks and initialize train context.
 
@@ -444,10 +446,9 @@ class WorkerGroup(ExecutionGroup):
         Args:
             workers: The workers to initialize.
             sync_actor: The synchronization actor.
-            callbacks: Callbacks to collect train context args from.
         """
         train_context_args: Dict[str, List[Any]] = {}
-        for cb in callbacks:
+        for cb in self._execution_group_callbacks:
             args = cb.before_init_train_context(workers)
             for arg, arg_values in args.items():
                 assert len(arg_values) == len(workers), (
@@ -750,9 +751,7 @@ class WorkerGroup(ExecutionGroup):
         # Initialize train context on new workers.
         sync_actor = self._worker_group_state.sync_actor
         try:
-            self._init_train_context(
-                new_workers, sync_actor, self._replica_group_callbacks
-            )
+            self._init_train_context(new_workers, sync_actor)
         except RayActorError as actor_error:
             error_msg = (
                 "At least one replacement worker failed to initialize "
