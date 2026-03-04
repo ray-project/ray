@@ -5,7 +5,7 @@ import time
 import traceback
 import uuid
 import weakref
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from typing import (
@@ -1576,11 +1576,11 @@ class CompiledDAG:
             assert self._dag_output_fetcher is not None
             return
 
-        frontier = [self.input_task_idx]
+        frontier = deque([self.input_task_idx])
         visited = set()
         # Create output buffers. This loop does a breadth-first search through the DAG.
         while frontier:
-            cur_idx = frontier.pop(0)
+            cur_idx = frontier.popleft()
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)

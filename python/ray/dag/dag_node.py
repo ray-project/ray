@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import uuid
+from collections import deque
 from itertools import chain
 from typing import (
     Any,
@@ -529,11 +530,11 @@ class DAGNode(DAGNodeBase):
         the `self` node, and apply the given function to each node.
         """
         visited = set()
-        queue = [self]
+        queue = deque([self])
         cgraph_output_node: Optional[DAGNode] = None
 
         while queue:
-            node = queue.pop(0)
+            node = queue.popleft()
             if node._args_contain_nested_dag_node:
                 self._raise_nested_dag_node_error(node._bound_args)
 
