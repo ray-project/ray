@@ -26,7 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 #include "ray/flatbuffers/node_manager_generated.h"
-#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {

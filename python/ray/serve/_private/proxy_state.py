@@ -312,7 +312,15 @@ class ActorProxyWrapper(ProxyWrapper):
                 future.cancel()
 
     def kill(self):
-        """Kill the proxy actor."""
+        """Kills the proxy actor after graceful shutdown."""
+        # Prevent multiple concurrent kill attempts
+        if self.is_shutdown():
+            return
+
+        shutdown_ref = self._actor_handle.shutdown.remote()
+        ray.get(shutdown_ref, timeout=5)
+
+        # Shutdown completed successfully, now kill the actor
         ray.kill(self._actor_handle, no_restart=True)
 
 

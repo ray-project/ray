@@ -3,6 +3,7 @@ import os
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List
 
+import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_bool
@@ -10,7 +11,6 @@ from ray.train import BackendConfig
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import ActorMetadata
-from ray.train.v2._internal.util import ray_get_safe
 from ray.train.v2.api.config import ScalingConfig
 
 if TYPE_CHECKING:
@@ -117,7 +117,7 @@ def _share_accelerator_ids(
                 set_accelerator_ids, accelerator_ids=visible_accelerator_ids
             )
         )
-    ray_get_safe(futures)
+    ray.get(futures)
 
 
 def _get_visible_accelerator_ids_per_worker(

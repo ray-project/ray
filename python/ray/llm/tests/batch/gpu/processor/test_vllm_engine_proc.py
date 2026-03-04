@@ -72,6 +72,7 @@ def test_vllm_engine_processor(
         "max_concurrent_batches": 8,
         "batch_size": 64,
         "should_continue_on_error": False,
+        "log_engine_metrics": True,
     }
 
     runtime_env = stage.map_batches_kwargs.pop("runtime_env")
@@ -613,6 +614,14 @@ def test_audio_model(
 
 
 class TestVLLMEngineProcessorConfig:
+    def test_build_processor_autoconfig_failure(self):
+        config = vLLMEngineProcessorConfig(
+            model_source="nonexistent-org/nonexistent-model",
+        )
+
+        processor = build_processor(config)
+        assert processor is not None
+
     @pytest.mark.parametrize(
         "experimental_config",
         [

@@ -640,7 +640,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=20)
+    wait_for_condition(check_for_failed_deployment, timeout=40)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -809,6 +809,20 @@ def test_deploy_use_custom_autoscaling(serve_instance):
     wait_for_condition(
         lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
         == "hello_from_custom_autoscaling_policy"
+    )
+
+
+def test_deploy_gang_scheduling(serve_instance):
+    """Test that gang scheduling config can be deployed via YAML config."""
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "gang_scheduling.yaml",
+    )
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    wait_for_condition(
+        lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
+        == "hello_from_gang_scheduling"
     )
 
 

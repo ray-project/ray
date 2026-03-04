@@ -355,6 +355,63 @@ def test_get_node_to_connect_for_driver_filters_by_node_name(ray_start_cluster):
     assert node_info.node_name == "node_two"
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
+def test_get_node_to_connect_for_driver_retries_until_node_found(ray_start_cluster):
+    """
+    Test that get_node_to_connect_for_driver retries until the node with matching
+    node_name is added to the cluster.
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    cluster = ray_start_cluster
+    cluster.add_node(node_name="initial_node")
+    cluster.wait_for_nodes()
+
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
+
+    target_node_name = "delayed_node"
+
+    def lookup_node():
+        return ray._private.services.get_node_to_connect_for_driver(
+            gcs_client, node_name=target_node_name, timeout_seconds=30
+        )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(lookup_node)
+
+        # Left the get_node_to_connect_for_driver run a bit before adding the node
+        time.sleep(10)
+        added_node = cluster.add_node(node_name=target_node_name)
+        cluster.wait_for_nodes()
+
+        node_info = future.result(timeout=30)
+
+    assert node_info.node_name == target_node_name
+    assert node_info.node_manager_port == added_node.node_manager_port
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
+def test_get_node_to_connect_for_driver_no_matching_node_timeout(ray_start_cluster):
+    """
+    Test that get_node_to_connect_for_driver raises an error when no node with
+    matching node_name is found within the timeout period.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(node_name="existing_node")
+    cluster.wait_for_nodes()
+
+    gcs_client = ray._raylet.GcsClient(address=cluster.gcs_address)
+
+    with pytest.raises(
+        RuntimeError,
+        match="No node info found matching attributes.*",
+    ):
+        ray._private.services.get_node_to_connect_for_driver(
+            gcs_client, node_name="non_existent_node", timeout_seconds=3
+        )
+
+
 def test_default_resource_not_allowed_error(shutdown_only):
     """
     Make sure when the default resources are passed to `resources`
