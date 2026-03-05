@@ -480,12 +480,12 @@ def fetch_prometheus(prom_addresses, timeout=None):
 
 
 def fetch_prometheus_timeseries(
-    prom_addreses: List[str],
+    prom_addresses: List[str],
     result: PrometheusTimeseries,
     timeout=None,
 ) -> PrometheusTimeseries:
     components_dict, metric_descriptors, metric_samples = fetch_prometheus(
-        prom_addreses, timeout=timeout
+        prom_addresses, timeout=timeout
     )
     for address, components in components_dict.items():
         if address not in result.components_dict:
