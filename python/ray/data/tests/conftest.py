@@ -818,8 +818,15 @@ def check_if_unit_in_integration(request):
 
     # Skip if the test file is in the set of migrated files that are known to be unit tests
     if request.node.get_closest_marker("unit_for_integration"):
-        yield
-        return
+        if any("ray_start" in name for name in request.fixturenames):
+            yield
+            raise Exception(
+                f"{request.node.nodeid} is marked with @pytest.mark.unit_for_integration but uses a Ray cluster fixture. "
+                "Consider removing the marker or moving it to the integration test directory."
+            )
+        else:
+            yield
+            return
 
     # raise an exception if the test has a direct Ray cluster dependency but is not marked as an integration test
     if any("ray_start" in name for name in request.fixturenames):

@@ -136,7 +136,7 @@ def binary_dataset_single_file_gt_2gb():
         print(f">>> Cleaning up dataset: {dataset_path}")
 
 
-@pytest.mark.integration_test
+@pytest.mark.unit_for_integration
 @pytest.mark.parametrize(
     "col_name",
     [
