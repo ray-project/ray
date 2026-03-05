@@ -215,6 +215,7 @@ class ServeController:
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
             proxy_actor_class=get_proxy_actor_class(),
+            running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
         del http_options, grpc_options
@@ -293,6 +294,8 @@ class ServeController:
         # Initialize to None (not []) to ensure the first broadcast always happens,
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
+
+        self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -689,9 +692,24 @@ class ServeController:
 
         self._maybe_update_ingress_ports()
 
-        # HAProxy target group broadcasting
+        # HAProxy handling
         if self._ha_proxy_enabled:
-            self.broadcast_target_groups_if_changed()
+            # Right after a controller restart, the replica details may be incomplete,
+            # so we wait until recovery is finished before sending any updated target
+            # groups to HAProxy.
+            if self.done_recovering_event.is_set():
+                self.broadcast_target_groups_if_changed()
+
+            # Wait until the fallback proxy has transitioned out of STARTING at
+            # least once before broadcasting. After a controller restart, the proxy
+            # starts as STARTING even if it's already healthy. If we broadcast
+            # before the first health check, the fallback target will be None and
+            # HAProxy will remove the fallback server from its config.
+            if (
+                self.proxy_state_manager
+                and self.proxy_state_manager.started_fallback_proxy_at_least_once()
+            ):
+                self.broadcast_fallback_targets_if_changed()
 
     def _maybe_update_ingress_ports(self) -> None:
         """Update ingress ports if direct ingress is enabled."""
@@ -727,6 +745,18 @@ class ServeController:
             {LongPollNamespace.TARGET_GROUPS: target_groups}
         )
         self._last_broadcasted_target_groups = target_groups
+
+    def broadcast_fallback_targets_if_changed(self) -> None:
+        """Broadcast the fallback targets over long poll if they have changed."""
+        fallback_targets = self.proxy_state_manager.get_fallback_proxy_targets()
+
+        if self._last_broadcasted_fallback_targets == fallback_targets:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.FALLBACK_TARGETS: fallback_targets}
+        )
+        self._last_broadcasted_fallback_targets = fallback_targets
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
