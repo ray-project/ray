@@ -460,6 +460,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/rustic-ai.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/rustic-ai/rustic-ai?style=social
+                :target: https://github.com/rustic-ai/rustic-ai
+
+            Rustic AI is an open source framework for developing collaborative multi-agent AI systems in Python. It organizes agents into “guilds” that communicate, share memory, and coordinate long-running tasks across models, tools, and services.
+
+        +++
+        .. button-link:: https://www.rustic.ai/pages/rustic-ai
+            :color: primary
+            :outline:
+            :expand:
+
+            Rustic AI Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/scikit.png
             :class: card-figure
 
