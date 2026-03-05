@@ -26,7 +26,7 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.env.vector.registration import make_vec
 from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
-from ray.rllib.utils import force_list, log_once
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
@@ -59,6 +59,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 torch, _ = try_import_torch()

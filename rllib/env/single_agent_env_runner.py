@@ -25,7 +25,7 @@ from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import ENV_STEP_FAILURE, EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils import force_list, log_once
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
@@ -56,6 +56,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger("ray.rllib")
