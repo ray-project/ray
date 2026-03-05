@@ -42,11 +42,13 @@ rpc::PlacementGroupTableData CreateTestPlacementGroupTableData(
   bundle1->mutable_bundle_id()->set_bundle_index(0);
   (*bundle1->mutable_unit_resources())["CPU"] = 1.0;
   (*bundle1->mutable_label_selector())["team"] = "core";
+  bundle1->set_node_id("node_id_0");
 
   auto *bundle2 = data.add_bundles();
   bundle2->mutable_bundle_id()->set_placement_group_id("test_pg_id");
   bundle2->mutable_bundle_id()->set_bundle_index(1);
   (*bundle2->mutable_unit_resources())["GPU"] = 2.0;
+  bundle2->set_node_id("node_id_1");
 
   // Add stats
   auto *stats = data.mutable_stats();
@@ -274,6 +276,7 @@ TEST_F(RayPlacementGroupLifecycleEventTest, TestCreatedStateIncludesSchedulingSt
             rpc::events::PlacementGroupLifecycleEvent::FINISHED);
   ASSERT_EQ(transition.scheduling_attempt(), 3);
   ASSERT_DOUBLE_EQ(transition.highest_retry_delay_ms(), 100.5);
+  ASSERT_EQ(transition.bundle_placements_size(), 0);
 }
 
 TEST_F(RayPlacementGroupLifecycleEventTest, TestNonCreatedStateIncludesSchedulingStats) {
@@ -293,6 +296,27 @@ TEST_F(RayPlacementGroupLifecycleEventTest, TestNonCreatedStateIncludesSchedulin
             rpc::events::PlacementGroupLifecycleEvent::NO_RESOURCES);
   ASSERT_EQ(transition.scheduling_attempt(), 3);
   ASSERT_DOUBLE_EQ(transition.highest_retry_delay_ms(), 100.5);
+  ASSERT_EQ(transition.bundle_placements_size(), 0);
+}
+
+TEST_F(RayPlacementGroupLifecycleEventTest, TestPreparedStateIncludesBundlePlacements) {
+  auto data = CreateTestPlacementGroupTableData(rpc::PlacementStrategy::PACK,
+                                                rpc::PlacementGroupTableData::PREPARED,
+                                                rpc::PlacementGroupStats::FINISHED);
+
+  auto event = std::make_unique<RayPlacementGroupLifecycleEvent>(
+      data, rpc::events::PlacementGroupLifecycleEvent::PREPARED, "test_session");
+  auto serialized_event = std::move(*event).Serialize();
+
+  const auto &pg_life = serialized_event.placement_group_lifecycle_event();
+  const auto &transition = pg_life.state_transitions(0);
+
+  ASSERT_EQ(transition.state(), rpc::events::PlacementGroupLifecycleEvent::PREPARED);
+  ASSERT_EQ(transition.bundle_placements_size(), 2);
+  ASSERT_EQ(transition.bundle_placements(0).bundle_index(), 0);
+  ASSERT_EQ(transition.bundle_placements(0).node_id(), "node_id_0");
+  ASSERT_EQ(transition.bundle_placements(1).bundle_index(), 1);
+  ASSERT_EQ(transition.bundle_placements(1).node_id(), "node_id_1");
 }
 
 }  // namespace observability
