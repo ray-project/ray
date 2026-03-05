@@ -114,7 +114,7 @@ def _ensure_default_transports_registered():
                 "CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor
             )
             register_tensor_transport(
-                "UCCL", ["cuda"], UCCLTensorTransport, torch.Tensor
+                "UCCL", ["cuda", "cpu"], UCCLTensorTransport, torch.Tensor
             )
         except ImportError:
             pass
