@@ -26,7 +26,7 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.env.vector.registration import make_vec
 from ray.rllib.env.vector.vector_multi_agent_env import VectorMultiAgentEnv
-from ray.rllib.utils import force_list
+from ray.rllib.utils import force_list, log_once
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
@@ -287,6 +287,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         eps = 0
 
         if self._cached_to_module is None:
+            # This can happen if we error out in a previous sample call.
+            # Primarily, because a connector fails.
+            # In this case, we need to reset the envs and episodes to start over.
+            if log_once("sample_error_reset_envs"):
+                logger.warning(
+                    "Error in sample call detected. Resetting envs and episodes to start over. You can ignore this warning if a connector is expectedly unstable."
+                )
             force_reset = True
 
         # Have to reset the env (on all vector sub_envs).

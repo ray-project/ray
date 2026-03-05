@@ -25,7 +25,7 @@ from ray.rllib.env import INPUT_ENV_SINGLE_SPACES, INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import ENV_STEP_FAILURE, EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils import force_list
+from ray.rllib.utils import force_list, log_once
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.error import ERR_MSG_INVALID_ENV_DESCRIPTOR, EnvError
@@ -284,6 +284,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
         if self._cached_to_module is None:
+            # This can happen if we error out in a previous sample call.
+            # Primarily, because a connector fails.
+            # In this case, we need to reset the envs and episodes to start over.
+            if log_once("sample_error_reset_envs"):
+                logger.warning(
+                    "Error in sample call detected. Resetting envs and episodes to start over. You can ignore this warning if a connector is expectedly unstable."
+                )
             force_reset = True
 
         # Have to reset the env (on all vector sub_envs).
