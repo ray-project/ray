@@ -1977,7 +1977,7 @@ requests-oauthlib==2.0.0
     #   msrest
 requests-toolbelt==1.0.0
     # via comet-ml
-responses==0.13.4
+responses==0.15.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto

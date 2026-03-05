@@ -43,13 +43,20 @@ def _substitute_build_args(obj: Any, build_arg_set: BuildArgSet):
 
 
 def _dict_to_depset(depset: dict, config_name: str) -> Depset:
+    source_depset = depset.get("source_depset")
+    if source_depset is not None and not isinstance(source_depset, str):
+        raise TypeError(
+            f"'source_depset' must be a string, not {type(source_depset).__name__}, "
+            f"in depset '{depset.get('name')}' in config '{config_name}'. "
+            f"Use 'source_depset: name' instead of a list."
+        )
     return Depset(
         name=depset.get("name"),
         requirements=depset.get("requirements", []),
         constraints=depset.get("constraints", []),
         operation=depset.get("operation", None),
         output=depset.get("output"),
-        source_depset=depset.get("source_depset"),
+        source_depset=source_depset,
         depsets=depset.get("depsets", []),
         override_flags=depset.get("override_flags", []),
         append_flags=depset.get("append_flags", []),
