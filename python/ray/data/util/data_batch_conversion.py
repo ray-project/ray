@@ -295,7 +295,10 @@ def _cast_tensor_columns_to_ndarrays(
         for field in arrow_schema:
             if _is_native_tensor_type(field.type) and field.name in df.columns:
                 shape = tuple(field.type.shape)
-                df[field.name] = [arr.reshape(shape) for arr in df[field.name]]
+                df[field.name] = [
+                    arr.reshape(shape) if arr is not None else None
+                    for arr in df[field.name]
+                ]
 
     for col_name, col in df.items():
         if isinstance(col.dtype, TensorDtype):
