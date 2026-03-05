@@ -113,7 +113,7 @@ impl Default for RayConfig {
             user_memory_proportion_high: 1.0,
             object_store_memory: -1,
             object_spilling_threshold: 0.8,
-            gcs_server_port: 6379,
+            gcs_server_port: crate::constants::DEFAULT_GCS_PORT as i32,
             gcs_max_active_rpcs_per_handler: -1,
             num_workers_soft_limit: -1,
             raylet_heartbeat_period_milliseconds: 1_000,

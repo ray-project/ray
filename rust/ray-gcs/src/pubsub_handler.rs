@@ -68,7 +68,9 @@ impl InternalPubSubHandler {
         let mut channels = HashMap::new();
         // Create channels for each known type (values match proto ChannelType)
         for channel_type in [3, 4, 5, 6, 7, 8, 9, 10] {
-            let (tx, _) = broadcast::channel(1024);
+            let (tx, _) = broadcast::channel(
+                ray_common::constants::DEFAULT_PUBSUB_CHANNEL_CAPACITY,
+            );
             channels.insert(channel_type, tx);
         }
         Self {

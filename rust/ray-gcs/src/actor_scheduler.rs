@@ -243,7 +243,7 @@ impl GcsActorScheduler {
     ) -> Result<(rpc::RequestWorkerLeaseReply, Vec<u8>), Status> {
         let mut addr = initial_addr.to_string();
         let mut node_id_bytes = initial_node_id.binary().to_vec();
-        let max_retries = 10;
+        let max_retries = ray_common::constants::MAX_LEASE_SPILLBACK_RETRIES;
 
         for attempt in 0..max_retries {
             let reply = self

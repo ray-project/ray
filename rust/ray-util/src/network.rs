@@ -12,12 +12,16 @@
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, UdpSocket};
 
+/// Public DNS server used for local IP detection.
+/// Matches `PUBLIC_DNS_SERVER_IP` / `PUBLIC_DNS_SERVER_PORT` in `ray-common/constants.rs`.
+const PUBLIC_DNS_SERVER: &str = "8.8.8.8:53";
+
 /// Get the local IP address by connecting to a public DNS server.
 /// This is the same approach as the C++ `GetNodeIpAddress`.
 pub fn get_local_ip() -> IpAddr {
-    // Connect UDP socket to Google DNS to determine local interface address
+    // Connect UDP socket to public DNS to determine local interface address.
     let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind UDP socket");
-    match socket.connect("8.8.8.8:53") {
+    match socket.connect(PUBLIC_DNS_SERVER) {
         Ok(()) => socket
             .local_addr()
             .map(|addr| addr.ip())

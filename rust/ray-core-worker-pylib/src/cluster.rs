@@ -108,7 +108,9 @@ pub fn start_cluster() -> pyo3::PyResult<PyClusterHandle> {
         }));
         let nm_clone = Arc::clone(&nm);
         tokio::spawn(async move { nm_clone.run().await });
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // Wait for NodeManager to start accepting connections.
+        const CLUSTER_STARTUP_WAIT_MS: u64 = 500;
+        tokio::time::sleep(std::time::Duration::from_millis(CLUSTER_STARTUP_WAIT_MS)).await;
 
         PyClusterHandle {
             gcs_addr,

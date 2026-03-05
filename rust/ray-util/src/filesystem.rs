@@ -15,15 +15,31 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Default Ray temp directory base.
+/// Default Ray temp directory base (can be overridden by `RAY_TMPDIR` env var).
 pub const RAY_TEMP_DIR_BASE: &str = "/tmp/ray";
+
+/// Environment variable to override the Ray temp directory base.
+/// Matches `RAY_TMPDIR_ENV` in `ray-common/constants.rs`.
+const RAY_TMPDIR_ENV: &str = "RAY_TMPDIR";
+
+/// Get the Ray temp directory base, respecting the `RAY_TMPDIR` environment variable.
+fn ray_temp_dir_base() -> PathBuf {
+    std::env::var(RAY_TMPDIR_ENV)
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(RAY_TEMP_DIR_BASE))
+}
 
 /// Get the Ray temp directory for the current session.
 ///
-/// If `session_name` is provided, returns `/tmp/ray/<session_name>/`.
-/// Otherwise returns `/tmp/ray/`.
+/// If `session_name` is provided, returns `<base>/<session_name>/`.
+/// Otherwise returns `<base>/`.
+///
+/// The base directory defaults to `/tmp/ray` but can be overridden via
+/// the `RAY_TMPDIR` environment variable.
 pub fn get_ray_temp_dir(session_name: Option<&str>) -> PathBuf {
-    let base = PathBuf::from(RAY_TEMP_DIR_BASE);
+    let base = ray_temp_dir_base();
     match session_name {
         Some(name) => base.join(name),
         None => base,

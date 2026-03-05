@@ -55,6 +55,30 @@ pub const MESSAGE_PACK_OFFSET: usize = 9;
 /// Setup worker filename.
 pub const SETUP_WORKER_FILENAME: &str = "setup_worker.py";
 
+/// Default GCS server port (matches Redis default).
+pub const DEFAULT_GCS_PORT: u16 = 6379;
+
+/// Default Prometheus metrics HTTP port.
+pub const DEFAULT_METRICS_PORT: u16 = 8080;
+
+/// Default pubsub broadcast channel capacity.
+pub const DEFAULT_PUBSUB_CHANNEL_CAPACITY: usize = 1024;
+
+/// Default long-poll timeout for pubsub subscribers (seconds).
+pub const DEFAULT_PUBSUB_LONG_POLL_TIMEOUT_SECS: u64 = 30;
+
+/// Default subscriber retry delay after poll failure (milliseconds).
+pub const DEFAULT_SUBSCRIBER_RETRY_DELAY_MS: u64 = 100;
+
+/// Maximum spillback retries for actor lease requests.
+pub const MAX_LEASE_SPILLBACK_RETRIES: usize = 10;
+
+/// Default bind address for servers.
+pub const DEFAULT_SERVER_BIND_ADDRESS: &str = "0.0.0.0";
+
+/// Environment variable to override the Ray temp directory base.
+pub const RAY_TMPDIR_ENV: &str = "RAY_TMPDIR";
+
 /// Named ports.
 pub const RUNTIME_ENV_AGENT_PORT_NAME: &str = "runtime_env_agent_port";
 pub const METRICS_AGENT_PORT_NAME: &str = "metrics_agent_port";

@@ -17,6 +17,14 @@ use tokio::net::TcpListener;
 
 use crate::exporter::MetricsExporter;
 
+/// Default Prometheus metrics HTTP port.
+/// Matches `DEFAULT_METRICS_PORT` in `ray-common/constants.rs`.
+const DEFAULT_METRICS_PORT: u16 = 8080;
+
+/// Default bind address for servers.
+/// Matches `DEFAULT_SERVER_BIND_ADDRESS` in `ray-common/constants.rs`.
+const DEFAULT_SERVER_BIND_ADDRESS: &str = "0.0.0.0";
+
 /// Configuration for the metrics HTTP server.
 #[derive(Debug, Clone)]
 pub struct MetricsHttpConfig {
@@ -26,7 +34,9 @@ pub struct MetricsHttpConfig {
 
 impl Default for MetricsHttpConfig {
     fn default() -> Self {
-        Self { port: 8080 }
+        Self {
+            port: DEFAULT_METRICS_PORT,
+        }
     }
 }
 
@@ -37,7 +47,8 @@ pub async fn start_metrics_server(
     config: MetricsHttpConfig,
     exporter: Arc<MetricsExporter>,
 ) -> Result<(tokio::task::JoinHandle<()>, u16), std::io::Error> {
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", config.port)).await?;
+    let listener =
+        TcpListener::bind(format!("{}:{}", DEFAULT_SERVER_BIND_ADDRESS, config.port)).await?;
     let port = listener.local_addr()?.port();
     tracing::info!(port, "Prometheus metrics server started");
 
@@ -47,7 +58,8 @@ pub async fn start_metrics_server(
                 Ok((mut stream, _)) => {
                     let exporter = Arc::clone(&exporter);
                     tokio::spawn(async move {
-                        let mut buf = vec![0u8; 4096];
+                        const HTTP_READ_BUFFER_SIZE: usize = 4096;
+                        let mut buf = vec![0u8; HTTP_READ_BUFFER_SIZE];
                         let n = match stream.read(&mut buf).await {
                             Ok(n) if n > 0 => n,
                             _ => return,

@@ -265,7 +265,9 @@ impl CoreWorkerServiceImpl {
 
         // Wait for messages (or publisher timeout/disconnection).
         let messages = match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(
+                ray_common::constants::DEFAULT_PUBSUB_LONG_POLL_TIMEOUT_SECS,
+            ),
             rx,
         )
         .await

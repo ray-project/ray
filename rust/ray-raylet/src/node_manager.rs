@@ -286,7 +286,12 @@ impl NodeManager {
 
         // Bind the TCP listener first to discover the actual port.
         let listener =
-            tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.config.port)).await?;
+            tokio::net::TcpListener::bind(format!(
+                "{}:{}",
+                ray_common::constants::DEFAULT_SERVER_BIND_ADDRESS,
+                self.config.port
+            ))
+            .await?;
         let bound_port = listener.local_addr()?.port();
         tracing::info!(port = bound_port, "Raylet gRPC server listening");
 

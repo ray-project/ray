@@ -67,7 +67,9 @@ impl GcsSubscriberClient {
             max_processed_sequence_id: Mutex::new(0),
             shutdown: Notify::new(),
             is_running: Mutex::new(false),
-            poll_timeout: Duration::from_secs(30),
+            poll_timeout: Duration::from_secs(
+                ray_common::constants::DEFAULT_PUBSUB_LONG_POLL_TIMEOUT_SECS,
+            ),
         }
     }
 
@@ -195,7 +197,10 @@ impl GcsSubscriberClient {
                     }
                     Err(e) => {
                         tracing::warn!("GCS subscriber poll failed: {}, retrying...", e);
-                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        tokio::time::sleep(Duration::from_millis(
+                            ray_common::constants::DEFAULT_SUBSCRIBER_RETRY_DELAY_MS,
+                        ))
+                        .await;
                     }
                 }
             }

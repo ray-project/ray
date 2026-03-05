@@ -19,7 +19,7 @@ use ray_gcs::server::{GcsServer, GcsServerConfig};
 #[command(name = "gcs_server", about = "Ray Global Control Service (Rust)")]
 struct Args {
     /// GCS server port
-    #[arg(long, alias = "gcs_server_port", default_value_t = 6379)]
+    #[arg(long, alias = "gcs_server_port", default_value_t = ray_common::constants::DEFAULT_GCS_PORT)]
     gcs_server_port: u16,
 
     /// Redis address (e.g., redis://host:port)

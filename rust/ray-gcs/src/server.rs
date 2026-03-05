@@ -65,7 +65,7 @@ pub struct GcsServerConfig {
 impl Default for GcsServerConfig {
     fn default() -> Self {
         Self {
-            port: 6379,
+            port: ray_common::constants::DEFAULT_GCS_PORT,
             redis_address: None,
             redis_password: None,
             redis_username: None,
@@ -141,11 +141,15 @@ impl GcsServer {
                 Arc::new(InMemoryStoreClient::new())
             }
             StorageType::Redis => {
+                let default_addr = format!(
+                    "redis://127.0.0.1:{}",
+                    ray_common::constants::DEFAULT_GCS_PORT
+                );
                 let addr = self
                     .config
                     .redis_address
                     .as_deref()
-                    .unwrap_or("redis://127.0.0.1:6379");
+                    .unwrap_or(&default_addr);
                 tracing::info!(address = addr, "Connecting to Redis");
                 Arc::new(
                     RedisStoreClient::new(addr, String::new())
@@ -382,7 +386,12 @@ impl GcsServer {
 
         // Bind TCP listener
         let listener =
-            tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.config.port)).await?;
+            tokio::net::TcpListener::bind(format!(
+                "{}:{}",
+                ray_common::constants::DEFAULT_SERVER_BIND_ADDRESS,
+                self.config.port
+            ))
+            .await?;
         let bound_port = listener.local_addr()?.port();
         tracing::info!(port = bound_port, "GCS gRPC server listening");
 
