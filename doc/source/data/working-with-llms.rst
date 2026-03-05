@@ -373,6 +373,7 @@ If you encounter CUDA out of memory errors, try these strategies:
 - **Lower ``max_num_batched_tokens``**: Reduce from 4096 to 2048 or 1024
 - **Decrease ``max_model_len``**: Use shorter context lengths
 - **Set ``gpu_memory_utilization``**: Use 0.75-0.85 instead of default 0.90
+- **Use an end-to-end RAG debugging checklist**: For retrieval/data-path failure modes, see `WFGY Problem Map <https://github.com/onestardao/WFGY/blob/main/ProblemMap/README.md>`_.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
