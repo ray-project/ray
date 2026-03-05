@@ -316,7 +316,6 @@ class ParquetDatasource(Datasource):
         shuffle: Union["FileShuffleConfig", Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
-        tensor_column_schema: Optional[TensorColumnSchema] = None,
     ):
         super().__init__()
         _check_pyarrow_version()
@@ -446,7 +445,6 @@ class ParquetDatasource(Datasource):
         self._partition_schema = _get_partition_columns_schema(
             partitioning, self._pq_paths
         )
-        self._tensor_column_schema = tensor_column_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         self._partitioning = partitioning

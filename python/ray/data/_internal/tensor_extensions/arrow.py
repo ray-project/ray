@@ -742,7 +742,6 @@ class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
 def create_arrow_fixed_shape_tensor_type(
     shape: Tuple[int, ...],
     dtype: pa.DataType,
-    outer_len: Optional[int] = None,
 ) -> pa.ExtensionType:
     """
     Factory method to create an Arrow tensor type.
@@ -750,7 +749,6 @@ def create_arrow_fixed_shape_tensor_type(
     Args:
         shape: Shape of the tensor.
         dtype: PyArrow data type of tensor elements.
-        outer_len: Optional, the # of tensors
 
     Returns:
         An Arrow ExtensionType for the tensor.
@@ -775,10 +773,6 @@ def create_arrow_fixed_shape_tensor_type(
                     UserWarning,
                     stacklevel=3,
                 )
-            tensor_format = fallback
-        elif len(shape) > 0 and (np.prod(shape) == 0 or outer_len == 0):
-            # FixedShapeTensor types don't support 0-sized shapes, but they
-            # do accept 0-dim shapes
             tensor_format = fallback
         elif not _native_tensor_value_type_can_convert_to_numpy(dtype):
             tensor_format = fallback
@@ -872,7 +866,6 @@ class ArrowTensorArray(pa.ExtensionArray):
                 arr = _coerce_np_datetime_to_pa_timestamp_precision(
                     arr, timestamp_dtype, column_name
                 )
-
             return cls._from_numpy(arr)
         except Exception as e:
             data_str = ""
@@ -934,10 +927,17 @@ class ArrowTensorArray(pa.ExtensionArray):
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
         pa_tensor_type_ = create_arrow_fixed_shape_tensor_type(
-            element_shape, scalar_dtype, outer_len=outer_len
+            element_shape, scalar_dtype
         )
 
         if _is_native_tensor_type(pa_tensor_type_):
+            if len(element_shape) > 0 and (
+                np.prod(element_shape) == 0 or outer_len == 0
+            ):
+                # FixedShapeTensorArray.from_numpy_ndarray(arr) will fail complaining that
+                # the array must be non-empty (all dims must be > 0). We can bypass this
+                # using pa.array with an empty array.
+                return pa.array([[] for _ in range(outer_len)], type=pa_tensor_type_)
             return FixedShapeTensorArray.from_numpy_ndarray(arr)
 
         # Shape up data buffer

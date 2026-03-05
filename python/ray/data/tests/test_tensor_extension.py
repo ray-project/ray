@@ -508,7 +508,7 @@ def test_zero_length_arrow_tensor_array_roundtrip(tensor_format_context, shape):
     arr = np.empty(shape, dtype=np.int8)
     t_arr = ArrowTensorArray.from_numpy(arr)
     assert len(t_arr) == len(arr)
-    out = t_arr.to_numpy()
+    out = t_arr.to_numpy_ndarray()
     np.testing.assert_array_equal(out, arr)
 
 
