@@ -6,6 +6,7 @@ import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
@@ -101,10 +102,8 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
         ):
             n = len(sa_episode)
 
-            # For single-agent episodes (agent_id=None), sub_key is always (id_,).
-            # We can use a fast path to extend the batch.
-            # For multi-agent episodes, we need to use add_n_batch_items path.
-            if sa_episode.agent_id is None:
+            # For single-agent episodes, we can use a fast path to extend the batch.
+            if isinstance(sa_episode, SingleAgentEpisode):
                 # Fast path: inline the dict operations, skipping the function call
                 # overhead of add_n_batch_items / add_batch_item and the repeated
                 # sub_key computation those would do per column.
@@ -113,7 +112,7 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                 if need_actions:
                     # Actions may be a composite action space, so we need to map the structure.
                     data = sa_episode.get_actions(slice(0, n))
-                    # Check if the we have to call tree.map_structure to convert the data to a BatchedNdArray.
+                    # Check if we have to call tree.map_structure to convert the data to a BatchedNdArray.
                     if isinstance(data, np.ndarray):
                         data = data.view(BatchedNdArray)
                     else:
@@ -179,8 +178,8 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                         else:
                             col[sub_key] = [data]
 
-            else:
-                # General (multi-agent) path: use the standard API.
+            else:  # episode will be MultiAgentEpisode.
+                # For multi-agent episodes, we need to use the add_n_batch_items path.
                 if need_actions:
                     self.add_n_batch_items(
                         batch,
