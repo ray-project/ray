@@ -286,6 +286,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         agent_ts = 0
         eps = 0
 
+        if self._cached_to_module is None:
+            force_reset = True
+
         # Have to reset the env (on all vector sub_envs).
         if force_reset or num_episodes is not None or self._needs_initial_reset:
             env_ts = 0

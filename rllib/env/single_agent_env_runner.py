@@ -283,6 +283,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         eps = 0
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
+        if self._cached_to_module is None:
+            force_reset = True
+
         # Have to reset the env (on all vector sub_envs).
         if force_reset or num_episodes is not None or self._needs_initial_reset:
             ts = 0
