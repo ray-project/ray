@@ -1161,29 +1161,35 @@ class TestGangSchedulingAutoscalingPolicy:
         policy = self._make_policy(gang_size=4, inner_result=0)
         assert policy(ctx)[0] == 0
 
-    def test_gang_size_one_is_noop(self):
+    def test_gang_size_one_no_op(self):
         ctx = self._make_ctx(current_num_replicas=3)
         policy = self._make_policy(gang_size=1, inner_result=5)
         assert policy(ctx)[0] == 5
 
-    def test_integration_with_deployment_state(self):
-        """Test that gang autoscaling policy is auto-injected when registering with gang config."""
+    def _create_state(self, gang_size, min_replicas, max_replicas, running=0):
+        """Create a DeploymentAutoscalingState with gang config registered."""
         dep_id = DeploymentID(name="test", app_name="app")
         state = DeploymentAutoscalingState(dep_id)
 
         info = MagicMock()
         info.deployment_config.autoscaling_config = AutoscalingConfig(
-            min_replicas=4,
-            max_replicas=16,
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
         )
         info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
-            gang_size=4,
+            gang_size=gang_size,
         )
         info.target_capacity = None
         info.target_capacity_direction = None
         info.config_changed.return_value = False
 
-        state.register(info, curr_target_num_replicas=4)
+        state.register(info, curr_target_num_replicas=min_replicas)
+        state._running_replicas = list(range(running))
+        return state
+
+    def test_integration_with_deployment_state(self):
+        """Test that gang autoscaling policy is auto-injected when registering with gang config."""
+        state = self._create_state(gang_size=4, min_replicas=4, max_replicas=16)
         assert isinstance(state._policy, GangSchedulingAutoscalingPolicy)
         assert state._policy._gang_size == 4
 
@@ -1204,6 +1210,30 @@ class TestGangSchedulingAutoscalingPolicy:
 
         state.register(info, curr_target_num_replicas=1)
         assert not isinstance(state._policy, GangSchedulingAutoscalingPolicy)
+
+    def test_integration_scale_up_respects_max(self):
+        """Gang alignment rounds up, but apply_bounds clips to max_replicas."""
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=8, running=4
+        )
+        # GangSchedulingAutoscalingPolicy rounds up to 12
+        state._policy = GangSchedulingAutoscalingPolicy(
+            lambda ctx: (9, {}), gang_size=4
+        )
+        decision = state.get_decision_num_replicas(curr_target_num_replicas=4)
+        assert decision == 8
+
+    def test_integration_scale_down_respects_min(self):
+        """Gang alignment rounds down, but apply_bounds clips to min_replicas."""
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=16, running=8
+        )
+        # GangSchedulingAutoscalingPolicy rounds down to 0
+        state._policy = GangSchedulingAutoscalingPolicy(
+            lambda ctx: (1, {}), gang_size=4
+        )
+        decision = state.get_decision_num_replicas(curr_target_num_replicas=8)
+        assert decision == 4
 
 
 if __name__ == "__main__":
