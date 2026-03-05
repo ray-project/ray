@@ -207,8 +207,15 @@ def plan_read_op(
     if ws is None:
         return read_op
 
+    # Enable random output ordering for the read operator so that blocks
+    # from different read tasks are interleaved before reaching the
+    # downstream ShuffleRefBundler.
+    read_op._shuffle_task_outputs = True
+
     # Chain a shuffle operator that concatenates all blocks in a RefBundle
     # and shuffles rows.
+    row_block_size = data_context.window_shuffle_row_block_size
+
     def concat_and_shuffle(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         import numpy as np
         import pyarrow as pa
@@ -222,10 +229,11 @@ def plan_read_op(
             yield combined
             return
         rng = np.random.default_rng()
-        block_size = 128
-        starts = np.arange(0, n, block_size)
+        starts = np.arange(0, n, row_block_size)
         rng.shuffle(starts)
-        slices = [combined.slice(int(s), min(block_size, n - int(s))) for s in starts]
+        slices = [
+            combined.slice(int(s), min(row_block_size, n - int(s))) for s in starts
+        ]
         yield pa.concat_tables(slices)
 
     shuffle_transformer = MapTransformer(
