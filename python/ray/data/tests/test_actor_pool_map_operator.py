@@ -120,11 +120,11 @@ class TestActorPool(unittest.TestCase):
         self,
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
-        return actor, ready_ref
+        return actor, ready_ref, ExecutionResources(cpu=1)
 
     def _create_actor_pool(
         self,
@@ -298,6 +298,30 @@ class TestActorPool(unittest.TestCase):
         assert pool.get_actor_info() == _ActorPoolInfo(
             running=1, pending=0, restarting=0
         )
+
+    def test_resource_usage_tracks_actor_state_transitions(self):
+        """Test if we can get correct resources for each phase."""
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+
+        actor, ready_ref = self._add_pending_actor(pool)
+        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
+        assert pool.pending_logical_usage() == ExecutionResources(cpu=1)
+
+        self._wait_for_actor_ready(pool, ready_ref)
+        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
+        assert pool.pending_logical_usage() == ExecutionResources.zero()
+
+        pool._update_running_actor_state(actor, True)
+        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
+        assert pool.pending_logical_usage() == ExecutionResources(cpu=1)
+
+        pool._update_running_actor_state(actor, False)
+        assert pool.current_logical_usage() == ExecutionResources(cpu=1)
+        assert pool.pending_logical_usage() == ExecutionResources.zero()
+
+        assert pool._remove_inactive_actor()
+        assert pool.current_logical_usage() == ExecutionResources.zero()
+        assert pool.pending_logical_usage() == ExecutionResources.zero()
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
@@ -807,9 +831,9 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
     def create_actor_fn(
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote("node1")
-        return actor, actor.get_location.remote()
+        return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
 
     pool = _ActorPool(
         create_actor_fn,
