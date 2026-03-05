@@ -163,7 +163,10 @@ nb_mime_priority_overrides = [
 
 html_extra_path = ["robots.txt"]
 
-html_baseurl = "https://docs.ray.io/en/latest"
+# Keep local search results on localhost when building docs locally.
+# Only set an absolute base URL on hosted docs builds.
+if os.getenv("READTHEDOCS") == "True":
+    html_baseurl = "https://docs.ray.io/en/latest"
 
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
