@@ -37,6 +37,9 @@ from ray.serve.autoscaling_policy import (
     _apply_autoscaling_config,
 )
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
+from ray.serve.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -145,13 +148,15 @@ class DeploymentAutoscalingState:
 
         self._deployment_info = info
         self._config = config
-        self._gang_size = getattr(
-            info.deployment_config.gang_scheduling_config, "gang_size", None
-        )
         # Apply default autoscaling config to the policy
         self._policy = _apply_autoscaling_config(
             _resolve_policy_callable(self._config.policy)
         )
+        gang_size = getattr(
+            info.deployment_config.gang_scheduling_config, "gang_size", None
+        )
+        if gang_size is not None and gang_size > 1:
+            self._policy = GangSchedulingAutoscalingPolicy(self._policy, gang_size)
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -219,24 +224,10 @@ class DeploymentAutoscalingState:
     def apply_bounds(self, num_replicas: int) -> int:
         """Clips a replica count with current autoscaling bounds."""
 
-        result = max(
+        return max(
             self.get_num_replicas_lower_bound(),
             min(self.get_num_replicas_upper_bound(), num_replicas),
         )
-
-        # Align to the nearest gang_size multiple
-        if self._gang_size is not None and self._gang_size > 1 and result > 0:
-            current = len(self._running_replicas)
-            if result >= current:
-                # Scaling up: round up so we have enough capacity
-                result = math.ceil(result / self._gang_size) * self._gang_size
-                result = min(result, self.get_num_replicas_upper_bound())
-            else:
-                # Scaling down: round down to release the partial gang
-                result = (result // self._gang_size) * self._gang_size
-                result = max(result, self.get_num_replicas_lower_bound())
-
-        return result
 
     def record_request_metrics_for_replica(
         self, replica_metric_report: ReplicaMetricReport
