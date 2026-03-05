@@ -26,13 +26,3 @@ pybase64
 hudi==0.4.0
 datasketches
 testcontainers[kafka]
-pyarrow
-torch
-tensorflow
-jax
-jaxlib
-tensorflow-datasets
-tensorflow-metadata>=1.17.0
-tf-keras
-torchvision==0.18.0
-torch==2.3.0
