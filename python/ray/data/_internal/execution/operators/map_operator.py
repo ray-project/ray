@@ -969,21 +969,11 @@ def _wrap_transformer_with_limit(
     # Create a new limit transform function that goes at the end
     limit_transform_fn = _create_per_block_limit_transform_fn(per_block_limit)
 
-    # Add the limit transform as the last step
-    # Appending at the end so that the cap applies to the final output
-    # blocks after all prior transforms.
-    existing_transform_fns = map_transformer.get_transform_fns()
-    new_transform_fns = existing_transform_fns + [limit_transform_fn]
-
-    # Create new transformer with the limit added
-    # TODO: Modify `add_transform_fns` to do this operation internally instead of modifying in place.
-    new_transformer = MapTransformer(
-        new_transform_fns,
-        init_fn=map_transformer._init_fn,
-        output_block_size_option_override=map_transformer._output_block_size_option_override,
+    # Append at the end so that the cap applies to final output blocks after all
+    # prior transforms, and return a new transformer without mutating the input.
+    return map_transformer.add_transform_fns(
+        [limit_transform_fn], modify_in_place=False
     )
-
-    return new_transformer
 
 
 def _per_block_limit_fn(
