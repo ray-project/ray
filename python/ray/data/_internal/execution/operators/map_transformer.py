@@ -1,3 +1,4 @@
+import copy
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -184,13 +185,10 @@ class MapTransformer:
             self._transform_fns = combined_transform_fns
             return self
 
-        # Fast-path clone to avoid re-running __init__ and recombining transforms.
-        cloned = type(self).__new__(type(self))
+        # Shallow-copy the transformer to preserve configuration while avoiding
+        # manually copying every attribute.
+        cloned = copy.copy(self)
         cloned._transform_fns = combined_transform_fns
-        cloned._init_fn = self._init_fn
-        cloned._output_block_size_option_override = (
-            self._output_block_size_option_override
-        )
         cloned._udf_time_s = 0
         return cloned
 
