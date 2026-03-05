@@ -15,7 +15,7 @@ from ray.data.datatype import DataType
 from ray.data.expressions import col, udf
 
 NUM_ROWS = 50_000_000
-UPSERT_ROWS = 4_000_000
+UPSERT_ROWS = 200_000_000
 OVERWRITE_ROWS = 200_000_000
 EMBEDDING_DIM = 32
 TOKEN_IDS_DIM = 8
@@ -203,10 +203,10 @@ def _seed_table(catalog_kwargs: dict):
 def main(args: argparse.Namespace):
     catalog_kwargs = _get_catalog_kwargs(args.warehouse_path)
     catalog = _load_catalog(catalog_kwargs)
-    _setup_catalog(catalog)
     benchmark = Benchmark()
 
     try:
+        _setup_catalog(catalog)
         if args.mode == "append":
 
             def write():
