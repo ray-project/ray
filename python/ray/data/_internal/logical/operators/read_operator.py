@@ -108,14 +108,10 @@ class Read(
                 len(metadata.input_files) if metadata.input_files is not None else None
             )
 
-        # When WindowShuffle is active, the read operator produces smaller
-        # blocks (target_max_block_size / merge_window).
-        ws = self.window_shuffle_config
-        if ws is not None:
-            target_max_block_size = target_max_block_size // ws.merge_window
-
         # Otherwise, estimate total number of blocks from estimated total
-        # byte size
+        # byte size. When WindowShuffle is active, the read operator produces
+        # smaller blocks but the shuffle operator merges them back to
+        # target_max_block_size, so the final estimate is unchanged.
         return math.ceil(metadata.size_bytes / target_max_block_size)
 
     @functools.cached_property
