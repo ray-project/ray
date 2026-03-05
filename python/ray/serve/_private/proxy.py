@@ -24,6 +24,7 @@ from ray.serve._private.common import (
     ReplicaID,
     RequestMetadata,
     RequestProtocol,
+    gRPCStreamingRequest,
 )
 from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
@@ -550,8 +551,30 @@ class gRPCProxy(GenericProxy):
 
     This is the servicer class for the gRPC server. It implements `unary_unary`
     as the entry point for unary gRPC request and `unary_stream` as the entry
-    point for streaming gRPC request.
+    point for streaming gRPC request. It also implements `stream_unary` and
+    `stream_stream` for client streaming and bidirectional streaming RPCs.
     """
+
+    def __init__(
+        self,
+        node_id: NodeId,
+        node_ip_address: str,
+        is_head: bool,
+        proxy_router: "ProxyRouter",
+        request_timeout_s: Optional[float] = None,
+        access_log_context: Dict[str, Any] = None,
+    ):
+        super().__init__(
+            node_id,
+            node_ip_address,
+            is_head,
+            proxy_router,
+            request_timeout_s=request_timeout_s,
+            access_log_context=access_log_context,
+        )
+        # Dictionary to store active streaming sessions for client/bidi streaming.
+        # Maps session_id -> (request_iterator, cancel_event)
+        self._streaming_sessions: Dict[str, Tuple[Any, asyncio.Event]] = {}
 
     @property
     def protocol(self) -> RequestProtocol:
@@ -615,6 +638,7 @@ class gRPCProxy(GenericProxy):
                 context=context,
                 service_method=service_method,
                 stream=False,
+                streaming_type=gRPCStreamingType.UNARY_UNARY,
             )
 
             status = None
@@ -627,7 +651,10 @@ class gRPCProxy(GenericProxy):
 
             set_grpc_code_and_details(context, status)
 
-            return response
+            # When only ResponseStatus is yielded (not-found, errors), response stays
+            # None. Returning None to gRPC causes serialization/type errors; return
+            # empty bytes so the error status is sent cleanly.
+            return response if response is not None else b""
 
         async def unary_stream(
             request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
@@ -644,6 +671,7 @@ class gRPCProxy(GenericProxy):
                 context=context,
                 service_method=service_method,
                 stream=True,
+                streaming_type=gRPCStreamingType.UNARY_STREAM,
             )
 
             status = None
@@ -656,16 +684,74 @@ class gRPCProxy(GenericProxy):
             set_grpc_code_and_details(context, status)
 
         async def stream_unary(
-            request_proto_iterator: Any,
-            context: grpc._cython.cygrpc._ServicerContext,
+            request_iterator: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
-            raise NotImplementedError("stream_unary not implemented.")
+            """Entry point of the gRPC proxy client streaming request.
+
+            This method is called by the gRPC server when a client streaming request
+            is received. It wraps the request iterator and calls proxy_request.
+            The return value is serialized user defined protobuf bytes.
+            """
+            # Create async iterator wrapper for the request stream
+            async def async_request_iterator():
+                async for request in request_iterator:
+                    yield request
+
+            proxy_request = gRPCProxyRequest(
+                request_proto=None,
+                context=context,
+                service_method=service_method,
+                stream=False,
+                streaming_type=gRPCStreamingType.STREAM_UNARY,
+                request_iterator=async_request_iterator(),
+            )
+
+            status = None
+            response = None
+            async for message in self.proxy_request(proxy_request=proxy_request):
+                if isinstance(message, ResponseStatus):
+                    status = message
+                else:
+                    response = message
+
+            set_grpc_code_and_details(context, status)
+
+            # When only ResponseStatus is yielded (not-found, errors), response stays
+            # None. Returning None to gRPC causes serialization/type errors; return
+            # empty bytes so the error status is sent cleanly.
+            return response if response is not None else b""
 
         async def stream_stream(
-            request_proto_iterator: Any,
-            context: grpc._cython.cygrpc._ServicerContext,
+            request_iterator: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> Generator[bytes, None, None]:
-            raise NotImplementedError("stream_stream not implemented.")
+            """Entry point of the gRPC proxy bidirectional streaming request.
+
+            This method is called by the gRPC server when a bidirectional streaming
+            request is received. It wraps the request iterator and calls proxy_request.
+            The return value is a generator of serialized user defined protobuf bytes.
+            """
+            # Create async iterator wrapper for the request stream
+            async def async_request_iterator():
+                async for request in request_iterator:
+                    yield request
+
+            proxy_request = gRPCProxyRequest(
+                request_proto=None,
+                context=context,
+                service_method=service_method,
+                stream=True,
+                streaming_type=gRPCStreamingType.STREAM_STREAM,
+                request_iterator=async_request_iterator(),
+            )
+
+            status = None
+            async for message in self.proxy_request(proxy_request=proxy_request):
+                if isinstance(message, ResponseStatus):
+                    status = message
+                else:
+                    yield message
+
+            set_grpc_code_and_details(context, status)
 
         handler_map = {
             gRPCStreamingType.UNARY_UNARY: unary_unary,
@@ -714,6 +800,58 @@ class gRPCProxy(GenericProxy):
         proxy_request.send_request_id(request_id=request_id)
         return handle, request_id
 
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
+        """Receive the next message from a gRPC streaming session.
+
+        This method is called by replicas to receive messages from
+        client/bidirectional streaming sessions.
+
+        Args:
+            session_id: The session ID of the streaming session.
+
+        Returns:
+            A tuple of (has_more, message, is_cancelled).
+            - has_more: True if there are more messages, False if stream is done.
+            - message: The protobuf message object, or None if stream is done.
+            - is_cancelled: True if the stream was cancelled by client or error.
+
+        Note:
+            If the session ID is not found (e.g., after cleanup due to timeout,
+            error, or completion), returns (False, None, True) for graceful
+            termination instead of raising an exception.
+        """
+        if session_id not in self._streaming_sessions:
+            # Session was already cleaned up - return graceful termination
+            # This is consistent with the behavior when cancel_event.is_set()
+            return (False, None, True)
+
+        request_iterator, cancel_event = self._streaming_sessions[session_id]
+
+        if cancel_event.is_set():
+            return (False, None, True)
+
+        try:
+            message = await request_iterator.__anext__()
+            # Return message directly - let Ray handle serialization
+            return (True, message, False)
+        except StopAsyncIteration:
+            return (False, None, False)
+        except Exception as e:
+            logger.warning(
+                f"Error receiving gRPC message for session {session_id}: {e}"
+            )
+            cancel_event.set()
+            return (False, None, True)
+
+    def _cleanup_streaming_session(self, session_id: str):
+        """Clean up a streaming session."""
+        session = self._streaming_sessions.pop(session_id, None)
+        if session is not None:
+            _, cancel_event = session
+            cancel_event.set()
+
     @tracing_decorator_factory(
         trace_name="proxy_grpc_request",
     )
@@ -725,6 +863,21 @@ class gRPCProxy(GenericProxy):
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
     ) -> ResponseGenerator:
+        # handle the streaming input that exists in client-streaming and bidi-streaming RPC types.
+        if (
+            isinstance(proxy_request, gRPCProxyRequest)
+            and proxy_request.has_input_stream
+        ):
+            async for message in self._send_streaming_request_to_replica(
+                request_id=request_id,
+                internal_request_id=internal_request_id,
+                handle=handle,
+                proxy_request=proxy_request,
+            ):
+                yield message
+            return
+
+        # Standard server-unary/server-streaming path
         trace_attributes = {
             "request_id": request_id,
             "deployment": handle.deployment_name,
@@ -768,6 +921,64 @@ class gRPCProxy(GenericProxy):
         # The status code should always be set.
         assert status is not None
         yield status
+
+    async def _send_streaming_request_to_replica(
+        self,
+        request_id: str,
+        internal_request_id: str,
+        handle: DeploymentHandle,
+        proxy_request: "gRPCProxyRequest",
+    ) -> ResponseGenerator:
+        """Handle sending a streaming request (client/bidi) to replica.
+
+        For client streaming (stream_unary), we create a streaming session that
+        the replica can use to receive messages from the client.
+
+        For bidirectional streaming (stream_stream), we do the same but the
+        response is also a stream.
+        """
+        # Create a streaming session
+        session_id = internal_request_id
+        cancel_event = asyncio.Event()
+        self._streaming_sessions[session_id] = (
+            proxy_request.request_iterator,
+            cancel_event,
+        )
+
+        try:
+            # Get the proxy actor name for callback
+            proxy_actor_name = ray.get_runtime_context().get_actor_name()
+
+            # Create the streaming request
+            streaming_request = gRPCStreamingRequest(
+                session_id=session_id,
+                proxy_actor_name=proxy_actor_name,
+            )
+
+            # Serialize the streaming request
+            serialized_arg = pickle.dumps(streaming_request)
+
+            response_generator = ProxyResponseGenerator(
+                handle.remote(serialized_arg),
+                timeout_s=self.request_timeout_s,
+            )
+
+            try:
+                async for context, result in response_generator:
+                    context._set_on_grpc_context(proxy_request.context)
+                    yield result
+
+                status = ResponseStatus(code=grpc.StatusCode.OK)
+            except BaseException as e:
+                status = get_grpc_response_status(e, self.request_timeout_s, request_id)
+
+            # The status code should always be set.
+            assert status is not None
+            yield status
+
+        finally:
+            # Clean up the streaming session
+            self._cleanup_streaming_session(session_id)
 
 
 class HTTPProxy(GenericProxy):
@@ -1225,6 +1436,20 @@ class ProxyActorInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
+        """Get the next gRPC message for a streaming session.
+
+        Args:
+            session_id: The session ID of the streaming session
+
+        Returns:
+            Tuple of (has_more, message, is_cancelled)
+        """
+        pass
+
     # Testing and debugging methods
     @abstractmethod
     def _get_http_options(self) -> HTTPOptions:
@@ -1517,6 +1742,31 @@ class ProxyActor(ProxyActorInterface):
         return pickle.dumps(
             await self.http_proxy.receive_asgi_messages(request_metadata)
         )
+
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
+        """Get the next gRPC message for a streaming session.
+
+        This method is called by replicas to receive messages from
+        client/bidirectional streaming sessions.
+
+        Args:
+            session_id: The session ID of the streaming session.
+
+        Returns:
+            Tuple of (has_more: bool, message: Optional[Any], is_cancelled: bool).
+            - has_more: True if there are more messages, False if stream is done.
+            - message: The protobuf message object, or None if stream is done.
+            - is_cancelled: True if the stream was cancelled by client or error.
+              Also returned when the session ID is not found (e.g., after
+              cleanup due to timeout, error, or completion).
+        """
+        if self.grpc_proxy is None:
+            raise RuntimeError("gRPC proxy is not enabled.")
+
+        # Return tuple directly - Ray handles serialization
+        return await self.grpc_proxy.receive_grpc_messages(session_id)
 
     def _get_http_options(self) -> HTTPOptions:
         """Internal method to get HTTP options used by the proxy."""
