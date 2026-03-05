@@ -239,7 +239,7 @@ class TestMARWIL(unittest.TestCase):
             # Note, the `input_` argument is the major argument for the
             # new offline API.
             .offline_data(
-                input_=[data_path.as_posix()],
+                input_=[data_path],
                 dataset_num_iters_per_learner=1,
             )
             .training(

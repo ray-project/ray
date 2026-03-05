@@ -26,8 +26,8 @@ class OfflineRLStatefulTest(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self):
-        # Define the path to the offline data.
-        offline_data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "statelesscartpole/"
+        # Define the path to the offline test data.
+        offline_data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "statelesscartpole_testdata/"
         # Define the BC config.
         self.config = (
             BCConfig()
