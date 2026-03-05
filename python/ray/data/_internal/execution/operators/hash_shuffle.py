@@ -280,12 +280,14 @@ def _shuffle_block(
             # NOTE: Perform the schema broadcast explicitly
             #       Every aggregator gets a (0, N) schema-carrying placeholder even when
             #       the triggering block itself is empty.
+            schema_carrier_ref = ray.put(_create_empty_table(block.schema))
             pending = []
             for partition_id in range(pool.num_partitions):
                 aggregator = pool.get_aggregator_for_partition(partition_id)
-                partition_ref = ray.put(_create_empty_table(block.schema))
                 pending.append(
-                    aggregator.submit.remote(input_index, partition_id, partition_ref)
+                    aggregator.submit.remote(
+                        input_index, partition_id, schema_carrier_ref
+                    )
                 )
             # Wait for all schema-carrier blocks to be accepted before returning.
             # This mirrors the synchronization in the normal (non-empty) path and
