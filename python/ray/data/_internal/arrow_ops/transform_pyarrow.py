@@ -850,6 +850,9 @@ def concat(
             for faster concatenation, which can reorder rows relative to
             non-matching blocks.  Defaults to
             ``DataContext.get_current().execution_options.preserve_order``.
+
+    Returns:
+        A single Arrow Table containing all rows from the input tables.
     """
     import pyarrow as pa
 
