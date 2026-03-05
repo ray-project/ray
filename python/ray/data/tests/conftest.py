@@ -822,7 +822,7 @@ def check_if_unit_in_integration(request):
             yield
             raise Exception(
                 f"{request.node.nodeid} is marked with @pytest.mark.unit_for_integration but uses a Ray cluster fixture. "
-                "Consider removing the marker or moving it to the integration test directory."
+                "Mark it with @pytest.mark.integration_test instead."
             )
         else:
             yield
