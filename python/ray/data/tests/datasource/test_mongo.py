@@ -1,4 +1,6 @@
 import subprocess
+import tempfile
+import time
 
 import pandas as pd
 import pyarrow as pa
@@ -9,18 +11,34 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-# To run tests locally, make sure you install mongodb
-# and start a local service:
-# sudo apt-get install -y mongodb
+# To run tests locally, make sure you install mongodb-org and have mongod
+# available on PATH. Started directly since mongodb-org has no SysV init script.
+# See https://hub.docker.com/_/mongo
 
 
 @pytest.fixture
 def start_mongo():
     import pymongo
 
-    subprocess.check_call(["service", "mongodb", "start"])
+    dbpath = tempfile.mkdtemp(prefix="mongod_test_")
+    proc = subprocess.Popen(
+        ["mongod", "--dbpath", dbpath, "--bind_ip", "127.0.0.1"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    # Wait for mongod to accept connections.
     mongo_url = "mongodb://localhost:27017"
-    client = pymongo.MongoClient(mongo_url)
+    for _ in range(30):
+        try:
+            client = pymongo.MongoClient(mongo_url, serverSelectionTimeoutMS=1000)
+            client.admin.command("ping")
+            break
+        except Exception:
+            time.sleep(0.5)
+    else:
+        proc.kill()
+        raise RuntimeError("mongod failed to start")
+
     # Make sure a clean slate for each test by dropping
     # previously created ones (if any).
     for db in client.list_database_names():
@@ -29,7 +47,8 @@ def start_mongo():
             client.drop_database(db)
     yield client, mongo_url
 
-    subprocess.check_call(["service", "mongodb", "stop"])
+    proc.terminate()
+    proc.wait(timeout=10)
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
