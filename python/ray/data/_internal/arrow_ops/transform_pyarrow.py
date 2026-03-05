@@ -644,6 +644,9 @@ def _concat_cols_with_null_list(
     """
     import pyarrow as pa
 
+    # For each opaque list column, iterate through all schemas until
+    # we find a valid value_type that can be used to override the
+    # column types in the following for-loop.
     scalar_type = None
     for arr in col_chunked_arrays:
         if not pa.types.is_list(arr.type) or not pa.types.is_null(arr.type.value_type):
@@ -705,6 +708,11 @@ def _concat_cols_with_extension_tensor_types(
     """
     import pyarrow as pa
 
+    # For our tensor extension types, manually construct a chunked array
+    # containing chunks from all blocks. This is to handle
+    # homogeneous-shaped block columns having different shapes across
+    # blocks: if tensor element shapes differ across blocks, a
+    # variable-shaped tensor array will be returned.
     combined_chunks = list(
         itertools.chain(*[chunked.iterchunks() for chunked in col_chunked_arrays])
     )
@@ -746,6 +754,7 @@ def _concat_cols_with_extension_object_types(
     from ray.data.extensions import ArrowPythonObjectArray, ArrowPythonObjectType
 
     chunks_to_concat = []
+    # Cast everything to objects if concatenated with an object column
     for ca in col_chunked_arrays:
         for chunk in ca.chunks:
             if isinstance(ca.type, ArrowPythonObjectType):
@@ -800,8 +809,14 @@ def _concat_cols_via_concat_tables(
     if not col_names:
         return {}
 
+    # For columns with native Pyarrow types, we should use built-in pyarrow.concat_tables.
     import pyarrow as pa
 
+    # When concatenating tables we allow type promotions to occur, since
+    # no schema enforcement is currently performed, therefore allowing schemas
+    # to vary b/w blocks
+
+    # NOTE: Type promotions aren't available in Arrow < 14.0
     subset_blocks = []
     for block in blocks:
         block_cols = set(block.schema.names)
@@ -845,11 +860,13 @@ def concat(
     tensor_types = get_arrow_extension_tensor_types()
 
     if not blocks:
+        # Short-circuit on empty list of blocks.
         return pa.table([])
 
     if len(blocks) == 1:
         return blocks[0]
 
+    # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
     try:
         schema = unify_schemas(schemas_to_unify, promote_types=promote_types)
@@ -926,6 +943,7 @@ def _concat_mismatched_blocks(
 
     from ray.data.extensions import ArrowPythonObjectType
 
+    # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
 
     # Identify columns where any block has list<null> (e.g. empty TFRecord
@@ -938,6 +956,7 @@ def _concat_mismatched_blocks(
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
 
+    # Concatenate the columns according to their type
     concatenated_cols: Dict[str, pa.ChunkedArray] = {}
 
     # Names of columns that can use pa.concat_tables. This includes
@@ -951,27 +970,29 @@ def _concat_mismatched_blocks(
             concatenated_cols[col_name] = _concat_cols_with_null_list(
                 [block.column(col_name) for block in blocks]
             )
-        elif isinstance(col_type, tensor_types):
-            if all(block.schema.field(col_name).type == col_type for block in blocks):
+        elif isinstance(col_type, (*tensor_types, ArrowPythonObjectType)):
+            concat_fn = (
+                _concat_cols_with_extension_tensor_types
+                if isinstance(col_type, tensor_types)
+                else _concat_cols_with_extension_object_types
+            )
+            # Cache field lookups once instead of re-fetching per block in all()
+            col_types = [block.schema.field(col_name).type for block in blocks]
+            if all(t == col_type for t in col_types):
                 concatable_cols.append(col_name)
             else:
-                concatenated_cols[col_name] = _concat_cols_with_extension_tensor_types(
-                    block.column(col_name) for block in blocks
-                )
-        elif isinstance(col_type, ArrowPythonObjectType):
-            if all(block.schema.field(col_name).type == col_type for block in blocks):
-                concatable_cols.append(col_name)
-            else:
-                concatenated_cols[col_name] = _concat_cols_with_extension_object_types(
+                concatenated_cols[col_name] = concat_fn(
                     block.column(col_name) for block in blocks
                 )
         else:
+            # Add to the list of native pyarrow columns, these will be concatenated after the loop using pyarrow.concat_tables
             concatable_cols.append(col_name)
 
     concatenated_cols.update(
         _concat_cols_via_concat_tables(concatable_cols, blocks, promote_types)
     )
 
+    # Ensure that the columns are in the same order as the schema, reconstruct the table.
     return pyarrow.Table.from_arrays(
         [concatenated_cols[col_name] for col_name in schema.names], schema=schema
     )
