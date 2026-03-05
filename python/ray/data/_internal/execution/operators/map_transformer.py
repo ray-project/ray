@@ -167,12 +167,32 @@ class MapTransformer:
         # Add transformations
         self.add_transform_fns(transform_fns)
 
-    def add_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
-        """Set the transform functions."""
+    def add_transform_fns(
+        self, transform_fns: List[MapTransformFn], *, modify_in_place: bool = True
+    ) -> "MapTransformer":
+        """Add transform functions to this transformer.
+
+        By default, this mutates the current transformer for backward compatibility.
+        Set ``modify_in_place=False`` to return a new transformer with the additional
+        transforms applied.
+        """
         assert len(transform_fns) > 0
-        self._transform_fns = self._combine_transformations(
+        combined_transform_fns = self._combine_transformations(
             self._transform_fns, transform_fns
         )
+        if modify_in_place:
+            self._transform_fns = combined_transform_fns
+            return self
+
+        # Fast-path clone to avoid re-running __init__ and recombining transforms.
+        cloned = type(self).__new__(type(self))
+        cloned._transform_fns = combined_transform_fns
+        cloned._init_fn = self._init_fn
+        cloned._output_block_size_option_override = (
+            self._output_block_size_option_override
+        )
+        cloned._udf_time_s = 0
+        return cloned
 
     def get_transform_fns(self) -> List[MapTransformFn]:
         """Get the transform functions."""
