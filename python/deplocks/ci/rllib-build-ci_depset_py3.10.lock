@@ -834,7 +834,9 @@ everett==3.1.0 \
 exceptiongroup==1.3.1 ; python_full_version < '3.11' \
     --hash=sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219 \
     --hash=sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
-    # via anyio
+    # via
+    #   anyio
+    #   pytest
 farama-notifications==0.0.4 \
     --hash=sha256:13fceff2d14314cf80703c8266462ebf3733c7d165336eee998fc58e545efd18 \
     --hash=sha256:14de931035a41961f7c056361dc7f980762a143d05791ef5794a751a2caf05ae
@@ -1468,6 +1470,12 @@ importlib-resources==5.13.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   etils
+iniconfig==2.0.0 \
+    --hash=sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3 \
+    --hash=sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest
 itsdangerous==2.1.2 \
     --hash=sha256:2c2349112351b88699d8d4b6b075022c0808887cb7ad10069318a8b0bc88db44 \
     --hash=sha256:5dbbc68b317e5e42f327f9021763545dc3fc3bfe22e6deb96aaf1fc38874156a
@@ -2872,6 +2880,7 @@ packaging==24.2 \
     #   matplotlib
     #   mlflow-skinny
     #   onnxruntime
+    #   pytest
     #   ray
     #   taskiq
     #   tensorboard
@@ -3045,6 +3054,12 @@ platformdirs==3.11.0 \
     #   textual
     #   virtualenv
     #   wandb
+pluggy==1.3.0 \
+    --hash=sha256:cf61ae8f126ac6f7c451172cf30e3e43d3ca77615509771b3a984a0730651e12 \
+    --hash=sha256:d89c696a773f8bd377d18e5ecda92b7a3793cbe66c87060a6fb58c7b6e1061f7
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest
 prometheus-client==0.19.0 \
     --hash=sha256:4585b0d1223148c27a225b10dbec5ae9bc4c81a99a3fa80774fa6209935324e1 \
     --hash=sha256:c88b1e6ecf6b41cd8fb5731c7ae919bf66df6ec6fafa555cd6c0e16ca169ae92
@@ -3576,6 +3591,19 @@ pyparsing==3.1.1 \
     #   dm-control
     #   matplotlib
     #   torch-geometric
+pytest==7.4.4 \
+    --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
+    --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/rllib-test-requirements.txt
+    #   pytest-asyncio
+pytest-asyncio==0.17.2 \
+    --hash=sha256:6d895b02432c028e6957d25fc936494e78c6305736e785d9fee408b1efbc7ff4 \
+    --hash=sha256:e0fe5dbea40516b661ef1bcfe0bd9461c2847c4ef4bb40012324f2454fb7d56d
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/rllib-test-requirements.txt
 python-box==6.1.0 \
     --hash=sha256:11cbe62f0dace8a6e2a10d210a5e87b99ad1a1286865568862516794c923a988 \
     --hash=sha256:1d29eafaa287857751e27fbe9a08dd856480f0037fe988b221eba4dac33e5852 \
@@ -4625,6 +4653,12 @@ toml==0.10.2 ; python_full_version < '3.12' \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
     # via tensorflow-datasets
+tomli==2.0.1 ; python_full_version < '3.11' \
+    --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
+    --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest
 torch==2.3.0+cu121 \
     --hash=sha256:002027d18a9c054f08fe9cf7a729e041229e783e065a71349015dcccc9a7137e \
     --hash=sha256:0a12aa9aa6bc442dff8823ac8b48d991fd0771562eaa38593f9c8196d65f7007 \

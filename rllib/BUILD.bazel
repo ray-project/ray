@@ -4937,6 +4937,7 @@ py_test(
         "--num-episodes-human-play=0",
         "--min-league-size=3",
     ],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/multi_agent/self_play_with_open_spiel.py",
     tags = [
         "examples",
