@@ -1,9 +1,9 @@
 import pyarrow
 import pytest
-from ray.util.annotations import RayDeprecationWarning
 
 import ray
 from ray.tests.conftest import *  # noqa
+from ray.util.annotations import RayDeprecationWarning
 
 
 @pytest.mark.parametrize("pandas", [False, True])
@@ -16,8 +16,6 @@ def test_basic(ray_start_regular_shared, pandas):
             lambda df: pyarrow.Table.from_pandas(df), batch_format="pandas"
         )
 
-
-    
     with pytest.warns(RayDeprecationWarning):
         rad = ds.to_random_access_dataset("key", num_workers=1)
 
@@ -40,7 +38,6 @@ def test_empty_blocks(ray_start_regular_shared):
     ds = ray.data.range(10).repartition(20)
     assert ds._plan.initial_num_blocks() == 20
 
-    
     with pytest.warns(RayDeprecationWarning):
         rad = ds.to_random_access_dataset("id")
     for i in range(10):
@@ -56,7 +53,6 @@ def test_errors(ray_start_regular_shared):
 def test_stats(ray_start_regular_shared):
     ds = ray.data.range(100, override_num_blocks=10)
 
-    
     with pytest.warns(RayDeprecationWarning):
         rad = ds.to_random_access_dataset("id", num_workers=1)
     stats = rad.stats()
