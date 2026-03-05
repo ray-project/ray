@@ -292,8 +292,7 @@ def _shuffle_block(
             # Wait for all schema-carrier blocks to be accepted before returning.
             # This mirrors the synchronization in the normal (non-empty) path and
             # ensures aggregators hold the schema before finalize() is called.
-            while pending:
-                _, pending = ray.wait(pending, num_returns=len(pending), timeout=1)
+            ray.get(pending)
 
         empty = BlockAccessor.for_block(block).get_metadata(
             block_exec_stats=stats.build(block_ser_time_s=0),
