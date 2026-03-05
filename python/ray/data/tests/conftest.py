@@ -265,16 +265,16 @@ def restore_data_context(request):
 def _get_supported_tensor_formats():
     """Get list of supported tensor formats based on PyArrow version.
 
-    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 12 (which supports
-    native FixedShapeTensorType).
+    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 16 (which supports
+    native FixedShapeTensorScalar, FixedShapeTensorType, FixedShapeTensorArray).
     """
     from ray.data._internal.tensor_extensions.arrow import (
-        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
         FixedShapeTensorFormat,
     )
 
     formats = [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
-    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY:
+    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR:
         formats.append(FixedShapeTensorFormat.ARROW_NATIVE)
     return formats
 
@@ -284,7 +284,7 @@ def tensor_format(request):
     """Fixture that yields supported tensor formats.
 
     Yields V1, V2 for all PyArrow versions.
-    Yields ARROW_NATIVE only when PyArrow >= 12.
+    Yields ARROW_NATIVE only when PyArrow >= 16.
 
     This allows tests to use `tensor_format.to_type()` safely without
     needing fallback logic for unsupported PyArrow versions.

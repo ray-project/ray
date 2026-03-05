@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.data._internal.tensor_extensions.arrow import (
-    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowTensorArray,
     FixedShapeTensorFormat,
     create_arrow_fixed_shape_tensor_type,
@@ -941,8 +941,8 @@ def test_ragged_tensors(ray_start_regular_shared, tensor_format_context):
     [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2],
 )
 @pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY,
-    reason="Requires pyarrow>=12 for native FixedShapeTensorType",
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="Requires pyarrow>=16 for native FixedShapeTensorType, FixedShapeTensorScalar, FixedShapeTensorArray",
 )
 def test_tensor_format_conversion_v1_v2_to_native(
     ray_start_regular_shared, tmp_path, restore_data_context, write_format

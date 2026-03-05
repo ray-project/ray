@@ -52,6 +52,8 @@ PYARROW_VERSION = get_pyarrow_version()
 MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 # Minimum version supporting Arrow's native FixedShapeTensorArray and FixedShapeTensorType
 MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY = parse_version("12.0.0")
+# Minimum version supporting Arrow's native FixedShapeTensorScalar
+MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR = parse_version("16.0.0")
 # Min version supporting ``ExtensionArray``s in ``pyarrow.concat``
 MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
@@ -73,10 +75,12 @@ ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
 )
 
 # Conditional imports for PyArrow features that are only available in newer versions
-# FixedShapeTensorArray was introduced in PyArrow 12.0.0
+# FixedShapeTensorArray was introduced in PyArrow 12.0.0, but we want min version for
+# 16.0.0, because 12.0.0 contains bugs in slicing arrays, and has no support for to_numpy()
+# for scalars.
 if (
     PYARROW_VERSION is None
-    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY
+    or PYARROW_VERSION >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR
 ):
     from pyarrow import FixedShapeTensorArray, FixedShapeTensorType
 else:
@@ -115,11 +119,11 @@ class FixedShapeTensorFormat(Enum):
 def _native_tensor_value_type_can_convert_to_numpy(t: "pa.DataType") -> bool:
     """Pyarrow native fixed shaped tensors support most types. However, when converting
     between numpy representions using their built-in `to_numpy_ndarray()` or `from_numpy_ndarray()`,
-    numbers (floating, integer, or booleans) are only supported. It is possible to handle this logic using
+    numbers (floating or integer) are only supported. It is possible to handle this logic using
     other methods (`as_py()`, or `to_numpy()`), but for simplicity, we leave it at numbers only.
     In the future, we may want to support more datatypes.
     """
-    return pa.types.is_floating(t) or pa.types.is_integer(t) or pa.types.is_boolean(t)
+    return pa.types.is_floating(t) or pa.types.is_integer(t)
 
 
 def _extension_array_concat_supported() -> bool:
@@ -754,7 +758,7 @@ def create_arrow_fixed_shape_tensor_type(
         An Arrow ExtensionType for the tensor.
 
     Raises:
-        ValueError: If NATIVE format is requested but PyArrow < 12.0.0.
+        ValueError: If NATIVE format is requested but PyArrow < 16.0.0.
     """
     from ray.data.context import DataContext
 
@@ -762,13 +766,13 @@ def create_arrow_fixed_shape_tensor_type(
     assert is_valid_dim
     tensor_format = DataContext.get_current().arrow_fixed_shape_tensor_format
 
-    # Native tensor format requires PyArrow 12+
+    # Native tensor format requires PyArrow 16+
     if tensor_format == FixedShapeTensorFormat.ARROW_NATIVE:
         fallback = FixedShapeTensorFormat.V2
         if FixedShapeTensorType is None:
             if log_once("native_fixed_shape_tensors_not_supported"):
                 warnings.warn(
-                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_ARRAY} "
+                    f"Please upgrade pyarrow version >= {MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR} "
                     f"to enable native tensor arrays. Falling back to {fallback}.",
                     UserWarning,
                     stacklevel=3,

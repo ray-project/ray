@@ -914,26 +914,11 @@ class TestCreateFixedShapeTensorType:
     not _extension_array_concat_supported(),
     reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
-@pytest.mark.parametrize(
-    "tensor_format",
-    [
-        FixedShapeTensorFormat.V1,
-        FixedShapeTensorFormat.V2,
-        pytest.param(
-            FixedShapeTensorFormat.ARROW_NATIVE,
-            marks=pytest.mark.skipif(
-                not _extension_array_concat_supported(),
-                reason="Native tensor format requires PyArrow >= 12.0",
-            ),
-        ),
-    ],
-)
 def test_arrow_fixed_shape_tensor_format_eq_with_concat(tensor_format_context):
     """Test that ArrowTensorType, ArrowTensorTypeV2, and native tensor type __eq__
     methods work correctly when concatenating Arrow arrays with the same tensor type."""
 
     tensor_format = tensor_format_context
-
     # Create the appropriate tensor type based on format
     if tensor_format == FixedShapeTensorFormat.V1:
         tensor_type = ArrowTensorType((2, 3), pa.int64())
