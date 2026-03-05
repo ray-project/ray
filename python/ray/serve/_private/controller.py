@@ -40,7 +40,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
-    RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -351,13 +350,6 @@ class ServeController:
         )
         # Track in health metrics
         self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
-        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
-            logger.warning(
-                f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
-                f"which is {latency_ms}ms ago. "
-                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
-            )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
         )
@@ -378,13 +370,6 @@ class ServeController:
         )
         # Track in health metrics
         self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
-        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
-            logger.warning(
-                f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
-                f"which is {latency_ms}ms ago. "
-                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
-            )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
@@ -403,15 +388,6 @@ class ServeController:
                 "application": report.deployment_id.app_name,
             },
         )
-        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
-            logger.warning(
-                f"Received async inference task queue metrics for deployment "
-                f"{report.deployment_id} with timestamp {report.timestamp_s} "
-                f"which is {latency_ms}ms ago. "
-                f"This is greater than the warning threshold RPC latency of "
-                f"{RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                "This may indicate a performance issue with the controller."
-            )
         self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
     def _get_total_num_requests_for_deployment_for_testing(

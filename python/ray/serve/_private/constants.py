@@ -770,11 +770,6 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
 if RAY_SERVE_ENABLE_HA_PROXY:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = True
 
-# The maximum allowed RPC latency in milliseconds.
-# This is used to detect and warn about long RPC latencies
-# between the controller and the replicas.
-RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
-
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
