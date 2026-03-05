@@ -14,6 +14,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -465,7 +466,11 @@ def test_controller_crashes_with_logging_config(serve_instance):
     # Check proxy logging
     def check_proxy_handle_in_controller():
         proxy_handles = ray.get(client._controller.get_proxies.remote())
-        assert len(proxy_handles) == 1
+        expected_num_proxies = 1
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            # fallback proxy
+            expected_num_proxies += 1
+        assert len(proxy_handles) == expected_num_proxies
         return True
 
     wait_for_condition(check_proxy_handle_in_controller)
