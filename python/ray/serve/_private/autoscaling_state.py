@@ -83,7 +83,6 @@ class DeploymentAutoscalingState:
 
         self._deployment_info = None
         self._config = None
-        self._gang_size: Optional[int] = None
         self._policy: Optional[
             Callable[
                 [AutoscalingContext], Tuple[Union[int, float], Optional[Dict[str, Any]]]
@@ -222,7 +221,10 @@ class DeploymentAutoscalingState:
         )
 
     def apply_bounds(self, num_replicas: int) -> int:
-        """Clips a replica count with current autoscaling bounds."""
+        """Clips a replica count with current autoscaling bounds.
+
+        This takes into account target capacity.
+        """
 
         return max(
             self.get_num_replicas_lower_bound(),
