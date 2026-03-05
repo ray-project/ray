@@ -122,6 +122,7 @@
   cluster:
     byod:
       post_build_script: byod_install_pyiceberg.sh
+    cluster_compute: iceberg_benchmark_compute.yaml
 
   matrix:
     setup:
