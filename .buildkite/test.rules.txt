@@ -36,7 +36,6 @@ python/deplocks/llm/*.lock
 python/ray/data/
 .buildkite/data.rayci.yml
 ci/docker/data.build.Dockerfile
-ci/docker/data.build.wanda.yaml
 ci/docker/datan.build.wanda.yaml
 ci/docker/data9.build.wanda.yaml
 ci/docker/datal.build.wanda.yaml
