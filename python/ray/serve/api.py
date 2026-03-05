@@ -294,9 +294,12 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
             )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
-            def __init__(self, *args, **kwargs):
+            async def __init__(self, *args, **kwargs):
                 # Call user-defined constructor.
-                cls.__init__(self, *args, **kwargs)
+                if inspect.iscoroutinefunction(cls.__init__):
+                    await cls.__init__(self, *args, **kwargs)
+                else:
+                    cls.__init__(self, *args, **kwargs)
 
                 ServeUsageTag.FASTAPI_USED.record("1")
                 ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
