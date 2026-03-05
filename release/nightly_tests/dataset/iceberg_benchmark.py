@@ -157,6 +157,10 @@ def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
     def make_value(ids: pa.Array) -> pa.Array:
         return pc.binary_join_element_wise(prefix, pc.cast(ids, pa.string()), "")
 
+    @udf(return_dtype=DataType.int64())
+    def make_part(ids: pa.Array) -> pa.Array:
+        return pa.array(np.asarray(ids) % 10, type=pa.int64())
+
     @udf(return_dtype=DataType.fixed_size_list(DataType.float64(), EMBEDDING_DIM))
     def make_embedding(ids: pa.Array) -> pa.Array:
         ids_np = np.asarray(ids)
@@ -182,7 +186,7 @@ def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
     return (
         ray.data.range(n)
         .with_column("value", make_value(col("id")))
-        .with_column("part", col("id") % 10)
+        .with_column("part", make_part(col("id")))
         .with_column("embedding", make_embedding(col("id")))
         .with_column("token_ids", make_token_ids(col("id")))
         .with_column("logits", make_logits(col("id")))
