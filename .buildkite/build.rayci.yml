@@ -427,9 +427,7 @@ steps:
 
   - label: ":tapioca: smoke test build-wheel.sh --help"
     tags:
-      - python_dependencies
-      - docker
-      - oss
+      - tools
     instance_type: small
     commands:
       - ./build-wheel.sh --help
@@ -453,9 +451,7 @@ steps:
 
   - label: ":tapioca: smoke test build-image.sh --help"
     tags:
-      - python_dependencies
-      - docker
-      - oss
+      - tools
     instance_type: small
     commands:
       - ./build-image.sh --help
