@@ -3,11 +3,16 @@
 import argparse
 import uuid
 
+import numpy as np
+import pyarrow as pa
+import pyarrow.compute as pc
 from pyiceberg import catalog as pyi_catalog, schema as pyi_schema, types as pyi_types
 
 import ray
 from benchmark import Benchmark, BenchmarkMetric
 from ray.data import SaveMode
+from ray.data.datatype import DataType
+from ray.data.expressions import col, udf
 
 NUM_ROWS = 50_000_000
 UPSERT_ROWS = 4_000_000
@@ -144,20 +149,45 @@ def _teardown_catalog(catalog: pyi_catalog.Catalog):
 
 
 def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
-    """Generate a dataset with id, value, part columns."""
-    return ray.data.range(n).map(
-        lambda row: {
-            "id": row["id"],
-            "value": f"{value_prefix}{row['id']}",
-            "part": row["id"] % 10,
-            "embedding": [
-                float((row["id"] + i) % 100) / 100.0 for i in range(EMBEDDING_DIM)
-            ],
-            "token_ids": [(row["id"] + i) % 1024 for i in range(TOKEN_IDS_DIM)],
-            "logits": [float((row["id"] * (i + 1)) % 7) for i in range(LOGITS_DIM)],
-            "score": float(row["id"] % 1000) / 1000.0,
-            "confidence": float((row["id"] % 100) + 1) / 100.0,
-        }
+    """Generate a dataset using with_column + expressions."""
+
+    prefix = pa.scalar(value_prefix)
+
+    @udf(return_dtype=DataType.string())
+    def make_value(ids: pa.Array) -> pa.Array:
+        return pc.binary_join_element_wise(prefix, pc.cast(ids, pa.string()), "")
+
+    @udf(return_dtype=DataType.fixed_size_list(DataType.float64(), EMBEDDING_DIM))
+    def make_embedding(ids: pa.Array) -> pa.Array:
+        ids_np = np.asarray(ids)
+        flat = (
+            (ids_np[:, None] + np.arange(EMBEDDING_DIM)) % 100
+        ).astype(np.float64) / 100.0
+        return pa.FixedSizeListArray.from_arrays(pa.array(flat.flatten()), EMBEDDING_DIM)
+
+    @udf(return_dtype=DataType.fixed_size_list(DataType.int64(), TOKEN_IDS_DIM))
+    def make_token_ids(ids: pa.Array) -> pa.Array:
+        ids_np = np.asarray(ids)
+        flat = (ids_np[:, None] + np.arange(TOKEN_IDS_DIM)) % 1024
+        return pa.FixedSizeListArray.from_arrays(pa.array(flat.flatten()), TOKEN_IDS_DIM)
+
+    @udf(return_dtype=DataType.fixed_size_list(DataType.float64(), LOGITS_DIM))
+    def make_logits(ids: pa.Array) -> pa.Array:
+        ids_np = np.asarray(ids)
+        flat = (ids_np[:, None] * (np.arange(LOGITS_DIM) + 1)) % 7
+        return pa.FixedSizeListArray.from_arrays(
+            pa.array(flat.flatten().astype(np.float64)), LOGITS_DIM
+        )
+
+    return (
+        ray.data.range(n)
+        .with_column("value", make_value(col("id")))
+        .with_column("part", col("id") % 10)
+        .with_column("embedding", make_embedding(col("id")))
+        .with_column("token_ids", make_token_ids(col("id")))
+        .with_column("logits", make_logits(col("id")))
+        .with_column("score", (col("id") % 1000) / 1000.0)
+        .with_column("confidence", ((col("id") % 100) + 1) / 100.0)
     )
 
 
