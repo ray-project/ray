@@ -144,6 +144,10 @@ class ControllerCallback(RayTrainCallback):
         """
         pass
 
+    def before_controller_abort(self):
+        """Called during `TrainController.abort` before the actor process exits."""
+        pass
+
 
 # TODO: consider consolidating all metrics into one dict, possibly with UDF
 @DeveloperAPI
