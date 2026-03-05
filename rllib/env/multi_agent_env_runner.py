@@ -286,7 +286,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         agent_ts = 0
         eps = 0
 
-        if self._cached_to_module is None:
+        reset_required = (
+            force_reset or num_episodes is not None or self._needs_initial_reset
+        )
+
+        if self._cached_to_module is None and not reset_required:
             # This can happen if we error out in a previous sample call.
             # Primarily, because a connector fails.
             # In this case, we need to reset the envs and episodes to start over.
@@ -294,10 +298,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 logger.warning(
                     "Error in sample call detected. Resetting envs and episodes to start over. You can ignore this warning if a connector is expectedly unstable."
                 )
-            force_reset = True
+            reset_required = True
 
         # Have to reset the env (on all vector sub_envs).
-        if force_reset or num_episodes is not None or self._needs_initial_reset:
+        if reset_required:
             env_ts = 0
             agent_ts = 0
             self._reset_envs_and_episodes(explore)
