@@ -138,6 +138,7 @@ class InstanceUtil:
             not in InstanceUtil.get_valid_transitions()[instance.status]
         ):
             return False
+
         instance.status = new_instance_status
         InstanceUtil._record_status_transition(instance, new_instance_status, details)
         return True
@@ -298,7 +299,14 @@ class InstanceUtil:
             # a kubernetes pod remains pending due to insufficient resources.
             Instance.ALLOCATION_TIMEOUT: {
                 # Instance is requested to be stopped
-                Instance.TERMINATING
+                Instance.TERMINATING,
+                # Cloud instance already disappeared; skip termination request.
+                # This transition is allowed to avoid unnecessary termination attempts
+                # when the cloud instance has already disappeared (e.g., manually deleted
+                # or terminated by another process). While this helps avoid unnecessary
+                # retries, it's important to monitor this transition as it may indicate
+                # underlying issues with the allocation or termination process itself.
+                Instance.TERMINATED,
             },
             # When in this status, the ray process is requested to be stopped to the
             # ray cluster, but not yet present in the dead ray node list reported by
@@ -336,6 +344,8 @@ class InstanceUtil:
             Instance.TERMINATION_FAILED: {
                 # Retry the termination, become terminating again.
                 Instance.TERMINATING,
+                # Cloud instance already disappeared; skip termination request.
+                Instance.TERMINATED,
             },
             # An instance is marked as terminated when:
             # 1. A cloud instance disappears from the list of running cloud instances
