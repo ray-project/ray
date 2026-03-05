@@ -226,8 +226,9 @@ class DeploymentSchedulingInfo:
     deployment_id: DeploymentID
     scheduling_policy: Any
     actor_resources: Optional[Resources] = None
-    actor_options: Optional[Dict] = None
+    label_selector: Optional[Dict] = None
     placement_group_bundles: Optional[List[Resources]] = None
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
 
@@ -356,7 +357,10 @@ class DeploymentScheduler(ABC):
 
         info = self._deployments[deployment_id]
         info.actor_resources = Resources(replica_config.resource_dict)
-        info.actor_options = copy.deepcopy(replica_config.ray_actor_options)
+        info.label_selector = replica_config.ray_actor_options.get("label_selector")
+        info.bundle_label_selector = (
+            replica_config.placement_group_bundle_label_selector
+        )
         info.max_replicas_per_node = replica_config.max_replicas_per_node
         if replica_config.placement_group_bundles:
             info.placement_group_bundles = [
@@ -1079,11 +1083,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None,
         gang_size: Optional[int] = None,
     ) -> Set[ReplicaID]:
-        """Prioritize replicas running on a node with fewest replicas of
-            all deployments.
+        """Select which replicas to stop for a downscale request.
+        1st prioritize replicas that are not in the RUNNING state
+        2nd prioritize replicas on fallback nodes
+        (nodes that don't match the label selector or bundle label selector)
+        3rd prioritize replicas on nodes with fewest replicas so we can relinquish them
+        4th prioritize newer replicas over older replicas since older replicas
 
-        This algorithm helps to scale down more intelligently because it can
-        relinquish nodes faster. Note that this algorithm doesn't consider
+        Note that this algorithm doesn't consider
         other non-serve actors on the same node. See more at
         https://github.com/ray-project/ray/issues/20599.
 
@@ -1101,9 +1108,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 self._recovering_replicas[deployment_id],
             )
         )
-
-        actor_options = self._deployments[deployment_id].actor_options or {}
-        primary_labels: Dict[str, str] = actor_options.get("label_selector", {})
+        labels_to_check: List[Dict[str, str]] = []
+        if label_selector := self._deployments[deployment_id].label_selector:
+            labels_to_check.append(label_selector)
+        elif bundle_label_selector := self._deployments[
+            deployment_id
+        ].bundle_label_selector:
+            labels_to_check.extend(bundle_label_selector)
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
@@ -1120,8 +1131,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replica_id
             )
 
-        # Priority scaling down non-matching primary labels replica first
-        # Replicas on the head node has the lowest priority for downscaling
+        # Prioritize scaling down replicas on fallback nodes first
+        # then prioritize replicas on nodes other than the head node
         # since we cannot relinquish the head node.
         def key(
             node_and_num_running_replicas_of_all_deployments: Tuple[
@@ -1130,13 +1141,16 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ) -> Tuple[int, int]:
             node_id, replica_set = node_and_num_running_replicas_of_all_deployments
             node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
-            match_primary_labels = int(
-                node_labels_match_selector(node_labels, primary_labels)
-            )
+            not_fallback_node = True
+            if len(labels_to_check) > 0:
+                not_fallback_node = any(
+                    node_labels_match_selector(node_labels, labels)
+                    for labels in labels_to_check
+                )
             num_replicas = (
                 len(replica_set) if node_id != self._head_node_id else sys.maxsize
             )
-            return match_primary_labels, num_replicas
+            return int(not_fallback_node), num_replicas
 
         for node_id, _ in sorted(
             node_to_running_replicas_of_all_deployments.items(), key=key
