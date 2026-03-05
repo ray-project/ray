@@ -1,5 +1,4 @@
 import unittest
-from pathlib import Path
 
 import ray
 from ray.rllib.algorithms.bc import BCConfig
@@ -45,7 +44,7 @@ class TestBC(unittest.TestCase):
             # Note, the `input_` argument is the major argument for the
             # new offline API.
             .offline_data(
-                input_=[data_path.as_posix()],
+                input_=[data_path],
                 dataset_num_iters_per_learner=1,
             )
             .training(
@@ -86,8 +85,6 @@ class TestBC(unittest.TestCase):
     def test_bc_lr_schedule(self):
         # Define the data paths.
         data_path = RLLIB_OFFLINE_DATA_S3_ROOT + "cartpole/"
-        base_path = Path(__file__).parents[3]
-        data_path = "local://" / base_path / data_path
 
         config = (
             BCConfig()
@@ -104,7 +101,7 @@ class TestBC(unittest.TestCase):
             # Note, the `input_` argument is the major argument for the
             # new offline API.
             .offline_data(
-                input_=[data_path.as_posix()],
+                input_=[data_path],
                 dataset_num_iters_per_learner=1,
             )
             .training(
