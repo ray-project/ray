@@ -61,6 +61,7 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
   }
 
   // Tier 2: Try the node-level policy on each candidate domain.
+  bool all_infeasible = true;
   for (auto &candidate : filter_result.candidates) {
     auto result = ScheduleNodeLevel(
         resource_request_list, options, std::move(candidate.candidate_nodes));

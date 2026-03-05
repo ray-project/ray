@@ -643,8 +643,7 @@ TEST_F(SchedulingPolicyTest, PackBundleLabelSelectorInfeasibleTest) {
   // The PACK policy should detect the missing label and return Infeasible immediately.
   auto pack_op = SchedulingOptions::BundlePack();
   auto result =
-      raylet_scheduling_policy::BundlePackSchedulingPolicy(*cluster_resource_manager,
-                                                           [](auto) { return true; })
+      raylet_scheduling_policy::BundlePackSchedulingPolicy(*cluster_resource_manager)
           .Schedule(req_list, pack_op, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result.status.IsInfeasible());
