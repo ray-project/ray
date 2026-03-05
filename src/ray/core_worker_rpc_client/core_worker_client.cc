@@ -64,12 +64,15 @@ void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
 
   {
     absl::MutexLock lock(&mutex_);
-    if (max_finished_seq_no_ == std::nullopt) {
-      max_finished_seq_no_ = request->sequence_number() - 1;
+    const std::string &group = request->task_spec().concurrency_group_name();
+    int64_t group_seq = request->sequence_number();
+    auto it = max_finished_group_seq_no_.find(group);
+    if (it == max_finished_group_seq_no_.end()) {
+      max_finished_group_seq_no_[group] = group_seq - 1;
     }
     // The RPC client assumes that the first request put into the send queue will be
     // the first task handled by the server.
-    RAY_CHECK_LE(max_finished_seq_no_.value(), request->sequence_number());
+    RAY_CHECK_LE(max_finished_group_seq_no_[group], group_seq);
     send_queue_.emplace_back(std::move(request), std::move(callback));
   }
   SendRequests();
@@ -107,16 +110,18 @@ void CoreWorkerClient::SendRequests() {
     auto request = std::move(pair.first);
     int64_t task_size = RequestSizeInBytes(*request);
     int64_t seq_no = request->sequence_number();
-    request->set_client_processed_up_to(max_finished_seq_no_.value());
+    std::string group = request->task_spec().concurrency_group_name();
+    request->set_client_processed_up_to(max_finished_group_seq_no_[group]);
     rpc_bytes_in_flight_ += task_size;
 
     auto rpc_callback =
-        [this, this_ptr, seq_no, task_size, callback = std::move(pair.second)](
+        [this, this_ptr, seq_no, group, task_size, callback = std::move(pair.second)](
             Status status, rpc::PushTaskReply &&reply) {
           {
             absl::MutexLock lk(&mutex_);
-            if (seq_no > max_finished_seq_no_) {
-              max_finished_seq_no_ = seq_no;
+            auto it = max_finished_group_seq_no_.find(group);
+            if (it != max_finished_group_seq_no_.end() && seq_no > it->second) {
+              it->second = seq_no;
             }
             rpc_bytes_in_flight_ -= task_size;
             RAY_CHECK(rpc_bytes_in_flight_ >= 0);
