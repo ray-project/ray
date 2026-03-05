@@ -29,9 +29,6 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.tensor_extensions.arrow import (
-    create_arrow_fixed_shape_tensor_type,
-)
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
@@ -61,7 +58,6 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
 )
-from ray.data.datatype import DataType
 from ray.data.expressions import BinaryExpr, Expr, Operation
 from ray.util.debug import log_once
 
@@ -514,7 +510,7 @@ class ParquetDatasource(Datasource):
             file_schema=self._file_schema,
             partition_schema=self._partition_schema,
             projected_columns=self.get_current_projection(),
-            tensor_column_schema=self._tensor_column_schema,
+            _block_udf=self._block_udf,
             include_paths=self._include_paths,
         )
 
@@ -755,7 +751,7 @@ class ParquetDatasource(Datasource):
         file_schema: "pyarrow.Schema",
         partition_schema: Optional["pyarrow.Schema"],
         projected_columns: Optional[List[str]],
-        tensor_column_schema: Optional[TensorColumnSchema],
+        _block_udf,
         include_paths: bool = False,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
@@ -797,23 +793,19 @@ class ParquetDatasource(Datasource):
                 target_schema.metadata,
             )
 
-        if tensor_column_schema is not None:
-            # Without this code, schema inference for parquet datasets will default to
-            # binary types.
-
-            for name, (np_dtype, shape) in tensor_column_schema.items():
-                index_of_name: int = target_schema.get_field_index(name)
-                pa_dtype: pa.DataType = DataType.from_numpy(np_dtype).to_arrow_dtype()
-                tensor_type = create_arrow_fixed_shape_tensor_type(
-                    shape=shape, dtype=pa_dtype
+        if _block_udf is not None:
+            # Try to infer dataset schema by passing dummy table through UDF.
+            try:
+                dummy_table = target_schema.empty_table()
+                target_schema = _block_udf(dummy_table).schema.with_metadata(
+                    target_schema.metadata
                 )
-                field = pa.field(name, tensor_type)
-
-                # Determine where to add the schema
-                if index_of_name != -1:
-                    target_schema = target_schema.set(index_of_name, field)
-                else:
-                    target_schema = target_schema.append(field)
+            except Exception:
+                logger.debug(
+                    "Failed to infer schema of dataset by passing dummy table "
+                    "through UDF due to the following exception:",
+                    exc_info=True,
+                )
 
         check_for_legacy_tensor_type(target_schema)
 
