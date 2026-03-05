@@ -826,11 +826,11 @@ def warn_if_unit_in_integration(request):
     # Warn if the test is a unit test but not marked as unit_for_integration
     yield
     warnings.warn(
-        f"{request.node.nodeid} has no direct Ray Cluster dependency and is not marked as an intentional unit test. "
-        "Please do one of the following: \n"
-        "1) If this test is an integration test that requires a Ray cluster, add @pytest.mark.integration_test to the test. \n"
-        "2) If this test is a unit test but intended to be kept in the integration test directory, add @pytest.mark.unit_for_integration to the test. \n"
-        "3) If this test is a unit test and should be moved out of the integration test directory, move the test to the appropriate location in the unit test directories.",
+        f"{request.node.nodeid} has no Ray cluster dependency and no intent marker.\n"
+        "Please do one of the following:\n"
+        "  1) Add @pytest.mark.integration_test if this test requires a Ray cluster.\n"
+        "  2) Add @pytest.mark.unit_for_integration if this is a unit test kept here intentionally.\n"
+        "  3) Move it to tests/unit/ if it has no Ray dependency.",
         UserWarning,
         stacklevel=1,
     )
