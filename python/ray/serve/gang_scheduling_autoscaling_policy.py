@@ -27,9 +27,7 @@ class GangSchedulingAutoscalingPolicy:
         self._base_scaling_policy = base_scaling_policy
         self._gang_size = gang_size
 
-    def __call__(
-        self, ctx: AutoscalingContext
-    ) -> Tuple[int, Dict[str, Any]]:
+    def __call__(self, ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
         num_replicas, policy_state = self._base_scaling_policy(ctx)
 
         if self._gang_size > 1 and num_replicas > 0:
@@ -41,8 +39,6 @@ class GangSchedulingAutoscalingPolicy:
                 )
             else:
                 # Scaling down: round down to release complete gangs
-                num_replicas = (
-                    (num_replicas // self._gang_size) * self._gang_size
-                )
+                num_replicas = (num_replicas // self._gang_size) * self._gang_size
 
         return num_replicas, policy_state
