@@ -8,6 +8,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
 from ray._common.utils import load_class
+from ray._private.function_manager import build_setup_hook_export_entry
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ def get_import_export_timeout():
     )
 
 
-def _decode_function_key(key: bytes) -> str:
+def decode_function_key(key: bytes) -> str:
     # b64encode only includes A-Z, a-z, 0-9, + and / characters
     return RUNTIME_ENV_FUNC_IDENTIFIER + base64.b64encode(key).decode()
 
@@ -31,6 +32,14 @@ def _decode_function_key(key: bytes) -> str:
 def _encode_function_key(key: str) -> bytes:
     assert key.startswith(RUNTIME_ENV_FUNC_IDENTIFIER)
     return base64.b64decode(key[len(RUNTIME_ENV_FUNC_IDENTIFIER) :])
+
+
+def _raise_setup_hook_conflict(existing_hook_value: str, setup_hook_desc: str) -> None:
+    raise RuntimeError(
+        "Conflicting worker_process_setup_hook: the setup hook env "
+        f"var is already set to '{existing_hook_value}', but "
+        f"runtime_env specifies {setup_hook_desc}."
+    )
 
 
 def export_setup_func_callable(
@@ -52,9 +61,7 @@ def export_setup_func_callable(
         f"The env var, {ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR}, "
         "is not permitted because it is reserved for the internal use."
     )
-    env_vars[ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR] = _decode_function_key(
-        key
-    )
+    env_vars[ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR] = decode_function_key(key)
     runtime_env["env_vars"] = env_vars
     # Note: This field is no-op. We don't have a plugin for the setup hook
     # because we can implement it simply using an env var.
@@ -79,6 +86,60 @@ def export_setup_func_module(
     return runtime_env
 
 
+def _check_setup_hook_consistency(
+    existing_hook_value: str,
+    setup_func: Union[Callable, str],
+    worker: "ray.Worker",
+) -> None:
+    """Validate that an already-set hook env var is consistent with setup_func.
+
+    When the env var is already populated (e.g. inherited from a job supervisor),
+    we compare it against the `worker_process_setup_hook` field in the runtime_env
+    to detect silent mismatches.
+
+    Args:
+        existing_hook_value: The value of the existing hook env var.
+        setup_func: The setup function or module path.
+        worker: The worker instance.
+
+    Raises:
+        RuntimeError: If a conflict between the existing env var and setup_func is detected.
+    """
+    if isinstance(setup_func, Callable):
+        try:
+            _encode_function_key(existing_hook_value)
+        except Exception:
+            _raise_setup_hook_conflict(
+                existing_hook_value, f"callable '{setup_func.__name__}'"
+            )
+        _check_callable_hooks_match(existing_hook_value, setup_func, worker)
+    elif isinstance(setup_func, str):
+        try:
+            _encode_function_key(existing_hook_value)
+            existing_is_callable_ref = True
+        except Exception:
+            existing_is_callable_ref = False
+        if not existing_is_callable_ref and existing_hook_value != setup_func:
+            _raise_setup_hook_conflict(existing_hook_value, f"'{setup_func}'")
+
+
+def _check_callable_hooks_match(
+    existing_hook_value: str,
+    setup_func: Callable,
+    worker: "ray.Worker",
+) -> None:
+    """Verify a callable produces the same GCS key as the existing env var."""
+    _, _, expected_key = build_setup_hook_export_entry(
+        setup_func, worker.current_job_id.binary()
+    )
+    expected_env_value = decode_function_key(expected_key)
+
+    if existing_hook_value != expected_env_value:
+        _raise_setup_hook_conflict(
+            existing_hook_value, f"callable '{setup_func.__name__}'"
+        )
+
+
 def upload_worker_process_setup_hook_if_needed(
     runtime_env: Union[Dict[str, Any], RuntimeEnv],
     worker: "ray.Worker",
@@ -98,14 +159,18 @@ def upload_worker_process_setup_hook_if_needed(
     Returns:
         The modified runtime_env with the setup hook processed into an env var.
     """
-    # Ensure idempotency: Already processed (e.g. inherited from job supervisor) — skip.
-    env_vars = runtime_env.get("env_vars", {})
-    if ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR in env_vars:
-        return runtime_env
-
     setup_func = runtime_env.get("worker_process_setup_hook")
 
     if setup_func is None:
+        return runtime_env
+
+    env_vars = runtime_env.get("env_vars", {})
+    existing_hook = env_vars.get(ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR)
+
+    if existing_hook is not None:
+        # A setup hook is already populated (e.g. inherited from job supervisor).
+        # Validate that it is consistent with the current worker_process_setup_hook.
+        _check_setup_hook_consistency(existing_hook, setup_func, worker)
         return runtime_env
 
     if isinstance(setup_func, Callable):
