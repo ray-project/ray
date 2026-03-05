@@ -771,10 +771,10 @@ def pytest_configure(config):
     """
     Register custom markers for test categorization.
 
-    `unit_in_integration`: Marks tests that are unit tests but are
+    `unit_for_integration`: Marks tests that are unit tests but are
     intentionally kept in the integration test directory.
 
-    `integration`: Marks tests that are integration tests requiring a Ray cluster.
+    `integration_test`: Marks tests that are integration tests requiring a Ray cluster.
     """
     config.addinivalue_line(
         "markers",
@@ -786,10 +786,20 @@ def pytest_configure(config):
     )
 
 
+_INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
+
+
 @pytest.fixture(autouse=True)
 def warn_if_unit_in_integration(request):
-    """this fixture is only applied to tests in the integration test directory."""
-    _INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
+    """Warns if a test in the integration test directory is not categorized.
+
+    This fixture checks tests in files that have been opted-in via `MIGRATED_FILES`.
+    It warns if a test:
+    - Appears to be an integration test (uses a `ray_start` fixture) but is not
+      marked with `@pytest.mark.integration_test`.
+    - Appears to be a unit test (no `ray_start` fixture) but is not marked with
+      `@pytest.mark.unit_for_integration` or moved to the `tests/unit` directory.
+    """
 
     # Skip if the test is not in the integration test directory
     if pathlib.Path(str(request.fspath)).parent != _INTEGRATION_TEST_DIR:
