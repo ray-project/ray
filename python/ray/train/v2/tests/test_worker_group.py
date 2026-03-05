@@ -137,7 +137,7 @@ def test_replace_replica_group():
     wg.shutdown()
 
 
-def test_replace_replica_group_failure():
+def test_replace_replica_group_succeed_on_retry():
     """Test that replace_replica_group raises WorkerGroupStartupFailedError
     when a replacement worker fails to initialize."""
 
@@ -153,6 +153,10 @@ def test_replace_replica_group_failure():
 
     with pytest.raises(WorkerGroupStartupFailedError):
         wg.replace_replica_group(0)
+
+    # Swap worker class so second attempt succeeds.
+    wg._worker_cls = RayTrainWorker
+    wg.replace_replica_group(0)
 
     wg.shutdown()
 
@@ -203,6 +207,7 @@ def test_actor_start_failure():
 
     with pytest.raises(WorkerGroupStartupFailedError):
         wg._start()
+    # TODO: this and other tests should verify that we shut down the worker group.
 
 
 def test_callback_start_failure():

@@ -726,6 +726,14 @@ class WorkerGroup(ExecutionGroup):
             replica_group_index: The index of the replica group to replace.
         """
         self._assert_active()
+        try:
+            self._replace_replica_group_impl(replica_group_index)
+        except Exception as e:
+            self._replica_groups[replica_group_index].shutdown()
+            raise e
+
+    def _replace_replica_group_impl(self, replica_group_index: int):
+        """replace_replica_group is simple wrapper around this method."""
 
         # Save old replica group state.
         old_replica_group = self._replica_groups[replica_group_index]
@@ -733,10 +741,12 @@ class WorkerGroup(ExecutionGroup):
         old_distributed_contexts = [w.distributed_context for w in old_workers]
         old_bundle_indices = [w.bundle_index for w in old_workers]
 
-        # Shutdown old replica group.
-        for cb in self._replica_group_callbacks:
-            cb.before_replica_group_shutdown(old_replica_group)
-        old_replica_group.shutdown()
+        # Shutdown old replica group if it is active.
+        # It can be inactive if we failed to initialize the workers in the previous attempt.
+        if old_replica_group.is_active():
+            for cb in self._replica_group_callbacks:
+                cb.before_replica_group_shutdown(old_replica_group)
+            old_replica_group.shutdown()
 
         # Create new workers with old replica group state.
         pg = self._worker_group_state.placement_group_handle.placement_group

@@ -80,13 +80,18 @@ class ReplicaGroup(ExecutionGroup):
         self._workers = workers
         self._resources_per_worker = resources_per_worker
         self._world_rank_to_ongoing_poll = world_rank_to_ongoing_poll
+        # An inactive ReplicaGroup still needs to keep track of workers
+        # so we can replace them later.
+        self._active = True
 
     def _assert_active(self):
-        if self._workers is None:
+        if not self.is_active():
             raise ValueError("ReplicaGroup has been shut down.")
 
+    def is_active(self) -> bool:
+        return self._active
+
     def get_workers(self) -> List[Worker]:
-        self._assert_active()
         return self._workers
 
     def get_resources_per_worker(self) -> dict:
@@ -94,7 +99,7 @@ class ReplicaGroup(ExecutionGroup):
 
     def shutdown(self):
         """Shutdown all workers in this replica group and clear state."""
-        if self._workers is not None:
+        if self.is_active():
             # Remove workers from ongoing poll tracking before shutdown.
             if self._world_rank_to_ongoing_poll is not None:
                 ranks = [
@@ -105,4 +110,4 @@ class ReplicaGroup(ExecutionGroup):
                 self._world_rank_to_ongoing_poll.remove_ranks(ranks)
 
             _shutdown_workers(self._workers)
-            self._workers = None
+            self._active = False

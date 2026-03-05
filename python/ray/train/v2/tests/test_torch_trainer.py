@@ -159,7 +159,7 @@ def test_torchft_linear(ray_start_4_cpus):
 # TODO(tseah): Add test for lighthouse failures (e.g. lighthouse unreachable).
 
 
-# @pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
+@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
 @pytest.mark.parametrize(
     "min_replicas,max_failures,expect_error",
     [

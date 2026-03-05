@@ -312,6 +312,7 @@ class TrainController:
         logger.info(f"Replacing failing replica groups: {failing_rg_indices}")
 
         for rg_index in failing_rg_indices:
+            # TODO: parallelize this.
             self._worker_group.replace_replica_group(rg_index)
 
     def _get_retry_state(
