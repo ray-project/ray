@@ -341,7 +341,7 @@ class ReplicaMetricsManager:
         self._checked_custom_metrics = False
         self._record_autoscaling_stats_fn = None
 
-        # Tracks in-flight metrics push to controller. Cancel previous if new one is sent.
+        # Tracks in-flight metrics push to controller. Skip if new one is sent.
         self._pending_metrics_push_ref: Optional[ObjectRef] = None
         self._metrics_push_lock = threading.Lock()
 
