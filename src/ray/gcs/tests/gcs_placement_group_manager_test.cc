@@ -259,7 +259,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
   ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
 }
 
-TEST_F(GcsPlacementGroupManagerTest, TestPreparedCallbackEmitsLifecycleEventWithPlacements) {
+TEST_F(GcsPlacementGroupManagerTest,
+       TestPreparedCallbackEmitsLifecycleEventWithPlacements) {
   auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
   RegisterPlacementGroup(request,
@@ -281,13 +282,11 @@ TEST_F(GcsPlacementGroupManagerTest, TestPreparedCallbackEmitsLifecycleEventWith
   auto recorded_events = fake_ray_event_recorder_.FlushBuffer();
   bool found_prepared_event = false;
   for (auto &event : recorded_events) {
-    if (event->GetEventType() !=
-        rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
+    if (event->GetEventType() != rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
       continue;
     }
     auto serialized = std::move(*event).Serialize();
-    auto transitions =
-        serialized.placement_group_lifecycle_event().state_transitions();
+    auto transitions = serialized.placement_group_lifecycle_event().state_transitions();
     if (transitions.size() != 1 ||
         transitions[0].state() != rpc::events::PlacementGroupLifecycleEvent::PREPARED) {
       continue;
@@ -325,8 +324,7 @@ TEST_F(GcsPlacementGroupManagerTest,
   auto recorded_events = fake_ray_event_recorder_.FlushBuffer();
   std::vector<std::pair<std::string, std::string>> prepared_node_pairs;
   for (auto &event : recorded_events) {
-    if (event->GetEventType() !=
-        rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
+    if (event->GetEventType() != rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
       continue;
     }
     auto serialized = std::move(*event).Serialize();

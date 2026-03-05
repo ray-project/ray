@@ -147,11 +147,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                        }
 
                        if (lease_status_tracker->AllPrepareRequestsReturned()) {
-                         OnAllBundlePrepareRequestReturned(
-                             lease_status_tracker,
-                             failure_callback,
-                             success_callback,
-                             prepared_callback);
+                         OnAllBundlePrepareRequestReturned(lease_status_tracker,
+                                                           failure_callback,
+                                                           success_callback,
+                                                           prepared_callback);
                        }
                      });
   }
@@ -411,8 +410,7 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
         lease_status_tracker,
         schedule_failure_handler,
         schedule_success_handler,
-        schedule_prepared_handler](
-           const ray::Status &status) {
+        schedule_prepared_handler](const ray::Status &status) {
          RAY_CHECK_OK(status);
          if (schedule_prepared_handler) {
            schedule_prepared_handler(lease_status_tracker->GetPlacementGroup());

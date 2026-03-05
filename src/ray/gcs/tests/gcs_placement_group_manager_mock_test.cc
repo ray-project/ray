@@ -219,8 +219,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PreparedCallbackEmitsPreparedEvent) {
   auto recorded_events = fake_ray_event_recorder_.FlushBuffer();
   bool found_prepared_event = false;
   for (auto &event : recorded_events) {
-    if (event->GetEventType() !=
-        rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
+    if (event->GetEventType() != rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
       continue;
     }
     auto serialized = std::move(*event).Serialize();
