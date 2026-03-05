@@ -2,7 +2,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from unittest.mock import MagicMock
 
 import ray
@@ -179,6 +179,7 @@ def create_mock_train_run(
     end_time_ns: Optional[int] = None,
     id: Optional[str] = None,
     status_detail: Optional[str] = None,
+    train_loop_config: Optional[Dict] = None,
 ):
     return TrainRun(
         schema_version=0,
@@ -193,7 +194,7 @@ def create_mock_train_run(
         controller_log_file_path="/tmp/ray/session_xxx/logs/train/ray-train-app-controller.log",
         framework_versions={"ray": ray.__version__},
         run_settings=RunSettings(
-            train_loop_config=None,
+            train_loop_config=train_loop_config,
             backend_config=BackendConfigSchema(framework=None, config={}),
             scaling_config=ScalingConfigSchema(
                 num_workers=1,
@@ -212,6 +213,7 @@ def create_mock_train_run(
                 enable_shard_locality=True,
             ),
             run_config=RunConfigSchema(
+                name="test_run",
                 failure_config=FailureConfigSchema(
                     max_failures=0, controller_failure_limit=-1
                 ),
@@ -222,6 +224,7 @@ def create_mock_train_run(
                     checkpoint_score_order="max",
                 ),
                 storage_path="s3://bucket/path",
+                storage_filesystem=None,
             ),
         ),
     )

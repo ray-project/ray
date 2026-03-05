@@ -69,19 +69,19 @@ _TRAINING_FRAMEWORK_MAP = {
 logger = logging.getLogger(__name__)
 
 # Helper conversion functions
-def _to_human_readable_json(obj: Any, *, max_depth: int = 3) -> str:
+def _to_human_readable_struct(obj: Any, *, max_depth: int = 3) -> Struct:
     """
-    Convert arbitrary Python objects into a human-readable, JSON-serializable string.
+    Convert arbitrary Python objects into a human-readable protobuf Struct.
 
     Use to convert user-defined dicts containing variable field types, custom objects,
-    or complex nesting to standard JSON string for protobuf serialization.
+    or complex nesting to a protobuf Struct for export serialization.
 
     Args:
-        obj: The object to convert into a JSON-serializable form.
+        obj: The object to convert into a Struct-compatible form.
         max_depth: Maximum recursion depth; deeper structures are replaced with ``"..."``.
 
     Returns:
-        A JSON string representation of the converted object.
+        A protobuf Struct populated with the converted object.
 
     Example:
 
@@ -97,9 +97,10 @@ def _to_human_readable_json(obj: Any, *, max_depth: int = 3) -> str:
     # Input: mixed types (nested dict + custom object + list)
     cfg = {"epochs": 3, "custom": MyConfig(lr=0.001), "steps": [1, 2, 3]}
 
-    json_str = _to_human_readable_json(cfg)
+    proto_cfg = _to_human_readable_struct(cfg)
 
-    # Output: JSON string safe to export/store
+    # Output: `proto_cfg` is a `google.protobuf.struct_pb2.Struct`.
+    # When rendered to JSON/dict (e.g., via protobuf's json_format), it looks like:
     # {
     #   "custom": "MyConfig(lr=0.001)",
     #   "epochs": 3,
@@ -137,11 +138,16 @@ def _to_human_readable_json(obj: Any, *, max_depth: int = 3) -> str:
         logger.warning(f"Failed to convert value to JSON for export: {e}")
         human_readable_json = "N/A"
 
-    return json.dumps(
+    json_str = json.dumps(
         human_readable_json,
         sort_keys=True,
         ensure_ascii=False,
     )
+
+    human_readable_dict = json.loads(json_str)
+    proto_struct = Struct()
+    proto_struct.update(human_readable_dict)
+    return proto_struct
 
 
 def _to_proto_resources(resources: dict) -> ProtoTrainRunAttempt.TrainResources:
@@ -203,14 +209,15 @@ def to_proto_backend_config(
     backend_config: BackendConfig,
 ) -> ProtoTrainRun.BackendConfig:
     """Convert BackendConfig to protobuf format."""
-    human_readable_config = json.loads(_to_human_readable_json(backend_config.config))
-    config = Struct()
-    config.update(human_readable_config)
-
-    return ProtoTrainRun.BackendConfig(
+    proto_backend_config = ProtoTrainRun.BackendConfig(
         framework=_TRAINING_FRAMEWORK_MAP[backend_config.framework],
-        config=config,
     )
+
+    proto_backend_config.config.CopyFrom(
+        _to_human_readable_struct(backend_config.config)
+    )
+
+    return proto_backend_config
 
 
 def to_proto_scaling_config(
@@ -257,10 +264,9 @@ def to_proto_data_config(data_config: DataConfig) -> ProtoTrainRun.DataConfig:
         proto_data_config.datasets.values.extend(data_config.datasets_to_split)
 
     if data_config.execution_options is not None:
-        human_readable_execution_options = json.loads(
-            _to_human_readable_json(data_config.execution_options)
+        proto_data_config.execution_options.CopyFrom(
+            _to_human_readable_struct(data_config.execution_options)
         )
-        proto_data_config.execution_options.update(human_readable_execution_options)
 
     return proto_data_config
 
@@ -275,12 +281,7 @@ def _to_proto_failure_config(run_config: RunConfig) -> ProtoTrainRun.FailureConf
 
 def _to_proto_worker_runtime_env(run_config: RunConfig) -> Struct:
     """Convert RunConfig.worker_runtime_env to protobuf Struct."""
-    proto_worker_runtime_env = Struct()
-    human_readable_worker_runtime_env = json.loads(
-        _to_human_readable_json(run_config.worker_runtime_env)
-    )
-    proto_worker_runtime_env.update(human_readable_worker_runtime_env)
-    return proto_worker_runtime_env
+    return _to_human_readable_struct(run_config.worker_runtime_env)
 
 
 def _to_proto_checkpoint_config(
@@ -303,17 +304,20 @@ def _to_proto_checkpoint_config(
     return proto_checkpoint_config
 
 
-def to_proto_run_config(
-    run_config: RunConfig,
-) -> ProtoTrainRun.RunConfig:
+def to_proto_run_config(run_config: RunConfig) -> ProtoTrainRun.RunConfig:
     """Convert RunConfig to protobuf format."""
-
-    return ProtoTrainRun.RunConfig(
+    proto_run_config = ProtoTrainRun.RunConfig(
+        name=run_config.name,
         failure_config=_to_proto_failure_config(run_config),
         worker_runtime_env=_to_proto_worker_runtime_env(run_config),
         checkpoint_config=_to_proto_checkpoint_config(run_config),
         storage_path=run_config.storage_path,
     )
+
+    if run_config.storage_filesystem is not None:
+        proto_run_config.storage_filesystem = run_config.storage_filesystem
+
+    return proto_run_config
 
 
 def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettings:
@@ -328,8 +332,8 @@ def _to_proto_run_settings(run_settings: RunSettings) -> ProtoTrainRun.RunSettin
     )
 
     if run_settings.train_loop_config is not None:
-        proto_run_settings.train_loop_config = _to_human_readable_json(
-            run_settings.train_loop_config
+        proto_run_settings.train_loop_config.CopyFrom(
+            _to_human_readable_struct(run_settings.train_loop_config)
         )
 
     return proto_run_settings

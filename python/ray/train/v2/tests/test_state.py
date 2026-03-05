@@ -211,6 +211,7 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
                 enable_shard_locality=True,
             ),
             run_config=RunConfigSchema(
+                name="test",
                 failure_config=FailureConfigSchema(
                     max_failures=0, controller_failure_limit=-1
                 ),
@@ -483,6 +484,7 @@ def test_train_state_manager_run_lifecycle(ray_start_regular):
             worker_runtime_env={"type": "conda"},
             checkpoint_config=CheckpointConfig(num_to_keep=1),
             storage_path="s3://bucket/path",
+            storage_filesystem=None,
         ),
         train_loop_config={"epochs": 10},
         scaling_config=ScalingConfig(num_workers=2),

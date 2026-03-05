@@ -67,6 +67,7 @@ class TrainStateManager:
     ) -> None:
 
         run_config_schema = RunConfigSchema(
+            name=run_config.name,
             failure_config=FailureConfigSchema(
                 max_failures=run_config.failure_config.max_failures,
                 controller_failure_limit=run_config.failure_config.controller_failure_limit,
@@ -78,6 +79,7 @@ class TrainStateManager:
                 checkpoint_score_order=run_config.checkpoint_config.checkpoint_score_order,
             ),
             storage_path=run_config.storage_path,
+            storage_filesystem=str(run_config.storage_filesystem),
         )
 
         scaling_config_schema = ScalingConfigSchema(

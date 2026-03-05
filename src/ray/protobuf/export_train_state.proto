@@ -87,8 +87,7 @@ message ExportTrainRunEventData {
   // Settings for a Train run, primarily consisting of configs set before a train run starts.
   message RunSettings {
     // The user defined train loop config for a Train run.
-    // NOTE: This is expected to represent a JSON-serializable dict from Python.
-    optional string train_loop_config = 1;
+    optional google.protobuf.Struct train_loop_config = 1;
     // The backend config for a Train run, varies with the framework (e.g. TorchConfig)
     BackendConfig backend_config = 2;
     // The scaling config for this Train run.
@@ -169,14 +168,18 @@ message ExportTrainRunEventData {
 
   // Run configuration parameters for a Train run
   message RunConfig {
+    // The name for a Train run.
+    string name = 1;
     // The failure config for a Train run.
-    FailureConfig failure_config = 1;
+    FailureConfig failure_config = 2;
     // The worker runtime env for a Train run.
-    google.protobuf.Struct worker_runtime_env = 2;
+    google.protobuf.Struct worker_runtime_env = 3;
     // The checkpoint config for a Train run.
-    CheckpointConfig checkpoint_config = 3;
+    CheckpointConfig checkpoint_config = 4;
     // The storage path for a Train run.
-    string storage_path = 4;
+    string storage_path = 5;
+    // The storage filesystem for a Train run.
+    optional string storage_filesystem = 6;
   }
 
   // Failure config for a Train run.

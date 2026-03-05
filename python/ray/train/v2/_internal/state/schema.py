@@ -282,6 +282,7 @@ class RunConfig(BaseModel):
     """Run configuration parameters for a Train run, encompassing failure,
     runtime environment, checkpoint settings, and storage path."""
 
+    name: str = Field(description="The name of the Train run.")
     failure_config: FailureConfig = Field(
         description="The failure config for a Train run."
     )
@@ -292,6 +293,9 @@ class RunConfig(BaseModel):
         description="The checkpoint config for a Train run."
     )
     storage_path: str = Field(description="The storage path for a Train run.")
+    storage_filesystem: Optional[str] = Field(
+        description="The storage filesystem for a Train run."
+    )
 
 
 @DeveloperAPI

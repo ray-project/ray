@@ -2,9 +2,10 @@ import json
 import os
 
 import pytest
+from google.protobuf.json_format import MessageToJson
 
 import ray
-from ray.train.v2._internal.state.export import _to_human_readable_json
+from ray.train.v2._internal.state.export import _to_human_readable_struct
 from ray.train.v2._internal.state.schema import (
     RunAttemptStatus,
     RunStatus,
@@ -138,11 +139,30 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
     assert run_settings["datasets"] == ["dataset_1"]
     assert run_settings["data_config"] == {"all": {}, "enable_shard_locality": True}
     assert run_settings["run_config"] == {
+        "name": "test_run",
         "failure_config": {"controller_failure_limit": -1, "max_failures": 0},
         "worker_runtime_env": {"type": "conda"},
         "checkpoint_config": {"checkpoint_score_order": "MAX"},
         "storage_path": "s3://bucket/path",
     }
+
+
+def test_export_train_loop_config_integer_keys(enable_export_api_write):
+    """Test that integer keys in train_loop_config are properly stringified in export."""
+    state_actor = get_or_create_state_actor()
+
+    ray.get(
+        state_actor.create_or_update_train_run.remote(
+            create_mock_train_run(train_loop_config={1: "one", 2: "two"})
+        )
+    )
+
+    data = _get_exported_data()
+    assert len(data) == 1
+
+    run_settings = data[0]["event_data"]["run_settings"]
+
+    assert run_settings["train_loop_config"] == {"1": "one", "2": "two"}
 
 
 def test_export_train_run_attempt(enable_export_api_write):
@@ -162,7 +182,7 @@ def test_export_train_run_attempt(enable_export_api_write):
     assert data[0]["event_data"]["status"] == "RUNNING"
 
 
-def test_to_human_readable_json_complex_dict():
+def test_to_human_readable_struct_complex_dict():
     class UserObj:
         def __init__(self):
             self.a = 1
@@ -201,11 +221,11 @@ def test_to_human_readable_json_complex_dict():
         },
     }
 
-    assert json.loads(_to_human_readable_json(obj)) == expected
+    assert json.loads(MessageToJson(_to_human_readable_struct(obj))) == expected
 
 
-def test_to_human_readable_json_max_depth():
-    """Test that _to_human_readable_json respects the max_depth argument, truncating
+def test_to_human_readable_struct_max_depth():
+    """Test that _to_human_readable_struct respects the max_depth argument, truncating
     nested structures and custom objects appropriately."""
 
     class CustomObj:
@@ -220,7 +240,7 @@ def test_to_human_readable_json_max_depth():
     }
 
     # max_depth=2
-    assert json.loads(_to_human_readable_json(obj, max_depth=2)) == {
+    assert json.loads(MessageToJson(_to_human_readable_struct(obj, max_depth=2))) == {
         "native": 42,
         "nested": {"inner": "..."},
         "obj": "CustomObj",
@@ -228,7 +248,7 @@ def test_to_human_readable_json_max_depth():
     }
 
     # max_depth=3
-    assert json.loads(_to_human_readable_json(obj, max_depth=3)) == {
+    assert json.loads(MessageToJson(_to_human_readable_struct(obj, max_depth=3))) == {
         "native": 42,
         "nested": {"inner": {"deep": "..."}},
         "obj": "CustomObj",
@@ -236,7 +256,7 @@ def test_to_human_readable_json_max_depth():
     }
 
     # max_depth=5
-    assert json.loads(_to_human_readable_json(obj, max_depth=5)) == {
+    assert json.loads(MessageToJson(_to_human_readable_struct(obj, max_depth=5))) == {
         "native": 42,
         "nested": {"inner": {"deep": 99}},
         "obj": "CustomObj",
@@ -359,6 +379,9 @@ def test_export_optional_fields(enable_export_api_write):
     run_with_optional.run_settings.run_config.checkpoint_config.checkpoint_score_attribute = (
         "score"
     )
+    run_with_optional.run_settings.run_config.storage_filesystem = (
+        "<pyarrow._fs.S3FileSystem object>"
+    )
 
     # Create attempt with optional fields
     attempt_with_optional = create_mock_train_run_attempt(
@@ -405,6 +428,7 @@ def test_export_optional_fields(enable_export_api_write):
     assert "topology" not in run_settings["scaling_config"]
     assert "data_config" in run_settings
     assert "execution_options" not in run_settings["data_config"]
+    assert "storage_filesystem" not in run_settings["run_config"]
 
     # Verify train run attempt without optional fields
     attempt_data = data[1]
@@ -419,10 +443,7 @@ def test_export_optional_fields(enable_export_api_write):
     assert "end_time_ns" in run_data["event_data"]
 
     run_settings = run_data["event_data"]["run_settings"]
-    assert (
-        json.loads(run_settings["train_loop_config"])
-        == run_with_optional.run_settings.train_loop_config
-    )
+    assert run_settings["train_loop_config"] == {"epochs": 1.0}
     assert run_settings["scaling_config"]["resources_per_worker"]["values"] == {
         k: float(v)
         for k, v in run_with_optional.run_settings.scaling_config.resources_per_worker.items()
@@ -452,6 +473,10 @@ def test_export_optional_fields(enable_export_api_write):
     assert (
         run_settings["run_config"]["checkpoint_config"]["checkpoint_score_attribute"]
         == run_with_optional.run_settings.run_config.checkpoint_config.checkpoint_score_attribute
+    )
+    assert (
+        run_settings["run_config"]["storage_filesystem"]
+        == run_with_optional.run_settings.run_config.storage_filesystem
     )
 
     # Verify train run attempt with optional fields
