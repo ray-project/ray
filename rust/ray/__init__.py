@@ -12,7 +12,7 @@ Provides the standard ``import ray`` interface backed by the Rust
 ``_raylet`` extension module.  Supports:
 
     ray.init()
-    @ray.remote       — functions and classes
+    @ray.remote       -- functions and classes
     ray.put / get / wait
     ray.get_actor
     ray.shutdown
@@ -45,11 +45,26 @@ from __future__ import annotations
 import pickle as _pickle
 from typing import Any, List, Optional, Sequence, Union
 
-from ray._raylet import (
+from _raylet import (
     start_cluster as _start_cluster,
     PyCoreWorker as _PyCoreWorker,
     PyGcsClient as _PyGcsClient,
     PyWorkerID as _PyWorkerID,
+)
+
+# Re-export _raylet as ray._raylet for convenience
+from _raylet import (
+    start_cluster,
+    PyCoreWorker,
+    PyGcsClient,
+    PyWorkerID,
+    PyObjectID,
+    PyActorID,
+    PyTaskID,
+    PyNodeID,
+    PyJobID,
+    PyObjectRef,
+    PyPlacementGroupID,
 )
 
 __version__ = "3.0.0.dev0"
@@ -68,9 +83,9 @@ __all__ = [
     "ActorHandle",
 ]
 
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 # ObjectRef
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 
 
 class ObjectRef:
@@ -82,8 +97,6 @@ class ObjectRef:
         self._binary = binary
         self._owner = owner
 
-    # -- identity / hashing ------------------------------------------
-
     def __repr__(self) -> str:
         return f"ObjectRef({self._binary[:8].hex()}...)"
 
@@ -93,19 +106,17 @@ class ObjectRef:
     def __hash__(self) -> int:
         return hash(self._binary)
 
-    # -- pickle support (for nested ray.put of ObjectRefs) -----------
-
     def __getstate__(self):
         return self._binary
 
     def __setstate__(self, state):
         self._binary = state
-        self._owner = None  # owner lost across pickle boundary
+        self._owner = None
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 # RemoteFunction
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 
 
 class RemoteFunction:
@@ -139,9 +150,9 @@ class RemoteFunction:
         return RemoteFunction(self._func, merged)
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 # Actor classes
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 
 
 class _ActorMethodHandle:
@@ -231,9 +242,9 @@ class RemoteClass:
         return RemoteClass(self._cls, merged)
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 # Runtime singleton
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 
 
 class _RayRuntime:
@@ -250,7 +261,7 @@ class _RayRuntime:
         self._task_call_counts: list = []
         self._initialized = False
 
-    # ── lifecycle ───────────────────────────────────────────────────
+    # -- lifecycle ---------------------------------------------------
 
     def init(self, *, num_task_workers: int = 2, **_kwargs):
         if self._initialized:
@@ -285,7 +296,7 @@ class _RayRuntime:
     def is_initialized(self) -> bool:
         return self._initialized
 
-    # ── task worker pool ───────────────────────────────────────────
+    # -- task worker pool --------------------------------------------
 
     def _add_task_worker(self):
         runtime = self
@@ -320,7 +331,7 @@ class _RayRuntime:
         self._next_worker += 1
         return self._task_pool[idx]
 
-    # ── decorator ──────────────────────────────────────────────────
+    # -- decorator ---------------------------------------------------
 
     def remote(self, func_or_class=None, **options):
         def decorator(target):
@@ -332,7 +343,7 @@ class _RayRuntime:
             return decorator(func_or_class)
         return decorator
 
-    # ── object store ───────────────────────────────────────────────
+    # -- object store ------------------------------------------------
 
     def put(self, obj: Any) -> ObjectRef:
         data = _pickle.dumps(obj)
@@ -385,12 +396,14 @@ class _RayRuntime:
             ready = ready[:num_returns]
         return ready, remaining
 
-    # ── actor lookup ───────────────────────────────────────────────
+    # -- actor lookup ------------------------------------------------
 
     def get_actor(self, name: str, namespace: str = "default") -> ActorHandle:
         actor_id = self.gcs.get_named_actor(name, namespace)
         if actor_id is None:
-            raise ValueError(f"Actor '{name}' not found in namespace '{namespace}'")
+            raise ValueError(
+                f"Actor '{name}' not found in namespace '{namespace}'"
+            )
         return ActorHandle(actor_id, name, namespace)
 
 
@@ -398,9 +411,9 @@ class _RayRuntime:
 _runtime = _RayRuntime()
 
 
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 # Module-level API (matches standard Ray)
-# ═══════════════════════════════════════════════════════════════════════
+# =====================================================================
 
 
 def init(*, num_task_workers: int = 2, **kwargs):

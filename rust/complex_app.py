@@ -3,9 +3,8 @@
 Pipeline: Distributed Statistical Analysis of Financial Transactions
 =====================================================================
 
-Uses @ray.remote decorators via a lightweight compatibility shim built
-on top of the Rust _raylet bindings.  The application code reads like
-standard Ray Python while running entirely on the Rust backend.
+Uses ``import ray`` and ``@ray.remote`` decorators — the standard Ray
+Python API backed by the Rust ``_raylet`` extension module.
 
 Architecture:
   - 4 task workers (shared pool for all @ray.remote functions)
@@ -15,231 +14,7 @@ Architecture:
   - All results verified against a deterministic sequential reference
 """
 
-import pickle
-
-from _raylet import (
-    start_cluster,
-    PyCoreWorker,
-    PyGcsClient,
-    PyWorkerID,
-)
-
-# ═══════════════════════════════════════════════════════════════════════
-# ray compatibility shim — @ray.remote, ray.put/get/wait over _raylet
-# ═══════════════════════════════════════════════════════════════════════
-
-
-class ObjectRef:
-    """Reference to an object in the distributed object store."""
-
-    def __init__(self, binary, owner):
-        self._binary = binary
-        self._owner = owner
-
-    def __repr__(self):
-        return f"ObjectRef({self._binary[:8].hex()}...)"
-
-
-class _RemoteFunction:
-    """Wrapper returned by @ray.remote on a function."""
-
-    def __init__(self, func, runtime):
-        self._func = func
-        self._runtime = runtime
-
-    def remote(self, *args):
-        serialized = [pickle.dumps(a) for a in args]
-        _, _, _, task_driver = self._runtime._pick_task_worker()
-        refs = task_driver.submit_task(self._func.__name__, serialized)
-        return ObjectRef(refs[0].binary(), task_driver)
-
-
-class _ActorMethodHandle:
-    """Proxy for actor.method that provides .remote()."""
-
-    def __init__(self, actor_handle, method_name):
-        self._actor = actor_handle
-        self._method = method_name
-
-    def remote(self, *args):
-        serialized = [pickle.dumps(a) for a in args]
-        driver = self._actor._runtime.driver
-        oid = driver.submit_actor_method(
-            self._actor._actor_id, self._method, serialized
-        )
-        return ObjectRef(oid.binary(), driver)
-
-
-class ActorHandle:
-    """Handle to a live remote actor.  Methods accessed as attributes."""
-
-    def __init__(self, actor_id, name, runtime):
-        self._actor_id = actor_id
-        self._name = name
-        self._runtime = runtime
-
-    def __getattr__(self, name):
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return _ActorMethodHandle(self, name)
-
-    def __repr__(self):
-        return f"Actor({self._name})"
-
-
-class _RemoteClass:
-    """Factory returned by @ray.remote on a class."""
-
-    _counter = 0
-
-    def __init__(self, cls, runtime):
-        self._cls = cls
-        self._runtime = runtime
-
-    def remote(self, *args, **kwargs):
-        instance = self._cls(*args, **kwargs)
-
-        wid = PyWorkerID.py_from_random()
-        cluster = self._runtime.cluster
-        worker = PyCoreWorker(
-            0, "127.0.0.1", cluster.gcs_address(), 1,
-            worker_id=wid, node_id=cluster.node_id(),
-        )
-
-        def callback(method, raw_args, num_returns=1):
-            deserialized = [pickle.loads(a) for a in raw_args]
-            result = getattr(instance, method)(*deserialized)
-            return pickle.dumps(result)
-
-        worker.set_task_callback(callback)
-        port = worker.start_grpc_server()
-
-        _RemoteClass._counter += 1
-        name = f"{self._cls.__name__}_{_RemoteClass._counter}"
-        namespace = "app"
-        actor_id = self._runtime.gcs.register_actor(name, namespace)
-
-        self._runtime.driver.setup_actor(
-            actor_id, name, namespace, "127.0.0.1", port,
-            cluster.node_id(), wid,
-        )
-
-        self._runtime._actor_workers.append(worker)
-        return ActorHandle(actor_id, name, self._runtime)
-
-
-class _RayRuntime:
-    """Singleton providing ray.init / ray.remote / ray.put / ray.get / ray.wait."""
-
-    def __init__(self):
-        self.cluster = None
-        self.gcs = None
-        self.driver = None
-        self._task_pool = []
-        self._func_registry = {}
-        self._next_worker = 0
-        self._actor_workers = []
-        self._task_call_counts = []
-
-    # ── Lifecycle ───────────────────────────────────────────────────
-
-    def init(self, num_task_workers=2):
-        self.cluster = start_cluster()
-        self.gcs = PyGcsClient(self.cluster.gcs_address())
-        self.driver = PyCoreWorker(
-            1, "127.0.0.1", self.cluster.gcs_address(), 1,
-            node_id=self.cluster.node_id(),
-        )
-        self._task_call_counts = [0] * num_task_workers
-        for _ in range(num_task_workers):
-            self._add_task_worker()
-        return self
-
-    def _add_task_worker(self):
-        runtime = self
-        worker_idx = len(self._task_pool)
-        wid = PyWorkerID.py_from_random()
-        worker = PyCoreWorker(
-            0, "127.0.0.1", self.cluster.gcs_address(), 1,
-            worker_id=wid, node_id=self.cluster.node_id(),
-        )
-
-        def callback(method, raw_args, num_returns=1):
-            runtime._task_call_counts[worker_idx] += 1
-            func = runtime._func_registry[method]
-            deserialized = [pickle.loads(a) for a in raw_args]
-            return pickle.dumps(func(*deserialized))
-
-        worker.set_task_callback(callback)
-        port = worker.start_grpc_server()
-
-        task_driver = PyCoreWorker(
-            1, "127.0.0.1", self.cluster.gcs_address(), 1,
-            node_id=self.cluster.node_id(),
-        )
-        task_driver.setup_task_dispatch("127.0.0.1", port, wid)
-        self._task_pool.append((worker, wid, port, task_driver))
-
-    def _pick_task_worker(self):
-        idx = self._next_worker % len(self._task_pool)
-        self._next_worker += 1
-        return self._task_pool[idx]
-
-    # ── Decorator ───────────────────────────────────────────────────
-
-    def remote(self, func_or_class=None, **_options):
-        """@ray.remote decorator for functions and classes."""
-        def decorator(target):
-            if isinstance(target, type):
-                return _RemoteClass(target, self)
-            self._func_registry[target.__name__] = target
-            return _RemoteFunction(target, self)
-        if func_or_class is not None:
-            return decorator(func_or_class)
-        return decorator
-
-    # ── Object store ────────────────────────────────────────────────
-
-    def put(self, obj):
-        data = pickle.dumps(obj)
-        oid = self.driver.put(data, b"pickle")
-        return ObjectRef(oid.binary(), self.driver)
-
-    def get(self, refs, timeout_ms=10000):
-        single = isinstance(refs, ObjectRef)
-        if single:
-            refs = [refs]
-        by_owner = {}
-        for i, ref in enumerate(refs):
-            key = id(ref._owner)
-            by_owner.setdefault(key, (ref._owner, []))[1].append((i, ref))
-        results = [None] * len(refs)
-        for owner, items in by_owner.values():
-            binaries = [ref._binary for _, ref in items]
-            raw = owner.get(binaries, timeout_ms)
-            for (idx, _), r in zip(items, raw):
-                if r is not None:
-                    results[idx] = pickle.loads(r[0])
-        return results[0] if single else results
-
-    def wait(self, refs, num_returns=1, timeout_ms=10000):
-        by_owner = {}
-        for ref in refs:
-            key = id(ref._owner)
-            by_owner.setdefault(key, (ref._owner, []))[1].append(ref)
-        ready, remaining = [], []
-        for owner, items in by_owner.values():
-            binaries = [ref._binary for ref in items]
-            flags = owner.wait(binaries, len(binaries), timeout_ms)
-            for ref, flag in zip(items, flags):
-                (ready if flag else remaining).append(ref)
-        if len(ready) > num_returns:
-            remaining.extend(ready[num_returns:])
-            ready = ready[:num_returns]
-        return ready, remaining
-
-
-ray = _RayRuntime()
+import ray
 
 # ═══════════════════════════════════════════════════════════════════════
 # Initialise cluster
@@ -247,14 +22,13 @@ ray = _RayRuntime()
 
 print("=" * 70)
 print("  Complex Ray Application — Distributed Financial Stats Pipeline")
-print("  Using @ray.remote decorators on the Rust backend")
+print("  Using import ray + @ray.remote on the Rust backend")
 print("=" * 70)
 print()
 
 ray.init(num_task_workers=4)
-print(f"  GCS:          {ray.cluster.gcs_address()}")
-print(f"  Node:         {ray.cluster.node_id().hex()[:16]}")
-print(f"  Task workers: {len(ray._task_pool)}")
+print(f"  ray.is_initialized() = {ray.is_initialized()}")
+print(f"  Task workers: {len(ray._runtime._task_pool)}")
 print()
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -502,7 +276,7 @@ while pending:
 assert len(completed_stats) == NUM_PARTITIONS
 ray.get(monitor.record_stage.remote("compute_stats", "complete"))
 print(f"  All {NUM_PARTITIONS} partitions computed")
-print(f"  Worker load: {ray._task_call_counts}")
+print(f"  Worker load: {ray._runtime._task_call_counts}")
 print()
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -652,21 +426,22 @@ check("Pipeline stages", len(report["stages"]), 6)
 check("All validations passed", valid_count, 10)
 check("Normalized partition size", len(normalized), partition_size)
 
-total_tasks = sum(ray._task_call_counts)
+total_tasks = sum(ray._runtime._task_call_counts)
 check("Total task calls", total_tasks, NUM_PARTITIONS + 10 + 1)
 
-# GCS named actor lookups
-found = ray.gcs.get_named_actor("DataStore_1", "app")
-assert found is not None, "DataStore_1 not found via GCS"
-print("  OK   GCS lookup: DataStore_1 found")
+# GCS named actor lookups via ray.get_actor
+ds_handle = ray.get_actor("DataStore_1")
+print(f"  OK   ray.get_actor('DataStore_1') -> {ds_handle}")
 
-found = ray.gcs.get_named_actor("Reducer_3", "app")
-assert found is not None, "Reducer_3 not found via GCS"
-print("  OK   GCS lookup: Reducer_3 found")
+reducer_handle = ray.get_actor("Reducer_3")
+print(f"  OK   ray.get_actor('Reducer_3') -> {reducer_handle}")
 
-not_found = ray.gcs.get_named_actor("Ghost", "app")
-assert not_found is None, "Ghost actor should not exist"
-print("  OK   GCS lookup: Ghost -> None")
+try:
+    ray.get_actor("Ghost")
+    errors.append("Ghost actor should not exist")
+    print("  FAIL ray.get_actor('Ghost') did not raise")
+except ValueError:
+    print("  OK   ray.get_actor('Ghost') -> ValueError")
 
 print()
 print("=" * 70)
@@ -678,9 +453,9 @@ else:
     print("  ALL VERIFICATIONS PASSED")
 print("=" * 70)
 print()
-print(f"  Task workers:  {len(ray._task_pool)} (shared pool)")
+print(f"  Task workers:  {len(ray._runtime._task_pool)} (shared pool)")
 print(f"  Actors:        4 (DataStore, ProgressMonitor, Reducer, FraudDetector)")
-print(f"  Task calls:    {total_tasks} (per-worker: {ray._task_call_counts})")
+print(f"  Task calls:    {total_tasks} (per-worker: {ray._runtime._task_call_counts})")
 print(f"  ray.put():     7 calls")
 print(f"  ray.get():     30+ calls")
 print(f"  ray.wait():    3 calls (stats, validation, batch objects)")
@@ -688,4 +463,5 @@ print(f"  Transactions:  {NUM_TRANSACTIONS}")
 print(f"  Fraud flagged: {fraud_summary['total_flagged']}")
 print()
 
+ray.shutdown()
 exit(0 if not errors else 1)
