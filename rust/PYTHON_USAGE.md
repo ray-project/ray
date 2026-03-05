@@ -114,18 +114,20 @@ files) and installs the resulting `_raylet.cpython-*.so` into the venv's
 ```bash
 cd /Users/istoica/src/ray/rust
 source .venv/bin/activate
-python my_program.py
+PYTHONPATH=. python examples/python/my_program.py
 ```
 
-The working directory must be `/Users/istoica/src/ray/rust/` so that
-`import ray` finds the `ray/` package there.
+`PYTHONPATH=.` tells Python to look for packages in the current directory,
+which is needed so that `import ray` finds the `ray/` package in the `rust/`
+directory. Always run from the `rust/` directory.
 
 ### Example -- run the existing demos
 
 ```bash
+cd /Users/istoica/src/ray/rust
 source .venv/bin/activate
-python complex_app.py            # 7-stage financial pipeline, 18 verifications
-python run_all_doc_examples.py   # 59 doc examples, full test suite
+PYTHONPATH=. python examples/python/complex_app.py            # 7-stage financial pipeline, 18 verifications
+PYTHONPATH=. python examples/python/run_all_doc_examples.py   # 59 doc examples, full test suite
 ```
 
 ### Rebuilding after Rust changes
@@ -175,3 +177,4 @@ Rust services.
 | `ray-core-worker-pylib/pyproject.toml` | Maturin build configuration |
 | `Cargo.toml` | Workspace root -- all 17 crates |
 | `ray-proto/build.rs` | Protobuf codegen (35 `.proto` files) |
+| `examples/python/` | Python example programs |
