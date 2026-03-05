@@ -392,4 +392,130 @@ mod tests {
             PlacementGroupState::Removed
         );
     }
+
+    #[tokio::test]
+    async fn test_duplicate_named_placement_group() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        mgr.handle_create_placement_group(make_pg(1, "dup_pg"))
+            .await
+            .unwrap();
+        let result = mgr.handle_create_placement_group(make_pg(2, "dup_pg")).await;
+        assert!(result.is_err()); // AlreadyExists
+    }
+
+    #[tokio::test]
+    async fn test_same_name_different_namespace_allowed() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        let mut pg1 = make_pg(1, "shared_name");
+        pg1.ray_namespace = "ns1".to_string();
+        mgr.handle_create_placement_group(pg1).await.unwrap();
+
+        let mut pg2 = make_pg(2, "shared_name");
+        pg2.ray_namespace = "ns2".to_string();
+        mgr.handle_create_placement_group(pg2).await.unwrap();
+
+        assert_eq!(mgr.num_placement_groups(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_placement_groups_with_limit() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        for i in 1..=5u8 {
+            mgr.handle_create_placement_group(make_pg(i, &format!("pg_{}", i)))
+                .await
+                .unwrap();
+        }
+
+        let all = mgr.handle_get_all_placement_groups(None);
+        assert_eq!(all.len(), 5);
+
+        let limited = mgr.handle_get_all_placement_groups(Some(3));
+        assert_eq!(limited.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_state_counts_tracking() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        // Create pending PG
+        mgr.handle_create_placement_group(make_pg(1, "pg1"))
+            .await
+            .unwrap();
+        let counts = mgr.state_counts();
+        assert_eq!(*counts.get(&PlacementGroupState::Pending).unwrap_or(&0), 1);
+
+        // Create a "Created" PG
+        let mut pg2 = make_pg(2, "pg2");
+        pg2.state = PlacementGroupState::Created as i32;
+        mgr.handle_create_placement_group(pg2).await.unwrap();
+
+        let counts = mgr.state_counts();
+        assert_eq!(*counts.get(&PlacementGroupState::Created).unwrap_or(&0), 1);
+
+        // Remove pg1 — Pending count should decrement
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        mgr.handle_remove_placement_group(&pg_id).await.unwrap();
+
+        let counts = mgr.state_counts();
+        assert_eq!(*counts.get(&PlacementGroupState::Pending).unwrap_or(&0), 0);
+    }
+
+    #[tokio::test]
+    async fn test_unnamed_placement_group() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        // Unnamed PGs should not be findable by name
+        let pg = make_pg(1, "");
+        mgr.handle_create_placement_group(pg).await.unwrap();
+        assert_eq!(mgr.num_placement_groups(), 1);
+
+        assert!(mgr
+            .handle_get_named_placement_group("", "default")
+            .is_none());
+
+        // But should be findable by ID
+        let mut pg_id = [0u8; 18];
+        pg_id[0] = 1;
+        assert!(mgr.handle_get_placement_group(&pg_id).is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_placement_group() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsPlacementGroupManager::new(storage);
+
+        let pg_id = [0u8; 18];
+        assert!(mgr.handle_get_placement_group(&pg_id).is_none());
+        assert!(mgr
+            .handle_get_named_placement_group("nope", "default")
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn test_placement_group_state_conversion() {
+        assert_eq!(PlacementGroupState::from(0), PlacementGroupState::Pending);
+        assert_eq!(PlacementGroupState::from(1), PlacementGroupState::Created);
+        assert_eq!(PlacementGroupState::from(2), PlacementGroupState::Removed);
+        assert_eq!(
+            PlacementGroupState::from(3),
+            PlacementGroupState::Rescheduling
+        );
+        // Unknown values default to Removed
+        assert_eq!(PlacementGroupState::from(99), PlacementGroupState::Removed);
+    }
 }

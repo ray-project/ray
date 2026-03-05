@@ -1145,8 +1145,42 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::autoscaler_state_manager::GcsAutoscalerStateManager;
+    use crate::pubsub_handler::InternalPubSubHandler;
+    use crate::resource_manager::GcsResourceManager;
     use crate::store_client::{InMemoryInternalKV, InMemoryStoreClient};
     use crate::table_storage::GcsTableStorage;
+    use crate::task_manager::GcsTaskManager;
+
+    // ─── Helpers ───────────────────────────────────────────────────────
+
+    fn make_store() -> (Arc<InMemoryStoreClient>, Arc<GcsTableStorage>) {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store.clone()));
+        (store, storage)
+    }
+
+    fn make_node_info(id: u8) -> rpc::GcsNodeInfo {
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = id;
+        rpc::GcsNodeInfo {
+            node_id,
+            node_name: format!("node-{}", id),
+            node_manager_address: "127.0.0.1".to_string(),
+            node_manager_port: 10000 + id as i32,
+            object_manager_port: 20000 + id as i32,
+            state: 0, // ALIVE
+            ..Default::default()
+        }
+    }
+
+    fn node_id_bytes(id: u8) -> Vec<u8> {
+        let mut v = vec![0u8; 28];
+        v[0] = id;
+        v
+    }
+
+    // ─── KV Service ────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_kv_grpc_service() {
@@ -1185,9 +1219,168 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_kv_grpc_get_not_found() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let kv_manager = Arc::new(GcsInternalKVManager::new(kv, "cfg".into()));
+        let svc = InternalKVGcsServiceImpl { kv_manager };
+
+        let reply = svc
+            .internal_kv_get(rpc::InternalKvGetRequest {
+                namespace: b"ns".to_vec(),
+                key: b"missing".to_vec(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        // Should return NotFound status (code 17)
+        assert!(reply.status.is_some());
+        assert_eq!(reply.status.unwrap().code, 17);
+    }
+
+    #[tokio::test]
+    async fn test_kv_grpc_del() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let kv_manager = Arc::new(GcsInternalKVManager::new(kv, "cfg".into()));
+        let svc = InternalKVGcsServiceImpl { kv_manager };
+
+        // Put two keys
+        svc.internal_kv_put(rpc::InternalKvPutRequest {
+            namespace: b"ns".to_vec(),
+            key: b"k1".to_vec(),
+            value: b"v1".to_vec(),
+            overwrite: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        svc.internal_kv_put(rpc::InternalKvPutRequest {
+            namespace: b"ns".to_vec(),
+            key: b"k2".to_vec(),
+            value: b"v2".to_vec(),
+            overwrite: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Delete one
+        let reply = svc
+            .internal_kv_del(rpc::InternalKvDelRequest {
+                namespace: b"ns".to_vec(),
+                key: b"k1".to_vec(),
+                del_by_prefix: false,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(reply.deleted_num, 1);
+
+        // k1 gone, k2 still there
+        let reply = svc
+            .internal_kv_exists(rpc::InternalKvExistsRequest {
+                namespace: b"ns".to_vec(),
+                key: b"k1".to_vec(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(!reply.exists);
+        let reply = svc
+            .internal_kv_exists(rpc::InternalKvExistsRequest {
+                namespace: b"ns".to_vec(),
+                key: b"k2".to_vec(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(reply.exists);
+    }
+
+    #[tokio::test]
+    async fn test_kv_grpc_keys() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let kv_manager = Arc::new(GcsInternalKVManager::new(kv, "cfg".into()));
+        let svc = InternalKVGcsServiceImpl { kv_manager };
+
+        for i in 0..3 {
+            svc.internal_kv_put(rpc::InternalKvPutRequest {
+                namespace: b"ns".to_vec(),
+                key: format!("prefix/{}", i).into_bytes(),
+                value: b"v".to_vec(),
+                overwrite: true,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+        svc.internal_kv_put(rpc::InternalKvPutRequest {
+            namespace: b"ns".to_vec(),
+            key: b"other".to_vec(),
+            value: b"v".to_vec(),
+            overwrite: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let reply = svc
+            .internal_kv_keys(rpc::InternalKvKeysRequest {
+                namespace: b"ns".to_vec(),
+                prefix: b"prefix/".to_vec(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(reply.results.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_kv_grpc_multi_get() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let kv_manager = Arc::new(GcsInternalKVManager::new(kv, "cfg".into()));
+        let svc = InternalKVGcsServiceImpl {
+            kv_manager: kv_manager.clone(),
+        };
+
+        // Put two keys
+        kv_manager
+            .handle_put(b"ns", b"a", b"1".to_vec(), true)
+            .await
+            .unwrap();
+        kv_manager
+            .handle_put(b"ns", b"b", b"2".to_vec(), true)
+            .await
+            .unwrap();
+
+        // Multi-get via tonic trait
+        use rpc::internal_kv_gcs_service_server::InternalKvGcsService;
+        let reply = svc
+            .internal_kv_multi_get(Request::new(rpc::InternalKvMultiGetRequest {
+                namespace: b"ns".to_vec(),
+                keys: vec![b"a".to_vec(), b"b".to_vec(), b"missing".to_vec()],
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_kv_grpc_get_internal_config() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let kv_manager = Arc::new(GcsInternalKVManager::new(kv, "my_config_data".into()));
+        let svc = InternalKVGcsServiceImpl { kv_manager };
+
+        let reply = svc.get_internal_config().unwrap();
+        assert_eq!(reply.config, "my_config_data");
+    }
+
+    // ─── Job Service ───────────────────────────────────────────────────
+
+    #[tokio::test]
     async fn test_job_grpc_service() {
-        let store = Arc::new(InMemoryStoreClient::new());
-        let storage = Arc::new(GcsTableStorage::new(store));
+        let (_, storage) = make_store();
         let job_manager = Arc::new(GcsJobManager::new(storage));
         let svc = JobInfoGcsServiceImpl { job_manager };
 
@@ -1203,5 +1396,1034 @@ mod tests {
         let get_req = rpc::GetAllJobInfoRequest::default();
         let reply = svc.get_all_job_info(get_req).unwrap();
         assert_eq!(reply.job_info_list.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_job_grpc_mark_finished() {
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let svc = JobInfoGcsServiceImpl {
+            job_manager: job_manager.clone(),
+        };
+
+        svc.add_job(rpc::AddJobRequest {
+            data: Some(rpc::JobTableData {
+                job_id: vec![1, 0, 0, 0],
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        svc.mark_job_finished(rpc::MarkJobFinishedRequest {
+            job_id: vec![1, 0, 0, 0],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(job_manager.num_running_jobs(), 0);
+        assert_eq!(job_manager.finished_jobs_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_job_grpc_get_next_job_id() {
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let svc = JobInfoGcsServiceImpl { job_manager };
+
+        let reply1 = svc.get_next_job_id().await.unwrap();
+        let reply2 = svc.get_next_job_id().await.unwrap();
+        assert_eq!(reply2.job_id, reply1.job_id + 1);
+    }
+
+    #[tokio::test]
+    async fn test_job_grpc_get_all_with_limit() {
+        let (_, storage) = make_store();
+        let job_manager = Arc::new(GcsJobManager::new(storage));
+        let svc = JobInfoGcsServiceImpl { job_manager };
+
+        for i in 1..=5u8 {
+            svc.add_job(rpc::AddJobRequest {
+                data: Some(rpc::JobTableData {
+                    job_id: vec![i, 0, 0, 0],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+
+        let reply = svc
+            .get_all_job_info(rpc::GetAllJobInfoRequest {
+                limit: Some(3),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(reply.job_info_list.len(), 3);
+    }
+
+    // ─── Node Service ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_node_grpc_register_and_get_all() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        svc.register_node(rpc::RegisterNodeRequest {
+            node_info: Some(make_node_info(1)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        svc.register_node(rpc::RegisterNodeRequest {
+            node_info: Some(make_node_info(2)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let reply = svc.get_all_node_info().unwrap();
+        assert_eq!(reply.node_info_list.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_node_grpc_unregister() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        svc.register_node(rpc::RegisterNodeRequest {
+            node_info: Some(make_node_info(1)),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        svc.unregister_node(rpc::UnregisterNodeRequest {
+            node_id: node_id_bytes(1),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        // Should still appear in get_all (alive + dead)
+        let reply = svc.get_all_node_info().unwrap();
+        assert_eq!(reply.node_info_list.len(), 1);
+        assert_eq!(reply.node_info_list[0].state, 1); // DEAD
+    }
+
+    #[tokio::test]
+    async fn test_node_grpc_get_cluster_id() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        let cluster_id = vec![42u8; 28];
+        node_manager.set_cluster_id(cluster_id.clone());
+
+        let reply = svc.get_cluster_id().unwrap();
+        assert_eq!(reply.cluster_id, cluster_id);
+    }
+
+    #[tokio::test]
+    async fn test_node_grpc_check_alive() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        let reply = svc
+            .check_alive(Request::new(rpc::CheckAliveRequest {
+                node_ids: vec![node_id_bytes(1), node_id_bytes(99)],
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.raylet_alive.len(), 2);
+        assert!(reply.raylet_alive[0]); // node 1 alive
+        assert!(!reply.raylet_alive[1]); // node 99 not registered
+        assert!(!reply.ray_version.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_node_grpc_drain_node() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        let reply = svc
+            .drain_node(Request::new(rpc::DrainNodeRequest {
+                drain_node_data: vec![rpc::DrainNodeData {
+                    node_id: node_id_bytes(1),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.drain_node_status.len(), 1);
+        assert_eq!(reply.drain_node_status[0].node_id, node_id_bytes(1));
+    }
+
+    #[tokio::test]
+    async fn test_node_grpc_get_all_address_and_liveness() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let svc = NodeInfoGcsServiceImpl {
+            node_manager: node_manager.clone(),
+        };
+
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        use rpc::node_info_gcs_service_server::NodeInfoGcsService;
+        let reply = svc
+            .get_all_node_address_and_liveness(Request::new(
+                rpc::GetAllNodeAddressAndLivenessRequest::default(),
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.node_info_list.len(), 1);
+        assert_eq!(reply.node_info_list[0].node_manager_port, 10001);
+        assert_eq!(reply.node_info_list[0].state, 0); // ALIVE
+    }
+
+    // ─── Actor Service ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_actor_grpc_register_and_get() {
+        let (_, storage) = make_store();
+        let actor_manager = Arc::new(GcsActorManager::new(storage));
+        let svc = ActorInfoGcsServiceImpl {
+            actor_manager: actor_manager.clone(),
+        };
+
+        let mut actor_id = vec![0u8; 16];
+        actor_id[0] = 1;
+        svc.register_actor(rpc::RegisterActorRequest {
+            task_spec: Some(rpc::TaskSpec {
+                actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                    actor_id: actor_id.clone(),
+                    name: "my_actor".to_string(),
+                    ray_namespace: "default".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_actor_info(rpc::GetActorInfoRequest {
+                actor_id: actor_id.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(reply.actor_table_data.is_some());
+        assert_eq!(reply.actor_table_data.unwrap().name, "my_actor");
+    }
+
+    #[tokio::test]
+    async fn test_actor_grpc_get_named_actor_info() {
+        let (_, storage) = make_store();
+        let actor_manager = Arc::new(GcsActorManager::new(storage));
+        let svc = ActorInfoGcsServiceImpl {
+            actor_manager: actor_manager.clone(),
+        };
+
+        let mut actor_id = vec![0u8; 16];
+        actor_id[0] = 1;
+        svc.register_actor(rpc::RegisterActorRequest {
+            task_spec: Some(rpc::TaskSpec {
+                actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                    actor_id,
+                    name: "named".to_string(),
+                    ray_namespace: "ns1".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_named_actor_info(rpc::GetNamedActorInfoRequest {
+                name: "named".to_string(),
+                ray_namespace: "ns1".to_string(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(reply.actor_table_data.is_some());
+
+        // Different namespace should not find it
+        let reply = svc
+            .get_named_actor_info(rpc::GetNamedActorInfoRequest {
+                name: "named".to_string(),
+                ray_namespace: "ns2".to_string(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(reply.actor_table_data.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_actor_grpc_list_named_actors() {
+        let (_, storage) = make_store();
+        let actor_manager = Arc::new(GcsActorManager::new(storage));
+        let svc = ActorInfoGcsServiceImpl {
+            actor_manager: actor_manager.clone(),
+        };
+
+        for i in 1..=3u8 {
+            let mut aid = vec![0u8; 16];
+            aid[0] = i;
+            svc.register_actor(rpc::RegisterActorRequest {
+                task_spec: Some(rpc::TaskSpec {
+                    actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                        actor_id: aid,
+                        name: format!("actor_{}", i),
+                        ray_namespace: "default".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+
+        use rpc::actor_info_gcs_service_server::ActorInfoGcsService;
+        let reply = svc
+            .list_named_actors(Request::new(rpc::ListNamedActorsRequest {
+                ray_namespace: "default".to_string(),
+                all_namespaces: false,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.named_actors_list.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_actor_grpc_get_all_actor_info() {
+        let (_, storage) = make_store();
+        let actor_manager = Arc::new(GcsActorManager::new(storage));
+        let svc = ActorInfoGcsServiceImpl {
+            actor_manager: actor_manager.clone(),
+        };
+
+        for i in 1..=4u8 {
+            let mut aid = vec![0u8; 16];
+            aid[0] = i;
+            svc.register_actor(rpc::RegisterActorRequest {
+                task_spec: Some(rpc::TaskSpec {
+                    actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                        actor_id: aid,
+                        name: format!("a{}", i),
+                        ray_namespace: "default".to_string(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        }
+
+        let reply = svc
+            .get_all_actor_info(rpc::GetAllActorInfoRequest::default())
+            .unwrap();
+        assert_eq!(reply.actor_table_data.len(), 4);
+
+        // With limit
+        let reply = svc
+            .get_all_actor_info(rpc::GetAllActorInfoRequest {
+                limit: Some(2),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(reply.actor_table_data.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_actor_grpc_kill_actor() {
+        let (_, storage) = make_store();
+        let actor_manager = Arc::new(GcsActorManager::new(storage));
+        let svc = ActorInfoGcsServiceImpl {
+            actor_manager: actor_manager.clone(),
+        };
+
+        let mut actor_id = vec![0u8; 16];
+        actor_id[0] = 1;
+        svc.register_actor(rpc::RegisterActorRequest {
+            task_spec: Some(rpc::TaskSpec {
+                actor_creation_task_spec: Some(rpc::ActorCreationTaskSpec {
+                    actor_id: actor_id.clone(),
+                    name: "killme".to_string(),
+                    ray_namespace: "default".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        svc.kill_actor_via_gcs(rpc::KillActorViaGcsRequest {
+            actor_id: actor_id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(actor_manager.num_registered_actors(), 0);
+    }
+
+    // ─── Worker Service ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_worker_grpc_add_and_get_all() {
+        let (_, storage) = make_store();
+        let worker_manager = Arc::new(GcsWorkerManager::new(storage));
+        let svc = WorkerInfoGcsServiceImpl {
+            worker_manager: worker_manager.clone(),
+        };
+
+        use rpc::worker_info_gcs_service_server::WorkerInfoGcsService;
+        svc.add_worker_info(Request::new(rpc::AddWorkerInfoRequest {
+            worker_data: Some(rpc::WorkerTableData {
+                worker_address: Some(rpc::Address {
+                    worker_id: vec![1, 2, 3],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_all_worker_info(Request::new(rpc::GetAllWorkerInfoRequest::default()))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.worker_table_data.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_worker_grpc_report_failure() {
+        let (_, storage) = make_store();
+        let worker_manager = Arc::new(GcsWorkerManager::new(storage));
+        let svc = WorkerInfoGcsServiceImpl {
+            worker_manager: worker_manager.clone(),
+        };
+
+        use rpc::worker_info_gcs_service_server::WorkerInfoGcsService;
+        svc.report_worker_failure(Request::new(rpc::ReportWorkerFailureRequest {
+            worker_failure: Some(rpc::WorkerTableData {
+                worker_address: Some(rpc::Address {
+                    worker_id: vec![1],
+                    ..Default::default()
+                }),
+                exit_type: Some(4), // SYSTEM_ERROR
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        assert_eq!(worker_manager.system_error_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_worker_grpc_get_all_with_limit() {
+        let (_, storage) = make_store();
+        let worker_manager = Arc::new(GcsWorkerManager::new(storage));
+        let svc = WorkerInfoGcsServiceImpl {
+            worker_manager: worker_manager.clone(),
+        };
+
+        use rpc::worker_info_gcs_service_server::WorkerInfoGcsService;
+        for i in 1..=5u8 {
+            svc.add_worker_info(Request::new(rpc::AddWorkerInfoRequest {
+                worker_data: Some(rpc::WorkerTableData {
+                    worker_address: Some(rpc::Address {
+                        worker_id: vec![i],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        }
+
+        let reply = svc
+            .get_all_worker_info(Request::new(rpc::GetAllWorkerInfoRequest {
+                limit: Some(3),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.worker_table_data.len(), 3);
+    }
+
+    // ─── Placement Group Service ───────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_pg_grpc_create_and_get() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 1;
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "my_pg".to_string(),
+                strategy: 0, // PACK
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_placement_group(Request::new(rpc::GetPlacementGroupRequest {
+                placement_group_id: pg_id.clone(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.placement_group_table_data.is_some());
+        assert_eq!(reply.placement_group_table_data.unwrap().name, "my_pg");
+    }
+
+    #[tokio::test]
+    async fn test_pg_grpc_get_named() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 1;
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "named_pg".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_named_placement_group(Request::new(rpc::GetNamedPlacementGroupRequest {
+                name: "named_pg".to_string(),
+                ray_namespace: String::new(), // default namespace since spec doesn't have ray_namespace
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.placement_group_table_data.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_pg_grpc_remove() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 1;
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "removeme".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        svc.remove_placement_group(Request::new(rpc::RemovePlacementGroupRequest {
+            placement_group_id: pg_id.clone(),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        assert_eq!(pg_manager.num_placement_groups(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pg_grpc_get_all_with_limit() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        for i in 1..=4u8 {
+            let mut pg_id = vec![0u8; 18];
+            pg_id[0] = i;
+            svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+                placement_group_spec: Some(rpc::PlacementGroupSpec {
+                    placement_group_id: pg_id,
+                    name: format!("pg_{}", i),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        }
+
+        let reply = svc
+            .get_all_placement_group(Request::new(rpc::GetAllPlacementGroupRequest {
+                limit: Some(2),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.placement_group_table_data.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_pg_grpc_wait_until_ready() {
+        let (_, storage) = make_store();
+        let pg_manager = Arc::new(GcsPlacementGroupManager::new(storage));
+        let svc = PlacementGroupInfoGcsServiceImpl {
+            placement_group_manager: pg_manager.clone(),
+        };
+
+        let mut pg_id = vec![0u8; 18];
+        pg_id[0] = 1;
+
+        use rpc::placement_group_info_gcs_service_server::PlacementGroupInfoGcsService;
+        // PG is created with state=1 (Created) by the service handler
+        svc.create_placement_group(Request::new(rpc::CreatePlacementGroupRequest {
+            placement_group_spec: Some(rpc::PlacementGroupSpec {
+                placement_group_id: pg_id.clone(),
+                name: "ready_pg".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .wait_placement_group_until_ready(Request::new(
+                rpc::WaitPlacementGroupUntilReadyRequest {
+                    placement_group_id: pg_id.clone(),
+                    ..Default::default()
+                },
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        // State 1 = Created = ready
+        assert!(reply.status.is_some());
+        assert_eq!(reply.status.unwrap().code, 0); // ready
+
+        // Non-existent PG should not be ready
+        let reply = svc
+            .wait_placement_group_until_ready(Request::new(
+                rpc::WaitPlacementGroupUntilReadyRequest {
+                    placement_group_id: vec![0u8; 18],
+                    ..Default::default()
+                },
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.status.is_some());
+        assert_eq!(reply.status.unwrap().code, 1); // not ready
+    }
+
+    // ─── Resource Service ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_resource_grpc_get_all_resources() {
+        let resource_manager = Arc::new(GcsResourceManager::new());
+        let svc = NodeResourceInfoGcsServiceImpl {
+            resource_manager: resource_manager.clone(),
+        };
+
+        let nid = ray_common::id::NodeID::from_binary(&{
+            let mut v = [0u8; 28];
+            v[0] = 1;
+            v
+        });
+        resource_manager.on_node_add(&nid);
+        resource_manager.update_resource_usage(
+            &nid,
+            crate::resource_manager::NodeResourceUsage {
+                total_resources: [("CPU".to_string(), 8.0)].into_iter().collect(),
+                available_resources: [("CPU".to_string(), 4.0)].into_iter().collect(),
+                ..Default::default()
+            },
+        );
+
+        use rpc::node_resource_info_gcs_service_server::NodeResourceInfoGcsService;
+        let reply = svc
+            .get_all_available_resources(Request::new(
+                rpc::GetAllAvailableResourcesRequest::default(),
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.resources_list.len(), 1);
+        assert!(reply.resources_list[0]
+            .resources_available
+            .contains_key("CPU"));
+
+        let reply = svc
+            .get_all_total_resources(Request::new(rpc::GetAllTotalResourcesRequest::default()))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.resources_list.len(), 1);
+        assert_eq!(*reply.resources_list[0].resources_total.get("CPU").unwrap(), 8.0);
+    }
+
+    #[tokio::test]
+    async fn test_resource_grpc_get_all_resource_usage() {
+        let resource_manager = Arc::new(GcsResourceManager::new());
+        let svc = NodeResourceInfoGcsServiceImpl {
+            resource_manager: resource_manager.clone(),
+        };
+
+        use rpc::node_resource_info_gcs_service_server::NodeResourceInfoGcsService;
+        let reply = svc
+            .get_all_resource_usage(Request::new(rpc::GetAllResourceUsageRequest::default()))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.resource_usage_data.is_some());
+        assert!(reply.resource_usage_data.unwrap().batch.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resource_grpc_get_draining_nodes() {
+        let resource_manager = Arc::new(GcsResourceManager::new());
+        let svc = NodeResourceInfoGcsServiceImpl {
+            resource_manager: resource_manager.clone(),
+        };
+
+        let nid = ray_common::id::NodeID::from_binary(&{
+            let mut v = [0u8; 28];
+            v[0] = 1;
+            v
+        });
+        resource_manager.on_node_add(&nid);
+        resource_manager.set_node_draining(&nid, true, 0);
+
+        use rpc::node_resource_info_gcs_service_server::NodeResourceInfoGcsService;
+        let reply = svc
+            .get_draining_nodes(Request::new(rpc::GetDrainingNodesRequest::default()))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.draining_nodes.len(), 1);
+    }
+
+    // ─── PubSub Service ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_pubsub_grpc_subscribe_and_poll() {
+        let pubsub_handler = Arc::new(InternalPubSubHandler::new());
+        let svc = InternalPubSubGcsServiceImpl {
+            pubsub_handler: pubsub_handler.clone(),
+            publisher_id: vec![1u8; 28],
+        };
+
+        use rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService;
+
+        // Subscribe
+        svc.gcs_subscriber_command_batch(Request::new(
+            rpc::GcsSubscriberCommandBatchRequest {
+                subscriber_id: b"sub1".to_vec(),
+                commands: vec![rpc::Command {
+                    channel_type: 1, // some channel
+                    key_id: vec![],
+                    command_message_one_of: Some(
+                        rpc::command::CommandMessageOneOf::SubscribeMessage(
+                            rpc::SubMessage {
+                                sub_message_one_of: None,
+                            },
+                        ),
+                    ),
+                }],
+                ..Default::default()
+            },
+        ))
+        .await
+        .unwrap();
+
+        // Publish
+        svc.gcs_publish(Request::new(rpc::GcsPublishRequest {
+            pub_messages: vec![rpc::PubMessage {
+                channel_type: 1,
+                key_id: b"test_key".to_vec(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        // Poll
+        let reply = svc
+            .gcs_subscriber_poll(Request::new(rpc::GcsSubscriberPollRequest {
+                subscriber_id: b"sub1".to_vec(),
+                max_processed_sequence_id: 0,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.publisher_id, vec![1u8; 28]);
+        // Messages may or may not be available depending on channel match
+    }
+
+    #[tokio::test]
+    async fn test_pubsub_grpc_unsubscribe() {
+        let pubsub_handler = Arc::new(InternalPubSubHandler::new());
+        let svc = InternalPubSubGcsServiceImpl {
+            pubsub_handler: pubsub_handler.clone(),
+            publisher_id: vec![1u8; 28],
+        };
+
+        use rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService;
+
+        // Subscribe then unsubscribe
+        svc.gcs_subscriber_command_batch(Request::new(
+            rpc::GcsSubscriberCommandBatchRequest {
+                subscriber_id: b"sub1".to_vec(),
+                commands: vec![rpc::Command {
+                    channel_type: 1,
+                    key_id: vec![],
+                    command_message_one_of: Some(
+                        rpc::command::CommandMessageOneOf::UnsubscribeMessage(
+                            rpc::UnsubscribeMessage {},
+                        ),
+                    ),
+                }],
+                ..Default::default()
+            },
+        ))
+        .await
+        .unwrap();
+        // Should not panic
+    }
+
+    // ─── Task Service ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_task_grpc_add_and_get_events() {
+        let task_manager = Arc::new(GcsTaskManager::new(None));
+        let svc = TaskInfoGcsServiceImpl {
+            task_manager: task_manager.clone(),
+        };
+
+        let mut task_id = vec![0u8; 24];
+        task_id[0] = 1;
+
+        use rpc::task_info_gcs_service_server::TaskInfoGcsService;
+        svc.add_task_event_data(Request::new(rpc::AddTaskEventDataRequest {
+            data: Some(rpc::TaskEventData {
+                events_by_task: vec![rpc::TaskEvents {
+                    task_id: task_id.clone(),
+                    attempt_number: 0,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .await
+        .unwrap();
+
+        let reply = svc
+            .get_task_events(Request::new(rpc::GetTaskEventsRequest::default()))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.events_by_task.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_task_grpc_get_events_with_limit() {
+        let task_manager = Arc::new(GcsTaskManager::new(None));
+        let svc = TaskInfoGcsServiceImpl {
+            task_manager: task_manager.clone(),
+        };
+
+        use rpc::task_info_gcs_service_server::TaskInfoGcsService;
+        for i in 1..=5u8 {
+            let mut task_id = vec![0u8; 24];
+            task_id[0] = i;
+            svc.add_task_event_data(Request::new(rpc::AddTaskEventDataRequest {
+                data: Some(rpc::TaskEventData {
+                    events_by_task: vec![rpc::TaskEvents {
+                        task_id,
+                        attempt_number: 0,
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }))
+            .await
+            .unwrap();
+        }
+
+        let reply = svc
+            .get_task_events(Request::new(rpc::GetTaskEventsRequest {
+                limit: Some(3),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(reply.events_by_task.len(), 3);
+    }
+
+    // ─── Autoscaler Service ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_autoscaler_grpc_get_cluster_resource_state() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let resource_manager = Arc::new(GcsResourceManager::new());
+        let autoscaler =
+            Arc::new(GcsAutoscalerStateManager::new("test".into(), node_manager.clone(), resource_manager.clone()));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager: autoscaler,
+            node_manager,
+        };
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .get_cluster_resource_state(Request::new(
+                rpc::autoscaler::GetClusterResourceStateRequest::default(),
+            ))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.cluster_resource_state.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_autoscaler_grpc_drain_node() {
+        let (_, storage) = make_store();
+        let node_manager = Arc::new(GcsNodeManager::new(storage));
+        let resource_manager = Arc::new(GcsResourceManager::new());
+        let autoscaler =
+            Arc::new(GcsAutoscalerStateManager::new("test".into(), node_manager.clone(), resource_manager.clone()));
+        let svc = AutoscalerStateServiceImpl {
+            autoscaler_state_manager: autoscaler,
+            node_manager: node_manager.clone(),
+        };
+
+        // Register node first
+        node_manager
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        use rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService;
+        let reply = svc
+            .drain_node(Request::new(rpc::autoscaler::DrainNodeRequest {
+                node_id: node_id_bytes(1),
+                reason: 0,
+                reason_message: "scale down".to_string(),
+                deadline_timestamp_ms: 5000,
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(reply.is_accepted);
+    }
+
+    // ─── Runtime Env Service (stub) ────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_runtime_env_grpc_stub() {
+        let svc = RuntimeEnvGcsServiceImpl;
+
+        use rpc::runtime_env_gcs_service_server::RuntimeEnvGcsService;
+        let reply = svc
+            .pin_runtime_env_uri(Request::new(rpc::PinRuntimeEnvUriRequest::default()))
+            .await
+            .unwrap()
+            .into_inner();
+        // Just verify it doesn't panic and returns default
+        let _ = reply;
     }
 }

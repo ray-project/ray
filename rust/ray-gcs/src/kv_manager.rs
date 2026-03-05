@@ -173,4 +173,123 @@ mod tests {
         let long_key = vec![b'x'; MAX_KEY_LENGTH + 1];
         assert!(GcsInternalKVManager::validate_key(&long_key).is_err());
     }
+
+    #[tokio::test]
+    async fn test_kv_manager_multi_get() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "config".to_string());
+
+        mgr.handle_put(b"ns", b"a", b"1".to_vec(), true)
+            .await
+            .unwrap();
+        mgr.handle_put(b"ns", b"b", b"2".to_vec(), true)
+            .await
+            .unwrap();
+
+        let result = mgr
+            .handle_multi_get(b"ns", &[b"a".to_vec(), b"b".to_vec(), b"missing".to_vec()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[&b"a".to_vec()], b"1");
+        assert_eq!(result[&b"b".to_vec()], b"2");
+    }
+
+    #[tokio::test]
+    async fn test_kv_manager_keys() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "config".to_string());
+
+        mgr.handle_put(b"ns", b"prefix/a", b"1".to_vec(), true)
+            .await
+            .unwrap();
+        mgr.handle_put(b"ns", b"prefix/b", b"2".to_vec(), true)
+            .await
+            .unwrap();
+        mgr.handle_put(b"ns", b"other", b"3".to_vec(), true)
+            .await
+            .unwrap();
+
+        let keys = mgr.handle_keys(b"ns", b"prefix/").await.unwrap();
+        assert_eq!(keys.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_kv_manager_del_by_prefix() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "config".to_string());
+
+        mgr.handle_put(b"ns", b"foo/1", b"a".to_vec(), true)
+            .await
+            .unwrap();
+        mgr.handle_put(b"ns", b"foo/2", b"b".to_vec(), true)
+            .await
+            .unwrap();
+        mgr.handle_put(b"ns", b"bar/1", b"c".to_vec(), true)
+            .await
+            .unwrap();
+
+        let count = mgr.handle_del(b"ns", b"foo/", true).await.unwrap();
+        assert_eq!(count, 2);
+        assert!(!mgr.handle_exists(b"ns", b"foo/1").await.unwrap());
+        assert!(mgr.handle_exists(b"ns", b"bar/1").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_kv_manager_overwrite_behavior() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "config".to_string());
+
+        // First put
+        let added = mgr
+            .handle_put(b"ns", b"key", b"v1".to_vec(), true)
+            .await
+            .unwrap();
+        assert!(added);
+
+        // Overwrite
+        let added = mgr
+            .handle_put(b"ns", b"key", b"v2".to_vec(), true)
+            .await
+            .unwrap();
+        assert!(!added); // already existed
+
+        let val = mgr.handle_get(b"ns", b"key").await.unwrap();
+        assert_eq!(val, Some(b"v2".to_vec()));
+
+        // No overwrite
+        let added = mgr
+            .handle_put(b"ns", b"key", b"v3".to_vec(), false)
+            .await
+            .unwrap();
+        assert!(!added); // not added because already exists
+
+        let val = mgr.handle_get(b"ns", b"key").await.unwrap();
+        assert_eq!(val, Some(b"v2".to_vec())); // unchanged
+    }
+
+    #[tokio::test]
+    async fn test_kv_manager_raylet_config_list() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "my_base64_config".to_string());
+        assert_eq!(mgr.raylet_config_list(), "my_base64_config");
+    }
+
+    #[tokio::test]
+    async fn test_kv_manager_empty_key_rejected() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "config".to_string());
+
+        let result = mgr.handle_get(b"ns", b"").await;
+        assert!(result.is_err());
+
+        let result = mgr.handle_put(b"ns", b"", b"v".to_vec(), true).await;
+        assert!(result.is_err());
+
+        let result = mgr.handle_del(b"ns", b"", false).await;
+        assert!(result.is_err());
+
+        let result = mgr.handle_exists(b"ns", b"").await;
+        assert!(result.is_err());
+    }
 }

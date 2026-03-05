@@ -194,4 +194,126 @@ mod tests {
         assert!(table.delete("j1").await.unwrap());
         assert!(table.get("j1").await.unwrap().is_none());
     }
+
+    #[tokio::test]
+    async fn test_gcs_table_batch_delete() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = GcsTableStorage::new(store);
+        let table = storage.job_table();
+
+        for i in 0..4 {
+            let job = ray_proto::ray::rpc::JobTableData {
+                job_id: vec![i],
+                ..Default::default()
+            };
+            table.put(&format!("j{}", i), &job).await.unwrap();
+        }
+
+        let count = table
+            .batch_delete(&["j0".into(), "j2".into(), "j99".into()])
+            .await
+            .unwrap();
+        assert_eq!(count, 2);
+
+        let all = table.get_all().await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_gcs_table_get_nonexistent() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = GcsTableStorage::new(store);
+        let table = storage.job_table();
+
+        let result = table.get("nonexistent").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_gcs_table_put_overwrite() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = GcsTableStorage::new(store);
+        let table = storage.job_table();
+
+        let job1 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1],
+            is_dead: false,
+            ..Default::default()
+        };
+        table.put("j1", &job1).await.unwrap();
+
+        let job2 = ray_proto::ray::rpc::JobTableData {
+            job_id: vec![1],
+            is_dead: true,
+            ..Default::default()
+        };
+        table.put("j1", &job2).await.unwrap();
+
+        let result = table.get("j1").await.unwrap().unwrap();
+        assert!(result.is_dead);
+    }
+
+    #[tokio::test]
+    async fn test_gcs_table_different_tables_independent() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = GcsTableStorage::new(store);
+
+        let job_table = storage.job_table();
+        let node_table = storage.node_table();
+
+        job_table
+            .put("k1", &ray_proto::ray::rpc::JobTableData::default())
+            .await
+            .unwrap();
+        node_table
+            .put("k1", &ray_proto::ray::rpc::GcsNodeInfo::default())
+            .await
+            .unwrap();
+
+        let jobs = job_table.get_all().await.unwrap();
+        let nodes = node_table.get_all().await.unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(nodes.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_gcs_table_all_table_types() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = GcsTableStorage::new(store);
+
+        // Verify each table type can be created and used
+        storage
+            .job_table()
+            .put("k", &ray_proto::ray::rpc::JobTableData::default())
+            .await
+            .unwrap();
+        storage
+            .node_table()
+            .put("k", &ray_proto::ray::rpc::GcsNodeInfo::default())
+            .await
+            .unwrap();
+        storage
+            .actor_table()
+            .put("k", &ray_proto::ray::rpc::ActorTableData::default())
+            .await
+            .unwrap();
+        storage
+            .actor_task_spec_table()
+            .put("k", &ray_proto::ray::rpc::TaskSpec::default())
+            .await
+            .unwrap();
+        storage
+            .placement_group_table()
+            .put(
+                "k",
+                &ray_proto::ray::rpc::PlacementGroupTableData::default(),
+            )
+            .await
+            .unwrap();
+        storage
+            .worker_table()
+            .put("k", &ray_proto::ray::rpc::WorkerTableData::default())
+            .await
+            .unwrap();
+    }
 }

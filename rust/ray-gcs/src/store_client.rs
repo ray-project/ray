@@ -662,4 +662,141 @@ mod tests {
         let keys = kv.keys(b"ns", b"a/").await.unwrap();
         assert_eq!(keys.len(), 2);
     }
+
+    #[tokio::test]
+    async fn test_in_memory_store_multi_get() {
+        let store = InMemoryStoreClient::new();
+        store.put("T", "a", b"1".to_vec(), true).await.unwrap();
+        store.put("T", "b", b"2".to_vec(), true).await.unwrap();
+        store.put("T", "c", b"3".to_vec(), true).await.unwrap();
+
+        let result = store
+            .multi_get("T", &["a".into(), "c".into(), "missing".into()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result["a"], b"1");
+        assert_eq!(result["c"], b"3");
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_multi_get_empty_table() {
+        let store = InMemoryStoreClient::new();
+        let result = store
+            .multi_get("NoTable", &["a".into()])
+            .await
+            .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_exists() {
+        let store = InMemoryStoreClient::new();
+        assert!(!store.exists("T", "k").await.unwrap());
+        store.put("T", "k", b"v".to_vec(), true).await.unwrap();
+        assert!(store.exists("T", "k").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_overwrite() {
+        let store = InMemoryStoreClient::new();
+        store.put("T", "k", b"v1".to_vec(), true).await.unwrap();
+        let existed = store.put("T", "k", b"v2".to_vec(), true).await.unwrap();
+        assert!(existed);
+        let val = store.get("T", "k").await.unwrap();
+        assert_eq!(val, Some(b"v2".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_get_nonexistent_table() {
+        let store = InMemoryStoreClient::new();
+        let val = store.get("NoTable", "k").await.unwrap();
+        assert!(val.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_get_all_empty() {
+        let store = InMemoryStoreClient::new();
+        let all = store.get_all("NoTable").await.unwrap();
+        assert!(all.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_delete_nonexistent_table() {
+        let store = InMemoryStoreClient::new();
+        assert!(!store.delete("NoTable", "k").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_get_keys_empty_table() {
+        let store = InMemoryStoreClient::new();
+        let keys = store.get_keys("NoTable", "").await.unwrap();
+        assert!(keys.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_kv_multi_get() {
+        let kv = InMemoryInternalKV::new();
+        kv.put(b"ns", b"a", b"1".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"b", b"2".to_vec(), true).await.unwrap();
+
+        let result = kv
+            .multi_get(b"ns", &[b"a".to_vec(), b"b".to_vec(), b"missing".to_vec()])
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[&b"a".to_vec()], b"1");
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_kv_no_overwrite() {
+        let kv = InMemoryInternalKV::new();
+        let added = kv.put(b"ns", b"k", b"v1".to_vec(), true).await.unwrap();
+        assert!(added);
+
+        // no overwrite — should not replace
+        let added = kv.put(b"ns", b"k", b"v2".to_vec(), false).await.unwrap();
+        assert!(!added);
+
+        let val = kv.get(b"ns", b"k").await.unwrap();
+        assert_eq!(val, Some(b"v1".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_kv_del_single() {
+        let kv = InMemoryInternalKV::new();
+        kv.put(b"ns", b"k1", b"v1".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"k2", b"v2".to_vec(), true).await.unwrap();
+
+        let deleted = kv.del(b"ns", b"k1", false).await.unwrap();
+        assert_eq!(deleted, 1);
+
+        let deleted = kv.del(b"ns", b"k1", false).await.unwrap();
+        assert_eq!(deleted, 0); // already gone
+
+        assert!(kv.exists(b"ns", b"k2").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_kv_operations_on_nonexistent_namespace() {
+        let kv = InMemoryInternalKV::new();
+
+        assert!(kv.get(b"nope", b"k").await.unwrap().is_none());
+        assert!(!kv.exists(b"nope", b"k").await.unwrap());
+        assert_eq!(kv.del(b"nope", b"k", false).await.unwrap(), 0);
+        assert!(kv.keys(b"nope", b"").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_store_default() {
+        // Test Default impl
+        let store = InMemoryStoreClient::default();
+        assert_eq!(store.get_next_job_id().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_in_memory_kv_default() {
+        let kv = InMemoryInternalKV::default();
+        assert!(kv.get(b"ns", b"k").await.unwrap().is_none());
+    }
 }
