@@ -515,7 +515,6 @@ class ParquetDatasource(Datasource):
             partition_schema=self._partition_schema,
             projected_columns=self.get_current_projection(),
             tensor_column_schema=self._tensor_column_schema,
-            _block_udf=self._block_udf,
             include_paths=self._include_paths,
         )
 
@@ -757,7 +756,6 @@ class ParquetDatasource(Datasource):
         partition_schema: Optional["pyarrow.Schema"],
         projected_columns: Optional[List[str]],
         tensor_column_schema: Optional[TensorColumnSchema],
-        _block_udf,
         include_paths: bool = False,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
@@ -816,21 +814,6 @@ class ParquetDatasource(Datasource):
                     target_schema = target_schema.set(index_of_name, field)
                 else:
                     target_schema = target_schema.append(field)
-
-        if _block_udf is not None:
-            # Try to infer dataset schema by passing dummy table through UDF.
-            try:
-                # An empty table with extensions will fail for pyarrow==9.0.0
-                dummy_table = target_schema.empty_table()
-                target_schema = _block_udf(dummy_table).schema.with_metadata(
-                    target_schema.metadata
-                )
-            except Exception:
-                logger.debug(
-                    "Failed to infer schema of dataset by passing dummy table "
-                    "through UDF due to the following exception:",
-                    exc_info=True,
-                )
 
         check_for_legacy_tensor_type(target_schema)
 
