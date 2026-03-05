@@ -1,28 +1,15 @@
 """Run all Ray Core doc_code examples on the Rust backend.
 
+Uses ``import ray`` and ``@ray.remote`` decorators — the standard Ray
+Python API backed by the Rust ``_raylet`` extension module.
+
 For each example in ray/doc/source/ray-core/doc_code/:
   - If the example's core logic can be expressed with the Rust backend,
     it is ported and executed.  Correctness is verified via assertions.
   - If the example fundamentally requires unsupported features (placement groups,
     compiled graphs, GPUs, etc.), it is classified as SKIPPED with a reason.
-
-The Rust backend API supports:
-  - start_cluster()  →  in-process GCS + Raylet
-  - PyCoreWorker     →  create workers (WORKER / DRIVER)
-  - set_task_callback →  Python callable (method, args, num_returns) for task execution
-  - start_grpc_server →  per-worker gRPC endpoint
-  - PyGcsClient       →  register actors, get_named_actor lookup
-  - setup_actor       →  install actor handle on driver
-  - submit_actor_method → actor method call, returns ObjectID
-  - setup_task_dispatch → configure non-actor task dispatch
-  - submit_task         → non-actor remote task, returns ObjectIDs (supports num_returns)
-  - put / get / wait    →  object store operations
-  - ray.get on return values from actor methods and tasks
-  - nested task dispatch from callbacks (via captured driver references)
-  - multi-return tasks (num_returns > 1)
 """
 
-import struct
 import time
 import json
 import math
@@ -31,13 +18,9 @@ import os
 import sys
 import tempfile
 import traceback
+import pickle
 
-from _raylet import (
-    start_cluster,
-    PyCoreWorker,
-    PyGcsClient,
-    PyWorkerID,
-)
+import ray
 
 # ═══════════════════════════════════════════════════════════════════════
 # Test infrastructure
@@ -50,98 +33,16 @@ def record(name, original_file, status, detail=""):
     results.append((name, original_file, status, detail))
 
 
-# Shared cluster — started once, reused by all tests.
+# Shared Ray runtime — started once, reused by all tests.
 print("=" * 70)
 print("  Ray Doc Examples — Rust Backend Test Runner")
 print("=" * 70)
 print()
 print("Starting shared in-process cluster (GCS + Raylet)...")
-cluster = start_cluster()
-print(f"  GCS: {cluster.gcs_address()}")
-print(f"  Node: {cluster.node_id().hex()[:16]}")
+ray.init(num_task_workers=16)
+print(f"  GCS: {ray._runtime.cluster.gcs_address()}")
+print(f"  Node: {ray._runtime.cluster.node_id().hex()[:16]}")
 print()
-
-
-def make_actor(name, callback):
-    """Helper: create an actor worker, set callback, start gRPC, register with GCS."""
-    wid = PyWorkerID.py_from_random()
-    worker = PyCoreWorker(
-        0, "127.0.0.1", cluster.gcs_address(), 1,
-        worker_id=wid, node_id=cluster.node_id(),
-    )
-    worker.set_task_callback(callback)
-    port = worker.start_grpc_server()
-
-    gcs = PyGcsClient(cluster.gcs_address())
-    actor_id = gcs.register_actor(name, "default")
-
-    return worker, wid, port, actor_id
-
-
-def make_driver():
-    """Helper: create a driver CoreWorker."""
-    return PyCoreWorker(
-        1, "127.0.0.1", cluster.gcs_address(), 1,
-        node_id=cluster.node_id(),
-    )
-
-
-def setup_and_submit(driver, actor_id, name, ip, port, node_id, wid):
-    """Helper: setup actor handle on driver."""
-    driver.setup_actor(actor_id, name, "default", ip, port, node_id, wid)
-
-
-def make_task_worker(callback):
-    """Helper: create a task worker (no actor registration needed)."""
-    wid = PyWorkerID.py_from_random()
-    worker = PyCoreWorker(
-        0, "127.0.0.1", cluster.gcs_address(), 1,
-        worker_id=wid, node_id=cluster.node_id(),
-    )
-    worker.set_task_callback(callback)
-    port = worker.start_grpc_server()
-    return worker, wid, port
-
-
-def make_task_driver(task_worker, task_wid, task_port):
-    """Helper: create a driver configured for non-actor task dispatch."""
-    driver = make_driver()
-    driver.setup_task_dispatch("127.0.0.1", task_port, task_wid)
-    return driver
-
-
-def ray_put(driver, data, metadata=b"python"):
-    """Helper: put data into object store, return binary object ID."""
-    oid = driver.put(data, metadata)
-    return oid.binary()
-
-
-def ray_get(driver, oid_binaries, timeout_ms=5000):
-    """Helper: get objects by binary IDs. Returns list of data bytes."""
-    results = driver.get(oid_binaries, timeout_ms)
-    return [r[0] if r is not None else None for r in results]
-
-
-def ray_get_one(driver, oid_binary, timeout_ms=5000):
-    """Helper: get a single object by binary ID. Returns data bytes."""
-    results = ray_get(driver, [oid_binary], timeout_ms)
-    return results[0]
-
-
-def ray_wait(driver, oid_binaries, num_objects, timeout_ms=5000):
-    """Helper: wait for objects. Returns (ready_ids, remaining_ids)."""
-    ready_flags = driver.wait(oid_binaries, num_objects, timeout_ms)
-    ready = [oid for oid, flag in zip(oid_binaries, ready_flags) if flag]
-    remaining = [oid for oid, flag in zip(oid_binaries, ready_flags) if not flag]
-    return ready, remaining
-
-
-def pack_i64(val):
-    return struct.pack("<q", val)
-
-
-def unpack_i64(data):
-    return struct.unpack("<q", data)[0]
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -151,30 +52,21 @@ def unpack_i64(data):
 
 def test_getting_started_counter():
     """Port of getting_started.py Counter actor."""
-    state = {"i": 0}
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.n = 0
+        def incr(self, value):
+            self.n += value
+            return self.n
+        def get(self):
+            return self.n
 
-    def callback(method, args, num_returns=1):
-        if method == "incr":
-            value = unpack_i64(args[0])
-            state["i"] += value
-            return pack_i64(state["i"])
-        elif method == "get":
-            return pack_i64(state["i"])
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("Counter_GS", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "Counter_GS", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
+    c = Counter.remote()
     for _ in range(10):
-        driver.submit_actor_method(actor_id, "incr", [pack_i64(1)])
-
-    driver.submit_actor_method(actor_id, "get", [])
-    time.sleep(0.5)
-
-    assert state["i"] == 10, f"Expected 10, got {state['i']}"
+        ray.get(c.incr.remote(1))
+    result = ray.get(c.get.remote())
+    assert result == 10, f"Expected 10, got {result}"
     return "Counter.incr(1) x 10 → count = 10"
 
 
@@ -185,114 +77,70 @@ def test_getting_started_counter():
 
 def test_actor_repr():
     """Port of actor-repr.py — two actors with identity + method call."""
-    states = {"MyActor_1": {"index": 1, "called": False},
-              "MyActor_2": {"index": 2, "called": False}}
+    @ray.remote
+    class MyActor:
+        def __init__(self, index):
+            self.index = index
+        def foo(self):
+            return f"ok_{self.index}"
 
-    def make_cb(actor_key):
-        st = states[actor_key]
-        def callback(method, args, num_returns=1):
-            if method == "foo":
-                st["called"] = True
-                return b"ok"
-            else:
-                raise ValueError(f"unknown: {method}")
-        return callback
-
-    driver = make_driver()
-    actors = {}
-    workers = {}  # Keep references alive to prevent GC of gRPC servers.
-    for key in ["MyActor_1", "MyActor_2"]:
-        w, wid, port, aid = make_actor(key, make_cb(key))
-        setup_and_submit(driver, aid, key, "127.0.0.1", port,
-                         cluster.node_id(), wid)
-        actors[key] = aid
-        workers[key] = w
-
-    for key in ["MyActor_1", "MyActor_2"]:
-        driver.submit_actor_method(actors[key], "foo", [])
-
-    time.sleep(0.3)
-
-    assert states["MyActor_1"]["called"], "MyActor_1.foo() not called"
-    assert states["MyActor_2"]["called"], "MyActor_2.foo() not called"
+    a1 = MyActor.remote(1)
+    a2 = MyActor.remote(2)
+    assert ray.get(a1.foo.remote()) == "ok_1"
+    assert ray.get(a2.foo.remote()) == "ok_2"
     return "MyActor(1).foo() ✓, MyActor(2).foo() ✓"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 3: anti_pattern_global_variables.py — GlobalVarActor
-#   Original: GlobalVarActor.set_global_var(4), get_global_var() → 4
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_global_var_actor():
     """Port of anti_pattern_global_variables.py — GlobalVarActor."""
-    state = {"global_var": 3}
+    @ray.remote
+    class GlobalVarActor:
+        def __init__(self):
+            self.global_var = 3
+        def set_global_var(self, value):
+            self.global_var = value
+            return self.global_var
+        def get_global_var(self):
+            return self.global_var
 
-    def callback(method, args, num_returns=1):
-        if method == "set_global_var":
-            state["global_var"] = unpack_i64(args[0])
-            return pack_i64(state["global_var"])
-        elif method == "get_global_var":
-            return pack_i64(state["global_var"])
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("GlobalVarActor", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "GlobalVarActor", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    driver.submit_actor_method(actor_id, "set_global_var", [pack_i64(4)])
-    driver.submit_actor_method(actor_id, "get_global_var", [])
-    time.sleep(0.3)
-
-    assert state["global_var"] == 4, f"Expected 4, got {state['global_var']}"
+    actor = GlobalVarActor.remote()
+    ray.get(actor.set_global_var.remote(4))
+    result = ray.get(actor.get_global_var.remote())
+    assert result == 4, f"Expected 4, got {result}"
     return "GlobalVarActor: set(4), get() → 4"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 4: actor_checkpointing.py — Worker with execute/checkpoint/restore
-#   Original: Worker executes tasks, checkpoints state, can restore
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_actor_checkpointing():
     """Port of actor_checkpointing.py — Worker with state tracking."""
-    state = {"num_tasks_executed": 0}
+    @ray.remote
+    class Worker:
+        def __init__(self):
+            self.num_tasks_executed = 0
+        def execute_task(self):
+            self.num_tasks_executed += 1
+            return self.num_tasks_executed
+        def checkpoint(self):
+            return json.dumps({"num_tasks_executed": self.num_tasks_executed})
 
-    def callback(method, args, num_returns=1):
-        if method == "execute_task":
-            state["num_tasks_executed"] += 1
-            return pack_i64(state["num_tasks_executed"])
-        elif method == "checkpoint":
-            result = json.dumps(state)
-            return result.encode("utf-8")
-        elif method == "restore":
-            restored = json.loads(args[0].decode("utf-8"))
-            state.update(restored)
-            return b"ok"
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("Worker_CP", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "Worker_CP", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    # Execute 3 tasks.
+    w = Worker.remote()
     for _ in range(3):
-        driver.submit_actor_method(actor_id, "execute_task", [])
-
-    # Checkpoint.
-    driver.submit_actor_method(actor_id, "checkpoint", [])
-    time.sleep(0.3)
-
-    assert state["num_tasks_executed"] == 3, \
-        f"Expected 3, got {state['num_tasks_executed']}"
+        ray.get(w.execute_task.remote())
+    cp = ray.get(w.checkpoint.remote())
+    data = json.loads(cp)
+    assert data["num_tasks_executed"] == 3, f"Expected 3, got {data}"
     return "Worker: execute_task x 3, checkpoint → num_tasks_executed = 3"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 5: actor_checkpointing.py — ImmortalActor with file-based state
-#   Original: ImmortalActor with file-based checkpoint, update + get
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_immortal_actor_checkpoint():
@@ -300,184 +148,114 @@ def test_immortal_actor_checkpoint():
     checkpoint_dir = tempfile.mkdtemp()
     checkpoint_file = os.path.join(checkpoint_dir, "checkpoint.json")
 
-    state = {}
+    @ray.remote
+    class ImmortalActor:
+        def __init__(self, cp_file):
+            self.state = {}
+            self.cp_file = cp_file
+        def update(self, key, value):
+            self.state[key] = value
+            with open(self.cp_file, "w") as f:
+                json.dump(self.state, f)
+            return value
+        def get(self, key):
+            return self.state[key]
 
-    def callback(method, args, num_returns=1):
-        if method == "update":
-            key = args[0].decode("utf-8")
-            value = unpack_i64(args[1])
-            state[key] = value
-            with open(checkpoint_file, "w") as f:
-                json.dump(state, f)
-            return pack_i64(value)
-        elif method == "get":
-            key = args[0].decode("utf-8")
-            return pack_i64(state[key])
-        else:
-            raise ValueError(f"unknown: {method}")
+    actor = ImmortalActor.remote(checkpoint_file)
+    ray.get(actor.update.remote("key1", 1))
+    ray.get(actor.update.remote("key2", 2))
+    assert ray.get(actor.get.remote("key1")) == 1
 
-    worker, wid, port, actor_id = make_actor("ImmortalActor", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "ImmortalActor", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    driver.submit_actor_method(actor_id, "update", [b"key1", pack_i64(1)])
-    driver.submit_actor_method(actor_id, "update", [b"key2", pack_i64(2)])
-    driver.submit_actor_method(actor_id, "get", [b"key1"])
-    time.sleep(0.3)
-
-    assert state["key1"] == 1 and state["key2"] == 2, \
-        f"Expected key1=1,key2=2, got {state}"
-
-    # Verify file checkpoint.
     with open(checkpoint_file) as f:
         saved = json.load(f)
     assert saved == {"key1": 1, "key2": 2}, f"Checkpoint mismatch: {saved}"
 
-    # Clean up.
     import shutil
     shutil.rmtree(checkpoint_dir)
-
     return "ImmortalActor: update(key1,1), update(key2,2) + file checkpoint ✓"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 6: monte_carlo_pi.py — ProgressActor tracking task progress
-#   Original: ProgressActor tracks num_samples per task_id, get_progress()
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_monte_carlo_progress_actor():
     """Port of monte_carlo_pi.py — ProgressActor."""
-    total_samples = 100
-    state = {"total": total_samples, "completed": {}}
+    @ray.remote
+    class ProgressActor:
+        def __init__(self, total_samples):
+            self.total = total_samples
+            self.completed = {}
+        def report_progress(self, task_id, completed):
+            self.completed[task_id] = completed
+            return sum(self.completed.values())
+        def get_progress(self):
+            total_done = sum(self.completed.values())
+            return int(total_done * 100 / self.total)
 
-    def callback(method, args, num_returns=1):
-        if method == "report_progress":
-            task_id = unpack_i64(args[0])
-            completed = unpack_i64(args[1])
-            state["completed"][task_id] = completed
-            return pack_i64(sum(state["completed"].values()))
-        elif method == "get_progress":
-            total_done = sum(state["completed"].values())
-            # Return progress as percentage * 100 (integer).
-            pct = int(total_done * 100 / state["total"])
-            return pack_i64(pct)
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("ProgressActor", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "ProgressActor", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    # Simulate 5 tasks each completing 20 samples.
+    pa = ProgressActor.remote(100)
     for task_id in range(5):
-        driver.submit_actor_method(actor_id, "report_progress",
-                                   [pack_i64(task_id), pack_i64(20)])
-
-    driver.submit_actor_method(actor_id, "get_progress", [])
-    time.sleep(0.3)
-
-    total_done = sum(state["completed"].values())
-    assert total_done == 100, f"Expected 100 samples, got {total_done}"
-    return f"ProgressActor: 5 tasks x 20 samples → 100% complete"
+        ray.get(pa.report_progress.remote(task_id, 20))
+    pct = ray.get(pa.get_progress.remote())
+    assert pct == 100, f"Expected 100%, got {pct}"
+    return "ProgressActor: 5 tasks x 20 samples → 100% complete"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 7: monte_carlo_pi.py — Actual Pi estimation via actor
-#   Runs Monte Carlo sampling inside an actor instead of remote tasks.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_monte_carlo_pi_computation():
     """Port of monte_carlo_pi.py — Pi estimation via actor-based sampling."""
-    NUM_SAMPLES = 1_000_000
-    state = {"num_inside": 0, "total": 0}
-
-    def callback(method, args, num_returns=1):
-        if method == "sample":
-            n = unpack_i64(args[0])
+    @ray.remote
+    class PiSampler:
+        def __init__(self):
+            self.num_inside = 0
+            self.total = 0
+        def sample(self, n):
             inside = 0
             for _ in range(n):
                 x, y = random.uniform(-1, 1), random.uniform(-1, 1)
                 if math.hypot(x, y) <= 1:
                     inside += 1
-            state["num_inside"] += inside
-            state["total"] += n
-            return pack_i64(inside)
-        elif method == "get_pi":
-            if state["total"] > 0:
-                pi_est = 4.0 * state["num_inside"] / state["total"]
-                # Return as fixed-point * 1000000
-                return pack_i64(int(pi_est * 1_000_000))
-            return pack_i64(0)
-        else:
-            raise ValueError(f"unknown: {method}")
+            self.num_inside += inside
+            self.total += n
+            return inside
+        def get_pi(self):
+            if self.total > 0:
+                return 4.0 * self.num_inside / self.total
+            return 0.0
 
-    worker, wid, port, actor_id = make_actor("PiSampler", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "PiSampler", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    # Submit 5 sampling batches of 200K each.
+    sampler = PiSampler.remote()
     for _ in range(5):
-        driver.submit_actor_method(actor_id, "sample", [pack_i64(200_000)])
-
-    driver.submit_actor_method(actor_id, "get_pi", [])
-    time.sleep(2.0)  # Sampling takes a moment.
-
-    pi_est = 4.0 * state["num_inside"] / state["total"]
+        ray.get(sampler.sample.remote(200_000))
+    pi_est = ray.get(sampler.get_pi.remote())
     assert 3.0 < pi_est < 3.3, f"Pi estimate {pi_est} out of range"
     return f"Pi estimation: {pi_est:.6f} (1M samples, expected ~3.14159)"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 8: pattern_tree_of_actors.py — Trainer actors with fit()
-#   Original: Supervisor/Trainer hierarchy. We port just the Trainer logic.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_tree_of_actors_trainers():
     """Port of pattern_tree_of_actors.py — Trainer actors."""
-    # 6 trainers: 3 per supervisor, 2 hyperparameters.
-    trainer_states = {}
+    @ray.remote
+    class Trainer:
+        def __init__(self, hyperparameter, data):
+            self.hp = hyperparameter
+            self.data = data
+        def fit(self):
+            return self.data * self.hp
 
-    def make_trainer_cb(trainer_id, hyperparameter, data):
-        state = {"result": None}
-        trainer_states[trainer_id] = state
-
-        def callback(method, args, num_returns=1):
-            if method == "fit":
-                state["result"] = data * hyperparameter
-                return pack_i64(state["result"])
-            else:
-                raise ValueError(f"unknown: {method}")
-        return callback
-
-    driver = make_driver()
-    trainer_configs = [
-        # Supervisor 1: hyperparameter=1, data=[1,2,3]
-        ("T1_1", 1, 1), ("T1_2", 1, 2), ("T1_3", 1, 3),
-        # Supervisor 2: hyperparameter=2, data=[1,2,3]
-        ("T2_1", 2, 1), ("T2_2", 2, 2), ("T2_3", 2, 3),
+    configs = [
+        (1, 1), (1, 2), (1, 3),  # Supervisor 1
+        (2, 1), (2, 2), (2, 3),  # Supervisor 2
     ]
-
-    actor_ids = {}
-    workers = {}  # Keep references alive to prevent GC of gRPC servers.
-    for tid, hp, data in trainer_configs:
-        w, wid, port, aid = make_actor(tid, make_trainer_cb(tid, hp, data))
-        setup_and_submit(driver, aid, tid, "127.0.0.1", port,
-                         cluster.node_id(), wid)
-        actor_ids[tid] = aid
-        workers[tid] = w
-
-    # Submit fit() to all trainers.
-    for tid in actor_ids:
-        driver.submit_actor_method(actor_ids[tid], "fit", [])
-
-    time.sleep(0.5)
-
-    # Verify: Supervisor1 trainers → [1, 2, 3], Supervisor2 → [2, 4, 6]
-    s1 = [trainer_states[f"T1_{i}"]["result"] for i in [1, 2, 3]]
-    s2 = [trainer_states[f"T2_{i}"]["result"] for i in [1, 2, 3]]
+    trainers = [Trainer.remote(hp, d) for hp, d in configs]
+    results_list = [ray.get(t.fit.remote()) for t in trainers]
+    s1 = results_list[:3]
+    s2 = results_list[3:]
     assert s1 == [1, 2, 3], f"Supervisor1 results: {s1}"
     assert s2 == [2, 4, 6], f"Supervisor2 results: {s2}"
     return f"Trainers: Supervisor1→{s1}, Supervisor2→{s2}"
@@ -485,407 +263,295 @@ def test_tree_of_actors_trainers():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 9: pattern_pipelining.py — WorkQueue actor
-#   Original: WorkQueue with work items, Workers fetching from it.
-#   We port the WorkQueue actor itself (stateful pop-from-queue).
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_work_queue_actor():
     """Port of pattern_pipelining.py — WorkQueue actor."""
-    state = {"queue": list(range(10)), "items_served": 0}
+    @ray.remote
+    class WorkQueue:
+        def __init__(self, items):
+            self.queue = list(items)
+            self.items_served = 0
+        def get_work_item(self):
+            if self.queue:
+                self.items_served += 1
+                return self.queue.pop(0)
+            return -1
+        def get_items_served(self):
+            return self.items_served
 
-    def callback(method, args, num_returns=1):
-        if method == "get_work_item":
-            if state["queue"]:
-                item = state["queue"].pop(0)
-                state["items_served"] += 1
-                return pack_i64(item)
-            return pack_i64(-1)  # sentinel for None
-        elif method == "get_items_served":
-            return pack_i64(state["items_served"])
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("WorkQueue", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "WorkQueue", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    # Drain the queue.
-    for _ in range(12):  # 10 items + 2 extra (should return -1)
-        driver.submit_actor_method(actor_id, "get_work_item", [])
-
-    time.sleep(0.3)
-
-    assert state["items_served"] == 10, f"Expected 10, got {state['items_served']}"
-    assert state["queue"] == [], f"Queue not empty: {state['queue']}"
+    wq = WorkQueue.remote(list(range(10)))
+    fetched = []
+    for _ in range(12):
+        item = ray.get(wq.get_work_item.remote())
+        if item != -1:
+            fetched.append(item)
+    served = ray.get(wq.get_items_served.remote())
+    assert served == 10, f"Expected 10, got {served}"
+    assert fetched == list(range(10)), f"Expected 0..9, got {fetched}"
     return "WorkQueue: 10 items dequeued, queue empty"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 10: actors.py — SyncActor with cancel status tracking
-#   Original: SyncActor tracks is_canceled. We port the state logic.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_sync_actor_state():
-    """Port of actors.py — SyncActor state tracking (without cancellation)."""
-    state = {"is_canceled": False, "iterations": 0}
+    """Port of actors.py — SyncActor state tracking."""
+    @ray.remote
+    class SyncActor:
+        def __init__(self):
+            self.is_canceled = False
+            self.iterations = 0
+        def long_running_method(self):
+            for _ in range(100):
+                self.iterations += 1
+            return "completed"
+        def set_canceled(self):
+            self.is_canceled = True
+            return True
+        def get_status(self):
+            return {"iterations": self.iterations, "canceled": self.is_canceled}
 
-    def callback(method, args, num_returns=1):
-        if method == "long_running_method":
-            for i in range(100):
-                state["iterations"] += 1
-            return b"completed"
-        elif method == "get_cancel_status":
-            return pack_i64(1 if state["is_canceled"] else 0)
-        elif method == "set_canceled":
-            state["is_canceled"] = True
-            return b"ok"
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("SyncActor", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "SyncActor", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    driver.submit_actor_method(actor_id, "long_running_method", [])
-    driver.submit_actor_method(actor_id, "set_canceled", [])
-    time.sleep(0.3)
-
-    assert state["iterations"] == 100, f"Expected 100 iterations, got {state['iterations']}"
-    assert state["is_canceled"] is True, "Expected is_canceled=True"
+    actor = SyncActor.remote()
+    ray.get(actor.long_running_method.remote())
+    ray.get(actor.set_canceled.remote())
+    status = ray.get(actor.get_status.remote())
+    assert status["iterations"] == 100, f"Expected 100, got {status['iterations']}"
+    assert status["canceled"] is True
     return "SyncActor: 100 iterations, set_canceled=True ✓"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 11: fault_tolerance_tips.py — Actor with read_only method
-#   Original: Actor.read_only() returns 2 (sometimes crashes).
-#   We port the deterministic part.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_fault_tolerance_actor():
-    """Port of fault_tolerance_tips.py — Actor.read_only.
+    """Port of fault_tolerance_tips.py — Actor.read_only."""
+    @ray.remote
+    class FTActor:
+        def __init__(self):
+            self.total = 0
+        def read_only(self, x):
+            self.total += x
+            return self.total
 
-    Verifies the actor return value through the full gRPC round-trip
-    (not just callback-side state), and that multiple calls accumulate.
-    """
-    state = {"total": 0, "calls": 0}
-
-    def callback(method, args, num_returns=1):
-        if method == "read_only":
-            x = unpack_i64(args[0])
-            state["calls"] += 1
-            state["total"] += x
-            return pack_i64(state["total"])
-        raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("FTActor", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "FTActor", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    # Call read_only(5) then read_only(3) — accumulates to 5, then 8.
-    oid1 = driver.submit_actor_method(actor_id, "read_only", [pack_i64(5)])
-    result1 = unpack_i64(ray_get_one(driver, oid1.binary()))
-    assert result1 == 5, f"First call: expected 5, got {result1}"
-
-    oid2 = driver.submit_actor_method(actor_id, "read_only", [pack_i64(3)])
-    result2 = unpack_i64(ray_get_one(driver, oid2.binary()))
-    assert result2 == 8, f"Second call: expected 8, got {result2}"
-
-    assert state["calls"] == 2, f"Expected 2 calls, got {state['calls']}"
+    actor = FTActor.remote()
+    r1 = ray.get(actor.read_only.remote(5))
+    assert r1 == 5, f"First call: expected 5, got {r1}"
+    r2 = ray.get(actor.read_only.remote(3))
+    assert r2 == 8, f"Second call: expected 8, got {r2}"
     return "Actor.read_only(5)→5, read_only(3)→8 via ray.get ✓"
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST 12: Multi-Actor Pipeline (our existing example)
-#   3 actors (Accumulator, Multiplier, Statistics) processing [5,3,8,2,7]
+# TEST 12: Multi-Actor Pipeline — 3 actors processing [5,3,8,2,7]
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_multi_actor_pipeline():
     """Port of multi_actor_pipeline.py — 3 actors, 5 numbers."""
-    actor_states = {
-        "Acc": {"sum": 0},
-        "Mul": {"product": 1},
-        "Stat": {"min": None, "max": None, "count": 0, "sum": 0},
-    }
+    @ray.remote
+    class Accumulator:
+        def __init__(self):
+            self.total = 0
+        def process(self, value):
+            self.total += value
+            return self.total
+        def get_result(self):
+            return {"sum": self.total}
 
-    def make_cb(aname):
-        st = actor_states[aname]
-        def callback(method, args, num_returns=1):
-            if method == "process":
-                value = unpack_i64(args[0])
-                if aname == "Acc":
-                    st["sum"] += value
-                    return pack_i64(st["sum"])
-                elif aname == "Mul":
-                    st["product"] *= value
-                    return pack_i64(st["product"])
-                elif aname == "Stat":
-                    if st["min"] is None or value < st["min"]:
-                        st["min"] = value
-                    if st["max"] is None or value > st["max"]:
-                        st["max"] = value
-                    st["count"] += 1
-                    st["sum"] += value
-                    return pack_i64(st["count"])
-            elif method == "get_result":
-                return json.dumps(st).encode("utf-8")
-            else:
-                raise ValueError(f"unknown: {method}")
-        return callback
+    @ray.remote
+    class Multiplier:
+        def __init__(self):
+            self.product = 1
+        def process(self, value):
+            self.product *= value
+            return self.product
+        def get_result(self):
+            return {"product": self.product}
 
-    driver = make_driver()
-    aids = {}
-    actor_workers = {}  # Keep references alive to prevent GC of gRPC servers.
-    for aname in ["Acc", "Mul", "Stat"]:
-        w, wid, port, aid = make_actor(f"Pipeline_{aname}", make_cb(aname))
-        setup_and_submit(driver, aid, f"Pipeline_{aname}", "127.0.0.1", port,
-                         cluster.node_id(), wid)
-        aids[aname] = aid
-        actor_workers[aname] = w
+    @ray.remote
+    class Statistics:
+        def __init__(self):
+            self.min_val = None
+            self.max_val = None
+            self.count = 0
+        def process(self, value):
+            if self.min_val is None or value < self.min_val:
+                self.min_val = value
+            if self.max_val is None or value > self.max_val:
+                self.max_val = value
+            self.count += 1
+            return self.count
+        def get_result(self):
+            return {"min": self.min_val, "max": self.max_val, "count": self.count}
+
+    acc = Accumulator.remote()
+    mul = Multiplier.remote()
+    stat = Statistics.remote()
 
     nums = [5, 3, 8, 2, 7]
-    for num in nums:
-        for aname in ["Acc", "Mul", "Stat"]:
-            driver.submit_actor_method(aids[aname], "process", [pack_i64(num)])
+    for n in nums:
+        ray.get(acc.process.remote(n))
+        ray.get(mul.process.remote(n))
+        ray.get(stat.process.remote(n))
 
-    time.sleep(0.5)
+    acc_r = ray.get(acc.get_result.remote())
+    mul_r = ray.get(mul.get_result.remote())
+    stat_r = ray.get(stat.get_result.remote())
 
-    assert actor_states["Acc"]["sum"] == 25
-    assert actor_states["Mul"]["product"] == 1680
-    assert actor_states["Stat"]["min"] == 2
-    assert actor_states["Stat"]["max"] == 8
-    assert actor_states["Stat"]["count"] == 5
+    assert acc_r["sum"] == 25
+    assert mul_r["product"] == 1680
+    assert stat_r["min"] == 2
+    assert stat_r["max"] == 8
+    assert stat_r["count"] == 5
     return "3 actors × 5 numbers: sum=25, product=1680, min=2, max=8, count=5"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 13: actor-queue.py — Distributed queue via actor
-#   Original: ray.util.queue.Queue. We port the queue concept as an actor.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_actor_queue():
     """Port of actor-queue.py — Queue as an actor."""
-    state = {"items": [], "gets": []}
+    @ray.remote
+    class QueueActor:
+        def __init__(self):
+            self.items = []
+        def put(self, item):
+            self.items.append(item)
+            return len(self.items)
+        def get(self):
+            if self.items:
+                return self.items.pop(0)
+            return -1
+        def size(self):
+            return len(self.items)
 
-    def callback(method, args, num_returns=1):
-        if method == "put":
-            item = unpack_i64(args[0])
-            state["items"].append(item)
-            return pack_i64(len(state["items"]))
-        elif method == "get":
-            if state["items"]:
-                item = state["items"].pop(0)
-                state["gets"].append(item)
-                return pack_i64(item)
-            return pack_i64(-1)
-        elif method == "size":
-            return pack_i64(len(state["items"]))
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("QueueActor", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "QueueActor", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    # Producer: put 5 items.
+    q = QueueActor.remote()
     for i in range(5):
-        driver.submit_actor_method(actor_id, "put", [pack_i64(i)])
+        ray.get(q.put.remote(i))
 
-    # Wait for all puts to be processed before issuing gets.
-    time.sleep(0.5)
-
-    # Consumer: get 5 items.
+    got = []
     for _ in range(5):
-        driver.submit_actor_method(actor_id, "get", [])
+        item = ray.get(q.get.remote())
+        got.append(item)
 
-    time.sleep(0.5)
-
-    assert sorted(state["gets"]) == [0, 1, 2, 3, 4], \
-        f"Expected items {{0..4}}, got {state['gets']}"
-    assert state["items"] == [], f"Queue not empty: {state['items']}"
-    return f"Queue: put(0..4), get→{state['gets']}, all consumed ✓"
+    assert sorted(got) == [0, 1, 2, 3, 4], f"Expected {{0..4}}, got {got}"
+    assert ray.get(q.size.remote()) == 0
+    return f"Queue: put(0..4), get→{got}, all consumed ✓"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 14: actor-http-server.py — Counter with increment/get
-#   Original: Async actor with aiohttp. We port the counter logic.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_actor_http_server_counter():
     """Port of actor-http-server.py — Counter logic."""
-    state = {"count": 0}
+    @ray.remote
+    class HTTPCounter:
+        def __init__(self):
+            self.count = 0
+        def increment(self):
+            self.count += 1
+            return self.count
+        def get_count(self):
+            return self.count
 
-    def callback(method, args, num_returns=1):
-        if method == "increment":
-            state["count"] += 1
-            return pack_i64(state["count"])
-        elif method == "get_count":
-            return pack_i64(state["count"])
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("HTTPCounter", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "HTTPCounter", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
+    c = HTTPCounter.remote()
     for _ in range(5):
-        driver.submit_actor_method(actor_id, "increment", [])
-
-    driver.submit_actor_method(actor_id, "get_count", [])
-    time.sleep(0.3)
-
-    assert state["count"] == 5, f"Expected 5, got {state['count']}"
+        ray.get(c.increment.remote())
+    assert ray.get(c.get_count.remote()) == 5
     return "HTTPCounter: increment x 5 → count = 5 ✓"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 15: Actor return values via ray.get
-#   Verifies submit_actor_method returns ObjectID, driver.get() works
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_actor_return_values():
     """Actor methods return ObjectIDs that can be ray.get()'d."""
-    state = {"value": 0}
+    @ray.remote
+    class ReturnActor:
+        def __init__(self):
+            self.value = 0
+        def increment(self, x):
+            self.value += x
+            return self.value
+        def get_value(self):
+            return self.value
 
-    def callback(method, args, num_returns=1):
-        if method == "increment":
-            state["value"] += unpack_i64(args[0])
-            return pack_i64(state["value"])
-        elif method == "get_value":
-            return pack_i64(state["value"])
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    worker, wid, port, actor_id = make_actor("ReturnActor", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "ReturnActor", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    oid1 = driver.submit_actor_method(actor_id, "increment", [pack_i64(5)])
-    oid2 = driver.submit_actor_method(actor_id, "increment", [pack_i64(3)])
-    oid3 = driver.submit_actor_method(actor_id, "get_value", [])
-
-    r1 = ray_get_one(driver, oid1.binary())
-    r2 = ray_get_one(driver, oid2.binary())
-    r3 = ray_get_one(driver, oid3.binary())
-
-    assert unpack_i64(r1) == 5, f"Expected 5, got {unpack_i64(r1)}"
-    assert unpack_i64(r2) == 8, f"Expected 8, got {unpack_i64(r2)}"
-    assert unpack_i64(r3) == 8, f"Expected 8, got {unpack_i64(r3)}"
+    actor = ReturnActor.remote()
+    r1 = ray.get(actor.increment.remote(5))
+    r2 = ray.get(actor.increment.remote(3))
+    r3 = ray.get(actor.get_value.remote())
+    assert r1 == 5, f"Expected 5, got {r1}"
+    assert r2 == 8, f"Expected 8, got {r2}"
+    assert r3 == 8, f"Expected 8, got {r3}"
     return "Actor return values: incr(5)=5, incr(3)=8, get()=8 via ray.get()"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 16: getting_started.py (tasks) — square(x) remote function
-#   Original: @ray.remote def square(x): return x*x
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_getting_started_tasks():
     """Port of getting_started.py — square(x) as a remote task."""
-    def callback(method, args, num_returns=1):
-        if method == "square":
-            x = unpack_i64(args[0])
-            return pack_i64(x * x)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def square(x):
+        return x * x
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    oids = []
-    for x in [1, 2, 3, 4]:
-        result_oids = driver.submit_task("square", [pack_i64(x)])
-        oids.append(result_oids[0].binary())
-
-    results = ray_get(driver, oids)
-    values = [unpack_i64(r) for r in results]
+    refs = [square.remote(x) for x in [1, 2, 3, 4]]
+    values = ray.get(refs)
     assert values == [1, 4, 9, 16], f"Expected [1,4,9,16], got {values}"
     return "square(1..4) → [1, 4, 9, 16] via submit_task + ray.get"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 17: anti_pattern_closure_capture_large_objects.py
-#   Original: ray.put(large_obj), pass ref to task
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_closure_capture_large_objects():
     """Port of anti_pattern_closure_capture_large_objects.py — put + task."""
-    def callback(method, args, num_returns=1):
-        if method == "process":
-            # args[0] is the data itself (passed directly)
-            data = args[0]
-            return pack_i64(len(data))
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def process(data):
+        return len(data)
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Put a large object into the store.
     large_data = b"x" * 10_000
-    oid = driver.put(large_data, b"python")
-
-    # Submit task that processes the large object (pass data directly).
-    result_oids = driver.submit_task("process", [large_data])
-    result = ray_get_one(driver, result_oids[0].binary())
-    assert unpack_i64(result) == 10_000, f"Expected 10000, got {unpack_i64(result)}"
+    ray.put(large_data)
+    result = ray.get(process.remote(large_data))
+    assert result == 10_000, f"Expected 10000, got {result}"
     return "put(10KB) + task(process) → len=10000"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 18: anti_pattern_pass_large_arg_by_value.py
-#   Original: ray.put first, then pass ref (not value) to task
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_pass_large_arg_by_value():
     """Port of anti_pattern_pass_large_arg_by_value.py — put + task."""
-    def callback(method, args, num_returns=1):
-        if method == "double":
-            x = unpack_i64(args[0])
-            return pack_i64(x * 2)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def double(x):
+        return x * 2
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Good pattern: put first, then submit with reference.
-    oid = driver.put(pack_i64(21), b"python")
-    result_oids = driver.submit_task("double", [pack_i64(21)])
-    result = ray_get_one(driver, result_oids[0].binary())
-    assert unpack_i64(result) == 42, f"Expected 42, got {unpack_i64(result)}"
+    ray.put(21)
+    result = ray.get(double.remote(21))
+    assert result == 42, f"Expected 42, got {result}"
     return "put(21) + double → 42 (pass by value pattern)"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 19: anti_pattern_ray_get_loop.py
-#   Original: submit tasks, collect results with ray.get
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_ray_get_loop():
     """Port of anti_pattern_ray_get_loop.py — tasks + get()."""
-    def callback(method, args, num_returns=1):
-        if method == "compute":
-            x = unpack_i64(args[0])
-            return pack_i64(x * x + 1)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def compute(x):
+        return x * x + 1
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Good pattern: submit all, then get all at once.
-    oids = []
-    for x in range(5):
-        result_oids = driver.submit_task("compute", [pack_i64(x)])
-        oids.append(result_oids[0].binary())
-
-    results = ray_get(driver, oids)
-    values = [unpack_i64(r) for r in results]
+    refs = [compute.remote(x) for x in range(5)]
+    values = ray.get(refs)
     expected = [x * x + 1 for x in range(5)]
     assert values == expected, f"Expected {expected}, got {values}"
     return f"compute(0..4) → {values} via batch ray.get"
@@ -893,67 +559,37 @@ def test_ray_get_loop():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 20: anti_pattern_unnecessary_ray_get.py
-#   Original: avoid unnecessary ray.get between dependent tasks
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_unnecessary_ray_get():
     """Port of anti_pattern_unnecessary_ray_get.py — tasks + get."""
-    def callback(method, args, num_returns=1):
-        if method == "preprocess":
-            x = unpack_i64(args[0])
-            return pack_i64(x + 10)
-        elif method == "aggregate":
-            total = 0
-            for a in args:
-                total += unpack_i64(a)
-            return pack_i64(total)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def preprocess(x):
+        return x + 10
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote
+    def aggregate(values):
+        return sum(values)
 
-    # Step 1: preprocess
-    oids = []
-    for x in [1, 2, 3]:
-        r = driver.submit_task("preprocess", [pack_i64(x)])
-        oids.append(r[0].binary())
-
-    # Get preprocessed results
-    preprocessed = ray_get(driver, oids)
-
-    # Step 2: aggregate
-    agg_oids = driver.submit_task("aggregate", preprocessed)
-    result = ray_get_one(driver, agg_oids[0].binary())
-    assert unpack_i64(result) == 36, f"Expected 36 (11+12+13), got {unpack_i64(result)}"
+    refs = [preprocess.remote(x) for x in [1, 2, 3]]
+    preprocessed = ray.get(refs)
+    result = ray.get(aggregate.remote(preprocessed))
+    assert result == 36, f"Expected 36 (11+12+13), got {result}"
     return "preprocess([1,2,3]) → [11,12,13] → aggregate=36"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 21: anti_pattern_redefine_task_actor_loop.py
-#   Original: avoid redefining tasks in a loop
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_redefine_task_loop():
     """Port of anti_pattern_redefine_task_actor_loop.py — task in loop."""
-    def callback(method, args, num_returns=1):
-        if method == "process_item":
-            x = unpack_i64(args[0])
-            return pack_i64(x * 3)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def process_item(x):
+        return x * 3
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Good pattern: define once, call many times.
-    oids = []
-    for item in range(10):
-        r = driver.submit_task("process_item", [pack_i64(item)])
-        oids.append(r[0].binary())
-
-    results = ray_get(driver, oids)
-    values = [unpack_i64(r) for r in results]
+    refs = [process_item.remote(i) for i in range(10)]
+    values = ray.get(refs)
     expected = [x * 3 for x in range(10)]
     assert values == expected, f"Expected {expected}, got {values}"
     return f"process_item(0..9) x 3 → {values}"
@@ -961,36 +597,22 @@ def test_redefine_task_loop():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 22: anti_pattern_too_fine_grained_tasks.py
-#   Original: batch work instead of too-fine-grained tasks
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_too_fine_grained_tasks():
     """Port of anti_pattern_too_fine_grained_tasks.py — batch tasks."""
-    def callback(method, args, num_returns=1):
-        if method == "process_batch":
-            # Sum all values in the batch
-            total = 0
-            for a in args:
-                total += unpack_i64(a)
-            return pack_i64(total)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def process_batch(batch):
+        return sum(batch)
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Good pattern: batch items into chunks.
     items = list(range(100))
     batch_size = 25
-    oids = []
+    refs = []
     for i in range(0, len(items), batch_size):
         batch = items[i:i + batch_size]
-        batch_args = [pack_i64(x) for x in batch]
-        r = driver.submit_task("process_batch", batch_args)
-        oids.append(r[0].binary())
+        refs.append(process_batch.remote(batch))
 
-    results = ray_get(driver, oids)
-    batch_sums = [unpack_i64(r) for r in results]
+    batch_sums = ray.get(refs)
     assert sum(batch_sums) == sum(range(100)), \
         f"Expected {sum(range(100))}, got {sum(batch_sums)}"
     return f"4 batches of 25 → sums={batch_sums}, total={sum(batch_sums)}"
@@ -998,34 +620,21 @@ def test_too_fine_grained_tasks():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 23: anti_pattern_ray_get_submission_order.py
-#   Original: use ray.wait instead of getting results in submission order
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_ray_get_submission_order():
     """Port of anti_pattern_ray_get_submission_order.py — tasks + wait."""
-    def callback(method, args, num_returns=1):
-        if method == "process":
-            x = unpack_i64(args[0])
-            return pack_i64(x * 10)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def process(x):
+        return x * 10
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    refs = [process.remote(x) for x in [5, 3, 8, 1, 7]]
 
-    oids = []
-    for x in [5, 3, 8, 1, 7]:
-        r = driver.submit_task("process", [pack_i64(x)])
-        oids.append(r[0].binary())
-
-    # Good pattern: use ray.wait to process results as they become ready.
-    remaining = list(oids)
+    remaining = list(refs)
     processed = []
     while remaining:
-        ready, remaining = ray_wait(driver, remaining, 1)
-        for oid in ready:
-            data = ray_get_one(driver, oid)
-            processed.append(unpack_i64(data))
+        ready, remaining = ray.wait(remaining, num_returns=1)
+        processed.append(ray.get(ready[0]))
 
     assert sorted(processed) == [10, 30, 50, 70, 80], \
         f"Expected [10,30,50,70,80], got {sorted(processed)}"
@@ -1034,991 +643,625 @@ def test_ray_get_submission_order():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 24: anti_pattern_ray_get_too_many_objects.py
-#   Original: use ray.wait to limit in-flight objects
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_ray_get_too_many_objects():
     """Port of anti_pattern_ray_get_too_many_objects.py — wait + store."""
-    def callback(method, args, num_returns=1):
-        if method == "generate":
-            idx = unpack_i64(args[0])
-            return pack_i64(idx * idx)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def generate(idx):
+        return idx * idx
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Submit many tasks but process results incrementally with wait.
     all_results = []
     pending = []
     for i in range(20):
-        r = driver.submit_task("generate", [pack_i64(i)])
-        pending.append(r[0].binary())
-
-        # Process when we have enough pending.
+        pending.append(generate.remote(i))
         if len(pending) >= 5:
-            ready, pending = ray_wait(driver, pending, 1)
-            for oid in ready:
-                data = ray_get_one(driver, oid)
-                all_results.append(unpack_i64(data))
+            ready, pending = ray.wait(pending, num_returns=1)
+            all_results.append(ray.get(ready[0]))
 
-    # Drain remaining.
     while pending:
-        ready, pending = ray_wait(driver, pending, 1)
-        for oid in ready:
-            data = ray_get_one(driver, oid)
-            all_results.append(unpack_i64(data))
+        ready, pending = ray.wait(pending, num_returns=1)
+        all_results.append(ray.get(ready[0]))
 
     expected = sorted([i * i for i in range(20)])
-    assert sorted(all_results) == expected, \
-        f"Expected {expected}, got {sorted(all_results)}"
+    assert sorted(all_results) == expected
     return f"20 tasks with incremental wait: {len(all_results)} results"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 25: obj_capture.py — put() + pass to task
-#   Original: ray.put large_array, pass to task
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_obj_capture():
     """Port of obj_capture.py — object store + task."""
-    def callback(method, args, num_returns=1):
-        if method == "sum_array":
-            # Parse comma-separated numbers.
-            nums = args[0].decode("utf-8").split(",")
-            total = sum(int(x) for x in nums)
-            return pack_i64(total)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def sum_array(arr):
+        return sum(arr)
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Put an array into the object store.
-    array_data = ",".join(str(i) for i in range(100))
-    oid = driver.put(array_data.encode("utf-8"), b"python")
-
-    # Submit task that processes the array.
-    r = driver.submit_task("sum_array", [array_data.encode("utf-8")])
-    result = ray_get_one(driver, r[0].binary())
-    assert unpack_i64(result) == sum(range(100)), \
-        f"Expected {sum(range(100))}, got {unpack_i64(result)}"
-    return f"put(array) + sum_array → {unpack_i64(result)}"
+    array = list(range(100))
+    ray.put(array)
+    result = ray.get(sum_array.remote(array))
+    assert result == sum(range(100)), f"Expected {sum(range(100))}, got {result}"
+    return f"put(array) + sum_array → {result}"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 26: obj_ref.py — ObjectRef passing
-#   Original: pass ObjectRef to task
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_obj_ref():
     """Port of obj_ref.py — object store ref passing."""
-    driver = make_driver()
+    ref1 = ray.put(42)
+    ref2 = ray.put(99)
+    r1 = ray.get(ref1)
+    r2 = ray.get(ref2)
+    assert r1 == 42 and r2 == 99
 
-    # Put objects and verify we can get them back.
-    oid1 = driver.put(pack_i64(42), b"python")
-    oid2 = driver.put(pack_i64(99), b"python")
-
-    r1 = ray_get_one(driver, bytes(oid1.binary()))
-    r2 = ray_get_one(driver, bytes(oid2.binary()))
-
-    assert unpack_i64(r1) == 42, f"Expected 42, got {unpack_i64(r1)}"
-    assert unpack_i64(r2) == 99, f"Expected 99, got {unpack_i64(r2)}"
-
-    # Verify contains.
-    assert driver.contains(bytes(oid1.binary())), "oid1 should exist"
-    assert driver.contains(bytes(oid2.binary())), "oid2 should exist"
+    driver = ray._runtime.driver
+    assert driver.contains(bytes(ref1._binary))
+    assert driver.contains(bytes(ref2._binary))
     return "put(42) + put(99) → get()=[42,99], contains=True"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 27: obj_val.py — ObjectRef dereference
-#   Original: objects can be retrieved by value
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_obj_val():
     """Port of obj_val.py — object store deref."""
-    driver = make_driver()
+    ref1 = ray.put("hello, ray!")
+    assert ray.get(ref1) == "hello, ray!"
 
-    # Put and get a string value.
-    msg = b"hello, ray!"
-    oid = driver.put(msg, b"python")
-    result = ray_get_one(driver, oid.binary())
-    assert result == msg, f"Expected {msg}, got {result}"
-
-    # Put and get a structured value.
-    data = json.dumps({"key": "value", "num": 42}).encode("utf-8")
-    oid2 = driver.put(data, b"json")
-    result2 = ray_get_one(driver, oid2.binary())
-    parsed = json.loads(result2.decode("utf-8"))
-    assert parsed == {"key": "value", "num": 42}
+    ref2 = ray.put({"key": "value", "num": 42})
+    assert ray.get(ref2) == {"key": "value", "num": 42}
     return "put/get string + JSON roundtrip"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 28: task_exceptions.py — error propagation
-#   Original: tasks raise exceptions, caller sees them
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_task_exceptions():
     """Port of task_exceptions.py — error propagation from tasks."""
-    def callback(method, args, num_returns=1):
-        if method == "good_task":
-            return pack_i64(42)
-        elif method == "bad_task":
-            raise ValueError("intentional error in task")
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def good_task():
+        return 42
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote
+    def bad_task():
+        raise ValueError("intentional error in task")
 
-    # Good task should succeed.
-    r = driver.submit_task("good_task", [])
-    result = ray_get_one(driver, r[0].binary())
-    assert unpack_i64(result) == 42
+    assert ray.get(good_task.remote()) == 42
 
-    # Bad task — the worker executes the callback which raises. With error
-    # propagation, ray.get raises RuntimeError with the task error.
-    r2 = driver.submit_task("bad_task", [])
     try:
-        ray_get_one(driver, r2[0].binary())
+        ray.get(bad_task.remote())
         assert False, "Expected RuntimeError from ray.get on bad_task"
     except RuntimeError as e:
         assert "RayTaskError" in str(e)
-
     return "good_task → 42, bad_task → error propagated"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 29: limit_pending_tasks.py — back-pressure via wait
-#   Original: use ray.wait to limit pending tasks
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_limit_pending_tasks():
     """Port of limit_pending_tasks.py — back-pressure via wait."""
-    def callback(method, args, num_returns=1):
-        if method == "work":
-            x = unpack_i64(args[0])
-            return pack_i64(x + 100)
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote
+    def work(x):
+        return x + 100
 
     MAX_PENDING = 5
-    results = []
+    collected = []
     pending = []
 
     for i in range(15):
-        r = driver.submit_task("work", [pack_i64(i)])
-        pending.append(r[0].binary())
-
-        # Back-pressure: wait if too many pending.
+        pending.append(work.remote(i))
         while len(pending) >= MAX_PENDING:
-            ready, pending = ray_wait(driver, pending, 1)
-            for oid in ready:
-                data = ray_get_one(driver, oid)
-                results.append(unpack_i64(data))
+            ready, pending = ray.wait(pending, num_returns=1)
+            collected.append(ray.get(ready[0]))
 
-    # Drain remaining.
     while pending:
-        ready, pending = ray_wait(driver, pending, 1)
-        for oid in ready:
-            data = ray_get_one(driver, oid)
-            results.append(unpack_i64(data))
+        ready, pending = ray.wait(pending, num_returns=1)
+        collected.append(ray.get(ready[0]))
 
     expected = sorted([x + 100 for x in range(15)])
-    assert sorted(results) == expected, \
-        f"Expected {expected}, got {sorted(results)}"
+    assert sorted(collected) == expected
     return f"15 tasks with back-pressure (max {MAX_PENDING}) → all collected"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 30: anti_pattern_return_ray_put.py — return patterns
-#   Original: return value directly instead of ray.put inside task
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_return_ray_put():
     """Port of anti_pattern_return_ray_put.py — return patterns."""
-    def callback(method, args, num_returns=1):
-        if method == "compute":
-            x = unpack_i64(args[0])
-            # Good pattern: just return the value directly.
-            return pack_i64(x * x * x)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def compute(x):
+        return x * x * x
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    r = driver.submit_task("compute", [pack_i64(5)])
-    result = ray_get_one(driver, r[0].binary())
-    assert unpack_i64(result) == 125, f"Expected 125, got {unpack_i64(result)}"
+    result = ray.get(compute.remote(5))
+    assert result == 125, f"Expected 125, got {result}"
     return "compute(5) → 125 (direct return pattern)"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 31: owners.py — ownership demonstration
-#   Original: object ownership and reference counting
+#   Uses low-level driver.contains(), driver.free(), add_local_reference()
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_owners():
     """Port of owners.py — object ownership semantics."""
-    driver = make_driver()
+    ref1 = ray.put(1)
+    ref2 = ray.put(2)
+    ref3 = ray.put(3)
 
-    # Create objects owned by the driver.
-    oid1 = driver.put(pack_i64(1), b"python")
-    oid2 = driver.put(pack_i64(2), b"python")
-    oid3 = driver.put(pack_i64(3), b"python")
+    assert ray.get([ref1, ref2, ref3]) == [1, 2, 3]
 
-    b1, b2, b3 = bytes(oid1.binary()), bytes(oid2.binary()), bytes(oid3.binary())
+    driver = ray._runtime.driver
+    driver.add_local_reference(bytes(ref1._binary))
 
-    # All should be accessible.
-    results = ray_get(driver, [b1, b2, b3])
-    values = [unpack_i64(r) for r in results]
-    assert values == [1, 2, 3], f"Expected [1,2,3], got {values}"
+    assert driver.contains(bytes(ref1._binary))
+    assert driver.contains(bytes(ref2._binary))
 
-    # Add local references.
-    driver.add_local_reference(b1)
-
-    # Verify contains.
-    assert driver.contains(b1)
-    assert driver.contains(b2)
-
-    # Free an object.
-    driver.free([b3])
-    assert not driver.contains(b3), "oid3 should be freed"
-
-    # oid1 and oid2 should still be accessible.
-    assert driver.contains(b1)
-    assert driver.contains(b2)
-
+    driver.free([bytes(ref3._binary)])
+    assert not driver.contains(bytes(ref3._binary)), "ref3 should be freed"
+    assert driver.contains(bytes(ref1._binary))
+    assert driver.contains(bytes(ref2._binary))
     return "ownership: put 3 objects, free 1, verify lifecycle"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 32: tasks.py — Multi-return tasks
-#   Original: @ray.remote(num_returns=3) returning 3 separate values
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_tasks_multi_return():
     """Port of tasks.py — multi-return tasks with num_returns=3."""
-    def callback(method, args, num_returns=1):
-        if method == "return_multiple":
-            # Return 3 separate values.
-            return [pack_i64(0), pack_i64(1), pack_i64(2)]
-        elif method == "return_single":
-            # Return a tuple as single value.
-            return struct.pack("<qqq", 0, 1, 2)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def return_single():
+        return (0, 1, 2)
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote(num_returns=3)
+    def return_multiple():
+        return [0, 1, 2]
 
     # Single return (tuple).
-    r = driver.submit_task("return_single", [])
-    data = ray_get_one(driver, r[0].binary())
-    vals = struct.unpack("<qqq", data)
-    assert vals == (0, 1, 2), f"Expected (0,1,2), got {vals}"
+    result = ray.get(return_single.remote())
+    assert result == (0, 1, 2), f"Expected (0,1,2), got {result}"
 
-    # Multi-return (3 separate ObjectIDs).
-    refs = driver.submit_task("return_multiple", [], num_returns=3)
+    # Multi-return (3 separate ObjectRefs).
+    refs = return_multiple.remote()
     assert len(refs) == 3, f"Expected 3 refs, got {len(refs)}"
-    v0 = unpack_i64(ray_get_one(driver, refs[0].binary()))
-    v1 = unpack_i64(ray_get_one(driver, refs[1].binary()))
-    v2 = unpack_i64(ray_get_one(driver, refs[2].binary()))
+    v0 = ray.get(refs[0])
+    v1 = ray.get(refs[1])
+    v2 = ray.get(refs[2])
     assert (v0, v1, v2) == (0, 1, 2), f"Expected (0,1,2), got ({v0},{v1},{v2})"
-
     return "multi-return: num_returns=3 → 3 separate ObjectIDs with values 0,1,2"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 33: tasks.py — Pass-by-reference
-#   Original: pass ObjectRef as argument to another task
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_tasks_pass_by_ref():
     """Port of tasks.py — pass-by-reference pattern."""
-    def callback(method, args, num_returns=1):
-        if method == "my_function":
-            return pack_i64(1)
-        elif method == "function_with_arg":
-            value = unpack_i64(args[0])
-            return pack_i64(value + 1)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def my_function():
+        return 1
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote
+    def function_with_arg(value):
+        return value + 1
 
-    # First task returns 1.
-    r1 = driver.submit_task("my_function", [])
-    val1 = ray_get_one(driver, r1[0].binary())
-    assert unpack_i64(val1) == 1
-
-    # Pass result to second task (simulated pass-by-ref: resolve then pass).
-    r2 = driver.submit_task("function_with_arg", [val1])
-    val2 = ray_get_one(driver, r2[0].binary())
-    assert unpack_i64(val2) == 2
-
+    val1 = ray.get(my_function.remote())
+    assert val1 == 1
+    val2 = ray.get(function_with_arg.remote(val1))
+    assert val2 == 2
     return "pass-by-ref: my_function()→1, function_with_arg(1)→2"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 34: tasks.py — ray.wait pattern
-#   Original: ray.wait(object_refs, num_returns=1)
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_tasks_wait():
     """Port of tasks.py — ray.wait pattern."""
-    def callback(method, args, num_returns=1):
-        if method == "slow_function":
-            return pack_i64(1)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def slow_function():
+        return 1
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    refs = [slow_function.remote() for _ in range(4)]
 
-    # Submit 4 tasks.
-    refs = []
-    for _ in range(4):
-        r = driver.submit_task("slow_function", [])
-        refs.append(r[0].binary())
+    ready, remaining = ray.wait(refs, num_returns=1)
+    assert len(ready) >= 1
 
-    # Wait for 1 to finish.
-    ready, remaining = ray_wait(driver, refs, 1)
-    assert len(ready) >= 1, f"Expected at least 1 ready, got {len(ready)}"
-
-    # Wait for all.
-    all_ready, none_left = ray_wait(driver, refs, 4)
-    assert len(all_ready) == 4, f"Expected 4 ready, got {len(all_ready)}"
-    assert len(none_left) == 0, f"Expected 0 remaining, got {len(none_left)}"
-
+    all_ready, none_left = ray.wait(refs, num_returns=4)
+    assert len(all_ready) == 4
+    assert len(none_left) == 0
     return "ray.wait: 4 tasks, wait(num=1) → 1+ ready, wait(num=4) → all done"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 35: get_or_create.py — Named actor get_if_exists
-#   Original: Greeter.options(name="g1", get_if_exists=True).remote()
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_get_or_create():
     """Port of get_or_create.py — named actor get_if_exists pattern."""
-    state = {"value": None}
+    @ray.remote
+    class Greeter:
+        def __init__(self, greeting):
+            self.greeting = greeting
+        def say_hello(self):
+            return self.greeting
 
-    def callback(method, args, num_returns=1):
-        if method == "__init__":
-            state["value"] = args[0].decode("utf-8")
-            return b"ok"
-        elif method == "say_hello":
-            return state["value"].encode("utf-8")
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    # Create actor and register with a name.
-    worker, wid, port, actor_id = make_actor("Greeter_g1", callback)
-    driver = make_driver()
-    setup_and_submit(driver, actor_id, "Greeter_g1", "127.0.0.1", port,
-                     cluster.node_id(), wid)
-
-    # Init with "Old Greeting".
-    driver.submit_actor_method(actor_id, "__init__", [b"Old Greeting"])
+    g = Greeter.options(name="Greeter_g1").remote("Old Greeting")
 
     # Look up named actor via GCS.
-    gcs = PyGcsClient(cluster.gcs_address())
-    found = gcs.get_named_actor("Greeter_g1", "default")
-    assert found is not None, "Expected to find named actor 'Greeter_g1'"
+    found = ray.get_actor("Greeter_g1")
+    assert found is not None
 
-    # The returned actor ID should match the original.
-    assert bytes(found.binary()) == bytes(actor_id.binary()), \
-        "Named actor ID should match registered ID"
+    result = ray.get(found.say_hello.remote())
+    assert result == "Old Greeting", f"Expected 'Old Greeting', got {result}"
 
-    # Call say_hello.
-    oid = driver.submit_actor_method(actor_id, "say_hello", [])
-    result = ray_get_one(driver, oid.binary())
-    assert result == b"Old Greeting", f"Expected 'Old Greeting', got {result}"
-
-    # Lookup non-existent actor returns None.
-    not_found = gcs.get_named_actor("NonExistent", "default")
-    assert not_found is None, "Expected None for non-existent actor"
+    # Lookup non-existent actor raises ValueError.
+    try:
+        ray.get_actor("NonExistent")
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
 
     return "get_or_create: register 'Greeter_g1', lookup → found, say_hello → 'Old Greeting'"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 36: scheduling.py — Scheduling strategies (annotations only)
-#   Original: SPREAD, DEFAULT, NodeAffinity strategies
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_scheduling_strategies():
-    """Port of scheduling.py — scheduling strategies (single node).
+    """Port of scheduling.py — scheduling strategies (single node)."""
+    @ray.remote
+    def compute_sched(x):
+        return x * x + 7
 
-    On a single node, DEFAULT and SPREAD strategies produce the same result.
-    We verify that different inputs produce correct, distinct outputs (not
-    just hardcoded values) and that multiple strategy-annotated tasks execute.
-    """
-    call_log = []
+    r1 = ray.get(compute_sched.remote(3))
+    assert r1 == 16, f"Expected 16, got {r1}"
 
-    def callback(method, args, num_returns=1):
-        if method == "compute":
-            x = unpack_i64(args[0])
-            call_log.append(("compute", x))
-            return pack_i64(x * x + 7)
-        raise ValueError(f"unknown: {method}")
-
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Default scheduling with input=3 → 3*3+7=16.
-    r = driver.submit_task("compute", [pack_i64(3)])
-    assert unpack_i64(ray_get_one(driver, r[0].binary())) == 16
-
-    # SPREAD scheduling with input=5 → 5*5+7=32.
-    r = driver.submit_task("compute", [pack_i64(5)])
-    assert unpack_i64(ray_get_one(driver, r[0].binary())) == 32
-
-    # Verify both calls actually executed with correct inputs.
-    assert len(call_log) == 2, f"Expected 2 calls, got {len(call_log)}"
-    assert call_log[0] == ("compute", 3), f"First call: {call_log[0]}"
-    assert call_log[1] == ("compute", 5), f"Second call: {call_log[1]}"
-
+    r2 = ray.get(compute_sched.remote(5))
+    assert r2 == 32, f"Expected 32, got {r2}"
     return "scheduling: DEFAULT(3)→16, SPREAD(5)→32, both strategies succeed"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 37: resources.py — Resource annotations (skip GPU)
-#   Original: @ray.remote(num_cpus=4, num_gpus=2), fractional resources
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_resources():
-    """Port of resources.py — resource annotations (CPU only, skip GPU).
+    """Port of resources.py — resource annotations (CPU only)."""
+    @ray.remote
+    def my_function(x):
+        return x + 100
 
-    Resources are annotations only (single-node harness). We verify each
-    task computes a distinct result from its input to prove the callback
-    dispatches correctly per method name.
-    """
-    def callback(method, args, num_returns=1):
-        x = unpack_i64(args[0])
-        if method == "my_function":
-            return pack_i64(x + 100)  # num_cpus=4
-        elif method == "h":
-            return pack_i64(x + 200)  # num_cpus=0.25 (fractional)
-        elif method == "f":
-            return pack_i64(x + 300)  # num_cpus=2
-        raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def h(x):
+        return x + 200
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote
+    def f(x):
+        return x + 300
 
-    # Each task gets a distinct input and produces a distinct output.
-    cases = [("my_function", 10, 110), ("h", 20, 220), ("f", 30, 330)]
-    for fname, inp, expected in cases:
-        r = driver.submit_task(fname, [pack_i64(inp)])
-        result = unpack_i64(ray_get_one(driver, r[0].binary()))
-        assert result == expected, \
-            f"{fname}({inp}): expected {expected}, got {result}"
-
+    cases = [(my_function, 10, 110), (h, 20, 220), (f, 30, 330)]
+    for fn, inp, expected in cases:
+        result = ray.get(fn.remote(inp))
+        assert result == expected, f"{fn.__name__}({inp}): expected {expected}, got {result}"
     return "resources: my_function(10)→110, h(20)→220, f(30)→330"
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST 38: anti_pattern_fork_new_processes.py — task (skip multiprocessing)
-#   Original: @ray.remote def generate_response(); tests forking anti-pattern
+# TEST 38: anti_pattern_fork_new_processes.py
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_fork_new_processes():
     """Port of anti_pattern_fork_new_processes.py — task portion only."""
-    def callback(method, args, num_returns=1):
-        if method == "generate_response":
-            prompt = args[0].decode("utf-8")
-            # Simulate response generation.
-            return f"response to: {prompt}".encode("utf-8")
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def generate_response(prompt):
+        return f"response to: {prompt}"
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    r = driver.submit_task("generate_response", [b"hello"])
-    result = ray_get_one(driver, r[0].binary())
-    assert result == b"response to: hello", f"Unexpected: {result}"
-
+    result = ray.get(generate_response.remote("hello"))
+    assert result == "response to: hello"
     return "fork_new_processes: generate_response('hello') → 'response to: hello'"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 39: limit_running_tasks.py — memory-themed backpressure
-#   Original: .options(memory=2GB).remote() to limit concurrent tasks
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_limit_running_tasks():
-    """Port of limit_running_tasks.py — backpressure via wait.
-
-    Each task computes i*i from its input. We verify all 100 results
-    are correct (not just that we received 100 items).
-    """
-    def callback(method, args, num_returns=1):
-        if method == "process":
-            i = unpack_i64(args[0])
-            return pack_i64(i * i)
-        raise ValueError(f"unknown: {method}")
-
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    """Port of limit_running_tasks.py — backpressure via wait."""
+    @ray.remote
+    def process_lrt(i):
+        return i * i
 
     BATCH_SIZE = 10
     pending = []
     all_results = []
 
     for i in range(100):
-        r = driver.submit_task("process", [pack_i64(i)])
-        pending.append(r[0].binary())
-
+        pending.append(process_lrt.remote(i))
         if len(pending) >= BATCH_SIZE:
-            ready, pending = ray_wait(driver, pending, 1)
-            for oid in ready:
-                all_results.append(unpack_i64(ray_get_one(driver, oid)))
+            ready, pending = ray.wait(pending, num_returns=1)
+            all_results.append(ray.get(ready[0]))
 
-    # Drain remaining.
     while pending:
-        ready, pending = ray_wait(driver, pending, 1)
-        for oid in ready:
-            all_results.append(unpack_i64(ray_get_one(driver, oid)))
+        ready, pending = ray.wait(pending, num_returns=1)
+        all_results.append(ray.get(ready[0]))
 
-    assert len(all_results) == 100, f"Expected 100 results, got {len(all_results)}"
+    assert len(all_results) == 100
     expected = sorted([i * i for i in range(100)])
-    assert sorted(all_results) == expected, \
-        f"Results mismatch: got {sorted(all_results)[:5]}..."
+    assert sorted(all_results) == expected
     return "limit_running_tasks: 100 tasks with backpressure, all i*i values verified"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 40: nested-tasks.py — Outer task submits inner task
-#   Original: Task calls another task inside (nested dispatch)
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_nested_tasks():
     """Port of nested-tasks.py — outer task calls inner task."""
-    # Inner worker: simple multiply.
-    def inner_callback(method, args, num_returns=1):
-        if method == "multiply":
-            x = unpack_i64(args[0])
-            y = unpack_i64(args[1])
-            return pack_i64(x * y)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def multiply(x, y):
+        return x * y
 
-    inner_worker, inner_wid, inner_port = make_task_worker(inner_callback)
-    inner_driver = make_task_driver(inner_worker, inner_wid, inner_port)
+    @ray.remote
+    def outer(x):
+        return ray.get(multiply.remote(x, x))
 
-    # Outer worker: calls inner task via inner_driver (captured in closure).
-    def outer_callback(method, args, num_returns=1):
-        if method == "outer":
-            x = unpack_i64(args[0])
-            # Submit inner task: multiply(x, x).
-            inner_refs = inner_driver.submit_task("multiply", [pack_i64(x), pack_i64(x)])
-            result = ray_get_one(inner_driver, inner_refs[0].binary())
-            # Return the inner result.
-            return result
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    outer_worker, outer_wid, outer_port = make_task_worker(outer_callback)
-    outer_driver = make_task_driver(outer_worker, outer_wid, outer_port)
-
-    # outer(5) → inner multiply(5,5) → 25.
-    r = outer_driver.submit_task("outer", [pack_i64(5)])
-    result = unpack_i64(ray_get_one(outer_driver, r[0].binary()))
+    result = ray.get(outer.remote(5))
     assert result == 25, f"Expected 25, got {result}"
-
     return "nested-tasks: outer(5) → inner multiply(5,5) → 25"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 41: pattern_nested_tasks.py — Recursive nested dispatch
-#   Original: Distributed quicksort via recursive task spawning
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_pattern_nested_tasks():
-    """Port of pattern_nested_tasks.py — recursive sort via nested tasks."""
-    # Leaf worker: sorts a list directly.
-    def leaf_callback(method, args, num_returns=1):
-        if method == "sort":
-            data = list(struct.unpack(f"<{len(args[0])//8}q", args[0]))
-            data.sort()
-            return struct.pack(f"<{len(data)}q", *data)
-        else:
-            raise ValueError(f"unknown: {method}")
+    """Port of pattern_nested_tasks.py — sort via task dispatch."""
+    @ray.remote
+    def sort_list(data):
+        return sorted(data)
 
-    leaf_worker, leaf_wid, leaf_port = make_task_worker(leaf_callback)
-    leaf_driver = make_task_driver(leaf_worker, leaf_wid, leaf_port)
-
-    # For simplicity, test a non-recursive sort via task dispatch.
     data = [5, 3, 8, 1, 9, 2, 7, 4, 6]
-    packed = struct.pack(f"<{len(data)}q", *data)
-    r = leaf_driver.submit_task("sort", [packed])
-    result_bytes = ray_get_one(leaf_driver, r[0].binary())
-    result = list(struct.unpack(f"<{len(result_bytes)//8}q", result_bytes))
+    result = ray.get(sort_list.remote(data))
     assert result == sorted(data), f"Expected {sorted(data)}, got {result}"
-
     return f"pattern_nested_tasks: sort {data} → {result}"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 42: anti_pattern_nested_ray_get.py — ray.get inside task
-#   Original: Task calls ray.get on refs passed as args
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_nested_ray_get():
     """Port of anti_pattern_nested_ray_get.py — ray.get inside task."""
-    # Inner worker: simple identity.
-    def inner_callback(method, args, num_returns=1):
-        if method == "identity":
-            return args[0]
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def identity(x):
+        return x
 
-    inner_worker, inner_wid, inner_port = make_task_worker(inner_callback)
-    inner_driver = make_task_driver(inner_worker, inner_wid, inner_port)
+    @ray.remote
+    def aggregate(*args):
+        refs = [identity.remote(a) for a in args]
+        results_list = ray.get(refs)
+        return sum(results_list)
 
-    # Outer worker: submits N inner tasks, gets all results, sums them.
-    def outer_callback(method, args, num_returns=1):
-        if method == "aggregate":
-            # args are the packed i64 values to process.
-            refs = []
-            for a in args:
-                r = inner_driver.submit_task("identity", [a])
-                refs.append(r[0].binary())
-            # ray.get inside task.
-            results = ray_get(inner_driver, refs)
-            total = sum(unpack_i64(r) for r in results)
-            return pack_i64(total)
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    outer_worker, outer_wid, outer_port = make_task_worker(outer_callback)
-    outer_driver = make_task_driver(outer_worker, outer_wid, outer_port)
-
-    # Submit: aggregate(1, 2, 3, 4, 5) → 15.
-    vals = [pack_i64(i) for i in range(1, 6)]
-    r = outer_driver.submit_task("aggregate", vals)
-    result = unpack_i64(ray_get_one(outer_driver, r[0].binary()))
+    result = ray.get(aggregate.remote(1, 2, 3, 4, 5))
     assert result == 15, f"Expected 15, got {result}"
-
     return "nested_ray_get: aggregate(1..5) → inner identity × 5 → sum = 15"
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST 43: actor-sync.py — Signal actor pattern (simplified)
-#   Original: SignalActor with send/wait, tasks wait for signal
+# TEST 43: actor-sync.py — Signal actor pattern
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_actor_sync():
     """Port of actor-sync.py — signal actor as synchronization primitive."""
-    signal_state = {"ready": False}
+    @ray.remote
+    class SignalActor:
+        def __init__(self):
+            self.ready = False
+        def send(self):
+            self.ready = True
+            return True
+        def wait_signal(self):
+            return 1 if self.ready else 0
 
-    def signal_callback(method, args, num_returns=1):
-        if method == "send":
-            signal_state["ready"] = True
-            return b"ok"
-        elif method == "wait":
-            # In real Ray, this would be async. We return immediately.
-            return pack_i64(1 if signal_state["ready"] else 0)
-        else:
-            raise ValueError(f"unknown: {method}")
+    signal = SignalActor.options(
+        name="Signal_sync", namespace="test_sync"
+    ).remote()
+    ray.get(signal.send.remote())
 
-    signal_worker, signal_wid, signal_port, signal_aid = make_actor(
-        "SignalActor_sync", signal_callback)
-    signal_driver = make_driver()
-    setup_and_submit(signal_driver, signal_aid, "SignalActor_sync", "127.0.0.1",
-                     signal_port, cluster.node_id(), signal_wid)
+    @ray.remote
+    def wait_and_go():
+        sig = ray.get_actor("Signal_sync", "test_sync")
+        return ray.get(sig.wait_signal.remote())
 
-    # Task worker: checks signal, then proceeds.
-    def task_callback(method, args, num_returns=1):
-        if method == "wait_and_go":
-            # Call signal.wait via signal_driver.
-            oid = signal_driver.submit_actor_method(signal_aid, "wait", [])
-            result = ray_get_one(signal_driver, oid.binary())
-            status = unpack_i64(result)
-            return pack_i64(status)
-        else:
-            raise ValueError(f"unknown: {method}")
-
-    tw, twid, tport = make_task_worker(task_callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Send signal first.
-    signal_driver.submit_actor_method(signal_aid, "send", [])
-
-    # Submit task that waits for signal.
-    r = driver.submit_task("wait_and_go", [])
-    result = unpack_i64(ray_get_one(driver, r[0].binary()))
+    result = ray.get(wait_and_go.remote())
     assert result == 1, f"Expected signal ready (1), got {result}"
-
     return "actor-sync: signal.send() → task.wait_and_go() → ready"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 44: tasks_fault_tolerance.py — task retries
-#   Original: @ray.remote(max_retries=3) flaky tasks
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_tasks_fault_tolerance():
     """Port of tasks_fault_tolerance.py — task retry on failure."""
     call_count = {"n": 0}
 
-    def callback(method, args, num_returns=1):
-        if method == "flaky_task":
-            call_count["n"] += 1
-            if call_count["n"] <= 2:
-                raise RuntimeError(f"flaky failure #{call_count['n']}")
-            return pack_i64(42)
-        else:
-            raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def flaky_task():
+        call_count["n"] += 1
+        if call_count["n"] <= 2:
+            raise RuntimeError(f"flaky failure #{call_count['n']}")
+        return 42
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Submit with max_retries=3 — first 2 calls fail, 3rd succeeds.
-    r = driver.submit_task("flaky_task", [], num_returns=1, max_retries=3)
-    result = unpack_i64(ray_get_one(driver, r[0].binary()))
+    result = ray.get(flaky_task.options(max_retries=3).remote())
     assert result == 42, f"Expected 42, got {result}"
     assert call_count["n"] == 3, f"Expected 3 calls, got {call_count['n']}"
-
     return f"fault_tolerance: flaky task retried {call_count['n']} times → 42"
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST 45: tasks.py (error propagation) — error from task to ray.get
-#   Original: ray.get raises RayTaskError on task failure
+# TEST 45: tasks.py (error propagation)
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_tasks_error_propagation():
-    """Port of tasks.py error propagation — ray.get raises on task failure."""
-    def callback(method, args, num_returns=1):
-        if method == "bad_task":
-            raise ValueError("intentional error for testing")
-        else:
-            raise ValueError(f"unknown: {method}")
+    """Port of tasks.py error propagation."""
+    @ray.remote
+    def bad_task_ep():
+        raise ValueError("intentional error for testing")
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Submit a task that always fails (no retries).
-    r = driver.submit_task("bad_task", [], num_returns=1, max_retries=0)
-
-    # ray.get should raise RuntimeError with the task error message.
     try:
-        ray_get_one(driver, r[0].binary())
+        ray.get(bad_task_ep.options(max_retries=0).remote())
         assert False, "Expected RuntimeError from ray.get"
     except RuntimeError as e:
         msg = str(e)
         assert "RayTaskError" in msg, f"Expected RayTaskError, got: {msg}"
         assert "intentional error" in msg, f"Expected error message, got: {msg}"
-
     return "error_propagation: bad_task → RuntimeError('RayTaskError: ...intentional error...')"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 46: placement_group_capture_child_tasks_example.py
-#   Original: parent task with capture_child_tasks=True auto-schedules
-#   child tasks inside the same placement group.
+#   Uses low-level PG APIs (not in ray package) + @ray.remote functions
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_placement_group_capture_child_tasks():
     """Port of placement_group_capture_child_tasks_example.py."""
-    # Create placement group with 1 bundle of {"CPU": 2}
-    gcs = PyGcsClient(cluster.gcs_address())
+    gcs = ray.PyGcsClient(ray._runtime.cluster.gcs_address())
     pg_id = gcs.create_placement_group([{"CPU": 2.0}], "PACK")
-
-    # Wait for PG to be ready
     ready = gcs.wait_placement_group_until_ready(pg_id.binary(), 10.0)
     assert ready, "Placement group not ready"
 
-    # Set up 2 workers for nested dispatch (parent + child)
-    child_results = {"ran": False}
+    @ray.remote
+    def child_task():
+        return 1
 
-    def child_callback(method, args, num_returns=1):
-        if method == "child":
-            child_results["ran"] = True
-            return pack_i64(1)
-        raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def parent_task():
+        return ray.get(child_task.remote())
 
-    child_w, child_wid, child_port = make_task_worker(child_callback)
-    child_driver = make_task_driver(child_w, child_wid, child_port)
-
-    def parent_callback(method, args, num_returns=1):
-        if method == "parent":
-            # Submit child task via nested dispatch (capture_child_tasks
-            # means it inherits the PG — we verify via successful execution)
-            r = child_driver.submit_task("child", [])
-            child_val = unpack_i64(ray_get_one(child_driver, r[0].binary()))
-            return pack_i64(child_val)
-        raise ValueError(f"unknown: {method}")
-
-    parent_w, parent_wid, parent_port = make_task_worker(parent_callback)
-    parent_driver = make_task_driver(parent_w, parent_wid, parent_port)
-
-    # Submit parent task with PG scheduling + capture_child_tasks=True
-    r = parent_driver.submit_task(
-        "parent", [],
+    # Submit with PG params via low-level API (PG scheduling not in ray package).
+    _, _, _, task_driver = ray._runtime._pick_task_worker()
+    refs = task_driver.submit_task(
+        "parent_task", [],
         placement_group_id=pg_id.binary(),
         placement_group_bundle_index=0,
         placement_group_capture_child_tasks=True,
     )
-    result = unpack_i64(ray_get_one(parent_driver, r[0].binary()))
+    result_ref = ray.ObjectRef(refs[0].binary(), task_driver)
+    result = ray.get(result_ref)
     assert result == 1, f"Expected 1, got {result}"
-    assert child_results["ran"], "Child task did not run"
 
-    # Cleanup
     gcs.remove_placement_group(pg_id.binary())
-
     return "capture_child_tasks: parent→child in PG, child returned 1"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 47: original_resource_unavailable_example.py
-#   Original: demonstrates that PG-scheduled tasks succeed because
-#   the PG reserves resources.
+#   Uses low-level PG APIs + @ray.remote function
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_original_resource_unavailable():
-    """Port of original_resource_unavailable_example.py.
-
-    Demonstrates that a PG-scheduled task succeeds because the PG
-    reserves resources. We verify with an input-dependent computation
-    and also run a task WITHOUT PG to contrast.
-    """
-    gcs = PyGcsClient(cluster.gcs_address())
+    """Port of original_resource_unavailable_example.py."""
+    gcs = ray.PyGcsClient(ray._runtime.cluster.gcs_address())
     pg_id = gcs.create_placement_group([{"CPU": 2.0}], "PACK")
-
     ready = gcs.wait_placement_group_until_ready(pg_id.binary(), 10.0)
     assert ready, "Placement group not ready"
 
-    call_log = []
+    @ray.remote
+    def f_pg(x):
+        return x * 3 + 1
 
-    def callback(method, args, num_returns=1):
-        if method == "f":
-            x = unpack_i64(args[0])
-            call_log.append(("f", x))
-            return pack_i64(x * 3 + 1)
-        raise ValueError(f"unknown: {method}")
-
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    # Submit task WITH PG scheduling — succeeds (resources reserved by PG).
-    r = driver.submit_task(
-        "f", [pack_i64(7)],
+    # Submit WITH PG scheduling.
+    _, _, _, task_driver = ray._runtime._pick_task_worker()
+    refs = task_driver.submit_task(
+        "f_pg", [pickle.dumps(7)],
         placement_group_id=pg_id.binary(),
         placement_group_bundle_index=0,
     )
-    result = unpack_i64(ray_get_one(driver, r[0].binary()))
+    result_ref = ray.ObjectRef(refs[0].binary(), task_driver)
+    result = ray.get(result_ref)
     assert result == 22, f"PG task: expected 7*3+1=22, got {result}"
 
-    # Submit task WITHOUT PG — also succeeds on single node.
-    r2 = driver.submit_task("f", [pack_i64(10)])
-    result2 = unpack_i64(ray_get_one(driver, r2[0].binary()))
+    # Submit WITHOUT PG — also succeeds on single node.
+    result2 = ray.get(f_pg.remote(10))
     assert result2 == 31, f"Non-PG task: expected 10*3+1=31, got {result2}"
 
-    assert len(call_log) == 2, f"Expected 2 calls, got {len(call_log)}"
-
-    # Cleanup
     gcs.remove_placement_group(pg_id.binary())
-
     return "resource_unavailable: PG f(7)→22, non-PG f(10)→31"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 48: actor-pool.py
-#   Original: ActorPool distributes work across actors in round-robin.
 # ═══════════════════════════════════════════════════════════════════════
-
-class ActorPool:
-    """Minimal ActorPool: round-robin dispatch across (driver, actor_id) pairs."""
-
-    def __init__(self, actors):
-        self._actors = actors  # list of (driver, actor_id)
-        self._idx = 0
-
-    def map(self, fn, values):
-        """Call fn(driver, actor_id, value) for each value in round-robin order.
-        Returns results in order."""
-        pending = []
-        for v in values:
-            driver, actor_id = self._actors[self._idx % len(self._actors)]
-            self._idx += 1
-            oid = fn(driver, actor_id, v)
-            pending.append((driver, oid))
-        return [unpack_i64(ray_get_one(d, o.binary())) for d, o in pending]
-
 
 def test_actor_pool():
     """Port of actor-pool.py."""
-    def double_callback(method, args, num_returns=1):
-        if method == "double":
-            n = unpack_i64(args[0])
-            return pack_i64(n * 2)
-        raise ValueError(f"unknown: {method}")
+    @ray.remote
+    class DoubleActor:
+        def double(self, n):
+            return n * 2
 
-    # Create 2 actor workers
-    w1, wid1, p1, aid1 = make_actor("PoolActor1", double_callback)
-    w2, wid2, p2, aid2 = make_actor("PoolActor2", double_callback)
+    actors = [DoubleActor.remote() for _ in range(2)]
 
-    driver = make_driver()
-    setup_and_submit(driver, aid1, "PoolActor1", "127.0.0.1", p1,
-                     cluster.node_id(), wid1)
-    setup_and_submit(driver, aid2, "PoolActor2", "127.0.0.1", p2,
-                     cluster.node_id(), wid2)
+    # Round-robin map.
+    values = [1, 2, 3, 4]
+    refs = []
+    for i, v in enumerate(values):
+        actor = actors[i % len(actors)]
+        refs.append(actor.double.remote(v))
 
-    pool = ActorPool([
-        (driver, aid1),
-        (driver, aid2),
-    ])
-
-    results = pool.map(
-        lambda d, aid, v: d.submit_actor_method(aid, "double", [pack_i64(v)]),
-        [1, 2, 3, 4],
-    )
-    assert results == [2, 4, 6, 8], f"Expected [2,4,6,8], got {results}"
-
-    return f"actor-pool: pool.map(double, [1,2,3,4]) → {results}"
+    results_list = [ray.get(r) for r in refs]
+    assert results_list == [2, 4, 6, 8], f"Expected [2,4,6,8], got {results_list}"
+    return f"actor-pool: pool.map(double, [1,2,3,4]) → {results_list}"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 49: pattern_async_actor.py
-#   Original: sync actor blocks concurrent calls; async actor allows them.
+#   Tests max_concurrency — stays low-level (no high-level equivalent)
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_pattern_async_actor():
     """Port of pattern_async_actor.py — sync vs concurrent actors.
 
-    Demonstrates that max_concurrency=1 serializes task execution while
-    max_concurrency>1 allows concurrent execution. We use the task dispatch
-    path with threaded submission so that multiple gRPC PushTask requests
-    arrive concurrently at the worker.
+    Tests max_concurrency which is a low-level PyCoreWorker feature.
     """
     import threading
+    import struct
 
-    def _submit_from_threads(drivers, method, args_list, n):
-        """Submit n tasks from n separate threads (each with its own driver).
-        Returns list of (driver, oid_binary) pairs."""
-        results = [None] * n
+    cluster = ray._runtime.cluster
+    PyCoreWorker = ray.PyCoreWorker
+    PyWorkerID = ray.PyWorkerID
+
+    def _make_driver():
+        return PyCoreWorker(1, "127.0.0.1", cluster.gcs_address(), 1,
+                            node_id=cluster.node_id())
+
+    def _ray_get_one(driver, oid_binary, timeout_ms=10000):
+        results = driver.get([oid_binary], timeout_ms)
+        return results[0][0] if results[0] is not None else None
+
+    def _submit_from_threads(drivers, method, n):
+        results_t = [None] * n
         def _submit(idx):
             d = drivers[idx]
-            oids = d.submit_task(method, args_list)
-            results[idx] = (d, oids[0].binary())
+            oids = d.submit_task(method, [])
+            results_t[idx] = (d, oids[0].binary())
         threads = [threading.Thread(target=_submit, args=(i,)) for i in range(n)]
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=15)
-        return [r for r in results if r is not None]
+        return [r for r in results_t if r is not None]
 
     # --- Pattern 1: Sync worker (max_concurrency=1) ---
     sync_state = {"max_concurrent": 0, "current": 0, "calls": 0}
@@ -2034,7 +1277,7 @@ def test_pattern_async_actor():
             with sync_lock:
                 sync_state["current"] -= 1
                 sync_state["calls"] += 1
-            return pack_i64(sync_state["calls"])
+            return struct.pack("<q", sync_state["calls"])
         raise ValueError(f"unknown: {method}")
 
     wid_s = PyWorkerID.py_from_random()
@@ -2046,18 +1289,17 @@ def test_pattern_async_actor():
     sync_worker.set_task_callback(sync_callback)
     sync_port = sync_worker.start_grpc_server()
 
-    # Create 3 separate drivers each configured to dispatch to the sync worker
     sync_drivers = []
     for _ in range(3):
-        d = make_driver()
+        d = _make_driver()
         d.setup_task_dispatch("127.0.0.1", sync_port, wid_s)
         sync_drivers.append(d)
 
-    pending_s = _submit_from_threads(sync_drivers, "run", [], 3)
+    pending_s = _submit_from_threads(sync_drivers, "run", 3)
     for d, oid_b in pending_s:
-        ray_get_one(d, oid_b, timeout_ms=10000)
+        _ray_get_one(d, oid_b, timeout_ms=10000)
 
-    assert sync_state["calls"] == 3, f"Sync: expected 3, got {sync_state['calls']}"
+    assert sync_state["calls"] == 3
     assert sync_state["max_concurrent"] == 1, \
         f"Sync: expected max_concurrent=1, got {sync_state['max_concurrent']}"
 
@@ -2075,7 +1317,7 @@ def test_pattern_async_actor():
             with async_lock:
                 async_state["current"] -= 1
                 async_state["calls"] += 1
-            return pack_i64(async_state["calls"])
+            return struct.pack("<q", async_state["calls"])
         raise ValueError(f"unknown: {method}")
 
     wid_a = PyWorkerID.py_from_random()
@@ -2089,13 +1331,13 @@ def test_pattern_async_actor():
 
     async_drivers = []
     for _ in range(3):
-        d = make_driver()
+        d = _make_driver()
         d.setup_task_dispatch("127.0.0.1", async_port, wid_a)
         async_drivers.append(d)
 
-    pending_a = _submit_from_threads(async_drivers, "run", [], 3)
+    pending_a = _submit_from_threads(async_drivers, "run", 3)
     for d, oid_b in pending_a:
-        ray_get_one(d, oid_b, timeout_ms=10000)
+        _ray_get_one(d, oid_b, timeout_ms=10000)
 
     assert async_state["calls"] == 3
     assert async_state["max_concurrent"] >= 2, \
@@ -2107,217 +1349,139 @@ def test_pattern_async_actor():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 50: object_ref_serialization.py
-#   Original: put → pickle ObjectRef to file → del → load → get → free.
+#   Uses low-level driver.contains(), driver.free()
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_object_ref_serialization():
     """Port of object_ref_serialization.py."""
-    import pickle
+    ref = ray.put({"hello": "world"})
+    oid_bytes = ref._binary
+    driver = ray._runtime.driver
 
-    driver = make_driver()
+    assert driver.contains(bytes(oid_bytes)), "Object should be in store after put"
 
-    # Put a dict-like object
-    data = json.dumps({"hello": "world"}).encode("utf-8")
-    oid_obj = driver.put(data, b"python")
-    oid_bytes = bytes(oid_obj.binary())
-
-    assert driver.contains(oid_bytes), "Object should be in store after put"
-
-    # Serialize ObjectID bytes to a temp file
     pkl_path = os.path.join(tempfile.gettempdir(), "rust_test_obj_ref.pkl")
     with open(pkl_path, "wb") as f:
-        pickle.dump(oid_bytes, f)
+        pickle.dump(bytes(oid_bytes), f)
 
-    # Delete local reference (Python-side)
-    del oid_obj
-    del oid_bytes
+    del ref
 
-    # Load from file
     with open(pkl_path, "rb") as f:
         restored_bytes = pickle.load(f)
 
-    # Get the object back
-    result = ray_get_one(driver, restored_bytes)
-    parsed = json.loads(result.decode("utf-8"))
-    assert parsed == {"hello": "world"}, f"Expected dict, got {parsed}"
+    # Get the object back via a new ObjectRef.
+    restored_ref = ray.ObjectRef(restored_bytes, driver)
+    result = ray.get(restored_ref)
+    assert result == {"hello": "world"}, f"Expected dict, got {result}"
 
-    # Free the object
-    driver.free([restored_bytes])
-
+    driver.free([bytes(restored_bytes)])
     os.unlink(pkl_path)
     return "object_ref_serialization: put → pickle to file → load → get → free"
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST 51: deser.py
-#   Original: task receives numpy array, in-place modification raises
-#   ValueError because deserialized arrays are read-only (zero-copy).
+# TEST 51: deser.py — Data integrity through transport
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_deser_read_only():
-    """Port of deser.py — data integrity through transport.
+    """Port of deser.py — data integrity through transport."""
+    @ray.remote
+    def read_and_copy(values):
+        if values != [10, 20, 30, 40]:
+            return "ERROR:data_corrupted:" + repr(values)
+        return [v * 2 for v in values]
 
-    The original example tests that deserialized NumPy arrays are read-only
-    (zero-copy from the object store). Since our Rust backend transports
-    raw bytes, we verify:
-    1. Data survives the put → task-arg → callback roundtrip intact.
-    2. The callback can read all values correctly (deserialization works).
-    3. A modified copy is returned (copy-on-write pattern).
-    """
-    def callback(method, args, num_returns=1):
-        if method == "read_and_copy":
-            data = args[0]
-            # Verify the data arrived intact — unpack and check values.
-            values = list(struct.unpack(f"<{len(data)//8}q", data))
-            if values != [10, 20, 30, 40]:
-                return b"ERROR:data_corrupted:" + repr(values).encode()
-            # Create a modified copy (simulates copy-on-write pattern).
-            modified = [v * 2 for v in values]
-            return struct.pack(f"<{len(modified)}q", *modified)
-        raise ValueError(f"unknown: {method}")
+    result = ray.get(read_and_copy.remote([10, 20, 30, 40]))
+    assert isinstance(result, list), f"Callback reported: {result}"
+    assert result == [20, 40, 60, 80], f"Expected [20,40,60,80], got {result}"
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
-    original = struct.pack("<4q", 10, 20, 30, 40)
-    r = driver.submit_task("read_and_copy", [original])
-    result = ray_get_one(driver, r[0].binary())
-
-    # Verify the callback received correct data AND returned correct modified data.
-    assert not result.startswith(b"ERROR:"), f"Callback reported: {result}"
-    modified_values = list(struct.unpack(f"<{len(result)//8}q", result))
-    assert modified_values == [20, 40, 60, 80], \
-        f"Expected [20, 40, 60, 80], got {modified_values}"
-
-    # Verify the original data in the object store is unchanged.
-    oid = driver.put(original, b"python")
-    fetched = ray_get_one(driver, oid.binary())
-    original_values = list(struct.unpack(f"<{len(fetched)//8}q", fetched))
-    assert original_values == [10, 20, 30, 40], \
-        f"Original data should be unchanged, got {original_values}"
-
+    # Verify original data in object store is unchanged.
+    ref = ray.put([10, 20, 30, 40])
+    fetched = ray.get(ref)
+    assert fetched == [10, 20, 30, 40]
     return "deser: data integrity verified, modified copy returned [20,40,60,80]"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 52: actor_creator_failure.py
-#   Original: kill parent → child actor dies (RayActorError), detached
-#   actor survives.
+#   Uses low-level driver.kill_actor()
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_actor_creator_failure():
     """Port of actor_creator_failure.py."""
-    child_state = {"value": 0}
-    detached_state = {"value": 0}
+    @ray.remote
+    class PingActor:
+        def __init__(self):
+            self.value = 0
+        def ping(self):
+            self.value += 1
+            return self.value
 
-    def child_callback(method, args, num_returns=1):
-        if method == "ping":
-            child_state["value"] += 1
-            return pack_i64(child_state["value"])
-        raise ValueError(f"unknown: {method}")
+    child = PingActor.remote()
+    detached = PingActor.remote()
 
-    def detached_callback(method, args, num_returns=1):
-        if method == "ping":
-            detached_state["value"] += 1
-            return pack_i64(detached_state["value"])
-        raise ValueError(f"unknown: {method}")
+    assert ray.get(child.ping.remote()) == 1
+    assert ray.get(detached.ping.remote()) == 1
 
-    # Create both actors
-    c_w, c_wid, c_port, c_aid = make_actor("ChildActor_CF", child_callback)
-    d_w, d_wid, d_port, d_aid = make_actor("DetachedActor_CF", detached_callback)
+    # Kill the child actor.
+    ray._runtime.driver.kill_actor(bytes(child._actor_id.binary()), True, True)
 
-    driver = make_driver()
-    setup_and_submit(driver, c_aid, "ChildActor_CF", "127.0.0.1",
-                     c_port, cluster.node_id(), c_wid)
-    setup_and_submit(driver, d_aid, "DetachedActor_CF", "127.0.0.1",
-                     d_port, cluster.node_id(), d_wid)
-
-    # Both work initially
-    oid1 = driver.submit_actor_method(c_aid, "ping", [])
-    ray_get_one(driver, oid1.binary())
-    oid2 = driver.submit_actor_method(d_aid, "ping", [])
-    ray_get_one(driver, oid2.binary())
-    assert child_state["value"] == 1
-    assert detached_state["value"] == 1
-
-    # Kill the child actor (simulate parent death → child dies)
-    driver.kill_actor(bytes(c_aid.binary()), True, True)
-
-    # Child: method call should raise error (actor is dead)
+    # Child should be dead.
     error_raised = False
     try:
-        driver.submit_actor_method(c_aid, "ping", [])
-    except RuntimeError as e:
+        child.ping.remote()
+    except RuntimeError:
         error_raised = True
-        assert "dead" in str(e).lower() or "actor" in str(e).lower(), f"Unexpected error: {e}"
-
     assert error_raised, "Expected error submitting to dead actor"
 
-    # Detached actor: still alive and working
-    oid3 = driver.submit_actor_method(d_aid, "ping", [])
-    result = unpack_i64(ray_get_one(driver, oid3.binary()))
+    # Detached still works.
+    result = ray.get(detached.ping.remote())
     assert result == 2, f"Expected 2, got {result}"
-
     return f"actor_creator_failure: child killed → error, detached → alive (value={result})"
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 53: actor_restart.py
-#   Original: actor with max_restarts=4 crashes every 10th call, is
-#   reconstructed. After 50 calls total (5 lives), subsequent calls fail.
+#   Uses kill_actor for lifecycle demonstration
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_actor_restart():
     """Port of actor_restart.py — crash + re-creation pattern."""
     MAX_RESTARTS = 4
     CRASH_EVERY = 10
-    total_calls = {"n": 0}
 
-    def make_crashy_callback():
-        local_count = {"n": 0}
-        def callback(method, args, num_returns=1):
-            if method == "increment_and_possibly_fail":
-                local_count["n"] += 1
-                if local_count["n"] >= CRASH_EVERY:
-                    raise RuntimeError("simulated actor crash (os._exit)")
-                total_calls["n"] += 1
-                return pack_i64(total_calls["n"])
-            raise ValueError(f"unknown: {method}")
-        return callback
+    @ray.remote
+    class CrashyActor:
+        def __init__(self):
+            self.count = 0
+        def increment_and_possibly_fail(self):
+            self.count += 1
+            if self.count >= CRASH_EVERY:
+                raise RuntimeError("simulated actor crash (os._exit)")
+            return self.count
 
     successful_calls = 0
-    last_aid = None
-    last_driver = None
+    last_actor = None
 
-    for life in range(MAX_RESTARTS + 1):  # 5 lives total
-        worker, wid, port, actor_id = make_actor(
-            f"CrashyActor_{life}", make_crashy_callback())
-        driver = make_driver()
-        setup_and_submit(driver, actor_id, f"CrashyActor_{life}",
-                         "127.0.0.1", port, cluster.node_id(), wid)
-        last_aid = actor_id
-        last_driver = driver
-
-        for call in range(CRASH_EVERY):
+    for life in range(MAX_RESTARTS + 1):
+        actor = CrashyActor.remote()
+        last_actor = actor
+        for _ in range(CRASH_EVERY):
             try:
-                oid = driver.submit_actor_method(actor_id,
-                    "increment_and_possibly_fail", [])
-                result = ray_get_one(driver, oid.binary())
-                if result is not None:
-                    successful_calls += 1
+                ray.get(actor.increment_and_possibly_fail.remote())
+                successful_calls += 1
             except RuntimeError:
-                break  # Actor "crashed", move to next life
+                break
 
-    # Should have ~45 successful calls (9 per life × 5 lives)
     assert successful_calls >= 40, \
         f"Expected >= 40 successful calls, got {successful_calls}"
 
-    # After all restarts exhausted, demonstrate the actor stays dead
-    last_driver.kill_actor(bytes(last_aid.binary()), True, True)
+    # After all restarts exhausted, kill and verify dead.
+    ray._runtime.driver.kill_actor(
+        bytes(last_actor._actor_id.binary()), True, True)
     error_on_dead = False
     try:
-        last_driver.submit_actor_method(last_aid,
-            "increment_and_possibly_fail", [])
+        last_actor.increment_and_possibly_fail.remote()
     except RuntimeError:
         error_on_dead = True
     assert error_on_dead, "Expected error on dead actor after restarts exhausted"
@@ -2327,121 +1491,87 @@ def test_actor_restart():
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST 54: pattern_generators.py
-#   Original: contrasts regular multi-return vs generator (yield) pattern.
-#   Generators yield values one at a time for memory efficiency.
+# TEST 54: pattern_generators.py — generator multi-return pattern
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_pattern_generators():
     """Port of pattern_generators.py — generator multi-return pattern."""
-    def callback(method, args, num_returns=1):
-        if method == "large_values":
-            # Regular multi-return: build all N arrays at once.
-            return [pack_i64(i * 1000) for i in range(num_returns)]
-        elif method == "large_values_generator":
-            # Generator pattern: conceptually yields one at a time.
-            # Functionally same list[bytes] interface — the memory benefit
-            # comes from the worker producing and sending values sequentially.
-            results = []
-            for i in range(num_returns):
-                results.append(pack_i64(i * 1000))
-            return results
-        raise ValueError(f"unknown: {method}")
-
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
-
     num_returns = 5
 
-    # Regular multi-return.
-    refs = driver.submit_task("large_values", [], num_returns=num_returns)
+    @ray.remote(num_returns=5)
+    def large_values():
+        return [i * 1000 for i in range(5)]
+
+    @ray.remote(num_returns=5)
+    def large_values_generator():
+        return [i * 1000 for i in range(5)]
+
+    refs = large_values.remote()
     assert len(refs) == num_returns
     for i in range(num_returns):
-        val = unpack_i64(ray_get_one(driver, refs[i].binary()))
-        assert val == i * 1000, f"refs[{i}]: expected {i*1000}, got {val}"
+        assert ray.get(refs[i]) == i * 1000
 
-    # Generator multi-return (conceptually yields values one at a time).
-    gen_refs = driver.submit_task("large_values_generator", [],
-                                  num_returns=num_returns)
+    gen_refs = large_values_generator.remote()
     assert len(gen_refs) == num_returns
     for i in range(num_returns):
-        val = unpack_i64(ray_get_one(driver, gen_refs[i].binary()))
-        assert val == i * 1000, f"gen_refs[{i}]: expected {i*1000}, got {val}"
+        assert ray.get(gen_refs[i]) == i * 1000
 
     return (f"pattern_generators: regular + generator multi-return "
             f"({num_returns} values each)")
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TEST 55: generator.py
-#   Original: dynamic generators, split array into chunks, error
-#   propagation mid-generation, edge cases.
+# TEST 55: generator.py — split, error propagation, exact yields
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_generator():
     """Port of generator.py — split, error propagation, exact yields."""
     array_size = 10
     chunk_size = 3
-    num_chunks = (array_size + chunk_size - 1) // chunk_size  # ceil div = 4
+    num_chunks = (array_size + chunk_size - 1) // chunk_size  # 4
 
-    def callback(method, args, num_returns=1):
-        if method == "split":
-            # Split array of arr_size into chunks of c_size.
-            arr_size = unpack_i64(args[0])
-            c_size = unpack_i64(args[1])
-            chunks = []
-            offset = 0
-            while offset < arr_size:
-                end = min(offset + c_size, arr_size)
-                chunks.append(pack_i64(end - offset))
-                offset = end
-            # Pad with zeros if num_returns > actual chunks.
-            while len(chunks) < num_returns:
-                chunks.append(pack_i64(0))
-            return chunks[:num_returns]
-        elif method == "generator_with_error":
-            # Yield 2 values then "error" — remaining slots get sentinel.
-            results = []
-            for i in range(min(2, num_returns)):
-                results.append(pack_i64(i))
-            for _ in range(2, num_returns):
-                results.append(b"__GENERATOR_ERROR__")
-            return results
-        elif method == "generator_yields_2":
-            return [pack_i64(0), pack_i64(1)]
-        raise ValueError(f"unknown: {method}")
+    @ray.remote(num_returns=4)
+    def split(arr_size, c_size):
+        chunks = []
+        offset = 0
+        while offset < arr_size:
+            end = min(offset + c_size, arr_size)
+            chunks.append(end - offset)
+            offset = end
+        while len(chunks) < 4:
+            chunks.append(0)
+        return chunks[:4]
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote(num_returns=4)
+    def generator_with_error():
+        return [0, 1, "__GENERATOR_ERROR__", "__GENERATOR_ERROR__"]
+
+    @ray.remote(num_returns=2)
+    def generator_yields_2():
+        return [0, 1]
 
     # Section 1: Split array into chunks.
-    refs = driver.submit_task("split",
-                              [pack_i64(array_size), pack_i64(chunk_size)],
-                              num_returns=num_chunks)
+    refs = split.remote(array_size, chunk_size)
     assert len(refs) == num_chunks
     total = 0
     for i in range(num_chunks):
-        chunk_len = unpack_i64(ray_get_one(driver, refs[i].binary()))
+        chunk_len = ray.get(refs[i])
         assert chunk_len <= chunk_size
         total += chunk_len
     assert total == array_size, f"Expected total {array_size}, got {total}"
 
-    # Section 2: Error propagation — first 2 OK, last 2 are error sentinels.
-    err_refs = driver.submit_task("generator_with_error", [], num_returns=4)
+    # Section 2: Error propagation — first 2 OK, last 2 are sentinels.
+    err_refs = generator_with_error.remote()
     assert len(err_refs) == 4
-    v0 = unpack_i64(ray_get_one(driver, err_refs[0].binary()))
-    v1 = unpack_i64(ray_get_one(driver, err_refs[1].binary()))
-    assert (v0, v1) == (0, 1), f"Expected (0,1), got ({v0},{v1})"
-    for i in [2, 3]:
-        data = ray_get_one(driver, err_refs[i].binary())
-        assert data == b"__GENERATOR_ERROR__", \
-            f"refs[{i}] should be error sentinel, got {data}"
+    assert ray.get(err_refs[0]) == 0
+    assert ray.get(err_refs[1]) == 1
+    assert ray.get(err_refs[2]) == "__GENERATOR_ERROR__"
+    assert ray.get(err_refs[3]) == "__GENERATOR_ERROR__"
 
     # Section 3: Exact yield count matches num_returns.
-    ok_refs = driver.submit_task("generator_yields_2", [], num_returns=2)
-    v0 = unpack_i64(ray_get_one(driver, ok_refs[0].binary()))
-    v1 = unpack_i64(ray_get_one(driver, ok_refs[1].binary()))
-    assert (v0, v1) == (0, 1)
+    ok_refs = generator_yields_2.remote()
+    assert ray.get(ok_refs[0]) == 0
+    assert ray.get(ok_refs[1]) == 1
 
     return (f"generator: split({array_size}/{chunk_size})={num_chunks} chunks, "
             f"error propagation, exact yields")
@@ -2449,74 +1579,57 @@ def test_generator():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 56: streaming_generator.py
-#   Original: streaming iteration with next(gen), error mid-stream,
-#   actor generators, ray.wait with generators.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_streaming_generator():
     """Port of streaming_generator.py — iteration, error, actor gen, wait."""
-    def callback(method, args, num_returns=1):
-        if method == "streaming_task":
-            return [pack_i64(i) for i in range(num_returns)]
-        elif method == "streaming_error_task":
-            # Yield value 0, then error on remaining.
-            results = [pack_i64(0)]
-            for _ in range(1, num_returns):
-                results.append(b"__STREAM_ERROR__")
-            return results
-        elif method == "regular_task":
-            return pack_i64(42)
-        raise ValueError(f"unknown: {method}")
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote(num_returns=5)
+    def streaming_task():
+        return list(range(5))
+
+    @ray.remote(num_returns=3)
+    def streaming_error_task():
+        return [0, "__STREAM_ERROR__", "__STREAM_ERROR__"]
+
+    @ray.remote
+    def regular_task():
+        return 42
 
     # Section 1: Streaming iteration (simulated via multi-return).
-    # Simulates: gen = task.remote(); ref = next(gen); ray.get(ref)
-    refs = driver.submit_task("streaming_task", [], num_returns=5)
+    refs = streaming_task.remote()
     assert len(refs) == 5
-    # Simulate next(gen) + ray.get(ref) one at a time.
-    ref0_val = unpack_i64(ray_get_one(driver, refs[0].binary()))
-    assert ref0_val == 0
-    ref1_val = unpack_i64(ray_get_one(driver, refs[1].binary()))
-    assert ref1_val == 1
-    # Simulate for ref in gen: ray.get(ref)
-    remaining = []
-    for i in range(2, 5):
-        remaining.append(unpack_i64(ray_get_one(driver, refs[i].binary())))
+    assert ray.get(refs[0]) == 0
+    assert ray.get(refs[1]) == 1
+    remaining = [ray.get(refs[i]) for i in range(2, 5)]
     assert remaining == [2, 3, 4]
 
     # Section 2: Error propagation mid-stream.
-    err_refs = driver.submit_task("streaming_error_task", [], num_returns=3)
-    v0 = ray_get_one(driver, err_refs[0].binary())
-    assert unpack_i64(v0) == 0
-    v1 = ray_get_one(driver, err_refs[1].binary())
-    assert v1 == b"__STREAM_ERROR__"
+    err_refs = streaming_error_task.remote()
+    assert ray.get(err_refs[0]) == 0
+    assert ray.get(err_refs[1]) == "__STREAM_ERROR__"
 
-    # Section 3: Actor generator — pack all yields into single return.
-    def actor_gen_callback(method, args, num_returns=1):
-        if method == "f":
-            packed = struct.pack("<5q", 0, 1, 2, 3, 4)
-            return packed
-        raise ValueError(f"unknown: {method}")
+    # Section 3: Actor generator.
+    @ray.remote
+    class StreamGenActor:
+        def f(self):
+            return (0, 1, 2, 3, 4)
 
-    worker, wid, port, actor_id = make_actor("StreamGenActor",
-                                              actor_gen_callback)
-    setup_and_submit(driver, actor_id, "StreamGenActor", "127.0.0.1",
-                     port, cluster.node_id(), wid)
-    oid = driver.submit_actor_method(actor_id, "f", [])
-    data = ray_get_one(driver, oid.binary())
-    vals = struct.unpack("<5q", data)
-    assert vals == (0, 1, 2, 3, 4), f"Actor gen: expected (0..4), got {vals}"
+    actor = StreamGenActor.remote()
+    data = ray.get(actor.f.remote())
+    assert data == (0, 1, 2, 3, 4), f"Actor gen: expected (0..4), got {data}"
 
     # Section 4: ray.wait with multi-return refs + regular task.
-    stream_refs = driver.submit_task("streaming_task", [], num_returns=3)
-    regular_refs = driver.submit_task("regular_task", [])
-    all_oids = [bytes(r.binary()) for r in stream_refs] + \
-               [bytes(regular_refs[0].binary())]
-    ready, remaining = ray_wait(driver, all_oids, 4)
+    @ray.remote(num_returns=3)
+    def streaming_task_3():
+        return list(range(3))
+
+    stream_refs = streaming_task_3.remote()
+    regular_ref = regular_task.remote()
+    all_refs = list(stream_refs) + [regular_ref]
+    ready, remaining_w = ray.wait(all_refs, num_returns=4)
     assert len(ready) == 4, f"Expected 4 ready, got {len(ready)}"
-    assert len(remaining) == 0
+    assert len(remaining_w) == 0
 
     return ("streaming_generator: iteration(5), error mid-stream, "
             "actor gen(5), wait(4)")
@@ -2524,71 +1637,54 @@ def test_streaming_generator():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 57: ray_oom_prevention.py
-#   Original: OOM task with retries, retriable vs non-retriable tasks.
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_ray_oom_prevention():
-    """Port of ray_oom_prevention.py — simulated OOM + retry differentiation."""
+    """Port of ray_oom_prevention.py — simulated OOM + retry."""
     oom_calls = {"n": 0}
 
-    def callback(method, args, num_returns=1):
-        if method == "leaks_memory":
-            oom_calls["n"] += 1
-            raise MemoryError(
-                "Simulated OutOfMemoryError: worker exceeded memory limit")
-        elif method == "normal_task":
-            return pack_i64(99)
-        raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def leaks_memory():
+        oom_calls["n"] += 1
+        raise MemoryError("Simulated OutOfMemoryError")
 
-    tw, twid, tport = make_task_worker(callback)
-    driver = make_task_driver(tw, twid, tport)
+    @ray.remote
+    def normal_task():
+        return 99
 
     # Section 1: OOM task with retries.
-    # Original uses max_retries=-1 (infinite); we use 2 for testability.
-    r = driver.submit_task("leaks_memory", [], num_returns=1, max_retries=2)
     oom_error = False
     try:
-        ray_get_one(driver, r[0].binary())
+        ray.get(leaks_memory.options(max_retries=2).remote())
     except RuntimeError as e:
-        msg = str(e)
-        if "MemoryError" in msg or "memory" in msg.lower():
+        if "MemoryError" in str(e) or "memory" in str(e).lower():
             oom_error = True
-    assert oom_error, "Expected OOM-related error from leaks_memory task"
-    assert oom_calls["n"] == 3, \
-        f"Expected 3 calls (1 + 2 retries), got {oom_calls['n']}"
+    assert oom_error, "Expected OOM-related error"
+    assert oom_calls["n"] == 3, f"Expected 3 calls, got {oom_calls['n']}"
 
     # Section 2: Differentiated retry behavior.
     retriable_calls = {"n": 0}
     nonretriable_calls = {"n": 0}
 
-    def callback2(method, args, num_returns=1):
-        if method == "retriable_alloc":
-            retriable_calls["n"] += 1
-            raise MemoryError("retriable task OOM")
-        elif method == "nonretriable_alloc":
-            nonretriable_calls["n"] += 1
-            return pack_i64(1)
-        raise ValueError(f"unknown: {method}")
+    @ray.remote
+    def retriable_alloc():
+        retriable_calls["n"] += 1
+        raise MemoryError("retriable task OOM")
 
-    tw2, twid2, tport2 = make_task_worker(callback2)
-    driver2 = make_task_driver(tw2, twid2, tport2)
+    @ray.remote
+    def nonretriable_alloc():
+        nonretriable_calls["n"] += 1
+        return 1
 
-    # Retriable task: max_retries=1 → 2 total calls, both fail.
-    r_fail = driver2.submit_task("retriable_alloc", [], num_returns=1,
-                                  max_retries=1)
     fail_error = False
     try:
-        ray_get_one(driver2, r_fail[0].binary())
+        ray.get(retriable_alloc.options(max_retries=1).remote())
     except RuntimeError:
         fail_error = True
-    assert fail_error, "Expected error from retriable OOM task"
-    assert retriable_calls["n"] == 2, \
-        f"Expected 2 calls (1 + 1 retry), got {retriable_calls['n']}"
+    assert fail_error
+    assert retriable_calls["n"] == 2, f"Expected 2, got {retriable_calls['n']}"
 
-    # Non-retriable task: max_retries=0 → succeeds on first try.
-    r_ok = driver2.submit_task("nonretriable_alloc", [], num_returns=1,
-                                max_retries=0)
-    result = unpack_i64(ray_get_one(driver2, r_ok[0].binary()))
+    result = ray.get(nonretriable_alloc.options(max_retries=0).remote())
     assert result == 1
     assert nonretriable_calls["n"] == 1
 
@@ -2599,77 +1695,65 @@ def test_ray_oom_prevention():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 58: namespaces.py — Namespace isolation + detached actors
-#   Original: Named actors in different namespaces, cross-namespace lookup
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_namespaces():
-    """Port of namespaces.py — namespace isolation and cross-namespace actor lookup."""
-    gcs = PyGcsClient(cluster.gcs_address())
+    """Port of namespaces.py — namespace isolation and cross-namespace lookup."""
+    @ray.remote
+    class NamedActor:
+        def __init__(self, value):
+            self.value = value
+        def get(self):
+            return self.value
 
-    # -- Helper: create a named actor in a given namespace --
-    def create_named_actor(actor_name, namespace, state_value):
-        st = {"value": state_value}
-        def callback(method, args, num_returns=1):
-            if method == "get":
-                return st["value"].encode("utf-8")
-            raise ValueError(f"unknown: {method}")
+    # Section 1: Create actors in "colors" namespace.
+    orange_c = NamedActor.options(
+        name="orange", namespace="colors"
+    ).remote("orange_colors")
+    purple_c = NamedActor.options(
+        name="purple", namespace="colors"
+    ).remote("purple_colors")
 
-        wid = PyWorkerID.py_from_random()
-        worker = PyCoreWorker(
-            0, "127.0.0.1", cluster.gcs_address(), 1,
-            worker_id=wid, node_id=cluster.node_id(),
-        )
-        worker.set_task_callback(callback)
-        port = worker.start_grpc_server()
-        actor_id = gcs.register_actor(actor_name, namespace)
-        return worker, wid, port, actor_id
+    found_orange = ray.get_actor("orange", "colors")
+    assert found_orange is not None
+    found_purple = ray.get_actor("purple", "colors")
+    assert found_purple is not None
 
-    # -- Section 1: Create actors in "colors" namespace --
-    w1, wid1, p1, aid_orange_colors = create_named_actor("orange", "colors", "orange_colors")
-    w2, wid2, p2, aid_purple_colors = create_named_actor("purple", "colors", "purple_colors")
+    # Section 2: "fruits" namespace — "orange" in "colors" not visible.
+    try:
+        ray.get_actor("orange", "fruits")
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
 
-    # Verify both registered in "colors".
-    found_orange = gcs.get_named_actor("orange", "colors")
-    assert found_orange is not None, "Expected 'orange' in 'colors' namespace"
-    found_purple = gcs.get_named_actor("purple", "colors")
-    assert found_purple is not None, "Expected 'purple' in 'colors' namespace"
+    orange_f = NamedActor.options(
+        name="orange", namespace="fruits"
+    ).remote("orange_fruits")
+    watermelon_f = NamedActor.options(
+        name="watermelon", namespace="fruits"
+    ).remote("watermelon_fruits")
 
-    # -- Section 2: "fruits" namespace — "orange" in "colors" not visible --
-    not_found = gcs.get_named_actor("orange", "fruits")
-    assert not_found is None, "Expected 'orange' NOT found in 'fruits' namespace"
+    # Section 3: "watermelon" not visible in "colors".
+    try:
+        ray.get_actor("watermelon", "colors")
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
 
-    # Create "orange" and "watermelon" in "fruits" — no conflict with "colors".
-    w3, wid3, p3, aid_orange_fruits = create_named_actor("orange", "fruits", "orange_fruits")
-    w4, wid4, p4, aid_watermelon_fruits = create_named_actor("watermelon", "fruits", "watermelon_fruits")
+    # "orange" in "colors" is the original one.
+    found_oc = ray.get_actor("orange", "colors")
+    assert bytes(found_oc._actor_id.binary()) == bytes(orange_c._actor_id.binary())
 
-    # -- Section 3: Back to "colors" namespace —
-    # "watermelon" not visible, "orange" is the colors one.
-    not_found_wm = gcs.get_named_actor("watermelon", "colors")
-    assert not_found_wm is None, "Expected 'watermelon' NOT found in 'colors' namespace"
+    # Section 4: Cross-namespace lookup.
+    found_of = ray.get_actor("orange", "fruits")
+    assert bytes(found_of._actor_id.binary()) == bytes(orange_f._actor_id.binary())
 
-    found_orange_colors = gcs.get_named_actor("orange", "colors")
-    assert found_orange_colors is not None
-    assert bytes(found_orange_colors.binary()) == bytes(aid_orange_colors.binary()), \
-        "Expected 'orange' in 'colors' to be the original, not the 'fruits' one"
+    # Two "orange" actors are different.
+    assert bytes(orange_c._actor_id.binary()) != bytes(orange_f._actor_id.binary())
 
-    # -- Section 4: Cross-namespace lookup (specify_actor_namespace pattern) --
-    # From "colors" context, look up "orange" in "fruits" explicitly.
-    found_orange_fruits = gcs.get_named_actor("orange", "fruits")
-    assert found_orange_fruits is not None
-    assert bytes(found_orange_fruits.binary()) == bytes(aid_orange_fruits.binary()), \
-        "Cross-namespace lookup should find 'orange' in 'fruits'"
-
-    # Verify the two "orange" actors are different.
-    assert bytes(aid_orange_colors.binary()) != bytes(aid_orange_fruits.binary()), \
-        "Same name in different namespaces should yield different actor IDs"
-
-    # -- Section 5: Verify we can call actor methods via the driver --
-    driver = make_driver()
-    driver.setup_actor(aid_orange_colors, "orange", "colors", "127.0.0.1", p1,
-                       cluster.node_id(), wid1)
-    oid = driver.submit_actor_method(aid_orange_colors, "get", [])
-    result = ray_get_one(driver, oid.binary())
-    assert result == b"orange_colors", f"Expected b'orange_colors', got {result}"
+    # Section 5: Call actor method.
+    result = ray.get(found_oc.get.remote())
+    assert result == "orange_colors", f"Expected 'orange_colors', got {result}"
 
     return ("namespaces: 2 actors in 'colors', 2 in 'fruits', "
             "namespace isolation verified, cross-namespace lookup works")
@@ -2677,88 +1761,49 @@ def test_namespaces():
 
 # ═══════════════════════════════════════════════════════════════════════
 # TEST 59: anti_pattern_out_of_band_object_ref_serialization.py
-#   Original: pickle ObjectRef out-of-band, GC issues, memory_summary
+#   Uses low-level driver.free(), driver.contains()
 # ═══════════════════════════════════════════════════════════════════════
 
 def test_out_of_band_object_ref_serialization():
-    """Port of anti_pattern_out_of_band_object_ref_serialization.py.
+    """Port of anti_pattern_out_of_band_object_ref_serialization.py."""
+    driver = ray._runtime.driver
 
-    Demonstrates that out-of-band serialization of object references
-    (e.g., via pickle) can lead to GC issues. When the original reference
-    is freed, the object may be collected even though the pickled reference
-    still exists.
-    """
-    import pickle
+    # Section 1: Put and serialize OID out-of-band.
+    ref = ray.put(42)
+    oid_bytes = ref._binary
+    assert ray.get(ref) == 42
 
-    driver = make_driver()
-
-    # -- Section 1: Put an object and serialize the OID out-of-band --
-    data = pack_i64(42)
-    oid = driver.put(data, b"python")
-    oid_bytes = oid.binary()
-
-    # Verify the object is accessible.
-    result = ray_get_one(driver, oid_bytes)
-    assert unpack_i64(result) == 42, "Object should be retrievable"
-
-    # "Pickle" the object reference out-of-band (just save the raw bytes).
     pickled_oid = pickle.dumps(oid_bytes)
+    assert ray.get(ref) == 42
 
-    # Object is still accessible via the original reference.
-    result2 = ray_get_one(driver, oid_bytes)
-    assert unpack_i64(result2) == 42
+    # Section 2: Free → pickled OID is broken.
+    driver.free([bytes(oid_bytes)])
+    time.sleep(0.3)
 
-    # -- Section 2: Demonstrate that free() makes the object inaccessible --
-    # In real Ray, GC would do this automatically when ref count drops to 0.
-    # We simulate by explicitly calling free.
-    driver.free([oid_bytes])
-    time.sleep(0.3)  # Give the store time to process the free.
-
-    # The pickled OID still deserializes, but the object is gone.
     restored_oid = pickle.loads(pickled_oid)
-    assert restored_oid == oid_bytes, "Deserialized OID should match original"
+    assert restored_oid == oid_bytes
 
-    # Attempt to get the freed object — should timeout (object was freed).
     object_was_freed = False
     try:
-        val = ray_get_one(driver, restored_oid, timeout_ms=1000)
-        # If we get data back, verify it's NOT the original value.
-        # A freed object should not return valid data.
-        if val != data:
-            object_was_freed = True  # Got garbage or different data.
-        # If val == data, the store still had the data cached — that's a
-        # known edge case (object not yet evicted), not a test failure.
+        restored_ref = ray.ObjectRef(restored_oid, driver)
+        val = ray.get(restored_ref, timeout=1.0)
+        if val != 42:
+            object_was_freed = True
     except Exception:
-        # Expected: object was freed and is no longer available.
         object_was_freed = True
 
-    # The key assertion: the OOB-serialized reference is broken — the
-    # original OID bytes survived pickling, proving the anti-pattern.
     assert restored_oid == oid_bytes, "OOB serialization preserved the raw OID bytes"
 
-    # -- Section 3: Contrast with in-band reference passing --
-    # When object references are passed through Ray's task system,
-    # reference counting keeps the object alive.
-    def callback(method, args, num_returns=1):
-        if method == "pass_through":
-            # Receives OID bytes as argument, returns them.
-            return args[0]
-        raise ValueError(f"unknown: {method}")
+    # Section 3: In-band reference passing keeps object alive.
+    @ray.remote
+    def pass_through(data):
+        return data
 
-    tw, twid, tport = make_task_worker(callback)
-    task_driver = make_task_driver(tw, twid, tport)
+    ref2 = ray.put(99)
+    ray.get(pass_through.remote(bytes(ref2._binary)))
 
-    data2 = pack_i64(99)
-    oid2 = task_driver.put(data2, b"python")
-    oid2_bytes = oid2.binary()
-
-    # Pass the OID bytes through a task (in-band).
-    refs = task_driver.submit_task("pass_through", [oid2_bytes])
-    returned_oid_bytes = ray_get_one(task_driver, refs[0].binary())
-
-    # The original object should still be accessible.
-    result3 = ray_get_one(task_driver, oid2_bytes)
-    assert unpack_i64(result3) == 99, "In-band ref should keep object alive"
+    result3 = ray.get(ref2)
+    assert result3 == 99, "In-band ref should keep object alive"
 
     return ("out_of_band_object_ref: put → pickle OID → free → object gone; "
             "in-band pass-through keeps object alive")
@@ -2954,8 +1999,8 @@ for name, orig, status, detail in results:
         print(f"      Result: {detail}")
         print()
 
-# Clean up cluster.
-cluster.shutdown()
+# Clean up.
+ray.shutdown()
 print("Cluster shut down.")
 
 # Exit code.
