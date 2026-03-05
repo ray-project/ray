@@ -183,7 +183,7 @@ def test_pyarrow_conversion_error_handling(
     reason="Requires Arrow version of at least 14.0.0",
 )
 def test_concat_with_mixed_tensor_types_and_native_pyarrow_types(
-    use_arrow_tensor_v2, restore_data_context
+    ray_start_regular_shared, use_arrow_tensor_v2, restore_data_context
 ):
     DataContext.get_current().use_arrow_tensor_v2 = use_arrow_tensor_v2
 
