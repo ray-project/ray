@@ -22,6 +22,7 @@ from ray.data.extensions import (
 )
 
 
+@pytest.mark.integration_test
 def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100)
     path = os.path.join(tmp_path, "test_parquet_dir")
@@ -30,6 +31,7 @@ def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
     assert ray.data.read_parquet(path).count() == 100
 
 
+@pytest.mark.integration_test
 def test_pyarrow(ray_start_regular_shared):
     ds = ray.data.range(5)
     assert ds.map(lambda x: {"b": x["id"] + 2}).take() == [
@@ -81,6 +83,7 @@ def _create_dataset(op, data):
     return ds
 
 
+@pytest.mark.integration_test
 @pytest.mark.skipif(
     _object_extension_type_allowed(), reason="Arrow table supports pickled objects"
 )
@@ -111,6 +114,7 @@ _PYARROW_SUPPORTS_TYPE_PROMOTION = (
 )
 
 
+@pytest.mark.integration_test
 @pytest.mark.parametrize(
     "op, data, should_fail, expected_type",
     [

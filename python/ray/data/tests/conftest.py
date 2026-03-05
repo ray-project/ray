@@ -3,7 +3,6 @@ import os
 import pathlib
 import posixpath
 import time
-import warnings
 from collections import defaultdict
 from unittest.mock import MagicMock
 
@@ -812,25 +811,20 @@ def warn_if_unit_in_integration(request):
         yield
         return
 
-    # Warn if the test has a direct Ray cluster dependency but is not marked as an integration test
+    # raise an exception if the test has a direct Ray cluster dependency but is not marked as an integration test
     if any("ray_start" in name for name in request.fixturenames):
         yield
-        warnings.warn(
+        raise Exception(
             f"{request.node.nodeid} uses a Ray cluster fixture but is missing "
-            "@pytest.mark.integration_test. Consider adding it to document intent.",
-            UserWarning,
-            stacklevel=1,
+            "@pytest.mark.integration_test. Consider adding it to document intent."
         )
-        return
 
-    # Warn if the test is a unit test but not marked as unit_for_integration
+    # raise an exception if the test is a unit test but not marked as unit_for_integration
     yield
-    warnings.warn(
+    raise Exception(
         f"{request.node.nodeid} has no Ray cluster dependency and no intent marker.\n"
         "Please do one of the following:\n"
         "  1) Add @pytest.mark.integration_test if this test requires a Ray cluster.\n"
         "  2) Add @pytest.mark.unit_for_integration if this is a unit test kept here intentionally.\n"
-        "  3) Move it to tests/unit/ if it has no Ray dependency.",
-        UserWarning,
-        stacklevel=1,
+        "  3) Move it to tests/unit/ if it has no Ray dependency."
     )
