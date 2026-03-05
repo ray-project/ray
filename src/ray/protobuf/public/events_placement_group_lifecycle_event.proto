@@ -71,7 +71,7 @@ message PlacementGroupLifecycleEvent {
     uint32 scheduling_attempt = 4;
     // Maximum retry backoff delay observed so far, in milliseconds.
     double highest_retry_delay_ms = 5;
-    // Bundle placements associated with this lifecycle transition.
+    // Bundle placements associated with this lifecycle transition. only populated for PREPARED states.
     repeated BundlePlacement bundle_placements = 6;
   }
 
