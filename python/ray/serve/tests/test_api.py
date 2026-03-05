@@ -91,6 +91,32 @@ def test_ingress_wrapper_preserves_metadata():
     assert getattr(wrapped_cls, "__wrapped__", None) is OriginalIngress
 
 
+def test_ingress_async_init(serve_instance):
+    """Test that async __init__ works correctly with @serve.ingress.
+
+    Without the fix, cls.__init__() returns a coroutine that is silently
+    discarded, so self.msg is never set and the /check endpoint raises
+    AttributeError.
+    """
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class MyDeployment:
+        async def __init__(self):
+            await asyncio.sleep(0.01)
+            self.msg = "initialized"
+
+        @app.get("/check")
+        async def check(self):
+            return self.msg
+
+    serve.run(MyDeployment.bind())
+    resp = httpx.get(f"{get_application_url()}/check")
+    assert resp.status_code == 200
+    assert resp.json() == "initialized"
+
+
 class FakeRequestRouter(RequestRouter):
     async def choose_replicas(
         self,
