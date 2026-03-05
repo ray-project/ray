@@ -44,6 +44,17 @@ RayPlacementGroupLifecycleEvent::RayPlacementGroupLifecycleEvent(
     state_transition.set_highest_retry_delay_ms(stats.highest_retry_delay_ms());
   }
 
+  if (state == rpc::events::PlacementGroupLifecycleEvent::PREPARED) {
+    for (const auto &bundle : data.bundles()) {
+      if (bundle.node_id().empty()) {
+        continue;
+      }
+      auto *placement = state_transition.add_bundle_placements();
+      placement->set_bundle_index(bundle.bundle_id().bundle_index());
+      placement->set_node_id(bundle.node_id());
+    }
+  }
+
   data_.mutable_state_transitions()->Add(std::move(state_transition));
 }
 
