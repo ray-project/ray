@@ -3,6 +3,7 @@ import os
 import pathlib
 import posixpath
 import time
+import warnings
 from collections import defaultdict
 from unittest.mock import MagicMock
 
@@ -778,11 +779,11 @@ def pytest_configure(config):
     """
     config.addinivalue_line(
         "markers",
-        "unit_in_integration: mark a test as intentionally kept in the integration directory despite having no Ray cluster dependency",
+        "unit_for_integration: mark a test as intentionally kept in the integration directory despite having no Ray cluster dependency",
     )
     config.addinivalue_line(
         "markers",
-        "integration: mark a test as an integration test that requires a Ray cluster",
+        "integration_test: mark a test as an integration test that requires a Ray cluster",
     )
 
 
@@ -792,17 +793,44 @@ def warn_if_unit_in_integration(request):
     _INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
 
     # Skip if the test is not in the integration test directory
-    if request.fspath.dirpath() != _INTEGRATION_TEST_DIR:
+    if pathlib.Path(str(request.fspath)).parent != _INTEGRATION_TEST_DIR:
+        yield
+        return
+
+    # Skip if the test file is not been migrated yet (i.e. not in the set of migrated files)
+    if request.fspath.basename not in MIGRATED_FILES:
+        yield
+        return
+
+    # Skip if the test is marked as an integration test
+    if request.node.get_closest_marker("integration_test"):
         yield
         return
 
     # Skip if the test file is in the set of migrated files that are known to be unit tests
-    if request.fspath.basename in MIGRATED_FILES:
+    if request.node.get_closest_marker("unit_for_integration"):
         yield
         return
 
-    if request.node.get_closest_marker("unit_in_integration"):
+    # Warn if the test has a direct Ray cluster dependency but is not marked as an integration test
+    if any("ray_start" in name for name in request.fixturenames):
         yield
+        warnings.warn(
+            f"{request.node.nodeid} uses a Ray cluster fixture but is missing "
+            "@pytest.mark.integration_test. Consider adding it to document intent.",
+            UserWarning,
+            stacklevel=1,
+        )
         return
 
-    # Warn if the test is a unit test but not marked as unit_in_integration
+    # Warn if the test is a unit test but not marked as unit_for_integration
+    yield
+    warnings.warn(
+        f"{request.node.nodeid} has no direct Ray Cluster dependency and is not marked as an intentional unit test. "
+        "Please do one of the following: \n"
+        "1) If this test is an integration test that requires a Ray cluster, add @pytest.mark.integration_test to the test. \n"
+        "2) If this test is a unit test but intended to be kept in the integration test directory, add @pytest.mark.unit_for_integration to the test. \n"
+        "3) If this test is a unit test and should be moved out of the integration test directory, move the test to the appropriate location in the unit test directories.",
+        UserWarning,
+        stacklevel=1,
+    )
