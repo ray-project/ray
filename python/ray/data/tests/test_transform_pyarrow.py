@@ -176,6 +176,7 @@ def test_pyarrow_conversion_error_handling(
         ]
 
 
+@pytest.mark.integration_test
 @pytest.mark.parametrize("use_arrow_tensor_v2", [True, False])
 @pytest.mark.skipif(
     get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,

@@ -23,6 +23,7 @@ from ray.data.context import DataContext
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
+@pytest.mark.unit_for_integration
 def test_combine_chunked_fixed_width_array_large():
     """Verifies `combine_chunked_array` on fixed-width arrays > 2 GiB, produces
     single contiguous PA Array"""
@@ -94,6 +95,7 @@ def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     assert num_bytes == expected_num_bytes
 
 
+@pytest.mark.integration_test
 def test_add_rows_with_different_column_names(ray_start_regular_shared):
     builder = ArrowBlockBuilder()
 
@@ -136,7 +138,7 @@ def binary_dataset_single_file_gt_2gb():
         print(f">>> Cleaning up dataset: {dataset_path}")
 
 
-@pytest.mark.unit_for_integration
+@pytest.mark.integration_test
 @pytest.mark.parametrize(
     "col_name",
     [
