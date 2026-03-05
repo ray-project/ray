@@ -68,10 +68,14 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
       result.selected_gpu_domain = std::move(candidate.gpu_domain);
       return result;
     }
+    if (!result.status.IsInfeasible()) {
+      infeasible = false;
+    }
   }
 
-  RAY_LOG(DEBUG) << "All candidate GPU domains exhausted; scheduling failed.";
-  return SchedulingResult::Failed();
+  RAY_LOG(DEBUG) << "All candidate GPU domains exhausted; scheduling "
+                 << (infeasible ? "infeasible." : "failed (retryable).");
+  return infeasible ? SchedulingResult::Infeasible() : SchedulingResult::Failed();
 }
 
 GpuDomainFilterResult CompositeBundleSchedulingPolicy::ScheduleGpuDomainLevel(

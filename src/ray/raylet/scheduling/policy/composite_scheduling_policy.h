@@ -69,13 +69,12 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
 class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
  public:
   explicit CompositeBundleSchedulingPolicy(
-      ClusterResourceManager &cluster_resource_manager,
-      std::function<bool(scheduling::NodeID)> is_node_available)
-      : bundle_pack_policy_(cluster_resource_manager, is_node_available),
-        bundle_spread_policy_(cluster_resource_manager, is_node_available),
-        bundle_strict_spread_policy_(cluster_resource_manager, is_node_available),
-        bundle_strict_pack_policy_(cluster_resource_manager, is_node_available),
-        gpu_domain_strict_pack_policy_(cluster_resource_manager, is_node_available) {}
+      ClusterResourceManager &cluster_resource_manager)
+      : bundle_pack_policy_(cluster_resource_manager),
+        bundle_spread_policy_(cluster_resource_manager),
+        bundle_strict_spread_policy_(cluster_resource_manager),
+        bundle_strict_pack_policy_(cluster_resource_manager),
+        gpu_domain_strict_pack_policy_(cluster_resource_manager) {}
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,

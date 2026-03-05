@@ -57,8 +57,15 @@ GpuDomainFilterResult GpuDomainStrictPackSchedulingPolicy::FilterCandidateNodes(
       }
     }
     GpuDomainFilterResult result;
-    result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::SUCCESS;
-    result.candidates.push_back(GpuDomainCandidate{target, std::move(candidate_nodes)});
+    if (!IsRequestFeasible(resource_request_list, candidate_nodes) ||
+        !HasSufficientAggregateResources(resource_request_list, candidate_nodes)) {
+      RAY_LOG(DEBUG) << "Target GPU domain '" << target
+                     << "' has insufficient resources; infeasible.";
+      result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::INFEASIBLE;
+    } else {
+      result.status.code = SchedulingResultStatus::SchedulingResultStatusCode::SUCCESS;
+      result.candidates.push_back(GpuDomainCandidate{target, std::move(candidate_nodes)});
+    }
     return result;
   }
 

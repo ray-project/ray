@@ -542,7 +542,7 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleSchedulingTest) {
   req_list.push_back(&req);
 
   auto policy = raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-      *cluster_resource_manager, [](auto) { return true; });
+      *cluster_resource_manager);
 
   // No target node.
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
@@ -589,7 +589,7 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorSuccessTest) {
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
   auto result =
       raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-          *cluster_resource_manager, [](auto) { return true; })
+          *cluster_resource_manager)
           .Schedule(
               req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
 
@@ -619,7 +619,7 @@ TEST_F(SchedulingPolicyTest, StrictPackBundleLabelSelectorInfeasibleTest) {
   auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
   auto result =
       raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
-          *cluster_resource_manager, [](auto) { return true; })
+          *cluster_resource_manager)
           .Schedule(
               req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
 
@@ -664,8 +664,7 @@ TEST_F(SchedulingPolicyTest, SpreadBundleLabelSelectorInfeasibleTest) {
   // The SPREAD policy should detect request is infeasible due to the label.
   auto spread_op = SchedulingOptions::BundleSpread();
   auto result =
-      raylet_scheduling_policy::BundleSpreadSchedulingPolicy(*cluster_resource_manager,
-                                                             [](auto) { return true; })
+      raylet_scheduling_policy::BundleSpreadSchedulingPolicy(*cluster_resource_manager)
           .Schedule(req_list, spread_op, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result.status.IsInfeasible());
@@ -686,7 +685,7 @@ TEST_F(SchedulingPolicyTest, StrictSpreadBundleLabelSelectorInfeasibleTest) {
   auto strict_spread_op = SchedulingOptions::BundleStrictSpread();
   auto result =
       raylet_scheduling_policy::BundleStrictSpreadSchedulingPolicy(
-          *cluster_resource_manager, [](auto) { return true; })
+          *cluster_resource_manager)
           .Schedule(
               req_list, strict_spread_op, GetCandidateNodes(*cluster_resource_manager));
 
@@ -733,8 +732,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
 
   // FilterCandidateNodes should return SUCCESS with one candidate and the nodes in
   // rack-1
-  auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager,
-                                                               [](auto) { return true; });
+  auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
   auto options = SchedulingOptions::BundlePack();
   options.gpu_domain_scheduling_strategy_ = GpuDomainSchedulingStrategy::STRICT_PACK;
 
@@ -748,8 +746,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
 
   // Schedule should return SUCCESS with one candidate that contains 15 of the 18 nodes in
   // rack-1
-  auto composite = CompositeBundleSchedulingPolicy(*cluster_resource_manager,
-                                                   [](auto) { return true; });
+  auto composite = CompositeBundleSchedulingPolicy(*cluster_resource_manager);
   auto result_1 =
       composite.Schedule(req_list, options, GetCandidateNodes(*cluster_resource_manager));
 
@@ -828,8 +825,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager,
-                                                               [](auto) { return true; });
+  auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
   auto options = SchedulingOptions::BundlePack();
   options.gpu_domain_scheduling_strategy_ = GpuDomainSchedulingStrategy::STRICT_PACK;
 
@@ -839,8 +835,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
   ASSERT_TRUE(filter_result.status.IsInfeasible());
   ASSERT_EQ(filter_result.candidates.size(), 0);
 
-  auto composite = CompositeBundleSchedulingPolicy(*cluster_resource_manager,
-                                                   [](auto) { return true; });
+  auto composite = CompositeBundleSchedulingPolicy(*cluster_resource_manager);
   auto result =
       composite.Schedule(req_list, options, GetCandidateNodes(*cluster_resource_manager));
 
