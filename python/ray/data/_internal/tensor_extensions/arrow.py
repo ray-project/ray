@@ -782,7 +782,7 @@ def create_arrow_fixed_shape_tensor_type(
             if log_once("native_fixed_shape_tensors_unsupported_type"):
                 warnings.warn(
                     f"Native fixed-shape tensor arrays do not support dtype {dtype}. "
-                    f"Only floating, integer, and boolean types are supported. "
+                    f"Only floating and integer types are supported. "
                     f"Falling back to {fallback}.",
                     UserWarning,
                     stacklevel=3,
