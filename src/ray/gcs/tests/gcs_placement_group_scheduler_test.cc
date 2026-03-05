@@ -1708,9 +1708,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPartialRescheduleSkipsFallback) {
 
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
 
-  auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> pg, bool) {
+  auto failure_handler = [this](std::shared_ptr<GcsPlacementGroup> pg, bool is_feasible) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
     failure_placement_groups_.emplace_back(std::move(pg));
+
+    // Verify that the PG is still considered feasible because the fallback
+    // strategy is feasible.
+    EXPECT_TRUE(is_feasible);
   };
   auto success_handler = [this](std::shared_ptr<GcsPlacementGroup> pg) {
     absl::MutexLock lock(&placement_group_requests_mutex_);

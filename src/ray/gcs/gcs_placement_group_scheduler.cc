@@ -108,6 +108,13 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   int selected_strategy_index =
       is_scheduling_all_bundles ? 0 : placement_group->GetActiveStrategyIndex();
 
+  // If a partial reschedule is infeasible but fallback strategies exist,
+  // force the PG to remain retryable instead of marking it permanently infeasible.
+  if (!is_scheduling_all_bundles && !any_strategy_feasible &&
+      scheduling_strategies.size() > 1) {
+    any_strategy_feasible = true;
+  }
+
   if (is_scheduling_all_bundles && !scheduling_result.status.IsSuccess() &&
       scheduling_strategies.size() > 1) {
     RAY_LOG(DEBUG) << "Primary scheduling failed for PG "
