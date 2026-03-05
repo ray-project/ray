@@ -19,6 +19,14 @@ package ray.rpc.events;
 import "google/protobuf/timestamp.proto";
 
 message PlacementGroupLifecycleEvent {
+  // Node placement of a placement group bundle.
+  message BundlePlacement {
+    // Zero-based bundle index within this placement group.
+    int32 bundle_index = 1;
+    // Node ID where this bundle is placed.
+    bytes node_id = 2;
+  }
+
   // State of the placement group itself.
   enum State {
     // Placement group is pending creation or scheduling.
@@ -63,6 +71,8 @@ message PlacementGroupLifecycleEvent {
     uint32 scheduling_attempt = 4;
     // Maximum retry backoff delay observed so far, in milliseconds.
     double highest_retry_delay_ms = 5;
+    // Bundle placements associated with this lifecycle transition.
+    repeated BundlePlacement bundle_placements = 6;
   }
 
   bytes placement_group_id = 1;
