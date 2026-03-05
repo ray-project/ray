@@ -138,6 +138,12 @@ examples:
       - natural language processing
     link: tutorials/streaming
     related_technology: ml applications
+  - title: Serve Speech-to-Text with Bidirectional gRPC Streaming
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+    link: advanced-guides/grpc-guide
+    related_technology: integrations
   - title: Serving models with Triton Server in Ray Serve
     skill_level: intermediate
     use_cases:
