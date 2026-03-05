@@ -27,8 +27,9 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
-# Scheduling strategy can be inherited from prev operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+# Scheduling strategy and label selector can be inherited from
+# prev operator if not specified.
+INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)

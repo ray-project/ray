@@ -44,7 +44,7 @@ __all__ = [
 ]
 
 
-# Scheduling strategy can be inherited from upstream operator if not specified.
+# Scheduling strategy and label selector can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
