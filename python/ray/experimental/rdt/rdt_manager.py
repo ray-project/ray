@@ -708,7 +708,7 @@ class RDTManager:
         Returns:
             The RDT object.
         """
-        store = self.rdt_store
+        rdt_store = self.rdt_store
         if self.is_managed_object(object_id):
             self._fetch_object(object_id, use_object_store)
 
@@ -716,13 +716,13 @@ class RDTManager:
         # In this case, we should not remove the RDT object after it is consumed once,
         # because the RDT object reference may be used again.
         # Instead, we should wait for the GC callback to clean it up.
-        pop_object = not store.is_primary_copy(object_id)
+        pop_object = not rdt_store.is_primary_copy(object_id)
         if pop_object:
-            rdt_object = store.wait_and_pop_object(
+            rdt_object = rdt_store.wait_and_pop_object(
                 object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
             )
         else:
-            rdt_object = store.wait_and_get_object(
+            rdt_object = rdt_store.wait_and_get_object(
                 object_id, timeout=ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS
             )
         return rdt_object
