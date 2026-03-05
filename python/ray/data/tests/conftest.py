@@ -790,11 +790,11 @@ _INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
 
 
 @pytest.fixture(autouse=True)
-def warn_if_unit_in_integration(request):
-    """Warns if a test in the integration test directory is not categorized.
+def check_if_unit_in_integration(request):
+    """raise an exception if a test in the integration test directory is not categorized.
 
     This fixture checks tests in files that have been opted-in via `MIGRATED_FILES`.
-    It warns if a test:
+    It raises an exception if a test:
     - Appears to be an integration test (uses a `ray_start` fixture) but is not
       marked with `@pytest.mark.integration_test`.
     - Appears to be a unit test (no `ray_start` fixture) but is not marked with
