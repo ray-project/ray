@@ -8,7 +8,6 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set
 
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.fs as pa_fs
 
 from .committer import (
@@ -104,7 +103,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         path: str,
         *,
         mode: SaveMode = SaveMode.APPEND,
-        partition_cols: Optional[List[str]] = None,
         filesystem: Optional[pa_fs.FileSystem] = None,
         schema: Optional[pa.Schema] = None,
         **write_kwargs,
@@ -113,23 +111,23 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         Args:
             path: Path to Delta table (local or cloud storage).
-            mode: Write mode - PR 2: APPEND, OVERWRITE, ERROR, or IGNORE.
-            partition_cols: Columns to partition by (Hive-style). PR 2: Not supported.
+            mode: Write mode - APPEND, OVERWRITE, ERROR, or IGNORE.
             filesystem: Optional PyArrow filesystem.
-                PyArrow filesystems: https://arrow.apache.org/docs/python/api/filesystems.html
-                Note: For distributed writes, filesystem must be reconstructible from
-                storage_options. Consider passing storage_options instead.
             schema: Optional explicit schema for the table.
             **write_kwargs: Additional options passed to Delta writer:
                 - compression: Compression codec (default: "snappy").
                 - write_statistics: Whether to write Parquet statistics (default: True).
+                - storage_options: Cloud storage credentials (dict).
+                - name: Table name for Delta metadata.
+                - description: Table description for Delta metadata.
+                - configuration: Delta table configuration options (dict).
+                - commit_properties: CommitProperties or dict for Delta transactions.
+                - max_commit_retries: Maximum number of commit retries (int).
         """
         _check_import(self, module="deltalake", package="deltalake")
 
         self.table_uri = path
         self.mode = self._validate_mode(mode)
-        # PR 2: No partitioning support yet
-        self.partition_cols = []
         self.schema = schema
         self.write_kwargs = write_kwargs
 
@@ -145,13 +143,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         # per-worker cache (used in write())
         self._worker_fs: Optional[pa_fs.FileSystem] = None
-        # PR 2: No file buffering support
-        self._target_file_size_bytes: Optional[int] = None
-        if (
-            self._target_file_size_bytes is not None
-            and self._target_file_size_bytes <= 0
-        ):
-            raise ValueError("target_file_size_bytes must be > 0")
 
     def __getstate__(self) -> dict:
         """Exclude non-serializable state during pickling."""
@@ -242,34 +233,27 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         block_schemas = []
         written_files: Set[str] = set()
 
-        # Create writer ONCE per task (perf win)
+        # Create writer ONCE per task
         writer = DeltaFileWriter(
             filesystem=self._worker_fs,
-            partition_cols=self.partition_cols,
             write_uuid=write_uuid,
             write_kwargs=self.write_kwargs,
             written_files=written_files,
-            target_file_size_bytes=None,  # PR 2: No file buffering
         )
 
         try:
-            for block_idx, block in enumerate(blocks):
+            for block in blocks:
                 t = BlockAccessor.for_block(block).to_arrow()
                 if t.num_rows == 0:
                     continue
 
-                # PR 2: No partitioning validation needed
                 self._validate_block_against_declared_schema(t)
                 block_schemas.append(t.schema)
 
-                # PR 2: Immediate writes (no buffering)
-                all_actions.extend(writer.add_table(t, ctx.task_idx))
-
-            # PR 2: No flush needed (no buffering)
+                all_actions.extend(writer.write_table(t, ctx.task_idx))
 
             return DeltaWriteResult(
                 add_actions=all_actions,
-                upsert_keys=None,  # PR 2: No upsert
                 schemas=block_schemas,
                 written_files=list(written_files),
                 write_uuid=write_uuid,
@@ -281,13 +265,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
     def on_write_complete(self, write_result: WriteResult[DeltaWriteResult]) -> None:
         """Phase 2: Commit all files in single ACID transaction."""
-        (
-            actions,
-            upsert_keys,
-            schemas,
-            written_files,
-            write_uuid,
-        ) = self._collect(write_result)
+        actions, schemas, written_files, write_uuid = self._collect(write_result)
         existing = try_get_deltatable(self.table_uri, self.storage_options)
         existed_before = existing is not None
 
@@ -325,7 +303,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         inputs = CommitInputs(
             table_uri=self.table_uri,
             mode=self.mode.value,
-            partition_cols=self.partition_cols,
             storage_options=self.storage_options,
             write_kwargs=write_kwargs_for_commit,
         )
@@ -376,16 +353,13 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 f"Missing columns: {sorted(missing)}. Table has: {sorted(table_cols)}"
             )
 
+        from ray.data._internal.datasource.delta.utils import types_compatible
+
         for f in self.schema:
-            if f.name in table_cols and f.name not in self.partition_cols:
+            if f.name in table_cols:
                 col = table[f.name]
                 if f.nullable and pa.types.is_null(col.type):
-                    if pc.all(pa.compute.is_null(col)).as_py():
-                        continue
-                from ray.data._internal.datasource.delta.utils import (
-                    types_compatible,
-                )
-
+                    continue
                 if not types_compatible(f.type, col.type):
                     raise ValueError(
                         f"Type mismatch for '{f.name}': expected {f.type}, got {col.type}"
@@ -394,11 +368,11 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     def _collect(
         self, wr: WriteResult[DeltaWriteResult]
     ) -> tuple[
-        List["AddAction"], Optional[pa.Table], List[pa.Schema], List[str], Optional[str]
+        List["AddAction"], List[pa.Schema], List[str], Optional[str]
     ]:
         """Collect all results from distributed write tasks."""
         if not wr.write_returns:
-            return [], None, [], [], None
+            return [], [], [], None
 
         actions = []
         schemas = []
@@ -422,9 +396,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             files.extend(r.written_files or [])
             write_uuid = write_uuid or r.write_uuid
 
-        # PR 2: No upsert support
-        upsert_keys = None
-        return actions, upsert_keys, schemas, files, write_uuid
+        return actions, schemas, files, write_uuid
 
     def _handle_races(
         self, existing, written_files: List[str]
@@ -497,7 +469,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             inputs = CommitInputs(
                 self.table_uri,
                 self.mode.value,
-                self.partition_cols,
                 self.storage_options,
                 write_kwargs_for_commit,
             )
