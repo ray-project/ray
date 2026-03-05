@@ -404,12 +404,16 @@ class _AutoscalingCoordinatorActor:
         # Allocate resources to ongoing requests.
         maybe_subtract_resources = self._maybe_subtract_resources
         num_nodes = len(cluster_node_resources)
-        # Cache search positions for repeated bundles. Since node resources only
-        # decrease during this allocation pass, the first feasible node index for
-        # the same bundle never moves left.
+        # Assumption for this optimization (within one _reallocate_resources pass):
+        # node resources only decrease, never increase. Therefore for identical
+        # bundles:
+        # 1) the first feasible node index can only stay or move right;
+        # 2) if one identical bundle cannot fit any node, later identical bundles
+        #    also cannot fit in this pass.
+        # This is most beneficial when requested_resources has many duplicate
+        # bundles (e.g., homogeneous node shapes and/or multiple executors
+        # requesting similar specs).
         first_fit_start_idx = {}
-        # Once a bundle cannot fit any node, later identical bundles cannot fit
-        # either within this pass because resources are monotonically decreasing.
         impossible_bundles = set()
         for ongoing_req in ongoing_reqs:
             allocated_resources = []
