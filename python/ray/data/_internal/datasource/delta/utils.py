@@ -1,6 +1,6 @@
 """Utility functions for Delta Lake datasource operations.
 
-This module consolidates file, partition, schema, and storage utilities for
+This module consolidates file, schema, and storage utilities for
 Delta Lake integration with Ray Data.
 
 Delta Lake: https://delta.io/
@@ -43,16 +43,6 @@ class DeltaWriteResult:
     schemas: List[pa.Schema] = field(default_factory=list)
     written_files: List[str] = field(default_factory=list)
     write_uuid: Optional[str] = None
-
-
-def join_delta_path(base: str, relative: str) -> str:
-    """Join base path and relative path, handling URI schemes."""
-    base = base.rstrip("/")
-    relative = relative.lstrip("/")
-    if "://" in base:
-        scheme, rest = base.split("://", 1)
-        return f"{scheme}://{posixpath.join(rest, relative)}"
-    return posixpath.join(base, relative)
 
 
 def safe_dirname(path: str) -> str:
@@ -312,8 +302,8 @@ def validate_schema_type_compatibility(
 ) -> None:
     """Validate that incoming schema is compatible with existing schema.
 
-    Checks for type mismatches in existing columns. New columns are allowed
-    (schema evolution), and missing columns are OK (partial writes).
+    Checks for type mismatches in existing columns. New columns in incoming
+    data are not validated (only overlapping columns are checked).
 
     Args:
         existing_schema: Schema from existing Delta table.
@@ -615,20 +605,17 @@ def create_filesystem_from_storage_options(
         elif account_name:
             return pa_fs.AzureFileSystem(account_name=account_name)
     elif path_lower.startswith(("gs://", "gcs://")):
-        # Check for GCS-specific credentials in storage_options
-        # GOOGLE_SERVICE_ACCOUNT can be a path to service account JSON file
+        # GOOGLE_SERVICE_ACCOUNT: path to service account JSON key file
+        # GOOGLE_SERVICE_ACCOUNT_TOKEN: OAuth2 bearer token (from auto-detection)
         service_account = storage_options.get("GOOGLE_SERVICE_ACCOUNT")
+        access_token = storage_options.get("GOOGLE_SERVICE_ACCOUNT_TOKEN")
         anonymous = storage_options.get("GOOGLE_ANONYMOUS", "").lower() == "true"
-        # GcsFileSystem doesn't accept service_account file path directly
-        # Set GOOGLE_APPLICATION_CREDENTIALS env var if service_account path is provided
         if service_account:
-            import os
-            # Set environment variable for PyArrow to pick up
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account
-        # Only create filesystem if explicit credentials are provided
-        # Otherwise return None to let PyArrow use Application Default Credentials
-        if service_account or anonymous:
-            return pa_fs.GcsFileSystem(anonymous=anonymous)
+        if service_account or access_token or anonymous:
+            return pa_fs.GcsFileSystem(
+                access_token=access_token, anonymous=anonymous
+            )
 
     return None
 
@@ -666,12 +653,7 @@ def try_get_deltatable(
     try:
         return DeltaTable(table_uri, storage_options=storage_options)
     except tuple(not_found_exceptions):
-        # Table doesn't exist - return None
         return None
-    except Exception:
-        # Re-raise all other exceptions (auth errors, corrupt logs, etc.)
-        # These are real errors that should not be silently ignored
-        raise
 
 
 def to_pyarrow_schema(delta_schema: Any) -> pa.Schema:
@@ -963,9 +945,10 @@ def compute_parquet_statistics(table: pa.Table) -> str:
         name = table.schema.field(i).name
         col_type = col.type
 
-        null_count = pc.sum(pc.is_null(col)).as_py()
-        if null_count is not None and null_count >= 0:
-            null_counts[name] = null_count
+        if not pa.types.is_nested(col_type):
+            null_count = pc.sum(pc.is_null(col)).as_py()
+            if null_count is not None and null_count >= 0:
+                null_counts[name] = null_count
 
         if (
             is_numeric_type(col_type)

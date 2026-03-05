@@ -36,6 +36,7 @@ class CommitInputs:
 
     table_uri: str
     mode: str
+    partition_cols: List[str]
     storage_options: Dict[str, str]
     write_kwargs: Dict[str, Any]
 
@@ -140,7 +141,7 @@ def create_table_with_files(
         schema=delta_schema,
         add_actions=file_actions,
         mode=inputs.mode,
-        partition_by=None,
+        partition_by=inputs.partition_cols or None,
         name=inputs.write_kwargs.get("name"),
         description=inputs.write_kwargs.get("description"),
         configuration=inputs.write_kwargs.get("configuration"),
@@ -173,6 +174,9 @@ def commit_to_existing_table(
     # Get existing schema once (used for validation)
     existing_schema = to_pyarrow_schema(table.schema())
 
+    # Validate partition columns match existing table
+    validate_partition_columns_match_existing(table, inputs.partition_cols)
+
     # Validate schema compatibility BEFORE deleting data in overwrite mode.
     # This prevents data loss if validation fails.
     if file_actions:
@@ -191,7 +195,6 @@ def commit_to_existing_table(
         actions=file_actions,
         mode="append",  # Always append after delete for OVERWRITE
         schema=table.schema(),
-        partition_by=None,
         commit_properties=normalize_commit_properties(
             inputs.write_kwargs.get("commit_properties")
         ),
@@ -199,3 +202,37 @@ def commit_to_existing_table(
             "post_commithook_properties"
         ),
     )
+
+
+def validate_partition_columns_match_existing(
+    table: "DeltaTable",
+    partition_cols: List[str],
+) -> None:
+    """Validate that partition columns match existing table's partition columns.
+
+    Args:
+        table: Existing DeltaTable to validate against.
+        partition_cols: Partition columns from write request.
+
+    Raises:
+        ValueError: If partition columns don't match existing table.
+    """
+    existing_partition_cols = table.metadata().partition_columns or []
+
+    # If no partition_cols specified by user, nothing to validate
+    if not partition_cols:
+        return
+
+    # If existing table has no partitions but user specifies them, that's an error
+    if not existing_partition_cols and partition_cols:
+        raise ValueError(
+            f"Partition columns mismatch: existing table has no partitions, "
+            f"but write specifies partition_cols={partition_cols}"
+        )
+
+    # If partition columns don't match, raise error
+    if sorted(existing_partition_cols) != sorted(partition_cols):
+        raise ValueError(
+            f"Partition columns mismatch: existing table has "
+            f"{existing_partition_cols}, but write specifies {partition_cols}"
+        )

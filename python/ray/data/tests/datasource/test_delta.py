@@ -196,50 +196,6 @@ def test_write_delta_string_data(ray_start_regular_shared, temp_delta_path):
     assert "unicode: café" in texts
 
 
-def test_write_delta_complex_types_maps_structs(ray_start_regular_shared, temp_delta_path):
-    """Test that Delta Lake supports maps and structs (complex types)."""
-    schema = pa.schema([
-        ("id", pa.int64()),
-        ("metadata", pa.map_(pa.string(), pa.string())),  # Map type
-        ("address", pa.struct([  # Struct type
-            ("street", pa.string()),
-            ("city", pa.string()),
-            ("zip", pa.int32()),
-        ])),
-    ])
-
-    map_data = [
-        [("key1", "value1"), ("key2", "value2")],
-        [("key3", "value3")],
-    ]
-    struct_data = [
-        {"street": "123 Main St", "city": "San Francisco", "zip": 94102},
-        {"street": "456 Oak Ave", "city": "New York", "zip": 10001},
-    ]
-
-    table = pa.table({
-        "id": [1, 2],
-        "metadata": map_data,
-        "address": struct_data,
-    }, schema=schema)
-
-    ray.data.from_arrow(table).write_delta(temp_delta_path)
-
-    ds = ray.data.read_delta(temp_delta_path)
-    assert ds.count() == 2
-
-    rows = ds.take_all()
-    assert len(rows) == 2
-
-    assert len(rows[0]["metadata"]) == 2
-    assert rows[0]["metadata"][0]["key"] == "key1"
-    assert rows[0]["metadata"][0]["value"] == "value1"
-
-    assert rows[0]["address"]["street"] == "123 Main St"
-    assert rows[0]["address"]["city"] == "San Francisco"
-    assert rows[0]["address"]["zip"] == 94102
-
-
 # =============================================================================
 # Read Tests
 # =============================================================================

@@ -4347,6 +4347,7 @@ class Dataset:
         path: str,
         *,
         mode: str = "append",
+        partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
@@ -4371,6 +4372,13 @@ class Dataset:
             >>> ds.write_delta( # doctest: +SKIP
             ...     "/tmp/my-delta-table",
             ...     mode="overwrite"
+            ... )
+
+            Write with partitioning:
+
+            >>> ds.write_delta( # doctest: +SKIP
+            ...     "/tmp/my-delta-table",
+            ...     partition_cols=["year", "month"]
             ... )
 
             Write to cloud storage (S3):
@@ -4399,11 +4407,14 @@ class Dataset:
                 * "error": Raise error if table already exists
                 * "ignore": Skip write if table already exists
 
+            partition_cols: List of column names to partition by. Creates
+                Hive-style partitioning (e.g., ``year=2024/month=1/``).
+                When appending to an existing partitioned table, the partition
+                columns must match the existing table's partition columns.
             filesystem: PyArrow filesystem to use for writing. If None, automatically
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
-                Schema inference may fail for complex types; provide explicit schema
-                if needed.
+                Required when writing an empty dataset to a new table.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
                 Use to configure resources such as ``num_cpus`` or ``num_gpus``.
             concurrency: Maximum number of concurrent write tasks. By default,
@@ -4414,15 +4425,16 @@ class Dataset:
                 * name: Table name for Delta metadata
                 * description: Table description for Delta metadata
                 * configuration: Delta table configuration options (dict)
-                * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
+                * compression: Parquet compression codec ("snappy", "gzip",
+                  "zstd", etc.)
 
         Raises:
-            ImportError: If the deltalake package is not installed. Install with
-                ``pip install deltalake``.
-            ValueError: If mode is not one of append/overwrite/ignore/error.
+            ImportError: If the ``deltalake`` package is not installed. Install
+                with ``pip install deltalake``.
+            ValueError: If mode is invalid or schema validation fails.
 
         Note:
-            Uses a two-phase commit protocol:
+            This method uses a two-phase commit protocol for ACID guarantees:
 
             1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
                Parquet files and returns AddAction metadata (files not yet visible).
@@ -4432,6 +4444,7 @@ class Dataset:
             If the write fails partway through, uncommitted files can be removed
             by running Delta's VACUUM command.
 
+        Note:
             For cloud storage, provide authentication via ``storage_options``:
 
             * **AWS S3**: ``{"AWS_REGION": "...", "AWS_ACCESS_KEY_ID": "...", "AWS_SECRET_ACCESS_KEY": "..."}``
@@ -4443,18 +4456,11 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # Validate mode is one of the supported modes (append, overwrite, ignore, error)
+        # Validate mode is one of the supported modes
         valid_modes = {"append", "overwrite", "ignore", "error"}
         if mode not in valid_modes:
             raise ValueError(
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
-            )
-
-        # Guard: reject partition_cols if passed via write_kwargs
-        if "partition_cols" in write_kwargs:
-            raise ValueError(
-                "partition_cols is not supported in PR 2. "
-                "Partitioning will be added in a future PR."
             )
 
         # Guard: upsert not supported
@@ -4486,6 +4492,7 @@ class Dataset:
         datasink = DeltaDatasink(
             path,
             mode=mode,
+            partition_cols=partition_cols or [],
             filesystem=filesystem,
             schema=schema,
             **write_kwargs,

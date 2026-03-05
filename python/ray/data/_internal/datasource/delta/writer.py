@@ -66,7 +66,6 @@ class DeltaFileWriter:
         write_uuid: Optional[str],
         write_kwargs: Dict[str, Any],
         written_files: Set[str],
-        target_file_size_bytes: Optional[int] = None,
     ):
         """Initialize file writer.
 
@@ -76,7 +75,6 @@ class DeltaFileWriter:
             write_uuid: Unique identifier for this write operation.
             write_kwargs: Additional write options (compression, etc.).
             written_files: Set to track written file paths (for cleanup).
-            target_file_size_bytes: Ignored (reserved for future use).
         """
         self.filesystem = filesystem
         self.partition_cols = partition_cols

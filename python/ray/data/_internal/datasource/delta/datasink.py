@@ -8,7 +8,6 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set
 
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.fs as pa_fs
 
 from .committer import (
@@ -380,11 +379,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             )
 
         for f in self.schema:
-            if f.name in table_cols and f.name not in self.partition_cols:
+            if f.name in table_cols:
                 col = table[f.name]
                 if f.nullable and pa.types.is_null(col.type):
-                    if pc.all(pa.compute.is_null(col)).as_py():
-                        continue
+                    continue
                 if not types_compatible(f.type, col.type):
                     raise ValueError(
                         f"Type mismatch for '{f.name}': "
