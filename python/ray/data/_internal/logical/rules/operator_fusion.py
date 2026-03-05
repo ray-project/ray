@@ -728,16 +728,15 @@ def are_remote_args_compatible(
     """Check if Ray remote arguments are compatible for merging."""
     prev_args = _canonicalize(prev_args)
     next_args = _canonicalize(next_args)
+    remote_args = next_args.copy()
+    for key in INHERITABLE_REMOTE_ARGS:
+        # NOTE: We only carry over inheritable value in case
+        #       of it not being provided in the remote args
+        if key in prev_args and key not in remote_args:
+            remote_args[key] = prev_args[key]
 
-    all_keys = prev_args.keys() | next_args.keys()
-    for key in all_keys:
-        if key in INHERITABLE_REMOTE_ARGS:
-            # Scheduling-related arguments are not checked for compatibility here,
-            # they are merged with specific precedence rules during the merge.
-            continue
-        # If a key exists in both and they are different, they are incompatible.
-        if key in prev_args and key in next_args and prev_args[key] != next_args[key]:
-            return False
+    if prev_args != remote_args:
+        return False
 
     return True
 
