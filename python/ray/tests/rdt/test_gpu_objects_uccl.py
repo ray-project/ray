@@ -47,7 +47,6 @@ class UCCLGPUTestActor:
         assert gpu_manager.gpu_object_store.has_tensor(tensor)
         assert gpu_manager.is_managed_object(obj_id)
         assert obj_id in uccl_transport._managed_meta
-        # UCCL uses data_ptr() (not untyped_storage().data_ptr()) as the cache key
         key = tensor.data_ptr()
         assert key in uccl_transport._tensor_desc_cache
         assert uccl_transport._tensor_desc_cache[key].metadata_count == 1
@@ -133,9 +132,6 @@ def test_p2p(ray_start_regular):
     result = dst_actor.sum.remote(ref, "cuda")
     assert tensor.sum().item() == ray.get(result)
 
-@pytest.mark.skip(
-    "CPU to CPU transfer is a work-in-progress by UCCL."
-)
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_p2p_cpu_to_cpu(ray_start_regular):
     num_actors = 2
