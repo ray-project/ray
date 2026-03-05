@@ -69,13 +69,13 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
       return result;
     }
     if (!result.status.IsInfeasible()) {
-      infeasible = false;
+      all_infeasible = false;
     }
   }
 
   RAY_LOG(DEBUG) << "All candidate GPU domains exhausted; scheduling "
-                 << (infeasible ? "infeasible." : "failed (retryable).");
-  return infeasible ? SchedulingResult::Infeasible() : SchedulingResult::Failed();
+                 << (all_infeasible ? "infeasible." : "failed (retryable).");
+  return all_infeasible ? SchedulingResult::Infeasible() : SchedulingResult::Failed();
 }
 
 GpuDomainFilterResult CompositeBundleSchedulingPolicy::ScheduleGpuDomainLevel(
