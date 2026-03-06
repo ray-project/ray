@@ -48,16 +48,6 @@ class DeltaWriteResult:
     write_uuid: Optional[str] = None
 
 
-def join_delta_path(base: str, relative: str) -> str:
-    """Join base path and relative path, handling URI schemes."""
-    base = base.rstrip("/")
-    relative = relative.lstrip("/")
-    if "://" in base:
-        scheme, rest = base.split("://", 1)
-        return f"{scheme}://{posixpath.join(rest, relative)}"
-    return posixpath.join(base, relative)
-
-
 def safe_dirname(path: str) -> str:
     """Get directory portion of path, handling URI schemes."""
     if "://" in path:
@@ -621,6 +611,8 @@ def create_filesystem_from_storage_options(
         # Check for GCS-specific credentials in storage_options
         # GOOGLE_SERVICE_ACCOUNT can be a path to service account JSON file
         service_account = storage_options.get("GOOGLE_SERVICE_ACCOUNT")
+        # GOOGLE_SERVICE_ACCOUNT_TOKEN is an access token (from _get_gcs_credentials)
+        access_token = storage_options.get("GOOGLE_SERVICE_ACCOUNT_TOKEN")
         anonymous = storage_options.get("GOOGLE_ANONYMOUS", "").lower() == "true"
         # GcsFileSystem doesn't accept service_account file path directly
         # Set GOOGLE_APPLICATION_CREDENTIALS env var if service_account path is provided
@@ -630,6 +622,8 @@ def create_filesystem_from_storage_options(
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account
         # Only create filesystem if explicit credentials are provided
         # Otherwise return None to let PyArrow use Application Default Credentials
+        if access_token:
+            return pa_fs.GcsFileSystem(access_token=access_token)
         if service_account or anonymous:
             return pa_fs.GcsFileSystem(anonymous=anonymous)
 
