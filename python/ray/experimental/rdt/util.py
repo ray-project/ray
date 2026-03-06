@@ -3,15 +3,15 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional
 
 import ray
 from ray._raylet import ObjectRef
-from ray.experimental.gpu_object_manager.collective_tensor_transport import (
+from ray.experimental.rdt.collective_tensor_transport import (
     GLOOTensorTransport,
     NCCLTensorTransport,
 )
-from ray.experimental.gpu_object_manager.cuda_ipc_transport import CudaIpcTransport
-from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
+from ray.experimental.rdt.cuda_ipc_transport import CudaIpcTransport
+from ray.experimental.rdt.nixl_tensor_transport import (
     NixlTensorTransport,
 )
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
 )
@@ -168,7 +168,7 @@ def register_custom_tensor_transports_on_actor(
     def register_transport_on_actor(
         self, owner_transport_manager_info: Dict[str, TransportManagerInfo]
     ):
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             _ensure_default_transports_registered,
             register_tensor_transport,
             transport_manager_info,
@@ -228,7 +228,7 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
     to pre-register a tensor's memory with NIXL and keep it registered for the lifetime of the process which can improve performance
     if the same tensor is re-used in multiple RDT objects.
 
-    If called on a tensor that is already registered with NIXL, the reference count is still bumped to prevent the memory from being deregistered.
+    If called on a tensor that is already registered with NIXL, we still prevent the tensor's memory from being deregistered.
 
     Args:
         tensor: A PyTorch tensor whose memory should be registered with NIXL.
