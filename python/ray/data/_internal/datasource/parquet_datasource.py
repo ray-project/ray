@@ -794,6 +794,7 @@ class ParquetDatasource(Datasource):
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
             try:
+                # An empty table with extensions will fail for pyarrow==9.0.0
                 dummy_table = target_schema.empty_table()
                 target_schema = _block_udf(dummy_table).schema.with_metadata(
                     target_schema.metadata

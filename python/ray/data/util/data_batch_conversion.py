@@ -284,8 +284,7 @@ def _cast_tensor_columns_to_ndarrays(
     # check rather than the current O(# of columns) check.
 
     # Reshape native FixedShapeTensorType columns that were flattened by
-    # to_pandas(). Must happen before the TensorDtype check below so that
-    # _cast_ndarray_columns_to_tensor_extension later sees the right shape.
+    # to_pandas().
 
     if arrow_schema is not None:
         from ray.data._internal.utils.transform_pyarrow import (
