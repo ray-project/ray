@@ -82,15 +82,15 @@ class TensorTransportManager(ABC):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List[Any],
+        rdt_object: List[Any],
     ) -> TensorTransportMetadata:
         """
-        Extract the tensor transport metadata from the GPU object. This is called on the
+        Extract the tensor transport metadata from the RDT object. This is called on the
         source actor once the actor task creates the result tensors.
 
         Args:
-            obj_id: The ID of the GPU object to extract the tensor transport metadata from.
-            gpu_object: The GPU object to extract the tensor transport metadata from.
+            obj_id: The ID of the RDT object to extract the tensor transport metadata from.
+            rdt_object: The RDT object to extract the tensor transport metadata from.
 
         Returns:
             TensorTransportMetadata: The tensor transport metadata.
