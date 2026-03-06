@@ -472,6 +472,8 @@ def _expand_directory(
         if not file_path.startswith(base_path):
             continue
         relative = file_path[len(base_path) :]
+        if relative.startswith("/"):
+            relative = relative[1:]
         if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
         out.append((file_path, file_.size))
