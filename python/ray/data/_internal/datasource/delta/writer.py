@@ -11,8 +11,7 @@ PyArrow Parquet: https://arrow.apache.org/docs/python/parquet.html
 import logging
 import time
 import uuid
-from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -56,6 +55,7 @@ class DeltaFileWriter:
     """Handles writing Parquet files for Delta Lake tables.
 
     This class is stateless (except for filesystem) and streaming-safe.
+    Writes one file per table/partition combination - no buffering.
     """
 
     def __init__(
@@ -66,7 +66,6 @@ class DeltaFileWriter:
         write_uuid: Optional[str],
         write_kwargs: Dict[str, Any],
         written_files: Set[str],
-        target_file_size_bytes: Optional[int] = None,
     ):
         """Initialize file writer.
 
@@ -76,7 +75,6 @@ class DeltaFileWriter:
             write_uuid: Unique identifier for this write operation.
             write_kwargs: Additional write options (compression, etc.).
             written_files: Set to track written file paths (for cleanup).
-            target_file_size_bytes: Target file size for buffering (None = no buffering).
         """
         self.filesystem = filesystem
         self.partition_cols = partition_cols
@@ -84,12 +82,6 @@ class DeltaFileWriter:
         self.write_kwargs = write_kwargs
         self.written_files = written_files
         self._AddAction = _import_add_action()
-        self.target_file_size_bytes = target_file_size_bytes
-
-        # Per-task buffering to avoid small files:
-        # buffers[(partition_values_tuple)] -> list[pa.Table]
-        self._buffers: DefaultDict[Tuple, List[pa.Table]] = defaultdict(list)
-        self._buffer_bytes: DefaultDict[Tuple, int] = defaultdict(int)
         self._file_seq = 0  # monotonically increasing per task for stable filenames
 
         # Validate compression early with friendly error
@@ -98,6 +90,32 @@ class DeltaFileWriter:
             raise ValueError(
                 f"Invalid compression '{compression}'. Supported: {sorted(_VALID_COMPRESSIONS)}"
             )
+
+    def add_table(self, table: pa.Table, task_idx: int) -> List[Any]:
+        """Write table data immediately (one file per partition, no buffering).
+
+        Args:
+            table: PyArrow table to write.
+            task_idx: Task index for filename generation.
+
+        Returns:
+            List of AddAction objects.
+        """
+        if len(table) == 0:
+            return []
+        self._file_seq += 1
+        return self.write_table_data(table, task_idx, block_idx=self._file_seq)
+
+    def flush(self, task_idx: int) -> List[Any]:
+        """No-op flush (no buffering in this implementation).
+
+        Args:
+            task_idx: Task index (unused, for API compatibility).
+
+        Returns:
+            Empty list (nothing buffered to flush).
+        """
+        return []
 
     def write_table_data(
         self, table: pa.Table, task_idx: int, block_idx: int
@@ -125,75 +143,6 @@ class DeltaFileWriter:
                 if a
             ]
         a = self.write_partition(table, (), task_idx, block_idx)
-        return [a] if a else []
-
-    def add_table(self, table: pa.Table, task_idx: int) -> List[Any]:
-        """Buffered write path. Accumulates data per partition and flushes when
-        target_file_size_bytes is reached (best-effort using table.nbytes).
-
-        Args:
-            table: PyArrow table to add to buffers.
-            task_idx: Task index for filename generation.
-
-        Returns:
-            List of AddAction objects from flushed partitions.
-        """
-        if len(table) == 0:
-            return []
-
-        # If no target configured, just write immediately (one file per partition)
-        if not self.target_file_size_bytes:
-            self._file_seq += 1
-            return self.write_table_data(table, task_idx, block_idx=self._file_seq)
-
-        actions: List[Any] = []
-        if self.partition_cols:
-            parts = self.partition_table(table, self.partition_cols)
-        else:
-            parts = {(): table}
-
-        for pvals, pt in parts.items():
-            self._buffers[pvals].append(pt)
-            self._buffer_bytes[pvals] += getattr(pt, "nbytes", 0)
-            if self._buffer_bytes[pvals] >= self.target_file_size_bytes:
-                actions.extend(self._flush_partition(pvals, task_idx))
-        return actions
-
-    def flush(self, task_idx: int) -> List[Any]:
-        """Flush all remaining buffered partitions.
-
-        Args:
-            task_idx: Task index for filename generation.
-
-        Returns:
-            List of AddAction objects from flushed partitions.
-        """
-        actions: List[Any] = []
-        for pvals in list(self._buffers.keys()):
-            actions.extend(self._flush_partition(pvals, task_idx))
-        return actions
-
-    def _flush_partition(self, partition_values: Tuple, task_idx: int) -> List[Any]:
-        """Flush buffered tables for a partition.
-
-        Args:
-            partition_values: Partition values tuple.
-            task_idx: Task index for filename generation.
-
-        Returns:
-            List of AddAction objects (typically one).
-        """
-        tables = self._buffers.get(partition_values)
-        if not tables:
-            return []
-        # Concatenate buffered tables. Promote=True not needed; schemas should align.
-        merged = pa.concat_tables(tables, promote_options="none")
-        self._buffers[partition_values].clear()
-        self._buffer_bytes[partition_values] = 0
-        self._file_seq += 1
-        a = self.write_partition(
-            merged, partition_values, task_idx, block_idx=self._file_seq
-        )
         return [a] if a else []
 
     def partition_table(
@@ -311,8 +260,6 @@ class DeltaFileWriter:
                 )
             else:
                 # Derive actual partition key from the first row of the group.
-                # (Hash collisions are extremely unlikely; if you want, you can add
-                # a debug-only collision check here.)
                 first = sub.slice(0, 1)
                 key = tuple(first[c][0].as_py() for c in cols)
 
