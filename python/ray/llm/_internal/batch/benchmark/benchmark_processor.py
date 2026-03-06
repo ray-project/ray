@@ -55,10 +55,8 @@ VLLM_ENGINE_KWARGS = {
     "max_num_batched_tokens": 4096,
 }
 
-# Default pooling parameters for classification
-CLASSIFY_POOLING_PARAMS = {
-    "truncate_prompt_tokens": -1,
-}
+# Default tokenization kwargs for classification -- truncate to max_model_len.
+CLASSIFY_TOKENIZATION_KWARGS_DEFAULT = {"truncation": True, "max_length": 512}
 
 
 def build_vllm_engine_kwargs(**kwargs) -> dict:
@@ -224,7 +222,7 @@ def build_classify_processor(
     batch_size: int,
     concurrency: int,
     model: str,
-    pooling_params: dict = CLASSIFY_POOLING_PARAMS,
+    tokenization_kwargs: dict = CLASSIFY_TOKENIZATION_KWARGS_DEFAULT,
     max_model_len: int = 512,
     distributed_executor_backend: str = None,
 ):
@@ -233,6 +231,9 @@ def build_classify_processor(
     engine_kwargs = VLLM_ENGINE_KWARGS.copy()
     if distributed_executor_backend is not None:
         engine_kwargs["distributed_executor_backend"] = distributed_executor_backend
+
+    # Truncate prompts to max_model_len to avoid errors on long inputs.
+    tokenization_kwargs = {**tokenization_kwargs, "max_length": max_model_len}
 
     config = vLLMEngineProcessorConfig(
         model_source=model,
@@ -248,7 +249,7 @@ def build_classify_processor(
         config,
         preprocess=lambda row: dict(
             prompt=row["prompt"],
-            pooling_params=pooling_params,
+            tokenization_kwargs=tokenization_kwargs,
         ),
         postprocess=lambda row: {
             "probs": float(row["embeddings"][0])
@@ -487,7 +488,6 @@ def benchmark(
             batch_size=batch_size,
             concurrency=concurrency,
             model=model,
-            pooling_params=CLASSIFY_POOLING_PARAMS,
             distributed_executor_backend=distributed_executor_backend,
         )
     else:

@@ -13,9 +13,15 @@ To contribute to the Ray repository, follow the instructions below to build from
 
 .. contents::
   :local:
+  :backlinks: none
+
+Setup
+------------------
+
+.. _fork-ray-repo:
 
 Fork the Ray repository
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Forking an open source repository is a best practice when looking to contribute, as it allows you to make and test changes without affecting the original project, ensuring a clean and organized collaboration process.
 You can propose changes to the main project by submitting a pull request to the main project's repository.
@@ -27,8 +33,11 @@ You can propose changes to the main project by submitting a pull request to the 
     b. `Clone <https://docs.github.com/en/get-started/quickstart/fork-a-repo#cloning-your-forked-repository>`_ to your local machine.
     c. `Connect your repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#configuring-git-to-sync-your-fork-with-the-upstream-repository>`_ to the upstream (main project) Ray repo to sync changes.
 
+
+.. _prepare-venv:
+
 Prepare a Python virtual environment
-------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
@@ -118,8 +127,14 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     rm -rf <package path>/site-packages/ray # Path will be in the output of `setup-dev.py`.
     pip uninstall ray # or `pip install -U <wheel>`
 
+
+.. _full-source-build:
+
+Full Source Build
+-----------------
+
 Preparing to build Ray on Linux
--------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tip:: If you are only editing Tune/RLlib/Autoscaler files, follow instructions for :ref:`python-develop` to avoid long build times.
 
@@ -153,7 +168,7 @@ For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 In RedHat, install Bazel manually from this link: https://bazel.build/versions/6.5.0/install/redhat
 
 Preparing to build Ray on MacOS
--------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tip:: Assuming you already have Brew and Bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through the commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with errors like ``No such file or directory:``, try cleaning previous builds on your host by running the commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
 
@@ -168,7 +183,7 @@ To build Ray on MacOS, first install these dependencies:
   ci/env/install-bazel.sh
 
 Building Ray on Linux & MacOS (full)
-------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Make sure you have a local clone of Ray's git repository as explained above. You will also need to install NodeJS_ to build the dashboard.
 
@@ -233,7 +248,7 @@ directory will take effect without reinstalling the package.
 .. _NodeJS: https://nodejs.org
 
 Building Ray on Windows (full)
-------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Requirements**
 
@@ -286,8 +301,11 @@ Define an environment variable BAZEL_PATH to full exe path (example:
   cd ray\python
   pip install -e . --verbose
 
+Advanced Build Options
+----------------------
+
 Environment variables that influence builds
---------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can tweak the build with the following environment variables (when running ``pip install -e .`` or ``python setup.py install``):
 
@@ -316,50 +334,8 @@ You can tweak the build with the following environment variables (when running `
 - ``BAZEL_PATH``: used on Windows to find ``bazel.exe``, see below
 - ``MINGW_DIR``: used on Windows to find ``bazel.exe`` if not found in ``BAZEL_PATH``
 
-Installing additional dependencies for development
---------------------------------------------------
-
-Dependencies for the linter (``pre-commit``) can be installed with:
-
-.. code-block:: shell
-
-  pip install -c python/requirements_compiled.txt pre-commit
-  pre-commit install
-
-Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
-
-.. code-block:: shell
-
- pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
-
-Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
-
-Pre-commit Hooks
-----------------
-
-Ray uses pre-commit hooks with `the pre-commit python package <https://pre-commit.com/>`_.
-The ``.pre-commit-config.yaml`` file configures all the linting and formatting checks.
-To start using ``pre-commit``:
-
-.. code-block:: shell
-
-   pip install pre-commit
-   pre-commit install
-
-This will install pre-commit into the current environment, and enable pre-commit checks every time
-you commit new code changes with git. To temporarily skip pre-commit checks, use the ``-n`` or
-``--no-verify`` flag when committing:
-
-.. code-block:: shell
-
-   git commit -n
-
-If you encounter any issues with ``pre-commit``, please `report an issue here`_.
-
-.. _report an issue here: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
-
 Fast, Debug, and Optimized Builds
----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Currently, Ray is built with optimizations, which can take a long time and
 interfere with debugging. To perform fast, debug, or optimized builds, you can
@@ -387,15 +363,8 @@ all of your development in the future.
 Using ``dbg`` instead of ``fastbuild`` generates more debug information,
 which can make it easier to debug with a debugger like ``gdb``.
 
-Building the Docs
------------------
-
-To learn more about building the docs refer to `Contributing to the Ray Documentation`_.
-
-.. _Contributing to the Ray Documentation: https://docs.ray.io/en/master/ray-contribute/docs.html
-
 Using a local repository for dependencies
------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you'd like to build Ray with custom dependencies (for example, with a
 different version of Cython), you can modify your ``.bzl`` file as follows:
@@ -420,6 +389,60 @@ If the dependency already has a Bazel build file in it, you can use
 To test switching back to the original rule, change ``False`` to ``True``.
 
 .. _`PR template`: https://github.com/ray-project/ray/blob/master/.github/PULL_REQUEST_TEMPLATE.md
+
+Development Tooling
+-------------------
+
+Installing additional dependencies for development
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Dependencies for the linter (``pre-commit``) can be installed with:
+
+.. code-block:: shell
+
+  pip install -c python/requirements_compiled.txt pre-commit
+  pre-commit install
+
+Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
+
+.. code-block:: shell
+
+ pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
+
+Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
+
+Pre-commit Hooks
+~~~~~~~~~~~~~~~~
+
+Ray uses pre-commit hooks with `the pre-commit python package <https://pre-commit.com/>`_.
+The ``.pre-commit-config.yaml`` file configures all the linting and formatting checks.
+To start using ``pre-commit``:
+
+.. code-block:: shell
+
+   pip install pre-commit
+   pre-commit install
+
+This will install pre-commit into the current environment, and enable pre-commit checks every time
+you commit new code changes with git. To temporarily skip pre-commit checks, use the ``-n`` or
+``--no-verify`` flag when committing:
+
+.. code-block:: shell
+
+   git commit -n
+
+If you encounter any issues with ``pre-commit``, please `report an issue here`_.
+
+.. _report an issue here: https://github.com/ray-project/ray/issues/new?template=bug-report.yml
+
+
+Building the Docs
+-----------------
+
+To learn more about building the docs refer to `Contributing to the Ray Documentation`_.
+
+.. _Contributing to the Ray Documentation: https://docs.ray.io/en/master/ray-contribute/docs.html
+
 
 Troubleshooting
 ---------------
