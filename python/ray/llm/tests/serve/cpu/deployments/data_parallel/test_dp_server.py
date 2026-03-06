@@ -21,23 +21,15 @@ class TestGetDeploymentOptions:
     """Mirrors test_dp_server.py but verifies gang scheduling config."""
 
     @pytest.mark.parametrize(
-        "data_parallel_size,num_replicas,allowed,error_match",
+        "data_parallel_size,num_replicas",
         [
-            (None, 1, True, None),
-            (1, 1, True, None),
-            (2, None, True, None),
-            (4, None, True, None),
-            # Multi-gang: num_replicas is a valid multiple of dp_size
-            (4, 8, True, None),
-            (2, 6, True, None),
-            # Invalid: num_replicas is not a multiple of dp_size
-            (4, 6, False, "must be a multiple of"),
-            (4, 3, False, "must be a multiple of"),
+            (None, 1),
+            (2, None),
+            (1, 1),
+            (2, 4),
         ],
     )
-    def test_num_replicas_dp_validation(
-        self, data_parallel_size, num_replicas, allowed, error_match
-    ):
+    def test_num_replicas_dp_validation(self, data_parallel_size, num_replicas):
         engine_kwargs = (
             {}
             if data_parallel_size is None
@@ -52,38 +44,48 @@ class TestGetDeploymentOptions:
             deployment_config=deepcopy(deployment_config),
         )
 
-        if allowed:
-            opts = DPServer.get_deployment_options(llm_config)
-            dp_size = data_parallel_size or 1
-            if dp_size > 1:
-                expected_replicas = (
-                    num_replicas if num_replicas is not None else dp_size
-                )
-                assert opts["num_replicas"] == expected_replicas
-                assert isinstance(opts["gang_scheduling_config"], GangSchedulingConfig)
-                assert opts["gang_scheduling_config"].gang_size == dp_size
-                assert (
-                    opts["gang_scheduling_config"].gang_placement_strategy
-                    == GangPlacementStrategy.PACK
-                )
-                assert (
-                    opts["gang_scheduling_config"].runtime_failure_policy
-                    == GangRuntimeFailurePolicy.RESTART_GANG
-                )
-            else:
-                assert "gang_scheduling_config" not in opts
+        opts = DPServer.get_deployment_options(llm_config)
+        dp_size = data_parallel_size or 1
+        if dp_size > 1:
+            expected_replicas = (
+                num_replicas * dp_size if num_replicas is not None else dp_size
+            )
+            assert opts["num_replicas"] == expected_replicas
+            assert isinstance(opts["gang_scheduling_config"], GangSchedulingConfig)
+            assert opts["gang_scheduling_config"].gang_size == dp_size
+            assert (
+                opts["gang_scheduling_config"].gang_placement_strategy
+                == GangPlacementStrategy.PACK
+            )
+            assert (
+                opts["gang_scheduling_config"].runtime_failure_policy
+                == GangRuntimeFailurePolicy.RESTART_GANG
+            )
         else:
-            with pytest.raises(ValueError, match=error_match):
-                DPServer.get_deployment_options(llm_config)
+            assert "gang_scheduling_config" not in opts
 
-    def test_autoscaling_unsupported(self):
+    def test_autoscaling_config(self):
         llm_config = LLMConfig(
             model_loading_config=dict(model_id="test_model"),
             engine_kwargs={"data_parallel_size": 4},
-            deployment_config={"autoscaling_config": {"target_ongoing_requests": 10}},
+            deployment_config={
+                "autoscaling_config": {
+                    "target_ongoing_requests": 10,
+                    "min_replicas": 2,
+                    "max_replicas": 8,
+                    "initial_replicas": 3,
+                }
+            },
         )
-        with pytest.raises(ValueError, match="autoscaling_config is not supported"):
-            DPServer.get_deployment_options(llm_config)
+        opts = DPServer.get_deployment_options(llm_config)
+        assert isinstance(opts["gang_scheduling_config"], GangSchedulingConfig)
+        assert opts["gang_scheduling_config"].gang_size == 4
+        # Autoscaling config should have min/max/initial replicas multiplied by dp_size
+        autoscaling_config = opts["autoscaling_config"]
+        assert autoscaling_config["target_ongoing_requests"] == 10
+        assert autoscaling_config["min_replicas"] == 2 * 4
+        assert autoscaling_config["max_replicas"] == 8 * 4
+        assert autoscaling_config["initial_replicas"] == 3 * 4
 
 
 class TestGangMasterInfoRegistry:
@@ -127,6 +129,7 @@ class TestGangMasterInfoRegistry:
 
         assert (addr1, port1) == ("10.0.0.1", 1111)
         assert (addr2, port2) == ("10.0.0.2", 2222)
+
 
 class TestBundleIndices:
     @pytest.mark.parametrize(

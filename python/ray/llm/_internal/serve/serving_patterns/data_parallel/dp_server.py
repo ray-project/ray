@@ -183,17 +183,10 @@ class DPServer(LLMServer):
             )
         if dp_size != 1:
             num_replicas = deployment_options.get("num_replicas")
-            if num_replicas != "auto":
-                if num_replicas is not None:
-                    logger.warning(
-                        "In DP deployment, num_replicas refers to the number of DP groups. "
-                        f"Multiplying num_replicas ({num_replicas}) by data_parallel_size ({dp_size}) "
-                        f"to get the total number of serve replicas ({num_replicas * dp_size})."
-                    )
-                    deployment_options["num_replicas"] = num_replicas * dp_size
-                else:
-                    deployment_options["num_replicas"] = dp_size
-            else:
+            has_autoscaling = num_replicas == "auto" or (
+                num_replicas is None and "autoscaling_config" in deployment_options
+            )
+            if has_autoscaling:
                 autoscaling_config = AutoscalingConfig.default().dict()
                 user_config = deployment_options.get("autoscaling_config")
                 if user_config is not None:
@@ -209,6 +202,15 @@ class DPServer(LLMServer):
                         autoscaling_config[key] *= dp_size
 
                 deployment_options["autoscaling_config"] = autoscaling_config
+            elif num_replicas is not None:
+                logger.warning(
+                    "In DP deployment, num_replicas refers to the number of DP groups. "
+                    f"Multiplying num_replicas ({num_replicas}) by data_parallel_size ({dp_size}) "
+                    f"to get the total number of serve replicas ({num_replicas * dp_size})."
+                )
+                deployment_options["num_replicas"] = num_replicas * dp_size
+            else:
+                deployment_options["num_replicas"] = dp_size
 
             deployment_options["gang_scheduling_config"] = GangSchedulingConfig(
                 gang_size=dp_size,

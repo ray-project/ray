@@ -81,8 +81,16 @@ def install_fault_plugin():
     """Install the vLLM fault-injection plugin on every node."""
     with tempfile.TemporaryDirectory() as tmpdir:
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "wheel", "--no-deps", "-w", tmpdir,
-             str(PLUGIN_DIR)],
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-deps",
+                "-w",
+                tmpdir,
+                str(PLUGIN_DIR),
+            ],
         )
         whl_files = list(pathlib.Path(tmpdir).glob("*.whl"))
         assert len(whl_files) == 1
@@ -99,8 +107,14 @@ def install_fault_plugin():
             whl_path = pathlib.Path(d) / filename
             whl_path.write_bytes(whl_data)
             subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", "--force-reinstall",
-                 str(whl_path)],
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--force-reinstall",
+                    str(whl_path),
+                ],
             )
 
     ray.get(
@@ -127,6 +141,7 @@ def cleanup():
 
     serve.shutdown()
     ray.shutdown()
+
 
 def is_default_app_running():
     try:
@@ -184,7 +199,9 @@ def test_llm_serve_dp_engine_fault():
     controller = serve.context._global_client._controller
 
     # Phase 1: Verify steady state
-    replicas = ray.get(controller._dump_replica_states_for_testing.remote(deployment_id))
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_id)
+    )
     running = replicas.get([ReplicaState.RUNNING])
     assert len(running) == expected_serve_replicas
 

@@ -16,10 +16,6 @@ setup(
         "for testing DP fault tolerance."
     ),
     packages=["vllm_fault"],
-    entry_points={
-        "vllm.general_plugins": [
-            "fault = vllm_fault:register"
-        ]
-    },
+    entry_points={"vllm.general_plugins": ["fault = vllm_fault:register"]},
     python_requires=">=3.8",
 )

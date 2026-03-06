@@ -135,18 +135,12 @@ def register():
             os.getpid(),
         )
     except (ImportError, AttributeError) as e:
-        logger.warning(
-            "vllm_fault plugin: failed to set NCCL timeout: %s", e
-        )
+        logger.warning("vllm_fault plugin: failed to set NCCL timeout: %s", e)
 
     # Patch MoE all-to-all ops with fault injection.
     try:
-        AgRsAll2AllManager.dispatch = _make_fault_wrapper(
-            AgRsAll2AllManager.dispatch
-        )
-        AgRsAll2AllManager.combine = _make_fault_wrapper(
-            AgRsAll2AllManager.combine
-        )
+        AgRsAll2AllManager.dispatch = _make_fault_wrapper(AgRsAll2AllManager.dispatch)
+        AgRsAll2AllManager.combine = _make_fault_wrapper(AgRsAll2AllManager.combine)
         logger.info(
             "vllm_fault plugin: patched AgRsAll2AllManager.dispatch/combine "
             "(pid=%d)",

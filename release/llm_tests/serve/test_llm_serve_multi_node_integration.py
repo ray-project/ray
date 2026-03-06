@@ -233,9 +233,7 @@ def test_llm_serve_data_parallelism_autoscaling():
     wait_for_condition(check_num_replicas_eq, target=2, timeout=120)
 
     dep = (
-        serve.status()
-        .applications[SERVE_DEFAULT_APP_NAME]
-        .deployments[deployment_name]
+        serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments[deployment_name]
     )
     running = dep.replica_states.get("RUNNING", 0)
     assert running % dp_size == 0
@@ -393,7 +391,9 @@ def test_llm_serve_data_parallelism_worker_fault():
     controller = serve.context._global_client._controller
 
     # Verify 4 running replicas in 2 gangs.
-    replicas = ray.get(controller._dump_replica_states_for_testing.remote(deployment_id))
+    replicas = ray.get(
+        controller._dump_replica_states_for_testing.remote(deployment_id)
+    )
     running = replicas.get([ReplicaState.RUNNING])
     assert len(running) == expected_serve_replicas
 
@@ -406,7 +406,9 @@ def test_llm_serve_data_parallelism_worker_fault():
     # Pick one gang and kill one of its replicas.
     target_gang_id = list(gangs.keys())[0]
     victim = gangs[target_gang_id][0]
-    victim_actor = ray.get_actor(victim.replica_id.to_full_id_str(), namespace=SERVE_NAMESPACE)
+    victim_actor = ray.get_actor(
+        victim.replica_id.to_full_id_str(), namespace=SERVE_NAMESPACE
+    )
     original_replica_ids = {r.replica_id.unique_id for r in running}
 
     # Background request sender
