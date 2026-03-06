@@ -798,9 +798,11 @@ class DeploymentBroadcastResponse:
     async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
         if self._replica_results is None:
             if self._is_router_running_in_separate_loop:
-                self._replica_results = await asyncio.wrap_future(
-                    self._replica_results_future
+                sync_future = cast(
+                    concurrent.futures.Future[List[ReplicaResult]],
+                    self._replica_results_future,
                 )
+                self._replica_results = await asyncio.wrap_future(sync_future)
             else:
                 async_future = cast(
                     asyncio.Future[List[ReplicaResult]],
