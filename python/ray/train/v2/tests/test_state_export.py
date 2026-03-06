@@ -130,7 +130,7 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
         "framework": "TRAINING_FRAMEWORK_UNSPECIFIED",
     }
     assert run_settings["scaling_config"] == {
-        "num_workers": "1",
+        "num_workers_fixed": 1,
         "placement_strategy": "PACK",
         "use_gpu": False,
         "use_tpu": False,
@@ -145,6 +145,46 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
         "checkpoint_config": {"checkpoint_score_order": "MAX"},
         "storage_path": "s3://bucket/path",
     }
+
+
+def test_export_oneof_num_workers(enable_export_api_write):
+    """
+    Test that the num_workers oneof field exports correctly for both fixed for a fixed
+    number of workers and range for when elastic training is enabled.
+    """
+    state_actor = get_or_create_state_actor()
+
+    run_fixed = create_mock_train_run(RunStatus.RUNNING, id="fixed_workers")
+    run_fixed.run_settings.scaling_config.num_workers = 4
+
+    run_range = create_mock_train_run(RunStatus.RUNNING, id="range_workers")
+    run_range.run_settings.scaling_config.num_workers = (2, 8)
+
+    ray.get(
+        [
+            state_actor.create_or_update_train_run.remote(run_fixed),
+            state_actor.create_or_update_train_run.remote(run_range),
+        ]
+    )
+
+    runs = _get_exported_data()
+    assert len(runs) == 2
+
+    runs_by_id = {run["event_data"]["id"]: run for run in runs}
+
+    # Fixed num_workers
+    fixed_scaling = runs_by_id["fixed_workers"]["event_data"]["run_settings"][
+        "scaling_config"
+    ]
+    assert fixed_scaling["num_workers_fixed"] == 4
+    assert "num_workers_range" not in fixed_scaling
+
+    # Range num_workers
+    range_scaling = runs_by_id["range_workers"]["event_data"]["run_settings"][
+        "scaling_config"
+    ]
+    assert range_scaling["num_workers_range"] == {"min": 2, "max": 8}
+    assert "num_workers_fixed" not in range_scaling
 
 
 def test_export_train_loop_config_integer_keys(enable_export_api_write):

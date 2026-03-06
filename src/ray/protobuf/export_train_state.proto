@@ -128,23 +128,31 @@ message ExportTrainRunEventData {
     message StringFloatMap {
       map<string, double> values = 1;
     }
+    message IntRange {
+      int32 min = 1;
+      int32 max = 2;
+    }
 
-    // The number of workers for the Train run.
-    uint64 num_workers = 1;
+    // The number of workers for the Train run, can be a range with elastic training enabled
+    oneof num_workers {
+      int32 num_workers_fixed = 1;
+      IntRange num_workers_range = 2;
+    }
+
     // Whether to use GPUs for the Train run.
-    bool use_gpu = 2;
+    bool use_gpu = 3;
     // The resources per worker for a Train run.
-    StringFloatMap resources_per_worker = 3;
+    StringFloatMap resources_per_worker = 4;
     // The placement strategy for the Train run.
-    string placement_strategy = 4;
+    string placement_strategy = 5;
     // The accelerator type for the Train run.
-    optional string accelerator_type = 5;
+    optional string accelerator_type = 6;
     // Whether to use TPUs for the Train run.
-    bool use_tpu = 6;
+    bool use_tpu = 7;
     // The topology for the Train run.
-    optional string topology= 7;
+    optional string topology= 8;
     // The bundle label selector for the Train run.
-    repeated StringMap bundle_label_selector = 8;
+    repeated StringMap bundle_label_selector = 9;
   }
 
   // Configuration for dataset splitting and execution options within Ray Train.

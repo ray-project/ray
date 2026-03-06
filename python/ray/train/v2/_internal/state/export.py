@@ -239,11 +239,20 @@ def to_proto_scaling_config(
 ) -> ProtoTrainRun.ScalingConfig:
     """Convert ScalingConfig to protobuf format."""
     proto_scaling_config = ProtoTrainRun.ScalingConfig(
-        num_workers=scaling_config.num_workers,
         use_gpu=scaling_config.use_gpu,
         placement_strategy=scaling_config.placement_strategy,
         use_tpu=scaling_config.use_tpu,
     )
+
+    if isinstance(scaling_config.num_workers, tuple):
+        proto_scaling_config.num_workers_range.CopyFrom(
+            ProtoTrainRun.ScalingConfig.IntRange(
+                min=scaling_config.num_workers[0],
+                max=scaling_config.num_workers[1],
+            )
+        )
+    else:
+        proto_scaling_config.num_workers_fixed = scaling_config.num_workers
 
     if scaling_config.resources_per_worker is not None:
         proto_scaling_config.resources_per_worker.values.update(

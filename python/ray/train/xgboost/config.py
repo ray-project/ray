@@ -63,7 +63,7 @@ class XGBoostConfig(BackendConfig):
         raise NotImplementedError(f"Unsupported backend: {self.xgboost_communicator}")
 
     def to_dict(self) -> Dict[str, Any]:
-        return {}
+        return {"xgboost_communicator": self.xgboost_communicator}
 
 
 class _XGBoostRabitBackend(Backend):

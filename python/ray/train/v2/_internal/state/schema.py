@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from ray._common.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -232,7 +232,9 @@ class DataConfig(BaseModel):
 class ScalingConfig(BaseModel):
     """Scaling config for a Train run."""
 
-    num_workers: int = Field(description="The number of workers for the Train run.")
+    num_workers: Union[int, Tuple[int, int]] = Field(
+        description="The number of workers for the Train run."
+    )
     use_gpu: bool = Field(description="Whether to use GPUs for the Train run.")
     resources_per_worker: Optional[Dict[str, float]] = Field(
         description="The resources per worker for a Train run."
