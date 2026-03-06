@@ -145,6 +145,9 @@ collections_final_clean = True
 # which Sphinx cannot pickle for caching. This is harmless — suppress the warning
 # so it doesn't cause a build failure under -W (warnings-as-errors).
 suppress_warnings = ["config.cache"]
+# Disable autodoc_pydantic features that can produce empty raw directives
+# (e.g. when schema JSON fails for models with non-serializable fields)
+autodoc_pydantic_model_show_json = False
 
 # Configuration for algolia
 # Note: This API key grants read access to our indexes and is intended to be public.
@@ -213,6 +216,11 @@ nitpick_ignore_regex = [
     ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
     # TypeVar for gRPCInputStream generic type
     ("py:obj", "ray\\.serve\\.grpc_util\\.T"),
+    # autodoc_pydantic generates invalid py:obj refs for pydantic v2 validators
+    # (e.g. "all fields", "_validate_*" references in validator docstrings)
+    ("py:obj", r"ray\.serve\.config\.\w+\.all fields"),
+    ("py:obj", r"ray\.serve\.config\.GangSchedulingConfig\._validate_runtime_failure_policy"),
+    ("py:obj", r"ray\.serve\.schema\.\w+\.all fields"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -688,10 +696,7 @@ def setup(app):
         def filter(self, record):
             # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
             # once in Ray Core API and once in Compiled Graph API
-            if (
-                "duplicate object description of ray.actor.ActorMethod.bind"
-                in record.getMessage()
-            ):
+            if "duplicate object description of ray.actor.ActorMethod.bind" in record.getMessage():
                 return False  # Don't log this specific warning
             return True  # Log all other warnings
 
