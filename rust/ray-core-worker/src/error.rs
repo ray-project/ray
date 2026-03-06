@@ -46,3 +46,47 @@ pub enum CoreWorkerError {
 
 /// Result type alias for core worker operations.
 pub type CoreWorkerResult<T> = Result<T, CoreWorkerError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let e = CoreWorkerError::ObjectNotFound("abc".into());
+        assert_eq!(format!("{}", e), "object not found: abc");
+    }
+
+    #[test]
+    fn test_all_error_variants() {
+        let variants: Vec<CoreWorkerError> = vec![
+            CoreWorkerError::ObjectNotFound("oid".into()),
+            CoreWorkerError::ObjectAlreadyExists("oid".into()),
+            CoreWorkerError::ActorNotFound("aid".into()),
+            CoreWorkerError::TaskSubmissionFailed("reason".into()),
+            CoreWorkerError::NotInitialized,
+            CoreWorkerError::InvalidArgument("arg".into()),
+            CoreWorkerError::TimedOut("5s".into()),
+            CoreWorkerError::Internal("oops".into()),
+            CoreWorkerError::Other("misc".into()),
+        ];
+        for v in &variants {
+            // All variants should have a non-empty Display.
+            assert!(!format!("{}", v).is_empty());
+        }
+    }
+
+    #[test]
+    fn test_error_is_debug() {
+        let e = CoreWorkerError::NotInitialized;
+        let dbg = format!("{:?}", e);
+        assert!(dbg.contains("NotInitialized"));
+    }
+
+    #[test]
+    fn test_from_ray_error() {
+        let ray_err = RayError::object_not_found("xyz");
+        let cw_err: CoreWorkerError = ray_err.into();
+        assert!(format!("{}", cw_err).contains("xyz"));
+    }
+}

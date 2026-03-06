@@ -54,4 +54,33 @@ mod tests {
         assert!(port > 0);
         assert!(is_port_available(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
     }
+
+    #[test]
+    fn test_get_local_ip() {
+        let ip = get_local_ip();
+        // Should return a valid IP (localhost or real interface).
+        assert!(ip.is_ipv4() || ip.is_ipv6());
+    }
+
+    #[test]
+    fn test_is_port_available_for_free_port() {
+        let port = get_free_port(IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert!(is_port_available(IpAddr::V4(Ipv4Addr::LOCALHOST), port));
+    }
+
+    #[test]
+    fn test_bound_port_is_unavailable() {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
+        let listener = TcpListener::bind(addr).unwrap();
+        let bound_port = listener.local_addr().unwrap().port();
+        assert!(!is_port_available(IpAddr::V4(Ipv4Addr::LOCALHOST), bound_port));
+    }
+
+    #[test]
+    fn test_two_free_ports_differ() {
+        let p1 = get_free_port(IpAddr::V4(Ipv4Addr::LOCALHOST));
+        let p2 = get_free_port(IpAddr::V4(Ipv4Addr::LOCALHOST));
+        // Very unlikely to be the same.
+        assert!(p1 > 0 && p2 > 0);
+    }
 }

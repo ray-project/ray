@@ -280,4 +280,36 @@ mod tests {
         assert_eq!(client.address(), "http://127.0.0.1:50000");
         assert!(client.is_connected());
     }
+
+    #[tokio::test]
+    async fn test_from_channel() {
+        let channel = Channel::from_static("http://[::1]:1").connect_lazy();
+        let client = CoreWorkerClient::from_channel(
+            channel,
+            RetryConfig::default(),
+            "http://[::1]:1".to_string(),
+        );
+        assert_eq!(client.address(), "http://[::1]:1");
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_custom_retry_config() {
+        let config = RetryConfig {
+            max_retries: 10,
+            ..RetryConfig::default()
+        };
+        let client =
+            CoreWorkerClient::connect_lazy("http://127.0.0.1:50001", config);
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_connect_to_unreachable_fails() {
+        // connect() tries to actually establish a connection, which should fail
+        // for an unreachable address.
+        let result =
+            CoreWorkerClient::connect("http://192.0.2.1:1", RetryConfig::default()).await;
+        assert!(result.is_err());
+    }
 }

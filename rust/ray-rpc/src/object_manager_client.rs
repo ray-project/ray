@@ -194,4 +194,32 @@ mod tests {
         assert!(!pool.remove("node1")); // Already removed.
         assert_eq!(pool.num_connections(), 1);
     }
+
+    #[tokio::test]
+    async fn test_from_channel() {
+        let channel = Channel::from_static("http://[::1]:1").connect_lazy();
+        let client = ObjectManagerClient::from_channel(
+            channel,
+            RetryConfig::default(),
+            "http://[::1]:1".to_string(),
+        );
+        assert_eq!(client.address(), "http://[::1]:1");
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_client_pool_remove_nonexistent() {
+        let pool = ObjectManagerClientPool::new(RetryConfig::default());
+        assert!(!pool.remove("nonexistent"));
+    }
+
+    #[tokio::test]
+    async fn test_client_pool_reinsert_after_remove() {
+        let pool = ObjectManagerClientPool::new(RetryConfig::default());
+        pool.get_or_create("node1", "http://10.0.0.1:8000");
+        pool.remove("node1");
+        // Can re-create after removal.
+        assert!(pool.get_or_create("node1", "http://10.0.0.1:8001"));
+        assert_eq!(pool.num_connections(), 1);
+    }
 }

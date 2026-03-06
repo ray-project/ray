@@ -68,3 +68,48 @@ impl GrpcServer {
             .unwrap_or(self.config.port)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = GrpcServerConfig::default();
+        assert_eq!(config.name, "RayServer");
+        assert_eq!(config.port, 0);
+        assert!(config.register_service);
+        assert_eq!(config.max_active_rpcs_per_handler, -1);
+    }
+
+    #[test]
+    fn test_server_new() {
+        let server = GrpcServer::new(GrpcServerConfig::default());
+        assert_eq!(server.config().name, "RayServer");
+        assert!(server.bound_addr().is_none());
+    }
+
+    #[test]
+    fn test_port_returns_config_port_when_not_bound() {
+        let server = GrpcServer::new(GrpcServerConfig {
+            port: 8080,
+            ..GrpcServerConfig::default()
+        });
+        assert_eq!(server.port(), 8080);
+    }
+
+    #[test]
+    fn test_custom_config() {
+        let config = GrpcServerConfig {
+            name: "TestServer".to_string(),
+            port: 9999,
+            register_service: false,
+            max_active_rpcs_per_handler: 100,
+        };
+        let server = GrpcServer::new(config);
+        assert_eq!(server.config().name, "TestServer");
+        assert_eq!(server.config().port, 9999);
+        assert!(!server.config().register_service);
+        assert_eq!(server.config().max_active_rpcs_per_handler, 100);
+    }
+}

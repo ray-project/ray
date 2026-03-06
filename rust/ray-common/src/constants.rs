@@ -103,3 +103,36 @@ pub const LIBRARY_PATH_ENV_NAME: &str = "PATH";
 
 /// Label key prefix.
 pub const RAY_LABEL_KEY_PREFIX: &str = "ray.io/";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unique_id_size() {
+        assert_eq!(UNIQUE_ID_SIZE, 28);
+    }
+
+    #[test]
+    fn test_ray_version_format() {
+        assert!(RAY_VERSION.starts_with("3."));
+    }
+
+    #[test]
+    fn test_default_ports() {
+        assert_eq!(DEFAULT_GCS_PORT, 6379);
+        assert_eq!(DEFAULT_METRICS_PORT, 8080);
+    }
+
+    #[test]
+    fn test_resource_unit_scaling() {
+        assert_eq!(RESOURCE_UNIT_SCALING, 10000);
+    }
+
+    #[test]
+    fn test_pubsub_defaults() {
+        assert_eq!(DEFAULT_PUBSUB_CHANNEL_CAPACITY, 1024);
+        assert_eq!(DEFAULT_PUBSUB_LONG_POLL_TIMEOUT_SECS, 30);
+        assert_eq!(DEFAULT_SUBSCRIBER_RETRY_DELAY_MS, 100);
+    }
+}

@@ -87,3 +87,77 @@ impl Drop for PeriodicalRunner {
         self.stop();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_ray_runtime_current() {
+        let rt = RayRuntime::current();
+        let handle = rt.spawn(async { 42 });
+        assert_eq!(handle.await.unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn test_ray_runtime_from_handle() {
+        let rt = RayRuntime::from_handle(tokio::runtime::Handle::current());
+        let handle = rt.spawn(async { "hello" });
+        assert_eq!(handle.await.unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn test_ray_runtime_clone() {
+        let rt1 = RayRuntime::current();
+        let rt2 = rt1.clone();
+        let h1 = rt1.spawn(async { 1 });
+        let h2 = rt2.spawn(async { 2 });
+        assert_eq!(h1.await.unwrap() + h2.await.unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_periodical_runner_ticks() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let c = count.clone();
+        let _runner = PeriodicalRunner::start(Duration::from_millis(10), move || {
+            c.fetch_add(1, Ordering::Relaxed);
+        });
+        tokio::time::sleep(Duration::from_millis(55)).await;
+        let ticks = count.load(Ordering::Relaxed);
+        // Should have ticked at least 3 times in 55ms with 10ms interval.
+        assert!(ticks >= 3, "expected >= 3 ticks, got {}", ticks);
+    }
+
+    #[tokio::test]
+    async fn test_periodical_runner_stop() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let c = count.clone();
+        let mut runner = PeriodicalRunner::start(Duration::from_millis(10), move || {
+            c.fetch_add(1, Ordering::Relaxed);
+        });
+        tokio::time::sleep(Duration::from_millis(35)).await;
+        runner.stop();
+        let after_stop = count.load(Ordering::Relaxed);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let after_wait = count.load(Ordering::Relaxed);
+        // Count should not increase after stop.
+        assert_eq!(after_stop, after_wait);
+    }
+
+    #[tokio::test]
+    async fn test_periodical_runner_drop_stops() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let c = count.clone();
+        {
+            let _runner = PeriodicalRunner::start(Duration::from_millis(10), move || {
+                c.fetch_add(1, Ordering::Relaxed);
+            });
+            tokio::time::sleep(Duration::from_millis(35)).await;
+        } // Dropped here
+        let after_drop = count.load(Ordering::Relaxed);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert_eq!(after_drop, count.load(Ordering::Relaxed));
+    }
+}

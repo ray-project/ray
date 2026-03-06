@@ -109,3 +109,60 @@ impl Default for CoreWorkerOptions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_worker_type_proto_roundtrip() {
+        for (wt, val) in [
+            (WorkerType::Worker, 0),
+            (WorkerType::Driver, 1),
+            (WorkerType::SpillWorker, 2),
+            (WorkerType::RestoreWorker, 3),
+        ] {
+            assert_eq!(wt.to_proto(), val);
+            assert_eq!(WorkerType::from_proto(val), Some(wt));
+        }
+        assert_eq!(WorkerType::from_proto(99), None);
+    }
+
+    #[test]
+    fn test_language_proto_roundtrip() {
+        for (lang, val) in [
+            (Language::Python, 0),
+            (Language::Java, 1),
+            (Language::Cpp, 2),
+        ] {
+            assert_eq!(lang.to_proto(), val);
+            assert_eq!(Language::from_proto(val), Some(lang));
+        }
+        assert_eq!(Language::from_proto(99), None);
+    }
+
+    #[test]
+    fn test_default_options() {
+        let opts = CoreWorkerOptions::default();
+        assert_eq!(opts.worker_type, WorkerType::Worker);
+        assert_eq!(opts.language, Language::Python);
+        assert_eq!(opts.node_ip_address, "127.0.0.1");
+        assert_eq!(opts.num_workers, 1);
+        assert_eq!(opts.max_concurrency, 0);
+        assert!(opts.job_id.is_nil());
+        assert!(opts.node_id.is_nil());
+        assert!(!opts.worker_id.is_nil()); // random, not nil
+    }
+
+    #[test]
+    fn test_options_clone() {
+        let opts1 = CoreWorkerOptions {
+            worker_type: WorkerType::Driver,
+            job_id: JobID::from_int(42),
+            ..CoreWorkerOptions::default()
+        };
+        let opts2 = opts1.clone();
+        assert_eq!(opts2.worker_type, WorkerType::Driver);
+        assert_eq!(opts2.job_id, JobID::from_int(42));
+    }
+}

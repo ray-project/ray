@@ -963,3 +963,217 @@ impl ray_raylet_rpc_client::RayletClient for DirectDispatchRayletClient {
         Ok(Default::default())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ray_common::id::{ActorID, JobID, ObjectID};
+    use ray_core_worker::options::CoreWorkerOptions;
+
+    fn make_py_worker() -> PyCoreWorker {
+        PyCoreWorker::new(CoreWorkerOptions {
+            job_id: JobID::from_int(1),
+            ..CoreWorkerOptions::default()
+        })
+    }
+
+    #[test]
+    fn test_py_core_worker_creation() {
+        let w = make_py_worker();
+        assert_eq!(w.get_current_job_id(), JobID::from_int(1));
+    }
+
+    #[test]
+    fn test_py_core_worker_worker_id() {
+        let w = make_py_worker();
+        // Worker ID is random but should not be nil.
+        assert!(!w.get_worker_id().is_nil());
+    }
+
+    #[test]
+    fn test_py_core_worker_task_id() {
+        let w = make_py_worker();
+        // Initial task ID is nil for a driver.
+        let tid = w.get_current_task_id();
+        assert!(tid.is_nil());
+    }
+
+    #[test]
+    fn test_py_core_worker_inner() {
+        let w = make_py_worker();
+        let inner = w.inner();
+        assert_eq!(inner.current_job_id(), JobID::from_int(1));
+    }
+
+    #[test]
+    fn test_py_core_worker_put_and_contains() {
+        let w = make_py_worker();
+        let oid = ObjectID::from_random();
+        assert!(!w.contains_object(&oid));
+        w.put_object(oid, b"hello".to_vec(), b"meta".to_vec())
+            .unwrap();
+        assert!(w.contains_object(&oid));
+    }
+
+    #[test]
+    fn test_py_core_worker_put_duplicate_errors() {
+        let w = make_py_worker();
+        let oid = ObjectID::from_random();
+        w.put_object(oid, b"data".to_vec(), vec![]).unwrap();
+        let result = w.put_object(oid, b"data2".to_vec(), vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_py_core_worker_get_objects() {
+        // PyCoreWorker owns its own tokio runtime, so use #[test] not #[tokio::test]
+        // to avoid nested runtime panic.
+        let w = make_py_worker();
+        let oid = ObjectID::from_random();
+        w.put_object(oid, b"value".to_vec(), b"m".to_vec())
+            .unwrap();
+        let results = w.get_objects(&[oid], 1000).unwrap();
+        assert_eq!(results.len(), 1);
+        let obj = results[0].as_ref().unwrap();
+        assert_eq!(obj.data.as_ref(), b"value");
+        assert_eq!(obj.metadata.as_ref(), b"m");
+    }
+
+    #[test]
+    fn test_py_core_worker_get_objects_timeout() {
+        let w = make_py_worker();
+        let oid = ObjectID::from_random();
+        // Object not put — should timeout and return None.
+        let results = w.get_objects(&[oid], 50).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_none());
+    }
+
+    #[test]
+    fn test_py_core_worker_wait() {
+        let w = make_py_worker();
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        w.put_object(oid1, b"d".to_vec(), vec![]).unwrap();
+        // Wait for at least 1 of 2 objects.
+        let ready = w.wait(&[oid1, oid2], 1, 100).unwrap();
+        assert_eq!(ready.len(), 2);
+        assert!(ready[0]); // oid1 is ready
+    }
+
+    #[test]
+    fn test_py_core_worker_free_objects() {
+        let w = make_py_worker();
+        let oid = ObjectID::from_random();
+        w.put_object(oid, b"data".to_vec(), vec![]).unwrap();
+        assert!(w.contains_object(&oid));
+        w.free_objects(&[oid]);
+        assert!(!w.contains_object(&oid));
+    }
+
+    #[test]
+    fn test_py_core_worker_create_and_kill_actor() {
+        let w = make_py_worker();
+        let aid = ActorID::from_random();
+        let handle = ray_core_worker::actor_handle::ActorHandle::from_proto(
+            ray_proto::ray::rpc::ActorHandle {
+                actor_id: aid.binary(),
+                name: "test_actor".to_string(),
+                ..Default::default()
+            },
+        );
+        w.create_actor(aid, handle).unwrap();
+        w.kill_actor(&aid, false, true).unwrap();
+    }
+
+    #[test]
+    fn test_py_core_worker_kill_unregistered_actor() {
+        let w = make_py_worker();
+        let aid = ActorID::from_random();
+        // kill_actor on an unregistered actor is a no-op (no error).
+        let result = w.kill_actor(&aid, false, true);
+        assert!(result.is_ok());
+    }
+
+    // ── DirectDispatchRayletClient tests ─────────────────────────────
+
+    fn make_raylet_client() -> DirectDispatchRayletClient {
+        DirectDispatchRayletClient {
+            worker_address: ray_proto::ray::rpc::Address {
+                node_id: vec![1, 2, 3],
+                ip_address: "10.0.0.1".to_string(),
+                port: 9999,
+                worker_id: vec![4, 5, 6],
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_direct_dispatch_request_worker_lease() {
+        use ray_raylet_rpc_client::RayletClient;
+        let client = make_raylet_client();
+        let reply = client
+            .request_worker_lease(ray_proto::ray::rpc::RequestWorkerLeaseRequest::default())
+            .await
+            .unwrap();
+        let addr = reply.worker_address.unwrap();
+        assert_eq!(addr.ip_address, "10.0.0.1");
+        assert_eq!(addr.port, 9999);
+        assert_eq!(addr.worker_id, vec![4, 5, 6]);
+        assert_eq!(addr.node_id, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn test_direct_dispatch_return_worker_lease() {
+        use ray_raylet_rpc_client::RayletClient;
+        let client = make_raylet_client();
+        let reply = client
+            .return_worker_lease(ray_proto::ray::rpc::ReturnWorkerLeaseRequest::default())
+            .await
+            .unwrap();
+        // Returns default (empty) reply.
+        assert_eq!(reply, Default::default());
+    }
+
+    #[tokio::test]
+    async fn test_direct_dispatch_cancel_worker_lease() {
+        use ray_raylet_rpc_client::RayletClient;
+        let client = make_raylet_client();
+        let reply = client
+            .cancel_worker_lease(ray_proto::ray::rpc::CancelWorkerLeaseRequest::default())
+            .await
+            .unwrap();
+        assert_eq!(reply, Default::default());
+    }
+
+    #[tokio::test]
+    async fn test_direct_dispatch_all_methods_return_ok() {
+        use ray_raylet_rpc_client::RayletClient;
+        let c = make_raylet_client();
+        // Verify all 18 trait methods return Ok.
+        assert!(c.report_worker_backlog(Default::default()).await.is_ok());
+        assert!(c.prestart_workers(Default::default()).await.is_ok());
+        assert!(c
+            .prepare_bundle_resources(Default::default())
+            .await
+            .is_ok());
+        assert!(c
+            .commit_bundle_resources(Default::default())
+            .await
+            .is_ok());
+        assert!(c
+            .cancel_resource_reserve(Default::default())
+            .await
+            .is_ok());
+        assert!(c.pin_object_ids(Default::default()).await.is_ok());
+        assert!(c.get_resource_load(Default::default()).await.is_ok());
+        assert!(c.shutdown_raylet(Default::default()).await.is_ok());
+        assert!(c.drain_raylet(Default::default()).await.is_ok());
+        assert!(c.notify_gcs_restart(Default::default()).await.is_ok());
+        assert!(c.get_node_stats(Default::default()).await.is_ok());
+        assert!(c.get_system_config(Default::default()).await.is_ok());
+        assert!(c.kill_local_actor(Default::default()).await.is_ok());
+        assert!(c.cancel_local_task(Default::default()).await.is_ok());
+        assert!(c.global_gc(Default::default()).await.is_ok());
+    }
+}
