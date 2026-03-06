@@ -14,8 +14,7 @@ FILE_SIZE_COLUMN_NAME = "__file_size"
 class FileManifest:
     """Structured view over file paths and file sizes.
 
-    A thin wrapper over `ListFiles` outputs that provides structured access to file
-    paths and sizes. This avoids making implicit assumptions about block structure as
+    Provides structured access to file paths and sizes. This avoids making implicit assumptions about block structure as
     data moves between file listing, partitioning, and reading stages.
 
     All extracted views (i.e., `paths`, `file_sizes`) share the same row order as the

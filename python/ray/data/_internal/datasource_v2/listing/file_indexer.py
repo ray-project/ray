@@ -57,19 +57,32 @@ class NonSamplingFileIndexer(FileIndexer):
     rather than a single directory.
     """
 
-    _MAX_PATHS_PER_LIST_FILES_OUTPUT = env_integer(
+    _DEFAULT_MAX_PATHS_PER_OUTPUT = env_integer(
         "RAY_DATA_MAX_PATHS_PER_LIST_FILES_OUTPUT", 1000
     )
 
-    _QUEUE_SIZE_PER_THREAD = env_integer(
-        "RAY_DATA_LIST_FILES_QUEUE_SIZE_PER_THREAD",
-        _MAX_PATHS_PER_LIST_FILES_OUTPUT * 4,
-    )
+    _DEFAULT_NUM_WORKERS = env_integer("RAY_DATA_LIST_FILES_THREADED_NUM_WORKERS", 4)
 
-    _THREADED_NUM_WORKERS = env_integer("RAY_DATA_LIST_FILES_THREADED_NUM_WORKERS", 4)
-
-    def __init__(self, *, ignore_missing_paths: bool):
+    def __init__(
+        self,
+        *,
+        ignore_missing_paths: bool,
+        num_workers: Optional[int] = None,
+        max_paths_per_output: Optional[int] = None,
+    ):
         self._ignore_missing_paths = ignore_missing_paths
+        self._max_paths_per_output = (
+            max_paths_per_output
+            if max_paths_per_output is not None
+            else self._DEFAULT_MAX_PATHS_PER_OUTPUT
+        )
+        self._num_workers = (
+            num_workers if num_workers is not None else self._DEFAULT_NUM_WORKERS
+        )
+        self._queue_size_per_thread = env_integer(
+            "RAY_DATA_LIST_FILES_QUEUE_SIZE_PER_THREAD",
+            self._max_paths_per_output * 4,
+        )
 
     def list_files(
         self,
@@ -81,7 +94,7 @@ class NonSamplingFileIndexer(FileIndexer):
     ) -> Iterable[FileManifest]:
         file_info_iterator = (
             self._get_file_info_iterator_threaded(paths, filesystem, preserve_order)
-            if self._THREADED_NUM_WORKERS > 1
+            if self._num_workers > 1
             else self._get_file_info_iterator_sequential(paths, filesystem)
         )
 
@@ -113,7 +126,7 @@ class NonSamplingFileIndexer(FileIndexer):
         if len(paths_list) == 0:
             return
 
-        num_workers = min(self._THREADED_NUM_WORKERS, len(paths_list))
+        num_workers = min(self._num_workers, len(paths_list))
 
         def process_paths(
             path_iterator: Iterator[str],
@@ -136,7 +149,7 @@ class NonSamplingFileIndexer(FileIndexer):
             fn=process_paths,
             preserve_ordering=preserve_order,
             num_workers=num_workers,
-            buffer_size=self._QUEUE_SIZE_PER_THREAD,
+            buffer_size=self._queue_size_per_thread,
         )
 
     def _process_file_infos_to_manifests(
@@ -163,7 +176,7 @@ class NonSamplingFileIndexer(FileIndexer):
             running_file_sizes.append(file_size)
             files_count += 1
 
-            if len(running_paths) >= self._MAX_PATHS_PER_LIST_FILES_OUTPUT:
+            if len(running_paths) >= self._max_paths_per_output:
                 manifests_count += 1
                 yield FileManifest.construct_manifest(running_paths, running_file_sizes)
                 running_paths = []
