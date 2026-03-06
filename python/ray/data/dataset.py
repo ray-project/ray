@@ -4350,6 +4350,7 @@ class Dataset:
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
+        schema_mode: str = "merge",
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         **write_kwargs,
@@ -4413,12 +4414,14 @@ class Dataset:
 
                 Upsert mode will be added in PR 6.
 
-            partition_cols: **PR 2: Not supported.** Partitioning will be added in PR 3.
+            partition_cols: List of column names to partition by. Creates Hive-style
+                partitioning (e.g., year=2024/month=10/). Partition columns are
+                removed from the data files and encoded in directory names.
             filesystem: PyArrow filesystem to use for writing. If None, automatically
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
                 Schema inference may fail for complex types; provide explicit schema
-                if needed. **PR 1: Schema evolution not supported.** Will be added in PR 4.
+                if needed. Schema evolution is supported via ``schema_mode`` parameter.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
                 Use to configure resources such as ``num_cpus`` or ``num_gpus``.
             concurrency: Maximum number of concurrent write tasks. By default,
@@ -4431,7 +4434,12 @@ class Dataset:
                 * configuration: Delta table configuration options (dict)
                 * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
 
-                Note: Other write_kwargs (schema_mode, upsert_kwargs, partition_overwrite_mode,
+                * schema_mode: Schema evolution mode when writing to existing tables:
+                  - "merge" (default): Automatically add new columns from incoming data.
+                    Existing columns must have compatible types.
+                  - "error": Raise error if schemas differ. Use for strict schema enforcement.
+
+                Note: Other write_kwargs (upsert_kwargs, partition_overwrite_mode,
                 target_file_size_bytes) will be added in subsequent PRs.
 
         Raises:
@@ -4441,10 +4449,13 @@ class Dataset:
                 or if unsupported write_kwargs are provided (PR 1 limitations).
 
         Note:
-            **PR 2 Features:**
+            **PR 4 Features:**
 
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
               Either all files become visible or none do.
+            * **Schema evolution**: Automatically add new columns when writing to existing
+              tables (controlled by ``schema_mode`` parameter).
+            * **Partitioning**: Hive-style partitioning support.
             * **Write modes**: Append, overwrite, ignore, and error modes.
 
             The two-phase commit protocol:
@@ -4458,22 +4469,10 @@ class Dataset:
             by running Delta's VACUUM command.
 
             **Future PRs will add:**
-            * Partitioning (PR 3)
-            * Schema evolution (PR 4)
             * Time travel reads (PR 5)
             * Upsert mode (PR 6)
             * Partition overwrite modes (PR 7)
             * Advanced optimizations (PR 8)
-
-            The two-phase commit protocol:
-
-            1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
-               Parquet files and returns AddAction metadata (files not yet visible).
-            2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
-               them atomically in a single Delta transaction.
-
-            If the write fails partway through, uncommitted files can be removed
-            by running Delta's VACUUM command.
 
         Note:
             For cloud storage, provide authentication via ``storage_options``:
@@ -4502,8 +4501,9 @@ class Dataset:
             partition_cols = validate_partition_column_names(partition_cols)
 
         # PR 4: Schema evolution now supported via schema_mode parameter
-        # Allow schema_mode to be passed in write_kwargs for backward compatibility
-        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        # Also allow schema_mode to be passed in write_kwargs for backward compatibility
+        if "schema_mode" in write_kwargs:
+            schema_mode = write_kwargs.pop("schema_mode")
         if schema_mode not in ("merge", "error"):
             raise ValueError(
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
@@ -4529,8 +4529,7 @@ class Dataset:
                 "File buffering will be added in PR 8."
             )
 
-        # PR 5: Time travel is read-only, but write_delta inherits features from PR 4
-        # (Write modes, partitioning, and schema evolution supported)
+        # PR 4: Write modes, partitioning, and schema evolution supported
         datasink = DeltaDatasink(
             path,
             mode=mode,
