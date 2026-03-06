@@ -164,16 +164,20 @@ def _make_dataset(n: int, value_prefix: str = "value_") -> ray.data.Dataset:
     @udf(return_dtype=DataType.fixed_size_list(DataType.float64(), EMBEDDING_DIM))
     def make_embedding(ids: pa.Array) -> pa.Array:
         ids_np = np.asarray(ids)
-        flat = (
-            (ids_np[:, None] + np.arange(EMBEDDING_DIM)) % 100
-        ).astype(np.float64) / 100.0
-        return pa.FixedSizeListArray.from_arrays(pa.array(flat.flatten()), EMBEDDING_DIM)
+        flat = ((ids_np[:, None] + np.arange(EMBEDDING_DIM)) % 100).astype(
+            np.float64
+        ) / 100.0
+        return pa.FixedSizeListArray.from_arrays(
+            pa.array(flat.flatten()), EMBEDDING_DIM
+        )
 
     @udf(return_dtype=DataType.fixed_size_list(DataType.int64(), TOKEN_IDS_DIM))
     def make_token_ids(ids: pa.Array) -> pa.Array:
         ids_np = np.asarray(ids)
         flat = (ids_np[:, None] + np.arange(TOKEN_IDS_DIM)) % 1024
-        return pa.FixedSizeListArray.from_arrays(pa.array(flat.flatten()), TOKEN_IDS_DIM)
+        return pa.FixedSizeListArray.from_arrays(
+            pa.array(flat.flatten()), TOKEN_IDS_DIM
+        )
 
     @udf(return_dtype=DataType.fixed_size_list(DataType.float64(), LOGITS_DIM))
     def make_logits(ids: pa.Array) -> pa.Array:
