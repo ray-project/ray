@@ -778,6 +778,14 @@ class DeploymentBroadcastResponse:
         ],
         _is_router_running_in_separate_loop: bool = True,
     ):
+        """Initialize a DeploymentBroadcastResponse.
+
+        Args:
+            replica_results_future: Future that resolves to the list of
+                replica results.
+            _is_router_running_in_separate_loop: Whether the router runs
+                in a separate event loop thread.
+        """
         self._replica_results_future = replica_results_future
         self._replica_results: Optional[List[ReplicaResult]] = None
         self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
@@ -802,7 +810,7 @@ class DeploymentBroadcastResponse:
                     concurrent.futures.Future[List[ReplicaResult]],
                     self._replica_results_future,
                 )
-                self._replica_results = await asyncio.wrap_future(sync_future)
+                self._replica_results = await asyncio.wrap_future(sync_future)  # type: ignore[arg-type]
             else:
                 async_future = cast(
                     asyncio.Future[List[ReplicaResult]],
@@ -819,6 +827,9 @@ class DeploymentBroadcastResponse:
 
         Args:
             timeout_s: Timeout in seconds. If ``None``, blocks indefinitely.
+
+        Returns:
+            A list of results, one per replica.
 
         Raises:
             TimeoutError: If the timeout is exceeded.
