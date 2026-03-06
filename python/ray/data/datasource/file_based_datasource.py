@@ -91,6 +91,13 @@ class FileShuffleConfig:
             If False, the random seed is constantly ``seed``, resulting in the same
             shuffling order across executions. Only takes effect when ``seed`` is not None.
             Defaults to True.
+        enable_sub_file_shuffle: If True, enables sub-file level shuffling
+            where rows from different files are interleaved within output blocks.
+            Read tasks produce smaller blocks that are randomly sampled and merged,
+            achieving cross-file row-level shuffling without a full sort or hash
+            shuffle. The merge window and sample ratio are controlled by
+            ``DataContext.shuffle_merge_window`` and
+            ``DataContext.shuffle_sample_ratio``. Defaults to False.
 
     Example:
         >>> import ray
@@ -106,6 +113,7 @@ class FileShuffleConfig:
 
     seed: Optional[int] = None
     reseed_after_execution: bool = True
+    enable_sub_file_shuffle: bool = False
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""
@@ -120,63 +128,6 @@ class FileShuffleConfig:
             return hash((self.seed, execution_idx)) % (2**32)
         else:
             return self.seed
-
-
-@DeveloperAPI
-@dataclass
-class WindowShuffle(FileShuffleConfig):
-    """Block-level window shuffle for file-based reads.
-
-    Problem:
-        FileShuffleConfig only shuffles the *order of files* fed to read tasks.
-        Rows within each file (and within each output block) remain in their
-        original order. For training workloads this leaves significant
-        correlation between consecutive rows, hurting model convergence.
-
-    Idea:
-        1. Each read task produces **small** blocks instead of full-sized ones.
-           Block size = ``target_max_block_size / merge_window``, so that
-           merging ``merge_window`` blocks later recovers the original target
-           block size.
-
-        2. Small blocks from *all* concurrently running read tasks accumulate
-           in a shuffle queue (replacing the normal FIFO output queue).
-
-        3. Once the queue has accumulated ``sample_ratio * merge_window``
-           blocks (the "sample window"), we randomly sample ``merge_window``
-           blocks from the queue and merge them into one output block.
-           Because blocks come from different files / positions, the merged
-           block contains rows from many sources — achieving cross-file
-           shuffling without a full sort or hash shuffle.
-
-        4. When all read tasks finish, any remaining blocks in the queue are
-           flushed in groups of ``merge_window``.
-
-    Example:
-        With defaults (merge_window=100, sample_ratio=5):
-        - Read tasks emit blocks of ~1.28 MiB (assuming 128 MiB target).
-        - The queue waits for 500 small blocks.
-        - It randomly picks 100, merges them into one ~128 MiB block.
-        - The merged block has rows sampled from many different files.
-
-    Args:
-        merge_window: Number of small blocks to merge into one output block.
-            Determines the output block size: each read task produces blocks
-            of ``target_max_block_size / merge_window`` bytes. Defaults to 100.
-        sample_ratio: Controls how many blocks to accumulate before sampling.
-            The queue waits for ``sample_ratio * merge_window`` blocks before
-            each flush, giving more randomness in the selection. Defaults to 5.
-    """
-
-    merge_window: int = 100
-    sample_ratio: int = 5
-
-    def __post_init__(self):
-        super().__post_init__()
-        if self.merge_window <= 0:
-            raise ValueError("merge_window must be > 0.")
-        if self.sample_ratio <= 0:
-            raise ValueError("sample_ratio must be > 0.")
 
 
 @DeveloperAPI

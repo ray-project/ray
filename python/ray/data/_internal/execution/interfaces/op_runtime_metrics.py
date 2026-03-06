@@ -763,7 +763,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # estimate – just bail out.
         if bytes_per_output is None:
             # Prefer the operator-level override (e.g. smaller blocks from
-            # WindowShuffle) over the global DataContext default.
+            # sub-file shuffle) over the global DataContext default.
             target = (
                 self._op.target_max_block_size_override or context.target_max_block_size
             )

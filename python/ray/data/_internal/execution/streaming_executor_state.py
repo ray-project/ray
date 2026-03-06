@@ -4,13 +4,13 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
 import logging
-
-import numpy as np
 import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+import numpy as np
 
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
@@ -480,7 +480,7 @@ def process_completed_tasks(
         _rng = np.random.default_rng()
         for state, ready_tasks in ready_tasks_by_op.items():
             if getattr(state.op, "_shuffle_task_outputs", False):
-                # For WindowShuffle read operators, process ready tasks in
+                # For sub-file shuffle read operators, process ready tasks in
                 # random order so blocks from different files are interleaved.
                 ready_tasks = list(ready_tasks)
                 _rng.shuffle(ready_tasks)

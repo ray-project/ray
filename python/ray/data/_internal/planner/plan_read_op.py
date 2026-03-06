@@ -1,8 +1,6 @@
 import logging
 import warnings
-from typing import Iterable, List, Tuple
-
-import numpy as np
+from typing import Iterable, List
 
 import ray
 from ray import ObjectRef
@@ -10,15 +8,17 @@ from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import (
-    BaseRefBundler,
     MapOperator,
-    _merge_ref_bundles,
 )
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string
+from ray.data._internal.execution.util import (
+    ShuffleRefBundler,
+    concat_and_shuffle,
+    memory_string,
+)
 from ray.data._internal.logical.operators import Read
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.util import _warn_on_high_parallelism
@@ -31,65 +31,6 @@ from ray.util.debug import log_once
 TASK_SIZE_WARN_THRESHOLD_BYTES = 1024 * 1024  # 1 MiB
 
 logger = logging.getLogger(__name__)
-
-
-class ShuffleRefBundler(BaseRefBundler):
-    """Groups small blocks from the read operator for WindowShuffle.
-
-    Accumulates single-block RefBundles produced by the read operator. Once
-    ``sample_ratio * merge_window`` bundles are buffered, randomly samples
-    ``merge_window`` of them, merges them into one multi-block RefBundle, and
-    emits it as a single shuffle task input. On finalization, remaining
-    bundles are flushed in groups of ``merge_window``.
-    """
-
-    def __init__(self, merge_window: int, sample_ratio: int):
-        self._merge_window = merge_window
-        self._sample_window = merge_window * sample_ratio
-        self._buffer: List[RefBundle] = []
-        self._buffer_size_bytes: int = 0
-        self._finalized = False
-        self._rng = np.random.default_rng()
-
-    def num_blocks(self) -> int:
-        return sum(len(b.block_refs) for b in self._buffer)
-
-    def add_bundle(self, bundle: RefBundle):
-        self._buffer.append(bundle)
-        self._buffer_size_bytes += bundle.size_bytes()
-
-    def has_bundle(self) -> bool:
-        if self._finalized:
-            return len(self._buffer) > 0
-        return len(self._buffer) >= self._sample_window
-
-    def size_bytes(self) -> int:
-        return self._buffer_size_bytes
-
-    def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
-        assert self.has_bundle()
-
-        n = len(self._buffer)
-        take = min(self._merge_window, n)
-
-        if take >= n:
-            # Take everything (flush or exact fit).
-            selected = self._buffer
-            self._buffer = []
-        else:
-            # Randomly sample merge_window bundles from the buffer.
-            indices = self._rng.choice(n, size=take, replace=False)
-            indices_set = set(indices.tolist())
-            selected = [self._buffer[i] for i in indices]
-            self._buffer = [
-                b for i, b in enumerate(self._buffer) if i not in indices_set
-            ]
-
-        self._buffer_size_bytes = sum(b.size_bytes() for b in self._buffer)
-        return list(selected), _merge_ref_bundles(*selected)
-
-    def done_adding_bundles(self):
-        self._finalized = True
 
 
 def _derive_metadata(read_task: ReadTask, read_task_ref: ObjectRef) -> BlockMetadata:
@@ -172,10 +113,14 @@ def plan_read_op(
         for read_task in blocks:
             yield from read_task()
 
-    # Compute effective block size: smaller blocks when WindowShuffle is active
-    ws = op.window_shuffle_config
-    if ws is not None:
-        effective_block_size = data_context.target_max_block_size // ws.merge_window
+    # Compute effective block size: smaller blocks when sub-file shuffle is active
+    shuffle_config = op.shuffle_config
+    sub_file_shuffle = (
+        shuffle_config is not None and shuffle_config.enable_sub_file_shuffle
+    )
+    merge_window = data_context.shuffle_merge_window
+    if sub_file_shuffle:
+        effective_block_size = data_context.target_max_block_size // merge_window
     else:
         effective_block_size = data_context.target_max_block_size
 
@@ -200,46 +145,31 @@ def plan_read_op(
         compute_strategy=op.compute,
         ray_remote_args=op.ray_remote_args,
         target_max_block_size_override=(
-            effective_block_size if ws is not None else None
+            effective_block_size if sub_file_shuffle else None
         ),
     )
 
-    if ws is None:
+    if not sub_file_shuffle:
         return read_op
 
     # Enable random output ordering for the read operator so that blocks
     # from different read tasks are interleaved before reaching the
     # downstream ShuffleRefBundler.
+    # TODO(xgui): for preserved_order, we should not shuffle task outputs
     read_op._shuffle_task_outputs = True
 
     # Chain a shuffle operator that concatenates all blocks in a RefBundle
     # and shuffles rows.
-    row_block_size = data_context.window_shuffle_row_block_size
+    row_block_size = data_context.shuffle_row_block_size
+    shuffle_seed = shuffle_config.get_seed()
 
-    def concat_and_shuffle(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
-        import numpy as np
-        import pyarrow as pa
-
-        tables = list(blocks)
-        if not tables:
-            return
-        combined = pa.concat_tables(tables)
-        n = combined.num_rows
-        if n <= 1:
-            yield combined
-            return
-        rng = np.random.default_rng()
-        starts = np.arange(0, n, row_block_size)
-        rng.shuffle(starts)
-        slices = [
-            combined.slice(int(s), min(row_block_size, n - int(s))) for s in starts
-        ]
-        yield pa.concat_tables(slices)
+    def _concat_and_shuffle(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+        return concat_and_shuffle(blocks, row_block_size, seed=shuffle_seed)
 
     shuffle_transformer = MapTransformer(
         [
             BlockMapTransformFn(
-                concat_and_shuffle,
+                _concat_and_shuffle,
                 is_udf=False,
                 output_block_size_option=OutputBlockSizeOption.of(
                     target_max_block_size=data_context.target_max_block_size,
@@ -252,6 +182,10 @@ def plan_read_op(
         shuffle_transformer,
         read_op,
         data_context,
-        name="WindowShuffle",
-        ref_bundler=ShuffleRefBundler(ws.merge_window, ws.sample_ratio),
+        name="SubFileShuffle",
+        ref_bundler=ShuffleRefBundler(
+            merge_window,
+            data_context.shuffle_sample_ratio,
+            seed=shuffle_seed,
+        ),
     )
