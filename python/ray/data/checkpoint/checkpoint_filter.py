@@ -88,22 +88,20 @@ class CheckpointLoader:
         start_t = time.time()
 
         if self.ckpt_config.backend == CheckpointBackend.ICEBERG:
-            # Read checkpoint via PyIceberg directly to avoid catalog-parallelism edge cases.
-            from pyiceberg.exceptions import NoSuchTableError
             from ray.data._internal.datasource.iceberg_datasource import (
                 _get_iceberg_catalog,
             )
 
             catalog = _get_iceberg_catalog(self.ckpt_config.catalog_kwargs)
-            try:
-                table = catalog.load_table(self.checkpoint_path)
-                arrow_tbl = table.scan().select(self.id_column).to_arrow()
-            except NoSuchTableError:
-                # If the table doesn't exist, it means no checkpoint data exists.
-                # We return an empty table.
+            if catalog.table_exists(self.checkpoint_path):
+                checkpoint_ds = ray.data.read_iceberg(
+                    table_identifier=self.checkpoint_path,
+                    selected_fields=(self.id_column,),
+                    catalog_kwargs=self.ckpt_config.catalog_kwargs,
+                )
+            else:
                 arrow_tbl = pyarrow.Table.from_pydict({self.id_column: []})
-
-            checkpoint_ds = ray.data.from_arrow(arrow_tbl)
+                checkpoint_ds = ray.data.from_arrow(arrow_tbl)
         else:
             # Load the checkpoint data
             checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(

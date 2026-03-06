@@ -296,7 +296,6 @@ class IcebergDatasource(Datasource):
 
         self._scan_kwargs = (scan_kwargs or {}).copy()
         self._catalog_kwargs = (catalog_kwargs or {}).copy()
-        self._catalog_name = self._catalog_kwargs.get("name", "default")
 
         self.table_identifier = table_identifier
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
