@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import ray
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
@@ -57,7 +57,7 @@ class CudaIpcTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List["torch.Tensor"],
+        rdt_object: List["torch.Tensor"],
     ) -> CudaIpcTransportMetadata:
 
         tensor_meta = []
@@ -66,11 +66,11 @@ class CudaIpcTransport(TensorTransportManager):
         event_ipc_handle = None
         ray_gpu_idx = None
         ray_node_id = None
-        if gpu_object:
+        if rdt_object:
             import torch
             from torch.multiprocessing.reductions import reduce_tensor
 
-            device = gpu_object[0].device
+            device = rdt_object[0].device
             ray_gpu_idx = ray.get_gpu_ids()[device.index]
             ray_node_id = ray.get_runtime_context().get_node_id()
 
@@ -79,7 +79,7 @@ class CudaIpcTransport(TensorTransportManager):
             event = torch.cuda.Event(interprocess=True)
             torch.cuda.current_stream(device).record_event(event)
 
-            for t in gpu_object:
+            for t in rdt_object:
                 if t.device.type != device.type:
                     raise ValueError(
                         "All tensors in an RDT object must have the same device type."
