@@ -152,10 +152,16 @@ def plan_read_op(
     if not sub_file_shuffle:
         return read_op
 
+    # TODO(xgui): for preserved_order, we should guarantee the ShuffleRefBundler includes blocks from different read tasks before flushing.
+    if data_context.execution_options.preserve_order:
+        raise ValueError(
+            "Sub-file shuffle is not supported with preserve_order=True. "
+            "Support for this combination is pending."
+        )
+
     # Enable random output ordering for the read operator so that blocks
     # from different read tasks are interleaved before reaching the
     # downstream ShuffleRefBundler.
-    # TODO(xgui): for preserved_order, we should not shuffle task outputs
     read_op._shuffle_task_outputs = True
 
     # Chain a shuffle operator that concatenates all blocks in a RefBundle
