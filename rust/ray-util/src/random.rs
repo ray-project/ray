@@ -35,4 +35,25 @@ mod tests {
         // Very unlikely that all 32 bytes are still zero
         assert!(buf.iter().any(|&b| b != 0));
     }
+
+    #[test]
+    fn test_random_bytes_length() {
+        let bytes = random_bytes(64);
+        assert_eq!(bytes.len(), 64);
+        assert!(bytes.iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn test_random_bytes_zero_length() {
+        let bytes = random_bytes(0);
+        assert!(bytes.is_empty());
+    }
+
+    #[test]
+    fn test_two_random_calls_differ() {
+        let a = random_bytes(32);
+        let b = random_bytes(32);
+        // Extremely unlikely to be identical
+        assert_ne!(a, b);
+    }
 }

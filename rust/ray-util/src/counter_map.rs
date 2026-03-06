@@ -113,4 +113,41 @@ mod tests {
         assert_eq!(map.total(), 0);
         assert_eq!(map.get(&"x"), 0);
     }
+
+    #[test]
+    fn test_iter() {
+        let mut map = CounterMap::new();
+        map.increment("a");
+        map.increment("a");
+        map.increment("b");
+
+        let pairs: std::collections::HashMap<&&str, &i64> = map.iter().collect();
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(*pairs[&"a"], 2);
+        assert_eq!(*pairs[&"b"], 1);
+    }
+
+    #[test]
+    fn test_decrement_nonexistent() {
+        let mut map = CounterMap::new();
+        let count = map.decrement("x");
+        assert_eq!(count, -1);
+        assert_eq!(map.get(&"x"), -1);
+        assert_eq!(map.total(), -1);
+    }
+
+    #[test]
+    fn test_default() {
+        let map: CounterMap<String> = CounterMap::default();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_clone() {
+        let mut map = CounterMap::new();
+        map.increment("a");
+        let cloned = map.clone();
+        assert_eq!(cloned.get(&"a"), 1);
+        assert_eq!(cloned.total(), 1);
+    }
 }

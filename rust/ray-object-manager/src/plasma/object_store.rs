@@ -517,4 +517,63 @@ mod tests {
         assert_eq!(obj.source(), ObjectSource::ReceivedFromRemoteRaylet);
         assert_eq!(obj.state(), ObjectState::Created);
     }
+
+    #[test]
+    fn test_local_object_field_accessors() {
+        let mut store = ObjectStore::new();
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 512,
+            metadata_size: 64,
+            ..Default::default()
+        };
+        store
+            .create_object(dummy_allocation(), info, ObjectSource::CreatedByWorker)
+            .unwrap();
+
+        let obj = store.get_object(&oid).unwrap();
+        assert_eq!(obj.data_size(), 512);
+        assert_eq!(obj.metadata_size(), 64);
+        assert_eq!(obj.object_size(), 576);
+        assert_eq!(*obj.object_id(), oid);
+        assert_eq!(obj.object_info().data_size, 512);
+        assert!(obj.allocation().address.is_null()); // dummy allocation
+    }
+
+    #[test]
+    fn test_num_bytes_sealed() {
+        let mut store = ObjectStore::new();
+        assert_eq!(store.num_bytes_sealed(), 0);
+
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid1, data_size: 100, ..Default::default() },
+                ObjectSource::CreatedByWorker,
+            )
+            .unwrap();
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid2, data_size: 200, ..Default::default() },
+                ObjectSource::CreatedByWorker,
+            )
+            .unwrap();
+
+        store.seal_object(&oid1).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 100);
+
+        store.seal_object(&oid2).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 300);
+    }
+
+    #[test]
+    fn test_object_store_default() {
+        let store = ObjectStore::default();
+        assert_eq!(store.num_objects(), 0);
+        assert_eq!(store.cumulative_created_bytes(), 0);
+    }
 }

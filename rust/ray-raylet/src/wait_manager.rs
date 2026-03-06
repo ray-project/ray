@@ -258,4 +258,102 @@ mod tests {
         assert_eq!(remaining.len(), 1);
         assert_eq!(mgr.num_pending_waits(), 0);
     }
+
+    /// Test timeout expiration: force-completing a wait that has some objects
+    /// ready should report partial results (ready + remaining).
+    #[test]
+    fn test_timeout_expiration_partial_results() {
+        let mgr = WaitManager::new();
+        let oid1 = make_object_id(1);
+        let oid2 = make_object_id(2);
+        let oid3 = make_object_id(3);
+
+        // Wait for all 3 objects, none local yet
+        let mut rx = mgr.wait(vec![oid1, oid2, oid3], 3, Some(1000), |_| false);
+
+        // Only oid1 arrives before timeout
+        mgr.handle_object_local(&oid1);
+
+        // Still pending — need 3 but only 1 is ready
+        assert!(rx.try_recv().is_err());
+        assert_eq!(mgr.num_pending_waits(), 1);
+
+        // Simulate timeout by force-completing
+        mgr.complete_wait(1);
+
+        let (ready, remaining) = rx.try_recv().unwrap();
+        assert_eq!(ready.len(), 1);
+        assert!(ready.contains(&oid1));
+        assert_eq!(remaining.len(), 2);
+        assert!(remaining.contains(&oid2));
+        assert!(remaining.contains(&oid3));
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
+
+    /// Test concurrent wait calls: multiple waits on overlapping objects
+    /// should each complete independently when their conditions are met.
+    #[test]
+    fn test_concurrent_wait_calls() {
+        let mgr = WaitManager::new();
+        let oid1 = make_object_id(1);
+        let oid2 = make_object_id(2);
+        let oid3 = make_object_id(3);
+
+        // Wait 1: needs 1 out of {oid1, oid2}
+        let mut rx1 = mgr.wait(vec![oid1, oid2], 1, None, |_| false);
+        // Wait 2: needs 2 out of {oid2, oid3}
+        let mut rx2 = mgr.wait(vec![oid2, oid3], 2, None, |_| false);
+
+        assert_eq!(mgr.num_pending_waits(), 2);
+
+        // oid1 arrives — satisfies wait1 (needs 1) but not wait2 (doesn't contain oid1)
+        mgr.handle_object_local(&oid1);
+
+        let (ready1, remaining1) = rx1.try_recv().unwrap();
+        assert_eq!(ready1.len(), 1);
+        assert!(ready1.contains(&oid1));
+        assert_eq!(remaining1.len(), 1);
+        assert!(remaining1.contains(&oid2));
+
+        // wait2 still pending
+        assert!(rx2.try_recv().is_err());
+        assert_eq!(mgr.num_pending_waits(), 1);
+
+        // oid2 arrives — wait2 now has 1/2
+        mgr.handle_object_local(&oid2);
+        assert!(rx2.try_recv().is_err());
+
+        // oid3 arrives — wait2 now has 2/2
+        mgr.handle_object_local(&oid3);
+        let (ready2, remaining2) = rx2.try_recv().unwrap();
+        assert_eq!(ready2.len(), 2);
+        assert!(ready2.contains(&oid2));
+        assert!(ready2.contains(&oid3));
+        assert_eq!(remaining2.len(), 0);
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
+
+    /// Test wait with all objects already available: should complete
+    /// immediately without adding to pending waits.
+    #[test]
+    fn test_wait_all_objects_already_available() {
+        let mgr = WaitManager::new();
+        let oid1 = make_object_id(1);
+        let oid2 = make_object_id(2);
+        let oid3 = make_object_id(3);
+
+        // All 3 objects are already local
+        let mut rx = mgr.wait(vec![oid1, oid2, oid3], 3, None, |_| true);
+
+        // Should complete immediately
+        let (ready, remaining) = rx.try_recv().unwrap();
+        assert_eq!(ready.len(), 3);
+        assert!(ready.contains(&oid1));
+        assert!(ready.contains(&oid2));
+        assert!(ready.contains(&oid3));
+        assert_eq!(remaining.len(), 0);
+
+        // No pending waits should be registered
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
 }

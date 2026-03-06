@@ -175,6 +175,7 @@ impl GcsHealthCheckManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[tokio::test]
     async fn test_add_and_remove_node() {
@@ -245,5 +246,111 @@ mod tests {
         assert_eq!(config.timeout_ms, 10000);
         assert_eq!(config.period_ms, 5000);
         assert_eq!(config.failure_threshold, 5);
+    }
+
+    /// Test that with failure_threshold=1 and a very short period, the node death
+    /// callback fires quickly after a single health check failure (no real gRPC
+    /// server is running, so every check will fail).
+    #[tokio::test]
+    async fn test_rapid_failure_detection_threshold_one() {
+        let (death_tx, mut death_rx) = tokio::sync::mpsc::channel::<NodeID>(4);
+        let callback: NodeDeathCallback = Arc::new(move |node_id: NodeID| {
+            let _ = death_tx.try_send(node_id);
+        });
+
+        let config = HealthCheckConfig {
+            initial_delay_ms: 0,   // no initial delay
+            timeout_ms: 50,        // very short timeout
+            period_ms: 10,         // very short period
+            failure_threshold: 1,  // die after 1 failure
+        };
+        let mgr = GcsHealthCheckManager::new(config, callback);
+
+        let mut nid_data = [0u8; 28];
+        nid_data[0] = 42;
+        let nid = NodeID::from_binary(&nid_data);
+
+        // Point health check at a port where nothing is listening
+        mgr.add_node(nid, "127.0.0.1:19999".to_string());
+
+        // The death callback should fire within a reasonable time
+        let result = tokio::time::timeout(Duration::from_secs(5), death_rx.recv()).await;
+        assert!(result.is_ok(), "Death callback should have fired");
+        let dead_node = result.unwrap().unwrap();
+        assert_eq!(dead_node, nid);
+
+        // After death, the node should be removed from monitored set
+        assert_eq!(mgr.num_monitored_nodes(), 0);
+    }
+
+    /// Test that when the health check RPC times out, it counts as a failure.
+    /// With timeout_ms very short and no real server, the check should time out.
+    #[tokio::test]
+    async fn test_health_check_timeout_counts_as_failure() {
+        let (death_tx, mut death_rx) = tokio::sync::mpsc::channel::<NodeID>(4);
+        let callback: NodeDeathCallback = Arc::new(move |node_id: NodeID| {
+            let _ = death_tx.try_send(node_id);
+        });
+
+        let config = HealthCheckConfig {
+            initial_delay_ms: 0,
+            timeout_ms: 10,        // extremely short timeout
+            period_ms: 10,
+            failure_threshold: 2,  // die after 2 failures
+        };
+        let mgr = GcsHealthCheckManager::new(config, callback);
+
+        let mut nid_data = [0u8; 28];
+        nid_data[0] = 7;
+        let nid = NodeID::from_binary(&nid_data);
+
+        mgr.add_node(nid, "127.0.0.1:19998".to_string());
+
+        // Should get death notification after 2 failed checks
+        let result = tokio::time::timeout(Duration::from_secs(5), death_rx.recv()).await;
+        assert!(result.is_ok(), "Death callback should have fired after 2 timeouts");
+        let dead_node = result.unwrap().unwrap();
+        assert_eq!(dead_node, nid);
+    }
+
+    /// Test that multiple nodes can be monitored concurrently and each
+    /// independently triggers its own death callback.
+    #[tokio::test]
+    async fn test_concurrent_health_checks_multiple_nodes() {
+        let (death_tx, mut death_rx) = tokio::sync::mpsc::channel::<NodeID>(16);
+        let callback: NodeDeathCallback = Arc::new(move |node_id: NodeID| {
+            let _ = death_tx.try_send(node_id);
+        });
+
+        let config = HealthCheckConfig {
+            initial_delay_ms: 0,
+            timeout_ms: 50,
+            period_ms: 10,
+            failure_threshold: 1,
+        };
+        let mgr = GcsHealthCheckManager::new(config, callback);
+
+        let mut expected_dead = HashSet::new();
+        for i in 1..=3u8 {
+            let mut nid_data = [0u8; 28];
+            nid_data[0] = i;
+            let nid = NodeID::from_binary(&nid_data);
+            expected_dead.insert(nid);
+            // Each node points to a different non-existent port
+            mgr.add_node(nid, format!("127.0.0.1:{}", 19990 + i as u16));
+        }
+
+        assert_eq!(mgr.get_all_nodes().len(), 3);
+
+        // Collect all 3 death notifications
+        let mut actual_dead = HashSet::new();
+        for _ in 0..3 {
+            let result = tokio::time::timeout(Duration::from_secs(5), death_rx.recv()).await;
+            assert!(result.is_ok(), "Should receive death notification for each node");
+            actual_dead.insert(result.unwrap().unwrap());
+        }
+
+        assert_eq!(actual_dead, expected_dead);
+        assert_eq!(mgr.num_monitored_nodes(), 0);
     }
 }

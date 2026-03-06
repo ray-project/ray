@@ -1637,6 +1637,7 @@ dependencies = [
 name = "ray-observability"
 version = "3.0.0-dev"
 dependencies = [
+ "async-trait",
  "nix",
  "parking_lot",
  "ray-common",
@@ -1648,6 +1649,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tonic",
  "tracing",
  "tracing-subscriber",
  "uuid",

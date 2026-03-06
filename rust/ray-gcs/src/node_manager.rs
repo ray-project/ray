@@ -441,4 +441,93 @@ mod tests {
         let nid = node_id(1);
         mgr.handle_unregister_node(&nid.binary()).await.unwrap();
     }
+
+    /// Test handle_drain_node() behavior: draining a non-existent node should
+    /// be a no-op, and draining an alive node should record the deadline.
+    /// After removal, the drain entry should be cleaned up.
+    #[tokio::test]
+    async fn test_handle_drain_node_behavior() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        // Draining a non-existent node is a no-op
+        mgr.handle_drain_node(&node_id(99), 5000);
+        assert!(mgr.get_draining_nodes().is_empty());
+
+        // Register a node and drain it
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        mgr.handle_drain_node(&node_id(1), 12345);
+
+        let draining = mgr.get_draining_nodes();
+        assert_eq!(draining.len(), 1);
+        assert_eq!(*draining.get(&node_id(1)).unwrap(), 12345);
+
+        // The node is still alive while draining
+        assert!(mgr.is_node_alive(&node_id(1)));
+
+        // Unregistering the node should remove the drain entry
+        mgr.handle_unregister_node(&node_id(1).binary())
+            .await
+            .unwrap();
+        assert!(mgr.get_draining_nodes().is_empty());
+        assert!(mgr.is_node_dead(&node_id(1)));
+    }
+
+    /// Test that node-added and node-removed listeners fire correctly and
+    /// are cleaned up properly when multiple listeners are registered.
+    #[tokio::test]
+    async fn test_listener_cleanup_and_invocation() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        let added_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let removed_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+
+        // Register two add listeners and one remove listener
+        let c1 = Arc::clone(&added_count);
+        mgr.add_node_added_listener(Box::new(move |_info| {
+            c1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }));
+        let c2 = Arc::clone(&added_count);
+        mgr.add_node_added_listener(Box::new(move |_info| {
+            c2.fetch_add(10, std::sync::atomic::Ordering::Relaxed);
+        }));
+        let c3 = Arc::clone(&removed_count);
+        mgr.add_node_removed_listener(Box::new(move |_info| {
+            c3.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }));
+
+        // Register two nodes — each should trigger both add listeners
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        mgr.handle_register_node(make_node_info(2)).await.unwrap();
+        // 2 registrations x (1 + 10) = 22
+        assert_eq!(
+            added_count.load(std::sync::atomic::Ordering::Relaxed),
+            22
+        );
+        assert_eq!(
+            removed_count.load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+
+        // Remove one node — should trigger the remove listener once
+        mgr.handle_unregister_node(&node_id(1).binary())
+            .await
+            .unwrap();
+        assert_eq!(
+            removed_count.load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+
+        // Removing an already-dead node should not trigger the listener again
+        mgr.handle_unregister_node(&node_id(1).binary())
+            .await
+            .unwrap();
+        assert_eq!(
+            removed_count.load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+    }
 }

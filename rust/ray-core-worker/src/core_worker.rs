@@ -652,4 +652,125 @@ mod tests {
         let err = worker.submit_actor_task(&aid, spec).await.unwrap_err();
         assert!(matches!(err, CoreWorkerError::ActorNotFound(_)));
     }
+
+    #[test]
+    fn test_set_actor_task_send_callback() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let worker = make_worker();
+        let aid = ActorID::from_random();
+
+        // Register the actor first.
+        let handle = ActorHandle::from_proto(rpc::ActorHandle {
+            actor_id: aid.binary(),
+            name: "callback_actor".to_string(),
+            ..Default::default()
+        });
+        worker.create_actor(aid, handle).unwrap();
+
+        // Connect the actor to a fake address so tasks can be flushed.
+        let addr = rpc::Address {
+            ip_address: "127.0.0.1".to_string(),
+            port: 9999,
+            worker_id: worker.worker_id().binary(),
+            ..Default::default()
+        };
+        worker.connect_actor(&aid, addr);
+
+        // Set a callback that records invocation.
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+        worker.set_actor_task_send_callback(Box::new(move |_spec, _addr| {
+            called_clone.store(true, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Submit an actor task. The callback should be invoked during flush.
+        let spec = rpc::TaskSpec {
+            task_id: TaskID::from_random().binary(),
+            name: "callback_test_task".to_string(),
+            ..Default::default()
+        };
+        // Use a runtime to drive the async submission.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            worker.submit_actor_task(&aid, spec).await.unwrap();
+        });
+
+        // The callback should have been invoked.
+        assert!(called.load(Ordering::Relaxed), "actor task send callback was not invoked");
+    }
+
+    #[tokio::test]
+    async fn test_set_task_execution_callback() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let worker = make_worker();
+
+        // Set a task execution callback that records invocation.
+        let called = Arc::new(AtomicBool::new(false));
+        let called_clone = called.clone();
+        worker.set_task_execution_callback(Arc::new(move |_spec| {
+            called_clone.store(true, Ordering::Relaxed);
+            Ok(crate::task_receiver::TaskResult::default())
+        }));
+
+        // Push a task through the task receiver.
+        let spec = rpc::TaskSpec {
+            task_id: TaskID::from_random().binary(),
+            name: "exec_callback_test".to_string(),
+            ..Default::default()
+        };
+        let req = ray_proto::ray::rpc::PushTaskRequest {
+            intended_worker_id: worker.worker_id().binary(),
+            task_spec: Some(spec),
+            sequence_number: 0,
+            ..Default::default()
+        };
+        let reply = worker.task_receiver().handle_push_task(req).await.unwrap();
+        assert!(!reply.is_retryable_error);
+
+        // The callback should have been invoked.
+        assert!(called.load(Ordering::Relaxed), "task execution callback was not invoked");
+    }
+
+    #[test]
+    fn test_set_task_execution_callback_replaces_previous() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let worker = make_worker();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        // Set first callback (increments by 1).
+        let c1 = counter.clone();
+        worker.set_task_execution_callback(Arc::new(move |_spec| {
+            c1.fetch_add(1, Ordering::Relaxed);
+            Ok(crate::task_receiver::TaskResult::default())
+        }));
+
+        // Set second callback (increments by 10), replacing the first.
+        let c2 = counter.clone();
+        worker.set_task_execution_callback(Arc::new(move |_spec| {
+            c2.fetch_add(10, Ordering::Relaxed);
+            Ok(crate::task_receiver::TaskResult::default())
+        }));
+
+        // Execute a task -- should use the second callback.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let spec = rpc::TaskSpec {
+                task_id: TaskID::from_random().binary(),
+                name: "replace_test".to_string(),
+                ..Default::default()
+            };
+            let req = ray_proto::ray::rpc::PushTaskRequest {
+                intended_worker_id: worker.worker_id().binary(),
+                task_spec: Some(spec),
+                sequence_number: 0,
+                ..Default::default()
+            };
+            worker.task_receiver().handle_push_task(req).await.unwrap();
+        });
+
+        // Counter should be 10 (second callback), not 1 (first callback).
+        assert_eq!(counter.load(Ordering::Relaxed), 10);
+    }
 }

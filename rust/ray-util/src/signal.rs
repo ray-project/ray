@@ -248,4 +248,36 @@ mod tests {
         assert!(coord.execute()); // Succeeds even with no callbacks.
         assert!(coord.is_executed());
     }
+
+    #[test]
+    fn test_fast_shutdown_also_sets_shutdown() {
+        reset_shutdown_flags();
+        request_fast_shutdown();
+        assert!(is_shutdown_requested());
+        assert!(is_fast_shutdown());
+        reset_shutdown_flags();
+    }
+
+    #[test]
+    fn test_shutdown_coordinator_default() {
+        let coord = ShutdownCoordinator::default();
+        assert_eq!(coord.num_callbacks(), 0);
+        assert!(!coord.is_executed());
+    }
+
+    #[test]
+    fn test_shutdown_coordinator_callback_order() {
+        let coord = ShutdownCoordinator::new();
+        let order = Arc::new(parking_lot::Mutex::new(Vec::new()));
+
+        let o = order.clone();
+        coord.on_shutdown(move || o.lock().push(1));
+        let o = order.clone();
+        coord.on_shutdown(move || o.lock().push(2));
+        let o = order.clone();
+        coord.on_shutdown(move || o.lock().push(3));
+
+        coord.execute();
+        assert_eq!(*order.lock(), vec![1, 2, 3]);
+    }
 }

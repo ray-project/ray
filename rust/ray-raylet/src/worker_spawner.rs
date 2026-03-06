@@ -132,7 +132,7 @@ pub fn make_spawn_callback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{atomic::{AtomicU32, Ordering}};
+    use std::sync::{atomic::{AtomicU32, Ordering}, Mutex};
 
     #[test]
     fn test_make_spawn_callback_called() {
@@ -208,5 +208,78 @@ mod tests {
             &WorkerID::from_random(),
         );
         assert!(pid.is_none(), "Should fail for nonexistent binary");
+    }
+
+    /// Test that the callback is invoked with the correct language, job_id,
+    /// and worker_id for multiple sequential calls, and that each call
+    /// returns independently.
+    #[test]
+    fn test_callback_invocation_patterns_multiple_calls() {
+        let call_log = Arc::new(Mutex::new(Vec::<(Language, String, String)>::new()));
+        let log = Arc::clone(&call_log);
+
+        let callback: StartWorkerCallback = Box::new(move |lang, job, wid| {
+            log.lock().unwrap().push((lang, job.hex(), wid.hex()));
+            Some(100)
+        });
+
+        let job1 = JobID::from_int(1);
+        let job2 = JobID::from_int(2);
+        let wid1 = WorkerID::from_random();
+        let wid2 = WorkerID::from_random();
+
+        let pid1 = callback(Language::Python, &job1, &wid1);
+        let pid2 = callback(Language::Java, &job2, &wid2);
+
+        assert_eq!(pid1, Some(100));
+        assert_eq!(pid2, Some(100));
+
+        let log = call_log.lock().unwrap();
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0].0, Language::Python);
+        assert_eq!(log[0].1, job1.hex());
+        assert_eq!(log[0].2, wid1.hex());
+        assert_eq!(log[1].0, Language::Java);
+        assert_eq!(log[1].1, job2.hex());
+        assert_eq!(log[1].2, wid2.hex());
+    }
+
+    /// Test that concurrent spawn requests (simulated via multiple threads)
+    /// each get their own independent callback result.
+    #[test]
+    fn test_concurrent_spawn_requests() {
+        let call_count = Arc::new(AtomicU32::new(0));
+        let counter = Arc::clone(&call_count);
+
+        // Use Arc<dyn Fn(...)> instead of Box for thread-safe sharing
+        let callback: Arc<dyn Fn(Language, &JobID, &WorkerID) -> Option<u32> + Send + Sync> =
+            Arc::new(move |_lang, _job, _wid| {
+                let c = counter.fetch_add(1, Ordering::Relaxed);
+                Some(1000 + c)
+            });
+
+        let mut handles = Vec::new();
+        for i in 0..5u32 {
+            let cb = Arc::clone(&callback);
+            let handle = std::thread::spawn(move || {
+                let job = JobID::from_int(i);
+                let wid = WorkerID::from_random();
+                cb(Language::Python, &job, &wid)
+            });
+            handles.push(handle);
+        }
+
+        let mut pids: Vec<u32> = handles
+            .into_iter()
+            .map(|h| h.join().unwrap().unwrap())
+            .collect();
+        pids.sort();
+
+        // Each thread should have gotten a unique PID
+        assert_eq!(pids.len(), 5);
+        for i in 0..4 {
+            assert_ne!(pids[i], pids[i + 1], "PIDs should be unique");
+        }
+        assert_eq!(call_count.load(Ordering::Relaxed), 5);
     }
 }

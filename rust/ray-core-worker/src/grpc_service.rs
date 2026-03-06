@@ -1198,4 +1198,409 @@ mod tests {
         // Object should still be there after restart notification.
         assert!(svc.core_worker.contains_object(&oid));
     }
+
+    // ─── Tests for handle_get_object_status ─────────────────────────
+
+    #[tokio::test]
+    async fn test_get_object_status_existing_object() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // Put an object into the memory store.
+        svc.core_worker
+            .put_object(oid, bytes::Bytes::from("status_data"), bytes::Bytes::from("meta"))
+            .unwrap();
+
+        let req = rpc::GetObjectStatusRequest {
+            object_id: oid.binary(),
+            ..Default::default()
+        };
+        let reply = svc.handle_get_object_status(req).await.unwrap();
+        assert_eq!(
+            reply.status,
+            rpc::get_object_status_reply::ObjectStatus::Created as i32
+        );
+        // Object data should be included in the reply.
+        let obj = reply.object.unwrap();
+        assert_eq!(obj.data, b"status_data");
+        assert_eq!(obj.metadata, b"meta");
+        assert_eq!(reply.object_size, 11); // len("status_data")
+    }
+
+    #[tokio::test]
+    async fn test_get_object_status_referenced_but_not_in_store() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // Add a reference without putting the object in the store.
+        svc.core_worker.add_local_reference(oid);
+        assert!(!svc.core_worker.contains_object(&oid));
+        assert!(svc.core_worker.reference_counter().has_reference(&oid));
+
+        let req = rpc::GetObjectStatusRequest {
+            object_id: oid.binary(),
+            ..Default::default()
+        };
+        let reply = svc.handle_get_object_status(req).await.unwrap();
+        // Should report Created because reference counter tracks it.
+        assert_eq!(
+            reply.status,
+            rpc::get_object_status_reply::ObjectStatus::Created as i32
+        );
+        // No object data since it's not in the memory store.
+        assert!(reply.object.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_object_status_out_of_scope() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // Object not in store and not tracked by reference counter.
+        assert!(!svc.core_worker.contains_object(&oid));
+        assert!(!svc.core_worker.reference_counter().has_reference(&oid));
+
+        let req = rpc::GetObjectStatusRequest {
+            object_id: oid.binary(),
+            ..Default::default()
+        };
+        let reply = svc.handle_get_object_status(req).await.unwrap();
+        assert_eq!(
+            reply.status,
+            rpc::get_object_status_reply::ObjectStatus::OutOfScope as i32
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_object_status_with_nested_refs() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+        let nested_oid = ObjectID::from_random();
+
+        // Put an object with a nested reference.
+        let obj = crate::memory_store::RayObject::new(
+            bytes::Bytes::from("outer"),
+            bytes::Bytes::new(),
+            vec![nested_oid],
+        );
+        svc.core_worker.memory_store().put(oid, obj).unwrap();
+
+        let req = rpc::GetObjectStatusRequest {
+            object_id: oid.binary(),
+            ..Default::default()
+        };
+        let reply = svc.handle_get_object_status(req).await.unwrap();
+        assert_eq!(
+            reply.status,
+            rpc::get_object_status_reply::ObjectStatus::Created as i32
+        );
+        let ray_obj = reply.object.unwrap();
+        assert_eq!(ray_obj.nested_inlined_refs.len(), 1);
+        assert_eq!(ray_obj.nested_inlined_refs[0].object_id, nested_oid.binary());
+    }
+
+    // ─── Tests for handle_delete_objects ─────────────────────────────
+
+    #[test]
+    fn test_delete_objects_removes_from_store() {
+        let svc = make_service();
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+
+        svc.core_worker
+            .put_object(oid1, bytes::Bytes::from("a"), bytes::Bytes::new())
+            .unwrap();
+        svc.core_worker
+            .put_object(oid2, bytes::Bytes::from("b"), bytes::Bytes::new())
+            .unwrap();
+        assert!(svc.core_worker.contains_object(&oid1));
+        assert!(svc.core_worker.contains_object(&oid2));
+
+        let req = rpc::DeleteObjectsRequest {
+            object_ids: vec![oid1.binary(), oid2.binary()],
+            ..Default::default()
+        };
+        let reply = svc.handle_delete_objects(req).unwrap();
+        assert_eq!(reply, rpc::DeleteObjectsReply::default());
+
+        assert!(!svc.core_worker.contains_object(&oid1));
+        assert!(!svc.core_worker.contains_object(&oid2));
+    }
+
+    #[test]
+    fn test_delete_objects_empty_list() {
+        let svc = make_service();
+
+        // Deleting an empty list should succeed without error.
+        let req = rpc::DeleteObjectsRequest {
+            object_ids: vec![],
+            ..Default::default()
+        };
+        let reply = svc.handle_delete_objects(req).unwrap();
+        assert_eq!(reply, rpc::DeleteObjectsReply::default());
+    }
+
+    #[test]
+    fn test_delete_objects_nonexistent_is_ok() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // Deleting an object that doesn't exist should not error.
+        let req = rpc::DeleteObjectsRequest {
+            object_ids: vec![oid.binary()],
+            ..Default::default()
+        };
+        let reply = svc.handle_delete_objects(req).unwrap();
+        assert_eq!(reply, rpc::DeleteObjectsReply::default());
+    }
+
+    // ─── Tests for handle_get_core_worker_stats ─────────────────────
+
+    #[test]
+    fn test_get_core_worker_stats_initial() {
+        let svc = make_service();
+
+        let req = rpc::GetCoreWorkerStatsRequest::default();
+        let reply = svc.handle_get_core_worker_stats(req).unwrap();
+
+        let stats = reply.core_worker_stats.unwrap();
+        assert_eq!(stats.num_pending_tasks, 0);
+        assert_eq!(stats.num_running_tasks, 0);
+        assert_eq!(reply.tasks_total, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_core_worker_stats_with_pending_tasks() {
+        let svc = make_service();
+
+        // Submit a normal task to increase pending count.
+        let spec = rpc::TaskSpec {
+            task_id: ray_common::id::TaskID::from_random().binary(),
+            name: "stats_task".to_string(),
+            ..Default::default()
+        };
+        svc.core_worker.submit_task(&spec).await.unwrap();
+
+        let req = rpc::GetCoreWorkerStatsRequest::default();
+        let reply = svc.handle_get_core_worker_stats(req).unwrap();
+
+        let stats = reply.core_worker_stats.unwrap();
+        assert_eq!(stats.num_pending_tasks, 1);
+        assert_eq!(reply.tasks_total, 1);
+    }
+
+    // ─── Tests for handle_exit ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_exit_marks_worker_as_exiting() {
+        let svc = make_service();
+
+        // Worker should not be exiting initially.
+        assert!(!svc.core_worker.task_receiver().is_exiting());
+
+        let req = rpc::ExitRequest {
+            force_exit: false,
+        };
+        let reply = svc.handle_exit(req).await.unwrap();
+        assert!(reply.success);
+
+        // Worker should now be marked as exiting.
+        assert!(svc.core_worker.task_receiver().is_exiting());
+    }
+
+    #[tokio::test]
+    async fn test_exit_force_exit() {
+        let svc = make_service();
+
+        let req = rpc::ExitRequest {
+            force_exit: true,
+        };
+        let reply = svc.handle_exit(req).await.unwrap();
+        assert!(reply.success);
+        assert!(svc.core_worker.task_receiver().is_exiting());
+    }
+
+    // ─── Tests for handle_kill_actor ────────────────────────────────
+
+    #[tokio::test]
+    async fn test_kill_actor_via_grpc_handler() {
+        let svc = make_service();
+        let aid = ActorID::from_random();
+
+        // Register an actor first.
+        let handle = crate::actor_handle::ActorHandle::from_proto(rpc::ActorHandle {
+            actor_id: aid.binary(),
+            name: "grpc_kill_actor".to_string(),
+            ..Default::default()
+        });
+        svc.core_worker.create_actor(aid, handle).unwrap();
+        assert!(svc.core_worker.actor_manager().get_actor_handle(&aid).is_some());
+
+        // Kill the actor via the gRPC handler.
+        let req = rpc::KillActorRequest {
+            intended_actor_id: aid.binary(),
+            force_kill: false,
+            ..Default::default()
+        };
+        let reply = svc.handle_kill_actor(req).await.unwrap();
+        assert_eq!(reply, rpc::KillActorReply::default());
+
+        // Actor should be removed.
+        assert!(svc.core_worker.actor_manager().get_actor_handle(&aid).is_none());
+    }
+
+    // ─── Tests for handle_cancel_task ───────────────────────────────
+
+    #[tokio::test]
+    async fn test_cancel_task_not_running() {
+        let svc = make_service();
+        let task_id = ray_common::id::TaskID::from_random().binary();
+
+        let req = rpc::CancelTaskRequest {
+            intended_task_id: task_id,
+            force_kill: false,
+            ..Default::default()
+        };
+        let reply = svc.handle_cancel_task(req).await.unwrap();
+        assert!(!reply.requested_task_running);
+        assert!(!reply.attempt_succeeded);
+    }
+
+    // ─── Tests for handle_num_pending_tasks ─────────────────────────
+
+    #[test]
+    fn test_num_pending_tasks_initial() {
+        let svc = make_service();
+
+        let req = rpc::NumPendingTasksRequest::default();
+        let reply = svc.handle_num_pending_tasks(req).unwrap();
+        assert_eq!(reply.num_pending_tasks, 0);
+    }
+
+    #[tokio::test]
+    async fn test_num_pending_tasks_after_submit() {
+        let svc = make_service();
+
+        // Submit two tasks.
+        for i in 0..2 {
+            let spec = rpc::TaskSpec {
+                task_id: ray_common::id::TaskID::from_random().binary(),
+                name: format!("pending_{}", i),
+                ..Default::default()
+            };
+            svc.core_worker.submit_task(&spec).await.unwrap();
+        }
+
+        let req = rpc::NumPendingTasksRequest::default();
+        let reply = svc.handle_num_pending_tasks(req).unwrap();
+        assert_eq!(reply.num_pending_tasks, 2);
+    }
+
+    // ─── Tests for handle_register_mutable_object_reader ────────────
+
+    #[tokio::test]
+    async fn test_register_mutable_object_reader_stub() {
+        let svc = make_service();
+
+        let req = rpc::RegisterMutableObjectReaderRequest::default();
+        let reply = svc.handle_register_mutable_object_reader(req).await.unwrap();
+        assert_eq!(reply, rpc::RegisterMutableObjectReaderReply::default());
+    }
+
+    // ─── Tests for handle_actor_call_arg_wait_complete ──────────────
+
+    #[tokio::test]
+    async fn test_actor_call_arg_wait_complete_stub() {
+        let svc = make_service();
+
+        let req = rpc::ActorCallArgWaitCompleteRequest::default();
+        let reply = svc.handle_actor_call_arg_wait_complete(req).await.unwrap();
+        assert_eq!(reply, rpc::ActorCallArgWaitCompleteReply::default());
+    }
+
+    // ─── Tests for handle_wait_for_actor_ref_deleted ────────────────
+
+    #[tokio::test]
+    async fn test_wait_for_actor_ref_deleted_stub() {
+        let svc = make_service();
+
+        let req = rpc::WaitForActorRefDeletedRequest::default();
+        let reply = svc.handle_wait_for_actor_ref_deleted(req).await.unwrap();
+        assert_eq!(reply, rpc::WaitForActorRefDeletedReply::default());
+    }
+
+    // ─── Test for handle_report_generator_item_returns edge cases ───
+
+    #[tokio::test]
+    async fn test_report_generator_item_returns_no_object() {
+        let svc = make_service();
+
+        // Request with no returned_object should succeed.
+        let req = rpc::ReportGeneratorItemReturnsRequest {
+            returned_object: None,
+            worker_addr: None,
+            item_index: 0,
+            generator_id: ObjectID::from_random().binary(),
+            attempt_number: 0,
+        };
+        let reply = svc.handle_report_generator_item_returns(req).await.unwrap();
+        assert_eq!(reply.total_num_object_consumed, -1);
+    }
+
+    #[tokio::test]
+    async fn test_report_generator_item_returns_plasma_object_not_stored() {
+        let svc = make_service();
+        let oid = ObjectID::from_random();
+
+        // Object marked as in_plasma should NOT be stored in the memory store.
+        let req = rpc::ReportGeneratorItemReturnsRequest {
+            returned_object: Some(rpc::ReturnObject {
+                object_id: oid.binary(),
+                in_plasma: true,
+                data: b"plasma_data".to_vec(),
+                metadata: Vec::new(),
+                nested_inlined_refs: vec![],
+                size: 11,
+                direct_transport_metadata: None,
+            }),
+            worker_addr: None,
+            item_index: 0,
+            generator_id: ObjectID::from_random().binary(),
+            attempt_number: 0,
+        };
+        let reply = svc.handle_report_generator_item_returns(req).await.unwrap();
+        assert_eq!(reply.total_num_object_consumed, -1);
+        // Plasma objects are not stored in the memory store.
+        assert!(!svc.core_worker.contains_object(&oid));
+    }
+
+    // ─── Test for local_gc with mixed referenced/unreferenced ───────
+
+    #[test]
+    fn test_local_gc_mixed_objects() {
+        let svc = make_service();
+        let oid_keep = ObjectID::from_random();
+        let oid_gc = ObjectID::from_random();
+
+        // Put both objects.
+        svc.core_worker
+            .put_object(oid_keep, bytes::Bytes::from("keep"), bytes::Bytes::new())
+            .unwrap();
+
+        // oid_gc: put directly in memory store without reference tracking.
+        let obj = crate::memory_store::RayObject::new(
+            bytes::Bytes::from("gc"),
+            bytes::Bytes::new(),
+            Vec::new(),
+        );
+        svc.core_worker.memory_store().put(oid_gc, obj).unwrap();
+
+        // Add extra local reference on oid_keep.
+        svc.core_worker.add_local_reference(oid_keep);
+
+        // GC should remove oid_gc but keep oid_keep.
+        svc.handle_local_gc(rpc::LocalGcRequest::default()).unwrap();
+        assert!(svc.core_worker.contains_object(&oid_keep));
+        assert!(!svc.core_worker.contains_object(&oid_gc));
+    }
 }

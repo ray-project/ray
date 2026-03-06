@@ -483,4 +483,83 @@ mod tests {
         exporter.register_gauge(Gauge::new("g1", ""));
         assert_eq!(exporter.num_registered_gauges(), 1);
     }
+
+    #[test]
+    fn test_add_sink_and_callback_invocation_during_export() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let received_count = Arc::new(AtomicUsize::new(0));
+
+        struct TestSink {
+            call_count: Arc<AtomicUsize>,
+            received_count: Arc<AtomicUsize>,
+        }
+        impl MetricsSink for TestSink {
+            fn export(&self, snapshots: &[MetricSnapshot]) {
+                self.call_count.fetch_add(1, Ordering::Relaxed);
+                self.received_count
+                    .fetch_add(snapshots.len(), Ordering::Relaxed);
+            }
+        }
+
+        let exporter = MetricsExporter::new(ExporterConfig::default());
+        exporter.add_sink(Box::new(TestSink {
+            call_count: call_count.clone(),
+            received_count: received_count.clone(),
+        }));
+
+        // Add a second sink to verify multiple sinks are invoked.
+        let call_count2 = Arc::new(AtomicUsize::new(0));
+        exporter.add_sink(Box::new(TestSink {
+            call_count: call_count2.clone(),
+            received_count: Arc::new(AtomicUsize::new(0)),
+        }));
+
+        let counter = Counter::new("sink_test", "test");
+        counter.increment(&[], 1);
+        exporter.register_counter(counter);
+
+        let gauge = Gauge::new("sink_gauge", "test");
+        gauge.set(&[], 2.0);
+        exporter.register_gauge(gauge);
+
+        exporter.export();
+
+        // Both sinks should have been called exactly once.
+        assert_eq!(call_count.load(Ordering::Relaxed), 1);
+        assert_eq!(call_count2.load(Ordering::Relaxed), 1);
+        // First sink should have received 2 snapshots (1 counter + 1 gauge).
+        assert_eq!(received_count.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn test_config_accessor_returns_expected_values() {
+        let config = ExporterConfig {
+            export_interval_secs: 30,
+            global_tags: vec![("region".to_string(), "us-east-1".to_string())],
+            enabled: false,
+        };
+        let exporter = MetricsExporter::new(config);
+
+        let cfg = exporter.config();
+        assert_eq!(cfg.export_interval_secs, 30);
+        assert!(!cfg.enabled);
+        assert_eq!(cfg.global_tags.len(), 1);
+        assert_eq!(cfg.global_tags[0].0, "region");
+        assert_eq!(cfg.global_tags[0].1, "us-east-1");
+    }
+
+    #[test]
+    fn test_num_registered_histograms() {
+        let exporter = MetricsExporter::new(ExporterConfig::default());
+        assert_eq!(exporter.num_registered_histograms(), 0);
+
+        exporter.register_histogram(Histogram::new("h1", "", vec![1.0, 5.0]));
+        assert_eq!(exporter.num_registered_histograms(), 1);
+
+        exporter.register_histogram(Histogram::new("h2", "", vec![10.0]));
+        exporter.register_histogram(Histogram::new("h3", "", vec![100.0, 500.0]));
+        assert_eq!(exporter.num_registered_histograms(), 3);
+    }
 }

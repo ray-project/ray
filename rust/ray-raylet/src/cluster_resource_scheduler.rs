@@ -306,4 +306,82 @@ mod tests {
             _ => panic!("expected success"),
         }
     }
+
+    /// Test scheduling with no available nodes: when no node has the required
+    /// resources (request exceeds every node's capacity), get_best_schedulable_node
+    /// should return None.
+    #[test]
+    fn test_scheduling_no_available_nodes() {
+        // Create a scheduler with very limited resources on both nodes
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let local_mgr = Arc::new(LocalResourceManager::new(
+            "local".to_string(),
+            total,
+            HashMap::new(),
+        ));
+        let cluster_mgr = Arc::new(ClusterResourceManager::new());
+
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        cluster_mgr.add_or_update_node("remote".to_string(), NodeResources::new(remote_total));
+
+        let scheduler =
+            ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
+
+        // Request more CPUs than any node has
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+
+        let node = scheduler.get_best_schedulable_node(&req, &SchedulingOptions::hybrid());
+        assert!(
+            node.is_none(),
+            "Should return None when no node can satisfy the request, got {:?}",
+            node
+        );
+
+        // Also test is_schedulable_on_node for each node
+        let empty_selector = LabelSelector::new();
+        assert!(!scheduler.is_schedulable_on_node("local", &req, &empty_selector));
+        assert!(!scheduler.is_schedulable_on_node("remote", &req, &empty_selector));
+    }
+
+    /// Test spillback behavior: when the local node is exhausted but a remote
+    /// node has capacity, the scheduler should spill to the remote node.
+    /// Also verifies that avoid_local_node forces spillback.
+    #[test]
+    fn test_spillback_exhausted_local() {
+        let scheduler = make_scheduler();
+
+        // Exhaust local CPUs (local has 4 total)
+        let mut exhaust = ResourceSet::new();
+        exhaust.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let _alloc = scheduler.allocate_local_task_resources(&exhaust).unwrap();
+
+        // Now request 1 CPU — local is exhausted, should go to remote
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let node = scheduler.get_best_schedulable_node(&req, &SchedulingOptions::hybrid());
+        assert_eq!(
+            node,
+            Some("remote".to_string()),
+            "Should spillback to remote when local is exhausted"
+        );
+
+        // Also test explicit avoid_local_node option (even if local had capacity)
+        let opts = SchedulingOptions {
+            avoid_local_node: true,
+            ..SchedulingOptions::hybrid()
+        };
+        // Release local resources so local would normally be schedulable
+        scheduler.release_worker_resources(&_alloc);
+        let node = scheduler.get_best_schedulable_node(&req, &opts);
+        assert_eq!(
+            node,
+            Some("remote".to_string()),
+            "Should prefer remote when avoid_local_node is set"
+        );
+    }
 }

@@ -616,4 +616,129 @@ pub(crate) mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code(), tonic::Code::Cancelled);
     }
+
+    /// Test that when all nodes keep returning spillback (no worker address),
+    /// the scheduler eventually exceeds MAX_LEASE_SPILLBACK_RETRIES and fails.
+    #[tokio::test]
+    async fn test_spillback_all_nodes_reject_exceeds_max_retries() {
+        let node_mgr = make_node_manager();
+        node_mgr
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        let raylet = Arc::new(MockRayletClient::new());
+
+        // Push more spillback replies than the max retry limit (10).
+        // Each reply redirects back to the same address, creating an infinite loop
+        // that should be bounded by max_retries.
+        let max_retries = ray_common::constants::MAX_LEASE_SPILLBACK_RETRIES;
+        for _ in 0..max_retries {
+            raylet.push_reply(Ok(rpc::RequestWorkerLeaseReply {
+                retry_at_raylet_address: Some(rpc::Address {
+                    node_id: {
+                        let mut nid = vec![0u8; 28];
+                        nid[0] = 1;
+                        nid
+                    },
+                    ip_address: "127.0.0.1".to_string(),
+                    port: 10001,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }));
+        }
+
+        let worker = Arc::new(MockCoreWorkerClient::new());
+        let scheduler = GcsActorScheduler::new(node_mgr, raylet.clone(), worker);
+        let task_spec = make_task_spec_for_scheduling(1);
+        let result = scheduler.schedule(&task_spec).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code(), tonic::Code::DeadlineExceeded);
+        assert!(err.message().contains("exceeded maximum spillback retries"));
+
+        // Verify that exactly max_retries lease requests were made
+        let requests = raylet.requests.lock();
+        assert_eq!(requests.len(), max_retries);
+    }
+
+    /// Test select_node() when the owner node is dead (not in alive set).
+    /// The scheduler should fall back to a random alive node.
+    #[tokio::test]
+    async fn test_select_node_dead_owner_falls_back() {
+        let node_mgr = make_node_manager();
+        // Only register node 2 — node 1 (the owner) is NOT alive
+        node_mgr
+            .handle_register_node(make_node_info(2))
+            .await
+            .unwrap();
+
+        let raylet = Arc::new(MockRayletClient::new());
+        raylet.push_reply(Ok(rpc::RequestWorkerLeaseReply {
+            worker_address: Some(make_worker_address(2)),
+            worker_pid: 99999,
+            ..Default::default()
+        }));
+
+        let worker = Arc::new(MockCoreWorkerClient::new());
+        worker.push_reply(Ok(rpc::PushTaskReply::default()));
+
+        let scheduler = GcsActorScheduler::new(node_mgr, raylet.clone(), worker);
+        // task_spec has caller_address.node_id pointing to node 1 (dead)
+        let task_spec = make_task_spec_for_scheduling(1);
+        let result = scheduler.schedule(&task_spec).await.unwrap();
+
+        assert_eq!(result.worker_pid, 99999);
+
+        // The lease request should go to node 2 (the only alive node)
+        let requests = raylet.requests.lock();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].0, "127.0.0.1:10002");
+    }
+
+    /// Test that required_resources from the task spec are correctly passed
+    /// through to the lease request.
+    #[tokio::test]
+    async fn test_resource_requirement_in_lease_request() {
+        let node_mgr = make_node_manager();
+        node_mgr
+            .handle_register_node(make_node_info(1))
+            .await
+            .unwrap();
+
+        let raylet = Arc::new(MockRayletClient::new());
+        raylet.push_reply(Ok(rpc::RequestWorkerLeaseReply {
+            worker_address: Some(make_worker_address(1)),
+            worker_pid: 55555,
+            ..Default::default()
+        }));
+
+        let worker = Arc::new(MockCoreWorkerClient::new());
+        worker.push_reply(Ok(rpc::PushTaskReply::default()));
+
+        let scheduler = GcsActorScheduler::new(node_mgr, raylet.clone(), worker);
+
+        // Build task_spec with resource requirements
+        let mut task_spec = make_task_spec_for_scheduling(1);
+        task_spec.required_resources.insert("CPU".to_string(), 4.0);
+        task_spec.required_resources.insert("GPU".to_string(), 2.0);
+        task_spec
+            .required_placement_resources
+            .insert("CPU".to_string(), 4.0);
+
+        scheduler.schedule(&task_spec).await.unwrap();
+
+        // Verify the lease request contains the resource requirements
+        let requests = raylet.requests.lock();
+        assert_eq!(requests.len(), 1);
+        let lease_spec = requests[0].1.lease_spec.as_ref().unwrap();
+        assert_eq!(*lease_spec.required_resources.get("CPU").unwrap(), 4.0);
+        assert_eq!(*lease_spec.required_resources.get("GPU").unwrap(), 2.0);
+        assert_eq!(
+            *lease_spec.required_placement_resources.get("CPU").unwrap(),
+            4.0
+        );
+    }
 }

@@ -383,4 +383,43 @@ mod tests {
         assert_eq!(stats.total_events_flushed, 3);
         assert_eq!(stats.total_flushes, 2);
     }
+
+    #[test]
+    fn test_config_accessor() {
+        let config = ExportConfig {
+            max_buffer_size: 500,
+            flush_interval_ms: 2000,
+            enabled: false,
+        };
+        let exporter = EventExporter::new(config);
+
+        let cfg = exporter.config();
+        assert_eq!(cfg.max_buffer_size, 500);
+        assert_eq!(cfg.flush_interval_ms, 2000);
+        assert!(!cfg.enabled);
+    }
+
+    #[test]
+    fn test_disabled_exporter_ignores_events_and_flush() {
+        let exporter = EventExporter::new(ExportConfig {
+            enabled: false,
+            ..Default::default()
+        });
+
+        // Adding multiple events when disabled should be silently ignored.
+        exporter.add_event(make_event("e1"));
+        exporter.add_event(make_event("e2"));
+        exporter.add_event(make_event("e3"));
+        assert_eq!(exporter.buffer_len(), 0);
+
+        // Flush on an empty buffer should return 0 and not affect stats.
+        let flushed = exporter.flush();
+        assert_eq!(flushed, 0);
+
+        let stats = exporter.stats();
+        assert_eq!(stats.total_events_buffered, 0);
+        assert_eq!(stats.total_events_flushed, 0);
+        assert_eq!(stats.total_events_dropped, 0);
+        assert_eq!(stats.total_flushes, 0);
+    }
 }

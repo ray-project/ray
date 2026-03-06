@@ -293,4 +293,75 @@ mod tests {
         let config = RayConfig::from_base64_json(&b64).unwrap();
         assert_eq!(config.gcs_server_port, 8080);
     }
+
+    #[test]
+    fn test_to_json_and_from_json_roundtrip() {
+        let config = RayConfig::default();
+        let json = config.to_json();
+        assert!(json.contains("event_stats"));
+        assert!(json.contains("ray_cookie"));
+        let parsed = RayConfig::from_json(&json).unwrap();
+        assert_eq!(parsed.event_stats, config.event_stats);
+        assert_eq!(parsed.ray_cookie, config.ray_cookie);
+        assert_eq!(parsed.gcs_server_port, config.gcs_server_port);
+    }
+
+    #[test]
+    fn test_from_json_with_overrides() {
+        let json = r#"{
+            "event_stats": false,
+            "ray_cookie": 42,
+            "gcs_server_port": 9999,
+            "AUTH_MODE": "token",
+            "memory_usage_threshold": 0.5
+        }"#;
+        let config = RayConfig::from_json(json).unwrap();
+        assert!(!config.event_stats);
+        assert_eq!(config.ray_cookie, 42);
+        assert_eq!(config.gcs_server_port, 9999);
+        assert_eq!(config.auth_mode, "token");
+        assert_eq!(config.memory_usage_threshold, 0.5);
+    }
+
+    #[test]
+    fn test_from_json_invalid_json() {
+        let result = RayConfig::from_json("not json");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("JSON parse error"));
+    }
+
+    #[test]
+    fn test_from_base64_json_invalid_base64() {
+        let result = RayConfig::from_base64_json("!!!not-base64!!!");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("base64 decode error"));
+    }
+
+    #[test]
+    fn test_from_json_empty_uses_defaults() {
+        let config = RayConfig::from_json("{}").unwrap();
+        let default = RayConfig::default();
+        assert_eq!(config.event_stats, default.event_stats);
+        assert_eq!(config.ray_cookie, default.ray_cookie);
+    }
+
+    #[test]
+    fn test_default_all_fields() {
+        let c = RayConfig::default();
+        assert_eq!(c.debug_dump_period_milliseconds, 10_000);
+        assert!(c.emit_main_service_metrics);
+        assert_eq!(c.event_stats_print_interval_ms, 60_000);
+        assert!(c.enable_cluster_auth);
+        assert_eq!(c.auth_mode, "disabled");
+        assert!(!c.enable_k8s_token_auth);
+        assert_eq!(c.handler_warning_timeout_ms, 1_000);
+        assert_eq!(c.memory_monitor_refresh_ms, 250);
+        assert_eq!(c.object_store_memory, -1);
+        assert_eq!(c.object_spilling_threshold, 0.8);
+        assert_eq!(c.num_workers_soft_limit, -1);
+        assert_eq!(c.raylet_heartbeat_period_milliseconds, 1_000);
+        assert_eq!(c.worker_register_timeout_seconds, 60);
+        assert_eq!(c.task_retry_delay_ms, 0);
+        assert!(!c.enable_cgroup);
+    }
 }

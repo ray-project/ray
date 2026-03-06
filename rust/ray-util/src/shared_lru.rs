@@ -98,4 +98,62 @@ mod tests {
         assert_eq!(cache.pop(&"a"), Some(1));
         assert!(cache.is_empty());
     }
+
+    #[test]
+    fn test_contains() {
+        let cache = SharedLruCache::new(3);
+        assert!(!cache.contains(&"a"));
+        cache.put("a", 1);
+        assert!(cache.contains(&"a"));
+        assert!(!cache.contains(&"b"));
+    }
+
+    #[test]
+    fn test_is_empty_and_len() {
+        let cache = SharedLruCache::new(3);
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+
+        cache.put("a", 1);
+        assert!(!cache.is_empty());
+        assert_eq!(cache.len(), 1);
+
+        cache.put("b", 2);
+        assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn test_clear() {
+        let cache = SharedLruCache::new(3);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        assert_eq!(cache.len(), 2);
+
+        cache.clear();
+        assert!(cache.is_empty());
+        assert_eq!(cache.get(&"a"), None);
+    }
+
+    #[test]
+    fn test_eviction_returns_old_value() {
+        let cache = SharedLruCache::new(2);
+        cache.put("a", 1);
+        cache.put("b", 2);
+        // Cache is full; inserting "c" should evict LRU ("a")
+        cache.put("c", 3);
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.get(&"a"), None);
+        assert_eq!(cache.get(&"b"), Some(2));
+        assert_eq!(cache.get(&"c"), Some(3));
+    }
+
+    #[test]
+    fn test_put_overwrite() {
+        let cache = SharedLruCache::new(2);
+        cache.put("a", 1);
+        let old = cache.put("a", 10);
+        assert_eq!(old, Some(1));
+        assert_eq!(cache.get(&"a"), Some(10));
+        assert_eq!(cache.len(), 1);
+    }
 }

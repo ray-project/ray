@@ -149,4 +149,11 @@ mod tests {
 
         assert!(response_str.contains("HTTP/1.1 404 Not Found"));
     }
+
+    #[test]
+    fn test_metrics_http_config_default_values() {
+        let config = MetricsHttpConfig::default();
+        assert_eq!(config.port, DEFAULT_METRICS_PORT);
+        assert_eq!(config.port, 8080);
+    }
 }

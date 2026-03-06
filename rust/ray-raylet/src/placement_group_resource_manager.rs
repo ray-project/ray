@@ -256,4 +256,87 @@ mod tests {
         let wildcard = PlacementGroupResourceManager::get_pg_wildcard_resource_name(&pg_id, "CPU");
         assert!(wildcard.starts_with("CPU_group_"));
     }
+
+    /// Test 2PC rollback scenario: when a multi-bundle prepare fails partway
+    /// through, all previously allocated bundles should be rolled back, and
+    /// the full resources should remain available for subsequent allocations.
+    #[test]
+    fn test_2pc_rollback_on_partial_failure() {
+        let mgr = make_manager();
+        let pg_id = make_pg_id(1);
+
+        // Bundle 0 requests 3 CPUs (feasible — total is 8)
+        let mut b0_resources = ResourceSet::new();
+        b0_resources.set("CPU".to_string(), FixedPoint::from_f64(3.0));
+
+        // Bundle 1 requests 3 CPUs (feasible individually, but 3+3=6 <= 8)
+        let mut b1_resources = ResourceSet::new();
+        b1_resources.set("CPU".to_string(), FixedPoint::from_f64(3.0));
+
+        // Bundle 2 requests 5 CPUs (infeasible: 3+3+5 = 11 > 8)
+        let mut b2_resources = ResourceSet::new();
+        b2_resources.set("CPU".to_string(), FixedPoint::from_f64(5.0));
+
+        let bundles = vec![
+            ((pg_id, 0), b0_resources),
+            ((pg_id, 1), b1_resources),
+            ((pg_id, 2), b2_resources),
+        ];
+
+        // This prepare should fail on bundle 2
+        let result = mgr.prepare_bundles(&bundles);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("insufficient resources"));
+
+        // All bundles should have been rolled back — nothing tracked
+        assert_eq!(mgr.num_bundles(), 0);
+
+        // Resources should be fully available — a new prepare of 8 CPUs should succeed
+        let mut full_resources = ResourceSet::new();
+        full_resources.set("CPU".to_string(), FixedPoint::from_f64(8.0));
+        let result = mgr.prepare_bundles(&[((pg_id, 0), full_resources)]);
+        assert!(result.is_ok());
+        assert_eq!(mgr.num_bundles(), 1);
+    }
+
+    /// Test concurrent prepare/commit: prepare two independent placement groups,
+    /// commit one, return the other, and verify correct state tracking.
+    #[test]
+    fn test_concurrent_prepare_commit_different_pgs() {
+        let mgr = make_manager();
+        let pg1 = make_pg_id(1);
+        let pg2 = make_pg_id(2);
+
+        // PG1: 2 CPUs
+        let mut pg1_resources = ResourceSet::new();
+        pg1_resources.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+
+        // PG2: 3 CPUs
+        let mut pg2_resources = ResourceSet::new();
+        pg2_resources.set("CPU".to_string(), FixedPoint::from_f64(3.0));
+
+        // Prepare both PGs
+        mgr.prepare_bundles(&[((pg1, 0), pg1_resources)]).unwrap();
+        mgr.prepare_bundles(&[((pg2, 0), pg2_resources)]).unwrap();
+        assert_eq!(mgr.num_bundles(), 2);
+        assert_eq!(mgr.num_committed_bundles(), 0);
+
+        // Commit PG1 only
+        mgr.commit_bundles(&[(pg1, 0)]).unwrap();
+        assert_eq!(mgr.num_bundles(), 2);
+        assert_eq!(mgr.num_committed_bundles(), 1);
+
+        // Committing an already-committed bundle should fail
+        let result = mgr.commit_bundles(&[(pg1, 0)]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not in prepared state"));
+
+        // Return PG2 (rollback) — resources released
+        assert!(mgr.return_bundle(&(pg2, 0)));
+        assert_eq!(mgr.num_bundles(), 1);
+        assert_eq!(mgr.num_committed_bundles(), 1);
+
+        // Returning a non-existent bundle should return false
+        assert!(!mgr.return_bundle(&(pg2, 0)));
+    }
 }

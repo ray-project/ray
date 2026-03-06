@@ -222,4 +222,213 @@ mod tests {
         assert!(pool.get_or_create("node1", "http://10.0.0.1:8001"));
         assert_eq!(pool.num_connections(), 1);
     }
+
+    #[tokio::test]
+    async fn test_pool_num_connections_starts_at_zero() {
+        let pool = ObjectManagerClientPool::new(RetryConfig::default());
+        assert_eq!(pool.num_connections(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_many_nodes() {
+        let pool = ObjectManagerClientPool::new(RetryConfig::default());
+        for i in 0..100 {
+            let node_id = format!("node_{}", i);
+            let addr = format!("http://10.0.0.{}:{}", i % 256, 8000 + i);
+            assert!(pool.get_or_create(&node_id, &addr));
+        }
+        assert_eq!(pool.num_connections(), 100);
+
+        // Remove half of them.
+        for i in 0..50 {
+            let node_id = format!("node_{}", i);
+            assert!(pool.remove(&node_id));
+        }
+        assert_eq!(pool.num_connections(), 50);
+    }
+
+    #[tokio::test]
+    async fn test_pool_get_or_create_same_node_different_address() {
+        let pool = ObjectManagerClientPool::new(RetryConfig::default());
+        // First call creates the client.
+        assert!(pool.get_or_create("node1", "http://10.0.0.1:8000"));
+        // Second call with a different address returns false (node already tracked).
+        assert!(!pool.get_or_create("node1", "http://10.0.0.1:9999"));
+        assert_eq!(pool.num_connections(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_pool_remove_all() {
+        let pool = ObjectManagerClientPool::new(RetryConfig::default());
+        pool.get_or_create("a", "http://10.0.0.1:8000");
+        pool.get_or_create("b", "http://10.0.0.2:8000");
+        pool.get_or_create("c", "http://10.0.0.3:8000");
+        assert_eq!(pool.num_connections(), 3);
+
+        pool.remove("a");
+        pool.remove("b");
+        pool.remove("c");
+        assert_eq!(pool.num_connections(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_concurrent_get_or_create() {
+        use std::sync::Arc;
+
+        let pool = Arc::new(ObjectManagerClientPool::new(RetryConfig::default()));
+        let mut handles = Vec::new();
+
+        // Spawn 20 tasks, each trying to create a client for one of 5 nodes.
+        for i in 0..20 {
+            let pool = Arc::clone(&pool);
+            handles.push(tokio::spawn(async move {
+                let node_id = format!("node_{}", i % 5);
+                let addr = format!("http://10.0.0.{}:8000", i % 5);
+                pool.get_or_create(&node_id, &addr)
+            }));
+        }
+
+        let mut created_count = 0;
+        for h in handles {
+            if h.await.unwrap() {
+                created_count += 1;
+            }
+        }
+        // Exactly 5 unique nodes should have been created.
+        assert_eq!(pool.num_connections(), 5);
+        assert_eq!(created_count, 5);
+    }
+
+    #[tokio::test]
+    async fn test_pool_concurrent_remove() {
+        use std::sync::Arc;
+
+        let pool = Arc::new(ObjectManagerClientPool::new(RetryConfig::default()));
+        // Pre-populate 10 nodes.
+        for i in 0..10 {
+            pool.get_or_create(
+                &format!("node_{}", i),
+                &format!("http://10.0.0.{}:8000", i),
+            );
+        }
+        assert_eq!(pool.num_connections(), 10);
+
+        let mut handles = Vec::new();
+        // Spawn 20 tasks trying to remove the same 10 nodes (each removed twice).
+        for i in 0..20 {
+            let pool = Arc::clone(&pool);
+            handles.push(tokio::spawn(async move {
+                let node_id = format!("node_{}", i % 10);
+                pool.remove(&node_id)
+            }));
+        }
+
+        let mut removed_count = 0;
+        for h in handles {
+            if h.await.unwrap() {
+                removed_count += 1;
+            }
+        }
+        // Exactly 10 should succeed, the other 10 fail (already removed).
+        assert_eq!(removed_count, 10);
+        assert_eq!(pool.num_connections(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_pool_concurrent_create_and_remove() {
+        use std::sync::Arc;
+
+        let pool = Arc::new(ObjectManagerClientPool::new(RetryConfig::default()));
+        pool.get_or_create("node_0", "http://10.0.0.1:8000");
+        pool.get_or_create("node_1", "http://10.0.0.2:8000");
+
+        let pool_c = Arc::clone(&pool);
+        let pool_r = Arc::clone(&pool);
+
+        // Create new nodes while simultaneously removing existing ones.
+        let creator = tokio::spawn(async move {
+            for i in 2..12 {
+                pool_c.get_or_create(
+                    &format!("node_{}", i),
+                    &format!("http://10.0.0.{}:8000", i),
+                );
+            }
+        });
+        let remover = tokio::spawn(async move {
+            pool_r.remove("node_0");
+            pool_r.remove("node_1");
+        });
+
+        creator.await.unwrap();
+        remover.await.unwrap();
+
+        // node_0 and node_1 removed, nodes 2..12 created = 10 nodes.
+        assert_eq!(pool.num_connections(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_client_connect_lazy_various_addresses() {
+        let addrs = [
+            "http://127.0.0.1:8000",
+            "http://[::1]:50051",
+            "http://localhost:9999",
+            "http://10.255.255.255:1234",
+        ];
+        for addr in &addrs {
+            let client = ObjectManagerClient::connect_lazy(addr, RetryConfig::default());
+            assert_eq!(client.address(), *addr);
+            assert!(client.is_connected());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_from_channel_preserves_custom_address() {
+        let channel = Channel::from_static("http://[::1]:1").connect_lazy();
+        let client = ObjectManagerClient::from_channel(
+            channel,
+            RetryConfig::default(),
+            "my-custom-label".to_string(),
+        );
+        assert_eq!(client.address(), "my-custom-label");
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_client_from_channel_custom_retry_config() {
+        let channel = Channel::from_static("http://[::1]:1").connect_lazy();
+        let config = RetryConfig {
+            max_retries: 5,
+            initial_delay: std::time::Duration::from_millis(200),
+            max_delay: std::time::Duration::from_secs(30),
+            multiplier: 1.5,
+            server_unavailable_timeout: std::time::Duration::from_secs(90),
+            max_pending_bytes: 200 * 1024 * 1024,
+        };
+        let client = ObjectManagerClient::from_channel(
+            channel,
+            config,
+            "http://[::1]:1".to_string(),
+        );
+        assert!(client.is_connected());
+        assert_eq!(client.address(), "http://[::1]:1");
+    }
+
+    #[tokio::test]
+    async fn test_pool_with_custom_retry_config() {
+        let config = RetryConfig {
+            max_retries: 10,
+            ..RetryConfig::default()
+        };
+        let pool = ObjectManagerClientPool::new(config);
+        pool.get_or_create("node1", "http://10.0.0.1:8000");
+        assert_eq!(pool.num_connections(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_pool_remove_returns_false_for_empty_pool() {
+        let pool = ObjectManagerClientPool::new(RetryConfig::default());
+        assert_eq!(pool.num_connections(), 0);
+        assert!(!pool.remove("anything"));
+        assert_eq!(pool.num_connections(), 0);
+    }
 }

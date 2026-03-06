@@ -321,4 +321,130 @@ mod tests {
         om.cancel_pull(req_id);
         assert_eq!(om.num_active_pulls(), 0);
     }
+
+    fn make_test_om() -> (ObjectManager, Arc<PlasmaStore>) {
+        let config = ObjectManagerConfig::default();
+        let store_config = PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: String::new(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let allocator = Arc::new(DummyAllocator);
+        let store = Arc::new(PlasmaStore::new(allocator, &store_config));
+        let om = ObjectManager::new(config, make_nid(0), store.clone());
+        (om, store)
+    }
+
+    #[test]
+    fn test_object_added_and_deleted() {
+        let (mut om, _) = make_test_om();
+        let oid = make_oid(1);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 512,
+            metadata_size: 64,
+            ..Default::default()
+        };
+
+        assert_eq!(om.num_local_objects(), 0);
+        om.object_added(info);
+        assert_eq!(om.num_local_objects(), 1);
+        assert!(om.is_object_local(&oid));
+        assert_eq!(om.used_memory(), 576);
+
+        om.object_deleted(&oid);
+        assert!(!om.is_object_local(&oid));
+        assert_eq!(om.num_local_objects(), 0);
+        assert_eq!(om.used_memory(), 0);
+    }
+
+    #[test]
+    fn test_object_deleted_nonexistent() {
+        let (mut om, _) = make_test_om();
+        // Should not panic for unknown object
+        om.object_deleted(&make_oid(99));
+        assert_eq!(om.num_local_objects(), 0);
+    }
+
+    #[test]
+    fn test_push_nonexistent_returns_false() {
+        let (mut om, _) = make_test_om();
+        assert!(!om.push(make_oid(1), make_nid(1)));
+    }
+
+    #[test]
+    fn test_get_local_object() {
+        let (mut om, _) = make_test_om();
+        let oid = make_oid(1);
+        assert!(om.get_local_object(&oid).is_none());
+
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 256,
+            ..Default::default()
+        };
+        om.object_added(info);
+        let local = om.get_local_object(&oid).unwrap();
+        assert_eq!(local.object_info.data_size, 256);
+        assert!(!local.is_being_pushed);
+    }
+
+    #[test]
+    fn test_accessors() {
+        let (om, _) = make_test_om();
+        assert_eq!(*om.self_node_id(), make_nid(0));
+        assert!(om.config().object_chunk_size > 0);
+        assert_eq!(om.num_active_pushes(), 0);
+        let _ = om.pull_manager();
+        let _ = om.push_manager();
+        let _ = om.memory_monitor();
+    }
+
+    #[test]
+    fn test_handle_push_single_chunk() {
+        let (mut om, _) = make_test_om();
+        let oid = make_oid(5);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 100,
+            metadata_size: 0,
+            ..Default::default()
+        };
+        let data = vec![0xABu8; 100];
+
+        let complete = om.handle_push(oid, 0, &data, info);
+        assert!(complete);
+        assert!(om.is_object_local(&oid));
+        assert_eq!(om.num_local_objects(), 1);
+    }
+
+    #[test]
+    fn test_update_object_location() {
+        let (mut om, _) = make_test_om();
+        let oid = make_oid(1);
+        // Should not panic
+        om.update_object_location(&oid, make_nid(2));
+    }
+
+    #[test]
+    fn test_multiple_objects() {
+        let (mut om, _) = make_test_om();
+        for i in 0..10u8 {
+            let info = ObjectInfo {
+                object_id: make_oid(i),
+                data_size: 100,
+                ..Default::default()
+            };
+            om.object_added(info);
+        }
+        assert_eq!(om.num_local_objects(), 10);
+        assert_eq!(om.used_memory(), 1000);
+
+        for i in 0..5u8 {
+            om.object_deleted(&make_oid(i));
+        }
+        assert_eq!(om.num_local_objects(), 5);
+        assert_eq!(om.used_memory(), 500);
+    }
 }

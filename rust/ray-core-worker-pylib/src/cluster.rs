@@ -169,4 +169,52 @@ mod tests {
         // Second call is a no-op.
         assert!(handle.shutdown_tx.is_none());
     }
+
+    #[test]
+    fn test_cluster_handle_accessors_with_different_addresses() {
+        let node_id = NodeID::from_random();
+        let (tx, _rx) = oneshot::channel();
+        let rt = Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
+
+        // Test with an IPv6 loopback address.
+        let handle = PyClusterHandle {
+            gcs_addr: "[::1]:6379".to_string(),
+            node_id,
+            shutdown_tx: Some(tx),
+            runtime: rt,
+        };
+        assert_eq!(handle.gcs_address(), "[::1]:6379");
+        // Node ID should be non-nil (random).
+        assert_ne!(handle.node_id().hex(), "0".repeat(56));
+    }
+
+    #[test]
+    fn test_cluster_handle_node_id_is_stable() {
+        let node_id = NodeID::from_random();
+        let hex = node_id.hex();
+        let (tx, _rx) = oneshot::channel();
+        let rt = Arc::new(
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
+        let handle = PyClusterHandle {
+            gcs_addr: "127.0.0.1:0".to_string(),
+            node_id,
+            shutdown_tx: Some(tx),
+            runtime: rt,
+        };
+
+        // Multiple calls to node_id() return the same value.
+        assert_eq!(handle.node_id().hex(), hex);
+        assert_eq!(handle.node_id().hex(), hex);
+        // NodeID hex should be 56 chars (28 bytes).
+        assert_eq!(hex.len(), 56);
+    }
 }

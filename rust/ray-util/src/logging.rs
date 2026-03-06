@@ -52,3 +52,20 @@ pub fn init_ray_logging(component: &str, log_dir: Option<&Path>, verbosity: i32)
 
     tracing::info!(component, "Ray logging initialized");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init_ray_logging_to_file() {
+        let tmp = std::env::temp_dir().join("ray_logging_test");
+        std::fs::create_dir_all(&tmp).unwrap();
+        // This will set the global subscriber, so only run once per process.
+        // We just verify it doesn't panic.
+        init_ray_logging("test_component", Some(&tmp), 0);
+        let log_file = tmp.join("test_component.log");
+        assert!(log_file.exists());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+}

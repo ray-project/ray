@@ -787,4 +787,263 @@ mod tests {
         let task_id = TaskID::from_random().binary();
         assert!(!receiver.is_task_running(&task_id));
     }
+
+    // ─── Tests for set_actor_concurrency ────────────────────────────
+
+    #[test]
+    fn test_set_actor_concurrency_stores_group() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+
+        let actor_hex = "actor_abc123";
+
+        // Initially no concurrency group for this actor.
+        assert_eq!(receiver.num_queued_actor_tasks(actor_hex), 0);
+
+        // Set concurrency to 2.
+        receiver.set_actor_concurrency(actor_hex.to_string(), 2);
+
+        // After setting, queued count should still be 0 (no tasks queued yet).
+        assert_eq!(receiver.num_queued_actor_tasks(actor_hex), 0);
+    }
+
+    #[test]
+    fn test_set_actor_concurrency_unlimited() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+
+        // Setting concurrency to 0 means unlimited.
+        receiver.set_actor_concurrency("unlimited_actor".to_string(), 0);
+        assert_eq!(receiver.num_queued_actor_tasks("unlimited_actor"), 0);
+    }
+
+    #[test]
+    fn test_set_actor_concurrency_replaces_previous() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+
+        let actor_hex = "replace_actor";
+
+        // Set to 4, then replace with 1.
+        receiver.set_actor_concurrency(actor_hex.to_string(), 4);
+        receiver.set_actor_concurrency(actor_hex.to_string(), 1);
+
+        // Should not error; the group was replaced.
+        assert_eq!(receiver.num_queued_actor_tasks(actor_hex), 0);
+    }
+
+    // ─── Tests for handle_actor_task ────────────────────────────────
+
+    #[tokio::test]
+    async fn test_handle_actor_task_with_concurrency_group() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store.clone(), 4);
+        receiver.set_execute_callback(success_callback());
+
+        let actor_hex = "actor_with_group";
+        receiver.set_actor_concurrency(actor_hex.to_string(), 2);
+
+        let spec = make_task_spec("actor_task_1");
+        let req = make_push_request(&wid, spec);
+
+        // Should use actor-specific concurrency path.
+        let reply = receiver.handle_actor_task(req, actor_hex).await.unwrap();
+        assert!(!reply.worker_exiting);
+        assert!(!reply.is_retryable_error);
+        assert_eq!(reply.return_objects.len(), 1);
+        assert_eq!(receiver.total_executed(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_handle_actor_task_without_concurrency_group_falls_back() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store.clone(), 4);
+        receiver.set_execute_callback(success_callback());
+
+        // No concurrency group set for this actor -- falls back to default.
+        let spec = make_task_spec("fallback_task");
+        let req = make_push_request(&wid, spec);
+
+        let reply = receiver.handle_actor_task(req, "unknown_actor").await.unwrap();
+        assert!(!reply.is_retryable_error);
+        assert_eq!(reply.return_objects.len(), 1);
+        assert_eq!(receiver.total_executed(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_handle_actor_task_exiting_worker_rejected() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+        receiver.set_execute_callback(success_callback());
+
+        let actor_hex = "exit_actor";
+        receiver.set_actor_concurrency(actor_hex.to_string(), 2);
+
+        // Mark worker as exiting.
+        receiver.set_exiting();
+
+        let spec = make_task_spec("exiting_task");
+        let req = make_push_request(&wid, spec);
+
+        let reply = receiver.handle_actor_task(req, actor_hex).await.unwrap();
+        assert!(reply.worker_exiting);
+        assert_eq!(receiver.total_executed(), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_handle_actor_task_concurrency_limit_respected() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = Arc::new(TaskReceiver::new(wid, store.clone(), 10));
+
+        // Track max concurrent executions.
+        let current = Arc::new(AtomicUsize::new(0));
+        let max_seen = Arc::new(AtomicUsize::new(0));
+
+        let current_clone = current.clone();
+        let max_seen_clone = max_seen.clone();
+        let cb: TaskExecutionCallback = Arc::new(move |_spec| {
+            let c = current_clone.fetch_add(1, Ordering::SeqCst) + 1;
+            // Update max seen.
+            max_seen_clone.fetch_max(c, Ordering::SeqCst);
+            // Simulate some work.
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            current_clone.fetch_sub(1, Ordering::SeqCst);
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"ok".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        let actor_hex = "limit_actor";
+        // Set actor concurrency to 1 (serial execution).
+        receiver.set_actor_concurrency(actor_hex.to_string(), 1);
+
+        let mut handles = Vec::new();
+        for i in 0..4 {
+            let spec = make_task_spec(&format!("limited_{}", i));
+            let req = make_push_request(&wid, spec);
+            let r = Arc::clone(&receiver);
+            let ah = actor_hex.to_string();
+            handles.push(tokio::spawn(async move {
+                r.handle_actor_task(req, &ah).await
+            }));
+        }
+
+        for h in handles {
+            h.await.unwrap().unwrap();
+        }
+
+        assert_eq!(receiver.total_executed(), 4);
+        // With actor concurrency of 1, max concurrent should be 1.
+        assert_eq!(max_seen.load(Ordering::SeqCst), 1);
+    }
+
+    // ─── Tests for num_queued_actor_tasks ───────────────────────────
+
+    #[test]
+    fn test_num_queued_actor_tasks_unknown_actor() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+
+        // Unknown actor should return 0 queued tasks.
+        assert_eq!(receiver.num_queued_actor_tasks("nonexistent"), 0);
+    }
+
+    // ─── Tests for handle_push_task_inner (via handle_actor_task) ───
+
+    #[tokio::test]
+    async fn test_handle_actor_task_wrong_worker_id() {
+        let wid = make_worker_id();
+        let other_wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+        receiver.set_execute_callback(success_callback());
+
+        let actor_hex = "wrong_wid_actor";
+        receiver.set_actor_concurrency(actor_hex.to_string(), 2);
+
+        let spec = make_task_spec("wrong_wid_task");
+        let req = make_push_request(&other_wid, spec);
+
+        let err = receiver.handle_actor_task(req, actor_hex).await.unwrap_err();
+        assert!(matches!(err, CoreWorkerError::InvalidArgument(_)));
+    }
+
+    #[tokio::test]
+    async fn test_handle_actor_task_missing_task_spec() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+        receiver.set_execute_callback(success_callback());
+
+        let actor_hex = "missing_spec_actor";
+        receiver.set_actor_concurrency(actor_hex.to_string(), 2);
+
+        let req = rpc::PushTaskRequest {
+            intended_worker_id: wid.binary(),
+            task_spec: None,
+            ..Default::default()
+        };
+
+        let err = receiver.handle_actor_task(req, actor_hex).await.unwrap_err();
+        assert!(matches!(err, CoreWorkerError::InvalidArgument(_)));
+    }
+
+    #[tokio::test]
+    async fn test_handle_actor_task_no_callback_returns_error() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+        // Don't set callback.
+
+        let actor_hex = "no_cb_actor";
+        receiver.set_actor_concurrency(actor_hex.to_string(), 2);
+
+        let spec = make_task_spec("no_cb_task");
+        let req = make_push_request(&wid, spec);
+
+        let reply = receiver.handle_actor_task(req, actor_hex).await.unwrap();
+        assert!(reply.is_retryable_error);
+        assert!(reply.task_execution_error.contains("not initialized"));
+    }
+
+    // ─── Test for multiple actor concurrency groups ─────────────────
+
+    #[tokio::test]
+    async fn test_multiple_actor_concurrency_groups() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store.clone(), 10);
+        receiver.set_execute_callback(success_callback());
+
+        // Two actors with different concurrency limits.
+        receiver.set_actor_concurrency("actor_a".to_string(), 1);
+        receiver.set_actor_concurrency("actor_b".to_string(), 4);
+
+        // Execute a task for each.
+        let spec_a = make_task_spec("task_for_a");
+        let req_a = make_push_request(&wid, spec_a);
+        let reply_a = receiver.handle_actor_task(req_a, "actor_a").await.unwrap();
+        assert!(!reply_a.is_retryable_error);
+
+        let spec_b = make_task_spec("task_for_b");
+        let req_b = make_push_request(&wid, spec_b);
+        let reply_b = receiver.handle_actor_task(req_b, "actor_b").await.unwrap();
+        assert!(!reply_b.is_retryable_error);
+
+        assert_eq!(receiver.total_executed(), 2);
+    }
 }

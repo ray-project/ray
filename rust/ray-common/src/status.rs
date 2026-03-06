@@ -288,4 +288,131 @@ mod tests {
         assert!(err.is_rpc_error());
         assert_eq!(err.rpc_code, Some(14));
     }
+
+    #[test]
+    fn test_all_error_factory_methods() {
+        let cases: Vec<(RayError, StatusCode, &str)> = vec![
+            (RayError::out_of_memory("oom"), StatusCode::OutOfMemory, "oom"),
+            (RayError::key_error("key"), StatusCode::KeyError, "key"),
+            (RayError::type_error("type"), StatusCode::TypeError, "type"),
+            (RayError::invalid("inv"), StatusCode::Invalid, "inv"),
+            (RayError::io_error("io"), StatusCode::IOError, "io"),
+            (RayError::not_found("nf"), StatusCode::NotFound, "nf"),
+            (RayError::not_implemented("ni"), StatusCode::NotImplemented, "ni"),
+            (RayError::timed_out("to"), StatusCode::TimedOut, "to"),
+            (RayError::disconnected("dc"), StatusCode::Disconnected, "dc"),
+            (RayError::redis_error("redis"), StatusCode::RedisError, "redis"),
+            (RayError::object_store_full("full"), StatusCode::ObjectStoreFull, "full"),
+            (RayError::object_not_found("onf"), StatusCode::ObjectNotFound, "onf"),
+            (RayError::already_exists("ae"), StatusCode::AlreadyExists, "ae"),
+            (RayError::unauthenticated("ua"), StatusCode::Unauthenticated, "ua"),
+            (RayError::permission_denied("pd"), StatusCode::PermissionDenied, "pd"),
+            (RayError::interrupted("int"), StatusCode::Interrupted, "int"),
+            (RayError::invalid_argument("ia"), StatusCode::InvalidArgument, "ia"),
+            (RayError::channel_error("ch"), StatusCode::ChannelError, "ch"),
+        ];
+        for (err, expected_code, expected_msg) in cases {
+            assert_eq!(err.code, expected_code);
+            assert!(err.message.contains(expected_msg));
+            assert!(err.rpc_code.is_none());
+        }
+    }
+
+    #[test]
+    fn test_all_predicates() {
+        assert!(RayError::out_of_memory("x").is_out_of_memory());
+        assert!(!RayError::out_of_memory("x").is_key_error());
+
+        assert!(RayError::key_error("x").is_key_error());
+        assert!(!RayError::key_error("x").is_not_found());
+
+        assert!(RayError::not_found("x").is_not_found());
+        assert!(RayError::timed_out("x").is_timed_out());
+        assert!(RayError::disconnected("x").is_disconnected());
+        assert!(RayError::rpc_error("x", 0).is_rpc_error());
+        assert!(RayError::object_store_full("x").is_object_store_full());
+    }
+
+    #[test]
+    fn test_status_code_as_str_all_variants() {
+        let all_codes = vec![
+            (StatusCode::OK, "OK"),
+            (StatusCode::OutOfMemory, "OutOfMemory"),
+            (StatusCode::KeyError, "KeyError"),
+            (StatusCode::TypeError, "TypeError"),
+            (StatusCode::Invalid, "Invalid"),
+            (StatusCode::IOError, "IOError"),
+            (StatusCode::UnknownError, "UnknownError"),
+            (StatusCode::NotImplemented, "NotImplemented"),
+            (StatusCode::RedisError, "RedisError"),
+            (StatusCode::TimedOut, "TimedOut"),
+            (StatusCode::Interrupted, "Interrupted"),
+            (StatusCode::IntentionalSystemExit, "IntentionalSystemExit"),
+            (StatusCode::UnexpectedSystemExit, "UnexpectedSystemExit"),
+            (StatusCode::CreationTaskError, "CreationTaskError"),
+            (StatusCode::NotFound, "NotFound"),
+            (StatusCode::Disconnected, "Disconnected"),
+            (StatusCode::SchedulingCancelled, "SchedulingCancelled"),
+            (StatusCode::AlreadyExists, "AlreadyExists"),
+            (StatusCode::ObjectExists, "ObjectExists"),
+            (StatusCode::ObjectNotFound, "ObjectNotFound"),
+            (StatusCode::ObjectAlreadySealed, "ObjectAlreadySealed"),
+            (StatusCode::ObjectStoreFull, "ObjectStoreFull"),
+            (StatusCode::TransientObjectStoreFull, "TransientObjectStoreFull"),
+            (StatusCode::OutOfDisk, "OutOfDisk"),
+            (StatusCode::ObjectUnknownOwner, "ObjectUnknownOwner"),
+            (StatusCode::RpcError, "RpcError"),
+            (StatusCode::OutOfResource, "OutOfResource"),
+            (StatusCode::ObjectRefEndOfStream, "ObjectRefEndOfStream"),
+            (StatusCode::Unauthenticated, "Unauthenticated"),
+            (StatusCode::InvalidArgument, "InvalidArgument"),
+            (StatusCode::ChannelError, "ChannelError"),
+            (StatusCode::ChannelTimeoutError, "ChannelTimeoutError"),
+            (StatusCode::PermissionDenied, "PermissionDenied"),
+        ];
+        for (code, expected_str) in &all_codes {
+            assert_eq!(code.as_str(), *expected_str);
+        }
+    }
+
+    #[test]
+    fn test_status_code_from_str_roundtrip_all() {
+        let all_names = vec![
+            "OK", "OutOfMemory", "KeyError", "TypeError", "Invalid", "IOError",
+            "UnknownError", "NotImplemented", "RedisError", "TimedOut", "Interrupted",
+            "IntentionalSystemExit", "UnexpectedSystemExit", "CreationTaskError",
+            "NotFound", "Disconnected", "SchedulingCancelled", "AlreadyExists",
+            "ObjectExists", "ObjectNotFound", "ObjectAlreadySealed", "ObjectStoreFull",
+            "TransientObjectStoreFull", "OutOfDisk", "ObjectUnknownOwner", "RpcError",
+            "OutOfResource", "ObjectRefEndOfStream", "Unauthenticated", "InvalidArgument",
+            "ChannelError", "ChannelTimeoutError", "PermissionDenied",
+        ];
+        for name in all_names {
+            let code = StatusCode::from_str_name(name).unwrap_or_else(|| panic!("failed to parse {name}"));
+            assert_eq!(code.as_str(), name);
+        }
+        assert_eq!(StatusCode::from_str_name("Bogus"), None);
+    }
+
+    #[test]
+    fn test_status_code_display() {
+        assert_eq!(format!("{}", StatusCode::TimedOut), "TimedOut");
+        assert_eq!(format!("{}", StatusCode::OK), "OK");
+    }
+
+    #[test]
+    fn test_ray_error_with_rpc_code() {
+        let err = RayError::with_rpc_code(StatusCode::RpcError, "timeout", 4);
+        assert_eq!(err.code, StatusCode::RpcError);
+        assert_eq!(err.rpc_code, Some(4));
+        assert_eq!(err.message, "timeout");
+    }
+
+    #[test]
+    fn test_ray_error_clone() {
+        let err = RayError::io_error("cloneable");
+        let cloned = err.clone();
+        assert_eq!(err.code, cloned.code);
+        assert_eq!(err.message, cloned.message);
+    }
 }

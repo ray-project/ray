@@ -192,4 +192,44 @@ mod tests {
             libc::close(received_fd);
         }
     }
+
+    #[test]
+    fn test_send_fd_invalid_socket() {
+        // Invalid socket fd should return an error
+        let result = send_fd(-1, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_recv_fd_invalid_socket() {
+        // Invalid socket fd should return an error
+        let result = recv_fd(-1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_multiple_fd_passes() {
+        let mut fds: [RawFd; 2] = [0; 2];
+        let ret =
+            unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) };
+        assert_eq!(ret, 0);
+
+        // Pass multiple fds one at a time
+        for _ in 0..3 {
+            let tmp = tempfile::tempfile().unwrap();
+            let fd = {
+                use std::os::fd::AsRawFd;
+                tmp.as_raw_fd()
+            };
+            send_fd(fds[0], fd).expect("send_fd failed");
+            let received = recv_fd(fds[1]).expect("recv_fd failed");
+            assert!(received >= 0);
+            unsafe { libc::close(received); }
+        }
+
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+    }
 }

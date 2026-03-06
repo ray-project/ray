@@ -431,4 +431,96 @@ mod tests {
         assert!(data.iter().all(|&b| b == 0xAA));
         assert!(metadata.iter().all(|&b| b == 0xBB));
     }
+
+    #[test]
+    fn test_add_object_callback() {
+        let allocator = Arc::new(TestAllocator);
+        let config = PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: String::new(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let store = PlasmaStore::new(allocator.clone(), &config);
+
+        let callback_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cc = callback_called.clone();
+        store.set_add_object_callback(Box::new(move |_info| {
+            cc.store(true, std::sync::atomic::Ordering::SeqCst);
+        }));
+
+        let oid = make_oid(42);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 100,
+            ..Default::default()
+        };
+        store
+            .create_object(info, ObjectSource::CreatedByWorker, allocator.as_ref())
+            .unwrap();
+        store.seal_object(&oid).unwrap();
+
+        assert!(callback_called.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_delete_object_callback() {
+        let allocator = Arc::new(TestAllocator);
+        let config = PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: String::new(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let store = PlasmaStore::new(allocator.clone(), &config);
+
+        let deleted_oid = Arc::new(parking_lot::Mutex::new(None));
+        let d = deleted_oid.clone();
+        store.set_delete_object_callback(Box::new(move |oid| {
+            *d.lock() = Some(*oid);
+        }));
+
+        let oid = make_oid(43);
+        let info = ObjectInfo {
+            object_id: oid,
+            data_size: 100,
+            ..Default::default()
+        };
+        store
+            .create_object(info, ObjectSource::CreatedByWorker, allocator.as_ref())
+            .unwrap();
+        store.seal_object(&oid).unwrap();
+        store.delete_object(&oid, allocator.as_ref()).unwrap();
+
+        assert_eq!(*deleted_oid.lock(), Some(oid));
+    }
+
+    #[test]
+    fn test_num_objects_and_bytes() {
+        let allocator = Arc::new(TestAllocator);
+        let config = PlasmaStoreConfig {
+            object_store_memory: 1024 * 1024,
+            plasma_directory: String::new(),
+            fallback_directory: String::new(),
+            huge_pages: false,
+        };
+        let store = PlasmaStore::new(allocator.clone(), &config);
+
+        assert_eq!(store.num_objects(), 0);
+        assert_eq!(store.num_bytes_in_use(), 0);
+
+        for i in 0..5u8 {
+            let info = ObjectInfo {
+                object_id: make_oid(i),
+                data_size: 100,
+                ..Default::default()
+            };
+            store
+                .create_object(info, ObjectSource::CreatedByWorker, allocator.as_ref())
+                .unwrap();
+        }
+
+        assert_eq!(store.num_objects(), 5);
+        assert_eq!(store.num_bytes_in_use(), 500);
+    }
 }

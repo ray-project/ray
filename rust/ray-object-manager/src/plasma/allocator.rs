@@ -294,4 +294,67 @@ mod tests {
         let alloc = allocator.allocate(1024);
         assert!(alloc.is_none());
     }
+
+    #[test]
+    fn test_fallback_allocate() {
+        let dir = tempfile::tempdir().unwrap();
+        let fallback_dir = tempfile::tempdir().unwrap();
+        let allocator = PlasmaAllocator::new(
+            100, // Very small primary limit
+            dir.path().to_str().unwrap(),
+            fallback_dir.path().to_str().unwrap(),
+            false,
+        );
+
+        assert_eq!(allocator.fallback_allocated(), 0);
+
+        // Primary allocation should fail (too large)
+        assert!(allocator.allocate(1024).is_none());
+
+        // Fallback should succeed
+        let alloc = allocator.fallback_allocate(1024);
+        assert!(alloc.is_some());
+        let alloc = alloc.unwrap();
+        assert!(alloc.fallback_allocated);
+        assert!(allocator.fallback_allocated() > 0);
+
+        allocator.free(alloc);
+        assert_eq!(allocator.fallback_allocated(), 0);
+    }
+
+    #[test]
+    fn test_fallback_allocate_no_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let allocator = PlasmaAllocator::new(
+            1024 * 1024,
+            dir.path().to_str().unwrap(),
+            "", // No fallback directory
+            false,
+        );
+
+        // Fallback should return None when no directory is configured
+        assert!(allocator.fallback_allocate(4096).is_none());
+    }
+
+    #[test]
+    fn test_allocate_and_free_tracks_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let allocator = PlasmaAllocator::new(
+            1024 * 1024,
+            dir.path().to_str().unwrap(),
+            "",
+            false,
+        );
+
+        let a1 = allocator.allocate(4096).unwrap();
+        let a2 = allocator.allocate(4096).unwrap();
+        let total = allocator.allocated();
+        assert!(total > 0);
+
+        allocator.free(a1);
+        assert!(allocator.allocated() < total);
+
+        allocator.free(a2);
+        assert_eq!(allocator.allocated(), 0);
+    }
 }

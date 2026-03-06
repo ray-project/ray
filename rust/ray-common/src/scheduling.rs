@@ -260,4 +260,104 @@ mod tests {
         // memory becomes zero and is removed
         assert!(a.get("memory").is_zero());
     }
+
+    #[test]
+    fn test_fixed_point_positive_negative() {
+        let pos = FixedPoint::from_f64(1.0);
+        assert!(pos.is_positive());
+        assert!(!pos.is_negative());
+        assert!(!pos.is_zero());
+
+        let neg = FixedPoint::from_f64(-1.0);
+        assert!(!neg.is_positive());
+        assert!(neg.is_negative());
+        assert!(!neg.is_zero());
+
+        assert!(!FixedPoint::ZERO.is_positive());
+        assert!(!FixedPoint::ZERO.is_negative());
+        assert!(FixedPoint::ZERO.is_zero());
+    }
+
+    #[test]
+    fn test_fixed_point_from_raw() {
+        let fp = FixedPoint::from_raw(10000);
+        assert_eq!(fp.raw(), 10000);
+        assert_eq!(fp.to_f64(), 1.0);
+
+        let fp2 = FixedPoint::from_raw(5000);
+        assert_eq!(fp2.to_f64(), 0.5);
+    }
+
+    #[test]
+    fn test_fixed_point_neg_operator() {
+        let pos = FixedPoint::from_f64(3.0);
+        let neg = -pos;
+        assert!(neg.is_negative());
+        assert_eq!(neg.to_f64(), -3.0);
+    }
+
+    #[test]
+    fn test_fixed_point_display_debug() {
+        let fp = FixedPoint::from_f64(2.5);
+        assert_eq!(format!("{}", fp), "2.5");
+        assert!(format!("{:?}", fp).contains("2.5"));
+    }
+
+    #[test]
+    fn test_resource_set_from_map_to_map_roundtrip() {
+        let mut map = HashMap::new();
+        map.insert("CPU".to_string(), 4.0);
+        map.insert("GPU".to_string(), 2.0);
+        map.insert("memory".to_string(), 1024.0);
+
+        let rs = ResourceSet::from_map(map.clone());
+        assert_eq!(rs.len(), 3);
+        assert_eq!(rs.get("CPU").to_f64(), 4.0);
+
+        let roundtripped = rs.to_map();
+        assert_eq!(roundtripped["CPU"], 4.0);
+        assert_eq!(roundtripped["GPU"], 2.0);
+        assert_eq!(roundtripped["memory"], 1024.0);
+    }
+
+    #[test]
+    fn test_resource_set_from_map_filters_zeros() {
+        let mut map = HashMap::new();
+        map.insert("CPU".to_string(), 1.0);
+        map.insert("ZERO".to_string(), 0.0);
+        map.insert("NEG".to_string(), -1.0);
+
+        let rs = ResourceSet::from_map(map);
+        assert_eq!(rs.len(), 1);
+        assert!(rs.get("ZERO").is_zero());
+    }
+
+    #[test]
+    fn test_resource_set_iter() {
+        let mut rs = ResourceSet::new();
+        rs.set("A".to_string(), FixedPoint::from_f64(1.0));
+        rs.set("B".to_string(), FixedPoint::from_f64(2.0));
+
+        let pairs: HashMap<&str, f64> = rs.iter().map(|(k, v)| (k, v.to_f64())).collect();
+        assert_eq!(pairs["A"], 1.0);
+        assert_eq!(pairs["B"], 2.0);
+    }
+
+    #[test]
+    fn test_resource_set_empty_and_len() {
+        let rs = ResourceSet::new();
+        assert!(rs.is_empty());
+        assert_eq!(rs.len(), 0);
+
+        let mut rs2 = ResourceSet::new();
+        rs2.set("CPU".to_string(), FixedPoint::ONE);
+        assert!(!rs2.is_empty());
+        assert_eq!(rs2.len(), 1);
+    }
+
+    #[test]
+    fn test_fixed_point_constants() {
+        assert_eq!(FixedPoint::ZERO.raw(), 0);
+        assert_eq!(FixedPoint::ONE.to_f64(), 1.0);
+    }
 }

@@ -312,4 +312,120 @@ mod tests {
             CoreWorkerClient::connect("http://192.0.2.1:1", RetryConfig::default()).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_address_returns_exact_string() {
+        let addr = "http://192.168.1.100:12345";
+        let client = CoreWorkerClient::connect_lazy(addr, RetryConfig::default());
+        assert_eq!(client.address(), addr);
+    }
+
+    #[tokio::test]
+    async fn test_connect_lazy_ipv6_address() {
+        let addr = "http://[::1]:50051";
+        let client = CoreWorkerClient::connect_lazy(addr, RetryConfig::default());
+        assert_eq!(client.address(), addr);
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_connect_lazy_with_hostname() {
+        let addr = "http://localhost:9999";
+        let client = CoreWorkerClient::connect_lazy(addr, RetryConfig::default());
+        assert_eq!(client.address(), addr);
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_from_channel_preserves_address() {
+        let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
+        let address = "custom-address-label".to_string();
+        let client = CoreWorkerClient::from_channel(
+            channel,
+            RetryConfig::default(),
+            address.clone(),
+        );
+        // The address stored is whatever string we pass, not derived from channel.
+        assert_eq!(client.address(), "custom-address-label");
+    }
+
+    #[tokio::test]
+    async fn test_from_channel_with_custom_retry_config() {
+        let channel = Channel::from_static("http://[::1]:1").connect_lazy();
+        let config = RetryConfig {
+            max_retries: 7,
+            initial_delay: std::time::Duration::from_millis(50),
+            max_delay: std::time::Duration::from_secs(10),
+            multiplier: 3.0,
+            server_unavailable_timeout: std::time::Duration::from_secs(120),
+            max_pending_bytes: 50 * 1024 * 1024,
+        };
+        let client = CoreWorkerClient::from_channel(
+            channel,
+            config,
+            "http://[::1]:1".to_string(),
+        );
+        assert!(client.is_connected());
+        assert_eq!(client.address(), "http://[::1]:1");
+    }
+
+    #[tokio::test]
+    async fn test_multiple_clients_independent() {
+        let client1 =
+            CoreWorkerClient::connect_lazy("http://127.0.0.1:10001", RetryConfig::default());
+        let client2 =
+            CoreWorkerClient::connect_lazy("http://127.0.0.1:10002", RetryConfig::default());
+        let client3 =
+            CoreWorkerClient::connect_lazy("http://127.0.0.1:10003", RetryConfig::default());
+
+        assert_eq!(client1.address(), "http://127.0.0.1:10001");
+        assert_eq!(client2.address(), "http://127.0.0.1:10002");
+        assert_eq!(client3.address(), "http://127.0.0.1:10003");
+
+        assert!(client1.is_connected());
+        assert!(client2.is_connected());
+        assert!(client3.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_connect_lazy_is_connected_true() {
+        // Lazy connections report connected before any RPC is made.
+        let client =
+            CoreWorkerClient::connect_lazy("http://127.0.0.1:50099", RetryConfig::default());
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_from_channel_with_zero_retries() {
+        let channel = Channel::from_static("http://[::1]:1").connect_lazy();
+        let config = RetryConfig {
+            max_retries: 0,
+            ..RetryConfig::default()
+        };
+        let client = CoreWorkerClient::from_channel(
+            channel,
+            config,
+            "http://[::1]:1".to_string(),
+        );
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_connect_lazy_high_port() {
+        let addr = "http://127.0.0.1:65535";
+        let client = CoreWorkerClient::connect_lazy(addr, RetryConfig::default());
+        assert_eq!(client.address(), addr);
+        assert!(client.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_address_is_not_modified() {
+        // Ensure the address is stored verbatim, including trailing slashes or paths.
+        let addr = "http://10.0.0.1:8080";
+        let client = CoreWorkerClient::connect_lazy(addr, RetryConfig::default());
+        assert_eq!(client.address(), addr);
+        // Verify it returns a &str reference to the stored string.
+        let addr_ref: &str = client.address();
+        assert!(!addr_ref.is_empty());
+    }
 }
