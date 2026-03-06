@@ -21,6 +21,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -685,6 +686,18 @@ class DeploymentAutoscalingState:
                         ).get(replica_id)
         return total_requests
 
+    def _should_aggregate_metrics_at_controller(self) -> bool:
+        """
+        Determine if metrics should be aggregated at the controller.
+        If the Direct Ingress is enabled, then metrics should only be aggregated at the controller.
+
+        Returns:
+            True if metrics should be aggregated at the controller, False otherwise.
+        """
+        return (
+            RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
+        )
+
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
         `look_back_period_s` number of seconds.
@@ -696,7 +709,7 @@ class DeploymentAutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             return self._calculate_total_requests_aggregate_mode()
         else:
             return self._calculate_total_requests_simple_mode()
@@ -785,7 +798,7 @@ class DeploymentAutoscalingState:
             Sum of queued requests at all handles. Uses aggregated values in simple mode,
             or aggregates timeseries data in aggregate mode.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             # Aggregate mode: collect and aggregate timeseries
             queued_timeseries = self._collect_handle_queued_requests()
             if not queued_timeseries:

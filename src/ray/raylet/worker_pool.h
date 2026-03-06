@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
@@ -42,6 +43,8 @@
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
+#include "ray/util/process.h"
+#include "ray/util/process_interface.h"
 
 namespace ray {
 
@@ -579,7 +582,7 @@ class WorkerPool : public WorkerPoolInterface {
   ///   assigned to the worker.
   /// \return The process that we started and the worker ID assigned to it. If the worker
   /// ID is nil, we didn't start a process.
-  std::tuple<Process, WorkerID> StartWorkerProcess(
+  std::tuple<const ProcessInterface &, WorkerID> StartWorkerProcess(
       const Language &language,
       rpc::WorkerType worker_type,
       const JobID &job_id,
@@ -599,11 +602,12 @@ class WorkerPool : public WorkerPoolInterface {
   /// the environment variables of the parent process.
   /// \param[in] worker_id The WorkerID assigned to this worker process.
   /// \return An object representing the started worker process.
-  virtual Process StartProcess(const std::vector<std::string> &worker_command_args,
-                               const ProcessEnvironment &env,
-                               const WorkerID &worker_id);
+  virtual std::unique_ptr<ProcessInterface> StartProcess(
+      const std::vector<std::string> &worker_command_args,
+      const ProcessEnvironment &env,
+      const WorkerID &worker_id);
 
-  /// Push an warning message to user if worker pool is getting to big.
+  /// Push a warning message to user if worker pool is getting too big.
   virtual void WarnAboutSize();
 
   /// Make this synchronized function for unit test.
@@ -635,7 +639,7 @@ class WorkerPool : public WorkerPoolInterface {
     /// The type of the worker.
     rpc::WorkerType worker_type;
     /// The worker process instance.
-    Process proc;
+    std::unique_ptr<ProcessInterface> proc;
     /// The worker process start time.
     std::chrono::high_resolution_clock::time_point start_time;
     /// The runtime env Info.
@@ -816,14 +820,15 @@ class WorkerPool : public WorkerPoolInterface {
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
-  void AddWorkerProcess(State &state,
-                        const WorkerID &worker_id,
-                        rpc::WorkerType worker_type,
-                        const Process &proc,
-                        const std::chrono::high_resolution_clock::time_point &start,
-                        const rpc::RuntimeEnvInfo &runtime_env_info,
-                        const std::vector<std::string> &dynamic_options,
-                        std::optional<absl::Duration> worker_startup_keep_alive_duration);
+  const ProcessInterface &AddWorkerProcess(
+      State &state,
+      const WorkerID &worker_id,
+      rpc::WorkerType worker_type,
+      std::unique_ptr<ProcessInterface> proc,
+      const std::chrono::high_resolution_clock::time_point &start,
+      const rpc::RuntimeEnvInfo &runtime_env_info,
+      const std::vector<std::string> &dynamic_options,
+      std::optional<absl::Duration> worker_startup_keep_alive_duration);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
 
@@ -923,6 +928,9 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Ray metrics
   WorkerPoolMetrics worker_pool_metrics_;
+
+  /// A static null process used for returning references in error cases.
+  static inline const ProcessInterface &kNullProcess = Process();
 
   friend class WorkerPoolTest;
   friend class WorkerPoolDriverRegisteredTest;

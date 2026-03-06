@@ -17,7 +17,7 @@ depsets:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/serve_base_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray

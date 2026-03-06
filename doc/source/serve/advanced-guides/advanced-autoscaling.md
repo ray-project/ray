@@ -729,6 +729,10 @@ The following example shows a policy that reads a target replica count from a JS
 The instance lives only on the Serve controller and is never serialized after creation, so it's safe to hold non-picklable state such as `asyncio.Task` objects, open connections, or thread pools. `policy_kwargs` values must be JSON-serializable because they travel through the deployment config.
 :::
 
+:::{tip}
+If you're using `@task_consumer` deployments for asynchronous inference, Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that scales based on message queue length. See [Asynchronous Inference: Autoscaling](serve-async-inference-autoscaling) for setup and configuration.
+:::
+
 
 ### Application level autoscaling
 

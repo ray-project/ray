@@ -1215,6 +1215,7 @@ py_test(
     size = "small",
     srcs = [
         "test_typing.py",
+        "typing_files/check_typing_actor_async.py",
         "typing_files/check_typing_bad.py",
         "typing_files/check_typing_good.py",
     ],
@@ -1280,6 +1281,23 @@ py_test(
     deps = [
         ":conftest",
         "//:ray_lib",
+    ],
+)
+
+sh_test(
+    name = "test_exported_symbols_unix",
+    size = "small",
+    srcs = ["test_exported_symbols_linux.sh"],
+    data = [
+        "raylet_exported_symbols_linux.txt",
+        "raylet_exported_symbols_macos.txt",
+        "//:_raylet",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "small_size_python_tests",
+        "team:core",
     ],
 )
 

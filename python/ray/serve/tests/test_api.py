@@ -28,7 +28,7 @@ from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
 from ray.serve._private.test_utils import get_application_url
-from ray.serve.config import RequestRouterConfig
+from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -89,6 +89,32 @@ def test_ingress_wrapper_preserves_metadata():
     assert wrapped_cls.__doc__ == OriginalIngress.__doc__
     assert wrapped_cls.__annotations__ == OriginalIngress.__annotations__
     assert getattr(wrapped_cls, "__wrapped__", None) is OriginalIngress
+
+
+def test_ingress_async_init(serve_instance):
+    """Test that async __init__ works correctly with @serve.ingress.
+
+    Without the fix, cls.__init__() returns a coroutine that is silently
+    discarded, so self.msg is never set and the /check endpoint raises
+    AttributeError.
+    """
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class MyDeployment:
+        async def __init__(self):
+            await asyncio.sleep(0.01)
+            self.msg = "initialized"
+
+        @app.get("/check")
+        async def check(self):
+            return self.msg
+
+    serve.run(MyDeployment.bind())
+    resp = httpx.get(f"{get_application_url()}/check")
+    assert resp.status_code == 200
+    assert resp.json() == "initialized"
 
 
 class FakeRequestRouter(RequestRouter):
@@ -860,6 +886,124 @@ def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles():
             pass
 
         g.options(max_replicas_per_node=3, placement_group_bundles=[{"CPU": 1}])
+
+
+def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config():
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+
+        @serve.deployment(
+            max_replicas_per_node=3,
+            num_replicas=4,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class A:
+            pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+
+        @serve.deployment
+        class B:
+            pass
+
+        B.options(
+            max_replicas_per_node=3,
+            num_replicas=4,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+
+
+def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config_merged():
+    """Verify the check catches conflicts from the merged config."""
+
+    @serve.deployment(max_replicas_per_node=1, num_replicas=2)
+    class A:
+        pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting max_replicas_per_node is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+        A.options(
+            num_replicas=2,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+
+
+def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config():
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting placement_group_strategy is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+
+        @serve.deployment(
+            placement_group_strategy="SPREAD",
+            placement_group_bundles=[{"CPU": 1}],
+            num_replicas=4,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class A:
+            pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting placement_group_strategy is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+
+        @serve.deployment
+        class B:
+            pass
+
+        B.options(
+            placement_group_strategy="SPREAD",
+            placement_group_bundles=[{"CPU": 1}],
+            num_replicas=4,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+
+
+def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config_merged():
+    """Verify the check catches conflicts from the merged config."""
+
+    @serve.deployment(
+        placement_group_strategy="SPREAD",
+        placement_group_bundles=[{"CPU": 1}],
+        num_replicas=2,
+    )
+    class A:
+        pass
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Setting placement_group_strategy is not allowed when "
+            "gang_scheduling_config is provided."
+        ),
+    ):
+        A.options(
+            num_replicas=2,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
 
 
 def test_status_basic(serve_instance):
