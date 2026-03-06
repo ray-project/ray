@@ -1,7 +1,7 @@
 import collections
 import itertools
 from dataclasses import replace
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -24,8 +24,9 @@ from ray.data.block import (
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    import pyarrow
 
-    from ray.data.block import BlockMetadataWithSchema
+    from ray.data.block import BlockMetadata, BlockMetadataWithSchema
 
 
 class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
@@ -171,11 +172,17 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         blocks from both sides together in parallel.
         """
         left_blocks_with_metadata = []
+        left_schema = None
         for bundle in left_input:
+            if left_schema is None and bundle.schema is not None:
+                left_schema = bundle.schema
             for block, meta in bundle.blocks:
                 left_blocks_with_metadata.append((block, meta))
         right_blocks_with_metadata = []
+        right_schema = None
         for bundle in right_input:
+            if right_schema is None and bundle.schema is not None:
+                right_schema = bundle.schema
             for block, meta in bundle.blocks:
                 right_blocks_with_metadata.append((block, meta))
 
@@ -186,16 +193,31 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             right_blocks_with_metadata
         )
 
-        # Check that both sides have the same number of rows.
-        # TODO(Clark): Support different number of rows via user-directed
-        # dropping/padding.
         total_left_rows = sum(left_block_rows)
         total_right_rows = sum(right_block_rows)
         if total_left_rows != total_right_rows:
-            raise ValueError(
-                "Cannot zip datasets of different number of rows: "
-                f"{total_left_rows}, {total_right_rows}"
+            (
+                left_blocks_with_metadata,
+                left_block_rows,
+                left_block_bytes,
+                right_blocks_with_metadata,
+                right_block_rows,
+                right_block_bytes,
+            ) = self._resolve_row_count_mismatch(
+                left_blocks_with_metadata=left_blocks_with_metadata,
+                left_block_rows=left_block_rows,
+                left_schema=left_schema,
+                right_blocks_with_metadata=right_blocks_with_metadata,
+                right_block_rows=right_block_rows,
+                right_schema=right_schema,
             )
+
+        if not left_block_rows or not right_block_rows:
+            for ref in left_input:
+                ref.destroy_if_owned()
+            for ref in right_input:
+                ref.destroy_if_owned()
+            return collections.deque(), {self._name: to_stats([])}
 
         # Whether the left and right input sides are inverted
         input_side_inverted = False
@@ -280,6 +302,187 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
         return output_refs, stats
 
+    def _resolve_row_count_mismatch(
+        self,
+        left_blocks_with_metadata: BlockPartition,
+        left_block_rows: List[int],
+        left_schema: Optional[Any],
+        right_blocks_with_metadata: BlockPartition,
+        right_block_rows: List[int],
+        right_schema: Optional[Any],
+    ) -> Tuple[
+        BlockPartition,
+        List[int],
+        List[int],
+        BlockPartition,
+        List[int],
+        List[int],
+    ]:
+        total_left_rows = sum(left_block_rows)
+        total_right_rows = sum(right_block_rows)
+
+        # User-directed row-mismatch policy for zip:
+        # - strict (default): fail fast if row counts differ.
+        # - drop/truncate/min: truncate both sides to the smaller row count.
+        # - pad/max: null-pad the shorter side to the larger row count.
+        row_count_policy = self._data_context.get_config("zip_rows_policy", "strict")
+        if not isinstance(row_count_policy, str):
+            raise ValueError(
+                "`zip_rows_policy` must be a string, "
+                f"got {type(row_count_policy).__name__}."
+            )
+        row_count_policy = str(row_count_policy).lower()
+
+        if row_count_policy in ("drop", "truncate", "min"):
+            # "drop": keep only the common prefix by row count.
+            # This reuses _split_at_indices for fast metadata-aware truncation.
+            target_num_rows = min(total_left_rows, total_right_rows)
+            if total_left_rows > target_num_rows:
+                (
+                    left_blocks_with_metadata,
+                    left_block_rows,
+                ) = self._truncate_blocks_to_num_rows(
+                    left_blocks_with_metadata,
+                    left_block_rows,
+                    target_num_rows,
+                )
+            if total_right_rows > target_num_rows:
+                (
+                    right_blocks_with_metadata,
+                    right_block_rows,
+                ) = self._truncate_blocks_to_num_rows(
+                    right_blocks_with_metadata,
+                    right_block_rows,
+                    target_num_rows,
+                )
+        elif row_count_policy in ("pad", "max"):
+            # "pad": preserve all rows from the longer side and fill missing rows
+            # in the shorter side with typed null columns.
+            target_num_rows = max(total_left_rows, total_right_rows)
+            if total_left_rows < target_num_rows:
+                (
+                    left_blocks_with_metadata,
+                    left_block_rows,
+                ) = self._pad_blocks_to_num_rows(
+                    left_blocks_with_metadata,
+                    left_block_rows,
+                    target_num_rows,
+                    left_schema,
+                )
+            if total_right_rows < target_num_rows:
+                (
+                    right_blocks_with_metadata,
+                    right_block_rows,
+                ) = self._pad_blocks_to_num_rows(
+                    right_blocks_with_metadata,
+                    right_block_rows,
+                    target_num_rows,
+                    right_schema,
+                )
+        else:
+            raise ValueError(
+                "Cannot zip datasets of different number of rows: "
+                f"{total_left_rows}, {total_right_rows}. "
+                "Set `DataContext.get_current().set_config('zip_rows_policy', 'drop')` "
+                "to truncate to the shorter input or `'pad'` to null-pad the shorter "
+                "input."
+            )
+
+        left_block_rows, left_block_bytes = self._calculate_blocks_rows_and_bytes(
+            left_blocks_with_metadata
+        )
+        right_block_rows, right_block_bytes = self._calculate_blocks_rows_and_bytes(
+            right_blocks_with_metadata
+        )
+
+        return (
+            left_blocks_with_metadata,
+            left_block_rows,
+            left_block_bytes,
+            right_blocks_with_metadata,
+            right_block_rows,
+            right_block_bytes,
+        )
+
+    def _truncate_blocks_to_num_rows(
+        self,
+        blocks_with_metadata: BlockPartition,
+        block_rows: List[int],
+        target_num_rows: int,
+    ) -> Tuple[BlockPartition, List[int]]:
+        # Keep at most target_num_rows rows without materializing blocks on driver.
+        total_num_rows = sum(block_rows)
+        if total_num_rows <= target_num_rows:
+            return blocks_with_metadata, block_rows
+        if target_num_rows <= 0:
+            return [], []
+
+        split_blocks, split_metadata = _split_at_indices(
+            blocks_with_metadata,
+            [target_num_rows],
+            block_rows=block_rows,
+        )
+        kept_metadata = split_metadata[0]
+        return list(zip(split_blocks[0], kept_metadata)), [
+            meta.num_rows for meta in kept_metadata
+        ]
+
+    def _pad_blocks_to_num_rows(
+        self,
+        blocks_with_metadata: BlockPartition,
+        block_rows: List[int],
+        target_num_rows: int,
+        schema: Optional[Any],
+    ) -> Tuple[BlockPartition, List[int]]:
+        # Append a single null block so total row count reaches target_num_rows.
+        total_num_rows = sum(block_rows)
+        if total_num_rows >= target_num_rows:
+            return blocks_with_metadata, block_rows
+
+        missing_num_rows = target_num_rows - total_num_rows
+        arrow_schema = self._resolve_arrow_schema_for_padding(
+            schema=schema, blocks_with_metadata=blocks_with_metadata
+        )
+        if arrow_schema is None:
+            raise ValueError(
+                "Cannot pad zip input with unknown schema. "
+                "Use `zip_rows_policy='drop'` or ensure the input has a schema."
+            )
+
+        create_null_block = cached_remote_fn(
+            _create_null_block_from_schema, num_returns=2
+        )
+        padding_block, padding_metadata = create_null_block.remote(
+            arrow_schema,
+            missing_num_rows,
+        )
+        blocks_with_metadata = list(blocks_with_metadata)
+        blocks_with_metadata.append((padding_block, ray.get(padding_metadata)))
+        block_rows = list(block_rows)
+        block_rows.append(missing_num_rows)
+        return blocks_with_metadata, block_rows
+
+    def _resolve_arrow_schema_for_padding(
+        self,
+        schema: Optional[Any],
+        blocks_with_metadata: BlockPartition,
+    ) -> Optional["pyarrow.Schema"]:
+        import pyarrow as pa
+
+        from ray.data.dataset import Schema as DatasetSchema
+
+        if schema is not None:
+            if isinstance(schema, DatasetSchema):
+                schema = schema.base_schema
+            if isinstance(schema, pa.Schema):
+                return schema
+
+        if blocks_with_metadata:
+            get_arrow_schema = cached_remote_fn(_get_arrow_schema_from_block)
+            return ray.get(get_arrow_schema.remote(blocks_with_metadata[0][0]))
+
+        return None
+
     def _calculate_blocks_rows_and_bytes(
         self,
         blocks_with_metadata: BlockPartition,
@@ -322,6 +525,25 @@ def _zip_one_block(
 
     return result, BlockMetadataWithSchema.from_block(
         result, block_exec_stats=stats.build()
+    )
+
+
+def _get_arrow_schema_from_block(block: Block) -> "pyarrow.Schema":
+    accessor = BlockAccessor.for_block(block)
+    sample_block = accessor.slice(0, 1)
+    return BlockAccessor.for_block(sample_block).to_arrow().schema
+
+
+def _create_null_block_from_schema(
+    schema: "pyarrow.Schema", num_rows: int
+) -> Tuple[Block, "BlockMetadata"]:
+    import pyarrow as pa
+
+    stats = BlockExecStats.builder()
+    arrays = [pa.nulls(num_rows, type=field.type) for field in schema]
+    block = pa.Table.from_arrays(arrays, schema=schema)
+    return block, BlockAccessor.for_block(block).get_metadata(
+        block_exec_stats=stats.build()
     )
 
 
