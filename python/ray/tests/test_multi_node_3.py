@@ -8,12 +8,14 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._common.test_utils import Semaphore
+from ray._common.test_utils import (
+    Semaphore,
+    run_string_as_driver,
+)
 from ray._private.test_utils import (
     check_call_ray,
     check_call_subprocess,
     kill_process_by_name,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     start_redis_instance,
     wait_for_children_of_pid,

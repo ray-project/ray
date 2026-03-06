@@ -420,7 +420,8 @@ void GcsActorManager::HandleRestartActorForLineageReconstruction(
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      });
+      },
+      rpc::events::ActorLifecycleEvent::LINEAGE_RECONSTRUCTION);
 }
 
 void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
@@ -1292,11 +1293,11 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
-    absl::flat_hash_map<WorkerID, ActorID> children_ids;
+    std::vector<std::pair<WorkerID, ActorID>> children_ids;
     // Make a copy of all the actor IDs owned by workers on the dead node.
     for (const auto &owner : it->second) {
       for (const auto &child_id : owner.second.children_actor_ids_) {
-        children_ids.emplace(owner.first, child_id);
+        children_ids.emplace_back(owner.first, child_id);
       }
     }
 
@@ -1442,10 +1443,12 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
   }
 }
 
-void GcsActorManager::RestartActor(const ActorID &actor_id,
-                                   bool need_reschedule,
-                                   const rpc::ActorDeathCause &death_cause,
-                                   std::function<void()> done_callback) {
+void GcsActorManager::RestartActor(
+    const ActorID &actor_id,
+    bool need_reschedule,
+    const rpc::ActorDeathCause &death_cause,
+    std::function<void()> done_callback,
+    std::optional<rpc::events::ActorLifecycleEvent::RestartReason> restart_reason) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
@@ -1515,10 +1518,14 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
     mutable_actor_table_data->clear_resource_mapping();
+    // Emit lifecycle event immediately after state transition so tests and
+    // observers see the restart without waiting for async table writes.
+    actor->WriteActorExportEvent(false, restart_reason);
     // The backend storage is reliable in the future, so the status must be ok.
     gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
+
         {[this, actor, actor_id, mutable_actor_table_data, done_callback](
              Status actor_table_status) {
            gcs_table_storage_->ActorTaskSpecTable().Put(
@@ -1531,7 +1538,6 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
                   }
                   gcs_publisher_->PublishActor(
                       actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data));
-                  actor->WriteActorExportEvent(false);
                 },
                 io_context_});
          },
@@ -1622,7 +1628,7 @@ void GcsActorManager::OnActorSchedulingFailed(
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
                                              const rpc::PushTaskReply &reply) {
   auto actor_id = actor->GetActorID();
-  liftime_num_created_actors_++;
+  lifetime_num_created_actors_++;
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
   // counter may ReportActorOutOfScope to GCS server,
   // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
@@ -2033,7 +2039,7 @@ void GcsActorManager::RecordMetrics() const {
   gcs_actor_by_state_gauge_.Record(GetPendingActorsCount(), {{"State", "Pending"}});
   if (usage_stats_client_ != nullptr) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
-                                                 liftime_num_created_actors_);
+                                                 lifetime_num_created_actors_);
   }
   actor_state_counter_->FlushOnChangeCallbacks();
 }

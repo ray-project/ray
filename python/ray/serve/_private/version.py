@@ -4,7 +4,8 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from zlib import crc32
 
-from ray._common.pydantic_compat import BaseModel
+from pydantic import BaseModel
+
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_string
 from ray.serve.config import AutoscalingConfig
@@ -21,6 +22,8 @@ class DeploymentVersion:
         ray_actor_options: Optional[Dict],
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         route_prefix: Optional[str] = None,
     ):
@@ -37,6 +40,10 @@ class DeploymentVersion:
         self.ray_actor_options = ray_actor_options
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
+        self.placement_group_bundle_label_selector = (
+            placement_group_bundle_label_selector
+        )
+        self.placement_group_fallback_strategy = placement_group_fallback_strategy
         self.max_replicas_per_node = max_replicas_per_node
         self.route_prefix = route_prefix
         self.compute_hashes()
@@ -69,6 +76,8 @@ class DeploymentVersion:
             or self.placement_group_options_hash
             != new_version.placement_group_options_hash
             or self.max_replicas_per_node != new_version.max_replicas_per_node
+            or self.gang_scheduling_config_hash
+            != new_version.gang_scheduling_config_hash
         )
 
     def requires_actor_reconfigure(self, new_version):
@@ -96,10 +105,24 @@ class DeploymentVersion:
             combined_placement_group_options["bundles"] = self.placement_group_bundles
         if self.placement_group_strategy is not None:
             combined_placement_group_options["strategy"] = self.placement_group_strategy
+        if self.placement_group_bundle_label_selector is not None:
+            combined_placement_group_options[
+                "bundle_label_selector"
+            ] = self.placement_group_bundle_label_selector
+        if self.placement_group_fallback_strategy is not None:
+            combined_placement_group_options[
+                "fallback_strategy"
+            ] = self.placement_group_fallback_strategy
         serialized_placement_group_options = _serialize(
             combined_placement_group_options
         )
         self.placement_group_options_hash = crc32(serialized_placement_group_options)
+        serialized_gang_scheduling_config = _serialize(
+            self.deployment_config.gang_scheduling_config.model_dump()
+            if self.deployment_config.gang_scheduling_config is not None
+            else {}
+        )
+        self.gang_scheduling_config_hash = crc32(serialized_gang_scheduling_config)
         # Include app-level route prefix in the version hashes so changing
         # it triggers an in-place reconfigure of running replicas.
         serialized_route_prefix = _serialize(self.route_prefix)
@@ -127,23 +150,48 @@ class DeploymentVersion:
                     DeploymentOptionUpdateType.NeedsActorReconfigure,
                 ]
             )
+            + serialized_gang_scheduling_config
         )
 
     def to_proto(self) -> bytes:
         # TODO(simon): enable cross language user config
+
+        placement_group_bundles = (
+            json.dumps(self.placement_group_bundles)
+            if self.placement_group_bundles is not None
+            else ""
+        )
+
+        placement_group_bundle_label_selector = (
+            json.dumps(self.placement_group_bundle_label_selector)
+            if self.placement_group_bundle_label_selector is not None
+            else ""
+        )
+
+        placement_group_fallback_strategy = (
+            json.dumps(self.placement_group_fallback_strategy)
+            if self.placement_group_fallback_strategy is not None
+            else ""
+        )
+
+        placement_group_strategy = (
+            self.placement_group_strategy
+            if self.placement_group_strategy is not None
+            else ""
+        )
+        max_replicas_per_node = (
+            self.max_replicas_per_node if self.max_replicas_per_node is not None else 0
+        )
+
         return DeploymentVersionProto(
             code_version=self.code_version,
             deployment_config=self.deployment_config.to_proto(),
             ray_actor_options=json.dumps(self.ray_actor_options),
-            placement_group_bundles=json.dumps(self.placement_group_bundles)
-            if self.placement_group_bundles is not None
-            else "",
-            placement_group_strategy=self.placement_group_strategy
-            if self.placement_group_strategy is not None
-            else "",
-            max_replicas_per_node=self.max_replicas_per_node
-            if self.max_replicas_per_node is not None
-            else 0,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
+            placement_group_bundle_label_selector=placement_group_bundle_label_selector,
+            placement_group_fallback_strategy=placement_group_fallback_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
     @classmethod
@@ -157,8 +205,20 @@ class DeploymentVersion:
                 if proto.placement_group_bundles
                 else None
             ),
-            placement_group_version=(
-                proto.placement_group_version if proto.placement_group_version else None
+            placement_group_bundle_label_selector=(
+                json.loads(proto.placement_group_bundle_label_selector)
+                if proto.placement_group_bundle_label_selector
+                else None
+            ),
+            placement_group_fallback_strategy=(
+                json.loads(proto.placement_group_fallback_strategy)
+                if proto.placement_group_fallback_strategy
+                else None
+            ),
+            placement_group_strategy=(
+                proto.placement_group_strategy
+                if proto.placement_group_strategy
+                else None
             ),
             max_replicas_per_node=(
                 proto.max_replicas_per_node if proto.max_replicas_per_node else None
@@ -172,15 +232,17 @@ class DeploymentVersion:
         should prompt a deployment version update.
         """
         reconfigure_dict = {}
-        # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
         # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
-        fields = (
-            self.deployment_config.model_fields
-            if hasattr(self.deployment_config, "model_fields")
-            else self.deployment_config.__fields__
-        )
+        # Access from class, not instance, to avoid deprecation warning.
+        fields = DeploymentConfig.model_fields
         for option_name, field in fields.items():
-            option_weight = field.field_info.extra.get("update_type")
+            # In Pydantic v2, extra kwargs passed to Field() are in json_schema_extra
+            json_schema_extra = field.json_schema_extra
+            option_weight = (
+                json_schema_extra.get("update_type")
+                if isinstance(json_schema_extra, dict)
+                else None
+            )
             if option_weight in update_types:
                 reconfigure_dict[option_name] = getattr(
                     self.deployment_config, option_name
@@ -190,11 +252,13 @@ class DeploymentVersion:
                 # was changed, because the rest of the fields are only
                 # used in deployment state manager
                 if isinstance(reconfigure_dict[option_name], AutoscalingConfig):
-                    reconfigure_dict[option_name] = reconfigure_dict[option_name].dict(
-                        include={"metrics_interval_s", "look_back_period_s"}
-                    )
+                    reconfigure_dict[option_name] = reconfigure_dict[
+                        option_name
+                    ].model_dump(include={"metrics_interval_s", "look_back_period_s"})
                 elif isinstance(reconfigure_dict[option_name], BaseModel):
-                    reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
+                    reconfigure_dict[option_name] = reconfigure_dict[
+                        option_name
+                    ].model_dump()
 
         # Can't serialize bytes. The request router class is already
         # included in the serialized config as request_router_class.

@@ -3,11 +3,11 @@ import shutil
 import sys
 import time
 import uuid
+from os import listdir
 
 import pytest
 
 import ray
-import ray._private.ray_constants as ray_constants
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import check_call_ray
 
@@ -160,7 +160,7 @@ def test_session_dir_uniqueness():
     assert len(session_dirs) == 2
 
 
-def test_head_temp_dir_shared_with_worker(delete_default_temp_dir):
+def test_head_temp_dir_shared_with_worker(ray_start_cluster):
     """Test that head node temp_dir is shared with worker node when only head temp_dir is specified."""
     head_temp_dir = os.path.join(
         ray._common.utils.get_default_ray_temp_dir(),
@@ -169,52 +169,35 @@ def test_head_temp_dir_shared_with_worker(delete_default_temp_dir):
         ],  # truncate the uuid to avoid the socket path length limit
     )
 
-    # Start head node with temp-dir specified
-    check_call_ray(
-        [
-            "start",
-            "--head",
-            f"--temp-dir={head_temp_dir}",
-            "--port",
-            str(ray_constants.DEFAULT_PORT),
-        ]
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, temp_dir=head_temp_dir)
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=10)
+    nodes = ray.nodes()
+    assert len(nodes) == 2, "Expected 2 nodes in the cluster"
+
+    # Check that both nodes' temp directories are under the head's temp_dir
+    assert os.path.isdir(
+        os.path.join(head_temp_dir, "session_latest")
+    ), "Head node session directory not found in specified temp_dir"
+
+    files = listdir(os.path.join(head_temp_dir, "session_latest", "logs"))
+    raylet_log_count = 0
+    for file in files:
+        if file.find("raylet") != -1:
+            raylet_log_count += 1
+
+    assert raylet_log_count > 2, (
+        "Worker node failed to use head node temp dir. "
+        "Worker node default temp dir resolution logic maybe wrong."
     )
 
-    # Start worker node without specifying temp-dir
-    check_call_ray(
-        [
-            "start",
-            f"--address=127.0.0.1:{ray_constants.DEFAULT_PORT}",
-        ]
-    )
-
-    try:
-        # Connect to the cluster
-        ray.init(address="auto")
-
-        # Verify both head and worker nodes exist
-        wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=10)
-        nodes = ray.nodes()
-        assert len(nodes) == 2, "Expected 2 nodes in the cluster"
-
-        # Check that both nodes' temp directories are under the head's temp_dir
-        # The session_latest should exist in head_temp_dir
-        assert os.path.isdir(
-            os.path.join(head_temp_dir, "session_latest")
-        ), "Head node session directory not found in specified temp_dir"
-
-        # Both nodes should be using the same temp directory (head's temp_dir)
-        assert os.path.isfile(
-            os.path.join(head_temp_dir, "ray_current_cluster")
-        ), "Cluster info file not found in head temp_dir"
-
-        ray.shutdown()
-    finally:
-        check_call_ray(["stop"])
-        shutil.rmtree(head_temp_dir, ignore_errors=True)
+    shutil.rmtree(head_temp_dir)
 
 
-def test_worker_temp_dir_different_from_head(delete_default_temp_dir):
+def test_worker_temp_dir_different_from_head(ray_start_cluster):
     """Test that worker node can have a different temp_dir when only worker temp_dir is specified."""
     worker_temp_dir = os.path.join(
         ray._common.utils.get_default_ray_temp_dir(),
@@ -223,60 +206,33 @@ def test_worker_temp_dir_different_from_head(delete_default_temp_dir):
         ],  # truncate the uuid to avoid the socket path length limit
     )
 
-    # Start head node without specifying temp-dir
-    check_call_ray(
-        [
-            "start",
-            "--head",
-            "--port",
-            str(ray_constants.DEFAULT_PORT),
-        ]
-    )
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1, temp_dir=worker_temp_dir)
+    ray.init(address=cluster.address)
 
-    # Start worker node with temp-dir specified
-    check_call_ray(
-        [
-            "start",
-            f"--address=127.0.0.1:{ray_constants.DEFAULT_PORT}",
-            f"--temp-dir={worker_temp_dir}",
-        ]
-    )
+    wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=10)
+    nodes = ray.nodes()
+    assert len(nodes) == 2, "Expected 2 nodes in the cluster"
 
-    try:
-        # Connect to the cluster
-        ray.init(address="auto")
+    assert os.path.isdir(
+        os.path.join(worker_temp_dir, "session_latest")
+    ), "Worker session directory not found in specified temp_dir"
 
-        # Verify both head and worker nodes exist
-        wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=10)
-        nodes = ray.nodes()
-        assert len(nodes) == 2, "Expected 2 nodes in the cluster"
+    default_head_temp_dir = ray._common.utils.get_default_ray_temp_dir()
+    assert os.path.exists(
+        default_head_temp_dir
+    ), "Head node should be using default temp_dir"
 
-        # Verify worker temp-dir was created at the specified location
-        assert os.path.isfile(
-            os.path.join(worker_temp_dir, "ray_current_cluster")
-        ), "Worker cluster info file not found in specified temp_dir"
-        assert os.path.isdir(
-            os.path.join(worker_temp_dir, "session_latest")
-        ), "Worker session directory not found in specified temp_dir"
+    assert (
+        worker_temp_dir != default_head_temp_dir
+    ), "Worker temp_dir should be different from head node's default temp_dir"
 
-        # Verify head node is using default temp_dir (different from worker)
-        default_head_temp_dir = ray._common.utils.get_default_ray_temp_dir()
-        assert os.path.exists(
-            default_head_temp_dir
-        ), "Head node should be using default temp_dir"
-
-        # Ensure they are different directories
-        assert (
-            worker_temp_dir != default_head_temp_dir
-        ), "Worker temp_dir should be different from head node's default temp_dir"
-
-        ray.shutdown()
-    finally:
-        check_call_ray(["stop"])
-        shutil.rmtree(worker_temp_dir, ignore_errors=True)
+    shutil.rmtree(worker_temp_dir)
+    shutil.rmtree(default_head_temp_dir)
 
 
-def test_both_nodes_different_temp_dirs(delete_default_temp_dir):
+def test_both_nodes_different_temp_dirs(ray_start_cluster):
     """Test that head and worker can have different temp_dirs when both are specified."""
     head_temp_dir = os.path.join(
         ray._common.utils.get_default_ray_temp_dir(),
@@ -291,71 +247,37 @@ def test_both_nodes_different_temp_dirs(delete_default_temp_dir):
         ],  # truncate the uuid to avoid the socket path length limit
     )
 
-    # Ensure directories are different
     assert (
         head_temp_dir != worker_temp_dir
     ), "Test setup error: directories should be different"
 
-    # Start head node with temp-dir specified
-    check_call_ray(
-        [
-            "start",
-            "--head",
-            f"--temp-dir={head_temp_dir}",
-            "--port",
-            str(ray_constants.DEFAULT_PORT),
-        ]
-    )
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, temp_dir=head_temp_dir)
+    cluster.add_node(num_cpus=1, temp_dir=worker_temp_dir)
+    ray.init(address=cluster.address)
 
-    # Start worker node with a different temp-dir specified
-    check_call_ray(
-        [
-            "start",
-            f"--address=127.0.0.1:{ray_constants.DEFAULT_PORT}",
-            f"--temp-dir={worker_temp_dir}",
-        ]
-    )
+    wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=10)
+    nodes = ray.nodes()
+    assert len(nodes) == 2, "Expected 2 nodes in the cluster"
 
-    try:
-        # Connect to the cluster
-        ray.init(address="auto")
+    assert os.path.isdir(
+        os.path.join(head_temp_dir, "session_latest")
+    ), "Head session directory not found in specified temp_dir"
+    assert os.path.isdir(
+        os.path.join(worker_temp_dir, "session_latest")
+    ), "Worker session directory not found in specified temp_dir"
 
-        # Verify both head and worker nodes exist
-        wait_for_condition(lambda: len(ray.nodes()) == 2, timeout=10)
-        nodes = ray.nodes()
-        assert len(nodes) == 2, "Expected 2 nodes in the cluster"
+    assert (
+        head_temp_dir != worker_temp_dir
+    ), "Head and worker temp_dirs should be different"
+    assert os.path.exists(head_temp_dir), "Head temp_dir should exist"
+    assert os.path.exists(worker_temp_dir), "Worker temp_dir should exist"
 
-        # Verify head temp-dir was created at the specified location
-        assert os.path.isfile(
-            os.path.join(head_temp_dir, "ray_current_cluster")
-        ), "Head cluster info file not found in specified temp_dir"
-        assert os.path.isdir(
-            os.path.join(head_temp_dir, "session_latest")
-        ), "Head session directory not found in specified temp_dir"
-
-        # Verify worker temp-dir was created at the specified location
-        assert os.path.isfile(
-            os.path.join(worker_temp_dir, "ray_current_cluster")
-        ), "Worker cluster info file not found in specified temp_dir"
-        assert os.path.isdir(
-            os.path.join(worker_temp_dir, "session_latest")
-        ), "Worker session directory not found in specified temp_dir"
-
-        # Verify both directories exist and are different
-        assert (
-            head_temp_dir != worker_temp_dir
-        ), "Head and worker temp_dirs should be different"
-        assert os.path.exists(head_temp_dir), "Head temp_dir should exist"
-        assert os.path.exists(worker_temp_dir), "Worker temp_dir should exist"
-
-        ray.shutdown()
-    finally:
-        check_call_ray(["stop"])
-        shutil.rmtree(head_temp_dir, ignore_errors=True)
-        shutil.rmtree(worker_temp_dir, ignore_errors=True)
+    shutil.rmtree(head_temp_dir)
+    shutil.rmtree(worker_temp_dir)
 
 
-def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
+def test_resolve_user_ray_temp_dir_from_gcs(ray_start_cluster):
     """Test that resolve_user_ray_temp_dir correctly retrieves temp_dir from GCS.
 
     This test verifies that resolve_user_ray_temp_dir can correctly fetch temp_dir
@@ -370,49 +292,37 @@ def test_resolve_user_ray_temp_dir_from_gcs(delete_default_temp_dir):
         ],  # truncate the uuid to avoid the socket path length limit
     )
 
+    cluster = ray_start_cluster
+
     # Start head node with temp-dir specified
-    check_call_ray(
-        [
-            "start",
-            "--head",
-            f"--temp-dir={head_temp_dir}",
-            "--port",
-            str(ray_constants.DEFAULT_PORT),
-        ]
+    cluster.add_node(num_cpus=1, temp_dir=head_temp_dir)
+
+    ray.init(address=cluster.address)
+    wait_for_condition(lambda: len(ray.nodes()) == 1, timeout=10)
+    nodes = ray.nodes()
+    assert len(nodes) == 1, "Expected 1 node in the cluster"
+    node_id = nodes[0]["NodeID"]
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    ray.shutdown()
+
+    # test WITHOUT ray.init() (fetch temp_dir from GCS)
+    resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
+        gcs_client, node_id=node_id
+    )
+    assert resolved_temp_dir == head_temp_dir, (
+        f"Expected temp_dir from GCS to be {head_temp_dir}, "
+        f"but got {resolved_temp_dir}"
     )
 
-    try:
-        ray.init(address="auto")
-        wait_for_condition(lambda: len(ray.nodes()) == 1, timeout=10)
-        nodes = ray.nodes()
-        assert len(nodes) == 1, "Expected 1 node in the cluster"
-        node_id = nodes[0]["NodeID"]
-        gcs_client = ray._private.worker.global_worker.gcs_client
-        ray.shutdown()
-
-        # test WITHOUT ray.init() (fetch temp_dir from GCS)
-        resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
-            gcs_client, node_id=node_id
-        )
-        assert resolved_temp_dir == head_temp_dir, (
-            f"Expected temp_dir from GCS to be {head_temp_dir}, "
-            f"but got {resolved_temp_dir}"
-        )
-
-        # test WITH ray.init() (fetch temp_dir from runtime context)
-        ray.init(address="auto")
-        resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
-            gcs_client, node_id=node_id
-        )
-        assert resolved_temp_dir == head_temp_dir, (
-            f"Expected temp_dir from runtime context to be {head_temp_dir}, "
-            f"but got {resolved_temp_dir}"
-        )
-
-        ray.shutdown()
-    finally:
-        check_call_ray(["stop"])
-        shutil.rmtree(head_temp_dir, ignore_errors=True)
+    # test WITH ray.init() (fetch temp_dir from runtime context)
+    ray.init(address=cluster.address)
+    resolved_temp_dir = ray._common.utils.resolve_user_ray_temp_dir(
+        gcs_client, node_id=node_id
+    )
+    assert resolved_temp_dir == head_temp_dir, (
+        f"Expected temp_dir from runtime context to be {head_temp_dir}, "
+        f"but got {resolved_temp_dir}"
+    )
 
 
 if __name__ == "__main__":

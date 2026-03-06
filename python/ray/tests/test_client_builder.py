@@ -9,11 +9,11 @@ import pytest
 import ray
 import ray.client_builder as client_builder
 import ray.util.client.server.server as ray_client_server
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     run_string_as_driver,
-    run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.util.state import list_workers
 
 
@@ -447,7 +447,14 @@ def test_client_deprecation_warn():
 def test_task_use_prestarted_worker(call_ray_start):
     ray.init("ray://localhost:50056")
 
-    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+    assert (
+        len(
+            list_workers(
+                filters=[("worker_type", "!=", "DRIVER")], raise_on_missing_output=False
+            )
+        )
+        == 2
+    )
 
     @ray.remote(num_cpus=2)
     def f():
@@ -455,7 +462,14 @@ def test_task_use_prestarted_worker(call_ray_start):
 
     assert ray.get(f.remote()) == 42
 
-    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+    assert (
+        len(
+            list_workers(
+                filters=[("worker_type", "!=", "DRIVER")], raise_on_missing_output=False
+            )
+        )
+        == 2
+    )
 
 
 if __name__ == "__main__":

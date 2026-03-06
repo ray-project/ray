@@ -74,6 +74,10 @@ extensions = [
     "sphinx_docsearch",
 ]
 
+# Disable autodoc_pydantic features that can produce empty raw directives
+# (e.g. when schema JSON fails for models with non-serializable fields)
+autodoc_pydantic_model_show_json = False
+
 # Configuration for algolia
 # Note: This API key grants read access to our indexes and is intended to be public.
 # See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
@@ -139,6 +143,13 @@ nitpick_ignore_regex = [
     # UnknownPreprocessorError is an internal exception not exported in public API
     ("py:exc", "UnknownPreprocessorError"),
     ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
+    # TypeVar for gRPCInputStream generic type
+    ("py:obj", "ray\\.serve\\.grpc_util\\.T"),
+    # autodoc_pydantic generates invalid py:obj refs for pydantic v2 validators
+    # (e.g. "all fields", "_validate_*" references in validator docstrings)
+    ("py:obj", r"ray\.serve\.config\.\w+\.all fields"),
+    ("py:obj", r"ray\.serve\.config\.GangSchedulingConfig\._validate_runtime_failure_policy"),
+    ("py:obj", r"ray\.serve\.schema\.\w+\.all fields"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -242,12 +253,11 @@ exclude_patterns = [
     # Other misc files (overviews, console-only examples, etc)
     "ray-overview/examples/llamafactory-llm-fine-tune/README.ipynb",
     "ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    "train/tutorials/content/**/README.md",
     "serve/tutorials/video-analysis/*.ipynb",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
-    "serve/tutorials/deployment-serve-llm/README.*",
-    "serve/tutorials/deployment-serve-llm/**.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -608,15 +618,12 @@ def setup(app):
         def filter(self, record):
             # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
             # once in Ray Core API and once in Compiled Graph API
-            if (
-                "duplicate object description of ray.actor.ActorMethod.bind"
-                in record.getMessage()
-            ):
+            if "duplicate object description of ray.actor.ActorMethod.bind" in record.getMessage():
                 return False  # Don't log this specific warning
             return True  # Log all other warnings
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
-    
+
     # Register hook to mark orphan documents
     example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
     def mark_orphans(app, docname, _source):

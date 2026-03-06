@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray import runtime_context
+from ray._common import utils as ray_utils
 from ray.cluster_utils import Cluster
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
@@ -45,6 +46,13 @@ def setup_logging():
     logger.setLevel(logging.INFO)
     yield
     logger.setLevel(orig_level)
+
+
+@pytest.fixture(autouse=True)
+def reset_ray_address(monkeypatch):
+    ray_utils.reset_ray_address()
+    yield
+    ray_utils.reset_ray_address()
 
 
 @pytest.fixture

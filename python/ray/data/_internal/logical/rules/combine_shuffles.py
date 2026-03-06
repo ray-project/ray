@@ -4,12 +4,16 @@ from ray.data._internal.logical.interfaces import (
     Plan,
     Rule,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import (
+from ray.data._internal.logical.operators import (
     Aggregate,
     Repartition,
     Sort,
+    StreamingRepartition,
 )
-from ray.data._internal.logical.operators.map_operator import StreamingRepartition
+
+__all__ = [
+    "CombineShuffles",
+]
 
 
 class CombineShuffles(Rule):
@@ -41,42 +45,44 @@ class CombineShuffles(Rule):
         input_op = op.input_dependencies[0]
 
         if isinstance(input_op, Repartition) and isinstance(op, Repartition):
-            shuffle = input_op._shuffle or op._shuffle
+            shuffle = input_op.shuffle or op.shuffle
             return Repartition(
                 input_op.input_dependencies[0],
-                num_outputs=op._num_outputs,
+                num_outputs=op.num_outputs,
                 shuffle=shuffle,
-                keys=op._keys,
-                sort=op._sort,
+                keys=op.keys,
+                sort=op.sort,
             )
         elif isinstance(input_op, StreamingRepartition) and isinstance(
             op, StreamingRepartition
         ):
+            strict = input_op._strict or op._strict
             return StreamingRepartition(
                 input_op.input_dependencies[0],
                 target_num_rows_per_block=op.target_num_rows_per_block,
+                strict=strict,
             )
         elif isinstance(input_op, Repartition) and isinstance(op, Aggregate):
             return Aggregate(
                 input_op=input_op.input_dependencies[0],
-                key=op._key,
-                aggs=op._aggs,
-                num_partitions=op._num_partitions,
-                batch_format=op._batch_format,
+                key=op.key,
+                aggs=op.aggs,
+                num_partitions=op.num_partitions,
+                batch_format=op.batch_format,
             )
         elif isinstance(input_op, StreamingRepartition) and isinstance(op, Repartition):
             return Repartition(
                 input_op.input_dependencies[0],
-                num_outputs=op._num_outputs,
-                shuffle=op._shuffle,
-                keys=op._keys,
-                sort=op._sort,
+                num_outputs=op.num_outputs,
+                shuffle=op.shuffle,
+                keys=op.keys,
+                sort=op.sort,
             )
         elif isinstance(input_op, Sort) and isinstance(op, Sort):
             return Sort(
                 input_op.input_dependencies[0],
-                sort_key=op._sort_key,
-                batch_format=op._batch_format,
+                sort_key=op.sort_key,
+                batch_format=op.batch_format,
             )
 
         return op

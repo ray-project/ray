@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import ray
@@ -11,19 +12,20 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.map_operator import (
+from ray.data._internal.logical.operators import (
     Filter,
     FlatMap,
+    InputData,
     MapBatches,
     MapRows,
     Project,
+    Read,
 )
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.expressions import star
@@ -338,8 +340,7 @@ def test_map_batches_batch_size_fusion(
     )
 
     mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
-        lambda x: x,
-        batch_size=5,
+        lambda x: x, batch_size=5
     )
 
     physical_plan = get_execution_plan(mapped_ds._logical_plan)
@@ -680,7 +681,9 @@ def test_map_fusion_with_concurrency_arg(
         ds = ds.map(Map, num_cpus=0, concurrency=down_concurrency)
         down_name = "Map(Map)"
 
-    assert extract_values("id", ds.take_all()) == list(range(10))
+    actual_data = ds.to_pandas()
+    expected_data = pd.DataFrame({"id": list(range(10))})
+    assert rows_same(actual_data, expected_data)
 
     name = f"{up_name}->{down_name}"
     stats = ds.stats()
@@ -768,12 +771,12 @@ def test_streaming_repartition_map_batches_fusion_order_and_params(
 
     if order == "map_then_sr":
         ds = ds.map_batches(lambda x: x, batch_size=batch_size)
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
-        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
+        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]"
     else:  # sr_then_map
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
         ds = ds.map_batches(lambda x: x, batch_size=batch_size)
-        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows}]->MapBatches(<lambda>)"
+        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]->MapBatches(<lambda>)"
 
     assert len(ds.take_all()) == n
 
@@ -791,21 +794,21 @@ def test_streaming_repartition_map_batches_fusion_order_and_params(
 def test_streaming_repartition_no_further_fuse(
     ray_start_regular_shared_2_cpus,
 ):
-    """Test that fused streaming_repartition operators don't fuse further.
+    """Test that streaming_repartition (strict mode) blocks fusion with downstream operators.
 
-    Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
-            Result: map -> (map -> s_r)-> (map -> map)
-            The fused (map -> s_r) doesn't fuse further with surrounding maps.
+    Case 1: map_batches -> map_batches -> streaming_repartition(strict=True) -> map_batches -> map_batches
+            Result: (map -> map -> s_r) -> (map -> map)
+            SR can fuse with upstream maps but not with downstream maps to preserve parallelism.
     """
     n = 100
     target_rows = 20
 
-    # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
-    # Result: map -> (map -> s_r)-> (map -> map)
+    # Case 1: map_batches -> map_batches -> streaming_repartition(strict=True) -> map_batches -> map_batches
+    # Result: (map -> map -> s_r) -> (map -> map)
     ds1 = ray.data.range(n, override_num_blocks=2)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
-    ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows, strict=True)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
 
@@ -813,7 +816,7 @@ def test_streaming_repartition_no_further_fuse(
     stats1 = ds1.stats()
 
     assert (
-        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows}]"
+        f"MapBatches(<lambda>)->MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=True]"
         in stats1
     ), stats1
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
@@ -839,6 +842,51 @@ def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, cap
     captured = capsys.readouterr().out.strip()
     assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in captured
     assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
+
+
+def test_streaming_repartition_multiple_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that non-strict mode allows multiple operators to fuse with StreamingRepartition.
+
+    Case 1: Map > Map > SR (non-strict)
+    Case 2: Map > SR (non-strict) > SR (non-strict)
+    """
+    n = 100
+    target_rows = 20
+
+    # Case 1: Map > Map > SR (non-strict)
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=None)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=None)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows, strict=False)
+
+    assert len(ds1.take_all()) == n
+    stats1 = ds1.stats()
+
+    # Verify all three operators are fused together
+    assert (
+        f"MapBatches(<lambda>)->MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
+        in stats1
+    ), f"Expected full fusion in stats: {stats1}"
+
+    # Case 2: Map > SR (non-strict) > SR (non-strict)
+    # Note: Two consecutive StreamingRepartition operators are merged into one by
+    # CombineShuffles._combine() during logical optimization (before physical fusion).
+    # This test verifies that Map > SR fusion still works after the SR merging.
+    ds2 = ray.data.range(n, override_num_blocks=2)
+    ds2 = ds2.map_batches(lambda x: x, batch_size=None)
+    ds2 = ds2.repartition(target_num_rows_per_block=target_rows, strict=False)
+    ds2 = ds2.repartition(target_num_rows_per_block=target_rows, strict=False)
+
+    assert len(ds2.take_all()) == n
+    stats2 = ds2.stats()
+
+    # Verify Map > SR fusion (the two SRs were already merged into one)
+    assert (
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
+        in stats2
+    ), f"Expected Map->SR fusion in stats: {stats2}"
 
 
 def test_combine_repartition_aggregate(

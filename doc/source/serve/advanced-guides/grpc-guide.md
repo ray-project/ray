@@ -230,15 +230,76 @@ Example of using metadata:
 
 (serve-grpc-proxy-more-examples)=
 ## Use streaming and model composition
-gRPC proxy remains at feature parity with HTTP proxy. Here are more examples of using
-gRPC proxy for getting streaming response as well as doing model composition.
+gRPC proxy supports all four gRPC streaming types:
+- **Unary-Unary**: Single request, single response (default)
+- **Server streaming (Unary-Stream)**: Single request, streaming response
+- **Client streaming (Stream-Unary)**: Streaming request, single response
+- **Bidirectional streaming (Stream-Stream)**: Streaming request, streaming response
 
-### Streaming
-The `Steaming` method is deployed with the app named "app1" above. The following code
+### Server Streaming
+The `Streaming` method is deployed with the app named "app1" above. The following code
 gets a streaming response.
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_streaming__   
 :end-before: __end_streaming__
+:language: python
+```
+
+### Client Streaming
+Client streaming allows clients to send a stream of requests and receive a single response.
+Use the `gRPCInputStream` class to iterate over incoming request messages.
+
+Define a proto file with a client streaming RPC:
+```proto
+service UserDefinedService {
+  rpc ClientStreaming(stream UserDefinedMessage) returns (UserDefinedResponse);
+}
+```
+
+Deployment example:
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
+:start-after: __begin_client_streaming_deployment__
+:end-before: __end_client_streaming_deployment__
+:language: python
+```
+
+Client code:
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
+:start-after: __begin_client_streaming_client__
+:end-before: __end_client_streaming_client__
+:language: python
+```
+
+### Bidirectional Streaming
+Bidirectional streaming allows clients to send and receive streams of messages simultaneously.
+
+Define a proto file with a bidirectional streaming RPC:
+```proto
+service UserDefinedService {
+  rpc BidiStreaming(stream UserDefinedMessage) returns (stream UserDefinedResponse);
+}
+```
+
+Deployment example:
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
+:start-after: __begin_bidi_streaming_deployment__
+:end-before: __end_bidi_streaming_deployment__
+:language: python
+```
+
+Client code:
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
+:start-after: __begin_bidi_streaming_client__
+:end-before: __end_bidi_streaming_client__
+:language: python
+```
+
+### Using gRPC Context with Streaming
+You can access the gRPC context in streaming methods by adding a `grpc_context` parameter:
+
+```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
+:start-after: __begin_streaming_with_context__
+:end-before: __end_streaming_with_context__
 :language: python
 ```
 
@@ -304,7 +365,10 @@ about the request as well as setting response metadata such as code and details.
 If the handler function is defined with a `grpc_context` argument, Serve will pass a
 [RayServegRPCContext](../api/doc/ray.serve.grpc_util.RayServegRPCContext.rst) object
 in for each request. Below is an example of how to set a custom status code,
-details, and trailing metadata.
+details, and trailing metadata. You can also set a status code before raising an
+exception, and Serve will preserve that status code in the error response. This is
+useful for returning meaningful status codes like `RESOURCE_EXHAUSTED` (retryable)
+or `INVALID_ARGUMENT` (not retryable) instead of the generic `INTERNAL` error.
 
 ```{literalinclude} ../doc_code/grpc_proxy/grpc_guide.py
 :start-after: __begin_grpc_context_define_app__
@@ -320,7 +384,10 @@ The client code is defined like the following to get those attributes.
 ```
 
 :::{note}
-If the handler raises an unhandled exception, Serve will return an `INTERNAL` error code
-with the stacktrace in the details, regardless of what code and details
-are set in the `RayServegRPCContext` object.
+If the handler raises an unhandled exception without setting a status code on the
+`RayServegRPCContext` object, Serve returns an `INTERNAL` error code with the
+exception message in the details. However, if you set a status code on the context
+before raising the exception, Serve preserves that status code in the response.
+This allows you to return meaningful status codes like `INVALID_ARGUMENT` or
+`RESOURCE_EXHAUSTED` even when raising exceptions.
 :::

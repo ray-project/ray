@@ -156,7 +156,7 @@ def test_deepseek_model(model_name):
     time.sleep(1)
 
 
-@pytest.mark.parametrize("model_name", ["mistralai/Voxtral-Mini-3B-2507"])
+@pytest.mark.parametrize("model_name", ["openai/whisper-small"])
 def test_transcription_model(model_name):
     """
     Test that the transcription models can be loaded successfully.
@@ -173,10 +173,6 @@ def test_transcription_model(model_name):
             trust_remote_code=True,
             gpu_memory_utilization=0.9,
             enable_prefix_caching=True,
-            max_model_len=2048,
-            tokenizer_mode="mistral",
-            config_format="mistral",
-            load_format="mistral",
         ),
     )
     app = build_openai_app({"llm_configs": [llm_config]})
@@ -266,6 +262,30 @@ class TestRemoteCode:
 
         # Wait for the application to be running (timeout after 5 minutes)
         wait_for_condition(is_default_app_running, timeout=300)
+
+
+def test_nested_engine_kwargs_structured_outputs():
+    """Regression test for https://github.com/ray-project/ray/pull/60380"""
+    llm_config = LLMConfig(
+        model_loading_config=dict(
+            model_id="Qwen/Qwen2.5-0.5B-Instruct",
+        ),
+        deployment_config=dict(
+            autoscaling_config=dict(min_replicas=1, max_replicas=1),
+        ),
+        engine_kwargs=dict(
+            enforce_eager=True,
+            max_model_len=512,
+            structured_outputs_config={
+                "backend": "xgrammar",
+            },
+        ),
+    )
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=180)
+    serve.shutdown()
+    time.sleep(1)
 
 
 if __name__ == "__main__":

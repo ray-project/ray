@@ -579,6 +579,7 @@ class Node:
                 self._ray_params.num_cpus,
                 self._ray_params.num_gpus,
                 self._ray_params.memory,
+                self._ray_params.available_memory_bytes,
                 self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.labels,
@@ -832,16 +833,21 @@ class Node:
         raise FileExistsError(errno.EEXIST, "No usable temporary filename found")
 
     def should_redirect_logs(self):
+        # Preferred: thread the setting explicitly via RayParams.log_to_stderr.
+        # This avoids relying on process-global environment variables.
+        if getattr(self._ray_params, "log_to_stderr", None) is not None:
+            return not self._ray_params.log_to_stderr
+
+        # Deprecated (kept for backward compatibility): RayParams.redirect_output.
         redirect_output = self._ray_params.redirect_output
-        if redirect_output is None:
+        if redirect_output is not None:
+            return redirect_output
+
             # Fall back to stderr redirect environment variable.
-            redirect_output = (
-                os.environ.get(
-                    ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE
-                )
-                != "1"
-            )
-        return redirect_output
+        return (
+            os.environ.get(ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE)
+            != "1"
+        )
 
     # TODO(hjiang): Re-implement the logic in C++, and expose via cython.
     def get_log_file_names(
@@ -1435,10 +1441,6 @@ class Node:
             fallback_directory=self._fallback_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-
-        # add plasma store memory to the total system reserved memory
-        if self.resource_isolation_config.is_enabled():
-            self.resource_isolation_config.add_object_store_memory(object_store_memory)
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()

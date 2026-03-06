@@ -31,7 +31,7 @@
 #include "ray/common/event_stats.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/network_util.h"
-#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 
 #if defined(_WIN32)

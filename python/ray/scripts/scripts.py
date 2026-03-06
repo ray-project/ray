@@ -669,7 +669,6 @@ Windows powershell users need additional escaping:
 @click.option(
     "--cgroup-path",
     required=False,
-    hidden=True,
     type=str,
     help="The path for the cgroup the raylet should use to enforce resource isolation. "
     "By default, the cgroup used for resource isolation will be /sys/fs/cgroup. "
@@ -772,14 +771,31 @@ def start(
             )
     labels_dict = {**labels_from_file, **labels_from_string}
 
+    available_memory_bytes = ray._private.utils.estimate_available_memory()
+    object_store_memory = ray._private.utils.resolve_object_store_memory(
+        available_memory_bytes, object_store_memory
+    )
+
     resource_isolation_config = ResourceIsolationConfig(
         enable_resource_isolation=enable_resource_isolation,
         cgroup_path=cgroup_path,
         system_reserved_cpu=system_reserved_cpu,
         system_reserved_memory=system_reserved_memory,
+        object_store_memory=object_store_memory,
     )
 
-    redirect_output = None if not no_redirect_output else True
+    # - For non-worker processes, thread the behavior explicitly via RayParams.log_to_stderr.
+    # - For worker processes, stdout/stderr redirection is controlled in C++ via
+    #   `RAY_LOG_TO_STDERR`, so we pass it to the raylet/worker subprocess env via
+    #   RayParams.env_vars (without touching os.environ).
+    if no_redirect_output:
+        log_to_stderr = True
+        env_vars = {
+            ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE: "1",
+        }
+    else:
+        log_to_stderr = None
+        env_vars = None
 
     # no  client, no  port -> ok
     # no  port, has client -> default to 10001
@@ -799,10 +815,11 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
+        available_memory_bytes=available_memory_bytes,
         object_store_memory=object_store_memory,
         redis_username=redis_username,
         redis_password=redis_password,
-        redirect_output=redirect_output,
+        log_to_stderr=log_to_stderr,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
@@ -826,6 +843,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        env_vars=env_vars,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -849,7 +867,8 @@ def start(
 
         if os.environ.get("RAY_FAKE_CLUSTER"):
             ray_params.env_vars = {
-                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+                **(ray_params.env_vars or {}),
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
             }
 
         if (
@@ -1379,6 +1398,89 @@ def stop(force: bool, grace_period: int):
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
     ray._common.utils.reset_ray_address()
+
+
+@cli.command(name="kill-actor")
+@click.option(
+    "--address", required=False, type=str, help="Override the address to connect to."
+)
+@click.option(
+    "--name",
+    required=False,
+    type=str,
+    help="Named actor to kill.",
+)
+@click.option(
+    "--namespace",
+    required=False,
+    type=str,
+    help="Namespace for named actor (when using --name).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="If set, kill the actor forcefully. Otherwise, request graceful termination.",
+)
+@click.option(
+    "--no-restart",
+    is_flag=True,
+    default=False,
+    help="Disable automatic restart of the actor after kill."
+    "NOTE: This flag only takes effect when using --force.",
+)
+def kill_actor(
+    address: Optional[str],
+    name: Optional[str],
+    namespace: Optional[str],
+    force: bool,
+    no_restart: bool,
+):
+    """Kill an actor by name.
+    Args:
+        address: Override the address to connect to.
+        name: Named actor to kill.
+        namespace: Namespace for named actor.
+        force: If set, kill the actor forcefully. Otherwise attempt graceful termination.
+        no_restart: If set, the actor will not be restarted after being killed.
+
+    Examples:
+        ray kill-actor MyActor
+        ray kill-actor MyActor --namespace my_namespace
+        ray kill-actor MyActor --force
+        ray kill-actor MyActor --force --no-restart
+    """
+    # Validate input: require a name
+    if not name:
+        raise click.ClickException("Must specify --name to identify the actor.")
+
+    address = services.canonicalize_bootstrap_address_or_die(address)
+
+    # Respect token-based authentication when enabled.
+    ensure_token_if_auth_enabled(None, create_token_if_missing=False)
+
+    # Connect to the cluster (no driver logging)
+    if not ray.is_initialized():
+        ray.init(address=address, namespace=namespace, log_to_driver=False)
+
+    if not force and no_restart:
+        click.echo(
+            "WARNING: --no-restart flag is only effective with --force (graceful termination does not support controlling actor restart).",
+            err=True,
+        )
+
+    try:
+        actor_handle = ray.get_actor(name, namespace=namespace)
+    except ValueError:
+        raise click.ClickException(
+            f"No named actor found: {name} (namespace={namespace})"
+        )
+    if force:
+        ray.kill(actor_handle, no_restart=no_restart)
+        click.echo(f"Actor killed (force): {name}")
+    else:
+        actor_handle.__ray_terminate__.remote()
+        click.echo(f"Requested graceful termination for actor: {name}")
 
 
 @cli.command()
@@ -2573,8 +2675,15 @@ def healthcheck(address, component, skip_version_check):
     type=str,
     help="The directory to generate the bazel project template to, if provided.",
 )
+@click.option(
+    "--bazel-version",
+    default="6.5.0",
+    required=False,
+    type=str,
+    help="The bazel version to use, if provided.",
+)
 @add_click_logging_options
-def cpp(show_library_path, generate_bazel_project_template_to):
+def cpp(show_library_path, generate_bazel_project_template_to, bazel_version):
     """Show the cpp library path and generate the bazel project template.
 
     This command MUST be run from the ray project root directory if
@@ -2600,15 +2709,6 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
         cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
     if generate_bazel_project_template_to:
-
-        bazel_version_filename = ".bazelversion"
-
-        if not os.path.exists(bazel_version_filename):
-            raise ValueError(
-                "This command can only be run from the ray project's root directory. "
-                "It expects a .bazelversion file to be present."
-            )
-
         out_dir = generate_bazel_project_template_to
         # copytree expects that the dst dir doesn't exist
         # so we manually delete it if it exists.
@@ -2626,11 +2726,8 @@ def cpp(show_library_path, generate_bazel_project_template_to):
         out_lib_dir = os.path.join(out_dir, "thirdparty/lib")
         shutil.copytree(lib_dir, out_lib_dir)
 
-        # This assumes that your current working directory has a .bazelversion file.
-        shutil.copyfile(
-            bazel_version_filename,
-            os.path.join(out_dir, bazel_version_filename),
-        )
+        with open(os.path.join(out_dir, ".bazelversion"), "w") as f:
+            f.write(bazel_version.strip() + "\n")
 
         cli_logger.print(
             "Project template generated to {}",
@@ -2745,6 +2842,7 @@ cli.add_command(check_open_ports)
 cli.add_command(sanity_check)
 cli.add_command(symmetric_run, name="symmetric-run")
 cli.add_command(get_auth_token)
+cli.add_command(kill_actor)
 
 try:
     from ray.util.state.state_cli import (

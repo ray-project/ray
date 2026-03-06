@@ -33,7 +33,7 @@ def get_deploy_args(
         deployment_config = {}
 
     if isinstance(deployment_config, dict):
-        deployment_config = DeploymentConfig.parse_obj(deployment_config)
+        deployment_config = DeploymentConfig.model_validate(deployment_config)
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
@@ -126,4 +126,4 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         },
         sort_keys=True,
     ).encode("utf-8")
-    return hashlib.sha1(encoded).hexdigest()
+    return hashlib.sha256(encoded).hexdigest()

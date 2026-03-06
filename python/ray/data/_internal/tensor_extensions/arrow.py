@@ -1,6 +1,5 @@
 import abc
 import functools
-import itertools
 import json
 import logging
 import sys
@@ -15,8 +14,8 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 import ray.cloudpickle as cloudpickle
-from ray._private.arrow_utils import _check_pyarrow_version, get_pyarrow_version
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
+from ray.data._internal.arrow_utils import _combine_as_list_array
 from ray.data._internal.numpy_support import (
     _convert_datetime_to_np_datetime,
     convert_to_numpy,
@@ -31,6 +30,10 @@ from ray.data._internal.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     _should_convert_to_tensor,
     create_ragged_ndarray,
+)
+from ray.data._internal.utils.arrow_utils import (
+    _check_pyarrow_version,
+    get_pyarrow_version,
 )
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -351,27 +354,6 @@ def _convert_to_pyarrow_native_array(
         return pa.array(column_values, type=pa_type)
     except Exception as e:
         raise ArrowConversionError(str(column_values)) from e
-
-
-def _combine_as_list_array(column_values: List[Union[pa.Array, pa.ChunkedArray]]):
-    """Combines list of Arrow arrays into a single `ListArray`"""
-
-    # First, compute respective offsets in the resulting array
-    lens = [len(v) for v in column_values]
-    offsets = pa.array(np.concatenate([[0], np.cumsum(lens)]), type=pa.int32())
-
-    # Concat all the chunks into a single contiguous array
-    combined = pa.concat_arrays(
-        itertools.chain(
-            *[
-                v.chunks if isinstance(v, pa.ChunkedArray) else [v]
-                for v in column_values
-            ]
-        )
-    )
-
-    # TODO support null masking
-    return pa.ListArray.from_arrays(offsets, combined, pa.list_(combined.type))
 
 
 def _coerce_np_datetime_to_pa_timestamp_precision(

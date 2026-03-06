@@ -275,6 +275,14 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLineageReconstructionTask()
         const c_string &SerializeAsString() const
 
+cdef extern from "ray/common/scheduling/cluster_resource_data.h" namespace "ray" nogil:
+    cdef cppclass CNodeResources "ray::NodeResources":
+        CNodeResources()
+        unordered_map[c_string, c_string] labels
+        c_bool HasRequiredLabels(const CLabelSelector &label_selector) const
+
+    void SetNodeResourcesLabels(CNodeResources& resources, const unordered_map[c_string, c_string]& labels)
+
 cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
     cdef cppclass CLabelSelector "ray::LabelSelector":
         CLabelSelector() nogil except +
@@ -500,9 +508,11 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const c_vector[CNodeSelector] &node_selectors)
 
         void AsyncGetAll(
-            const MultiItemPyCallback[CGcsNodeInfo] &callback,
+            const OptionalItemPyCallback[c_pair[c_vector[CGcsNodeInfo], int64_t]] &callback,
             int64_t timeout_ms,
-            c_vector[CNodeID] node_ids)
+            optional[CGcsNodeState] state_filter,
+            const c_vector[CNodeSelector] &node_selectors,
+            optional[int64_t] limit) const
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(

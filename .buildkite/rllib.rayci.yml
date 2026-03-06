@@ -9,8 +9,9 @@ steps:
     wanda: ci/docker/rllib.build.wanda.yaml
     depends_on: oss-ci-base_ml-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py3.10
-      IMAGE_TO: rllibbuild-py3.10
+      PYTHON: "3.10"
+      BASE_TYPE: "ml"
+      BUILD_VARIANT: "build"
       RAYCI_IS_GPU_BUILD: "false"
     tags: cibase
 
@@ -18,8 +19,9 @@ steps:
     wanda: ci/docker/rllib.build.wanda.yaml
     depends_on: oss-ci-base_gpu-multipy
     env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py3.10
-      IMAGE_TO: rllibgpubuild-py3.10
+      PYTHON: "3.10"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "gpubuild"
       RAYCI_IS_GPU_BUILD: "true"
     tags: cibase
 
@@ -114,7 +116,7 @@ steps:
     parallelism: 5
     instance_type: gpu-large
     commands:
-      # All multi-gpu tagged tests
+      # All multi-gpu tagged tests (including all learning, examples and component testings)
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --parallelism-per-worker 2

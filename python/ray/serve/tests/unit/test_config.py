@@ -2,9 +2,9 @@ import sys
 import warnings
 
 import pytest
+from pydantic import ValidationError
 
 from ray import cloudpickle, serve
-from ray._common.pydantic_compat import ValidationError
 from ray._common.utils import import_attr
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -22,6 +22,9 @@ from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentMode,
+    GangPlacementStrategy,
+    GangRuntimeFailurePolicy,
+    GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
@@ -67,23 +70,25 @@ def test_autoscaling_config_validation():
         AutoscalingConfig(target_ongoing_requests=-1)
 
     # max_replicas must be greater than or equal to min_replicas
-    with pytest.raises(ValueError):
+    # In Pydantic v2, ValueError in validators is wrapped in ValidationError
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=100, max_replicas=1)
     AutoscalingConfig(min_replicas=1, max_replicas=100)
     AutoscalingConfig(min_replicas=10, max_replicas=10)
 
     # initial_replicas must be greater than or equal to min_replicas
-    with pytest.raises(ValueError):
+    # In Pydantic v2, ValueError in validators is wrapped in ValidationError
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=10, initial_replicas=1)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=10, initial_replicas=1, max_replicas=15)
     AutoscalingConfig(min_replicas=5, initial_replicas=10, max_replicas=15)
     AutoscalingConfig(min_replicas=5, initial_replicas=5, max_replicas=15)
 
     # initial_replicas must be less than or equal to max_replicas
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(initial_replicas=10, max_replicas=8)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         AutoscalingConfig(min_replicas=1, initial_replicas=10, max_replicas=8)
     AutoscalingConfig(min_replicas=1, initial_replicas=4, max_replicas=5)
     AutoscalingConfig(min_replicas=1, initial_replicas=5, max_replicas=5)
@@ -139,9 +144,10 @@ class TestDeploymentConfig:
 
         # Test num_replicas validation.
         DeploymentConfig(num_replicas=1)
-        with pytest.raises(ValidationError, match="type_error"):
+        # Pydantic v2 uses different error type names
+        with pytest.raises(ValidationError, match="int_parsing"):
             DeploymentConfig(num_replicas="hello")
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             DeploymentConfig(num_replicas=-1)
 
         # Test dynamic default for max_ongoing_requests.
@@ -152,11 +158,12 @@ class TestDeploymentConfig:
         DeploymentConfig(max_constructor_retry_count=1)
         DeploymentConfig(max_constructor_retry_count=10)
 
-        with pytest.raises(ValidationError, match="type_error"):
+        # Pydantic v2 uses different error type names
+        with pytest.raises(ValidationError, match="int_parsing"):
             DeploymentConfig(max_constructor_retry_count="hello")
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than"):
             DeploymentConfig(max_constructor_retry_count=-1)
-        with pytest.raises(ValidationError, match="value_error"):
+        with pytest.raises(ValidationError, match="greater_than"):
             DeploymentConfig(max_constructor_retry_count=0)
 
         # Test default value
@@ -201,13 +208,10 @@ class TestDeploymentConfig:
 
     def test_setting_and_getting_request_router_class(self):
         """Check that setting and getting request_router_class works."""
+        # The request_router_class path is derived from the class's __module__ attribute
         request_router_path = (
-            "python.ray.serve.tests.unit.test_config.FakeRequestRouter"
+            f"{FakeRequestRouter.__module__}.{FakeRequestRouter.__name__}"
         )
-        if sys.platform == "win32":
-            request_router_path = (
-                "io_ray.python.ray.serve.tests.unit.test_config.FakeRequestRouter"
-            )
 
         # Passing request_router_class as a class.
         deployment_config = DeploymentConfig.from_default(
@@ -580,6 +584,117 @@ class TestReplicaConfig:
         assert config.init_args == tuple()
         assert config.init_kwargs == dict()
 
+    def test_placement_group_bundle_label_selector_validation(self):
+        class Class:
+            pass
+
+        # Label selector provided without bundles
+        with pytest.raises(
+            ValueError,
+            match="If `placement_group_bundle_label_selector` is provided, `placement_group_bundles` must also be provided.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundle_label_selector=[{"gpu": "T4"}],
+            )
+
+        # bundle_label_selector list does not match bundles list length
+        with pytest.raises(
+            ValueError,
+            match="The length of `bundle_label_selector` should equal the length of `bundles`",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}],
+                placement_group_bundle_label_selector=[{"gpu": "T4"}, {"gpu": "L4"}],
+            )
+
+        # Valid config - multiple bundles provided for one bundle_label_selector.
+        config = ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}],
+            placement_group_bundle_label_selector=[{"gpu": "T4"}],
+        )
+        assert config.placement_group_bundle_label_selector == [
+            {"gpu": "T4"},
+            {"gpu": "T4"},
+            {"gpu": "T4"},
+        ]
+
+        # Valid config - multiple bundles and an equal number of bundle label selectors.
+        config = ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            placement_group_bundle_label_selector=[{"gpu": "T4"}, {"gpu": "L4"}],
+        )
+        assert config.placement_group_bundle_label_selector == [
+            {"gpu": "T4"},
+            {"gpu": "L4"},
+        ]
+
+    def test_placement_group_fallback_strategy_validation(self):
+        class Class:
+            pass
+
+        # Validate that fallback strategy provided without bundles raises error.
+        with pytest.raises(
+            ValueError,
+            match="If `placement_group_fallback_strategy` is provided, `placement_group_bundles` must also be provided.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+            )
+
+        # Validate that fallback strategy is a list
+        with pytest.raises(
+            TypeError,
+            match="placement_group_fallback_strategy must be a list of dictionaries.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_fallback_strategy="not_a_list",
+            )
+
+        # Fallback strategy list contains non-dict items
+        with pytest.raises(
+            TypeError,
+            match="placement_group_fallback_strategy entry at index 1 must be a dictionary.",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_fallback_strategy=[
+                    {"bundles": [{"CPU": 1}]},
+                    "invalid_entry",
+                ],
+            )
+
+        # Valid config
+        config = ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_fallback_strategy=[{"bundles": [{"CPU": 1}]}],
+        )
+        assert config.placement_group_fallback_strategy == [{"bundles": [{"CPU": 1}]}]
+
 
 class TestAutoscalingConfig:
     def test_target_ongoing_requests(self):
@@ -631,6 +746,170 @@ class TestAutoscalingConfig:
         )
         assert autoscaling_config.get_upscaling_factor() == 0.5
         assert autoscaling_config.get_downscaling_factor() == 0.6
+
+
+class TestGangSchedulingConfig:
+    def test_gang_scheduling_config_validation(self):
+        """Test GangSchedulingConfig field validation."""
+
+        with pytest.raises(ValidationError):
+            GangSchedulingConfig()
+
+        # gang_size must be >= 1
+        with pytest.raises(ValidationError):
+            GangSchedulingConfig(gang_size=0)
+        with pytest.raises(ValidationError):
+            GangSchedulingConfig(gang_size=-1)
+
+        config = GangSchedulingConfig(gang_size=1)
+        assert config.gang_size == 1
+        config = GangSchedulingConfig(gang_size=4)
+        assert config.gang_size == 4
+
+    def test_gang_scheduling_config_defaults(self):
+        """Test GangSchedulingConfig default values."""
+        config = GangSchedulingConfig(gang_size=4)
+
+        assert config.gang_placement_strategy == GangPlacementStrategy.PACK
+        assert config.runtime_failure_policy == GangRuntimeFailurePolicy.RESTART_GANG
+
+    def test_gang_scheduling_config_custom_values(self):
+        """Test GangSchedulingConfig with custom values."""
+        config = GangSchedulingConfig(
+            gang_size=8,
+            gang_placement_strategy=GangPlacementStrategy.SPREAD,
+        )
+        assert config.gang_size == 8
+        assert config.gang_placement_strategy == GangPlacementStrategy.SPREAD
+        assert config.runtime_failure_policy == GangRuntimeFailurePolicy.RESTART_GANG
+
+    def test_gang_placement_strategy_options(self):
+        """Test all GangPlacementStrategy options are valid."""
+        for strategy in GangPlacementStrategy:
+            config = GangSchedulingConfig(gang_size=4, gang_placement_strategy=strategy)
+            assert config.gang_placement_strategy == strategy
+
+    def test_gang_runtime_failure_policy_options(self):
+        """Test all GangRuntimeFailurePolicy options are valid."""
+        # RESTART_GANG should work.
+        config = GangSchedulingConfig(
+            gang_size=4,
+            runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_GANG,
+        )
+        assert config.runtime_failure_policy == GangRuntimeFailurePolicy.RESTART_GANG
+
+        # RESTART_REPLICA is not yet implemented.
+        with pytest.raises(NotImplementedError):
+            GangSchedulingConfig(
+                gang_size=4,
+                runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_REPLICA,
+            )
+
+    def test_gang_scheduling_config_via_decorator_error(self):
+        """Test that gang_scheduling_config validation errors are raised."""
+        with pytest.raises(
+            ValueError, match="num_replicas.*must be a multiple of gang_size"
+        ):
+
+            @serve.deployment(gang_scheduling_config=GangSchedulingConfig(gang_size=4))
+            def f():
+                return "test"
+
+    def test_gang_scheduling_config_auto_num_replicas(self):
+        """Test that num_replicas='auto' is rejected with gang_scheduling_config."""
+
+        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+
+            @serve.deployment(
+                num_replicas="auto",
+                gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            )
+            def f():
+                return "test"
+
+    def test_gang_scheduling_config_auto_num_replicas_via_options(self):
+        """Test that num_replicas='auto' is rejected via .options() with gang config."""
+
+        @serve.deployment(
+            num_replicas=4,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+        )
+        def f():
+            return "test"
+
+        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+            f.options(num_replicas="auto")
+
+    def test_gang_scheduling_config_proto_roundtrip(self):
+        """Test roundtrip serialization of GangSchedulingConfig through protobuf."""
+
+        # Test with gang_scheduling_config
+        config = DeploymentConfig(
+            num_replicas=8,
+            gang_scheduling_config=GangSchedulingConfig(
+                gang_size=4,
+                gang_placement_strategy=GangPlacementStrategy.SPREAD,
+                runtime_failure_policy=GangRuntimeFailurePolicy.RESTART_GANG,
+            ),
+        )
+        deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert deserialized.gang_scheduling_config is not None
+        assert deserialized.gang_scheduling_config.gang_size == 4
+        assert (
+            deserialized.gang_scheduling_config.gang_placement_strategy
+            == GangPlacementStrategy.SPREAD
+        )
+        assert (
+            deserialized.gang_scheduling_config.runtime_failure_policy
+            == GangRuntimeFailurePolicy.RESTART_GANG
+        )
+
+        # Test without gang_scheduling_config
+        config = DeploymentConfig(num_replicas=2)
+        deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert deserialized.gang_scheduling_config is None
+
+    def test_gang_scheduling_config_via_decorator(self):
+        """Test that gang_scheduling_config can be passed via @serve.deployment decorator."""
+
+        @serve.deployment(
+            num_replicas=8, gang_scheduling_config=GangSchedulingConfig(gang_size=4)
+        )
+        def f():
+            return "test"
+
+        # Verify the config is properly set
+        assert f._deployment_config.gang_scheduling_config is not None
+        assert f._deployment_config.gang_scheduling_config.gang_size == 4
+
+    def test_gang_scheduling_config_invalid_num_replicas_via_options(self):
+        @serve.deployment(
+            num_replicas=4, gang_scheduling_config=GangSchedulingConfig(gang_size=2)
+        )
+        def f():
+            pass
+
+        with pytest.raises(ValueError, match="must be a multiple of gang_size"):
+            f.options(num_replicas=5)
+
+        with pytest.raises(ValueError, match="must be a multiple of gang_size"):
+            f.options(num_replicas=3)
+
+        d = f.options(num_replicas=6)
+        assert d.num_replicas == 6
+
+    def test_gang_scheduling_config_invalid_gang_size_via_options(self):
+        @serve.deployment(
+            num_replicas=4, gang_scheduling_config=GangSchedulingConfig(gang_size=2)
+        )
+        def f():
+            pass
+
+        with pytest.raises(ValueError, match="must be a multiple of gang_size"):
+            f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=3))
+
+        d = f.options(gang_scheduling_config=GangSchedulingConfig(gang_size=4))
+        assert d._deployment_config.gang_scheduling_config.gang_size == 4
 
 
 def test_config_schemas_forward_compatible():
@@ -724,7 +1003,8 @@ def test_prepare_imperative_http_options():
     with pytest.raises(ValueError, match="not a valid ProxyLocation"):
         prepare_imperative_http_options(proxy_location="wrong", http_options=None)
 
-    with pytest.raises(ValueError, match="not a valid enumeration"):
+    # Pydantic v2 uses different error format for invalid enum values
+    with pytest.raises(ValidationError, match="Input should be"):
         prepare_imperative_http_options(
             proxy_location=None, http_options={"location": "123"}
         )
