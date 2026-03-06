@@ -903,7 +903,7 @@ def test_construct_data_config_defaults_and_split_variants():
     assert isinstance(default, DataConfigSchema)
     assert default.datasets_to_split == "all"
     assert default.enable_shard_locality is True
-    assert default.execution_options == {}
+    assert default.execution_options is None
 
     # Specific dataset list
     result = construct_data_config(DataConfig(datasets_to_split=["train", "eval"]))
