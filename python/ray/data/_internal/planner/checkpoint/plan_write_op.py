@@ -20,6 +20,7 @@ from ray.data.checkpoint.checkpoint_writer import (
     PendingCheckpoint,
 )
 from ray.data.checkpoint.interfaces import (
+    CheckpointBackend,
     InvalidCheckpointingOperators,
 )
 from ray.data.context import DataContext
@@ -76,7 +77,7 @@ def plan_write_op_with_checkpoint_writer(
 ) -> PhysicalOperator:
     """Plan a write operation with checkpoint support.
 
-    For file-based datasinks (_FileDatasink):
+    For file-based datasinks with file-backed checkpoints:
         Uses 2-phase commit for atomicity:
         1. Pre-write: computes expected paths, write pending checkpoints
         2. Write: writes data files
@@ -90,7 +91,8 @@ def plan_write_op_with_checkpoint_writer(
     write and checkpoint write, there's no record of which data files are
     uncommitted.
 
-    For non-file datasinks (SQLDatasink, etc.):
+    For non-file datasinks and checkpoint backends without the file-based
+    pending/rename protocol (including Iceberg):
         Falls back to post-write checkpointing:
         1. Write: Write data to destination
         2. Post-write: Write checkpoints
@@ -114,8 +116,13 @@ def plan_write_op_with_checkpoint_writer(
     checkpoint_writer = CheckpointWriter.create(data_context.checkpoint_config)
     collect_stats_fn = generate_collect_write_stats_fn()
 
-    if isinstance(datasink, _FileDatasink):
-        # File-based datasink: use 2-phase commit for atomicity
+    supports_file_two_phase_commit = (
+        isinstance(datasink, _FileDatasink)
+        and data_context.checkpoint_config.backend != CheckpointBackend.ICEBERG
+    )
+    if supports_file_two_phase_commit:
+        # File-based datasink with a file-backed checkpoint: use 2-phase commit
+        # for atomicity.
         # Pre-write transform: compute expected paths and write pending checkpoints
         prepare_checkpoint_fn = _generate_prepare_checkpoint_transform(
             data_context, datasink, checkpoint_writer
@@ -132,11 +139,12 @@ def plan_write_op_with_checkpoint_writer(
             collect_stats_fn,
         ]
     else:
-        # Non-file datasink (SQL, Mongo, etc.): fall back to non-atomic checkpoint
-        # No 2-phase commit - write checkpoint after data write
-        # This might cause duplicate writes if the write operation is retried.
+        # Fall back to post-write checkpointing when either the destination is
+        # not file-based or the checkpoint backend doesn't implement the file
+        # writer's pending/rename protocol.
         warnings.warn(
-            f"Checkpointing with non-file datasink ({type(datasink).__name__}) "
+            f"Checkpointing with {type(datasink).__name__} and "
+            f"{data_context.checkpoint_config.backend.value} checkpoint storage "
             f"uses post-write checkpointing, which provides at-least-once "
             f"semantics. If a failure occurs after data is written but before "
             f"the checkpoint is saved, duplicate data may be written on retry. "
