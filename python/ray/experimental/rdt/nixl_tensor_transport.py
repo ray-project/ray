@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import NIXL_REMOTE_AGENT_CACHE_MAXSIZE
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
@@ -111,7 +111,7 @@ class NixlTensorTransport(TensorTransportManager):
         ) -> bool:
             # Check if nixl is installed
             try:
-                from ray.experimental.gpu_object_manager.util import (
+                from ray.experimental.rdt.util import (
                     get_tensor_transport_manager,
                 )
 
@@ -129,7 +129,7 @@ class NixlTensorTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List["torch.Tensor"],
+        rdt_object: List["torch.Tensor"],
     ) -> NixlTransportMetadata:
         import torch
 
@@ -137,12 +137,12 @@ class NixlTensorTransport(TensorTransportManager):
             device = None
             tensor_meta = []
 
-            if gpu_object:
-                # We assume all tensors in one GPU object have the same device type,
+            if rdt_object:
+                # We assume all tensors in one RDT object have the same device type,
                 # but we don't assume they're all on the same device.
                 devices = set()
-                device = gpu_object[0].device
-                for t in gpu_object:
+                device = rdt_object[0].device
+                for t in rdt_object:
                     if t.device.type != device.type:
                         raise ValueError(
                             "All tensors in an RDT object must have the same device type."
@@ -160,8 +160,8 @@ class NixlTensorTransport(TensorTransportManager):
                         torch.cuda.synchronize(dev)
 
                 nixl_agent = self.get_nixl_agent()
-                self._add_tensor_descs(gpu_object)
-                xfer_descs = nixl_agent.get_xfer_descs(gpu_object)
+                self._add_tensor_descs(rdt_object)
+                xfer_descs = nixl_agent.get_xfer_descs(rdt_object)
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
                 agent_name = nixl_agent.name
@@ -196,7 +196,7 @@ class NixlTensorTransport(TensorTransportManager):
         communicator_metadata: CommunicatorMetadata,
         target_buffers: Optional[List["torch.Tensor"]] = None,
     ) -> List["torch.Tensor"]:
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             create_empty_tensors_from_metadata,
         )
 
