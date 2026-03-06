@@ -1147,15 +1147,15 @@ class AsyncioRouter:
             RuntimeError: If the selection has already been dispatched.
             ReplicaUnavailableError: If the replica is no longer available.
         """
-        # Mark as dispatched (this will raise if already dispatched)
-        selection._mark_dispatched()
-
         # Verify replica is still available
         replica = selection._replica
         if replica.replica_id not in self.request_router.curr_replicas:
             raise ReplicaUnavailableError(
                 f"Replica {selection.replica_id} is no longer available"
             )
+
+        # Mark as dispatched (this will raise if already dispatched)
+        selection._mark_dispatched()
 
         pr = PendingRequest(
             args=list(request_args),
