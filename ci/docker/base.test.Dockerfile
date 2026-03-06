@@ -49,6 +49,9 @@ apt-get install -y docker-ce-cli
 
 EOF
 
+ENV CC=clang
+ENV CXX=clang++-14
+
 # System conf for tests
 RUN locale -a
 ENV LC_ALL=en_US.utf8
