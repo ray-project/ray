@@ -137,33 +137,35 @@ def test_sglang_serve_e2e_multi_gpu():
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 
-    wait_for_condition(_app_is_running, timeout=300)
+    try:
+        wait_for_condition(_app_is_running, timeout=300)
 
-    deployment_options = SGLangServer.get_deployment_options(llm_config)
-    expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
-    assert deployment_options["placement_group_bundles"] == expected_bundles, (
-        f"Expected placement group bundles {expected_bundles}, "
-        f"got {deployment_options['placement_group_bundles']}"
-    )
+        deployment_options = SGLangServer.get_deployment_options(llm_config)
+        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+        assert deployment_options["placement_group_bundles"] == expected_bundles, (
+            f"Expected placement group bundles {expected_bundles}, "
+            f"got {deployment_options['placement_group_bundles']}"
+        )
 
-    client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
-    chat_resp = client.chat.completions.create(
-        model=RAY_MODEL_ID,
-        messages=[{"role": "user", "content": "What is the capital of France?"}],
-        max_tokens=64,
-        temperature=0.0,
-    )
-    assert chat_resp.choices[0].message.content.strip()
+        chat_resp = client.chat.completions.create(
+            model=RAY_MODEL_ID,
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert chat_resp.choices[0].message.content.strip()
 
-    comp_resp = client.completions.create(
-        model=RAY_MODEL_ID,
-        prompt="The capital of France is",
-        max_tokens=64,
-        temperature=0.0,
-    )
-    assert comp_resp.choices[0].text.strip()
-    serve.shutdown()
+        comp_resp = client.completions.create(
+            model=RAY_MODEL_ID,
+            prompt="The capital of France is",
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert comp_resp.choices[0].text.strip()
+    finally:
+        serve.shutdown()
 
 
 def test_sglang_serve_e2e_pipeline_parallel():
@@ -197,35 +199,37 @@ def test_sglang_serve_e2e_pipeline_parallel():
     app = build_openai_app({"llm_configs": [llm_config]})
     serve.run(app, blocking=False)
 
-    wait_for_condition(_app_is_running, timeout=300)
+    try:
+        wait_for_condition(_app_is_running, timeout=300)
 
-    # tp_size=2, pp_size=2 → num_devices=4 → 4 GPU bundles
-    # first bundle merges replica actor CPU with first GPU worker
-    deployment_options = SGLangServer.get_deployment_options(llm_config)
-    expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
-    assert deployment_options["placement_group_bundles"] == expected_bundles, (
-        f"Expected placement group bundles {expected_bundles}, "
-        f"got {deployment_options['placement_group_bundles']}"
-    )
+        # tp_size=2, pp_size=2 → num_devices=4 → 4 GPU bundles
+        # first bundle merges replica actor CPU with first GPU worker
+        deployment_options = SGLangServer.get_deployment_options(llm_config)
+        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
+        assert deployment_options["placement_group_bundles"] == expected_bundles, (
+            f"Expected placement group bundles {expected_bundles}, "
+            f"got {deployment_options['placement_group_bundles']}"
+        )
 
-    client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+        client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
 
-    chat_resp = client.chat.completions.create(
-        model=RAY_MODEL_ID,
-        messages=[{"role": "user", "content": "What is the capital of France?"}],
-        max_tokens=64,
-        temperature=0.0,
-    )
-    assert chat_resp.choices[0].message.content.strip()
+        chat_resp = client.chat.completions.create(
+            model=RAY_MODEL_ID,
+            messages=[{"role": "user", "content": "What is the capital of France?"}],
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert chat_resp.choices[0].message.content.strip()
 
-    comp_resp = client.completions.create(
-        model=RAY_MODEL_ID,
-        prompt="The capital of France is",
-        max_tokens=64,
-        temperature=0.0,
-    )
-    assert comp_resp.choices[0].text.strip()
-    serve.shutdown()
+        comp_resp = client.completions.create(
+            model=RAY_MODEL_ID,
+            prompt="The capital of France is",
+            max_tokens=64,
+            temperature=0.0,
+        )
+        assert comp_resp.choices[0].text.strip()
+    finally:
+        serve.shutdown()
 
 
 def test_sglang_embeddings(sglang_embedding_client):

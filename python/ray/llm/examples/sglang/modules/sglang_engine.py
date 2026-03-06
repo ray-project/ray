@@ -403,10 +403,10 @@ class SGLangServer:
             if ray_actor_options.get("num_gpus"):
                 replica_bundle["GPU"] = ray_actor_options["num_gpus"]
 
+            replica_bundle.update(ray_actor_options.get("resources", {}))
+
             if "memory" in ray_actor_options:
                 replica_bundle["memory"] = ray_actor_options["memory"]
-
-            replica_bundle.update(ray_actor_options.get("resources", {}))
 
             pg_bundles = _merge_replica_actor_and_child_actor_bundles(
                 child_actor_bundles=child_bundles,
