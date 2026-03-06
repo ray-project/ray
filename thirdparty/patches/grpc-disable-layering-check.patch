@@ -10,3 +10,60 @@ diff -u BUILD
 -    ],
 +    default_visibility = ["//visibility:public"],
  )
+diff -u src/core/BUILD
+--- src/core/BUILD
++++ src/core/BUILD
+@@ -25,6 +25,3 @@
+ package(
+     default_visibility = ["//:__subpackages__"],
+-    features = [
+-        "layering_check",
+-    ],
+ )
+diff -u src/cpp/ext/gsm/BUILD
+--- src/cpp/ext/gsm/BUILD
++++ src/cpp/ext/gsm/BUILD
+@@ -24,8 +24,5 @@
+ package(
+     default_visibility = ["//visibility:public"],
+-    features = [
+-        "layering_check",
+-    ],
+ )
+ 
+ grpc_cc_library(
+diff -u src/cpp/ext/gcp/BUILD
+--- src/cpp/ext/gcp/BUILD
++++ src/cpp/ext/gcp/BUILD
+@@ -24,8 +24,5 @@
+ package(
+     default_visibility = ["//visibility:public"],
+-    features = [
+-        "layering_check",
+-    ],
+ )
+ 
+ grpc_cc_library(
+diff -u src/cpp/ext/otel/BUILD
+--- src/cpp/ext/otel/BUILD
++++ src/cpp/ext/otel/BUILD
+@@ -24,8 +24,5 @@
+ package(
+     default_visibility = ["//visibility:public"],
+-    features = [
+-        "layering_check",
+-    ],
+ )
+ 
+ grpc_cc_library(
+diff -u test/core/transport/binder/end2end/fuzzers/BUILD
+--- test/core/transport/binder/end2end/fuzzers/BUILD
++++ test/core/transport/binder/end2end/fuzzers/BUILD
+@@ -17,7 +17,4 @@
+ 
+ grpc_package(
+     name = "test/core/transport/binder/end2end/fuzzers",
+-    features = [
+-        "layering_check",
+-    ],
+ )
