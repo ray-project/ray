@@ -17,6 +17,7 @@ def client():
 @pytest.fixture
 def tmp_log_dir(tmp_path):
     """Create a temp dir and patch get_log_file_path to use it."""
+
     def _write_log(job_id: str, content, encoding="utf-8") -> str:
         path = tmp_path / f"job-driver-{job_id}.log"
         if isinstance(content, bytes):
