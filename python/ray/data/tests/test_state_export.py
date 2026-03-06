@@ -10,6 +10,7 @@ from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.metadata_exporter import (
     UNKNOWN,
+    DataContextMetadata,
     Operator,
     Topology,
     sanitize_for_struct,
@@ -90,7 +91,7 @@ class DummyLogicalOperator(LogicalOperator):
     """A dummy logical operator for testing _get_logical_args with various data types."""
 
     def __init__(self, input_op=None):
-        super().__init__("DummyOperator", [])
+        super().__init__(input_dependencies=[], name="DummyOperator")
 
         # Test various data types that might be returned by _get_logical_args
         self._string_value = "test_string"
@@ -134,6 +135,10 @@ class DummyLogicalOperator(LogicalOperator):
         }
 
         self._data_class = TestDataclass()
+
+    @property
+    def num_outputs(self):
+        return self._num_outputs
 
 
 @pytest.fixture
@@ -352,7 +357,9 @@ def test_export_disabled(ray_start_regular, dummy_dataset_topology):
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -371,7 +378,9 @@ def _test_dataset_metadata_export(topology, dummy_dataset_topology_expected_outp
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -488,7 +497,9 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)->Filter(<lambda>)"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -499,7 +510,9 @@ def test_export_multiple_datasets(
             operator_tags=["ReadRange->Map(<lambda>)"],
             topology=second_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
 
@@ -650,7 +663,9 @@ def test_update_dataset_metadata_state(
             dataset_tag=STUB_DATASET_ID,
             operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
             topology=dummy_dataset_topology,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
     # Check that export files were created as expected
@@ -697,7 +712,9 @@ def test_update_dataset_metadata_operator_states(
             operator_tags=["Input_0", "ReadRange->Map(<lambda>)->Filter(<lambda>)_1"],
             topology=dummy_dataset_topology,
             job_id=STUB_JOB_ID,
-            data_context=DataContext.get_current(),
+            data_context=DataContextMetadata.from_data_context(
+                DataContext.get_current()
+            ),
         )
     )
     data = _get_exported_data()

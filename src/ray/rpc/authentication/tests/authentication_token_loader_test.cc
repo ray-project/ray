@@ -14,9 +14,13 @@
 
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
+#include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <string>
+#include <thread>
 
+#include "absl/strings/escaping.h"
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/env.h"
@@ -151,10 +155,10 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvVariable) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("test-token-from-env");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.GetToken().has_value());
+  EXPECT_TRUE(loader.GetToken() != nullptr);
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvPath) {
@@ -168,10 +172,10 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromEnvPath) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("test-token-from-file");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.GetToken().has_value());
+  EXPECT_TRUE(loader.GetToken() != nullptr);
 
   // Clean up
   remove(temp_token_path.c_str());
@@ -185,10 +189,10 @@ TEST_F(AuthenticationTokenLoaderTest, TestLoadFromDefaultPath) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("test-token-from-default");
   EXPECT_TRUE(token_opt->Equals(expected));
-  EXPECT_TRUE(loader.GetToken().has_value());
+  EXPECT_TRUE(loader.GetToken() != nullptr);
 }
 
 // Parametrized test for token loading precedence: env var > user-specified file > default
@@ -250,7 +254,7 @@ TEST_P(AuthenticationTokenLoaderPrecedenceTest, Precedence) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected(param.expected_token);
   EXPECT_TRUE(token_opt->Equals(expected));
 
@@ -273,8 +277,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestNoTokenFoundWhenAuthDisabled) {
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();
 
-  EXPECT_FALSE(token_opt.has_value());
-  EXPECT_FALSE(loader.GetToken().has_value());
+  EXPECT_TRUE(token_opt == nullptr);
+  EXPECT_TRUE(loader.GetToken() == nullptr);
 
   // Re-enable for other tests
   RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
@@ -304,8 +308,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
   auto token_opt2 = loader.GetToken();
 
   // Should still return the cached token
-  ASSERT_TRUE(token_opt1.has_value());
-  ASSERT_TRUE(token_opt2.has_value());
+  ASSERT_TRUE(token_opt1 != nullptr);
+  ASSERT_TRUE(token_opt2 != nullptr);
   EXPECT_TRUE(token_opt1->Equals(*token_opt2));
   AuthenticationToken expected("cached-token");
   EXPECT_TRUE(token_opt2->Equals(expected));
@@ -320,7 +324,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   auto token_opt = loader.GetToken();
 
   // Whitespace should be trimmed
-  ASSERT_TRUE(token_opt.has_value());
+  ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("token-with-spaces");
   EXPECT_TRUE(token_opt->Equals(expected));
 }
@@ -335,21 +339,64 @@ TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeGetToken) {
 
   auto &loader = AuthenticationTokenLoader::instance();
 
-  // Without ignore_auth_mode, should return nullopt (auth is disabled)
+  // Without ignore_auth_mode, should return nullptr (auth is disabled)
   auto token_opt_no_ignore = loader.GetToken();
-  EXPECT_FALSE(token_opt_no_ignore.has_value());
+  EXPECT_TRUE(token_opt_no_ignore == nullptr);
 
   // Reset cache to test ignore_auth_mode
   loader.ResetCache();
 
   // With ignore_auth_mode=true, should load token despite auth being disabled
   auto token_opt_ignore = loader.GetToken(true);
-  ASSERT_TRUE(token_opt_ignore.has_value());
+  ASSERT_TRUE(token_opt_ignore != nullptr);
   AuthenticationToken expected("test-token-ignore-auth");
   EXPECT_TRUE(token_opt_ignore->Equals(expected));
 
   // Re-enable auth for other tests
   RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
+  // Enable K8s token auth
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  // Create a JWT with expiration time buffer (300) + 1 seconds
+  auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  int64_t exp = now + 301;
+
+  std::string header =
+      "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";  // {"alg":"none","typ":"JWT"}
+  std::string payload_json = "{\"exp\":" + std::to_string(exp) + "}";
+  std::string payload;
+  absl::Base64Escape(payload_json, &payload);
+  std::replace(payload.begin(), payload.end(), '+', '-');
+  std::replace(payload.begin(), payload.end(), '/', '_');
+  payload.erase(std::remove(payload.begin(), payload.end(), '='), payload.end());
+
+  std::string jwt = header + "." + payload + ".signature";
+
+  set_env_var("RAY_AUTH_TOKEN", jwt.c_str());
+
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token1 = loader.GetToken();
+  ASSERT_TRUE(token1 != nullptr);
+  EXPECT_EQ(token1->GetRawValue(), jwt);
+
+  // Wait for it to expire
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  // Next call should revoke and reload. Change the env var to verify it reloads.
+  set_env_var("RAY_AUTH_TOKEN", "new-token");
+
+  auto token2 = loader.GetToken();
+  ASSERT_TRUE(token2 != nullptr);
+  EXPECT_EQ(token2->GetRawValue(), "new-token");
+
+  // Re-enable auth for other tests
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
 }
 
 }  // namespace rpc

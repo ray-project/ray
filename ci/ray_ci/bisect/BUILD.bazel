@@ -5,7 +5,7 @@ py_binary(
     name = "bisect_test",
     srcs = ["bisect_test.py"],
     data = [":macos_validator"],
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [":bisect"],
 )
 
@@ -36,7 +36,7 @@ py_test(
     name = "test_bisector",
     size = "small",
     srcs = ["test_bisector.py"],
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",
@@ -51,7 +51,7 @@ py_test(
     name = "test_generic_validator",
     size = "small",
     srcs = ["test_generic_validator.py"],
-    exec_compatible_with = ["//bazel:py310"],
+    exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",

@@ -73,7 +73,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             )
             return
         worker_group_state = worker_group.get_worker_group_state()
-        placement_group = worker_group_state.placement_group
+        placement_group = worker_group_state.placement_group_handle.placement_group
 
         try:
             ray.get(

@@ -1,11 +1,11 @@
 import logging
 import time
 
-from ray.experimental.collective.util import get_address_and_port
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.runtime_context import get_runtime_context
 from ray.serve.handle import DeploymentHandle
+from ray.util.collective.collective import get_address_and_port
 
 logger = logging.getLogger(__name__)
 

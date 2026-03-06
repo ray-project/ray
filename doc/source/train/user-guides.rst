@@ -19,3 +19,4 @@ Ray Train User Guides
     user-guides/monitor-your-application
     user-guides/reproducibility
     Hyperparameter Optimization <user-guides/hyperparameter-optimization>
+    user-guides/scaling-collation-functions

@@ -122,7 +122,8 @@ def test_simple_imputer():
 
     # Test "most_frequent" strategy.
     most_frequent_col_a = [1, 2, 2, None, None, None]
-    most_frequent_col_b = [None, "c", "c", "b", "b", "a"]
+    # Use 3 "c"s to ensure it's clearly the most frequent (no tie with "b")
+    most_frequent_col_b = [None, "c", "c", "c", "b", "a"]
     most_frequent_df = pd.DataFrame.from_dict(
         {"A": most_frequent_col_a, "B": most_frequent_col_b}
     )
@@ -139,7 +140,7 @@ def test_simple_imputer():
     most_frequent_out_df = most_frequent_transformed.to_pandas()
 
     most_frequent_processed_col_a = [1.0, 2.0, 2.0, 2.0, 2.0, 2.0]
-    most_frequent_processed_col_b = ["c", "c", "c", "b", "b", "a"]
+    most_frequent_processed_col_b = ["c", "c", "c", "c", "b", "a"]
     most_frequent_expected_df = pd.DataFrame.from_dict(
         {"A": most_frequent_processed_col_a, "B": most_frequent_processed_col_b}
     )

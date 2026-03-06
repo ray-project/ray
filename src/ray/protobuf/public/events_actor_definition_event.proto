@@ -40,4 +40,8 @@ message ActorDefinitionEvent {
   bytes placement_group_id = 9;
   // The label selector for the actor.
   map<string, string> label_selector = 11;
+  // Human readable stacktrace of the actor creation (from task_spec.call_site).
+  string call_site = 12;
+  // The ID of the caller of the actor creation task (parent actor/driver).
+  bytes parent_id = 13;
 }

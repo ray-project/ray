@@ -5,11 +5,11 @@ import logging
 import time
 import uuid
 from contextlib import nullcontext
-from enum import Enum
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
 from pydantic import BaseModel, root_validator
 
+from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
 from ray.llm._internal.batch.stages.base import (
     StatefulStage,
     StatefulStageUDF,
@@ -17,13 +17,6 @@ from ray.llm._internal.batch.stages.base import (
 from ray.llm._internal.batch.stages.common import maybe_convert_ndarray_to_list
 
 logger = logging.getLogger(__name__)
-
-
-class SGLangTaskType(str, Enum):
-    """The type of task to run on the SGLang engine."""
-
-    """Generate text."""
-    GENERATE = "generate"
 
 
 class SGLangEngineRequest(BaseModel):
@@ -240,7 +233,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
         expected_input_keys: List[str],
         model: str,
         engine_kwargs: Dict[str, Any],
-        task_type: SGLangTaskType = SGLangTaskType.GENERATE,
+        task_type: TypeSGLangTaskType = SGLangTaskType.GENERATE,
         max_pending_requests: Optional[int] = None,
     ):
         """
@@ -260,7 +253,7 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
         # Setup SGLang engine kwargs.
         self.task_type = task_type
-        self.engine_kwargs = self.normalize_engine_kwargs(task_type, engine_kwargs)
+        self.engine_kwargs = self.normalize_engine_kwargs(engine_kwargs)
 
         # Set up the max pending requests.
         # Disable the semaphore if max_pending_requests is not set.
@@ -278,19 +271,21 @@ class SGLangEngineStageUDF(StatefulStageUDF):
 
     def normalize_engine_kwargs(
         self,
-        task_type: SGLangTaskType,
         engine_kwargs: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Normalize the engine kwargs.
 
         Args:
-            task_type: The task to use for the SGLang engine (e.g., "generate", etc).
             engine_kwargs: The kwargs to normalize.
 
         Returns:
             The normalized kwargs.
         """
+        # Copy to avoid mutating fn_constructor_kwargs. Ray Data generates UDF
+        # instance keys before __init__, so in-place changes cause KeyError.
+        engine_kwargs = engine_kwargs.copy()
+
         # Remove model from engine kwargs if set.
         model = engine_kwargs.pop("model", None)
         if model is not None and model != self.model:
@@ -300,18 +295,6 @@ class SGLangEngineStageUDF(StatefulStageUDF):
                 model,
                 self.model,
             )
-
-        # Override the task if it is different from the stage.
-        task = SGLangTaskType(engine_kwargs.get("task", task_type))
-        if task != task_type:
-            logger.warning(
-                "The task set in engine kwargs (%s) is different from the "
-                "stage (%s). Overriding the task in engine kwargs to %s.",
-                task,
-                task_type,
-                task_type,
-            )
-        engine_kwargs["task"] = task_type
         return engine_kwargs
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:

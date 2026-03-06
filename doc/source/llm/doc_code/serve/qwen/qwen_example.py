@@ -27,6 +27,12 @@ def _testing_build_openai_app(llm_serving_args):
     """Removes accelerator requirements for testing"""
     for config in llm_serving_args["llm_configs"]:
         config.accelerator_type = None
+        # Disable compile cache to avoid cache corruption in CI
+        if not config.runtime_env:
+            config.runtime_env = {}
+        if "env_vars" not in config.runtime_env:
+            config.runtime_env["env_vars"] = {}
+        config.runtime_env["env_vars"]["VLLM_DISABLE_COMPILE_CACHE"] = "1"
 
     return _original_build_openai_app(llm_serving_args)
 
@@ -55,7 +61,6 @@ llm_config = LLMConfig(
     engine_kwargs={
         "tensor_parallel_size": 2,
     },
-    runtime_env={"env_vars": {"VLLM_USE_V1": "1"}},
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})

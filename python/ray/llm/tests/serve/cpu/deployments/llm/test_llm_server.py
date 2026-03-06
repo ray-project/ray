@@ -239,6 +239,73 @@ class TestLLMServer:
         # Validate score response
         LLMResponseValidator.validate_score_response(chunks[0])
 
+    @pytest.mark.parametrize("return_token_strs", [False, True])
+    @pytest.mark.asyncio
+    async def test_tokenize_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_tokenize_request,
+        return_token_strs: bool,
+    ):
+        """Test tokenize API from LLMServer perspective."""
+
+        # Create tokenize request
+        request = mock_tokenize_request
+
+        print(
+            f"\n\n_____ TOKENIZE SERVER return_token_strs={return_token_strs} _____\n\n"
+        )
+
+        # Get the response
+        batched_chunks = serve_handle.tokenize.remote(request)
+
+        # Collect responses (should be just one)
+        chunks = []
+        async for batch in batched_chunks:
+            chunks.append(batch)
+
+        # Check that we got one response
+        assert len(chunks) == 1
+
+        # Validate tokenize response
+        LLMResponseValidator.validate_tokenize_response(
+            chunks[0],
+            expected_prompt="Hello, world!",
+            return_token_strs=return_token_strs,
+        )
+
+    @pytest.mark.asyncio
+    async def test_detokenize_llm_server(
+        self,
+        serve_handle,
+        mock_llm_config,
+        mock_detokenize_request,
+    ):
+        """Test detokenize API from LLMServer perspective."""
+
+        # Create detokenize request
+        request = mock_detokenize_request
+
+        print("\n\n_____ DETOKENIZE SERVER _____\n\n")
+
+        # Get the response
+        batched_chunks = serve_handle.detokenize.remote(request)
+
+        # Collect responses (should be just one)
+        chunks = []
+        async for batch in batched_chunks:
+            chunks.append(batch)
+
+        # Check that we got one response
+        assert len(chunks) == 1
+
+        # Validate detokenize response
+        LLMResponseValidator.validate_detokenize_response(
+            chunks[0],
+            expected_text="Hello",  # [72, 101, 108, 108, 111] = "Hello"
+        )
+
     @pytest.mark.asyncio
     async def test_check_health(self, mock_llm_config):
         """Test health check functionality."""

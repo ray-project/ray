@@ -12,7 +12,10 @@ import pytest
 import yaml
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.conda import (
     _current_py_version,
@@ -27,7 +30,6 @@ from ray._private.runtime_env.conda_utils import (
 )
 from ray._private.test_utils import (
     chdir,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
 from ray._private.utils import (

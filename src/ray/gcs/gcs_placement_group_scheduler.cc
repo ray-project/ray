@@ -178,7 +178,7 @@ void GcsPlacementGroupScheduler::MarkScheduleCancelled(
 void GcsPlacementGroupScheduler::PrepareResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-    const StatusCallback &callback) {
+    const rpc::StatusCallback &callback) {
   if (!node.has_value()) {
     callback(Status::NotFound("Node is already dead."));
     return;
@@ -209,7 +209,7 @@ void GcsPlacementGroupScheduler::PrepareResources(
 void GcsPlacementGroupScheduler::CommitResources(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
-    const StatusCallback callback) {
+    const rpc::StatusCallback callback) {
   RAY_CHECK(node.has_value());
   const auto raylet_client = GetRayletClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
@@ -759,21 +759,6 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
     if (IsPlacementGroupWildcardResource(entry.first)) {
       wildcard_resources[entry.first] = capacity - entry.second;
     } else {
-      if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-        auto available_amount =
-            cluster_resource_manager.GetNodeResources(node_id).available.Get(resource_id);
-        if (available_amount != capacity) {
-          RAY_LOG(WARNING)
-              << "The resource " << entry.first
-              << " now is still in use when removing bundle " << bundle_spec->Index()
-              << " from placement group: " << bundle_spec->PlacementGroupId()
-              << ", maybe some workers depending on this bundle have not released the "
-                 "resource yet."
-              << " We will try it later.";
-          bundle_resource_ids.clear();
-          break;
-        }
-      }
       bundle_resource_ids.emplace_back(resource_id);
     }
   }

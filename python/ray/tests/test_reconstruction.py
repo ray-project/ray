@@ -115,7 +115,7 @@ def test_reconstruction_cached_dependency(
     else:
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj))
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj)
 
 
@@ -163,7 +163,7 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
     else:
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj))
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj)
 
     # Losing the object a second time will cause reconstruction to fail because
@@ -172,12 +172,10 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
     cluster.add_node(num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if reconstruction_enabled:
-        with pytest.raises(
-            ray.exceptions.ObjectReconstructionFailedMaxAttemptsExceededError
-        ):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj)
     else:
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj)
 
 
@@ -304,7 +302,7 @@ def test_basic_reconstruction_actor_task(
         else:
             with pytest.raises(ray.exceptions.RayTaskError):
                 ray.get(dependent_task.remote(obj))
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
                 ray.get(obj)
 
         # Make sure the actor handle is still usable.
@@ -367,8 +365,13 @@ def test_basic_reconstruction_actor_lineage_disabled(
 
     wait_for_pid_to_exit(pid)
 
-    with pytest.raises(ray.exceptions.ObjectLostError):
-        ray.get(obj)
+    if reconstruction_enabled:
+        # Actor has no max_task_retries by default, so retries are disabled
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
+            ray.get(obj)
+    else:
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
+            ray.get(obj)
 
     while True:
         time.sleep(1)
@@ -457,7 +460,8 @@ def test_basic_reconstruction_actor_constructor(
             ray.get(x)
         exc = str(exc_info.value)
         assert "arguments" in exc
-        assert "ObjectLostError" in exc
+        assert "ObjectReconstructionFailedError" in exc
+        assert "LINEAGE_DISABLED" in exc
 
 
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
@@ -510,7 +514,7 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
         with pytest.raises(ray.exceptions.RayTaskError):
             for obj in downstream:
                 ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj)
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
@@ -521,7 +525,7 @@ def test_multiple_downstream_tasks(config, ray_start_cluster, reconstruction_ena
             ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
     else:
         for obj in downstream:
-            with pytest.raises(ray.exceptions.ObjectLostError):
+            with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
                 ray.get(obj)
 
 
@@ -568,7 +572,7 @@ def test_reconstruction_chain(config, ray_start_cluster, reconstruction_enabled)
     else:
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj))
-        with pytest.raises(ray.exceptions.ObjectLostError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
             ray.get(obj)
 
 

@@ -17,7 +17,6 @@
 #include <optional>
 #include <string>
 
-#include "ray/common/gcs_callback_types.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/rpc_callback_types.h"
@@ -42,8 +41,9 @@ class ActorInfoAccessorInterface {
     @param actor_id The ID of actor to look up.
     @param callback Callback that will be called after lookup finishes.
    */
-  virtual void AsyncGet(const ActorID &actor_id,
-                        const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
+  virtual void AsyncGet(
+      const ActorID &actor_id,
+      const rpc::OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
   /**
     Get all actor specifications asynchronously.
@@ -54,11 +54,12 @@ class ActorInfoAccessorInterface {
     @param callback Callback that will be called after lookup finishes.
     @param timeout_ms request timeout, defaults to -1 for infinite timeout.
    */
-  virtual void AsyncGetAllByFilter(const std::optional<ActorID> &actor_id,
-                                   const std::optional<JobID> &job_id,
-                                   const std::optional<std::string> &actor_state_name,
-                                   const MultiItemCallback<rpc::ActorTableData> &callback,
-                                   int64_t timeout_ms = -1) = 0;
+  virtual void AsyncGetAllByFilter(
+      const std::optional<ActorID> &actor_id,
+      const std::optional<JobID> &job_id,
+      const std::optional<std::string> &actor_state_name,
+      const rpc::MultiItemCallback<rpc::ActorTableData> &callback,
+      int64_t timeout_ms = -1) = 0;
 
   /**
     Get actor specification for a named actor asynchronously.
@@ -68,10 +69,11 @@ class ActorInfoAccessorInterface {
     @param callback Callback that will be called after lookup finishes.
     @param timeout_ms RPC timeout in milliseconds. -1 means the default.
    */
-  virtual void AsyncGetByName(const std::string &name,
-                              const std::string &ray_namespace,
-                              const OptionalItemCallback<rpc::ActorTableData> &callback,
-                              int64_t timeout_ms = -1) = 0;
+  virtual void AsyncGetByName(
+      const std::string &name,
+      const std::string &ray_namespace,
+      const rpc::OptionalItemCallback<rpc::ActorTableData> &callback,
+      int64_t timeout_ms = -1) = 0;
 
   /**
     Get actor specification for a named actor synchronously.
@@ -113,7 +115,7 @@ class ActorInfoAccessorInterface {
   virtual void AsyncReportActorOutOfScope(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstruction,
-      const StatusCallback &callback,
+      const rpc::StatusCallback &callback,
       int64_t timeout_ms = -1) = 0;
 
   /**
@@ -124,7 +126,7 @@ class ActorInfoAccessorInterface {
     @param timeout_ms Timeout ms. -1 means there's no timeout.
    */
   virtual void AsyncRegisterActor(const TaskSpecification &task_spec,
-                                  const StatusCallback &callback,
+                                  const rpc::StatusCallback &callback,
                                   int64_t timeout_ms = -1) = 0;
 
   /**
@@ -139,7 +141,7 @@ class ActorInfoAccessorInterface {
   virtual void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      const StatusCallback &callback,
+      const rpc::StatusCallback &callback,
       int64_t timeout_ms = -1) = 0;
 
   /**
@@ -166,7 +168,7 @@ class ActorInfoAccessorInterface {
   virtual void AsyncKillActor(const ActorID &actor_id,
                               bool force_kill,
                               bool no_restart,
-                              const StatusCallback &callback,
+                              const rpc::StatusCallback &callback,
                               int64_t timeout_ms = -1) = 0;
 
   /**
@@ -188,8 +190,8 @@ class ActorInfoAccessorInterface {
    */
   virtual void AsyncSubscribe(
       const ActorID &actor_id,
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done) = 0;
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const rpc::StatusCallback &done) = 0;
 
   /**
     Cancel subscription to an actor.

@@ -41,13 +41,13 @@ from ray.rllib.examples.rl_modules.classes import (
     AlwaysSameHeuristicRLM,
     BeatLastHeuristicRLM,
 )
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
 from ray.tune.result import TRAINING_ITERATION

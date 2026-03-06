@@ -55,7 +55,7 @@ from ray.rllib.examples.rl_modules.classes.vpg_using_shared_encoder_rlm import (
     VPGPolicyAfterSharedEncoder,
     VPGPolicyNoSharedEncoder,
 )
-from ray.rllib.utils.test_utils import (
+from ray.rllib.examples.utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )

@@ -435,7 +435,7 @@ class RunnerGroup(metaclass=abc.ABCMeta):
                 if policies is not None
                 else [COMPONENT_RL_MODULE]
             )
-            # LearnerGroup has-a Learner, which has-a RLModule.
+            # LearnerGroup has a Learner, which has an RLModule.
             if isinstance(weights_src, LearnerGroup):
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],

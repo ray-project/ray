@@ -165,14 +165,11 @@ def start_service(
         logger.info(f"Service '{service_name}' terminated successfully.")
 
 
-def get_current_compute_config_name() -> str:
-    """Get the name of the current compute config."""
-    cluster_id = os.environ["ANYSCALE_CLUSTER_ID"]
-    sdk = anyscale.AnyscaleSDK()
-    cluster = sdk.get_cluster(cluster_id)
-    return anyscale.compute_config.get(
-        name="", _id=cluster.result.cluster_compute_id
-    ).name
+def get_current_compute_config():
+    """Get the compute config of the current job."""
+    job_id = os.environ["ANYSCALE_JOB_ID"]
+    job_status = anyscale.job.status(id=job_id)
+    return job_status.config.compute_config
 
 
 def get_applications(serve_config_file: str) -> List[Any]:

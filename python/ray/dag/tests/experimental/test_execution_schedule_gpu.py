@@ -16,7 +16,7 @@ from ray.tests.conftest import *  # noqa
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
-USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
+USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
 
 if not USE_GPU:
     pytest.skip("Skipping, these tests require GPUs.", allow_module_level=True)

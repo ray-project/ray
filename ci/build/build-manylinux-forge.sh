@@ -44,7 +44,7 @@ if [[ "${RAYCI_DISABLE_JAVA:-false}" != "true" && "${RAY_INSTALL_JAVA:-1}" == "1
 fi
 
 # Install nodejs
-NODE_VERSION_FULL="${NODE_VERSION_FULL:-14.21.3}"
+NODE_VERSION_FULL="14.21.3"
 
 if [[ "${ARCH}" == "x86_64" ]]; then
   NODE_URL="https://nodejs.org/dist/v${NODE_VERSION_FULL}/node-v${NODE_VERSION_FULL}-linux-x64.tar.xz"
@@ -74,8 +74,8 @@ chmod +x /tmp/bazelisk
 sudo mv /tmp/bazelisk /usr/local/bin/bazelisk
 sudo ln -sf /usr/local/bin/bazelisk /usr/local/bin/bazel
 
-# Use python3.9 as default python3
-sudo ln -sf /usr/local/bin/python3.9 /usr/local/bin/python3
+# Use python3.10 as default python3
+sudo ln -sf /usr/local/bin/python3.10 /usr/local/bin/python3
 
 {
   echo "build --config=ci"

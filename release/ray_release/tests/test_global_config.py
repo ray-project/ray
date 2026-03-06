@@ -57,9 +57,6 @@ def test_init_global_config() -> None:
         )
         assert config["state_machine_pr_aws_bucket"] == "ray-ci-pr-results"
         assert config["state_machine_disabled"] is True
-        assert config["byod_ray_cr_repo"] == "ray"
-        assert config["byod_ray_ml_cr_repo"] == "ray-ml"
-        assert config["byod_ray_llm_cr_repo"] == "ray-llm"
         assert config["release_image_step_ray"] == "anyscalebuild"
         assert config["release_image_step_ray_ml"] == "anyscalemlbuild"
         assert config["release_image_step_ray_llm"] == "anyscalellmbuild"

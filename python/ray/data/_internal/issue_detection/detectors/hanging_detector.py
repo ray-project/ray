@@ -1,13 +1,16 @@
+import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
+import ray
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueDetector,
     IssueType,
 )
+from ray.util.state.common import TaskState
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.op_runtime_metrics import (
@@ -25,11 +28,14 @@ DEFAULT_OP_TASK_STATS_STD_FACTOR = 10
 # Default detection time interval.
 DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class HangingExecutionState:
     operator_id: str
     task_idx: int
+    task_state: Optional[TaskState]
     bytes_output: int
     start_time_hanging: float
 
@@ -96,9 +102,17 @@ class HangingExecutionIssueDetector(IssueDetector):
                 op_name = self._op_id_to_name.get(state.operator_id, state.operator_id)
                 duration = time.perf_counter() - state.start_time_hanging
                 avg_duration = op_task_stats_map[state.operator_id].mean()
+
+                node_id = None
+                pid = None
+                attempt_number = None
+                if state.task_state is not None:
+                    node_id = state.task_state.node_id
+                    pid = state.task_state.worker_pid
+                    attempt_number = state.task_state.attempt_number
+
                 message = (
-                    f"A task of operator {op_name} with task index "
-                    f"{state.task_idx} has been running for {duration:.2f}s, which is longer"
+                    f"A task of operator {op_name} (pid={pid}, node_id={node_id}, attempt={attempt_number}) has been running for {duration:.2f}s, which is longer"
                     f" than the average task duration of this operator ({avg_duration:.2f}s)."
                     f" If this message persists, please check the stack trace of the "
                     "task for potential hanging issues."
@@ -139,9 +153,29 @@ class HangingExecutionIssueDetector(IssueDetector):
                         prev_state_value is None
                         or bytes_output != prev_state_value.bytes_output
                     ):
+                        task_state = None
+                        try:
+                            task_state: Union[
+                                TaskState, List[TaskState]
+                            ] = ray.util.state.get_task(
+                                task_info.task_id.hex(),
+                                timeout=1.0,
+                                _explain=True,
+                            )
+                            if isinstance(task_state, list):
+                                # get the latest task
+                                task_state = max(
+                                    task_state, key=lambda ts: ts.attempt_number
+                                )
+                        except Exception as e:
+                            logger.debug(
+                                f"Failed to grab task state with task_index={task_idx}, task_id={task_info.task_id}: {e}"
+                            )
+                            pass
                         self._state_map[operator.id][task_idx] = HangingExecutionState(
                             operator_id=operator.id,
                             task_idx=task_idx,
+                            task_state=task_state,
                             bytes_output=bytes_output,
                             start_time_hanging=time.perf_counter(),
                         )

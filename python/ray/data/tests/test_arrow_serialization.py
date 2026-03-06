@@ -24,7 +24,7 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
     _object_extension_type_allowed,
@@ -576,6 +576,57 @@ def test_custom_arrow_data_serializer_parquet_roundtrip(
     assert len(s_t2) < 1.1 * len(s_t)
     # Check for round-trip equality.
     assert t2.equals(pickle.loads(s_t2))
+
+
+def test_arrow_schema_ipc_serialization(ray_start_regular_shared):
+    """Test that Arrow Schema uses IPC serialization for performance."""
+    from ray._private.arrow_serialization import (
+        _arrow_schema_reduce,
+        _restore_schema_from_ipc,
+    )
+
+    # Verify the reducer is registered
+    ray._private.worker.global_worker.get_serialization_context()
+    assert pa.Schema in pickle.CloudPickler.dispatch
+    assert pickle.CloudPickler.dispatch[pa.Schema] == _arrow_schema_reduce
+
+    # Create a complex schema with various types
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("name", pa.string()),
+            pa.field("timestamp", pa.timestamp("us", tz="UTC")),
+            pa.field("tags", pa.list_(pa.string())),
+            pa.field("metadata", pa.map_(pa.string(), pa.string())),
+            pa.field(
+                "nested",
+                pa.struct(
+                    [
+                        pa.field("x", pa.float64()),
+                        pa.field("y", pa.float64()),
+                    ]
+                ),
+            ),
+            pa.field("category", pa.dictionary(pa.int8(), pa.string())),
+            pa.field("decimal_val", pa.decimal128(18, 6)),
+        ],
+        metadata={b"foo": b"bar"},
+    )
+
+    # Test roundtrip serialization
+    serialized = pickle.dumps(schema)
+    deserialized = pickle.loads(serialized)
+    assert schema.equals(deserialized)
+    assert schema.metadata == deserialized.metadata
+
+    # Verify the reducer uses IPC format (check via direct call)
+    restore_func, (ipc_bytes,) = _arrow_schema_reduce(schema)
+    assert restore_func == _restore_schema_from_ipc
+    # IPC bytes should match what schema.serialize() produces
+    assert ipc_bytes == schema.serialize().to_pybytes()
+    # Verify restore works
+    restored = restore_func(ipc_bytes)
+    assert schema.equals(restored)
 
 
 def test_custom_arrow_data_serializer_disable(shutdown_only):

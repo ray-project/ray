@@ -11,7 +11,10 @@ from torch import nn
 
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
+from ray.rllib.examples.utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 
 parser = add_rllib_example_script_args(
     default_timesteps=1000000,
@@ -53,6 +56,8 @@ config = (
             head_fcnet_activation=None,
             head_fcnet_kernel_initializer="orthogonal_",
             head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+            fusionnet_hiddens=[256, 256, 256],
+            fusionnet_activation="relu",
         )
     )
     .reporting(
@@ -63,6 +68,4 @@ config = (
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
     run_rllib_example_script_experiment(config, args)

@@ -20,11 +20,10 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "hermetic_python",
-    actual = "//bazel:py310",
-    visibility = ["//visibility:public"],
-)
+exports_files([
+    ".rayciversion",
+    "ray-images.yaml",
+])
 
 # C/C++ toolchain constraint configs.
 
@@ -200,6 +199,7 @@ pyx_library(
         "//src/ray/raylet_rpc_client:raylet_client_with_io_context_lib",
         "//src/ray/thirdparty/setproctitle",
         "//src/ray/util:memory",
+        "//src/ray/util:port_persistence",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",

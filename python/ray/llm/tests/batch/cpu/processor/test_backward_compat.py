@@ -1,5 +1,6 @@
 import sys
 import warnings
+from unittest.mock import patch
 
 import pytest
 
@@ -97,6 +98,48 @@ def test_legacy_dict_stage_config():
     assert isinstance(config.tokenize_stage, dict)
     assert config.tokenize_stage["enabled"] is True
     assert config.tokenize_stage["concurrency"] == 4
+
+
+@pytest.mark.parametrize(
+    "prepare_image_stage",
+    [
+        True,
+        False,
+        {"batch_size": 128},
+        PrepareImageStageConfig(enabled=True),
+        PrepareImageStageConfig(enabled=False),
+    ],
+)
+def test_prepare_image_stage_deprecation(prepare_image_stage):
+    """prepare_image_stage deprecation warning should be emitted when enabled."""
+    if isinstance(prepare_image_stage, bool):
+        is_enabled = prepare_image_stage
+    elif isinstance(prepare_image_stage, dict):
+        is_enabled = True
+    else:
+        is_enabled = prepare_image_stage.enabled
+
+    with patch("ray.llm._internal.batch.processor.base.logger.warning") as mock_warning:
+        vLLMEngineProcessorConfig(
+            model_source="test-model",
+            prepare_image_stage=prepare_image_stage,
+        )
+        if is_enabled:
+            mock_warning.assert_called_once()
+            call_args = mock_warning.call_args[0][0]
+            assert "prepare_image_stage" in call_args
+            assert "prepare_multimodal_stage" in call_args
+        else:
+            mock_warning.assert_not_called()
+
+
+def test_prepare_image_stage_deprecation_not_set():
+    """prepare_image_stage deprecation warning should not be emitted when not set."""
+    with patch("ray.llm._internal.batch.processor.base.logger.warning") as mock_warning:
+        vLLMEngineProcessorConfig(
+            model_source="test-model",
+        )
+        mock_warning.assert_not_called()
 
 
 if __name__ == "__main__":

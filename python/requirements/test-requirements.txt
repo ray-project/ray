@@ -14,8 +14,7 @@ boto3==1.29.7
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0 ; python_version < "3.12"
 cloudpickle==3.0.0 ; python_version >= "3.12"
-tornado==6.1 ; python_version < "3.12"
-tornado==6.2.0 ; python_version >= "3.12"
+tornado>=6.2.0
 cython==0.29.37
 fastapi>=0.115.12
 feather-format==0.4.1
@@ -32,14 +31,15 @@ jsonpatch==1.32
 kubernetes==24.2.0
 llvmlite==0.42.0
 lxml>=6.0.2
-moto[s3,server]==4.2.12
+moto[s3,server]==5.1.18
 mypy==1.7.0
+pyright==1.1.408
 numba==0.59.1
 openpyxl==3.0.10
 opentelemetry-api
 opentelemetry-sdk
 pexpect==4.8.0
-Pillow==10.3.0; platform_system != "Windows"
+Pillow>=10.4.0; platform_system != "Windows"
 proxy.py==2.4.3
 pydantic>=2.10.0
 pydot==1.4.2
@@ -59,7 +59,7 @@ pytest-virtualenv==1.8.1; python_version < "3.12"
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
 pytest-mock==3.14.0
 redis
-scikit-learn==1.3.2
+scikit-learn>=1.5.2
 smart_open[s3]==6.2.0
 tqdm==4.67.1
 trustme==0.9.0
@@ -73,7 +73,7 @@ yq==3.2.2
 memray; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != 'aarch64'
 numpy==1.26.4
 ipywidgets==8.1.3
-pyzmq==26.0.3
+pyzmq>=27.1.0
 colorama
 
 # For doc tests
@@ -85,9 +85,10 @@ jinja2>=3.1.6
 pytest-docker-tools==3.1.3
 pytest-forked==1.4.0
 opentelemetry-instrumentation-fastapi==0.55b1
+mlflow>=3.0.0
 
 # For dataset tests
-polars>=1.32.3,<2.0.0
+polars>=1.36.0,<2.0.0
 
 importlib-metadata==6.11.0
 
@@ -124,15 +125,19 @@ jsonschema>=4.23.0
 attrs>=22.2.0
 openapi-schema-validator>=0.6.3
 wheel>=0.45.1
-aiohttp>=3.11.16
-cryptography>=44.0.3 ; sys_platform != "darwin"
-cryptography>=43.0.3 ; sys_platform == "darwin" and platform_machine != "arm64"
-cryptography>=44.0.3 ; sys_platform == "darwin" and platform_machine == "arm64"
+aiohttp>=3.13.3
+cryptography>=44.0.3
 pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
 protobuf>=4,<5
+cffi>=1.17.1,<2
+# cupy-cuda12x requires fastrlock
+fastrlock>=0.8.3; sys_platform != 'darwin'
+lz4>=4.4.5
+pyyaml>=6.0.3
+msgpack>=1.1.2
 
 # TODO(aslonnie): remove this
 # this is required as some packages depends on ray and will pick up older version of

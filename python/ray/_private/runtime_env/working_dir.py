@@ -22,10 +22,12 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
+from ray.util.debug import log_once
 
 default_logger = logging.getLogger(__name__)
 
 _WIN32 = os.name == "nt"
+_LOG_ONCE_DEFAULT_EXCLUDE_PREFIX = "runtime_env_default_exclude:"
 
 
 def upload_working_dir_if_needed(
@@ -38,6 +40,12 @@ def upload_working_dir_if_needed(
     """Uploads the working_dir and replaces it with a URI.
 
     If the working_dir is already a URI, this is a no-op.
+
+    Excludes are combined from:
+      - .gitignore and .rayignore files in the working_dir
+      - runtime_env["excludes"] field
+      - RAY_RUNTIME_ENV_DEFAULT_EXCLUDES constant, overridable via
+        RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES environment variable
     """
     working_dir = runtime_env.get("working_dir")
     if working_dir is None:
@@ -63,7 +71,25 @@ def upload_working_dir_if_needed(
             raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
-    excludes = runtime_env.get("excludes", None)
+    default_excludes = ray_constants.get_runtime_env_default_excludes()
+    user_excludes = runtime_env.get("excludes") or []
+    excludes = default_excludes + list(user_excludes)
+    # TODO(ricardo): 2026-01-07 Remove these warnings in a few releases. Added in
+    # case users rely on these directories being uploaded with their working_dir
+    # since this change would be difficult to debug.
+    logger = logger or default_logger
+    working_dir_path = Path(working_dir)
+    for d in default_excludes:
+        if (working_dir_path / d).exists() and log_once(
+            f"{_LOG_ONCE_DEFAULT_EXCLUDE_PREFIX}{d}"
+        ):
+            logger.warning(
+                "Directory %r is now ignored by default when packaging the working "
+                "directory. To disable this behavior, set "
+                "the `RAY_OVERRIDE_RUNTIME_ENV_DEFAULT_EXCLUDES=''` environment "
+                "variable.",
+                d,
+            )
     try:
         working_dir_uri = get_uri_for_directory(
             working_dir,

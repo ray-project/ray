@@ -4,7 +4,7 @@ This file serves as a documentation example and CI test for OpenAI API batch inf
 """
 
 import os
-from ray.data.llm import HttpRequestProcessorConfig, build_llm_processor
+from ray.data.llm import HttpRequestProcessorConfig, build_processor
 
 
 def run_openai_example():
@@ -20,7 +20,7 @@ def run_openai_example():
         qps=1,
     )
 
-    processor = build_llm_processor(
+    processor = build_processor(
         config,
         preprocess=lambda row: dict(
             payload=dict(

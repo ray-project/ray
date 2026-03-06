@@ -15,8 +15,7 @@ from typing import (
 
 import numpy as np
 
-from ray._private.ray_constants import env_integer
-from ray.data.block import DataBatch
+from ray._common.utils import env_integer
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -277,7 +276,7 @@ class DefaultCollateFn(ArrowBatchCollateFn):
         Returns:
             Dictionary mapping column names to lists of tensors
         """
-        from ray.air._internal.torch_utils import (
+        from ray.data.util.torch_utils import (
             arrow_batch_to_tensors,
         )
 

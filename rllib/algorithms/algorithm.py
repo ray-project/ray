@@ -488,7 +488,9 @@ class Algorithm(Checkpointable, Trainable):
         # The Algorithm's `MetricsLogger` object to collect stats from all its
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
-        self.metrics = MetricsLogger(root=True)
+        self.metrics: MetricsLogger = MetricsLogger(
+            root=True, stats_cls_lookup=config.stats_cls_lookup
+        )
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -555,6 +557,10 @@ class Algorithm(Checkpointable, Trainable):
         self._metrics_callback_on_train_result_time: Optional[Histogram] = None
         self._metrics_callback_on_evaluate_start_time: Optional[Histogram] = None
         self._metrics_callback_on_evaluate_end_time: Optional[Histogram] = None
+        self._metrics_callback_on_evaluate_offline_start_time: Optional[
+            Histogram
+        ] = None
+        self._metrics_callback_on_evaluate_offline_end_time: Optional[Histogram] = None
 
         # Ray metrics - IMPALA
         self._metrics_impala_training_step_time: Optional[Histogram] = None
@@ -715,6 +721,26 @@ class Algorithm(Checkpointable, Trainable):
             tag_keys=("rllib",),
         )
         self._metrics_callback_on_evaluate_end_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_callback_on_evaluate_offline_start_time = Histogram(
+            name="rllib_algorithm_callback_on_evaluate_offline_start_time",
+            description="Time spent in callback 'on_evaluate_offline_start()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_callback_on_evaluate_offline_start_time.set_default_tags(
+            {"rllib": self.__class__.__name__}
+        )
+
+        self._metrics_callback_on_evaluate_offline_end_time = Histogram(
+            name="rllib_algorithm_callback_on_evaluate_offline_end_time",
+            description="Time spent in callback 'on_evaluate_offline_end()'",
+            boundaries=DEFAULT_HISTOGRAM_BOUNDARIES_SHORT_EVENTS,
+            tag_keys=("rllib",),
+        )
+        self._metrics_callback_on_evaluate_offline_end_time.set_default_tags(
             {"rllib": self.__class__.__name__}
         )
 
@@ -1208,12 +1234,12 @@ class Algorithm(Checkpointable, Trainable):
             # `self.iteration` gets incremented after this function returns,
             # meaning that e.g. the first time this function is called,
             # self.iteration will be 0.
-            evaluate_this_iter = (
+            evaluate_this_iter = bool(
                 self.config.evaluation_interval
                 and (self.iteration + 1) % self.config.evaluation_interval == 0
             )
 
-            evaluate_offline_this_iter = (
+            evaluate_offline_this_iter = bool(
                 self.config.offline_evaluation_interval
                 and (self.iteration + 1) % self.config.offline_evaluation_interval == 0
             )
@@ -1282,6 +1308,13 @@ class Algorithm(Checkpointable, Trainable):
                         ):
                             self.env_runner_group.sync_env_runner_states(
                                 config=self.config,
+                                env_steps_sampled=self.metrics.peek(
+                                    (
+                                        ENV_RUNNER_RESULTS,
+                                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                    ),
+                                    default=0,
+                                ),
                                 env_to_module=self.env_to_module_connector,
                                 module_to_env=self.module_to_env_connector,
                             )
@@ -1313,7 +1346,7 @@ class Algorithm(Checkpointable, Trainable):
         return results
 
     @PublicAPI
-    def evaluate_offline(self):
+    def evaluate_offline(self) -> ResultDict:
         """Evaluates current policy offline under `evaluation_config` settings.
 
         Returns:
@@ -1329,40 +1362,58 @@ class Algorithm(Checkpointable, Trainable):
 
         # TODO (simon): Check, how we can sync without a local runner. Also,
         # connectors are in the data pipeline not directly in the runner applied.
+        # NOTE (simon): Connector synching must actually happen in the OfflinePreLearner/OfflinePreEvaluation
         # if self.config.broadcast_offline_eval_runner_states:
         #     # TODO (simon): Create offline equivalent.
         #     with self.metrics.log_time(TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER):
         #         self.offline_eval_runner_group.sync_runner_states(
         #             from_runner=
         #         )
-        make_callback(
-            "on_evaluate_offline_start",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_evaluate_offline_start,
-            kwargs=dict(algorithm=self, metrics_logger=self.metrics),
-        )
+        with TimerAndPrometheusLogger(
+            self._metrics_callback_on_evaluate_offline_start_time
+        ):
+            make_callback(
+                "on_evaluate_offline_start",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_evaluate_offline_start,
+                kwargs=dict(algorithm=self, metrics_logger=self.metrics),
+            )
 
         # Evaluate with fixed duration.
         if self.offline_eval_runner_group.num_healthy_remote_runners > 0:
             self._evaluate_offline_with_fixed_duration()
         else:
             self._evaluate_offline_on_local_runner()
-        # Reduce the evaluation results.
+
+        # Check, whether we have any results.
+        if log_once("no_offline_eval_results") and not self.metrics.peek(
+            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS)
+        ):
+            logger.warning(
+                "No offline evaluation results found for this iteration. "
+                "This can happen if the offline evaluation runner(s) is/are not healthy."
+            )
+        # Peek the offline evaluation results from the metrics store.
         eval_results = self.metrics.peek(
-            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS), default={}
+            (EVALUATION_RESULTS, OFFLINE_EVAL_RUNNER_RESULTS),
+            default={},
+            latest_merged_only=True,
         )
 
         # Trigger `on_evaluate_offline_end` callback.
-        make_callback(
-            "on_evaluate_offline_end",
-            callbacks_objects=self.callbacks,
-            callbacks_functions=self.config.callbacks_on_evaluate_offline_end,
-            kwargs=dict(
-                algorithm=self,
-                metrics_logger=self.metrics,
-                evaluation_metrics=eval_results,
-            ),
-        )
+        with TimerAndPrometheusLogger(
+            self._metrics_callback_on_evaluate_offline_end_time
+        ):
+            make_callback(
+                "on_evaluate_offline_end",
+                callbacks_objects=self.callbacks,
+                callbacks_functions=self.config.callbacks_on_evaluate_offline_end,
+                kwargs=dict(
+                    algorithm=self,
+                    metrics_logger=self.metrics,
+                    evaluation_metrics=eval_results,
+                ),
+            )
 
         # Also return the results here for convenience.
         return {OFFLINE_EVAL_RUNNER_RESULTS: eval_results}
@@ -1393,18 +1444,11 @@ class Algorithm(Checkpointable, Trainable):
                 return self._run_offline_evaluation_old_api_stack()
 
             if self.config.enable_env_runner_and_connector_v2:
-                if (
-                    self.env_runner_group is not None
-                    and self.env_runner_group.healthy_env_runner_ids()
-                ):
-                    # TODO (sven): Replace this with a new ActorManager API:
-                    #  try_remote_request_till_success("get_state") -> tuple(int,
-                    #  remoteresult)
-                    weights_src = self.env_runner_group._worker_manager._actors[
-                        self.env_runner_group.healthy_env_runner_ids()[0]
-                    ]
-                else:
-                    weights_src = self.learner_group
+                # TODO (sven): Replace this with a new ActorManager API:
+                #  try_remote_request_till_success("get_state") -> tuple(int,
+                #  remoteresult) and get results from EnvRunners.
+                # TODO (Artur): Use Ray Core's concurrency groups to give get_state a separate concurrency limit.
+                weights_src = self.learner_group
             else:
                 weights_src = self.env_runner
 
@@ -1431,6 +1475,13 @@ class Algorithm(Checkpointable, Trainable):
                                 self.eval_env_runner_group.sync_env_runner_states(
                                     config=self.evaluation_config,
                                     from_worker=self.env_runner,
+                                    env_steps_sampled=self.metrics.peek(
+                                        (
+                                            ENV_RUNNER_RESULTS,
+                                            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                                        ),
+                                        default=0,
+                                    ),
                                     env_to_module=self.env_to_module_connector,
                                     module_to_env=self.module_to_env_connector,
                                 )
@@ -1510,11 +1561,18 @@ class Algorithm(Checkpointable, Trainable):
                 eval_results = {}
 
             if self.config.enable_env_runner_and_connector_v2:
-                eval_results = self.metrics.peek(key=EVALUATION_RESULTS, default={})
-                if log_once("no_eval_results") and not eval_results:
+                if log_once("no_eval_results") and not self.metrics.peek(
+                    (EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
+                ):
                     logger.warning(
                         "No evaluation results found for this iteration. This can happen if the evaluation worker(s) is/are not healthy."
                     )
+                # Peek the results here from the metrics store if requested.
+                eval_results = self.metrics.peek(
+                    key=EVALUATION_RESULTS,
+                    default={},
+                    latest_merged_only=True,
+                )
             else:
                 eval_results = {ENV_RUNNER_RESULTS: eval_results}
                 eval_results[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps
@@ -1721,6 +1779,17 @@ class Algorithm(Checkpointable, Trainable):
             if self.config.enable_env_runner_and_connector_v2:
                 # Compute rough number of timesteps it takes for a single EnvRunner
                 # to occupy the estimated (parallelly running) train step.
+                throughput_estimate = self.metrics.peek(
+                    (
+                        EVALUATION_RESULTS,
+                        ENV_RUNNER_RESULTS,
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                    ),
+                    throughput=True,
+                    # Note (artur): Peeking throughputs of lifetime metrics results in a dictionary with both throughputs (since last restore and total).
+                    # We only need the throughput since last restore here.
+                    default={"throughput_since_last_restore": 0.0},
+                )["throughput_since_last_restore"]
                 _num = min(
                     # Clamp number of steps to take between a max and a min.
                     self.config.evaluation_auto_duration_max_env_steps_per_sample,
@@ -1731,15 +1800,7 @@ class Algorithm(Checkpointable, Trainable):
                             (train_mean_time - (time.time() - t0))
                             # Multiply by our own (eval) throughput to get the timesteps
                             # to do (per worker).
-                            * self.metrics.peek(
-                                (
-                                    EVALUATION_RESULTS,
-                                    ENV_RUNNER_RESULTS,
-                                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                                ),
-                                throughput=True,
-                                default=0.0,
-                            )
+                            * throughput_estimate
                             / num_healthy_workers
                         ),
                     ),
@@ -1978,17 +2039,16 @@ class Algorithm(Checkpointable, Trainable):
                     for i in range(1, num_workers + 1)
                 ]
 
-                results = (
-                    self.eval_env_runner_group.foreach_env_runner_async_fetch_ready(
-                        func=_env_runner_remote,
-                        kwargs={
-                            "num": _num,
-                            "round": _round,
-                            "iter": algo_iteration,
-                            "_force_reset": force_reset,
-                        },
-                        tag="_env_runner_remote",
-                    )
+                results = self.eval_env_runner_group.foreach_env_runner(
+                    func=_env_runner_remote,
+                    kwargs={
+                        "num": _num,
+                        "round": _round,
+                        "iter": algo_iteration,
+                        "_force_reset": force_reset,
+                    },
+                    timeout_seconds=time_out,
+                    local_env_runner=False,
                 )
 
                 # Make sure we properly time out if we have not received any results
@@ -2094,7 +2154,9 @@ class Algorithm(Checkpointable, Trainable):
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
             num_episodes = self.metrics.peek(
-                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES), default=0
+                (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES),
+                default=0,
+                latest_merged_only=True,
             )
             env_runner_results = None
 
@@ -2189,7 +2251,8 @@ class Algorithm(Checkpointable, Trainable):
                 COMPONENT_MODULE_TO_ENV_CONNECTOR
             ] = self.module_to_env_connector.get_state()
             state[NUM_ENV_STEPS_SAMPLED_LIFETIME] = self.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                default=0,
             )
             state_ref = ray.put(state)
 
@@ -2332,7 +2395,7 @@ class Algorithm(Checkpointable, Trainable):
                     ),
                 },
             )
-            self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
+            self.metrics.aggregate(learner_results, key=LEARNER_RESULTS)
 
         # Update weights - after learning on the local worker - on all
         # remote workers (only those RLModules that were actually trained).
@@ -3140,6 +3203,9 @@ class Algorithm(Checkpointable, Trainable):
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 from_worker=self.env_runner,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
                 env_to_module=self.env_to_module_connector,
                 module_to_env=self.module_to_env_connector,
             )
@@ -3151,6 +3217,9 @@ class Algorithm(Checkpointable, Trainable):
             self.eval_env_runner_group.sync_env_runner_states(
                 config=self.evaluation_config,
                 from_worker=self.env_runner,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
                 env_to_module=self.env_to_module_connector,
                 module_to_env=self.module_to_env_connector,
             )
@@ -3246,7 +3315,7 @@ class Algorithm(Checkpointable, Trainable):
                 config=self.config,
                 from_worker=None,
                 env_steps_sampled=self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                 ),
                 # connector_states=connector_states,
                 env_to_module=self.env_to_module_connector,
@@ -3256,6 +3325,9 @@ class Algorithm(Checkpointable, Trainable):
         elif self.env_runner_group.num_remote_env_runners() > 0 and self.env_runner:
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
+                env_steps_sampled=self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                ),
                 from_worker=self.env_runner,
             )
 
@@ -3301,6 +3373,12 @@ class Algorithm(Checkpointable, Trainable):
             and self.eval_env_runner_group is not None
         ):
             self.eval_env_runner_group.stop()
+
+        if (
+            hasattr(self, "offline_eval_runner_group")
+            and self.offline_eval_runner_group is not None
+        ):
+            self.offline_eval_runner_group.stop()
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -3650,7 +3728,6 @@ class Algorithm(Checkpointable, Trainable):
                             NUM_TRAINING_STEP_CALLS_PER_ITERATION,
                             1,
                             reduce="sum",
-                            clear_on_reduce=True,
                         )
 
             if self.config.num_aggregator_actors_per_learner:
@@ -3688,7 +3765,7 @@ class Algorithm(Checkpointable, Trainable):
                     self.offline_eval_runner_group
                 )
                 if restored:
-                    # Fire the callback for re-created workers.
+                    # Fire the callback for re-created offline evaluation runners.
                     make_callback(
                         "on_offline_eval_runners_recreated",
                         callbacks_objects=self.callbacks,
@@ -3760,12 +3837,12 @@ class Algorithm(Checkpointable, Trainable):
             if self.config.enable_env_runner_and_connector_v2:
                 with self.metrics.log_time((TIMERS, EVALUATION_ITERATION_TIMER)):
                     eval_results = self.evaluate(
-                        parallel_train_future=parallel_train_future
+                        parallel_train_future=parallel_train_future,
                     )
             else:
                 with self._timers[EVALUATION_ITERATION_TIMER]:
                     eval_results = self.evaluate(
-                        parallel_train_future=parallel_train_future
+                        parallel_train_future=parallel_train_future,
                     )
                 self._timers[EVALUATION_ITERATION_TIMER].push_units_processed(
                     self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER]
@@ -3890,11 +3967,10 @@ class Algorithm(Checkpointable, Trainable):
 
             # Return dict (shallow copy of `train_results`).
             results: ResultDict = train_results.copy()
-            # Backward compatibility `NUM_ENV_STEPS_SAMPLED_LIFETIME` is now:
-            # `ENV_RUNNER_RESULTS/NUM_ENV_STEPS_SAMPLED_LIFETIME`.
-            results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results.get(
-                ENV_RUNNER_RESULTS, {}
-            ).get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+            if NUM_ENV_STEPS_SAMPLED_LIFETIME not in results:
+                results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results.get(
+                    ENV_RUNNER_RESULTS, {}
+                ).get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
             # Evaluation results.
             if eval_results:

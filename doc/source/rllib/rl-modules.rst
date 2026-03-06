@@ -213,7 +213,7 @@ see :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig
     ``DefaultModelConfig.use_lstm`` setting in combination with the
     ``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
     See here for a tuned
-    `example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/stateless_cartpole_ppo.py>`__.
+    `example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
 
 .. TODO: mention attention example once done
 

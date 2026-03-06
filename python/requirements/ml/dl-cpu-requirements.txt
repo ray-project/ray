@@ -29,5 +29,5 @@ torch-geometric==2.5.3
 cupy-cuda12x>=13.4.0; sys_platform != 'darwin'
 
 # Keep JAX version consistent with dl-gpu-requirements.txt
-jax==0.4.13; python_version < '3.12' and sys_platform != 'darwin'
-jaxlib==0.4.13; python_version < '3.12' and sys_platform != 'darwin'
+jax==0.4.22; python_version < '3.12' and sys_platform != 'darwin'
+jaxlib==0.4.22; python_version < '3.12' and sys_platform != 'darwin'

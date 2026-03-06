@@ -21,11 +21,12 @@
 namespace ray {
 namespace core {
 
-bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
+std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
+    const ObjectID &object_id) {
   if (object_id.TaskId().IsForActorCreationTask()) {
     // The GCS manages all actor restarts, so we should never try to
     // reconstruct an actor here.
-    return true;
+    return std::nullopt;
   }
   // Check the ReferenceCounter to see if there is a location for the object.
   bool owned_by_us = false;
@@ -34,14 +35,15 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   bool ref_exists = reference_counter_.IsPlasmaObjectPinnedOrSpilled(
       object_id, &owned_by_us, &pinned_at, &spilled);
   if (!ref_exists) {
-    // References that have gone out of scope cannot be recovered.
-    return false;
+    RAY_LOG(INFO).WithField(object_id) << "Cannot recover object: reference not found";
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_REF_NOT_FOUND;
   }
 
   if (!owned_by_us) {
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "Reconstruction for borrowed object is not supported";
-    return false;
+    RAY_LOG(INFO).WithField(object_id)
+        << "Cannot recover object: "
+        << "borrowed objects cannot be reconstructed by non-owner";
+    return rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_BORROWED;
   }
 
   bool already_pending_recovery = true;
@@ -85,7 +87,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
                          object_id,
                          reference_counter_.HasReference(object_id));
   }
-  return true;
+  return std::nullopt;
 }
 
 void ObjectRecoveryManager::PinOrReconstructObject(const ObjectID &object_id,
@@ -136,21 +138,15 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
-  bool lineage_evicted = false;
-  if (!reference_counter_.IsObjectReconstructable(object_id, &lineage_evicted)) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object is not reconstructable";
-    if (lineage_evicted) {
-      // TODO(swang): We may not report the LINEAGE_EVICTED error (just reports
-      // general OBJECT_UNRECONSTRUCTABLE error) if lineage eviction races with
-      // reconstruction.
-      recovery_failure_callback_(object_id,
-                                 rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED,
-                                 /*pin_object=*/true);
-    } else {
-      recovery_failure_callback_(object_id,
-                                 rpc::ErrorType::OBJECT_LOST,
-                                 /*pin_object=*/true);
-    }
+  LineageReconstructionEligibility eligibility =
+      reference_counter_.GetLineageReconstructionEligibility(object_id);
+
+  if (eligibility != LineageReconstructionEligibility::ELIGIBLE) {
+    auto error_type_opt = ToErrorType(eligibility);
+    rpc::ErrorType error_type = error_type_opt.value_or(rpc::ErrorType::OBJECT_LOST);
+    RAY_LOG(INFO).WithField(object_id)
+        << "Cannot recover object: " << rpc::ErrorType_Name(error_type);
+    recovery_failure_callback_(object_id, error_type, /*pin_object=*/true);
     return;
   }
 
@@ -170,21 +166,20 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   if (!error_type_optional.has_value()) {
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
-      auto recovered = RecoverObject(dep);
-      if (!recovered) {
-        RAY_LOG(INFO).WithField(dep) << "Failed to reconstruct object";
+      auto error = RecoverObject(dep);
+      if (error.has_value()) {
+        RAY_LOG(INFO).WithField(dep)
+            << "Cannot recover dependency: " << rpc::ErrorType_Name(*error);
         // This case can happen if the dependency was borrowed from another
         // worker, or if there was a bug in reconstruction that caused us to GC
         // the dependency ref.
         // We do not pin the dependency because we may not be the owner.
-        recovery_failure_callback_(dep,
-                                   rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE,
-                                   /*pin_object=*/false);
+        recovery_failure_callback_(dep, *error, /*pin_object=*/false);
       }
     }
   } else {
     RAY_LOG(INFO).WithField(object_id)
-        << "Failed to reconstruct object because lineage has already been deleted";
+        << "Cannot recover object: " << rpc::ErrorType_Name(*error_type_optional);
     reference_counter_.UpdateObjectPendingCreation(object_id, false);
     recovery_failure_callback_(object_id,
                                *error_type_optional,

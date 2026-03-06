@@ -91,5 +91,88 @@ def coordinated_scaling_policy(
 
     return decisions, {}
 
-
 # __end_application_level_autoscaling_policy__
+
+# __begin_stateful_application_level_policy__
+from typing import Dict, Tuple, Any
+from ray.serve.config import AutoscalingContext
+from ray.serve._private.common import DeploymentID
+
+def stateful_application_level_policy(
+    contexts: Dict[DeploymentID, AutoscalingContext]
+) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict[str, Any]]]:
+    """Example policy demonstrating per-deployment state persistence."""
+    decisions = {}
+    policy_state = {}
+
+    for deployment_id, ctx in contexts.items():
+        # Read previous state for this deployment (persisted from last iteration)
+        prev_state = ctx.policy_state or {}
+        scale_count = prev_state.get("scale_count", 0)
+        last_replicas = prev_state.get("last_replicas", ctx.current_num_replicas)
+
+        # Simple scaling logic: scale based on queue depth
+        desired_replicas = max(
+            ctx.capacity_adjusted_min_replicas,
+            min(
+                ctx.capacity_adjusted_max_replicas,
+                ctx.total_num_requests // 10,
+            ),
+        )
+        decisions[deployment_id] = desired_replicas
+
+        # Store per-deployment state that persists across iterations
+        policy_state[deployment_id] = {
+            "scale_count": scale_count + 1,
+            "last_replicas": desired_replicas,
+        }
+
+    return decisions, policy_state
+
+
+# __end_stateful_application_level_policy__
+# __begin_apply_autoscaling_config_example__
+from typing import Any, Dict
+from ray.serve.config import AutoscalingContext
+
+
+def queue_length_based_autoscaling_policy(
+    ctx: AutoscalingContext,
+) -> tuple[int, Dict[str, Any]]:
+    # This policy calculates the "raw" desired replicas based on queue length.
+    # Ray Serve automatically applies scaling factors, delays, and bounds from
+    # the deployment's autoscaling_config on top of this decision.
+
+    queue_length = ctx.total_num_requests
+
+    if queue_length > 50:
+        return 10, {}
+    elif queue_length > 10:
+        return 5, {}
+    else:
+        return 0, {}
+# __end_apply_autoscaling_config_example__
+
+# __begin_apply_autoscaling_config_usage__
+from ray import serve
+from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+
+@serve.deployment(
+    autoscaling_config=AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=10,
+        metrics_interval_s=0.1,
+        upscale_delay_s=1.0,
+        downscale_delay_s=1.0,
+        policy=AutoscalingPolicy(
+            policy_function=queue_length_based_autoscaling_policy
+        )
+    ),
+    max_ongoing_requests=5,
+)
+class MyDeployment:
+    def __call__(self) -> str:
+        return "Hello, world!"
+
+app = MyDeployment.bind()
+# __end_apply_autoscaling_config_usage__

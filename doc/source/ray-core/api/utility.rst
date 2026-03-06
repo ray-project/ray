@@ -15,6 +15,11 @@ Utility
    ray.util.tpu.get_current_pod_worker_count
    ray.util.tpu.get_current_pod_name
    ray.util.tpu.get_num_tpu_chips_on_node
+   ray.util.tpu.get_tpu_coordinator_env_vars
+   ray.util.tpu.get_tpu_num_slices_for_workers
+   ray.util.tpu.get_tpu_version_from_type
+   ray.util.tpu.get_tpu_worker_resources
+
    ray.util.tpu.SlicePlacementGroup
    ray.util.tpu.slice_placement_group
 

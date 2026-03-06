@@ -924,7 +924,8 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
                                        node_id.Binary(),
                                        message_processor,
                                        cleanup_cb,
-                                       std::nullopt,
+                                       nullptr,
+                                       ray::rpc::AuthenticationTokenValidator::instance(),
                                        /*max_batch_size=*/1,
                                        /*max_batch_delay_ms=*/0);
     return reactor;
@@ -1105,8 +1106,8 @@ class SyncerAuthenticationTest : public ::testing::Test {
       // Create service with authentication token
       service = std::make_unique<RaySyncerService>(
           *syncer,
-          token.empty() ? std::nullopt
-                        : std::make_optional(ray::rpc::AuthenticationToken(token)));
+          token.empty() ? nullptr
+                        : std::make_shared<const ray::rpc::AuthenticationToken>(token));
 
       auto server_address = BuildAddress("0.0.0.0", port);
       grpc::ServerBuilder builder;

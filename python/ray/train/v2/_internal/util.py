@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import functools
 import logging
@@ -21,7 +22,6 @@ from typing import (
 import ray
 from ray.train._internal.utils import count_required_parameters
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
-from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -153,44 +153,6 @@ def _copy_doc(copy_func):
     return wrapped
 
 
-def ray_get_safe(
-    object_refs: Union[ObjectRef, List[ObjectRef]],
-) -> Union[Any, List[Any]]:
-    """This is a safe version of `ray.get` that raises an exception immediately
-    if an input task dies, while the others are still running.
-
-    TODO(ml-team, core-team): This is NOT a long-term solution,
-    and we should not maintain this function indefinitely.
-    This is a mitigation for a Ray Core bug, and should be removed when
-    that is fixed.
-    See here: https://github.com/ray-project/ray/issues/47204
-
-    Args:
-        object_refs: A single or list of object refs to wait on.
-
-    Returns:
-        task_outputs: The outputs of the tasks.
-
-    Raises:
-        `RayTaskError`/`RayActorError`: if any of the tasks encounter a runtime error
-            or fail due to actor/task death (ex: node failure).
-    """
-    is_list = isinstance(object_refs, list)
-    object_refs = object_refs if is_list else [object_refs]
-
-    unready = object_refs
-    task_to_output = {}
-    while unready:
-        ready, unready = ray.wait(unready, num_returns=1)
-        if ready:
-            for task, task_output in zip(ready, ray.get(ready)):
-                task_to_output[task] = task_output
-
-    assert len(task_to_output) == len(object_refs)
-    ordered_outputs = [task_to_output[task] for task in object_refs]
-    return ordered_outputs if is_list else ordered_outputs[0]
-
-
 @contextlib.contextmanager
 def invoke_context_managers(
     context_managers: List[ContextManager],
@@ -319,3 +281,48 @@ def requires_train_worker(raise_in_tune_session: bool = False) -> Callable:
         return _wrapped_fn
 
     return _wrap
+
+
+async def wait_with_logging(
+    condition: asyncio.Condition,
+    predicate: Optional[Callable[[], bool]] = None,
+    generate_warning_message: Optional[Callable[[], str]] = None,
+    warn_interval_s: float = 60,
+    timeout_s: float = -1,
+):
+    """Waits for condition to be notified, logging warnings and eventually timing out.
+
+    You must acquire the condition before calling this function.
+
+    Args:
+        condition: The condition to wait for.
+        predicate: Wait until this predicate is True. If None, wait until the condition
+            is notified.
+        generate_warning_message: A function that generates the warning message to log.
+            If None, no warning is logged.
+        warn_interval_s: The interval in seconds to log a warning.
+        timeout_s: The timeout in seconds.
+    """
+
+    async def _wait_loop():
+        while True:
+            try:
+                await asyncio.wait_for(
+                    condition.wait()
+                    if predicate is None
+                    else condition.wait_for(predicate),
+                    timeout=warn_interval_s,
+                )
+                return
+            # asyncio.wait_for() raises `asyncio.TimeoutError` for asyncio<=3.10
+            # and raises `TimeoutError` for asyncio>=3.11
+            # https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for
+            except (asyncio.TimeoutError, TimeoutError):
+                if generate_warning_message is not None:
+                    warning_message = generate_warning_message()
+                    logger.warning(warning_message)
+
+    await asyncio.wait_for(
+        _wait_loop(),
+        timeout=timeout_s if timeout_s >= 0 else None,
+    )

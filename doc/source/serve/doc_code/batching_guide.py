@@ -152,3 +152,94 @@ with ThreadPoolExecutor(max_workers=5) as pool:
     chunks_list = [fut.result() for fut in futs]
     for max, chunks in zip(requested_maxes, chunks_list):
         assert chunks == [str(i) for i in range(max)]
+
+# __batch_size_fn_begin__
+from typing import List
+
+from ray import serve
+from ray.serve.handle import DeploymentHandle
+
+
+class Graph:
+    """Simple graph data structure for GNN workloads."""
+
+    def __init__(self, num_nodes: int, node_features: list):
+        self.num_nodes = num_nodes
+        self.node_features = node_features
+
+
+@serve.deployment
+class GraphNeuralNetwork:
+    @serve.batch(
+        max_batch_size=10000,  # Maximum total nodes per batch
+        batch_wait_timeout_s=0.1,
+        batch_size_fn=lambda graphs: sum(g.num_nodes for g in graphs),
+    )
+    async def predict(self, graphs: List[Graph]) -> List[float]:
+        """Process a batch of graphs, batching by total node count."""
+        # The batch_size_fn ensures that the total number of nodes
+        # across all graphs in the batch doesn't exceed max_batch_size.
+        # This prevents GPU memory overflow.
+        results = []
+        for graph in graphs:
+            # Your GNN model inference logic here
+            # For this example, just return a simple score
+            score = float(graph.num_nodes * 0.1)
+            results.append(score)
+        return results
+
+    async def __call__(self, graph: Graph) -> float:
+        return await self.predict(graph)
+
+
+handle: DeploymentHandle = serve.run(GraphNeuralNetwork.bind())
+
+# Create test graphs with varying node counts
+graphs = [
+    Graph(num_nodes=100, node_features=[1.0] * 100),
+    Graph(num_nodes=5000, node_features=[2.0] * 5000),
+    Graph(num_nodes=3000, node_features=[3.0] * 3000),
+]
+
+# Send requests - they'll be batched by total node count
+results = [handle.remote(g).result() for g in graphs]
+print(f"Results: {results}")
+# __batch_size_fn_end__
+
+# __batch_size_fn_nlp_begin__
+from typing import List
+
+from ray import serve
+from ray.serve.handle import DeploymentHandle
+
+
+@serve.deployment
+class TokenBatcher:
+    @serve.batch(
+        max_batch_size=512,  # Maximum total tokens per batch
+        batch_wait_timeout_s=0.1,
+        batch_size_fn=lambda sequences: sum(len(s.split()) for s in sequences),
+    )
+    async def process(self, sequences: List[str]) -> List[int]:
+        """Process text sequences, batching by total token count."""
+        # The batch_size_fn ensures total tokens don't exceed max_batch_size.
+        # This is useful for transformer models with fixed context windows.
+        return [len(seq.split()) for seq in sequences]
+
+    async def __call__(self, sequence: str) -> int:
+        return await self.process(sequence)
+
+
+handle: DeploymentHandle = serve.run(TokenBatcher.bind())
+
+# Create sequences with different lengths
+sequences = [
+    "This is a short sentence",
+    "This is a much longer sentence with many more words to process",
+    "Short",
+]
+
+# Send requests - they'll be batched by total token count
+results = [handle.remote(seq).result() for seq in sequences]
+print(f"Token counts: {results}")
+# __batch_size_fn_nlp_end__

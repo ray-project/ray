@@ -5,7 +5,7 @@ import pydantic
 import pytest
 
 import ray
-from ray.data.llm import build_llm_processor
+from ray.data.llm import build_processor
 from ray.llm._internal.batch.processor import vLLMEngineProcessorConfig
 from ray.llm._internal.batch.processor.base import (
     Processor,
@@ -232,7 +232,7 @@ class TestBuilderKwargsValidation:
         ProcessorBuilder.register(DummyProcessorConfig, build_processor_with_kwargs)
 
         config = DummyProcessorConfig(batch_size=64)
-        processor = build_llm_processor(
+        processor = build_processor(
             config,
             preprocess=lambda row: {"val": row["id"]},
             postprocess=lambda row: {"result": row["val"]},
@@ -262,7 +262,7 @@ class TestBuilderKwargsValidation:
 
         config = DummyProcessorConfig(batch_size=64)
         with pytest.raises(TypeError, match="unsupported_kwarg"):
-            build_llm_processor(
+            build_processor(
                 config,
                 builder_kwargs=dict(unsupported_kwarg="value"),
             )
@@ -275,7 +275,7 @@ class TestBuilderKwargsValidation:
 
         config = DummyProcessorConfig(batch_size=64)
         with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
-            build_llm_processor(
+            build_processor(
                 config,
                 preprocess=lambda row: {"val": row["id"]},
                 builder_kwargs={conflicting_key: lambda row: {"other": row["id"]}},
@@ -349,21 +349,41 @@ class TestProcessorConfig:
         assert msg_part in str(e.value)
 
     @pytest.mark.parametrize(
-        "n,expected", [(1, (1, 1)), (4, (1, 4)), (10, (1, 10)), ("10", (1, 10))]
+        "n,expected",
+        [
+            (1, {"min_size": 1, "max_size": 1}),
+            (4, {"min_size": 1, "max_size": 4}),
+            (10, {"min_size": 1, "max_size": 10}),
+            ("10", {"min_size": 1, "max_size": 10}),
+        ],
     )
     def test_with_int_concurrency_scaling(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
         assert conf.get_concurrency() == expected
 
-    @pytest.mark.parametrize("n,expected", [(1, (1, 1)), (4, (4, 4)), (10, (10, 10))])
+    @pytest.mark.parametrize(
+        "n,expected",
+        [
+            (1, {"size": 1}),
+            (4, {"size": 4}),
+            (10, {"size": 10}),
+        ],
+    )
     def test_with_int_concurrency_fixed(self, n, expected):
         conf = ProcessorConfig(concurrency=n)
         assert conf.get_concurrency(autoscaling_enabled=False) == expected
 
-    @pytest.mark.parametrize("pair", [(1, 1), (1, 3), (2, 8)])
-    def test_with_tuple_concurrency(self, pair):
+    @pytest.mark.parametrize(
+        "pair,expected",
+        [
+            ((1, 1), {"min_size": 1, "max_size": 1}),
+            ((1, 3), {"min_size": 1, "max_size": 3}),
+            ((2, 8), {"min_size": 2, "max_size": 8}),
+        ],
+    )
+    def test_with_tuple_concurrency(self, pair, expected):
         conf = ProcessorConfig(concurrency=pair)
-        assert conf.get_concurrency() == pair
+        assert conf.get_concurrency() == expected
 
 
 class TestMapKwargs:
@@ -419,7 +439,7 @@ class TestMapKwargs:
         ProcessorBuilder.register(DummyProcessorConfig, build_processor_simple)
 
         config = DummyProcessorConfig(batch_size=64)
-        # Test through ProcessorBuilder which is called by build_llm_processor
+        # Test through ProcessorBuilder which is called by build_processor
         processor = ProcessorBuilder.build(
             config,
             preprocess=lambda row: {"val": row["id"]},
@@ -433,7 +453,7 @@ class TestMapKwargs:
 
     def test_builder_kwargs_conflict_with_map_kwargs(self):
         """Test that builder_kwargs validation rejects map kwargs."""
-        # Test the validation that build_llm_processor calls
+        # Test the validation that build_processor calls
         with pytest.raises(ValueError, match="builder_kwargs cannot contain"):
             ProcessorBuilder.validate_builder_kwargs(
                 {"preprocess_map_kwargs": {"num_cpus": 0.5}}

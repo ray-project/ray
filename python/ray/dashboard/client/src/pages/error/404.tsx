@@ -17,7 +17,10 @@ const Error404 = () => {
     >
       <div style={{ height: 400 }}>
         <Typography variant="h2">
-          <HelpOutlineOutlined fontSize="large" />
+          <HelpOutlineOutlined
+            fontSize="large"
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
+          />
         </Typography>
         <Typography variant="h6">404 NOT FOUND</Typography>
         <p>

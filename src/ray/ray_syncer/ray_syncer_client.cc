@@ -42,7 +42,7 @@ RayClientBidiReactor::RayClientBidiReactor(
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   // Add authentication token if token authentication is enabled
   auto auth_token = ray::rpc::AuthenticationTokenLoader::instance().GetToken();
-  if (auth_token.has_value() && !auth_token->empty()) {
+  if (auth_token && !auth_token->empty()) {
     auth_token->SetMetadata(client_context_);
   }
   stub_->async()->StartSync(&client_context_, this);

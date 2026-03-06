@@ -11,7 +11,7 @@ pip3 install -U \
     datasets==2.14.4 \
     accelerate==0.21.0 \
     evaluate==0.4.0 \
-    wandb==0.15.8 \
+    wandb==0.23.1 \
     pytorch-lightning==2.0.6 \
     protobuf \
     torchmetrics==1.0.3 \

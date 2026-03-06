@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
 import pyarrow.fs
 
@@ -19,6 +19,7 @@ from ray.train.v2._internal.migration_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import PublicAPI
+from ray.util.tpu import get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -36,7 +37,11 @@ class ScalingConfig(ScalingConfigV1):
             reserved by each worker can be overridden with the
             ``resources_per_worker`` argument. If the number of workers is 0,
             the training function will run in local mode, meaning the training
-            function runs in the same process.
+            function runs in the same process. To enable elasticity, provide a
+            ``(min_workers, max_workers)`` tuple of ints.
+        elastic_resize_monitor_interval_s: While the worker group is healthy,
+            consider resizing the worker group every
+            ``elastic_resize_monitor_interval_s`` seconds.
         use_gpu: If True, training will be done on GPUs (1 per worker).
             Defaults to False. The number of GPUs reserved by each
             worker can be overridden with the ``resources_per_worker``
@@ -48,7 +53,7 @@ class ScalingConfig(ScalingConfigV1):
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        bundle_label_selector: A list of label selectors for Ray Train worker placement.
+        label_selector: A list of label selectors for Ray Train worker placement.
             If a single label selector is provided, it will be applied to all Ray Train workers.
             If a list is provided, it must be the same length as the max number of Ray Train workers.
         accelerator_type: [Experimental] If specified, Ray Train will launch the
@@ -69,57 +74,55 @@ class ScalingConfig(ScalingConfigV1):
             when `use_tpu` is True and `num_workers` is greater than 1.
     """
 
+    num_workers: Union[int, Tuple[int, int]] = 1
     trainer_resources: Optional[dict] = None
+    label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+
+    # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
-    bundle_label_selector: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None
+
+    # Elasticity specific fields.
+    elastic_resize_monitor_interval_s: float = 60.0
 
     def __post_init__(self):
         if self.trainer_resources is not None:
             raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
-        if self.use_gpu and self.use_tpu:
-            raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
-
-        if not self.use_tpu and self.num_tpus_per_worker > 0:
+        is_fixed = isinstance(self.num_workers, int)
+        is_elastic = (
+            isinstance(self.num_workers, tuple)
+            and len(self.num_workers) == 2
+            and all(isinstance(x, int) for x in self.num_workers)
+        )
+        if not (is_fixed or is_elastic):
             raise ValueError(
-                "`use_tpu` is False but `TPU` was found in "
-                "`resources_per_worker`. Either set `use_tpu` to True or "
-                "remove `TPU` from `resources_per_worker."
+                "ScalingConfig(num_workers) must be an int or a tuple of two ints."
+            )
+        if self.elastic_resize_monitor_interval_s < 0:
+            raise ValueError(
+                "ScalingConfig(elastic_resize_monitor_interval_s) must be non-negative."
+            )
+        if self.min_workers < 0:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                "Number of workers cannot be negative."
+            )
+        if self.min_workers > self.max_workers:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                f"min_workers={self.min_workers} must be <= max_workers={self.max_workers}."
             )
 
-        if self.use_tpu and self.num_tpus_per_worker == 0:
-            raise ValueError(
-                "`use_tpu` is True but `TPU` is set to 0 in "
-                "`resources_per_worker`. Either set `use_tpu` to False or "
-                "request a positive number of `TPU` in "
-                "`resources_per_worker."
-            )
-
-        if self.use_tpu and self.num_workers > 1:
-            if not self.topology:
-                raise ValueError(
-                    "`topology` must be specified in ScalingConfig when `use_tpu=True` "
-                    " and `num_workers` > 1."
-                )
-            if not self.accelerator_type:
-                raise ValueError(
-                    "`accelerator_type` must be specified in ScalingConfig when "
-                    "`use_tpu=True` and `num_workers` > 1."
-                )
-            if self.bundle_label_selector:
-                raise ValueError(
-                    "Cannot set `bundle_label_selector` when `use_tpu=True` because "
-                    "Ray Train automatically reserves a TPU slice with a predefined label."
-                )
+        self._validate_tpu_config()
 
         if (
-            isinstance(self.bundle_label_selector, list)
-            and isinstance(self.num_workers, int)
-            and len(self.bundle_label_selector) != self.num_workers
+            isinstance(self.label_selector, list)
+            and len(self.label_selector) != self.max_workers
         ):
             raise ValueError(
-                "If `bundle_label_selector` is a list, it must be the same length as `num_workers`."
+                "If `label_selector` is a list, it must be the same length as "
+                "`max_workers` (or `num_workers` when fixed)."
             )
 
         if self.num_workers == 0:
@@ -130,6 +133,115 @@ class ScalingConfig(ScalingConfigV1):
             )
 
         super().__post_init__()
+
+    @property
+    def elasticity_enabled(self) -> bool:
+        return isinstance(self.num_workers, tuple)
+
+    @property
+    def min_workers(self) -> int:
+        return (
+            self.num_workers
+            if isinstance(self.num_workers, int)
+            else self.num_workers[0]
+        )
+
+    @property
+    def max_workers(self) -> int:
+        return (
+            self.num_workers
+            if isinstance(self.num_workers, int)
+            else self.num_workers[1]
+        )
+
+    @property
+    def total_resources(self):
+        """Map of total resources required for training.
+
+        For elastic configs, this returns an upper bound based on max_workers.
+        """
+        total_resource_map = dict(self._trainer_resources_not_none)
+        for k, value in self._resources_per_worker_not_none.items():
+            total_resource_map[k] = total_resource_map.get(k, 0.0) + (
+                value * self.max_workers
+            )
+        return total_resource_map
+
+    def _validate_tpu_config(self):
+        """Validates configuration specifically for TPU usage."""
+        max_workers = self.max_workers
+
+        if self.use_gpu and self.use_tpu:
+            raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
+
+        if not self.use_tpu:
+            if self.num_tpus_per_worker > 0:
+                raise ValueError(
+                    "`use_tpu` is False but `TPU` was found in "
+                    "`resources_per_worker`. Either set `use_tpu` to True or "
+                    "remove `TPU` from `resources_per_worker."
+                )
+            # If not using TPU, we are done validating TPU-specific logic.
+            return
+
+        if self.num_tpus_per_worker == 0:
+            raise ValueError(
+                "`use_tpu` is True but `TPU` is set to 0 in "
+                "`resources_per_worker`. Either set `use_tpu` to False or "
+                "request a positive number of `TPU` in "
+                "`resources_per_worker."
+            )
+
+        if max_workers > 1:
+            if not self.topology:
+                raise ValueError(
+                    "`topology` must be specified in ScalingConfig when `use_tpu=True` "
+                    " and `num_workers` > 1."
+                )
+            if not self.accelerator_type:
+                raise ValueError(
+                    "`accelerator_type` must be specified in ScalingConfig when "
+                    "`use_tpu=True` and `num_workers` > 1."
+                )
+            if self.label_selector:
+                raise ValueError(
+                    "Cannot set `label_selector` when `use_tpu=True` because "
+                    "Ray Train automatically reserves a TPU slice with a predefined label."
+                )
+
+        # Validate TPU resources when both topology and accelerator type are specified.
+        if self.topology and self.accelerator_type:
+            try:
+                workers_per_slice, tpu_resources = get_tpu_worker_resources(
+                    topology=self.topology,
+                    accelerator_type=self.accelerator_type,
+                    resources_per_unit=self.resources_per_worker,
+                    num_slices=1,
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Could not parse TPU topology details for "
+                    f"type={self.accelerator_type}, "
+                    f"topology={self.topology}. Error: {e}"
+                )
+
+            if workers_per_slice > 0 and max_workers % workers_per_slice != 0:
+                raise ValueError(
+                    f"The configured `num_workers` ({self.num_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
+                )
+            if workers_per_slice > 0 and self.min_workers % workers_per_slice != 0:
+                raise ValueError(
+                    f"The configured `min_workers` ({self.min_workers}) must be a "
+                    f"multiple of {workers_per_slice} for the specified topology ({self.topology}). "
+                    "TPU workloads typically require symmetric resource distribution "
+                    "across all slices to function correctly."
+                )
+
+            if self.resources_per_worker is None:
+                self.resources_per_worker = tpu_resources
 
     @property
     def _resources_per_worker_not_none(self):

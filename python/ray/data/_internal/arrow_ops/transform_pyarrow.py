@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray._private.utils import INT32_MAX
-from ray.air.util.tensor_extensions.arrow import (
+from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
     PYARROW_VERSION,
     get_arrow_extension_fixed_shape_tensor_types,
@@ -17,6 +16,7 @@ from ray.air.util.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 
 try:
     import pyarrow
@@ -143,7 +143,7 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
-    from ray.air.util.transform_pyarrow import (
+    from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
         _is_pa_extension_type,
     )
@@ -176,7 +176,7 @@ def _reconcile_diverging_fields(
     Returns:
         A dictionary of diverging fields with their reconciled types.
     """
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     reconciled_fields = {}
     field_types = defaultdict(list)  # field_name -> list of types seen so far
@@ -232,8 +232,8 @@ def _reconcile_field(
 
     Returns reconciled type or None if default PyArrow handling is sufficient.
     """
-    from ray.air.util.object_extensions.arrow import ArrowPythonObjectType
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.tensor_extensions.arrow import (
         get_arrow_extension_tensor_types,
     )
 
@@ -431,7 +431,7 @@ def _backfill_missing_fields(
     """
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import (
+    from ray.data._internal.tensor_extensions.arrow import (
         ArrowVariableShapedTensorType,
     )
 
@@ -481,10 +481,19 @@ def _backfill_missing_fields(
                     ndim=field_type.ndim
                 )
 
-            # The schema should already be unified by unify_schemas, so types
-            # should be compatible. If not, let the error propagate up.
-            # No explicit casting needed - PyArrow will handle type compatibility
-            # during struct creation or raise appropriate errors.
+            # Handle type mismatches for primitive types
+            # The schema should already be unified by unify_schemas, but
+            # struct field types may still diverge (e.g., int64 vs float64).
+            # Cast the existing array to match the unified struct field type.
+            elif current_array.type != field_type:
+                try:
+                    current_array = current_array.cast(field_type)
+                except pa.ArrowInvalid as e:
+                    raise ValueError(
+                        f"Cannot cast struct field '{field_name}' from "
+                        f"{current_array.type} to {field_type}: {e}"
+                    ) from e
+
             aligned_fields.append(current_array)
         else:
             # If the field is missing, fill with nulls
@@ -519,52 +528,53 @@ def _align_struct_fields(
     # Extract all struct column types from the provided schema
     unified_struct_types = _extract_unified_struct_types(schema)
 
-    # If there are no struct columns in the schema, return blocks as is
-    if not unified_struct_types:
-        return blocks
-
     aligned_blocks = []
 
     # Iterate over each block (table) in the list
     for block in blocks:
-        # Store aligned struct columns
-        aligned_columns = {}
+        # Fast path: if schema matches exactly, skip
+        if block.schema.equals(schema):
+            aligned_blocks.append(block)
+            continue
 
         # Get the number of rows in the block
         block_length = len(block)
+        block_schema_field_names = set(block.schema.names)
 
-        # Process each struct column defined in the unified schema
+        # Process struct columns that need alignment
         for column_name, unified_struct_type in unified_struct_types.items():
-            # If the column exists in the block, align its fields
-            if column_name in block.schema.names:
+            if column_name in block_schema_field_names:
                 column = block[column_name]
 
                 # Check if the column type matches a struct type
-                if isinstance(column.type, pa.StructType):
-                    aligned_columns[column_name] = _backfill_missing_fields(
+                if (
+                    isinstance(column.type, pa.StructType)
+                    and column.type != unified_struct_type
+                ):
+                    # Align struct fields
+                    aligned_column = _backfill_missing_fields(
                         column, unified_struct_type, block_length
                     )
-                else:
-                    # If the column is not a struct, simply keep the original column
-                    aligned_columns[column_name] = column
-            else:
-                # If the column is missing, create a null-filled column with the same
-                # length as the block
-                aligned_columns[column_name] = pa.array(
-                    [None] * block_length, type=unified_struct_type
-                )
+                    # Replace the column with the aligned version
+                    block = block.set_column(
+                        block.schema.get_field_index(column_name),
+                        column_name,
+                        aligned_column,
+                    )
 
-        # Create a new aligned block with the updated columns and the unified schema.
-        new_columns = []
-        for column_name in schema.names:
-            if column_name in aligned_columns:
-                # Use the aligned column if available
-                new_columns.append(aligned_columns[column_name])
-            else:
-                # Use the original column if not aligned
-                assert column_name in block.schema.names
-                new_columns.append(block[column_name])
-        aligned_blocks.append(pa.table(new_columns, schema=schema))
+        # Find all missing columns (struct and non-struct)
+        missing_fields = [f for f in schema if f.name not in block_schema_field_names]
+
+        # Append missing columns with null values
+        for field in missing_fields:
+            # pa.nulls creates a null array of the correct length and type efficiently
+            null_col = pa.nulls(block_length, type=field.type)
+            block = block.append_column(field.name, null_col)
+
+        # Reorder columns to match the target schema
+        # select() is a zero-copy operation for column reordering
+        block = block.select(schema.names)
+        aligned_blocks.append(block)
 
     # Return the list of aligned blocks
     return aligned_blocks
@@ -690,7 +700,7 @@ def concat(
     """
     import pyarrow as pa
 
-    from ray.air.util.tensor_extensions.arrow import ArrowConversionError
+    from ray.data._internal.tensor_extensions.arrow import ArrowConversionError
     from ray.data.extensions import (
         ArrowPythonObjectType,
         get_arrow_extension_tensor_types,
@@ -735,12 +745,8 @@ def concat(
     for col_name in schema.names:
         col_type = schema.field(col_name).type
 
-        col_chunked_arrays = []
-        for block in blocks:
-            if col_name in block.schema.names:
-                col_chunked_arrays.append(block.column(col_name))
-            else:
-                col_chunked_arrays.append(pa.nulls(block.num_rows, type=col_type))
+        # _align_struct_fields guarantees the existence of the column
+        col_chunked_arrays = [block.column(col_name) for block in blocks]
 
         if col_name in cols_with_null_list:
             concatenated_cols[col_name] = _concat_cols_with_null_list(
@@ -910,7 +916,7 @@ def combine_chunked_array(
 
     import pyarrow as pa
 
-    from ray.air.util.transform_pyarrow import (
+    from ray.data._internal.utils.transform_pyarrow import (
         _concatenate_extension_column,
         _is_pa_extension_type,
     )
@@ -993,7 +999,7 @@ def _try_combine_chunks_safe(
 
     import pyarrow as pa
 
-    from ray.air.util.transform_pyarrow import _is_pa_extension_type
+    from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 
     assert not _is_pa_extension_type(
         array.type

@@ -42,12 +42,9 @@ llm_config = LLMConfig(
         )
     ),
     accelerator_type="L4",
-    # Set fraction of GPU for each replica
     placement_group_config=dict(bundles=[dict(GPU=0.49)]),
     runtime_env=dict(
         env_vars={
-            # Must match the GPU fraction in placement_group_config
-            "VLLM_RAY_PER_WORKER_GPUS": "0.49",
             "VLLM_DISABLE_COMPILE_CACHE": "1",
         },
     ),
@@ -59,12 +56,12 @@ serve.run(app, blocking=True)
 
 ## Configuration parameters
 
-Use the following parameters to configure fractional GPU allocation. The placement group configuration is required for fractional GPU setup. The memory management and performance settings are vLLM-specific optimizations that you can adjust based on your model and workload requirements.
+Use the following parameters to configure fractional GPU allocation. The placement group defines the GPU share, and Ray Serve infers the matching `VLLM_RAY_PER_WORKER_GPUS` value for you. The memory management and performance settings are vLLM-specific optimizations that you can adjust based on your model and workload requirements.
 
 ### Placement group configuration
 
 - `placement_group_config`: Specifies the GPU fraction each replica uses. Set `GPU` to the fraction (for example, `0.49` for approximately half a GPU). Use slightly less than the theoretical fraction to account for system overhead—this headroom prevents out-of-memory errors.
-- `VLLM_RAY_PER_WORKER_GPUS`: Environment variable that tells vLLM GPU workers to claim the specified fraction of GPU resources.
+- `VLLM_RAY_PER_WORKER_GPUS`: Ray Serve derives this from `placement_group_config` when GPU bundles are fractional. Setting it manually is allowed but not recommended.
 
 ### Memory management
 
@@ -111,7 +108,8 @@ Use the following parameters to configure fractional GPU allocation. The placeme
 ### Replicas fail to start
 
 - Verify that your fractional allocation matches your replica count (for example, 2 replicas with `GPU=0.49` each)
-- Check that `VLLM_RAY_PER_WORKER_GPUS` matches `placement_group_config` GPU value
+- Confirm that `placement_group_config` matches the share you expect Ray to reserve
+- If you override `VLLM_RAY_PER_WORKER_GPUS` (not recommended) ensure it matches the GPU share from the placement group
 - Ensure your model size is appropriate for fractional GPU allocation
 
 ### Resource contention issues

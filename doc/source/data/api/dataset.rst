@@ -22,7 +22,12 @@ Schema
 .. autoclass:: Schema
     :members:
 
+DatasetSummary
+--------------
+.. currentmodule:: ray.data.stats
 
+.. autoclass:: DatasetSummary
+    :members:
 
 Developer API
 -------------
