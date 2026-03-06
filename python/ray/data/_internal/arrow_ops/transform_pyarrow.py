@@ -640,7 +640,7 @@ def _concat_cols_with_null_list(
         >>> ca2 = pa.chunked_array([pa.array([[b"hello"]], type=pa.list_(pa.binary()))])
         >>> result = _concat_cols_with_null_list([ca1, ca2])
         >>> result.type
-        list<item: binary>
+        ListType(list<item: binary>)
     """
     import pyarrow as pa
 
