@@ -209,12 +209,16 @@ class ReplicaSchedulingRequest:
 class DeploymentDownscaleRequest:
     """Request to stop a certain number of replicas.
 
-    The scheduler is responsible for
-    choosing the replicas to stop.
+    The scheduler is responsible for choosing the replicas to stop.
     """
 
     deployment_id: DeploymentID
     num_to_stop: int
+
+    # The scheduler uses these to select complete gangs to stop.
+    gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None
+    replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None
+    gang_size: Optional[int] = None
 
 
 @dataclass
@@ -897,7 +901,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             deployment_to_replicas_to_stop[
                 downscale.deployment_id
             ] = self._get_replicas_to_stop(
-                downscale.deployment_id, downscale.num_to_stop
+                downscale.deployment_id,
+                downscale.num_to_stop,
+                gang_id_by_replica=downscale.gang_id_by_replica,
+                replicas_by_gang_id=downscale.replicas_by_gang_id,
+                gang_size=downscale.gang_size,
             )
 
         return deployment_to_replicas_to_stop
@@ -1063,7 +1071,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         return placement_candidates
 
     def _get_replicas_to_stop(
-        self, deployment_id: DeploymentID, max_num_to_stop: int
+        self,
+        deployment_id: DeploymentID,
+        max_num_to_stop: int,
+        gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None,
+        replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None,
+        gang_size: Optional[int] = None,
     ) -> Set[ReplicaID]:
         """Prioritize replicas running on a node with fewest replicas of
             all deployments.
@@ -1072,22 +1085,21 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         relinquish nodes faster. Note that this algorithm doesn't consider
         other non-serve actors on the same node. See more at
         https://github.com/ray-project/ray/issues/20599.
+
+        For gang deployments, the same priority order is applied, but entire
+        gangs are selected atomically instead of individual replicas.
         """
-        replicas_to_stop = set()
+        replicas_priority: List[ReplicaID] = []
 
         # Replicas not in running state don't have node id.
         # We will prioritize those first.
-        pending_launching_recovering_replicas = set().union(
-            self._pending_replicas[deployment_id].keys(),
-            self._launching_replicas[deployment_id].keys(),
-            self._recovering_replicas[deployment_id],
+        replicas_priority.extend(
+            set().union(
+                self._pending_replicas[deployment_id].keys(),
+                self._launching_replicas[deployment_id].keys(),
+                self._recovering_replicas[deployment_id],
+            )
         )
-        for (
-            pending_launching_recovering_replica
-        ) in pending_launching_recovering_replicas:
-            replicas_to_stop.add(pending_launching_recovering_replica)
-            if len(replicas_to_stop) == max_num_to_stop:
-                return replicas_to_stop
 
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
@@ -1123,9 +1135,27 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
             # Newest-first list for this node.
             for replica_id in ordered_running_replicas_of_target_deployment[node_id]:
+                replicas_priority.append(replica_id)
+
+        if gang_id_by_replica is not None:
+            # Gang scheduling is enabled: select entire gangs to stop atomically
+            replicas_to_stop: Set[ReplicaID] = set()
+            selected_gangs: Set[str] = set()
+            for replica_id in replicas_priority:
+                gang_id = gang_id_by_replica.get(replica_id)
+                if gang_id is None or gang_id in selected_gangs:
+                    continue
+                if len(replicas_to_stop) + gang_size > max_num_to_stop:
+                    break
+                selected_gangs.add(gang_id)
+                replicas_to_stop.update(replicas_by_gang_id[gang_id])
+        else:
+            # Single-replica scheduling: select individual replicas to stop
+            replicas_to_stop: Set[ReplicaID] = set()
+            for replica_id in replicas_priority:
                 replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
-                    return replicas_to_stop
+                    break
 
         return replicas_to_stop
 
