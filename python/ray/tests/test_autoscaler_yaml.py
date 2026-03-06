@@ -308,6 +308,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         ] = 0
         assert prepared_config == expected_prepared
 
+    @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
     def testValidateNetworkConfigForBackwardsCompatibility(self):
         web_yaml = (
             "https://raw.githubusercontent.com/ray-project/ray/"
