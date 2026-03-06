@@ -73,15 +73,6 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--disable-locality-with-output",
-        default=False,
-        action="store_true",
-        help=(
-            "When used, set `DataConfig.default_ingest_options()."
-            "locality_with_output` to False (otherwise defaults to True)."
-        ),
-    )
-    parser.add_argument(
         "--repeat-ds",
         default=1,
         type=int,
@@ -683,8 +674,6 @@ def benchmark_code(
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()
-    if args.disable_locality_with_output:
-        options.locality_with_output = False
     options.preserve_order = args.preserve_order
 
     if args.skip_ray_trainer:

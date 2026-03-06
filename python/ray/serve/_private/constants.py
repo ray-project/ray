@@ -27,16 +27,26 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 SERVE_NAMESPACE = "serve"
 
 #: HTTP Host
-DEFAULT_HTTP_HOST = "127.0.0.1"
+DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
+
+#: Fallback proxy HTTP port
+RAY_SERVE_FALLBACK_PROXY_HTTP_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_HTTP_PORT", 8500
+)
 
 #: Uvicorn timeout_keep_alive Config
 DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
+
+#: Fallback proxy gRPC port
+RAY_SERVE_FALLBACK_PROXY_GRPC_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_GRPC_PORT", 9500
+)
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -668,6 +678,12 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
     else None
 )
 
+# When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
+# setting TCP_NODELAY on both client and server connections.
+RAY_SERVE_HAPROXY_TCP_NODELAY = (
+    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "0") == "1"
+)
+
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
@@ -701,10 +717,6 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
     "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
 )
 
-# Direct ingress must be enabled if HAProxy is enabled
-if RAY_SERVE_ENABLE_HA_PROXY:
-    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
-
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
@@ -733,6 +745,18 @@ SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
 # HTTP request disconnect disabled
 SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER = "x-request-disconnect-disabled"
 
+# Path to tracing exporter function
+# If empty string (default), then tracing is disabled
+RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH", ""
+)
+DEFAULT_TRACING_EXPORTER_IMPORT_PATH = (
+    "ray.serve._private.tracing_utils:default_tracing_exporter"
+)
+RAY_SERVE_TRACING_SAMPLING_RATIO = float(
+    os.environ.get("RAY_SERVE_TRACING_SAMPLING_RATIO", 0.01)
+)
+
 # If throughput optimized Ray Serve is enabled, set the following constants.
 # This should be at the end.
 RAY_SERVE_THROUGHPUT_OPTIMIZED = get_env_bool("RAY_SERVE_THROUGHPUT_OPTIMIZED", "0")
@@ -751,6 +775,10 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
         "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
     )
+
+# Direct ingress must be enabled if HAProxy is enabled
+if RAY_SERVE_ENABLE_HA_PROXY:
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
 
 # The maximum allowed RPC latency in milliseconds.
 # This is used to detect and warn about long RPC latencies

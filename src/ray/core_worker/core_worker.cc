@@ -398,7 +398,9 @@ CoreWorker::CoreWorker(
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  SubscribeToNodeChanges();
+  if (options_.worker_type == WorkerType::DRIVER) {
+    SubscribeToNodeChanges();
+  }
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -2453,6 +2455,7 @@ Status CoreWorker::SubmitActorTask(
                                  max_retries,
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist,
+                                 task_options.concurrency_group_name,
                                  task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
