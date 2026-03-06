@@ -1,10 +1,11 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
 from ray.data.preprocessors.utils import (
     _PublicField,
     migrate_private_fields,
 )
+from ray.data.preprocessors.version_support import SerializablePreprocessor
 from ray.data.util.data_batch_conversion import BatchFormat
 
 if TYPE_CHECKING:
@@ -12,7 +13,8 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
-class Chain(Preprocessor):
+@SerializablePreprocessor(version=1, identifier="io.ray.preprocessors.chain")
+class Chain(SerializablePreprocessorBase):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 
     When you call ``fit``, each preprocessor is fit on the dataset produced by the
@@ -70,15 +72,15 @@ class Chain(Preprocessor):
         else:
             return Preprocessor.FitStatus.NOT_FITTABLE
 
-    def __init__(self, *preprocessors: Preprocessor):
+    def __init__(self, *preprocessors: SerializablePreprocessorBase):
         super().__init__()
         self._preprocessors = preprocessors
 
     @property
-    def preprocessors(self) -> Tuple[Preprocessor, ...]:
+    def preprocessors(self) -> Tuple[SerializablePreprocessorBase, ...]:
         return self._preprocessors
 
-    def _fit(self, ds: "Dataset") -> Preprocessor:
+    def _fit(self, ds: "Dataset") -> SerializablePreprocessorBase:
         for preprocessor in self._preprocessors[:-1]:
             ds = preprocessor.fit_transform(ds)
         self._preprocessors[-1].fit(ds)
@@ -124,6 +126,15 @@ class Chain(Preprocessor):
         # TODO (jiaodong): We should revisit if our Chain preprocessor is
         # still optimal with context of lazy execution.
         return self._preprocessors[0]._determine_transform_to_use()
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {
+            "preprocessors": self._preprocessors,
+        }
+
+    def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        # required fields
+        self._preprocessors = fields["preprocessors"]
 
     def __setstate__(self, state: Dict[str, Any]) -> None:
         """Handle backwards compatibility for old pickled objects."""

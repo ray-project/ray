@@ -11,6 +11,7 @@ import ray
 from ray._raylet import NodeID
 from ray.serve._private import default_impl
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     CreatePlacementGroupRequest,
     DeploymentID,
     GangPlacementGroupRequest,
@@ -1709,13 +1710,20 @@ class TestScheduleGangPlacementGroups:
         result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
 
         assert deployment_id in result
-        assert result[deployment_id].success
-        assert len(result[deployment_id].gang_pgs) == num_gangs
+        reservation = result[deployment_id]
+        assert reservation.success
+        assert len(reservation.gang_pgs) == num_gangs
         assert len(captured_requests) == num_gangs
         for req in captured_requests:
             assert isinstance(req, CreatePlacementGroupRequest)
             assert req.bundles == [replica_resource_dict] * gang_size
             assert req.strategy == gang_strategy
+
+        assert len(reservation.gang_ids) == num_gangs
+        assert len(reservation.gang_pg_names) == num_gangs
+        assert len(set(reservation.gang_ids)) == num_gangs
+        for pg_name in reservation.gang_pg_names:
+            assert pg_name.startswith(GANG_PG_NAME_PREFIX)
 
     def test_schedule_gang_placement_groups_invalid_gang_size(
         self, mock_deployment_state_manager
