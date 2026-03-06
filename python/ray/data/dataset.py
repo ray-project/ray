@@ -4474,16 +4474,6 @@ class Dataset:
             * Partition overwrite modes (PR 7)
             * Advanced optimizations (PR 8)
 
-            The two-phase commit protocol:
-
-            1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
-               Parquet files and returns AddAction metadata (files not yet visible).
-            2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
-               them atomically in a single Delta transaction.
-
-            If the write fails partway through, uncommitted files can be removed
-            by running Delta's VACUUM command.
-
         Note:
             For cloud storage, provide authentication via ``storage_options``:
 
@@ -4511,8 +4501,9 @@ class Dataset:
             partition_cols = validate_partition_column_names(partition_cols)
 
         # PR 4: Schema evolution now supported via schema_mode parameter
-        # Allow schema_mode to be passed in write_kwargs for backward compatibility
-        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        # Also allow schema_mode to be passed in write_kwargs for backward compatibility
+        if "schema_mode" in write_kwargs:
+            schema_mode = write_kwargs.pop("schema_mode")
         if schema_mode not in ("merge", "error"):
             raise ValueError(
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"

@@ -4306,8 +4306,7 @@ def _infer_partition_types_from_delta_table(
 
 @PublicAPI(stability="alpha")
 def read_delta(
-    path: Union[str, List[str]],
-    version: Optional[Union[int, str]] = None,
+    path: str,
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
@@ -4326,7 +4325,7 @@ def read_delta(
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ):
-    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+    """Creates a :class:`~ray.data.Dataset` from a Delta Lake table.
 
     Examples:
 
@@ -4336,8 +4335,6 @@ def read_delta(
     Args:
         path: A single file path for a Delta Lake table. Multiple tables are not yet
             supported.
-        version: The version of the Delta Lake table to read (int) or ISO 8601 timestamp string.
-            If not specified, the latest version is read.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4347,14 +4344,11 @@ def read_delta(
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
         columns: A list of column names to read. Only the specified columns are
-            read during the file scan. This enables projection pushdown for efficient
-            column selection.
+            read during the file scan.
         partition_filters: Delta Lake partition filters as list of tuples in the format
             ``[(column, op, value), ...]`` where ``op`` can be ``"="``, ``"!="``, ``"in"``,
             or ``"not in"``. Example: ``[("year", "=", "2024"), ("month", "in", ["01", "02"])]``.
-            Filters are applied at the Delta table level to reduce I/O. Combined with
-            predicate pushdown, this enables file skipping using Delta Lake statistics
-            (min/max values) for optimal performance.
+            Filters are applied at the Delta table level to reduce I/O.
         storage_options: Cloud storage authentication options passed to delta-rs.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -4390,23 +4384,13 @@ def read_delta(
         Lake table.
 
     Note:
-        This connector supports the following Delta Lake features:
+        This connector reads the latest version of a Delta Lake table and delegates
+        to :func:`~ray.data.read_parquet` for efficient parallel reads. It supports
+        all primitive and complex types (maps, structs, arrays).
 
-        * **File skipping/filter pushdown**: Uses Delta Lake statistics (min/max values)
-          to skip files that don't match predicates, reducing I/O.
-        * **Projection pushdown**: Only reads requested columns, reducing data transfer.
-        * **Time travel**: Read specific table versions using the ``version`` parameter
-          (integer version number or ISO 8601 timestamp string).
-        * **All primitive types**: Supports maps, structs, arrays, and nested types.
-        * **ACID guarantees**: Reads are consistent with Delta Lake's ACID transaction model.
-        * **Schema evolution**: Automatically handles schema changes across table versions.
-
-        Predicate pushdown is supported via Ray Data expressions. Apply filters using
-        ``ds.filter(expr=col("column") > value)`` to leverage file skipping optimizations.
+        Reads are consistent with Delta Lake's ACID transaction model.
 
     """
-    # Modified from ray.data._internal.util._check_import, which is meant for objects,
-    # not functions. Move to _check_import if moved to a DataSource object.
     import importlib
 
     package = "deltalake"
@@ -4421,31 +4405,14 @@ def read_delta(
 
     from deltalake import DeltaTable
 
-    # This seems reasonable to keep it at one table, even Spark doesn't really support
-    # multi-table reads, it's usually up to the developer to keep it in one table.
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
-    # Construct DeltaTable with appropriate parameters
     dt_kwargs = {}
     if storage_options:
         dt_kwargs["storage_options"] = storage_options
-    # Validate version type
-    if version is not None and not isinstance(version, (int, str)):
-        raise TypeError(
-            f"version must be int or str, got {type(version).__name__}. "
-            f"Use int for version number or ISO 8601 timestamp string."
-        )
-
-    if version is not None and isinstance(version, int):
-        dt_kwargs["version"] = version
 
     dt = DeltaTable(path, **dt_kwargs)
-
-    # Handle timestamp string versions using load_as_version()
-    # Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.load_as_version
-    if version is not None and isinstance(version, str):
-        dt.load_as_version(version)
 
     # Infer partition column types from DeltaTable schema to preserve original types
     # when reading partitioned data. Without this, partition columns are read as strings
@@ -4456,7 +4423,6 @@ def read_delta(
 
     # Get the parquet file paths from the DeltaTable with partition filters applied
     # Normalize partition filter values to strings as required by delta-rs
-    # Reference: https://delta-io.github.io/delta-rs/python/api/deltalake.html#deltalake.DeltaTable.file_uris
     if partition_filters is not None:
         from ray.data._internal.datasource.delta.utils import (
             normalize_partition_filters,
@@ -4469,7 +4435,19 @@ def read_delta(
 
     # Handle empty Delta table (no files to read)
     if not paths:
-        return range(0)
+        import pyarrow as pa
+
+        from ray.data._internal.datasource.delta.utils import to_pyarrow_schema
+
+        arrow_schema = to_pyarrow_schema(dt.schema())
+        if columns:
+            arrow_schema = pa.schema(
+                [f for f in arrow_schema if f.name in columns]
+            )
+        empty_table = pa.table(
+            {f.name: pa.array([], type=f.type) for f in arrow_schema}
+        )
+        return from_arrow(empty_table)
 
     # If no filesystem was supplied, try to construct one from storage options
     # so that Parquet reads use the same credentials as Delta metadata access.

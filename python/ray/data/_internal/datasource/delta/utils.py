@@ -1,6 +1,6 @@
 """Utility functions for Delta Lake datasource operations.
 
-This module consolidates file, partition, schema, and storage utilities for
+This module consolidates file, schema, and storage utilities for
 Delta Lake integration with Ray Data.
 
 Delta Lake: https://delta.io/
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from deltalake import DeltaTable
     from deltalake.transaction import AddAction, CommitProperties, Transaction
 
-UPSERT_JOIN_COLS = "join_cols"
 MAX_PARTITION_PATH_LENGTH = 200
 MAX_PARTITION_COLUMNS = 10
 
@@ -35,27 +34,15 @@ class DeltaWriteResult:
 
     Attributes:
         add_actions: File metadata for Delta transaction log.
-        upsert_keys: Key columns for upsert operations.
         schemas: Schemas from written blocks.
         written_files: List of full file paths written by this worker.
         write_uuid: Unique identifier for this write operation (for app_transactions).
     """
 
     add_actions: List["AddAction"] = field(default_factory=list)
-    upsert_keys: Optional[pa.Table] = None
     schemas: List[pa.Schema] = field(default_factory=list)
     written_files: List[str] = field(default_factory=list)
     write_uuid: Optional[str] = None
-
-
-def join_delta_path(base: str, relative: str) -> str:
-    """Join base path and relative path, handling URI schemes."""
-    base = base.rstrip("/")
-    relative = relative.lstrip("/")
-    if "://" in base:
-        scheme, rest = base.split("://", 1)
-        return f"{scheme}://{posixpath.join(rest, relative)}"
-    return posixpath.join(base, relative)
 
 
 def safe_dirname(path: str) -> str:
