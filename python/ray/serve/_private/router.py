@@ -1057,19 +1057,21 @@ class AsyncioRouter:
                 _slot_token=slot_token,
             )
 
-            try:
-                yield selection
-            finally:
-                # Always release the slot token (for tracking cleanup)
-                selection._release_slot()
+        try:
+            yield selection
+        finally:
+            # Always release the slot token (for tracking cleanup)
+            selection._release_slot()
 
-                # Always decrement cache to reflect that this choose_replica operation is done.
-                # The actual request queue length will be updated by the replica when it
-                # reports back via on_new_queue_len_info().
+            # Decrement cache only if this selection was never dispatched.
+            # Once dispatch is called, the request remains in-flight and should be
+            # accounted for until request completion is reflected via queue length
+            # callbacks/probes.
+            if not selection._dispatched:
                 self.request_router.on_replica_result_finished(replica.replica_id)
 
-                # Decrement reserved slots metric
-                self._metrics_manager.dec_reserved_slots()
+            # Decrement reserved slots metric
+            self._metrics_manager.dec_reserved_slots()
 
     async def dispatch(
         self,
@@ -1115,7 +1117,12 @@ class AsyncioRouter:
 
         # Send the request without rejection since we already reserved a slot
         # The slot reservation guarantees that the replica will accept this request
-        result = replica.try_send_request(pr, with_rejection=False)
+        try:
+            result = replica.try_send_request(pr, with_rejection=False)
+        except Exception:
+            # Release the queue-length increment performed during choose_replica when dispatch fails.
+            self.request_router.on_replica_result_finished(replica.replica_id)
+            raise
 
         # Keep track of requests that have been sent out to replicas
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
