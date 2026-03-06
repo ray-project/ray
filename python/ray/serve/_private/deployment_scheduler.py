@@ -1,6 +1,7 @@
 import copy
 import logging
 import sys
+import uuid
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -13,8 +14,11 @@ import ray
 from ray._raylet import node_labels_match_selector
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     CreatePlacementGroupRequest,
     DeploymentID,
+    GangPlacementGroupRequest,
+    GangReservationResult,
     ReplicaID,
 )
 from ray.serve._private.config import ReplicaConfig
@@ -24,6 +28,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
+from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
@@ -159,6 +164,12 @@ class ReplicaSchedulingRequest:
     placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None
     max_replicas_per_node: Optional[int] = None
+    # Gang scheduling fields -- if set, replica should be scheduled on
+    # the reserved gang placement group at the specified bundle index.
+    gang_placement_group: Optional[PlacementGroup] = None
+    # Bundle index inside gang_placement_group where this replica actor is scheduled.
+    # Example: If each replica uses 2 bundles, ranks 0 and 1 use indices 0 and 2 respectively.
+    gang_pg_index: Optional[int] = None
 
     @property
     def required_resources(self) -> Resources:
@@ -198,12 +209,16 @@ class ReplicaSchedulingRequest:
 class DeploymentDownscaleRequest:
     """Request to stop a certain number of replicas.
 
-    The scheduler is responsible for
-    choosing the replicas to stop.
+    The scheduler is responsible for choosing the replicas to stop.
     """
 
     deployment_id: DeploymentID
     num_to_stop: int
+
+    # The scheduler uses these to select complete gangs to stop.
+    gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None
+    replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None
+    gang_size: Optional[int] = None
 
 
 @dataclass
@@ -538,13 +553,15 @@ class DeploymentScheduler(ABC):
 
         The following special scheduling strategies will be used, in
         order of highest to lowest priority.
-        1. If a replica requires placement groups, we will choose to use
+        1. If a replica requires gang scheduling, we will use a reserved
+           gang placement group.
+        2. If a replica requires placement groups, we will choose to use
            a `PlacementGroupSchedulingStrategy`. This can also take a
            target node into consideration (soft target), if provided.
            However it cannot take into account target labels.
-        2. If a `target_node_id` is provided, we will choose to use a
+        3. If a `target_node_id` is provided, we will choose to use a
            `NodeAffinitySchedulingStrategy`.
-        3. If `target_labels` is provided, we will choose to use a
+        4. If `target_labels` is provided, we will choose to use a
            `NodeLabelSchedulingStrategy`.
 
         Args:
@@ -565,7 +582,19 @@ class DeploymentScheduler(ABC):
         placement_group = None
 
         scheduling_strategy = default_scheduling_strategy
-        if scheduling_request.placement_group_bundles is not None:
+
+        if scheduling_request.gang_placement_group is not None:
+            # Gang scheduling -- use the reserved gang placement group
+            placement_group = scheduling_request.gang_placement_group
+            scheduling_strategy = PlacementGroupSchedulingStrategy(
+                placement_group=placement_group,
+                placement_group_bundle_index=scheduling_request.gang_pg_index,
+                placement_group_capture_child_tasks=True,
+            )
+            # TODO (jeffreywang): Add support for target labels and node affinity
+            target_labels = None
+            target_node_id = None
+        elif scheduling_request.placement_group_bundles is not None:
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy
                 if scheduling_request.placement_group_strategy
@@ -653,6 +682,168 @@ class DeploymentScheduler(ABC):
         """Returns a node ID to be compacted and a compaction deadlne."""
         raise NotImplementedError
 
+    def schedule_gang_placement_groups(
+        self,
+        gang_requests: Dict[DeploymentID, GangPlacementGroupRequest],
+    ) -> Dict[DeploymentID, GangReservationResult]:
+        """Reserve gang placement groups for gang scheduling.
+
+        Creates gang placement groups before replicas are created, allowing
+        the scheduler to verify resource feasibility upfront.
+
+        Args:
+            gang_requests: A dictionary of deployment ID to gang placement group request.
+
+        Returns:
+            A dictionary of deployment ID to gang reservation result.
+        """
+        return {
+            deployment_id: self._prepare_gangs_for_deployment(deployment_id, request)
+            for deployment_id, request in gang_requests.items()
+        }
+
+    def _prepare_gangs_for_deployment(
+        self,
+        deployment_id: DeploymentID,
+        request: GangPlacementGroupRequest,
+    ) -> GangReservationResult:
+        """Create gang placement groups for a single deployment.
+
+        Example:
+        - Case 1: Per-replica bundles are defined
+        gang_size=2, replica_placement_group_bundles=[{"GPU":1,"CPU":1},{"CPU":1}]
+
+        Requested gang placement group:
+        [{"GPU":1,"CPU":1}, {"CPU":1}, {"GPU":1,"CPU":1}, {"CPU":1}]
+         ^^^^^^^ replica 0 ^^^^^^^^^^  ^^^^^^^^ replica 1 ^^^^^^^^^
+        Replica 0 actor → bundle index 0, replica 1 actor → bundle index 2.
+        Remaining bundles (1, 3) are used by child tasks/actors.
+
+        - Case 2: Per-replica bundles are not defined
+        gang_size=2, replica_resource_dict={"CPU":2,"GPU":1}
+
+        Requested gang placement group:
+        [{"CPU":2,"GPU":1}, {"CPU":2,"GPU":1}]
+         ^^^ replica 0 ^^^  ^^^ replica 1 ^^^
+        Replica 0 actor → bundle index 0, replica 1 actor → bundle index 1.
+
+        Args:
+            deployment_id: The deployment to create gangs for.
+            request: Contains gang config and number of replicas to add.
+
+        Returns:
+            GangReservationResult with all created gang PGs.
+        """
+        gang_size = request.gang_size
+
+        if request.num_replicas_to_add % gang_size != 0:
+            logger.error(
+                f"num_replicas_to_add {request.num_replicas_to_add} "
+                f"is not divisible by gang_size {gang_size}."
+            )
+            return GangReservationResult(
+                success=False,
+                error_message=(
+                    f"num_replicas_to_add {request.num_replicas_to_add} "
+                    f"is not divisible by gang_size {gang_size}."
+                ),
+            )
+        num_gangs = request.num_replicas_to_add // gang_size
+
+        per_replica_bundles = request.replica_placement_group_bundles
+        has_pg_bundles = (
+            per_replica_bundles is not None and len(per_replica_bundles) > 0
+        )
+
+        # Flatten per-replica bundles to form a placement group to atomically reserve resources
+        # required for each gang
+        gang_pgs: List[PlacementGroup] = []
+        gang_ids: List[str] = []
+        gang_pg_names: List[str] = []
+        for gang_index in range(num_gangs):
+            if has_pg_bundles:
+                bundles = [
+                    bundle.copy()
+                    for _ in range(gang_size)
+                    for bundle in per_replica_bundles
+                ]
+                label_selector = (
+                    [
+                        selector.copy()
+                        for _ in range(gang_size)
+                        for selector in request.replica_pg_bundle_label_selector
+                    ]
+                    if request.replica_pg_bundle_label_selector is not None
+                    else None
+                )
+                fallback_strategy = (
+                    [
+                        strategy.copy()
+                        for _ in range(gang_size)
+                        for strategy in request.replica_pg_fallback_strategy
+                    ]
+                    if request.replica_pg_fallback_strategy is not None
+                    else None
+                )
+            else:
+                bundles = [
+                    request.replica_resource_dict.copy() for _ in range(gang_size)
+                ]
+                label_selector = None
+                fallback_strategy = None
+
+            gang_id = uuid.uuid4().hex[:8]
+            pg_name = (
+                f"{GANG_PG_NAME_PREFIX}{deployment_id.app_name}"
+                f"_{deployment_id.name}"
+                f"_{gang_index}_{gang_id}"
+            )
+
+            try:
+                pg = self._create_placement_group_fn(
+                    CreatePlacementGroupRequest(
+                        bundles=bundles,
+                        strategy=request.gang_placement_strategy,
+                        target_node_id=None,
+                        name=pg_name,
+                        bundle_label_selector=label_selector,
+                        fallback_strategy=fallback_strategy,
+                    )
+                )
+                gang_pgs.append(pg)
+                gang_ids.append(gang_id)
+                gang_pg_names.append(pg_name)
+            except Exception:
+                # Follow the same pattern as single-replica PG creation failure:
+                # log and skip this gang so the controller can make progress with
+                # the other gangs. The missing replicas will be retried on the next
+                # reconciliation loop.
+                logger.exception(
+                    f"Failed to create gang placement group "
+                    f"{gang_index} for {deployment_id}."
+                )
+                continue
+
+        if not gang_pgs:
+            return GangReservationResult(
+                success=False,
+                error_message=(
+                    f"Failed to create any gang placement groups "
+                    f"for {deployment_id}."
+                ),
+            )
+
+        logger.info(
+            f"Created {len(gang_pgs)} of {num_gangs} gang PG(s) for "
+            f"{deployment_id}. Actors will wait for resource allocation."
+        )
+        return GangReservationResult(
+            success=True,
+            gang_pgs=gang_pgs,
+            gang_ids=gang_ids,
+            gang_pg_names=gang_pg_names,
+        )
+
 
 class DefaultDeploymentScheduler(DeploymentScheduler):
     def schedule(
@@ -710,7 +901,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             deployment_to_replicas_to_stop[
                 downscale.deployment_id
             ] = self._get_replicas_to_stop(
-                downscale.deployment_id, downscale.num_to_stop
+                downscale.deployment_id,
+                downscale.num_to_stop,
+                gang_id_by_replica=downscale.gang_id_by_replica,
+                replicas_by_gang_id=downscale.replicas_by_gang_id,
+                gang_size=downscale.gang_size,
             )
 
         return deployment_to_replicas_to_stop
@@ -876,7 +1071,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         return placement_candidates
 
     def _get_replicas_to_stop(
-        self, deployment_id: DeploymentID, max_num_to_stop: int
+        self,
+        deployment_id: DeploymentID,
+        max_num_to_stop: int,
+        gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None,
+        replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None,
+        gang_size: Optional[int] = None,
     ) -> Set[ReplicaID]:
         """Prioritize replicas running on a node with fewest replicas of
             all deployments.
@@ -885,22 +1085,21 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         relinquish nodes faster. Note that this algorithm doesn't consider
         other non-serve actors on the same node. See more at
         https://github.com/ray-project/ray/issues/20599.
+
+        For gang deployments, the same priority order is applied, but entire
+        gangs are selected atomically instead of individual replicas.
         """
-        replicas_to_stop = set()
+        replicas_priority: List[ReplicaID] = []
 
         # Replicas not in running state don't have node id.
         # We will prioritize those first.
-        pending_launching_recovering_replicas = set().union(
-            self._pending_replicas[deployment_id].keys(),
-            self._launching_replicas[deployment_id].keys(),
-            self._recovering_replicas[deployment_id],
+        replicas_priority.extend(
+            set().union(
+                self._pending_replicas[deployment_id].keys(),
+                self._launching_replicas[deployment_id].keys(),
+                self._recovering_replicas[deployment_id],
+            )
         )
-        for (
-            pending_launching_recovering_replica
-        ) in pending_launching_recovering_replicas:
-            replicas_to_stop.add(pending_launching_recovering_replica)
-            if len(replicas_to_stop) == max_num_to_stop:
-                return replicas_to_stop
 
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
@@ -936,9 +1135,27 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
             # Newest-first list for this node.
             for replica_id in ordered_running_replicas_of_target_deployment[node_id]:
+                replicas_priority.append(replica_id)
+
+        if gang_id_by_replica is not None:
+            # Gang scheduling is enabled: select entire gangs to stop atomically
+            replicas_to_stop: Set[ReplicaID] = set()
+            selected_gangs: Set[str] = set()
+            for replica_id in replicas_priority:
+                gang_id = gang_id_by_replica.get(replica_id)
+                if gang_id is None or gang_id in selected_gangs:
+                    continue
+                if len(replicas_to_stop) + gang_size > max_num_to_stop:
+                    break
+                selected_gangs.add(gang_id)
+                replicas_to_stop.update(replicas_by_gang_id[gang_id])
+        else:
+            # Single-replica scheduling: select individual replicas to stop
+            replicas_to_stop: Set[ReplicaID] = set()
+            for replica_id in replicas_priority:
                 replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
-                    return replicas_to_stop
+                    break
 
         return replicas_to_stop
 
