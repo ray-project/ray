@@ -340,6 +340,10 @@ def test_response_used_in_multiple_calls(serve_instance):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
 async def test_choose_replica_and_dispatch_single(serve_instance):
     """Test choose_replica + dispatch for simple single selection pattern."""
 
@@ -382,6 +386,10 @@ async def test_choose_replica_and_dispatch_single(serve_instance):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support choose_replica/dispatch",
+)
 async def test_choose_replica_and_dispatch_parallel(serve_instance):
     """Test parallel selection pattern (e.g., PD proxy) using AsyncExitStack."""
     from contextlib import AsyncExitStack
