@@ -2,7 +2,7 @@ import json
 import os
 
 import pytest
-from google.protobuf.json_format import MessageToJson
+from google.protobuf.json_format import MessageToDict, MessageToJson
 
 import ray
 from ray.train.v2._internal.state.export import _dict_to_human_readable_struct
@@ -287,6 +287,17 @@ def test_dict_to_human_readable_struct_non_dict_raises():
 
     with pytest.raises(ValueError, match="argument must be a dictionary"):
         _dict_to_human_readable_struct(42)
+
+
+def test_dict_to_human_readable_struct_conversion_error_falls_back_to_empty():
+    """Test that when conversion raises unexpectedly, an empty Struct is returned."""
+
+    class BrokenStr:
+        def __str__(self):
+            raise RuntimeError("__str__ failed")
+
+    result = _dict_to_human_readable_struct({"key": BrokenStr()})
+    assert MessageToDict(result) == {}
 
 
 def test_export_oneof_datasets_to_split(enable_export_api_write):
