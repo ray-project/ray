@@ -1,21 +1,23 @@
-from ray.experimental.gpu_object_manager.gpu_object_manager import (
-    GPUObjectManager,
+from ray.experimental.rdt.rdt_manager import (
+    RDTManager,
     set_target_for_ref,
     wait_tensor_freed,
 )
-from ray.experimental.gpu_object_manager.tensor_transport_manager import (
+from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
 )
-from ray.experimental.gpu_object_manager.util import (
+from ray.experimental.rdt.util import (
+    register_nixl_memory,
     register_tensor_transport,
 )
 
 __all__ = [
-    "GPUObjectManager",
+    "RDTManager",
     "wait_tensor_freed",
     "register_tensor_transport",
+    "register_nixl_memory",
     "TensorTransportManager",
     "TensorTransportMetadata",
     "CommunicatorMetadata",

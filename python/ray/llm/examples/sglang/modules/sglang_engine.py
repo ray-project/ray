@@ -1,11 +1,14 @@
 import copy
+import json
 import signal
 import time
+import uuid
 from typing import (
     Any,
     AsyncGenerator,
     List,
     Optional,
+    Union,
 )
 
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
@@ -83,6 +86,13 @@ class SGLangServer:
             sampling_params["stop"] = stop
 
         return sampling_params
+
+    @staticmethod
+    def _parse_finish_reason(finish_reason_info: Any) -> str:
+        """Parse finish_reason from SGLang metadata."""
+        if isinstance(finish_reason_info, dict):
+            return finish_reason_info.get("type", "length")
+        return str(finish_reason_info)
 
     @staticmethod
     def _build_chat_messages(messages: List[Any]) -> List[dict[str, Any]]:
@@ -168,19 +178,26 @@ class SGLangServer:
         # this integration does not run. Keep the protocol hook as a no-op.
         return
 
+    def _build_generate_kwargs(
+        self, request: Any, prompt: Any, stream: bool
+    ) -> dict[str, Any]:
+        """Build kwargs dict for engine.async_generate."""
+        generate_kwargs: dict[str, Any] = {
+            "prompt": prompt,
+            "stream": stream,
+        }
+        sampling_params = self._build_sampling_params(request)
+        if sampling_params:
+            generate_kwargs["sampling_params"] = sampling_params
+        return generate_kwargs
+
     async def _generate_raw(
         self,
         request: Any,
         prompt: Any,
     ) -> dict[str, Any]:
         """Run generation and return raw engine output payload."""
-        sampling_params = self._build_sampling_params(request)
-        generate_kwargs = {
-            "prompt": prompt,
-            "stream": False,
-        }
-        if sampling_params:
-            generate_kwargs["sampling_params"] = sampling_params
+        generate_kwargs = self._build_generate_kwargs(request, prompt, stream=False)
         return await self.engine.async_generate(**generate_kwargs)
 
     @staticmethod
@@ -189,11 +206,7 @@ class SGLangServer:
         text: str = raw.get("text", "")
         meta: dict[str, Any] = raw.get("meta_info", {}) or {}
         finish_reason_info = meta.get("finish_reason", {}) or {}
-
-        if isinstance(finish_reason_info, dict):
-            finish_reason = finish_reason_info.get("type", "length")
-        else:
-            finish_reason = str(finish_reason_info)
+        finish_reason = SGLangServer._parse_finish_reason(finish_reason_info)
 
         prompt_tokens = int(meta.get("prompt_tokens", 0))
         completion_tokens = int(meta.get("completion_tokens", 0))
@@ -227,18 +240,82 @@ class SGLangServer:
             raw = raw[0]
         return self._extract_generation_metadata(raw)
 
+    async def _stream_generate(
+        self,
+        request: Any,
+        prompt: Any,
+    ) -> AsyncGenerator[tuple[str, Optional[str]], None]:
+        """Stream from SGLang engine, yielding (delta_text, finish_reason) tuples.
+
+        SGLang returns cumulative text in each chunk, so this method
+        tracks the previous text and yields only the incremental delta.
+        """
+        generate_kwargs = self._build_generate_kwargs(request, prompt, stream=True)
+        stream = await self.engine.async_generate(**generate_kwargs)
+
+        previous_text = ""
+        async for chunk in stream:
+            text = chunk.get("text", "")
+            meta = chunk.get("meta_info", {}) or {}
+
+            delta_text = text[len(previous_text) :]
+            previous_text = text
+
+            finish_reason_info = meta.get("finish_reason", None)
+            finish_reason = (
+                self._parse_finish_reason(finish_reason_info)
+                if finish_reason_info is not None
+                else None
+            )
+            yield delta_text, finish_reason
+
+    @staticmethod
+    def _build_sse_chunk(
+        gen_id: str,
+        object_type: str,
+        created: int,
+        model: str,
+        choice: dict[str, Any],
+    ) -> str:
+        """Build an SSE-formatted chunk string from a single choice payload."""
+        chunk_data = {
+            "id": gen_id,
+            "object": object_type,
+            "created": created,
+            "model": model,
+            "choices": [choice],
+        }
+        return f"data: {json.dumps(chunk_data)}\n\n"
+
     async def chat(
         self,
         request: ChatCompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[ChatCompletionResponse, None]:
+    ) -> AsyncGenerator[Union[str, ChatCompletionResponse], None]:
         chat_messages = self._build_chat_messages(request.messages)
         prompt = self._render_chat_prompt(request, chat_messages)
 
-        metadata = await self._generate_and_extract_metadata(
-            request,
-            prompt,
-        )
+        if request.stream:
+            gen_id = f"sglang-gen-{uuid.uuid4().hex}"
+            created = int(time.time())
+            first_chunk = True
+            async for delta_text, finish_reason in self._stream_generate(
+                request, prompt
+            ):
+                delta: dict[str, Any] = {"content": delta_text}
+                if first_chunk:
+                    delta["role"] = "assistant"
+                    first_chunk = False
+                yield self._build_sse_chunk(
+                    gen_id,
+                    "chat.completion.chunk",
+                    created,
+                    request.model,
+                    {"index": 0, "delta": delta, "finish_reason": finish_reason},
+                )
+            return
+
+        metadata = await self._generate_and_extract_metadata(request, prompt)
 
         usage_data = {
             "prompt_tokens": metadata["prompt_tokens"],
@@ -267,31 +344,48 @@ class SGLangServer:
         self,
         request: CompletionRequest,
         raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[CompletionResponse, None]:
+    ) -> AsyncGenerator[Union[str, CompletionResponse], None]:
         prompt_input = request.prompt
 
-        prompts_to_process: List[str] = []
+        # Normalize prompt input.
         if isinstance(prompt_input, list):
-            # Check for empty list
             if not prompt_input:
                 raise ValueError(
                     "The 'prompt' list cannot be empty for completion requests."
                 )
-            # Batched prompts: process all of them
             prompts_to_process = prompt_input
         else:
-            # Single string prompt: wrap it in a list for iteration
             prompts_to_process = [prompt_input]
+
+        if request.stream:
+            gen_id = f"sglang-gen-{uuid.uuid4().hex}"
+            created = int(time.time())
+            for i, prompt_string in enumerate(prompts_to_process):
+                async for delta_text, finish_reason in self._stream_generate(
+                    request, prompt_string
+                ):
+                    yield self._build_sse_chunk(
+                        gen_id,
+                        "text_completion",
+                        created,
+                        request.model,
+                        {
+                            "index": i,
+                            "text": delta_text,
+                            "logprobs": None,
+                            "finish_reason": finish_reason,
+                        },
+                    )
+            return
 
         all_choices = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
         last_metadata = {}
 
-        # 2. Loop through all prompts in the batch
         for index, prompt_string in enumerate(prompts_to_process):
             metadata = await self._generate_and_extract_metadata(request, prompt_string)
-            last_metadata = metadata  # Keep track of the metadata from the last run
+            last_metadata = metadata
 
             total_prompt_tokens += metadata["prompt_tokens"]
             total_completion_tokens += metadata["completion_tokens"]
@@ -310,7 +404,6 @@ class SGLangServer:
             "total_tokens": total_prompt_tokens + total_completion_tokens,
         }
 
-        # Use metadata from the last generation for shared fields (id, created)
         resp = CompletionResponse(
             id=last_metadata.get("id", f"sglang-batch-gen-{int(time.time())}"),
             object="text_completion",
@@ -323,16 +416,21 @@ class SGLangServer:
         yield resp
 
     async def embeddings(
-        self, request: EmbeddingRequest, raw_request: Optional[Any] = None
+        self,
+        request: EmbeddingRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
     ) -> AsyncGenerator[EmbeddingResponse, None]:
         # Input handling follows SGLang's OpenAIServingEmbedding pattern:
         # https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/entrypoints/openai/serving_embedding.py
         if isinstance(request, EmbeddingCompletionRequest):
             prompt = request.input
         else:
-            # Chat embedding request - convert messages to prompt
-            prompt = self._render_fallback_prompt(
-                self._build_chat_messages(request.messages)
+            # Chat embedding request - join messages without the trailing
+            # "assistant:" generation cue that _render_fallback_prompt adds.
+            chat_messages = self._build_chat_messages(request.messages)
+            prompt = "\n".join(
+                f"{m.get('role', 'user')}: {m.get('content') or ''}"
+                for m in chat_messages
             )
 
         # async_encode handles both single strings and lists of strings
