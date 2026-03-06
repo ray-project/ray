@@ -75,6 +75,62 @@ def test_sglang_serve_e2e(sglang_client):
     assert comp_resp.choices[0].text.strip()
 
 
+def test_sglang_streaming_chat(sglang_client):
+    """Verify streaming chat completions produce incremental chunks."""
+    stream = sglang_client.chat.completions.create(
+        model=RAY_MODEL_ID,
+        messages=[{"role": "user", "content": "Count to 5"}],
+        max_tokens=64,
+        temperature=0.0,
+        stream=True,
+    )
+
+    chunks = list(stream)
+    assert len(chunks) > 1, "Expected multiple streaming chunks"
+
+    # First chunk must include the assistant role.
+    first_delta = chunks[0].choices[0].delta
+    assert first_delta.role == "assistant"
+
+    # Collect all content fragments.
+    collected_text = ""
+    finish_reason = None
+    for chunk in chunks:
+        delta = chunk.choices[0].delta
+        if delta.content is not None:
+            collected_text += delta.content
+        if chunk.choices[0].finish_reason is not None:
+            finish_reason = chunk.choices[0].finish_reason
+
+    assert collected_text.strip(), "Streaming produced no text"
+    assert finish_reason is not None, "Final chunk must have a finish_reason"
+
+
+def test_sglang_streaming_completions(sglang_client):
+    """Verify streaming completions produce incremental chunks."""
+    stream = sglang_client.completions.create(
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=32,
+        temperature=0.0,
+        stream=True,
+    )
+
+    chunks = list(stream)
+    assert len(chunks) > 1, "Expected multiple streaming chunks"
+
+    collected_text = ""
+    finish_reason = None
+    for chunk in chunks:
+        if chunk.choices[0].text is not None:
+            collected_text += chunk.choices[0].text
+        if chunk.choices[0].finish_reason is not None:
+            finish_reason = chunk.choices[0].finish_reason
+
+    assert collected_text.strip(), "Streaming produced no text"
+    assert finish_reason is not None, "Final chunk must have a finish_reason"
+
+
 @pytest.fixture(scope="module")
 def sglang_embedding_client():
     """Start an SGLang server with is_embedding enabled for embedding tests."""

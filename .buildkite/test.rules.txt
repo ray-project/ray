@@ -96,9 +96,9 @@ python/requirements/
 
 python/ray/dag/
 python/ray/experimental/channel/
-python/ray/experimental/gpu_object_manager/
+python/ray/experimental/rdt/
 python/ray/experimental/collective/
-python/ray/tests/gpu_objects/
+python/ray/tests/rdt/
 @ python cgraphs_direct_transport
 ;
 
@@ -215,6 +215,7 @@ ci/docker/forge.aarch64.wanda.yaml
 .buildkite/release/
 .buildkite/release-automation/
 build-wheel.sh
+build-image.sh
 @ tools
 ;
 
