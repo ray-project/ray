@@ -249,6 +249,12 @@ class _DeploymentHandleBase(Generic[T]):
         metadata = serve._private.default_impl.get_request_metadata(
             self.init_options, self.handle_options
         )
+        self.request_counter.inc(
+            tags={
+                "route": metadata.route,
+                "application": metadata.app_name,
+            }
+        )
         if self._router is None:
             raise RuntimeError("Router is not initialized")
 
