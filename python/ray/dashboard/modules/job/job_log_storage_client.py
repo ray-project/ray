@@ -31,14 +31,15 @@ class JobLogStorageClient:
             file_size = os.path.getsize(log_path)
 
             if file_size <= JOB_LOG_MAX_READ_BYTES:
-                with open(log_path, "r") as f:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
                     return f.read()
 
-            # File exceeds the cap — return only the tail to bound memory.
-            with open(log_path, "r") as f:
+            # File exceeds the cap — read the tail in binary mode to avoid
+            # UnicodeDecodeError when the byte offset lands mid-character.
+            with open(log_path, "rb") as f:
                 f.seek(file_size - JOB_LOG_MAX_READ_BYTES)
                 f.readline()  # skip partial first line
-                tail = f.read()
+                tail = f.read().decode("utf-8", errors="replace")
 
             total_human = (
                 f"{file_size / (1024**3):.1f} GiB"
