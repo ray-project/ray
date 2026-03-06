@@ -8,7 +8,7 @@ ARG PYTHON=3.10
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 
-ENV RAY_BUILD_ENV=ubuntu22.04_cuda12.8.1_py$PYTHON
+ENV RAY_BUILD_ENV=ubuntu22.04_clang14_cuda12.8.1_py$PYTHON
 ENV BUILDKITE=true
 ENV CI=true
 ENV PYTHON=$PYTHON
