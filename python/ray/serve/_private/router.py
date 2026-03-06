@@ -1256,9 +1256,7 @@ class SingletonThreadRouter(Router):
             selection = await cm.__aenter__()
             return selection, cm
 
-        future = asyncio.run_coroutine_threadsafe(
-            enter_context(), self._asyncio_loop
-        )
+        future = asyncio.run_coroutine_threadsafe(enter_context(), self._asyncio_loop)
         selection, context_manager = await asyncio.wrap_future(future)
 
         try:
