@@ -69,6 +69,7 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
+    compress_metric_report,
     generate_request_id,
     resolve_deployment_response,
 )
@@ -379,7 +380,7 @@ class RouterMetricsManager:
                     return  # Previous push still in flight, skip and try again later
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_handle.remote(
-                    self._get_metrics_report()
+                    compress_metric_report(self._get_metrics_report())
                 )
             )
 

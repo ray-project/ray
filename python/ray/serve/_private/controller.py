@@ -77,6 +77,7 @@ from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
+    decompress_metric_report,
     get_all_live_placement_group_names,
     get_head_node_id,
     is_grpc_enabled,
@@ -335,8 +336,10 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics_from_replica(
-        self, replica_metric_report: ReplicaMetricReport
+        self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        if isinstance(replica_metric_report, bytes):
+            replica_metric_report = decompress_metric_report(replica_metric_report)
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
         # Record the metrics delay for observability
@@ -355,8 +358,10 @@ class ServeController:
         )
 
     def record_autoscaling_metrics_from_handle(
-        self, handle_metric_report: HandleMetricReport
+        self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        if isinstance(handle_metric_report, bytes):
+            handle_metric_report = decompress_metric_report(handle_metric_report)
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         # Record the metrics delay for observability

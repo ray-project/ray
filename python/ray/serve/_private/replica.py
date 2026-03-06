@@ -148,6 +148,7 @@ from ray.serve._private.utils import (
     Semaphore,
     asyncio_grpc_exception_handler,
     check_obj_ref_ready_nowait,
+    compress_metric_report,
     generate_request_id,
     get_component_file_name,  # noqa: F401
     is_grpc_enabled,
@@ -917,7 +918,7 @@ class ReplicaMetricsManager:
                     return  # Previous push still in flight, skip and try again later
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_replica.remote(
-                    replica_metric_report
+                    compress_metric_report(replica_metric_report)
                 )
             )
 
