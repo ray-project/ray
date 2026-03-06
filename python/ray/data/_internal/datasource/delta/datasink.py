@@ -37,6 +37,7 @@ from ray.data._internal.datasource.delta.utils import (
     get_storage_options,
     normalize_commit_properties,
     try_get_deltatable,
+    types_compatible,
     validate_partition_column_names,
     validate_partition_columns_in_table,
 )
@@ -139,8 +140,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 - "error": Reject new columns (default, safest)
                 - "merge": Add new columns using DeltaTable.alter.add_columns()
             **write_kwargs: Additional options passed to Delta writer:
-                - target_file_size_bytes: Target file size for buffering (optional).
-                  When set, buffers data per partition until threshold is reached.
                 - max_commit_retries: Maximum retries for commit operations (optional).
                 - compression: Compression codec (default: "snappy").
                 - write_statistics: Whether to write Parquet statistics (default: True).
@@ -173,15 +172,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         # per-worker cache (used in write())
         self._worker_fs: Optional[pa_fs.FileSystem] = None
-        # new: control small files
-        self._target_file_size_bytes: Optional[int] = write_kwargs.get(
-            "target_file_size_bytes"
-        )
-        if (
-            self._target_file_size_bytes is not None
-            and self._target_file_size_bytes <= 0
-        ):
-            raise ValueError("target_file_size_bytes must be > 0")
 
     def __getstate__(self) -> dict:
         """Exclude non-serializable state during pickling."""
@@ -301,7 +291,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             write_uuid=write_uuid,
             write_kwargs=self.write_kwargs,
             written_files=written_files,
-            target_file_size_bytes=self._target_file_size_bytes,
         )
 
         try:
@@ -322,7 +311,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                         )
                     upsert_keys_tables.append(t.select(upsert_cols))
 
-                # Buffered path (reduces small files); falls back to immediate writes if target not set
                 all_actions.extend(writer.add_table(t, ctx.task_idx))
 
             # Flush remaining buffers at end of task
@@ -453,10 +441,6 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 if f.nullable and pa.types.is_null(col.type):
                     if pc.all(pa.compute.is_null(col)).as_py():
                         continue
-                from ray.data._internal.datasource.delta.utils import (
-                    types_compatible,
-                )
-
                 if not types_compatible(f.type, col.type):
                     raise ValueError(
                         f"Type mismatch for '{f.name}': expected {f.type}, got {col.type}"

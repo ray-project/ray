@@ -204,7 +204,6 @@ def _build_partition_delete_predicate(
     if not partition_cols or not file_actions:
         return None
 
-    # Import here to avoid circular dependency
     from ray.data._internal.datasource.delta.upsert import (
         format_sql_value,
         quote_identifier,
@@ -222,22 +221,17 @@ def _build_partition_delete_predicate(
     for action in file_actions:
         pv = getattr(action, "partition_values", None) or {}
         if pv:
-            # Build tuple of partition values in order
-            # Note: partition_values are stored as strings (from build_partition_path)
-            # but format_sql_value handles string conversion correctly
-            # Use get() with None default - missing keys indicate bug but we handle gracefully
             combo = tuple(pv.get(col) for col in partition_cols)
-            # Add all combinations, including all-NULL partitions
-            # All-NULL partitions are valid and must be handled with IS NULL predicates
-            # Filtering them out would cause fallback to delete all (incorrect behavior)
+            # Add all combinations, including all-NULL partitions.
+            # All-NULL partitions are valid and must be handled with IS NULL predicates.
+            # Filtering them out would cause fallback to delete all (incorrect behavior).
             partition_combinations.add(combo)
 
     if not partition_combinations:
         return None
 
     # Build OR predicate: (col1 = 'val1' AND col2 = 'val2') OR ...
-    # Note: partition_values are strings, format_sql_value will quote them appropriately
-    # CRITICAL: Must include NULL checks for NULL partition values to avoid over-deletion
+    # CRITICAL: Must include NULL checks for NULL partition values to avoid over-deletion.
     ors = []
     for combo in partition_combinations:
         ands = []
@@ -248,14 +242,17 @@ def _build_partition_delete_predicate(
                 if val == "NaN":
                     col_type = partition_col_types.get(col)
                     if col_type and pa.types.is_floating(col_type):
-                        # Float NaN: SQL NaN comparison: NaN != NaN is true (IEEE 754)
-                        # Use col != col to correctly match NaN values in float columns
-                        ands.append(f"{quote_identifier(col)} != {quote_identifier(col)}")
+                        # Float NaN: use col != col to correctly match NaN values
+                        # (IEEE 754: NaN != NaN is true)
+                        ands.append(
+                            f"{quote_identifier(col)} != {quote_identifier(col)}"
+                        )
                     else:
                         # String "NaN": treat as regular string value
-                        ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
+                        ands.append(
+                            f"{quote_identifier(col)} = {format_sql_value(val)}"
+                        )
                 else:
-                    # format_sql_value handles string conversion and quoting
                     ands.append(f"{quote_identifier(col)} = {format_sql_value(val)}")
             else:
                 # NULL partition values must be explicitly checked with IS NULL
@@ -283,8 +280,11 @@ def commit_to_existing_table(
         schema: PyArrow schema (or None to infer from files).
         filesystem: PyArrow filesystem for reading files.
     """
-    # Get existing schema once (used for both partition delete predicate and validation)
+    # Get existing schema once (used for validation and NaN type detection)
     existing_schema = to_pyarrow_schema(table.schema())
+
+    # Validate partition columns match existing table
+    validate_partition_columns_match_existing(table, inputs.partition_cols)
 
     # Validate schema compatibility BEFORE deleting data in overwrite mode.
     # This prevents data loss if validation fails.
@@ -309,19 +309,19 @@ def commit_to_existing_table(
                 "Must be 'static' or 'dynamic'."
             )
         if partition_overwrite_mode == "dynamic" and inputs.partition_cols:
-            # Dynamic partition overwrite: only delete partitions being written
-            # Use existing schema to determine partition column types for NaN handling
+            # Dynamic partition overwrite: only delete partitions being written.
+            # Use existing schema to determine partition column types for NaN handling.
             pred = _build_partition_delete_predicate(
                 file_actions, inputs.partition_cols, existing_schema
             )
             if pred:
                 table.delete(pred)
             else:
-                # No partitions in file actions (shouldn't happen for partitioned table,
-                # but fallback to delete all for safety)
+                # No partitions in file actions (e.g. empty write to partitioned table).
+                # Fallback to delete all for safety.
                 table.delete()
         else:
-            # Static partition overwrite: delete all data
+            # Static partition overwrite (default): delete all data
             table.delete()
 
     table.create_write_transaction(

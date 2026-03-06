@@ -4385,6 +4385,15 @@ class Dataset:
             ...     mode="overwrite"
             ... )
 
+            Dynamic partition overwrite (only replace partitions being written):
+
+            >>> ds.write_delta( # doctest: +SKIP
+            ...     "/tmp/my-delta-table",
+            ...     mode="overwrite",
+            ...     partition_cols=["year"],
+            ...     partition_overwrite_mode="dynamic",
+            ... )
+
             Write to cloud storage (S3):
 
             >>> ds.write_delta( # doctest: +SKIP
@@ -4404,14 +4413,13 @@ class Dataset:
                 * GCS: gs://bucket/path/to/table
                 * Azure: abfss://container@account.dfs.core.windows.net/path
 
-            mode: Write mode for handling existing tables. **PR 2: Supports append, overwrite, ignore, error.**
+            mode: Write mode for handling existing tables.
 
                 * "append": Add data to existing table (default)
                 * "overwrite": Replace all data in the table
                 * "error": Raise error if table already exists
                 * "ignore": Skip write if table already exists
-
-                Upsert mode will be added in PR 6.
+                * "upsert": Delete matching rows then append (delete-then-append, not atomic)
 
             partition_cols: List of column names to partition by. Creates Hive-style
                 partitioning (e.g., year=2024/month=10/). Partition columns are
@@ -4420,7 +4428,7 @@ class Dataset:
                 detected based on the path scheme (s3://, gs://, etc.).
             schema: PyArrow schema for the table. If None, inferred from the data.
                 Schema inference may fail for complex types; provide explicit schema
-                if needed. **PR 1: Schema evolution not supported.** Will be added in PR 4.
+                if needed. Schema evolution is supported via ``schema_mode`` parameter.
             ray_remote_args: Arguments passed to :func:`ray.remote` for write tasks.
                 Use to configure resources such as ``num_cpus`` or ``num_gpus``.
             concurrency: Maximum number of concurrent write tasks. By default,
@@ -4432,40 +4440,40 @@ class Dataset:
                 * description: Table description for Delta metadata
                 * configuration: Delta table configuration options (dict)
                 * compression: Parquet compression codec ("snappy", "gzip", "zstd", etc.)
+                * schema_mode: Schema evolution mode when writing to existing tables:
 
-                Note: Other write_kwargs (schema_mode, upsert_kwargs, partition_overwrite_mode,
-                target_file_size_bytes) will be added in subsequent PRs.
+                  - "merge" (default): Automatically add new columns from incoming data.
+                    Existing columns must have compatible types.
+                  - "error": Raise error if schemas differ. Use for strict schema enforcement.
+
+                * upsert_kwargs: Options for upsert mode (required when mode="upsert"):
+
+                  - join_cols: List of column names to match rows on (required)
+
+                * partition_overwrite_mode: Controls overwrite behavior for partitioned tables
+                  when mode="overwrite":
+
+                  - "static" (default): Delete all existing data before writing.
+                  - "dynamic": Only delete partitions that appear in the new data.
+                    Partitions not present in the new data are preserved.
+                    Requires ``partition_cols`` to be specified.
 
         Raises:
             ImportError: If the deltalake package is not installed. Install with
                 ``pip install deltalake``.
-            ValueError: If mode is not "append", or if partition_cols is provided,
-                or if unsupported write_kwargs are provided (PR 1 limitations).
+            ValueError: If an invalid mode, schema_mode, or partition_overwrite_mode
+                is provided, or if required parameters for the selected mode are missing.
 
         Note:
-            **PR 3 Features:**
-
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
               Either all files become visible or none do.
-            * **Write modes**: Append, overwrite, ignore, and error modes.
+            * **Schema evolution**: Automatically add new columns when writing to existing
+              tables (controlled by ``schema_mode`` parameter).
             * **Partitioning**: Hive-style partitioning support.
-
-            The two-phase commit protocol:
-
-            1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
-               Parquet files and returns AddAction metadata (files not yet visible).
-            2. **Phase 2 (Driver)**: The driver collects all AddActions and commits
-               them atomically in a single Delta transaction.
-
-            If the write fails partway through, uncommitted files can be removed
-            by running Delta's VACUUM command.
-
-            **Future PRs will add:**
-            * Schema evolution (PR 4)
-            * Time travel reads (PR 5)
-            * Upsert mode (PR 6)
-            * Partition overwrite modes (PR 7)
-            * Advanced optimizations (PR 8)
+            * **Write modes**: Append, overwrite, ignore, error, and upsert modes.
+            * **Partition overwrite**: Static (delete all) or dynamic (delete only
+              affected partitions) overwrite modes for partitioned tables.
+            * **Upsert**: Delete-then-append pattern. NOT fully atomic (two transactions).
 
             The two-phase commit protocol:
 
@@ -4489,70 +4497,62 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # PR 2: Validate mode is one of the supported modes (append, overwrite, ignore, error)
-        valid_modes = {"append", "overwrite", "ignore", "error"}
+        # Validate mode
+        valid_modes = {"append", "overwrite", "ignore", "error", "upsert"}
         if mode not in valid_modes:
             raise ValueError(
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
             )
 
-        # PR 3: Partitioning now supported
+        # Validate and normalize partition columns
         if partition_cols:
             from ray.data._internal.datasource.delta.utils import (
                 validate_partition_column_names,
             )
             partition_cols = validate_partition_column_names(partition_cols)
 
-        # PR 4: Schema evolution is supported (from PR 4)
-        # Allow schema_mode to be passed in write_kwargs for backward compatibility
+        # Schema evolution mode (allow passing via write_kwargs for backward compat)
         schema_mode = write_kwargs.pop("schema_mode", "merge")
         if schema_mode not in ("merge", "error"):
             raise ValueError(
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
             )
 
-        # PR 6: Upsert mode now supported
+        # Upsert kwargs (explicit param, not passed through write_kwargs)
         upsert_kwargs = write_kwargs.pop("upsert_kwargs", None)
         if mode == "upsert" and not upsert_kwargs:
             raise ValueError(
-                "UPSERT mode requires upsert_kwargs with 'join_cols' specified. "
+                "UPSERT mode requires join_cols in upsert_kwargs. "
                 "Example: upsert_kwargs={'join_cols': ['id']}"
             )
         if upsert_kwargs and mode != "upsert":
             raise ValueError(
-                "upsert_kwargs can only be specified with mode='upsert'"
+                "upsert_kwargs can only be specified with SaveMode.UPSERT"
             )
-        if upsert_kwargs:
-            write_kwargs["upsert_kwargs"] = upsert_kwargs
 
-        # PR 7: Partition overwrite mode now supported
+        # Partition overwrite mode (passed through to commit logic via write_kwargs)
         partition_overwrite_mode = write_kwargs.pop("partition_overwrite_mode", "static")
         if partition_overwrite_mode not in ("static", "dynamic"):
             raise ValueError(
                 f"Invalid partition_overwrite_mode '{partition_overwrite_mode}'. "
                 "Supported: ['static', 'dynamic']"
             )
-        if partition_overwrite_mode == "dynamic" and not partition_cols:
-            raise ValueError(
-                "partition_overwrite_mode='dynamic' requires partition_cols to be specified"
-            )
-        if partition_overwrite_mode:
-            write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode
+        write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode
 
-        # PR 7: File buffering not supported yet
+        # File buffering not yet supported (PR 8)
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 7: target_file_size_bytes not supported. "
+                "target_file_size_bytes not supported yet. "
                 "File buffering will be added in PR 8."
             )
 
-        # PR 7: Partition overwrite mode now supported
         datasink = DeltaDatasink(
             path,
             mode=mode,
             partition_cols=partition_cols or [],
             filesystem=filesystem,
             schema=schema,
+            upsert_kwargs=upsert_kwargs,
             schema_mode=schema_mode,
             **write_kwargs,
         )
