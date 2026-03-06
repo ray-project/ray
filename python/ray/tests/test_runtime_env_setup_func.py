@@ -277,33 +277,30 @@ def test_upload_hook_reprocessing_module_match():
     )
 
 
-def test_upload_hook_reprocess_callable():
-    """Reprocessing accepts an already-exported callable hook."""
-
-    def my_setup():
-        return None
-
-    _, _, key = build_setup_hook_export_entry(my_setup, b"\x01" * 4)
-    callable_ref = decode_function_key(key)
-    runtime_env = {
-        "worker_process_setup_hook": "my_setup",
-        "env_vars": {
-            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: callable_ref,
-        },
-    }
-    result = upload_worker_process_setup_hook_if_needed(runtime_env, worker=None)
-    assert (
-        result["env_vars"][ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR]
-        == callable_ref
-    )
-
-
 def test_upload_hook_type_mismatch():
     """A callable setup_func vs a module-path env var is a type mismatch."""
     runtime_env = {
         "worker_process_setup_hook": lambda: None,
         "env_vars": {
             ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: "my.module.hook",
+        },
+    }
+    with pytest.raises(RuntimeError, match="Conflicting worker_process_setup_hook"):
+        upload_worker_process_setup_hook_if_needed(runtime_env, worker=None)
+
+
+def test_upload_hook_str_callable_ref_mismatch():
+    """A module-path setup_func vs a callable-ref env var is a type mismatch."""
+
+    def existing_hook():
+        return None
+
+    _, _, key = build_setup_hook_export_entry(existing_hook, b"\x01" * 4)
+    callable_ref = decode_function_key(key)
+    runtime_env = {
+        "worker_process_setup_hook": "totally.different.module",
+        "env_vars": {
+            ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR: callable_ref,
         },
     }
     with pytest.raises(RuntimeError, match="Conflicting worker_process_setup_hook"):

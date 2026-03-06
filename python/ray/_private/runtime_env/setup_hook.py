@@ -119,7 +119,7 @@ def _check_setup_hook_consistency(
             existing_is_callable_ref = True
         except Exception:
             existing_is_callable_ref = False
-        if not existing_is_callable_ref and existing_hook_value != setup_func:
+        if existing_is_callable_ref or existing_hook_value != setup_func:
             _raise_setup_hook_conflict(existing_hook_value, f"'{setup_func}'")
 
 
