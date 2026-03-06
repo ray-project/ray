@@ -1241,6 +1241,15 @@ class TestDataOpTask:
                 ray.wait([streaming_gen], fetch_local=False)
                 data_op_task.on_data_ready(None)
 
+    def test_operator_name_parameter(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
+        task = DataOpTask(0, streaming_gen, operator_name="MapBatches(fn)")
+        assert task._operator_name == "MapBatches(fn)"
+
+        streaming_gen2 = create_stub_streaming_gen(block_nbytes=[1])
+        task_default = DataOpTask(1, streaming_gen2)
+        assert task_default._operator_name == "Unknown"
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )

@@ -9,7 +9,7 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators import Filter, Project
+from ray.data._internal.logical.operators import Filter, Limit, Project
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -317,6 +317,9 @@ class PredicatePushdown(Rule):
         Returns:
             A shallow copy of the operator with updated input dependencies
         """
+        if isinstance(op, Limit):
+            assert len(new_inputs) == 1, len(new_inputs)
+            return Limit(new_inputs[0], op.limit)
         new_op = copy.copy(op)
         new_op.input_dependencies = new_inputs
         return new_op
