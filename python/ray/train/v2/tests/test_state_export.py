@@ -5,7 +5,7 @@ import pytest
 from google.protobuf.json_format import MessageToJson
 
 import ray
-from ray.train.v2._internal.state.export import _to_human_readable_struct
+from ray.train.v2._internal.state.export import _dict_to_human_readable_struct
 from ray.train.v2._internal.state.schema import (
     RunAttemptStatus,
     RunStatus,
@@ -182,7 +182,7 @@ def test_export_train_run_attempt(enable_export_api_write):
     assert data[0]["event_data"]["status"] == "RUNNING"
 
 
-def test_to_human_readable_struct_complex_dict():
+def test_dict_to_human_readable_struct_complex_dict():
     class UserObj:
         def __init__(self):
             self.a = 1
@@ -221,12 +221,15 @@ def test_to_human_readable_struct_complex_dict():
         },
     }
 
-    assert json.loads(MessageToJson(_to_human_readable_struct(obj))) == expected
+    assert json.loads(MessageToJson(_dict_to_human_readable_struct(obj))) == expected
 
 
-def test_to_human_readable_struct_max_depth():
-    """Test that _to_human_readable_struct respects the max_depth argument, truncating
-    nested structures and custom objects appropriately."""
+def test_dict_to_human_readable_struct_max_depth():
+    """Test that _dict_to_human_readable_struct respects the max_depth argument.
+
+    - `max_depth <= 0` raises.
+    - Positive depths truncate nested structures and custom objects appropriately.
+    """
 
     class CustomObj:
         def __str__(self) -> str:
@@ -239,8 +242,14 @@ def test_to_human_readable_struct_max_depth():
         "obj": CustomObj(),
     }
 
+    # max_depth <= 0 raises
+    with pytest.raises(ValueError, match="max_depth must be greater than 0"):
+        _dict_to_human_readable_struct(obj, max_depth=0)
+
     # max_depth=2
-    assert json.loads(MessageToJson(_to_human_readable_struct(obj, max_depth=2))) == {
+    assert json.loads(
+        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=2))
+    ) == {
         "native": 42,
         "nested": {"inner": "..."},
         "obj": "CustomObj",
@@ -248,7 +257,9 @@ def test_to_human_readable_struct_max_depth():
     }
 
     # max_depth=3
-    assert json.loads(MessageToJson(_to_human_readable_struct(obj, max_depth=3))) == {
+    assert json.loads(
+        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=3))
+    ) == {
         "native": 42,
         "nested": {"inner": {"deep": "..."}},
         "obj": "CustomObj",
@@ -256,12 +267,26 @@ def test_to_human_readable_struct_max_depth():
     }
 
     # max_depth=5
-    assert json.loads(MessageToJson(_to_human_readable_struct(obj, max_depth=5))) == {
+    assert json.loads(
+        MessageToJson(_dict_to_human_readable_struct(obj, max_depth=5))
+    ) == {
         "native": 42,
         "nested": {"inner": {"deep": 99}},
         "obj": "CustomObj",
         "sequence": [1, "CustomObj"],
     }
+
+
+def test_dict_to_human_readable_struct_non_dict_raises():
+    """Test that _dict_to_human_readable_struct raises ValueError for non-dict inputs."""
+    with pytest.raises(ValueError, match="argument must be a dictionary"):
+        _dict_to_human_readable_struct([1, 2, 3])
+
+    with pytest.raises(ValueError, match="argument must be a dictionary"):
+        _dict_to_human_readable_struct("a string")
+
+    with pytest.raises(ValueError, match="argument must be a dictionary"):
+        _dict_to_human_readable_struct(42)
 
 
 def test_export_oneof_datasets_to_split(enable_export_api_write):
