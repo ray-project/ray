@@ -5,6 +5,14 @@ import ray
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
 from ray.dashboard.modules.job.utils import fast_tail_last_n_lines, file_tail_iterator
 
+# Maximum bytes to read from a job log file via get_logs().
+# Prevents the dashboard agent from OOMing when a single job produces
+# tens of gigabytes of stdout/stderr.  Override with the environment
+# variable RAY_JOB_LOG_MAX_READ_BYTES (integer, in bytes).
+JOB_LOG_MAX_READ_BYTES = int(
+    os.environ.get("RAY_JOB_LOG_MAX_READ_BYTES", 16 * 1024 * 1024)
+)
+
 
 class JobLogStorageClient:
     """
@@ -19,8 +27,29 @@ class JobLogStorageClient:
 
     def get_logs(self, job_id: str) -> str:
         try:
-            with open(self.get_log_file_path(job_id), "r") as f:
-                return f.read()
+            log_path = self.get_log_file_path(job_id)
+            file_size = os.path.getsize(log_path)
+
+            if file_size <= JOB_LOG_MAX_READ_BYTES:
+                with open(log_path, "r") as f:
+                    return f.read()
+
+            # File exceeds the cap — return only the tail to bound memory.
+            with open(log_path, "r") as f:
+                f.seek(file_size - JOB_LOG_MAX_READ_BYTES)
+                f.readline()  # skip partial first line
+                tail = f.read()
+
+            total_human = (
+                f"{file_size / (1024**3):.1f} GiB"
+                if file_size >= 1024**3
+                else f"{file_size / (1024**2):.1f} MiB"
+            )
+            cap_human = f"{JOB_LOG_MAX_READ_BYTES / (1024**2):.0f} MiB"
+            return (
+                f"[LOG TRUNCATED — showing last {cap_human} "
+                f"of {total_human} total]\n{tail}"
+            )
         except FileNotFoundError:
             return ""
 
