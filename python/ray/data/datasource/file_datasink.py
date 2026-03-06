@@ -6,7 +6,11 @@ from urllib.parse import urlparse
 from ray._common.retry import call_with_retry
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
+from ray.data._internal.planner.plan_write_op import (
+    DATASINK_WRITE_ROWS_KWARG_NAME,
+    DATASINK_WRITE_SIZE_BYTES_KWARG_NAME,
+    WRITE_UUID_KWARG_NAME,
+)
 from ray.data._internal.savemode import SaveMode
 from ray.data._internal.util import (
     RetryingPyFileSystem,
@@ -84,15 +88,16 @@ class _FileDatasink(Datasink[None]):
         self._skip_write = False
         self._write_started = False
 
+    def _set_actual_write_stats(
+        self, ctx: TaskContext, *, num_rows: int, size_bytes: int
+    ) -> None:
+        ctx.kwargs[DATASINK_WRITE_ROWS_KWARG_NAME] = num_rows
+        ctx.kwargs[DATASINK_WRITE_SIZE_BYTES_KWARG_NAME] = size_bytes
+
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
-    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
-        # Make idempotent - if already called, return early.
-        if self._write_started:
-            return
-        self._write_started = True
-
+    def _pre_write_check(self) -> None:
         from pyarrow.fs import FileType
 
         dir_exists = (
@@ -111,6 +116,12 @@ class _FileDatasink(Datasink[None]):
             if self.mode == SaveMode.OVERWRITE:
                 logger.warning(f"[SaveMode={self.mode}] Replacing contents {self.path}")
                 self.filesystem.delete_dir_contents(self.path)
+
+    def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
+        # Make idempotent - if already called, return early.
+        if self._write_started:
+            return
+        self._write_started = True
         self.has_created_dir = self._create_dir(self.path)
 
     def _create_dir(self, dest) -> bool:
@@ -157,6 +168,7 @@ class _FileDatasink(Datasink[None]):
         block_accessor = BlockAccessor.for_block(block)
 
         if block_accessor.num_rows() == 0:
+            self._set_actual_write_stats(ctx, num_rows=0, size_bytes=0)
             logger.warning(f"Skipped writing empty block to {self.path}")
             return
 

@@ -117,7 +117,6 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
-from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
@@ -5557,19 +5556,6 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            # Call on_write_start for _FileDatasink before execution to handle
-            # SaveMode checks (ERROR raises, OVERWRITE deletes contents, IGNORE skips)
-            # and directory creation. For other datasinks, on_write_start is called
-            # automatically by the Write operator when the first input bundle arrives.
-            if isinstance(datasink, _FileDatasink):
-                datasink.on_write_start()
-                # TODO (https://github.com/ray-project/ray/issues/59326): There should be no special handling for skipping writes.
-                if datasink._skip_write:
-                    logger.info(
-                        f"Ignoring write because {datasink.path} already exists"
-                    )
-                    return
-
             self._write_ds = Dataset(plan, logical_plan).materialize()
 
             iter_, stats, _ = self._write_ds._execute_to_iterator()

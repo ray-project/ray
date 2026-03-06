@@ -4,6 +4,7 @@ from typing import Callable, Iterator, List, Union
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
@@ -16,6 +17,9 @@ from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.datasource import Datasource
 
 WRITE_UUID_KWARG_NAME = "write_uuid"
+DATASINK_WRITE_RETURN_KWARG_NAME = "_datasink_write_return"
+DATASINK_WRITE_ROWS_KWARG_NAME = "_datasink_num_rows"
+DATASINK_WRITE_SIZE_BYTES_KWARG_NAME = "_datasink_size_bytes"
 
 
 def generate_write_fn(
@@ -28,9 +32,9 @@ def generate_write_fn(
         # Create a copy of the iterator, so we can return the original blocks.
         it1, it2 = itertools.tee(blocks, 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            ctx.kwargs["_datasink_write_return"] = datasink_or_legacy_datasource.write(
-                it1, ctx
-            )
+            ctx.kwargs[
+                DATASINK_WRITE_RETURN_KWARG_NAME
+            ] = datasink_or_legacy_datasource.write(it1, ctx)
         else:
             datasink_or_legacy_datasource.write(it1, ctx, **write_args)
 
@@ -46,9 +50,13 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Handles stats collection for block writes."""
-        block_accessors = [BlockAccessor.for_block(block) for block in blocks]
-        total_num_rows = sum(ba.num_rows() for ba in block_accessors)
-        total_size_bytes = sum(ba.size_bytes() for ba in block_accessors)
+        total_num_rows = ctx.kwargs.get(DATASINK_WRITE_ROWS_KWARG_NAME)
+        total_size_bytes = ctx.kwargs.get(DATASINK_WRITE_SIZE_BYTES_KWARG_NAME)
+
+        if total_num_rows is None or total_size_bytes is None:
+            block_accessors = [BlockAccessor.for_block(block) for block in blocks]
+            total_num_rows = sum(ba.num_rows() for ba in block_accessors)
+            total_size_bytes = sum(ba.size_bytes() for ba in block_accessors)
 
         # NOTE: Write tasks can return anything, so we need to wrap it in a valid block
         # type.
@@ -58,7 +66,7 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
             {
                 "num_rows": [total_num_rows],
                 "size_bytes": [total_size_bytes],
-                "write_return": [ctx.kwargs.get("_datasink_write_return", None)],
+                "write_return": [ctx.kwargs.get(DATASINK_WRITE_RETURN_KWARG_NAME)],
             }
         )
         return iter([block])
@@ -92,6 +100,13 @@ def _plan_write_op_internal(
     input_physical_dag = physical_children[0]
 
     datasink = op.datasink_or_legacy_datasource
+    from ray.data.datasource.file_datasink import _FileDatasink
+
+    if isinstance(datasink, _FileDatasink):
+        datasink._pre_write_check()
+        if datasink._skip_write:
+            return InputDataBuffer(data_context, input_data=[])
+
     write_fn = generate_write_fn(datasink, **op.write_args)
 
     # Create a MapTransformer for a write operator
@@ -106,9 +121,6 @@ def _plan_write_op_internal(
 
     map_transformer = MapTransformer(transform_fns)
 
-    # Set up on_start callback for datasinks.
-    # This allows on_write_start to receive the schema from the first input bundle,
-    # enabling schema-dependent initialization (e.g., Iceberg schema evolution).
     on_start = None
     if isinstance(datasink, Datasink):
         on_start = datasink.on_write_start
