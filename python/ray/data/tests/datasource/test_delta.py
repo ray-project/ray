@@ -169,16 +169,17 @@ def test_read_delta_empty_table(ray_start_regular_shared, temp_delta_path):
     assert ds.count() == 0
 
 
-def test_write_delta_empty_without_schema_errors(
+def test_write_delta_empty_without_schema_infers_from_data(
     ray_start_regular_shared, tmp_path
 ):
-    """Writing empty dataset to new table without schema should fail."""
+    """Writing empty dataset without schema= succeeds via schema inference from data."""
     path = os.path.join(str(tmp_path), "no_schema_table")
     schema = pa.schema([("id", pa.int64())])
     empty = pa.table({"id": []}, schema=schema)
-    # No schema= provided, and no data to infer from, so this should raise
-    with pytest.raises(ValueError, match="schema"):
-        ray.data.from_arrow(empty).write_delta(path)
+    # No schema= provided, but schema is inferred from the Arrow table metadata.
+    # PyArrow tables always carry schema even with 0 rows.
+    ray.data.from_arrow(empty).write_delta(path)
+    assert _delta_log_exists(path)
 
 
 def test_read_delta_nonexistent_table(ray_start_regular_shared, tmp_path):

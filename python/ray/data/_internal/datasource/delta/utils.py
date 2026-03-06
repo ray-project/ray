@@ -41,16 +41,6 @@ class DeltaWriteResult:
     write_uuid: Optional[str] = None
 
 
-def join_delta_path(base: str, relative: str) -> str:
-    """Join base path and relative path, handling URI schemes."""
-    base = base.rstrip("/")
-    relative = relative.lstrip("/")
-    if "://" in base:
-        scheme, rest = base.split("://", 1)
-        return f"{scheme}://{posixpath.join(rest, relative)}"
-    return posixpath.join(base, relative)
-
-
 def safe_dirname(path: str) -> str:
     """Get directory portion of path, handling URI schemes."""
     if "://" in path:
@@ -394,12 +384,17 @@ def create_filesystem_from_storage_options(
         elif account_name:
             return pa_fs.AzureFileSystem(account_name=account_name)
     elif path_lower.startswith(("gs://", "gcs://")):
+        # GOOGLE_SERVICE_ACCOUNT: path to service account JSON key file
+        # GOOGLE_SERVICE_ACCOUNT_TOKEN: OAuth2 bearer token (from auto-detection)
         service_account = storage_options.get("GOOGLE_SERVICE_ACCOUNT")
+        access_token = storage_options.get("GOOGLE_SERVICE_ACCOUNT_TOKEN")
         anonymous = storage_options.get("GOOGLE_ANONYMOUS", "").lower() == "true"
         if service_account:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = service_account
-        if service_account or anonymous:
-            return pa_fs.GcsFileSystem(anonymous=anonymous)
+        if service_account or access_token or anonymous:
+            return pa_fs.GcsFileSystem(
+                access_token=access_token, anonymous=anonymous
+            )
 
     return None
 
