@@ -521,6 +521,10 @@ class AutoscalingConfig(BaseModel):
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
+    # Forbid unknown fields to fail fast on misconfigured autoscaling_config
+    class Config:
+        extra = "forbid"
+
     # Publicly exposed options
     min_replicas: NonNegativeInt = 1
     initial_replicas: Optional[NonNegativeInt] = None

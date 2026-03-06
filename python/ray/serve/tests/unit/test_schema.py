@@ -510,6 +510,36 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
+    def test_max_ongoing_requests_not_in_autoscaling_config(self):
+        """Test that max_ongoing_requests inside autoscaling_config raises error."""
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        # Valid: max_ongoing_requests at deployment level
+        deployment_schema["max_ongoing_requests"] = 10
+        deployment_schema["autoscaling_config"] = {"target_ongoing_requests": 5}
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Valid: autoscaling_config is None
+        deployment_schema.pop("max_ongoing_requests", None)
+        deployment_schema["autoscaling_config"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Valid: autoscaling_config is empty dict
+        deployment_schema["autoscaling_config"] = {}
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Invalid: max_ongoing_requests inside autoscaling_config
+        # This is now caught by AutoscalingConfig's extra="forbid" config
+        deployment_schema["autoscaling_config"] = {
+            "max_ongoing_requests": 10,  # WRONG - should be at deployment level
+            "target_ongoing_requests": 5,
+        }
+        with pytest.raises(
+            ValidationError,
+            match="extra fields not permitted",
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
 
 class TestServeApplicationSchema:
     def get_valid_serve_application_schema(self):
