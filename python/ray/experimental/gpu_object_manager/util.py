@@ -11,6 +11,9 @@ from ray.experimental.gpu_object_manager.cuda_ipc_transport import CudaIpcTransp
 from ray.experimental.gpu_object_manager.nixl_tensor_transport import (
     NixlTensorTransport,
 )
+from ray.experimental.gpu_object_manager.uccl_tensor_transport import (
+    UCCLTensorTransport,
+)
 from ray.experimental.gpu_object_manager.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
@@ -84,7 +87,7 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC", "UCCL"]
 
 _default_transports_registered = False
 
@@ -109,6 +112,9 @@ def _ensure_default_transports_registered():
             )
             register_tensor_transport(
                 "CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor
+            )
+            register_tensor_transport(
+                "UCCL", ["cuda", "cpu"], UCCLTensorTransport, torch.Tensor
             )
         except ImportError:
             pass
