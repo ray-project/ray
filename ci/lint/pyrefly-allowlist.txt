@@ -130,7 +130,6 @@ python/ray/data/tests/preprocessors/__init__.py
 python/ray/data/tests/preprocessors/test_normalizer.py
 python/ray/data/tests/preprocessors/test_tokenizer.py
 python/ray/data/tests/preprocessors/test_utils.py
-python/ray/data/tests/preprocessors/test_vectorizer.py
 python/ray/data/tests/test_aggregations.py
 python/ray/data/tests/test_block_sizing.py
 python/ray/data/tests/test_context.py
