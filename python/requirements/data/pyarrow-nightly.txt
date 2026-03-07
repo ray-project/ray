@@ -1,1 +1,4 @@
 pyarrow
+hudi
+pylance
+modin

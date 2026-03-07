@@ -36,3 +36,4 @@ tensorflow-metadata>=1.17.0
 tf-keras
 torchvision==0.18.0
 torch==2.3.0
+confluent-kafka
