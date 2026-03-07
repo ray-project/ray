@@ -887,7 +887,7 @@ def test_actor_udf_cleanup(
     ray.shutdown()
     ray.init(num_cpus=2)
     ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_exit_hook = True
+    ctx.enable_actor_pool_on_exit_hook = True
 
     test_file = tmp_path / "test.txt"
 
@@ -925,7 +925,7 @@ def test_actor_udf_ray_shutdown_hook(
     ray.shutdown()
     ray.init(num_cpus=2)
     ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_exit_hook = True
+    ctx.enable_actor_pool_on_exit_hook = True
 
     shutdown_file = tmp_path / "shutdown.txt"
     del_file = tmp_path / "del.txt"
