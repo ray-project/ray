@@ -111,7 +111,7 @@ RLlib, Tune, Autoscaler, and most Python files don't require you to build and co
     # with your local `ray/python/ray/<package>`.
     python python/ray/setup-dev.py
 
-.. note:: [Advanced] You can also optionally skip creating symbolic links for specific directories:
+You can optionally skip creating symbolic links for specific directories:
 
 .. code-block:: shell
 
@@ -159,7 +159,7 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
-.. note:: The ``install-bazel.sh`` script installs ``bazelisk``. Note that ``bazel`` is installed at ``$HOME/bin/bazel``; make sure it's on your ``PATH``. If you prefer to use ``bazel`` directly, only version ``6.5.0`` is currently supported.
+The ``install-bazel.sh`` script installs ``bazelisk``. Note that ``bazel`` is installed at ``$HOME/bin/bazel``; make sure it's on your ``PATH``. If you prefer to use ``bazel`` directly, only version ``6.5.0`` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -173,7 +173,7 @@ In RedHat, install Bazel manually from this link: https://bazel.build/versions/6
 Preparing to build Ray on macOS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tip:: If you have grpc or protobuf installed, remove them first for a smooth build: ``brew uninstall grpc``, ``brew uninstall protobuf``. If the build fails with ``No such file or directory`` errors, clean previous builds with ``brew uninstall binutils`` and ``bazel clean --expunge``.
+If you have grpc or protobuf installed, remove them first for a smooth build: ``brew uninstall grpc``, ``brew uninstall protobuf``. If the build fails with ``No such file or directory`` errors, clean previous builds with ``brew uninstall binutils`` and ``bazel clean --expunge``.
 
 To build Ray on macOS, first install these dependencies:
 
@@ -237,9 +237,7 @@ directory take effect without reinstalling the package.
 
 .. warning:: Don't run ``python setup.py install`` — Python copies files from the Ray directory to a packages directory (``/lib/python3.6/site-packages/ray``), so changes you make to files in the Ray directory won't have any effect.
 
-.. tip::
-
-  If your machine runs out of memory during the build, add the following to ``~/.bazelrc``:
+If your machine runs out of memory during the build, add the following to ``~/.bazelrc``:
 
   .. code-block:: shell
 
@@ -247,7 +245,7 @@ directory take effect without reinstalling the package.
 
   The ``build --disk_cache=~/bazel-cache`` option can also speed up repeated builds.
 
-.. note:: If you run into an error building protobuf, switching from miniforge to anaconda might help.
+If you run into an error building protobuf, switching from miniforge to anaconda might help.
 
 .. _NodeJS: https://nodejs.org
 
