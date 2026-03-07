@@ -17,9 +17,7 @@ absl-py==1.4.0
     #   tensorflow-metadata
     #   tensorflow-probability
 accelerate==0.28.0
-    # via
-    #   -r python/requirements/ml/core-requirements.txt
-    #   -r python/requirements/ml/train-requirements.txt
+    # via -r python/requirements/ml/core-requirements.txt
 adagio==0.2.4
     # via
     #   fugue
@@ -226,7 +224,7 @@ black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.1.0
     # via nbconvert
-bokeh==2.4.3
+bokeh==2.4.3 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -379,6 +377,8 @@ configspace==0.7.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   hpbandster
+confluent-kafka==2.13.0
+    # via -r python/requirements/ml/data-test-requirements.txt
 contextlib2==21.6.0
     # via ml-collections
 contourpy==1.1.1
@@ -413,7 +413,7 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
-dask==2023.6.1
+dask==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
@@ -453,7 +453,7 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2023.6.1
+distributed==2023.6.1 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
@@ -971,11 +971,7 @@ jupyterlab-server==2.28.0
 jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
-    # via
-    #   -r python/requirements/ml/train-test-requirements.txt
-    #   -r python/requirements/test-requirements.txt
-kafka-python==2.2.15
-    # via -r python/requirements/ml/data-test-requirements.txt
+    # via -r python/requirements/test-requirements.txt
 keras==2.15.0
     # via tensorflow
 kiwisolver==1.4.7
@@ -1084,7 +1080,7 @@ mlflow-skinny==3.1.4
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
-modin==0.37.1
+modin==0.22.2 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
@@ -1203,7 +1199,6 @@ numba==0.59.1
     #   statsforecast
 numexpr==2.8.4
     # via
-    #   -r python/requirements/ml/train-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pymars
 numpy==1.26.4
@@ -1431,7 +1426,7 @@ packaging==24.2
     #   transformers
     #   utilsforecast
     #   wandb
-pandas==2.3.3
+pandas==1.5.3 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
@@ -2185,7 +2180,6 @@ taskiq-dependencies==1.5.7
 tblib==3.0.0
     # via
     #   -r python/requirements/docker/ray-docker-requirements.txt
-    #   -r python/requirements/ml/train-test-requirements.txt
     #   distributed
 tenacity==8.5.0
     # via
@@ -2411,7 +2405,6 @@ typing-extensions==4.15.0
     #   huggingface-hub
     #   lightning-utilities
     #   mlflow-skinny
-    #   modin
     #   mypy
     #   myst-nb
     #   nevergrad
@@ -2438,9 +2431,7 @@ typing-extensions==4.15.0
 typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
-    # via
-    #   kombu
-    #   pandas
+    # via kombu
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 uc-micro-py==1.0.3
@@ -2572,7 +2563,6 @@ xlrd==2.0.1
     # via -r python/requirements/test-requirements.txt
 xmltodict==0.13.0
     # via
-    #   -r python/requirements/ml/train-test-requirements.txt
     #   moto
     #   yq
 xxhash==3.4.1
