@@ -95,7 +95,9 @@ async def test_aio_poll_no_leaks(ray_start_regular):
 
 
 @pytest.mark.asyncio
-async def test_aio_publisher_id_first_connection_no_failover_log(ray_start_regular, caplog):
+async def test_aio_publisher_id_first_connection_no_failover_log(
+    ray_start_regular, caplog
+):
     address_info = getattr(ray_start_regular, "address_info", ray_start_regular)
     gcs_server_addr = address_info["gcs_address"]
 
