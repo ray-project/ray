@@ -365,6 +365,10 @@ class RunConfig:
             will invoke during training.
         worker_runtime_env: [DeveloperAPI] Runtime environment configuration
             for all Ray Train worker actors.
+        log_level: The log level for Ray Train controller and worker loggers.
+            Accepts a string (e.g., ``"DEBUG"``, ``"INFO"``) or an integer
+            (e.g., ``logging.DEBUG``). If not set, defaults to ``"INFO"``.
+            Can be overridden by the ``RAY_TRAIN_LOG_LEVEL`` environment variable.
     """
 
     name: Optional[str] = None
@@ -374,6 +378,7 @@ class RunConfig:
     checkpoint_config: Optional[CheckpointConfig] = None
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
+    log_level: Optional[Union[int, str]] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
@@ -419,6 +424,27 @@ class RunConfig:
 
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"
+
+        if self.log_level is not None:
+            if isinstance(self.log_level, str):
+                resolved = logging.getLevelName(self.log_level.upper())
+                if not isinstance(resolved, int):
+                    raise ValueError(
+                        f"Invalid log_level: {self.log_level!r}. "
+                        "Must be a valid logging level string "
+                        "(e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')."
+                    )
+            elif isinstance(self.log_level, int):
+                if self.log_level < 0:
+                    raise ValueError(
+                        f"Invalid log_level: {self.log_level}. "
+                        "Must be a non-negative integer."
+                    )
+            else:
+                raise ValueError(
+                    f"Invalid log_level type: {type(self.log_level)}. "
+                    "Must be a string or integer."
+                )
 
         self.callbacks = self.callbacks or []
         self.worker_runtime_env = self.worker_runtime_env or {}
