@@ -2233,15 +2233,15 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     # Expected to be called on the owner process. Will free on the primary copy holder.
     with gil:
         object_id = c_object_id.Hex().decode()
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.queue_or_free_object_primary_copy(object_id)
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
+        rdt_manager.queue_or_free_object_primary_copy(object_id)
 
 cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_string &c_direct_transport_metadata) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         tensor_transport_meta = ray_pickle.loads(c_direct_transport_metadata)
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
+        rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -4298,9 +4298,9 @@ cdef class CoreWorker:
             # GPU object-related logic does not affect the normal object serialization logic.
             if tensor_transport is not None:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
-                # and store them in the GPUObjectManager.
-                serialized_object, tensors = context.serialize_gpu_objects(output, tensor_transport)
-                pickled_rdt_metadata = context.store_gpu_objects(
+                # and store them in the RDTManager.
+                serialized_object, tensors = context.serialize_rdt_objects(output, tensor_transport)
+                pickled_rdt_metadata = context.store_rdt_objects(
                     return_id.Hex().decode("ascii"), tensors, tensor_transport)
                 # One copy from python bytes object to C++ string
                 c_pickled_rdt_metadata = pickled_rdt_metadata
