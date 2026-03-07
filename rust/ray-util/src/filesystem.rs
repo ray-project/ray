@@ -292,9 +292,11 @@ mod tests {
     // --- Ported from C++ filesystem_test.cc ---
 
     /// Port of C++ PathParseTest: extract filename from paths.
+    ///
     /// Rust's Path::file_name() semantics differ from C++ GetFileName for "." and "..":
     /// - Rust returns None for "." and ".." (special components).
     /// - C++ returns "." and ".." respectively.
+    ///
     /// We test the Rust-idiomatic behavior here.
     #[test]
     fn test_path_parse_get_filename() {

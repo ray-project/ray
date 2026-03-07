@@ -159,9 +159,7 @@ mod tests {
     use super::*;
     use crate::NodeSyncState;
     use ray_common::id::NodeID;
-    use ray_proto::ray::rpc::syncer::{
-        CommandsSyncMessage, MessageType, RaySyncMessage, ResourceViewSyncMessage,
-    };
+    use ray_proto::ray::rpc::syncer::{MessageType, ResourceViewSyncMessage};
     use std::collections::HashMap;
 
     fn make_nid(val: u8) -> NodeID {

@@ -830,7 +830,7 @@ mod tests {
         // among tied scores). Verify a valid node is returned.
         let result = policy.schedule(&req, &SchedulingOptions::hybrid(), &nodes, "n1");
         assert!(
-            result.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            result.as_ref().is_some_and(|id| nodes.contains_key(id)),
             "hybrid policy should return a valid node, got {:?}",
             result
         );
@@ -908,7 +908,7 @@ mod tests {
         let opts = SchedulingOptions::node_affinity("nonexistent".to_string(), true, true, false);
         let result = policy.schedule(&req, &opts, &nodes, "n1");
         assert!(
-            result.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            result.as_ref().is_some_and(|id| nodes.contains_key(id)),
             "soft fallback should return a valid node from the cluster, got {:?}",
             result
         );
@@ -925,21 +925,21 @@ mod tests {
         // Hybrid — should return a valid node
         let hybrid = policy.schedule(&req, &SchedulingOptions::hybrid(), &nodes, "n1");
         assert!(
-            hybrid.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            hybrid.as_ref().is_some_and(|id| nodes.contains_key(id)),
             "hybrid should return a valid node, got {:?}",
             hybrid
         );
         // Spread — should return a valid node
         let spread = policy.schedule(&req, &SchedulingOptions::spread(), &nodes, "n1");
         assert!(
-            spread.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            spread.as_ref().is_some_and(|id| nodes.contains_key(id)),
             "spread should return a valid node, got {:?}",
             spread
         );
         // Random — should return a valid node
         let random = policy.schedule(&req, &SchedulingOptions::random(), &nodes, "n1");
         assert!(
-            random.as_ref().map_or(false, |id| nodes.contains_key(id)),
+            random.as_ref().is_some_and(|id| nodes.contains_key(id)),
             "random should return a valid node, got {:?}",
             random
         );

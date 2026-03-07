@@ -46,16 +46,10 @@ impl PeriodicTask {
 }
 
 /// Configuration for the event loop.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EventLoopConfig {
     /// Whether to log each tick for debugging.
     pub debug_ticks: bool,
-}
-
-impl Default for EventLoopConfig {
-    fn default() -> Self {
-        Self { debug_ticks: false }
-    }
 }
 
 /// An event loop manager that schedules and runs periodic tasks.

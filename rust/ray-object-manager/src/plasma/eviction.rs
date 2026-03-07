@@ -410,7 +410,7 @@ mod tests {
         let mut evicted = Vec::new();
         cache.choose_objects_to_evict(100, &mut evicted);
         // After compaction, item_list should be cleaned up
-        assert!(evicted.len() >= 1);
+        assert!(!evicted.is_empty());
     }
 
     #[test]

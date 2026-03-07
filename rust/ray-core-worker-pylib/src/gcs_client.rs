@@ -502,6 +502,7 @@ mod tests {
     use tonic::Status;
 
     /// A configurable fake GCS client for testing PyGcsClient.
+    #[allow(clippy::type_complexity)]
     struct FakeGcs {
         kv_store: Mutex<HashMap<(Vec<u8>, Vec<u8>), Vec<u8>>>,
         node_info: Mutex<Vec<rpc::GcsNodeInfo>>,
@@ -527,6 +528,7 @@ mod tests {
             *self.fail_next.lock().unwrap() = Some(status);
         }
 
+        #[allow(clippy::result_large_err)]
         fn check_fail(&self) -> Result<(), Status> {
             if let Some(status) = self.fail_next.lock().unwrap().take() {
                 Err(status)

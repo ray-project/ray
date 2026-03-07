@@ -521,6 +521,7 @@ async fn shutdown_signal() {
 }
 
 #[cfg(test)]
+#[allow(clippy::needless_update)]
 mod tests {
     use super::*;
 

@@ -359,7 +359,7 @@ mod tests {
     fn test_register_and_collect_gauge() {
         let exporter = MetricsExporter::new(ExporterConfig::default());
         let gauge = Gauge::new("test_gauge", "test");
-        gauge.set(&[], 3.14);
+        gauge.set(&[], 3.125);
 
         exporter.register_gauge(gauge);
         let snapshots = exporter.collect();
@@ -368,7 +368,7 @@ mod tests {
         match &snapshots[0] {
             MetricSnapshot::Gauge { name, value, .. } => {
                 assert_eq!(name, "test_gauge");
-                assert_eq!(*value, 3.14);
+                assert_eq!(*value, 3.125);
             }
             _ => panic!("expected gauge snapshot"),
         }

@@ -12,17 +12,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use ray_pubsub::publisher::{PubMessage, Publisher, PublisherConfig};
+use ray_pubsub::publisher::{Publisher, PublisherConfig};
 use ray_pubsub::subscriber::{Subscriber, SubscriberConfig};
-
-fn make_msg(channel_type: i32, key_id: &[u8], seq: i64, payload: Vec<u8>) -> PubMessage {
-    PubMessage {
-        channel_type,
-        key_id: key_id.to_vec(),
-        payload,
-        sequence_id: seq,
-    }
-}
 
 /// Ported from SubscribersToOneIDAndAllIDs (pubsub_integration_test.cc).
 ///

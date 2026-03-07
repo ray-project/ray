@@ -127,7 +127,6 @@ async fn test_push_object_via_grpc() {
                 ip_address: "10.0.0.1".to_string(),
                 port: 5000,
                 worker_id: vec![0; 28],
-                ..Default::default()
             }),
             chunk_index: 0,
             data_size: 256,

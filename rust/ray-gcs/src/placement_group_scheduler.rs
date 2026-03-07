@@ -1332,7 +1332,7 @@ mod tests {
                 let mut nodes: Vec<_> = schedule.values().cloned().collect();
                 nodes.sort();
                 nodes.dedup();
-                assert!(nodes.len() >= 1);
+                assert!(!nodes.is_empty());
             }
             _ => panic!("expected success"),
         }
@@ -1445,7 +1445,7 @@ mod tests {
         match result {
             SchedulingResult::Success(schedule) => {
                 // Must be on node2, not node1
-                for (_, node) in &schedule {
+                for node in schedule.values() {
                     assert_ne!(node, "node1");
                 }
             }
@@ -2144,7 +2144,7 @@ mod tests {
         schedule.insert((pg_id, 0), "node1".to_string());
         schedule.insert((pg_id, 1), "node2".to_string());
 
-        let _bundles = vec![make_bundle(1.0), make_bundle(1.0)];
+        let _bundles = [make_bundle(1.0), make_bundle(1.0)];
         scheduler.commit_bundle_resources(pg_id, &schedule);
 
         assert_eq!(scheduler.get_bundles_on_node("node1").len(), 1);

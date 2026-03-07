@@ -94,7 +94,7 @@ mod tests {
             base_ms.saturating_mul(1u64.checked_shl(attempt).unwrap_or(u64::MAX))
         }
 
-        assert_eq!(get_backoff_ms(0, 157), 157 * 1);
+        assert_eq!(get_backoff_ms(0, 157), 157);
         assert_eq!(get_backoff_ms(1, 157), 157 * 2);
         assert_eq!(get_backoff_ms(2, 157), 157 * 4);
         assert_eq!(get_backoff_ms(3, 157), 157 * 8);

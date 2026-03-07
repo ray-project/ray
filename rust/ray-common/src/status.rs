@@ -279,7 +279,8 @@ mod tests {
 
         let err: RayResult<i32> = Err(RayError::not_found("item"));
         assert!(err.is_err());
-        assert!(err.unwrap_err().is_not_found());
+        let err_val = err.err().unwrap();
+        assert!(err_val.is_not_found());
     }
 
     #[test]
@@ -528,7 +529,7 @@ mod tests {
         let ok_result2: RayResult<i32> = Ok(99);
         let moved = ok_result2;
         assert!(moved.is_ok());
-        assert_eq!(moved.unwrap(), 99);
+        assert_eq!(moved.ok().unwrap(), 99);
     }
 
     /// Port of C++ StatusTest::CopyAndMoveErrorStatus:
@@ -546,7 +547,7 @@ mod tests {
         let err_result2: RayResult<i32> = Err(RayError::invalid("moved"));
         let moved = err_result2;
         assert!(moved.is_err());
-        assert_eq!(moved.unwrap_err().code, StatusCode::Invalid);
+        assert_eq!(moved.err().unwrap().code, StatusCode::Invalid);
     }
 
     /// Port of C++ StatusTest::GrpcStatusToRayStatus:

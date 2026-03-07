@@ -1123,6 +1123,7 @@ impl rpc::autoscaler::autoscaler_state_service_server::AutoscalerStateService
 }
 
 #[cfg(test)]
+#[allow(clippy::needless_update)]
 mod tests {
     use super::*;
     use crate::autoscaler_state_manager::GcsAutoscalerStateManager;

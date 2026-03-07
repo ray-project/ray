@@ -578,14 +578,14 @@ mod tests {
         let mut index: HashMap<BundleID, NodeID> = HashMap::new();
 
         // Initially empty
-        assert!(index.get(&bundle_1).is_none());
+        assert!(!index.contains_key(&bundle_1));
 
         // Add bundles
         index.insert(bundle_0, node_0);
         index.insert(bundle_1, node_1);
         assert_eq!(index.get(&bundle_0), Some(&node_0));
         assert_eq!(index.get(&bundle_1), Some(&node_1));
-        assert!(index.get(&bundle_2).is_none());
+        assert!(!index.contains_key(&bundle_2));
 
         // Add more bundles
         index.insert(bundle_2, node_2);
@@ -600,14 +600,14 @@ mod tests {
 
         // Erase by node: remove all bundles on node_0
         index.retain(|_, v| *v != node_0);
-        assert!(index.get(&bundle_0).is_none());
-        assert!(index.get(&pg_2_bundle_0).is_none());
+        assert!(!index.contains_key(&bundle_0));
+        assert!(!index.contains_key(&pg_2_bundle_0));
         assert_eq!(index.get(&bundle_1), Some(&node_1));
 
         // Erase by placement group: remove all pg_1 bundles
         index.retain(|k, _| k.0 != pg_1);
-        assert!(index.get(&bundle_1).is_none());
-        assert!(index.get(&bundle_2).is_none());
+        assert!(!index.contains_key(&bundle_1));
+        assert!(!index.contains_key(&bundle_2));
         assert_eq!(index.get(&pg_2_bundle_1), Some(&node_1));
 
         // Re-add

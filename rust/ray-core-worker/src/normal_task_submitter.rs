@@ -369,7 +369,7 @@ mod tests {
             &self,
             _req: rpc::CancelWorkerLeaseRequest,
         ) -> Result<rpc::CancelWorkerLeaseReply, tonic::Status> {
-            Ok(self.cancel_reply.lock().clone())
+            Ok(*self.cancel_reply.lock())
         }
 
         async fn report_worker_backlog(

@@ -214,7 +214,7 @@ mod tests {
         let valid_nodes = ["local", "remote"];
         assert!(
             node.as_ref()
-                .map_or(false, |n| valid_nodes.contains(&n.as_str())),
+                .is_some_and(|n| valid_nodes.contains(&n.as_str())),
             "scheduler should return a valid node, got {:?}",
             node
         );

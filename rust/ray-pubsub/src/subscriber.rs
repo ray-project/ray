@@ -1001,8 +1001,8 @@ mod tests {
         let sub = make_subscriber();
         let counts: Vec<Arc<AtomicUsize>> = (0..5).map(|_| Arc::new(AtomicUsize::new(0))).collect();
 
-        for i in 0..5 {
-            let count = counts[i].clone();
+        for (i, count_arc) in counts.iter().enumerate() {
+            let count = count_arc.clone();
             let cb: super::MessageCallback = Arc::new(move |_| {
                 count.fetch_add(1, Ordering::Relaxed);
             });
@@ -1018,8 +1018,8 @@ mod tests {
         let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
         assert_eq!(processed, 5);
 
-        for i in 0..5 {
-            assert_eq!(counts[i].load(Ordering::Relaxed), 1);
+        for count in &counts {
+            assert_eq!(count.load(Ordering::Relaxed), 1);
         }
     }
 

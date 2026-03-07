@@ -599,7 +599,7 @@ mod tests {
     #[tokio::test]
     async fn test_sequential_resolution() {
         let resolver = Arc::new(DependencyResolver::new());
-        let oids: Vec<_> = (1..=5).map(|i| make_oid(i)).collect();
+        let oids: Vec<_> = (1..=5).map(make_oid).collect();
 
         let resolver_clone = Arc::clone(&resolver);
         let oids_clone = oids.clone();

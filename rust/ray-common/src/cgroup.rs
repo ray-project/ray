@@ -427,7 +427,7 @@ mod tests {
         let stats = read_cgroup_stats(&cgroup_dir);
         assert_eq!(stats.get("memory.current"), Some(&"4096".to_string()));
         assert_eq!(stats.get("cpu.weight"), Some(&"100".to_string()));
-        assert!(stats.get("memory.max").is_none()); // File doesn't exist
+        assert!(!stats.contains_key("memory.max")); // File doesn't exist
     }
 
     #[test]
@@ -561,8 +561,8 @@ mod tests {
         let stats = read_cgroup_stats(&cg);
         assert_eq!(stats.get("memory.current"), Some(&"999".to_string()));
         assert_eq!(stats.get("memory.max"), Some(&"max".to_string()));
-        assert!(stats.get("cpu.stat").is_none());
-        assert!(stats.get("cpu.weight").is_none());
+        assert!(!stats.contains_key("cpu.stat"));
+        assert!(!stats.contains_key("cpu.weight"));
     }
 
     // ─── Ported from C++ cgroup_manager_test.cc ─────────────────────────────

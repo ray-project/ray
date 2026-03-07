@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn test_inner_and_from_inner() {
         let oid = PyObjectID::from_random();
-        let inner = oid.inner().clone();
+        let inner = *oid.inner();
         let oid2 = PyObjectID::from_inner(inner);
         assert_eq!(oid, oid2);
     }

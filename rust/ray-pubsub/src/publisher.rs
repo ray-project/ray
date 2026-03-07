@@ -651,7 +651,7 @@ mod tests {
         }
 
         let inner = pub_.inner.lock();
-        let state = inner.subscribers.get(&b"sub1".to_vec()).unwrap();
+        let state = inner.subscribers.get(b"sub1".as_slice()).unwrap();
         let ids: Vec<i64> = state.mailbox.iter().map(|m| m.sequence_id).collect();
         for i in 1..ids.len() {
             assert!(ids[i] > ids[i - 1]);

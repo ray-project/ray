@@ -775,6 +775,7 @@ impl rpc::core_worker_service_server::CoreWorkerService for CoreWorkerServiceImp
 }
 
 #[cfg(test)]
+#[allow(clippy::needless_update)]
 mod tests {
     use super::*;
     use crate::options::CoreWorkerOptions;

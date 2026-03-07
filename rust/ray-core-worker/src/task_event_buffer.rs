@@ -407,7 +407,7 @@ mod tests {
             flushed_clone.fetch_add(events.len(), Ordering::Relaxed);
         }));
 
-        buffer.record_task_status_event(&vec![0u8; 28], TaskState::PendingArgsAvail, 0);
+        buffer.record_task_status_event(&[0u8; 28], TaskState::PendingArgsAvail, 0);
 
         let handle = buffer.start_periodic_flush(50, 100);
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;

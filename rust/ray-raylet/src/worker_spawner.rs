@@ -260,11 +260,13 @@ mod tests {
         let counter = Arc::clone(&call_count);
 
         // Use Arc<dyn Fn(...)> instead of Box for thread-safe sharing
-        let callback: Arc<dyn Fn(Language, &JobID, &WorkerID) -> Option<u32> + Send + Sync> =
-            Arc::new(move |_lang, _job, _wid| {
-                let c = counter.fetch_add(1, Ordering::Relaxed);
-                Some(1000 + c)
-            });
+        #[allow(clippy::type_complexity)]
+        let callback: Arc<
+            dyn Fn(Language, &JobID, &WorkerID) -> Option<u32> + Send + Sync,
+        > = Arc::new(move |_lang, _job, _wid| {
+            let c = counter.fetch_add(1, Ordering::Relaxed);
+            Some(1000 + c)
+        });
 
         let mut handles = Vec::new();
         for i in 0..5u32 {

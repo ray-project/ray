@@ -177,7 +177,6 @@ mod tests {
                 ip_address: "10.0.0.1".to_string(),
                 port: 5000,
                 worker_id: vec![0; 28],
-                ..Default::default()
             }),
             chunk_index: 0,
             data_size: 100,
@@ -206,7 +205,7 @@ mod tests {
         let req1 = Request::new(rpc::PushRequest {
             object_id: oid.binary(),
             chunk_index: 0,
-            data_size: data_size,
+            data_size,
             data: vec![0u8; chunk_size as usize],
             ..Default::default()
         });
@@ -217,7 +216,7 @@ mod tests {
         let req2 = Request::new(rpc::PushRequest {
             object_id: oid.binary(),
             chunk_index: 1,
-            data_size: data_size,
+            data_size,
             data: vec![0u8; 100],
             ..Default::default()
         });
