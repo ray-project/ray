@@ -1,7 +1,7 @@
 import glob
 import logging
 import os
-from typing import List, Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
@@ -9,7 +9,10 @@ from ray._private.ray_constants import env_bool
 logger = logging.getLogger(__name__)
 
 TENSTORRENT_VISIBLE_DEVICES_ENV_VAR = "TT_VISIBLE_DEVICES"
-NOSET_TENSTORRENT_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TENSTORRENT_VISIBLE_DEVICES_ENV_VAR"
+NOSET_TENSTORRENT_VISIBLE_DEVICES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_TENSTORRENT_VISIBLE_DEVICES_ENV_VAR"
+)
+
 
 class TTNPUAcceleratorManager(AcceleratorManager):
     """Tenstorrent NPU accelerators."""
@@ -56,7 +59,6 @@ class TTNPUAcceleratorManager(AcceleratorManager):
             )
         return (True, None)
 
-
     @staticmethod
     def set_current_process_visible_accelerator_ids(
         visible_npu_devices: List[str],
@@ -64,10 +66,9 @@ class TTNPUAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_TENSTORRENT_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
-        os.environ[
-            TTNPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join([str(i) for i in visible_npu_devices])
-
+        os.environ[TTNPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
+            ",".join([str(i) for i in visible_npu_devices])
+        )
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:

@@ -10,8 +10,6 @@ from ray._private.accelerators.ttnpu import (
 )
 
 
-
-
 @pytest.fixture
 def clear_ttnpu_environment():
     original_env = os.environ.get(TENSTORRENT_VISIBLE_DEVICES_ENV_VAR)
@@ -41,12 +39,15 @@ class TestTTNPUAcceleratorManager:
 
     def test_get_current_process_visible_accelerator_ids(self):
         os.environ[TENSTORRENT_VISIBLE_DEVICES_ENV_VAR] = "0,1,2,3"
-        assert TTNPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
-            "0",
-            "1",
-            "2",
-            "3",
-        ]
+        assert (
+            TTNPUAcceleratorManager.get_current_process_visible_accelerator_ids()
+            == [
+                "0",
+                "1",
+                "2",
+                "3",
+            ]
+        )
 
         os.environ[TENSTORRENT_VISIBLE_DEVICES_ENV_VAR] = ""
         assert (
@@ -59,7 +60,8 @@ class TestTTNPUAcceleratorManager:
 
         os.environ.pop(TENSTORRENT_VISIBLE_DEVICES_ENV_VAR)
         assert (
-            TTNPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
+            TTNPUAcceleratorManager.get_current_process_visible_accelerator_ids()
+            is None
         )
 
     def test_get_current_node_num_accelerators(self, monkeypatch):
@@ -68,13 +70,15 @@ class TestTTNPUAcceleratorManager:
             lambda path: [f"/dev/tenstorrent/{i}" for i in range(4)],
         )
         assert TTNPUAcceleratorManager.get_current_node_num_accelerators() == 4
-        
-        monkeypatch.setattr("ray._private.accelerators.ttnpu.glob.glob", lambda path: [])
+
+        monkeypatch.setattr(
+            "ray._private.accelerators.ttnpu.glob.glob", lambda path: []
+        )
         assert TTNPUAcceleratorManager.get_current_node_num_accelerators() == 0
-        
+
         def mock_glob_exception(path):
             raise OSError("test exception")
-        
+
         monkeypatch.setattr(
             "ray._private.accelerators.ttnpu.glob.glob", mock_glob_exception
         )
