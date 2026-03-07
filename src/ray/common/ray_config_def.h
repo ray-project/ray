@@ -794,7 +794,8 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, 
+RAY_CONFIG(std::string, 
+		custom_unit_instance_resources, 
 		"neuron_cores,TPU,NPU,HPU,RBLN,TTNPU")
 
 /// The name of the system-created concurrency group for actors. This group is

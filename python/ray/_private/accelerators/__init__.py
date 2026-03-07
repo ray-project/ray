@@ -15,6 +15,7 @@ from ray._private.accelerators.rbln import RBLNAcceleratorManager
 from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.accelerators.ttnpu import TTNPUAcceleratorManager
 
+
 def get_all_accelerator_managers() -> Set[AcceleratorManager]:
     """Get all accelerator managers supported by Ray."""
     return {
