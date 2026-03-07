@@ -1,7 +1,7 @@
 import glob
 import logging
 import os
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
@@ -30,13 +30,8 @@ class TTNPUAcceleratorManager(AcceleratorManager):
 
         if tenstorrent_visible_devices is None:
             return None
-
-        if tenstorrent_visible_devices == "":
+        if tenstorrent_visible_devices in ("", "NoDevFiles"):
             return []
-
-        if tenstorrent_visible_devices == "NoDevFiles":
-            return []
-
         return tenstorrent_visible_devices.split(",")
 
     @staticmethod
@@ -54,6 +49,11 @@ class TTNPUAcceleratorManager(AcceleratorManager):
     def validate_resource_request_quantity(
         quantity: float,
     ) -> Tuple[bool, Optional[str]]:
+        if quantity > 0 and quantity % 1 != 0:
+            return (
+                False,
+                f"TTNPU resource quantity ({quantity}) must be an integer.",
+            )
         return (True, None)
 
 
@@ -67,3 +67,12 @@ class TTNPUAcceleratorManager(AcceleratorManager):
         os.environ[
             TTNPUAcceleratorManager.get_visible_accelerator_ids_env_var()
         ] = ",".join([str(i) for i in visible_npu_devices])
+
+
+    @staticmethod
+    def get_current_node_accelerator_type() -> Optional[str]:
+        return None
+
+    @staticmethod
+    def get_current_node_additional_resources() -> Optional[Dict[str, float]]:
+        return None
