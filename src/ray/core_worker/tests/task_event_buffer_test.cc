@@ -1066,7 +1066,7 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEvents) {
   int32_t attempt_number = 1;
   std::string component_type = "core_worker";
   std::string component_id = "worker_123";
-  std::string node_ip = "";
+  std::string node_ip = "127.0.0.1";
   std::string event_name = "test_profile_event";
   int64_t start_time = 1000;
 
@@ -1143,43 +1143,43 @@ TEST_F(TaskEventBufferTest, TestTaskProfileEventToRpcRayEventsMultipleEvents) {
 
   // Create first profile event
   auto profile_event1 = std::make_unique<TaskProfileEvent>(task_id,
-                                                             job_id,
-                                                             attempt_number,
-                                                             component_type,
-                                                             component_id,
-                                                             node_ip,
-                                                             "task:deserialize_arguments",
-                                                             1000,
-                                                             "test_session_name",
-                                                             NodeID::Nil());
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:deserialize_arguments",
+                                                           1000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
   profile_event1->SetEndTime(2000);
   profile_event1->SetExtraData("extra_data_1");
 
   // Create second profile event
   auto profile_event2 = std::make_unique<TaskProfileEvent>(task_id,
-                                                             job_id,
-                                                             attempt_number,
-                                                             component_type,
-                                                             component_id,
-                                                             node_ip,
-                                                             "task:execute",
-                                                             2000,
-                                                             "test_session_name",
-                                                             NodeID::Nil());
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:execute",
+                                                           2000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
   profile_event2->SetEndTime(3000);
   profile_event2->SetExtraData("extra_data_2");
 
   // Create third profile event
   auto profile_event3 = std::make_unique<TaskProfileEvent>(task_id,
-                                                             job_id,
-                                                             attempt_number,
-                                                             component_type,
-                                                             component_id,
-                                                             node_ip,
-                                                             "task:store_outputs",
-                                                             3000,
-                                                             "test_session_name",
-                                                             NodeID::Nil());
+                                                           job_id,
+                                                           attempt_number,
+                                                           component_type,
+                                                           component_id,
+                                                           node_ip,
+                                                           "task:store_outputs",
+                                                           3000,
+                                                           "test_session_name",
+                                                           NodeID::Nil());
   profile_event3->SetEndTime(4000);
   profile_event3->SetExtraData("extra_data_3");
 
