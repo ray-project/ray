@@ -1047,9 +1047,9 @@ class TestChooseReplica:
             await router.dispatch(selection, request_metadata)
             assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
 
-        # After context exit, cache is decremented back to 0
-        # (Real replica will update cache via on_new_queue_len_info when it processes)
-        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 0
+        # After dispatch, cache remains incremented while the request is in flight.
+        # It is decremented when request completion is observed.
+        assert fake_request_router.replica_queue_len_cache.get(r1_id) == 1
 
     @pytest.mark.parametrize(
         "setup_router",
