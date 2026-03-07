@@ -606,16 +606,19 @@ class DataContext:
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
-    # Enable actor cleanup hooks (__ray_shutdown__ and __del__) to be called
-    # when actors exit gracefully. This allows UDFs to perform cleanup operations.
-    # See: https://docs.ray.io/en/latest/ray-core/actors/terminating-actors.html
+    # Whether to call UDF cleanup hooks (__ray_shutdown__ and __del__) when
+    # actor pool workers exit gracefully. When enabled, Ray Data will call
+    # __ray_shutdown__() (if defined) and then trigger __del__() on the UDF
+    # instance before the actor exits. This allows UDFs to release resources
+    # such as file handles, database connections, or GPU memory.
     #
-    # NOTE: This hook has a known race condition with fault tolerance
-    # (https://github.com/ray-project/ray/issues/53169). If enabled and a retry
-    # task is scheduled to an actor after its exit hook is triggered, the retry
-    # may fail because the UDF has been deleted. If you're using fault tolerance
-    # with retries, you may need to disable this hook.
-    _enable_actor_pool_on_exit_hook: bool = True
+    # Disabled by default due to a known race condition with fault tolerance:
+    # if a retry task is submitted to an actor after its exit hook fires and
+    # the UDF has been deleted, the retry will fail. Enable this only if you
+    # are not relying on task retries or actor fault tolerance.
+    #
+    # See: https://github.com/ray-project/ray/issues/53169
+    enable_actor_pool_on_exit_hook: bool = False
 
     issue_detectors_config: "IssueDetectorsConfiguration" = field(
         default_factory=_issue_detectors_config_factory

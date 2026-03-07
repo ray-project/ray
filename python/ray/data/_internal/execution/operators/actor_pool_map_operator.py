@@ -180,7 +180,7 @@ class ActorPoolMapOperator(MapOperator):
                 or max_actor_concurrency
                 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
-            _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
+            _enable_actor_pool_on_exit_hook=self.data_context.enable_actor_pool_on_exit_hook,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -687,9 +687,14 @@ class _MapWorker:
                     try:
                         udf_instance.__ray_shutdown__()
                     except Exception:
-                        # Log but don't fail - we want to continue cleanup
+                        # Log but don't fail - we want to continue cleanup.
+                        # Safely materialize repr() separately in case it also raises.
+                        try:
+                            instance_repr = repr(udf_instance)
+                        except Exception:
+                            instance_repr = f"<{type(udf_instance).__name__} instance (repr() raised an exception)>"
                         logging.getLogger(__name__).exception(
-                            f"Error calling __ray_shutdown__ on {udf_instance}"
+                            f"Error calling __ray_shutdown__ on {instance_repr}"
                         )
 
             # `_map_actor_context` is a global variable that references the UDF object.
@@ -879,8 +884,9 @@ class _ActorPool(AutoscalingActorPool):
                 passed to the operator).
             max_tasks_in_flight_per_actor: The maximum number of tasks that can
                 be submitted to a single actor at any given time.
-            _enable_actor_pool_on_exit_hook: Whether to enable the actor pool
-                on exit hook.
+            _enable_actor_pool_on_exit_hook: Whether to call UDF cleanup hooks
+                (__ray_shutdown__ and __del__) when actor pool workers exit
+                gracefully. See DataContext.enable_actor_pool_on_exit_hook.
         """
 
         self._min_size: int = min_size
