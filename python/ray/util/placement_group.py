@@ -363,6 +363,10 @@ def check_placement_group_index(
     else:
         # Fetch the updated scheduling options first.
         all_bundles = placement_group._get_scheduling_options_bundles()
+        if not all_bundles:
+            # Since bundles must be non-empty (i.e. there must be at least 1 scheduling option),
+            # if there are no bundles to validate yet we return and allow GCS to synchronize.
+            return
         primary_bundles_len = len(all_bundles[0])
 
         if bundle_index >= primary_bundles_len or bundle_index < -1:
@@ -566,6 +570,12 @@ def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
     strategies = placement_group._get_scheduling_options_bundles()
+
+    if not strategies:
+        # Since bundles must be non-empty, if there are no scheduling options to validate yet
+        # we return and allow GCS to synchronize.
+        return
+
     resources_valid = any(
         _valid_resource_shape(resources, strategy) for strategy in strategies
     )
