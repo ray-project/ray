@@ -925,28 +925,22 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
         num_partitions=20,
     )
 
-    result = joined_2.to_pandas()
+    result = joined_2.to_pandas().sort_values("id").reset_index(drop=True)
 
-    assert len(result) == 10, f"Expected 10 rows, got {len(result)}"
+    expected = pd.DataFrame(
+        {
+            "id": list(range(10)),
+            "a_val": [f"a_{i}" for i in range(10)],
+            "b_val": [f"b_{i}" if i >= 5 else None for i in range(10)],
+            "c_val": [f"c_{i}" for i in range(10)],
+        }
+    )
 
-    expected_columns = {"id", "a_val", "b_val", "c_val"}
-    assert expected_columns.issubset(
-        set(result.columns)
-    ), f"Missing columns. Got: {result.columns.tolist()}"
-
-    # Verify per-row correctness
-    for _, row in result.iterrows():
-        id_val = row["id"]
-        assert row["a_val"] == f"a_{id_val}"
-        assert row["c_val"] == f"c_{id_val}"
-        if id_val >= 5:
-            assert (
-                row["b_val"] == f"b_{id_val}"
-            ), f"Expected b_val='b_{id_val}' for id={id_val}, got {row['b_val']!r}"
-        else:
-            assert pd.isna(
-                row["b_val"]
-            ), f"Expected b_val=null for id={id_val}, got {row['b_val']!r}"
+    pd.testing.assert_frame_equal(
+        result[sorted(result.columns)],
+        expected[sorted(expected.columns)],
+        check_dtype=False,
+    )
 
 
 if __name__ == "__main__":
