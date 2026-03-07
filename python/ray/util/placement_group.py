@@ -362,15 +362,14 @@ def check_placement_group_index(
             )
     else:
         # Fetch the updated scheduling options first.
-        strategies = placement_group._get_scheduling_options_bundles()
+        all_bundles = placement_group._get_scheduling_options_bundles()
+        primary_bundles_len = len(all_bundles[0])
 
-        valid_count = min((len(strategy) for strategy in strategies), default=0)
-
-        if bundle_index >= valid_count or bundle_index < -1:
+        if bundle_index >= primary_bundles_len or bundle_index < -1:
             raise ValueError(
                 f"placement group bundle index {bundle_index} "
                 f"is invalid. Valid placement group indexes: "
-                f"0 to {valid_count - 1}."
+                f"0 to {primary_bundles_len - 1}."
             )
 
 
