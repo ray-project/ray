@@ -8,7 +8,10 @@ To contribute to the Ray repository, follow the instructions below to build from
 Depending on your goal, you may not need all sections on this page:
 
 - **Python-only development (fast loop, no C++)** - edit Python files without compiling C++ (see :ref:`python-develop`).
-- **Full source build (C++ + dashboard + editable install)** - make C++ changes or build all of Ray (see :ref:`full-source-build`).
+- **Build Ray with C++** - choose one:
+
+  - **Distributable manylinux wheel** - uses a manylinux build container to produce a ``.whl`` file for installation on a cluster, for testing the packaged artifact locally, or for sharing (see :ref:`build-distributable-wheel`).
+  - **Full source build (editable install)** - make C++ changes or build all of Ray (see :ref:`full-source-build`).
 
 .. contents::
   :local:
@@ -37,6 +40,8 @@ You can propose changes to the main project by submitting a pull request to the 
 
 Prepare a Python virtual environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you only need to build a distributable manylinux wheel, skip this section. See :ref:`build-distributable-wheel`.
 
 Create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
@@ -127,6 +132,38 @@ You can optionally skip creating symbolic links for specific directories:
     # To uninstall, delete the symlinks first.
     rm -rf <package path>/site-packages/ray # Path will be in the output of `setup-dev.py`.
     pip uninstall ray # or `pip install -U <wheel>`
+
+.. _build-distributable-wheel:
+
+Building distributable manylinux wheels
+----------------------------------------
+
+.. dropdown:: Setup
+  :open:
+
+  Before you begin, make sure you have:
+
+  - A clone of the Ray repository (see :ref:`fork-ray-repo`)
+  - `uv <https://docs.astral.sh/uv/>`_ installed
+  - `Docker <https://docs.docker.com/get-docker/>`_ installed
+
+To build a distributable manylinux ``.whl``, use the ``build-wheel.sh``
+script at the repository root.
+
+.. code-block:: bash
+
+  # Build a manylinux wheel for the host architecture:
+  ./build-wheel.sh 3.12
+
+  # Specify a custom output directory:
+  ./build-wheel.sh 3.12 ./dist
+
+Run ``./build-wheel.sh`` without arguments to see supported Python versions and options.
+Regardless of host OS, the output is always a manylinux wheel (the same format used by CI
+and PyPI). Supported build hosts are Linux x86_64, Linux aarch64, and macOS ARM64.
+
+See ``python/README-building-wheels.md`` for additional options, including building
+manylinux wheels directly with Docker.
 
 
 .. _full-source-build:
