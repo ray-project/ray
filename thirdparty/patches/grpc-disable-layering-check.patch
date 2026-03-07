@@ -1,0 +1,24 @@
+diff -u BUILD BUILD
+--- BUILD
++++ BUILD
+@@ -30,7 +30,6 @@
+ package(
+     default_visibility = ["//visibility:public"],
+     features = [
+-        "layering_check",
+         "-parse_headers",
+     ],
+ )
+diff -u src/core/BUILD src/core/BUILD
+--- src/core/BUILD
++++ src/core/BUILD
+@@ -24,9 +24,6 @@
+
+ package(
+     default_visibility = ["//:__subpackages__"],
+-    features = [
+-        "layering_check",
+-    ],
+ )
+
+ # This is needed as a transitionary mechanism to build the src/core targets in
