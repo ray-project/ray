@@ -32,10 +32,13 @@ from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_TO_MODULE_CONNECTOR,
+    EPISODE_AGENT_RETURN_MEAN,
+    EPISODE_AGENT_STEPS,
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
     EPISODE_LEN_MEAN,
     EPISODE_LEN_MIN,
+    EPISODE_MODULE_RETURN_MEAN,
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
@@ -230,6 +233,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Sample "num_timesteps" timesteps.
             if num_timesteps is not None:
+                assert num_timesteps >= 0
                 samples = self._sample(
                     num_timesteps=num_timesteps,
                     explore=explore,
@@ -238,6 +242,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             # Sample "num_episodes" episodes.
             elif num_episodes is not None:
+                assert num_episodes >= 0
                 samples = self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
@@ -461,18 +466,15 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                     old_episode_id = self._ongoing_episodes[env_index].id_
                     # Create a new episode object with no data in it.
-                    # Note: If we're about to break (reached target num_episodes), skip
-                    # the `on_episode_created` callback since this episode will never be
-                    # used (it gets discarded on the next sample() call).
-                    self._new_episode(
-                        env_index,
-                        self._ongoing_episodes,
-                        call_on_episode_created=(eps != num_episodes),
-                    )
+                    self._new_episode(env_index, self._ongoing_episodes)
                     # Register the mapping of new episode ID to old episode ID.
                     self._shared_data["vector_env_episodes_map"].update(
                         {old_episode_id: self._ongoing_episodes[env_index].id_}
                     )
+
+                    # Stop processing more envs if we've collected enough episodes.
+                    if num_episodes is not None and eps >= num_episodes:
+                        break
 
             # Env-to-module connector pass (cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration).
@@ -483,6 +485,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # environment `observations` and `infos` will always be returned for the
             # `MultiAgentEpisode.add_reset_step`.
             if self.module is not None:
+                kwargs = {
+                    Columns.OBS: observations,
+                    Columns.ACTIONS: actions,
+                    Columns.REWARDS: rewards,
+                    Columns.INFOS: infos,
+                    Columns.TERMINATEDS: terminateds,
+                    Columns.TRUNCATEDS: truncateds,
+                }
                 if done_episodes_to_run_env_to_module:
                     # Run the env-to-module connector pipeline for all done episodes.
                     # Note, this is needed to postprocess last-step data, e.g. if the
@@ -497,6 +507,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                         rl_module=self.module,
                         shared_data=self._shared_data,
                         metrics=None,
+                        **kwargs,
                     )
                 self._cached_to_module = self._env_to_module(
                     episodes=self._ongoing_episodes,
@@ -506,6 +517,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=self._shared_data,
                     metrics=self.metrics,
                     metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+                    **kwargs,
                 )
 
             # Numpy'ize the done episodes after running the connector pipeline. Note,
@@ -583,6 +595,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
+            kwargs = {
+                Columns.OBS: observations,
+                Columns.INFOS: infos,
+            }
             self._cached_to_module = self._env_to_module(
                 rl_module=self.module,
                 episodes=episodes,
@@ -590,6 +606,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 shared_data=shared_data,
                 metrics=self.metrics,
                 metrics_key_prefix=(ENV_TO_MODULE_CONNECTOR,),
+                **kwargs,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
@@ -913,7 +930,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         if self.env is not None:
             self.env.close()
 
-    def _new_episode(self, env_index, episodes=None, call_on_episode_created=True):
+    def _new_episode(self, env_index, episodes=None):
         episodes = episodes if episodes is not None else self._ongoing_episodes
         episodes[env_index] = MultiAgentEpisode(
             observation_space={
@@ -926,8 +943,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
-        if call_on_episode_created:
-            self._make_on_episode_callback("on_episode_created", env_index, episodes)
+        self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
     def _make_on_episode_callback(
         self, which: str, idx: int, episodes: List[MultiAgentEpisode]
@@ -1022,10 +1038,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 **(
                     {
                         # Per-agent returns.
-                        "agent_episode_returns_mean": agents,
+                        EPISODE_AGENT_RETURN_MEAN: agents,
+                        # Per-agent steps.
+                        EPISODE_AGENT_STEPS: agent_steps,
                         # Per-RLModule returns.
-                        "module_episode_returns_mean": modules,
-                        "agent_steps": agent_steps,
+                        EPISODE_MODULE_RETURN_MEAN: modules,
                     }
                     if agents is not None
                     else {}

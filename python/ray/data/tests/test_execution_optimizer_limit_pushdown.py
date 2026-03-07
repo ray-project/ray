@@ -6,7 +6,9 @@ import pytest
 
 import ray
 from ray.data import Dataset
-from ray.data._internal.logical.interfaces import Plan
+from ray.data._internal.logical.interfaces import LogicalOperator, Plan
+from ray.data._internal.logical.operators import Download, Limit
+from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -32,6 +34,29 @@ def _check_valid_plan_and_result(
     expected_physical_plan_ops = expected_physical_plan_ops or []
     for op in expected_physical_plan_ops:
         assert op in ds.stats(), f"Operator {op} not found: {ds.stats()}"
+
+
+class _DummyLogicalOperator(LogicalOperator):
+    @property
+    def num_outputs(self):
+        return self._num_outputs
+
+
+def test_limit_pushdown_recreates_frozen_download():
+    input_op = _DummyLogicalOperator(input_dependencies=[], name="DummyInput")
+    download_op = Download(
+        input_op=input_op,
+        uri_column_names=["uri"],
+        output_bytes_column_names=["bytes"],
+    )
+    limit_op = Limit(download_op, 1)
+
+    result = LimitPushdownRule()._push_limit_down(limit_op)
+
+    assert isinstance(result, Download)
+    assert isinstance(result.input_dependency, Limit)
+    assert result.input_dependency.limit == 1
+    assert result.input_dependency.input_dependency is input_op
 
 
 def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
@@ -97,7 +122,11 @@ def test_limit_pushdown_through_mapbatches(ray_start_regular_shared_2_cpus):
     def f2(x):
         return x
 
-    ds = ray.data.range(100, override_num_blocks=100).map_batches(f2).limit(1)
+    ds = (
+        ray.data.range(100, override_num_blocks=100)
+        .map_batches(f2, udf_modifying_row_count=False)
+        .limit(1)
+    )
     _check_valid_plan_and_result(
         ds,
         "Read[ReadRange] -> Limit[limit=1] -> MapBatches[MapBatches(f2)]",
@@ -467,7 +496,7 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
     # Left branch.
     left = (
         ray.data.range(30)
-        .map_batches(lambda b: b)
+        .map_batches(lambda b: b, udf_modifying_row_count=False)
         .map(lambda r: {"id": r["id"]})
         .select_columns(["id"])
     )
@@ -475,7 +504,7 @@ def test_limit_pushdown_union_maps_projects(ray_start_regular_shared_2_cpus):
     # Right branch with shifted ids.
     right = (
         ray.data.range(30)
-        .map_batches(lambda b: b)
+        .map_batches(lambda b: b, udf_modifying_row_count=False)
         .map(lambda r: {"id": r["id"] + 100})
         .select_columns(["id"])
     )
@@ -597,6 +626,30 @@ def test_limit_pushdown_udf_modifying_row_count_with_map_batches(
         expected_plan,
         [{"id": i} for i in range(10)],
     )
+
+
+def test_does_not_pushdown_limit_past_map_batches_by_default(
+    ray_start_regular_shared_2_cpus,
+):
+    def duplicate_id(batch):
+        yield {"data": list(batch["id"]) * 2}
+
+    # If the optimizer incorrectly pushes the limit past the map operator, then the
+    # returned count is 2.
+    num_rows = ray.data.range(1).map_batches(duplicate_id).limit(1).count()
+    assert num_rows == 1, num_rows
+
+
+def test_does_not_pushdown_limit_past_map_groups_by_default(
+    ray_start_regular_shared_2_cpus,
+):
+    def duplicate_id(batch):
+        yield {"data": list(batch["id"]) * 2}
+
+    # If the optimizer incorrectly pushes the limit past the map operator, then the
+    # returned count is 2.
+    num_rows = ray.data.range(1).groupby("id").map_groups(duplicate_id).limit(1).count()
+    assert num_rows == 1, num_rows
 
 
 if __name__ == "__main__":

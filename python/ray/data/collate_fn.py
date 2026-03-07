@@ -15,7 +15,7 @@ from typing import (
 
 import numpy as np
 
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:

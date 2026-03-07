@@ -60,7 +60,9 @@ def start_service(service_name, host, port):
     # Always use port conflict resolution to be safe
     port = _find_available_port(host, port)
 
-    args = [moto_svr_path, service_name, "-H", host, "-p", str(port)]
+    # moto 5.x no longer accepts a service name argument - all services
+    # are served on a single endpoint
+    args = [moto_svr_path, "-H", host, "-p", str(port)]
     # For debugging
     # args = '{0} {1} -H {2} -p {3} 2>&1 | \
     # tee -a /tmp/moto.log'.format(moto_svr_path, service_name, host, port)

@@ -14,6 +14,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import RayTaskError
 from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -65,7 +66,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     replica_version_hash = None
     for replica in deployment_dict[id]:
         ref = replica.get_actor_handle().initialize_and_get_metadata.remote()
-        _, version, _, _, _, _, _, _, _, _ = ray.get(ref)
+        _, version, _, _, _, _, _, _, _, _, _, _ = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
         assert replica_version_hash == hash(version), (
@@ -118,7 +119,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
         ref = actor_handle.initialize_and_get_metadata.remote()
-        _, version, _, _, _, _, _, _, _, _ = ray.get(ref)
+        _, version, _, _, _, _, _, _, _, _, _, _ = ray.get(ref)
         assert replica_version_hash == hash(
             version
         ), "Replica version hash should be the same after recover from actor names"
@@ -465,7 +466,11 @@ def test_controller_crashes_with_logging_config(serve_instance):
     # Check proxy logging
     def check_proxy_handle_in_controller():
         proxy_handles = ray.get(client._controller.get_proxies.remote())
-        assert len(proxy_handles) == 1
+        expected_num_proxies = 1
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            # fallback proxy
+            expected_num_proxies += 1
+        assert len(proxy_handles) == expected_num_proxies
         return True
 
     wait_for_condition(check_proxy_handle_in_controller)
@@ -494,7 +499,7 @@ def test_controller_recover_and_deploy(serve_instance):
             }
         ]
     }
-    config = ServeDeploySchema.parse_obj(config_json)
+    config = ServeDeploySchema.model_validate(config_json)
     client.deploy_apps(config)
 
     wait_for_condition(

@@ -35,11 +35,10 @@ from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
-import moto
 import pytest
 import yaml
 from click.testing import CliRunner
-from moto import mock_ec2, mock_iam
+from moto import mock_aws
 from testfixtures import Replacer
 from testfixtures.popen import MockPopen, PopenBehaviour
 
@@ -51,7 +50,7 @@ import ray.scripts.scripts as scripts
 import ray.tests.aws.utils.helpers as aws_helpers
 from ray._common.network_utils import build_address, parse_address
 from ray._common.test_utils import wait_for_condition
-from ray._common.utils import get_ray_temp_dir
+from ray._common.utils import get_default_ray_temp_dir
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.util import prepare_config
 from ray.cluster_utils import cluster_not_supported
@@ -113,18 +112,25 @@ def configure_aws():
     os.environ["AWS_SESSION_TOKEN"] = "testing"
 
     # moto (boto3 mock) only allows a hardcoded set of AMIs
-    dlami = (
-        moto.ec2.models.ec2_backends["us-west-2"]["us-west-2"]
-        .describe_images(filters={"name": "Deep Learning AMI Ubuntu*"})[0]
-        .id
-    )
-    aws_config.DEFAULT_AMI["us-west-2"] = dlami
-    list_instances_mock = MagicMock(return_value=boto3_list)
-    with patch(
-        "ray.autoscaler._private.aws.node_provider.list_ec2_instances",
-        list_instances_mock,
-    ):
-        yield
+    # Use mock_aws context manager and boto3 to find the AMI
+    import boto3
+
+    # In moto 5.x, AWS managed policies (e.g., AmazonEC2FullAccess) are not
+    # loaded by default for performance. Enable them since the autoscaler
+    # attaches these policies to the IAM role.
+    with mock_aws(config={"iam": {"load_aws_managed_policies": True}}):
+        ec2_client = boto3.client("ec2", region_name="us-west-2")
+        images = ec2_client.describe_images(
+            Filters=[{"Name": "name", "Values": ["Deep Learning AMI Ubuntu*"]}]
+        )["Images"]
+        dlami = images[0]["ImageId"]
+        aws_config.DEFAULT_AMI["us-west-2"] = dlami
+        list_instances_mock = MagicMock(return_value=boto3_list)
+        with patch(
+            "ray.autoscaler._private.aws.node_provider.list_ec2_instances",
+            list_instances_mock,
+        ):
+            yield
 
 
 @pytest.fixture(scope="function")
@@ -348,14 +354,13 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-def test_ray_start_worker_cannot_specify_temp_dir(
-    configure_lang, tmp_path, cleanup_ray
-):
+def test_ray_start_worker_can_specify_temp_dir(configure_lang, tmp_path, cleanup_ray):
     """
-    Verify ray start --temp-dir raises an exception when it is used without --head.
+    Verify that ray start --temp-dir works on worker nodes independently of head node.
     """
     runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
-    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
+
+    # Start head node without specifying temp-dir
     result = runner.invoke(
         scripts.start,
         [
@@ -364,12 +369,33 @@ def test_ray_start_worker_cannot_specify_temp_dir(
     )
     print(result.output)
     _die_on_error(result)
+
+    # Start worker node with temp-dir specified
+    worker_temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,
-        [f"--address=localhost:{ray_constants.DEFAULT_PORT}", f"--temp-dir={temp_dir}"],
+        [
+            f"--address=localhost:{ray_constants.DEFAULT_PORT}",
+            f"--temp-dir={worker_temp_dir}",
+        ],
     )
-    assert result.exit_code == 0
-    assert "--head` is a required flag to use `--temp-dir`" in str(result.output)
+    _die_on_error(result)
+
+    # Check that worker temp-dir was created at the specified location
+    assert os.path.isfile(os.path.join(worker_temp_dir, "ray_current_cluster"))
+    assert os.path.isdir(os.path.join(worker_temp_dir, "session_latest"))
+
+    # Check that we can rerun `ray start` even though the cluster address file
+    # is already written.
+    _die_on_error(
+        runner.invoke(
+            scripts.start,
+            [
+                f"--address=localhost:{ray_constants.DEFAULT_PORT}",
+                f"--temp-dir={worker_temp_dir}",
+            ],
+        )
+    )
 
 
 def _ray_start_hook(ray_params, head):
@@ -479,7 +505,7 @@ def test_ray_start_head_block_and_signals(
 
     exit_log = Path(
         os.path.join(
-            get_ray_temp_dir(),
+            get_default_ray_temp_dir(),
             ray_constants.SESSION_LATEST,
             "logs",
             "ray_process_exit.log",
@@ -636,8 +662,6 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_up(
     configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
 ):
@@ -677,8 +701,6 @@ def test_ray_up(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_up_docker(
     configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
 ):
@@ -720,8 +742,6 @@ def test_ray_up_docker(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_up_record(
     configure_lang, _unlink_test_ssh_key, configure_aws, monkeypatch, tmp_path
 ):
@@ -754,8 +774,6 @@ def test_ray_up_record(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -796,8 +814,6 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key):
     from ray.autoscaler._private.commands import get_worker_node_ips
 
@@ -876,8 +892,6 @@ def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key)
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -910,8 +924,6 @@ def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -963,8 +975,6 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
@@ -1155,7 +1165,7 @@ def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
     assert "[🛑] open ports detected" in result.output
 
 
-def test_ray_drain_node(monkeypatch):
+def test_ray_drain_node(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_py_gcs_connect_timeout_s", "1")
     ray.init()
 
@@ -1355,8 +1365,6 @@ def test_ray_drain_node(monkeypatch):
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"),
 )
-@mock_ec2
-@mock_iam
 def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_mock(command, stdin):
         print("This is a test!")
@@ -1382,6 +1390,138 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         )
 
         _check_output_via_pattern("test_ray_cluster_dump.txt", result)
+
+
+def test_kill_actor_by_name_via_cli(ray_start_regular):
+    """Test killing a named actor via CLI (both force and graceful termination). Covers regular and detached actors."""
+    address = ray_start_regular["address"]
+    runner = CliRunner()
+    # Kill non-existing actor
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "non_existing_actor",
+            "--namespace",
+            "ns",
+            "--force",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "No named actor found: non_existing_actor (namespace=ns)" in result.output
+
+    @ray.remote(max_restarts=-1)
+    class Actor:
+        def ping(self):
+            return "pong"
+
+        def crash(self):
+            raise RuntimeError("intentional")
+
+    # Regular named actor with namespace
+    # Kill without --no-restart flag
+    actor = Actor.options(name="test_actor", namespace="ns").remote()
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "test_actor", "namespace": "ns"}
+    ]
+    try:
+        ray.get(actor.crash.remote())
+    except ray.exceptions.RayTaskError:
+        pass
+    wait_for_condition(lambda: ray.get(actor.ping.remote()) == "pong", timeout=10)
+
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True)
+        == [{"name": "test_actor", "namespace": "ns"}],
+        timeout=10,
+    )
+    wait_for_condition(lambda: ray.get(actor.ping.remote()) == "pong", timeout=10)
+    # Kill with --no-restart flag
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+            "--no-restart",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
+
+    # Detached named actor
+    detached_actor = Actor.options(
+        name="detached_test_actor", namespace="ns", lifetime="detached"
+    ).remote()
+    assert ray.get(detached_actor.ping.remote()) == "pong"
+    assert ray.util.list_named_actors(all_namespaces=True) == [
+        {"name": "detached_test_actor", "namespace": "ns"}
+    ]
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "detached_test_actor",
+            "--namespace",
+            "ns",
+            "--force",
+            "--no-restart",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
+    # Test graceful termination of named actor
+    def check_killed(actorhandle):
+        try:
+            ray.get(actorhandle.ping.remote(), timeout=1)
+            return False
+        except Exception:
+            return True
+
+    graceful_actor = Actor.options(name="graceful_actor", namespace="ns").remote()
+    assert ray.get(graceful_actor.ping.remote()) == "pong"
+
+    result = runner.invoke(
+        scripts.kill_actor,
+        [
+            "--address",
+            address,
+            "--name",
+            "graceful_actor",
+            "--namespace",
+            "ns",
+        ],
+    )
+    _die_on_error(result)
+    wait_for_condition(lambda: check_killed(graceful_actor), timeout=10)
+    wait_for_condition(
+        lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
+    )
 
 
 if __name__ == "__main__":

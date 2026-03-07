@@ -14,9 +14,13 @@
 
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
+#include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <string>
+#include <thread>
 
+#include "absl/strings/escaping.h"
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/env.h"
@@ -350,6 +354,49 @@ TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeGetToken) {
 
   // Re-enable auth for other tests
   RayConfig::instance().initialize(R"({"AUTH_MODE": "token"})");
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
+  // Enable K8s token auth
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  // Create a JWT with expiration time buffer (300) + 1 seconds
+  auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  int64_t exp = now + 301;
+
+  std::string header =
+      "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";  // {"alg":"none","typ":"JWT"}
+  std::string payload_json = "{\"exp\":" + std::to_string(exp) + "}";
+  std::string payload;
+  absl::Base64Escape(payload_json, &payload);
+  std::replace(payload.begin(), payload.end(), '+', '-');
+  std::replace(payload.begin(), payload.end(), '/', '_');
+  payload.erase(std::remove(payload.begin(), payload.end(), '='), payload.end());
+
+  std::string jwt = header + "." + payload + ".signature";
+
+  set_env_var("RAY_AUTH_TOKEN", jwt.c_str());
+
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token1 = loader.GetToken();
+  ASSERT_TRUE(token1 != nullptr);
+  EXPECT_EQ(token1->GetRawValue(), jwt);
+
+  // Wait for it to expire
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  // Next call should revoke and reload. Change the env var to verify it reloads.
+  set_env_var("RAY_AUTH_TOKEN", "new-token");
+
+  auto token2 = loader.GetToken();
+  ASSERT_TRUE(token2 != nullptr);
+  EXPECT_EQ(token2->GetRawValue(), "new-token");
+
+  // Re-enable auth for other tests
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
 }
 
 }  // namespace rpc

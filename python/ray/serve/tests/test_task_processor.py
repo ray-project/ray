@@ -317,27 +317,27 @@ class TestTaskConsumerWithRayServe:
     def test_task_consumer_as_serve_deployment_with_async_task_handler(
         self, temp_queue_directory, serve_instance, create_processor_config
     ):
-        """Test that task consumers properly raise NotImplementedError for async task handlers."""
+        """Test that Celery adapter raises NotImplementedError for async task handlers."""
         processor_config = create_processor_config()
 
-        # Test that async task handlers raise NotImplementedError during decoration
-        with pytest.raises(
-            NotImplementedError,
-            match="Async task handlers are not supported yet",
-        ):
+        @serve.deployment(max_ongoing_requests=1)
+        @task_consumer(task_processor_config=processor_config)
+        class ServeTaskConsumer:
+            def __init__(self):
+                self.data_received = None
+                self.task_received = False
 
-            @serve.deployment(max_ongoing_requests=1)
-            @task_consumer(task_processor_config=processor_config)
-            class ServeTaskConsumer:
-                def __init__(self):
-                    self.data_received = None
-                    self.task_received = False
+            # This async task handler should raise NotImplementedError when registered
+            @task_handler(name="process_request")
+            async def process_request(self, data):
+                self.task_received = True
+                self.data_received = data
 
-                # This async task handler should raise NotImplementedError during decoration
-                @task_handler(name="process_request")
-                async def process_request(self, data):
-                    self.task_received = True
-                    self.data_received = data
+        # Error is raised during deployment initialization when Celery adapter
+        # tries to register the async handler. The deployment fails with a
+        # RuntimeError (the underlying NotImplementedError is logged but wrapped).
+        with pytest.raises(RuntimeError):
+            serve.run(ServeTaskConsumer.bind())
 
     def test_task_consumer_metrics(
         self, temp_queue_directory, serve_instance, create_processor_config

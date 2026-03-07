@@ -86,5 +86,3 @@ Transforming Data with an OfflinePreLearner
     OfflinePreLearner._map_to_episodes
     OfflinePreLearner._map_sample_batch_to_episode
     OfflinePreLearner._should_module_be_updated
-    OfflinePreLearner.default_prelearner_buffer_class
-    OfflinePreLearner.default_prelearner_buffer_kwargs

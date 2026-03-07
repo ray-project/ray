@@ -104,10 +104,10 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "memory_monitor_test",
+    name = "memory_monitor_utils_test",
     size = "small",
     srcs = [
-        "memory_monitor_test.cc",
+        "memory_monitor_utils_test.cc",
     ],
     tags = [
         "no_windows",
@@ -118,8 +118,33 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:memory_monitor",
+        "//src/ray/common:memory_monitor_test_fixture",
+        "//src/ray/common:memory_monitor_utils",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/util:process",
         "@boost//:filesystem",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "threshold_memory_monitor_test",
+    size = "small",
+    srcs = [
+        "threshold_memory_monitor_test.cc",
+    ],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/common:memory_monitor_test_fixture",
+        "//src/ray/common:threshold_memory_monitor",
         "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],

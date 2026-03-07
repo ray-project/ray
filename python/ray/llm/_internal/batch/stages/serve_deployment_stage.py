@@ -156,7 +156,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
                 self.IDX_IN_BATCH_COLUMN: request["idx_in_batch"],
                 "batch_uuid": batch_uuid.hex,
                 "time_taken": time_taken,
-                "__inference_error__": None,
+                "__inference_error__": "",
             }
         except Exception as e:
             # Only recover from known recoverable errors; unknown errors propagate

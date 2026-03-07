@@ -925,6 +925,7 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
                                        message_processor,
                                        cleanup_cb,
                                        nullptr,
+                                       ray::rpc::AuthenticationTokenValidator::instance(),
                                        /*max_batch_size=*/1,
                                        /*max_batch_delay_ms=*/0);
     return reactor;

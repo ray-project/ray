@@ -20,7 +20,7 @@ from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.models.preprocessors import ATARI_OBS_SHAPE
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import OldAPIStack
+from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
@@ -276,6 +276,7 @@ def compute_log_likelihoods_from_input_dict(
     return log_likelihoods
 
 
+@DeveloperAPI
 @Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=True)
 def load_policies_from_checkpoint(path, policy_ids=None):
     pass

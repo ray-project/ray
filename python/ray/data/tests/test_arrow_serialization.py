@@ -24,7 +24,7 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray._private.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
     _object_extension_type_allowed,
