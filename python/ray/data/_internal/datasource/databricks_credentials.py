@@ -7,7 +7,8 @@ supporting static tokens with extensibility for future credential sources.
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from dataclasses import dataclass
+from typing import Callable, Optional, Union
 
 import requests
 
@@ -203,51 +204,71 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
             self._token = token
 
 
-def resolve_credential_provider_for_databricks_table(
-    credential_provider: Optional[DatabricksCredentialProvider] = None,
-) -> DatabricksCredentialProvider:
-    """Resolve credential provider.
+@dataclass
+class BaseCredentialConfig:
+    """Base configuration for credential resolution.
 
     Args:
         credential_provider: An explicit credential provider instance.
-            If None, falls back to EnvironmentCredentialProvider.
-
-    Returns:
-        A DatabricksCredentialProvider instance.
+            If provided, it is used directly.
     """
-    if credential_provider is not None:
-        return credential_provider
 
-    # Fall back to environment variables
-    return EnvironmentCredentialProvider()
+    credential_provider: Optional[DatabricksCredentialProvider] = None
 
 
-def resolve_credential_provider_for_unity_catalog(
-    credential_provider: Optional[DatabricksCredentialProvider] = None,
-    url: Optional[str] = None,
-    token: Optional[str] = None,
-) -> DatabricksCredentialProvider:
-    """Resolve credential provider for Unity Catalog.
+@dataclass
+class DatabricksTableCredentialConfig(BaseCredentialConfig):
+    """Configuration for Databricks table credential resolution.
+
+    If credential_provider is None, falls back to EnvironmentCredentialProvider.
+    """
+
+    pass
+
+
+@dataclass
+class UnityCatalogCredentialConfig(BaseCredentialConfig):
+    """Configuration for Unity Catalog credential resolution.
 
     Args:
-        credential_provider: An explicit credential provider instance.
-            If provided, this takes precedence over url/token.
         url: The Databricks host URL. Must be provided together with token
             if credential_provider is None.
         token: The Databricks authentication token. Must be provided together
             with url if credential_provider is None.
+    """
+
+    url: Optional[str] = None
+    token: Optional[str] = None
+
+
+# Union type for use in type annotations. While both config types share
+# the BaseCredentialConfig base class, the Union makes the set of expected
+# concrete types explicit for callers and static type checkers.
+CredentialConfig = Union[DatabricksTableCredentialConfig, UnityCatalogCredentialConfig]
+
+
+def resolve_credential_provider(
+    config: CredentialConfig,
+) -> DatabricksCredentialProvider:
+    """Resolve credential provider from a config object.
+
+    Args:
+        config: A CredentialConfig subclass instance.
 
     Returns:
         A DatabricksCredentialProvider instance.
-
-    Raises:
-        ValueError: If neither credential_provider nor both url and token
-            are provided.
     """
-    if credential_provider is not None:
-        return credential_provider
-    if url is not None and token is not None:
-        return StaticCredentialProvider(token=token, host=url)
+    if config.credential_provider is not None:
+        return config.credential_provider
+
+    # Using match/case (Python 3.10+) for structural pattern matching on the
+    # tagged union. This provides clear dispatch by config type and extracts
+    # fields with type guards in a single expression.
+    match config:
+        case DatabricksTableCredentialConfig():
+            return EnvironmentCredentialProvider()
+        case UnityCatalogCredentialConfig(url=str(url), token=str(token)):
+            return StaticCredentialProvider(token=token, host=url)
 
     raise ValueError(
         "Either 'credential_provider' or both 'url' and 'token' must be provided."

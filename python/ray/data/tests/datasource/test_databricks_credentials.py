@@ -7,10 +7,11 @@ import pytest
 
 from ray.data._internal.datasource.databricks_credentials import (
     DatabricksCredentialProvider,
+    DatabricksTableCredentialConfig,
     EnvironmentCredentialProvider,
     StaticCredentialProvider,
-    resolve_credential_provider_for_databricks_table,
-    resolve_credential_provider_for_unity_catalog,
+    UnityCatalogCredentialConfig,
+    resolve_credential_provider,
 )
 
 SAMPLE_TOKEN = "dapi_test_token_abc123"
@@ -165,15 +166,14 @@ class TestEnvironmentCredentialProvider:
             assert provider.get_token() == SAMPLE_TOKEN
 
 
-class TestResolveCredentialProviderForDatabricksTable:
-    """Tests for resolve_credential_provider_for_databricks_table function."""
+class TestDatabricksTableCredentialConfig:
+    """Tests for DatabricksTableCredentialConfig and resolve_credential_provider."""
 
     def test_resolve_with_explicit_provider(self):
         """Test that explicit credential_provider is returned as-is."""
         provider = StaticCredentialProvider(token=SAMPLE_TOKEN, host=SAMPLE_HOST)
-        result = resolve_credential_provider_for_databricks_table(
-            credential_provider=provider
-        )
+        config = DatabricksTableCredentialConfig(credential_provider=provider)
+        result = resolve_credential_provider(config)
         assert result is provider
 
     @pytest.mark.parametrize("credential_provider_arg", [None, "no_arg"])
@@ -186,38 +186,38 @@ class TestResolveCredentialProviderForDatabricksTable:
             {"DATABRICKS_TOKEN": SAMPLE_TOKEN, "DATABRICKS_HOST": SAMPLE_HOST},
         ):
             if credential_provider_arg == "no_arg":
-                result = resolve_credential_provider_for_databricks_table()
+                config = DatabricksTableCredentialConfig()
             else:
-                result = resolve_credential_provider_for_databricks_table(
+                config = DatabricksTableCredentialConfig(
                     credential_provider=credential_provider_arg
                 )
+            result = resolve_credential_provider(config)
             assert isinstance(result, EnvironmentCredentialProvider)
 
 
-class TestResolveCredentialProviderForUnityCatalog:
-    """Tests for resolve_credential_provider_for_unity_catalog function."""
+class TestUnityCatalogCredentialConfig:
+    """Tests for UnityCatalogCredentialConfig and resolve_credential_provider."""
 
     def test_resolve_with_explicit_provider(self):
         """Test that explicit credential_provider is returned as-is."""
         provider = StaticCredentialProvider(token=SAMPLE_TOKEN, host=SAMPLE_HOST)
-        result = resolve_credential_provider_for_unity_catalog(
-            credential_provider=provider
-        )
+        config = UnityCatalogCredentialConfig(credential_provider=provider)
+        result = resolve_credential_provider(config)
         assert result is provider
 
     def test_resolve_with_explicit_provider_ignores_url_and_token(self):
         """Test that url/token are ignored when credential_provider is given."""
         provider = StaticCredentialProvider(token=SAMPLE_TOKEN, host=SAMPLE_HOST)
-        result = resolve_credential_provider_for_unity_catalog(
+        config = UnityCatalogCredentialConfig(
             credential_provider=provider, url=ALT_HOST, token=ALT_TOKEN
         )
+        result = resolve_credential_provider(config)
         assert result is provider
 
     def test_resolve_with_url_and_token(self):
         """Test that url and token create a StaticCredentialProvider."""
-        result = resolve_credential_provider_for_unity_catalog(
-            url=SAMPLE_URL, token=SAMPLE_TOKEN
-        )
+        config = UnityCatalogCredentialConfig(url=SAMPLE_URL, token=SAMPLE_TOKEN)
+        result = resolve_credential_provider(config)
         assert isinstance(result, StaticCredentialProvider)
         assert result.get_token() == SAMPLE_TOKEN
         assert result.get_host() == SAMPLE_URL
@@ -231,10 +231,11 @@ class TestResolveCredentialProviderForUnityCatalog:
         ],
         ids=["no_args", "only_url", "only_token"],
     )
-    def test_resolve_raises_with_incomplete_args(self, kwargs):
+    def test_config_raises_with_incomplete_args(self, kwargs):
         """Test that ValueError is raised when args are missing or incomplete."""
+        config = UnityCatalogCredentialConfig(**kwargs)
         with pytest.raises(ValueError, match="Either 'credential_provider' or both"):
-            resolve_credential_provider_for_unity_catalog(**kwargs)
+            resolve_credential_provider(config)
 
     @pytest.mark.parametrize(
         "url,token",
@@ -246,8 +247,9 @@ class TestResolveCredentialProviderForUnityCatalog:
     )
     def test_resolve_with_empty_string_raises(self, url, token):
         """Test that empty strings for url or token raise ValueError."""
+        config = UnityCatalogCredentialConfig(url=url, token=token)
         with pytest.raises(ValueError):
-            resolve_credential_provider_for_unity_catalog(url=url, token=token)
+            resolve_credential_provider(config)
 
 
 class TestCredentialProviderSerialization:
