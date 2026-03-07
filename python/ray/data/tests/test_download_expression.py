@@ -49,6 +49,7 @@ class TestDownloadExpressionStructure:
     def test_uri_namespace_download_with_filesystem(self):
         """Test that col('uri').uri.download(filesystem=...) works correctly."""
         import pyarrow.fs as pafs
+
         fs = pafs.LocalFileSystem()
 
         expr_from_namespace = col("uri").uri.download(filesystem=fs)
@@ -63,6 +64,7 @@ class TestDownloadExpressionStructure:
         """Test that uri.download() raises error when not called on a column expression."""
         # Should raise error when called on a literal expression
         from ray.data.expressions import lit
+
         with pytest.raises(TypeError):
             lit("test_uri").uri.download()
 
