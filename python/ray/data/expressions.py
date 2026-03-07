@@ -750,6 +750,13 @@ class Expr(ABC):
 
         return _DatetimeNamespace(self)
 
+    @property
+    def uri(self) -> "_URINamespace":
+        """Access URI operations for this expression."""
+        from ray.data.namespace_expressions.uri_namespace import _URINamespace
+
+        return _URINamespace(self)
+
     def _unalias(self) -> "Expr":
         return self
 
@@ -1662,6 +1669,7 @@ __all__ = [
     "_StructNamespace",
     "_MapNamespace",
     "_DatetimeNamespace",
+    "_URINamespace",
 ]
 
 
@@ -1691,4 +1699,8 @@ def __getattr__(name: str):
         from ray.data.namespace_expressions.dt_namespace import _DatetimeNamespace
 
         return _DatetimeNamespace
+    elif name == "_URINamespace":
+        from ray.data.namespace_expressions.uri_namespace import _URINamespace
+
+        return _URINamespace
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
