@@ -665,9 +665,11 @@ class DeploymentAutoscalingState:
         """
         total_requests = 0
 
-        # Iterate over _replica_metrics directly (avoids O(M) ReplicaID __eq__ per replica)
+        # Iterate over _replica_metrics but only count running replicas. Stale metrics from
+        # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
         for report in self._replica_metrics.values():
-            total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
+            if report.replica_id.to_full_id_str() in self._cached_running_replica_strs:
+                total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
 
         metrics_collected_on_replicas = total_requests > 0
 

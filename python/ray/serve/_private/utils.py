@@ -422,9 +422,7 @@ def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
 def compress_metric_report(report: Any) -> bytes:
     """Compress a metric report (HandleMetricReport or ReplicaMetricReport) for RPC.
 
-    Uses zlib level 9 for compression. Compresses ~2MB reports to ~25KB for 1000 replicas.
-
-    TODO: switch to zstandard for better compression ratio.
+    Uses zlib level 9 (stdlib, no extra deps). ~75KB uncompressed -> ~5KB for 1000 replicas.
     """
     return zlib.compress(cloudpickle.dumps(report), level=9)
 
