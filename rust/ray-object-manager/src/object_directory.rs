@@ -366,6 +366,249 @@ mod tests {
         assert_eq!(locs.object_size, 4096);
     }
 
+    // ─── Tests ported from ownership_object_directory_test.cc ─────────────
+
+    #[test]
+    fn test_location_update_batch_basic_added() {
+        // Port of TestLocationUpdateBatchBasic - object added
+        let mut dir = ObjectDirectory::new();
+        let oid = make_oid(10);
+        let node = make_nid(1);
+
+        dir.report_object_added(oid, node);
+
+        let locs = dir.get_locations(&oid).unwrap();
+        assert!(locs.node_ids.contains(&node));
+    }
+
+    #[test]
+    fn test_location_update_batch_basic_removed() {
+        // Port of TestLocationUpdateBatchBasic - object removed
+        let mut dir = ObjectDirectory::new();
+        let oid = make_oid(11);
+        let node = make_nid(1);
+
+        dir.report_object_added(oid, node);
+        dir.report_object_removed(&oid, &node);
+
+        let locs = dir.get_locations(&oid).unwrap();
+        assert!(locs.node_ids.is_empty());
+    }
+
+    #[test]
+    fn test_location_update_batch_basic_spilled() {
+        // Port of TestLocationUpdateBatchBasic - object spilled
+        let mut dir = ObjectDirectory::new();
+        let oid = make_oid(12);
+        let spill_node = make_nid(1);
+
+        dir.report_object_spilled(oid, "url1".to_string(), spill_node);
+
+        let locs = dir.get_locations(&oid).unwrap();
+        assert!(locs.spilled);
+        assert_eq!(locs.spilled_url, "url1");
+    }
+
+    #[test]
+    fn test_location_update_fifo_order() {
+        // Port of TestLocationUpdateFIFOOrder
+        // Objects added in a specific order should maintain their positions
+        let mut dir = ObjectDirectory::new();
+        let oid1 = make_oid(21);
+        let oid2 = make_oid(22);
+        let oid3 = make_oid(23);
+        let node = make_nid(1);
+
+        dir.report_object_added(oid1, node);
+        dir.report_object_added(oid3, node);
+        dir.report_object_added(oid2, node);
+
+        // All three objects tracked
+        assert!(dir.get_locations(&oid1).is_some());
+        assert!(dir.get_locations(&oid3).is_some());
+        assert!(dir.get_locations(&oid2).is_some());
+
+        // Remove oid1 — oid2/oid3 should still be there
+        dir.report_object_removed(&oid1, &node);
+        assert!(dir.get_locations(&oid1).unwrap().node_ids.is_empty());
+        assert!(dir.get_locations(&oid2).unwrap().node_ids.contains(&node));
+        assert!(dir.get_locations(&oid3).unwrap().node_ids.contains(&node));
+    }
+
+    #[test]
+    fn test_location_update_buffered_update() {
+        // Port of TestLocationUpdateBufferedUpdate
+        // For the same object: add, remove, spill — last state should include
+        // the removal and spill info.
+        let mut dir = ObjectDirectory::new();
+        let oid = make_oid(30);
+        let node = make_nid(1);
+        let spill_node = make_nid(2);
+
+        dir.report_object_added(oid, node);
+        dir.report_object_removed(&oid, &node);
+        dir.report_object_spilled(oid, "url1".to_string(), spill_node);
+
+        let locs = dir.get_locations(&oid).unwrap();
+        assert!(locs.node_ids.is_empty()); // Removed
+        assert!(locs.spilled);
+        assert_eq!(locs.spilled_url, "url1");
+    }
+
+    #[test]
+    fn test_location_update_multiple_objects_buffered() {
+        // Port of TestLocationUpdateBufferedMultipleObjectBuffered
+        let mut dir = ObjectDirectory::new();
+        let oid1 = make_oid(40);
+        let oid2 = make_oid(41);
+        let node = make_nid(1);
+
+        // Object 1: add then remove → removed
+        dir.report_object_added(oid1, node);
+        dir.report_object_removed(&oid1, &node);
+
+        // Object 2: remove then add → added
+        // (report_object_removed on non-added is a no-op, then add)
+        dir.report_object_added(oid2, node);
+
+        let locs1 = dir.get_locations(&oid1).unwrap();
+        assert!(locs1.node_ids.is_empty()); // removed
+
+        let locs2 = dir.get_locations(&oid2).unwrap();
+        assert!(locs2.node_ids.contains(&node)); // added
+    }
+
+    #[test]
+    fn test_location_update_multiple_owners() {
+        // Port of TestLocationUpdateBufferedMultipleOwners
+        // Simulate two different objects with different owners/nodes
+        let mut dir = ObjectDirectory::new();
+        let oid1 = make_oid(50);
+        let oid2 = make_oid(51);
+        let node1 = make_nid(1);
+        let node2 = make_nid(2);
+
+        // Object 1 on node1: add then remove
+        dir.report_object_added(oid1, node1);
+        dir.report_object_removed(&oid1, &node1);
+
+        // Object 2 on node2: add (remains)
+        dir.report_object_added(oid2, node2);
+
+        assert!(dir.get_locations(&oid1).unwrap().node_ids.is_empty());
+        assert!(dir.get_locations(&oid2).unwrap().node_ids.contains(&node2));
+    }
+
+    #[test]
+    fn test_location_update_one_in_flight_request() {
+        // Port of TestLocationUpdateOneInFlightRequest
+        // Repeated add/remove of same object should converge to last state
+        let mut dir = ObjectDirectory::new();
+        let oid = make_oid(60);
+        let node = make_nid(1);
+
+        for _ in 0..10 {
+            dir.report_object_added(oid, node);
+            dir.report_object_removed(&oid, &node);
+        }
+
+        // Final state: removed
+        let locs = dir.get_locations(&oid).unwrap();
+        assert!(locs.node_ids.is_empty());
+    }
+
+    #[test]
+    fn test_notify_on_update_object_size() {
+        // Port of TestNotifyOnUpdate — object size change triggers callback
+        let mut dir = ObjectDirectory::new();
+        let oid = make_oid(70);
+        let node = make_nid(1);
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let cc = call_count.clone();
+        dir.subscribe(
+            oid,
+            Box::new(move |_oid, _nodes| {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
+
+        assert_eq!(call_count.load(Ordering::Relaxed), 0);
+
+        // Adding location triggers callback
+        dir.report_object_added(oid, node);
+        assert_eq!(call_count.load(Ordering::Relaxed), 1);
+
+        // Removing location triggers callback
+        dir.report_object_removed(&oid, &node);
+        assert_eq!(call_count.load(Ordering::Relaxed), 2);
+
+        // Spilling triggers callback
+        dir.report_object_spilled(oid, "spill_url".to_string(), make_nid(5));
+        assert_eq!(call_count.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn test_notify_on_update_add_remove_spill_sequence() {
+        // Port of TestNotifyOnUpdate — full sequence
+        let mut dir = ObjectDirectory::new();
+        let oid = make_oid(71);
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let cc = call_count.clone();
+        dir.subscribe(
+            oid,
+            Box::new(move |_oid, _nodes| {
+                cc.fetch_add(1, Ordering::Relaxed);
+            }),
+        );
+
+        // Adding triggers once
+        dir.report_object_added(oid, make_nid(1));
+        assert_eq!(call_count.load(Ordering::Relaxed), 1);
+
+        // Adding same node again is idempotent — no callback
+        dir.report_object_added(oid, make_nid(1));
+        assert_eq!(call_count.load(Ordering::Relaxed), 1);
+
+        // Adding a different node triggers callback
+        dir.report_object_added(oid, make_nid(2));
+        assert_eq!(call_count.load(Ordering::Relaxed), 2);
+
+        // Removing one node triggers callback
+        dir.report_object_removed(&oid, &make_nid(1));
+        assert_eq!(call_count.load(Ordering::Relaxed), 3);
+
+        // Removing non-existent node is a no-op — no callback
+        dir.report_object_removed(&oid, &make_nid(99));
+        assert_eq!(call_count.load(Ordering::Relaxed), 3);
+
+        // Spilling triggers callback
+        dir.report_object_spilled(oid, "url1".to_string(), make_nid(10));
+        assert_eq!(call_count.load(Ordering::Relaxed), 4);
+    }
+
+    #[test]
+    fn test_owner_failed_cleanup() {
+        // Port of TestOwnerFailed — removing a node cleans up all its objects
+        let mut dir = ObjectDirectory::new();
+        let node = make_nid(1);
+
+        // Add many objects to this node
+        for i in 0..25u8 {
+            dir.report_object_added(make_oid(i), node);
+        }
+        assert_eq!(dir.num_objects_tracked(), 25);
+
+        // Node removal should clear all locations
+        dir.handle_node_removed(&node);
+
+        for i in 0..25u8 {
+            let locs = dir.get_locations(&make_oid(i)).unwrap();
+            assert!(locs.node_ids.is_empty());
+        }
+    }
+
     #[test]
     fn test_node_removed_triggers_callbacks() {
         let mut dir = ObjectDirectory::new();

@@ -415,4 +415,186 @@ mod tests {
         assert_eq!(err.code, cloned.code);
         assert_eq!(err.message, cloned.message);
     }
+
+    // ─── Ported from C++ status_test.cc ─────────────────────────────────────
+
+    /// Port of C++ StatusTest::StringToCode:
+    /// Verify string-to-code conversion with known and unknown names.
+    #[test]
+    fn test_string_to_code_known_and_unknown() {
+        // OK roundtrip
+        assert_eq!(
+            StatusCode::from_str_name(StatusCode::OK.as_str()),
+            Some(StatusCode::OK)
+        );
+
+        // Invalid roundtrip
+        assert_eq!(
+            StatusCode::from_str_name(StatusCode::Invalid.as_str()),
+            Some(StatusCode::Invalid)
+        );
+
+        // TransientObjectStoreFull roundtrip
+        assert_eq!(
+            StatusCode::from_str_name(StatusCode::TransientObjectStoreFull.as_str()),
+            Some(StatusCode::TransientObjectStoreFull)
+        );
+
+        // Unknown string returns None (C++ returns IOError as default)
+        assert_eq!(StatusCode::from_str_name("foobar"), None);
+    }
+
+    /// Port of C++ StatusTest::CopyAndMoveForOkStatus:
+    /// Verify clone for Ok status (Rust Result).
+    #[test]
+    fn test_copy_and_move_ok_status() {
+        let ok_result: RayResult<i32> = Ok(42);
+
+        // Clone (equivalent to copy constructor)
+        let cloned = ok_result.clone();
+        assert!(cloned.is_ok());
+        assert_eq!(cloned.unwrap(), 42);
+
+        // Move (equivalent to move constructor)
+        let ok_result2: RayResult<i32> = Ok(99);
+        let moved = ok_result2;
+        assert!(moved.is_ok());
+        assert_eq!(moved.unwrap(), 99);
+    }
+
+    /// Port of C++ StatusTest::CopyAndMoveErrorStatus:
+    /// Verify clone for error status.
+    #[test]
+    fn test_copy_and_move_error_status() {
+        let err_result: RayResult<i32> = Err(RayError::invalid("invalid"));
+
+        // Clone (copy constructor)
+        let cloned = err_result.clone();
+        assert!(cloned.is_err());
+        assert_eq!(cloned.unwrap_err().code, StatusCode::Invalid);
+
+        // Move (move constructor)
+        let err_result2: RayResult<i32> = Err(RayError::invalid("moved"));
+        let moved = err_result2;
+        assert!(moved.is_err());
+        assert_eq!(moved.unwrap_err().code, StatusCode::Invalid);
+    }
+
+    /// Port of C++ StatusTest::GrpcStatusToRayStatus:
+    /// Verify gRPC-style status code to RayError mapping.
+    #[test]
+    fn test_grpc_status_to_ray_status_mapping() {
+        // OK maps to Ok result
+        let ok: RayResult<()> = Ok(());
+        assert!(ok.is_ok());
+
+        // RPC error with UNAVAILABLE code
+        let unavailable = RayError::rpc_error("foo", 14); // UNAVAILABLE = 14
+        assert!(unavailable.is_rpc_error());
+        assert_eq!(unavailable.rpc_code, Some(14));
+
+        // RPC error with UNKNOWN code
+        let unknown = RayError::rpc_error("foo", 2); // UNKNOWN = 2
+        assert!(unknown.is_rpc_error());
+        assert_eq!(unknown.rpc_code, Some(2));
+
+        // Invalid status with message
+        let invalid = RayError::invalid("not now");
+        assert_eq!(invalid.code, StatusCode::Invalid);
+        assert_eq!(invalid.message, "not now");
+    }
+
+    /// Port of C++ StatusSetTest::TestStatusSetAPI:
+    /// Demonstrate Rust enum-based error discrimination (equivalent to C++ StatusSet).
+    #[test]
+    fn test_status_set_api_equivalent() {
+        // In Rust, we use Result + match on error code instead of StatusSet + visitor
+        fn return_oom_error() -> RayResult<()> {
+            Err(RayError::out_of_memory(
+                "ooming because Ray Data is making too many objects",
+            ))
+        }
+
+        let result = return_oom_error();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err.code {
+            StatusCode::OutOfMemory => {
+                assert_eq!(
+                    err.message,
+                    "ooming because Ray Data is making too many objects"
+                );
+            }
+            StatusCode::IOError => {
+                panic!("should not be IOError");
+            }
+            _ => {
+                panic!("unexpected error code");
+            }
+        }
+
+        // Ok case
+        fn return_ok() -> RayResult<()> {
+            Ok(())
+        }
+        assert!(return_ok().is_ok());
+    }
+
+    /// Port of C++ StatusSetOrTest::TestStatusSetOrAPI:
+    /// Demonstrate Rust Result<T, RayError> (equivalent to C++ StatusSetOr).
+    #[test]
+    fn test_status_set_or_api_equivalent() {
+        fn return_oom_error() -> RayResult<i64> {
+            Err(RayError::out_of_memory(
+                "ooming because Ray Data is making too many objects",
+            ))
+        }
+
+        let result = return_oom_error();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.is_out_of_memory());
+        assert_eq!(
+            err.message,
+            "ooming because Ray Data is making too many objects"
+        );
+
+        // Value case
+        fn return_value() -> RayResult<i64> {
+            Ok(100)
+        }
+        let result = return_value();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 100);
+    }
+
+    /// Port of C++ StatusTest: Verify error message is preserved through clone.
+    #[test]
+    fn test_error_message_preserved_through_clone() {
+        let err = RayError::new(StatusCode::Invalid, "detailed error message");
+        let cloned = err.clone();
+        assert_eq!(err.message, cloned.message);
+        assert_eq!(err.code, cloned.code);
+        assert_eq!(err.rpc_code, cloned.rpc_code);
+
+        // With RPC code
+        let rpc_err = RayError::rpc_error("connection reset", 14);
+        let cloned_rpc = rpc_err.clone();
+        assert_eq!(rpc_err.rpc_code, cloned_rpc.rpc_code);
+        assert_eq!(rpc_err.message, cloned_rpc.message);
+    }
+
+    /// Port of C++ StatusTest: Verify Display formatting.
+    #[test]
+    fn test_error_display_format() {
+        let err = RayError::invalid("bad input");
+        let display = format!("{}", err);
+        assert!(display.contains("Invalid"));
+        assert!(display.contains("bad input"));
+
+        let err2 = RayError::not_found("missing key");
+        let display2 = format!("{}", err2);
+        assert!(display2.contains("NotFound"));
+        assert!(display2.contains("missing key"));
+    }
 }

@@ -530,4 +530,153 @@ mod tests {
             1
         );
     }
+
+    // ---- Additional tests ported from gcs_node_manager_test.cc / gcs_server_rpc_test.cc ----
+
+    /// Port of TestNodeInfo — register multiple nodes, kill some, verify state.
+    #[tokio::test]
+    async fn test_register_multiple_nodes_kill_some() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        for i in 1..=5u8 {
+            let mut info = make_node_info(i);
+            info.node_manager_address = format!("127.0.0.{}", i);
+            info.node_manager_port = 10000 + i as i32;
+            mgr.handle_register_node(info).await.unwrap();
+        }
+        assert_eq!(mgr.num_alive_nodes(), 5);
+
+        // Kill nodes 3 and 5
+        mgr.handle_unregister_node(&node_id(3).binary())
+            .await
+            .unwrap();
+        mgr.handle_unregister_node(&node_id(5).binary())
+            .await
+            .unwrap();
+
+        assert_eq!(mgr.num_alive_nodes(), 3);
+        assert!(mgr.is_node_alive(&node_id(1)));
+        assert!(mgr.is_node_alive(&node_id(2)));
+        assert!(mgr.is_node_dead(&node_id(3)));
+        assert!(mgr.is_node_alive(&node_id(4)));
+        assert!(mgr.is_node_dead(&node_id(5)));
+
+        // GetAllNodeInfo should show all 5 nodes
+        let all = mgr.handle_get_all_node_info();
+        assert_eq!(all.len(), 5);
+        let alive_count = all.iter().filter(|n| n.state == 0).count();
+        let dead_count = all.iter().filter(|n| n.state == 1).count();
+        assert_eq!(alive_count, 3);
+        assert_eq!(dead_count, 2);
+    }
+
+    /// Test that getting alive node for dead node returns None.
+    #[tokio::test]
+    async fn test_get_alive_node_returns_none_for_dead() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        assert!(mgr.get_alive_node(&node_id(1)).is_some());
+
+        mgr.handle_unregister_node(&node_id(1).binary())
+            .await
+            .unwrap();
+        assert!(mgr.get_alive_node(&node_id(1)).is_none());
+    }
+
+    /// Test that get_all_alive_nodes returns only alive nodes.
+    #[tokio::test]
+    async fn test_get_all_alive_nodes() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        for i in 1..=3u8 {
+            mgr.handle_register_node(make_node_info(i)).await.unwrap();
+        }
+        mgr.handle_unregister_node(&node_id(2).binary())
+            .await
+            .unwrap();
+
+        let alive = mgr.get_all_alive_nodes();
+        assert_eq!(alive.len(), 2);
+        assert!(alive.contains_key(&node_id(1)));
+        assert!(!alive.contains_key(&node_id(2)));
+        assert!(alive.contains_key(&node_id(3)));
+    }
+
+    /// Test that on_node_failure and handle_unregister_node are equivalent.
+    #[tokio::test]
+    async fn test_on_node_failure_equivalent_to_unregister() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        mgr.handle_register_node(make_node_info(2)).await.unwrap();
+
+        // Use unregister for node 1
+        mgr.handle_unregister_node(&node_id(1).binary())
+            .await
+            .unwrap();
+        // Use on_node_failure for node 2
+        mgr.on_node_failure(&node_id(2)).await.unwrap();
+
+        // Both should be dead
+        assert_eq!(mgr.num_alive_nodes(), 0);
+        assert!(mgr.is_node_dead(&node_id(1)));
+        assert!(mgr.is_node_dead(&node_id(2)));
+    }
+
+    /// Test that drain entry is cleaned up when node dies.
+    #[tokio::test]
+    async fn test_drain_cleaned_on_node_death() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        mgr.handle_drain_node(&node_id(1), 9999);
+        assert_eq!(mgr.get_draining_nodes().len(), 1);
+
+        // Node failure should clean the drain entry
+        mgr.on_node_failure(&node_id(1)).await.unwrap();
+        assert!(mgr.get_draining_nodes().is_empty());
+    }
+
+    /// Test that cluster_id starts empty.
+    #[tokio::test]
+    async fn test_cluster_id_starts_empty() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        assert!(mgr.cluster_id().is_empty());
+        assert!(mgr.handle_get_cluster_id().is_empty());
+    }
+
+    /// Test registering the same node twice (re-registration).
+    #[tokio::test]
+    async fn test_re_register_same_node() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let mgr = GcsNodeManager::new(storage);
+
+        mgr.handle_register_node(make_node_info(1)).await.unwrap();
+        assert_eq!(mgr.num_alive_nodes(), 1);
+
+        // Re-register same node (overwrites in alive_nodes map)
+        let mut info = make_node_info(1);
+        info.node_manager_address = "192.168.1.1".to_string();
+        mgr.handle_register_node(info).await.unwrap();
+        assert_eq!(mgr.num_alive_nodes(), 1);
+
+        // Verify updated address
+        let node = mgr.get_alive_node(&node_id(1)).unwrap();
+        assert_eq!(node.node_manager_address, "192.168.1.1");
+    }
 }

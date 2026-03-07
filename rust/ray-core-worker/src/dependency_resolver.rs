@@ -347,4 +347,379 @@ mod tests {
         assert_eq!(cancelled, 2);
         assert_eq!(resolver.num_pending(), 0);
     }
+
+    // ── Ported from dependency_resolver_test.cc ─────────────────────
+
+    /// Port of TestNoDependencies: resolving empty dependencies succeeds
+    /// immediately.
+    #[tokio::test]
+    async fn test_no_dependencies_resolves_immediately_inline() {
+        let resolver = DependencyResolver::new();
+        let result = resolver.resolve_dependencies(&[]).await;
+        assert!(result.is_ok());
+        assert_eq!(resolver.num_pending(), 0);
+        assert_eq!(resolver.num_waiters(), 0);
+    }
+
+    /// Port of TestHandlePlasmaPromotion: an object already in the local
+    /// store should resolve without pending.
+    #[tokio::test]
+    async fn test_plasma_promotion_already_local() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid = make_oid(1);
+
+        use bytes::Bytes;
+        use crate::memory_store::RayObject;
+        // Pre-populate with an "in plasma" marker object.
+        store
+            .put(oid, RayObject::new(Bytes::new(), Bytes::from("3"), vec![]))
+            .unwrap();
+
+        let resolver = DependencyResolver::with_memory_store(store);
+        resolver.resolve_dependencies(&[oid]).await.unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestInlineLocalDependencies: two objects already in local
+    /// store should both resolve immediately.
+    #[tokio::test]
+    async fn test_inline_local_dependencies() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        use bytes::Bytes;
+        use crate::memory_store::RayObject;
+        let data = RayObject::from_data(Bytes::from("value"));
+        store.put(oid1, data.clone()).unwrap();
+        store.put(oid2, data.clone()).unwrap();
+
+        let resolver = DependencyResolver::with_memory_store(store);
+        resolver.resolve_dependencies(&[oid1, oid2]).await.unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestInlinePendingDependencies: dependencies not yet local
+    /// should block until they are made available.
+    #[tokio::test]
+    async fn test_inline_pending_dependencies() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        let resolver = Arc::new(DependencyResolver::with_memory_store(store.clone()));
+
+        let resolver_clone = Arc::clone(&resolver);
+        let handle = tokio::spawn(async move {
+            resolver_clone.resolve_dependencies(&[oid1, oid2]).await
+        });
+
+        // Both are pending.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(resolver.num_pending(), 2);
+
+        // Make them available.
+        // Note: for DependencyResolver, we use object_available() to notify.
+        resolver.object_available(&oid1);
+        resolver.object_available(&oid2);
+
+        handle.await.unwrap().unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestCancelDependencyResolution: cancelling waiters for
+    /// pending dependencies should not invoke the resolution callback.
+    #[tokio::test]
+    async fn test_cancel_dependency_resolution() {
+        let resolver = Arc::new(DependencyResolver::new());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        let resolver_clone = Arc::clone(&resolver);
+        let handle = tokio::spawn(async move {
+            resolver_clone.resolve_dependencies(&[oid1, oid2]).await
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(resolver.num_pending(), 2);
+
+        // Cancel one dependency.
+        let cancelled = resolver.cancel_object(&oid1);
+        assert_eq!(cancelled, 1);
+        // Cancel the other.
+        let cancelled = resolver.cancel_object(&oid2);
+        assert_eq!(cancelled, 1);
+
+        // The resolution should fail because the channels were dropped.
+        let result = handle.await.unwrap();
+        assert!(result.is_err());
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestDependenciesAlreadyLocal: even though dependencies
+    /// are locally available, the resolve call should succeed.
+    #[tokio::test]
+    async fn test_dependencies_already_local_with_store() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid = make_oid(10);
+
+        use bytes::Bytes;
+        use crate::memory_store::RayObject;
+        store
+            .put(oid, RayObject::from_data(Bytes::from("data")))
+            .unwrap();
+
+        let resolver = DependencyResolver::with_memory_store(store);
+        resolver.resolve_dependencies(&[oid]).await.unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestActorAndObjectDependencies: actor dependency + object
+    /// dependency resolved in sequence.
+    #[tokio::test]
+    async fn test_actor_and_object_dependencies() {
+        let resolver = Arc::new(DependencyResolver::new());
+        let obj = make_oid(1);
+        let actor_handle_obj = make_oid(2);
+
+        let resolver_clone = Arc::clone(&resolver);
+        let handle = tokio::spawn(async move {
+            resolver_clone
+                .resolve_dependencies(&[obj, actor_handle_obj])
+                .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(resolver.num_pending(), 2);
+
+        // Resolve actor dependency first.
+        resolver.object_available(&actor_handle_obj);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        // Still pending because obj is not resolved.
+        assert_eq!(resolver.num_pending(), 1);
+
+        // Resolve the object dependency.
+        resolver.object_available(&obj);
+        handle.await.unwrap().unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestInlinedObjectIds: nested object references within
+    /// inlined objects.
+    #[tokio::test]
+    async fn test_inlined_object_ids_with_nested_refs() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+        let nested_oid = make_oid(3);
+
+        use bytes::Bytes;
+        use crate::memory_store::RayObject;
+        let data = RayObject::new(Bytes::from("val"), Bytes::new(), vec![nested_oid]);
+        store.put(oid1, data.clone()).unwrap();
+        store.put(oid2, data.clone()).unwrap();
+
+        let resolver = DependencyResolver::with_memory_store(store);
+        resolver.resolve_dependencies(&[oid1, oid2]).await.unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestMixedTensorTransport concept: objects with different
+    /// local availability are handled correctly (some skip, some wait).
+    #[tokio::test]
+    async fn test_mixed_local_and_remote_dependencies() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let local_oid = make_oid(1);
+        let remote_oid = make_oid(2);
+
+        use bytes::Bytes;
+        use crate::memory_store::RayObject;
+        store
+            .put(local_oid, RayObject::from_data(Bytes::from("local")))
+            .unwrap();
+
+        let resolver = Arc::new(DependencyResolver::with_memory_store(store));
+
+        let resolver_clone = Arc::clone(&resolver);
+        let handle = tokio::spawn(async move {
+            resolver_clone
+                .resolve_dependencies(&[local_oid, remote_oid])
+                .await
+        });
+
+        // Only remote_oid should be pending.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(resolver.num_pending(), 1);
+
+        resolver.object_available(&remote_oid);
+        handle.await.unwrap().unwrap();
+    }
+
+    /// Cancel nonexistent object is a no-op.
+    #[test]
+    fn test_cancel_nonexistent_object() {
+        let resolver = DependencyResolver::new();
+        let oid = make_oid(99);
+        let cancelled = resolver.cancel_object(&oid);
+        assert_eq!(cancelled, 0);
+    }
+
+    // ── Additional tests ported from dependency_resolver_test.cc ────
+
+    /// Port of TestCancelDependencyResolution with partial resolve:
+    /// resolve one dependency, cancel the other.
+    #[tokio::test]
+    async fn test_partial_resolve_then_cancel() {
+        let resolver = Arc::new(DependencyResolver::new());
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        let resolver_clone = Arc::clone(&resolver);
+        let handle = tokio::spawn(async move {
+            resolver_clone.resolve_dependencies(&[oid1, oid2]).await
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(resolver.num_pending(), 2);
+
+        // Resolve one.
+        resolver.object_available(&oid1);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        assert_eq!(resolver.num_pending(), 1);
+
+        // Cancel the other.
+        resolver.cancel_object(&oid2);
+
+        // The overall resolution should fail.
+        let result = handle.await.unwrap();
+        assert!(result.is_err());
+    }
+
+    /// Port of TestMultipleDependenciesResolveSequentially: objects
+    /// resolved one at a time.
+    #[tokio::test]
+    async fn test_sequential_resolution() {
+        let resolver = Arc::new(DependencyResolver::new());
+        let oids: Vec<_> = (1..=5).map(|i| make_oid(i)).collect();
+
+        let resolver_clone = Arc::clone(&resolver);
+        let oids_clone = oids.clone();
+        let handle = tokio::spawn(async move {
+            resolver_clone.resolve_dependencies(&oids_clone).await
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(resolver.num_pending(), 5);
+
+        // Resolve one at a time.
+        for (i, oid) in oids.iter().enumerate() {
+            resolver.object_available(oid);
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            assert_eq!(resolver.num_pending(), 4 - i);
+        }
+
+        handle.await.unwrap().unwrap();
+    }
+
+    /// Port of TestDuplicateDependencies: resolving the same object
+    /// twice should notify both waiters.
+    #[tokio::test]
+    async fn test_duplicate_dependencies() {
+        let resolver = Arc::new(DependencyResolver::new());
+        let oid = make_oid(1);
+
+        // Two separate resolve calls for the same object.
+        let r1 = Arc::clone(&resolver);
+        let r2 = Arc::clone(&resolver);
+        let h1 = tokio::spawn(async move {
+            r1.resolve_dependencies(&[oid]).await
+        });
+        let h2 = tokio::spawn(async move {
+            r2.resolve_dependencies(&[oid]).await
+        });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(resolver.num_pending(), 1);
+        assert_eq!(resolver.num_waiters(), 2);
+
+        resolver.object_available(&oid);
+
+        h1.await.unwrap().unwrap();
+        h2.await.unwrap().unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestSetMemoryStore: verify set_memory_store works
+    /// after construction.
+    #[tokio::test]
+    async fn test_set_memory_store_after_creation() {
+        let resolver = DependencyResolver::new();
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid = make_oid(1);
+
+        use bytes::Bytes;
+        use crate::memory_store::RayObject;
+        store
+            .put(oid, RayObject::from_data(Bytes::from("data")))
+            .unwrap();
+
+        // Without store, the object would be pending.
+        resolver.set_memory_store(store);
+
+        // Now it should resolve immediately.
+        resolver.resolve_dependencies(&[oid]).await.unwrap();
+        assert_eq!(resolver.num_pending(), 0);
+    }
+
+    /// Port of TestTimeoutWithAvailableObject: timeout should not
+    /// apply if objects are already local.
+    #[tokio::test]
+    async fn test_timeout_not_triggered_when_local() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid = make_oid(1);
+
+        use bytes::Bytes;
+        use crate::memory_store::RayObject;
+        store
+            .put(oid, RayObject::from_data(Bytes::from("data")))
+            .unwrap();
+
+        let resolver = DependencyResolver::with_memory_store(store);
+        // Even with a very short timeout, it should succeed because
+        // the object is already local.
+        let result = resolver
+            .resolve_dependencies_with_timeout(&[oid], Duration::from_millis(1))
+            .await;
+        assert!(result.is_ok());
+    }
+
+    /// Test default impl.
+    #[test]
+    fn test_default_impl() {
+        let resolver = DependencyResolver::default();
+        assert_eq!(resolver.num_pending(), 0);
+        assert_eq!(resolver.num_waiters(), 0);
+    }
+
+    /// Test num_pending and num_waiters track independently.
+    #[test]
+    fn test_pending_vs_waiters_tracking() {
+        let resolver = DependencyResolver::new();
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+
+        // Manually add waiters.
+        {
+            let mut pending = resolver.pending.lock();
+            let (tx1, _rx1) = oneshot::channel();
+            let (tx2, _rx2) = oneshot::channel();
+            let (tx3, _rx3) = oneshot::channel();
+            pending.entry(oid1).or_default().push(tx1);
+            pending.entry(oid1).or_default().push(tx2);
+            pending.entry(oid2).or_default().push(tx3);
+        }
+
+        assert_eq!(resolver.num_pending(), 2); // 2 distinct objects
+        assert_eq!(resolver.num_waiters(), 3); // 3 total waiters
+    }
 }

@@ -437,4 +437,118 @@ mod tests {
         assert!(total.get("CPU") > FixedPoint::from_f64(0.0));
         assert!(total.get("GPU") > FixedPoint::from_f64(0.0));
     }
+
+    #[test]
+    fn test_node_manager_labels() {
+        let nm = NodeManager::new(make_config());
+        let local_rm = nm.scheduler().local_resource_manager();
+        let labels = local_rm.get_labels();
+        assert_eq!(labels.get("region"), Some(&"us-east".to_string()));
+    }
+
+    #[test]
+    fn test_node_manager_drain_deadline() {
+        let nm = NodeManager::new(make_config());
+
+        // Initially not draining
+        assert!(!nm.scheduler().local_resource_manager().is_local_node_draining());
+
+        // Drain with a deadline
+        nm.handle_drain(10000);
+        assert!(nm.scheduler().local_resource_manager().is_local_node_draining());
+    }
+
+    #[test]
+    fn test_node_manager_lease_manager_accessible() {
+        let nm = NodeManager::new(make_config());
+        let lease_mgr = nm.lease_manager();
+
+        // Queue a lease through the node manager's lease manager
+        let mut req = ray_common::scheduling::ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let mut rx = lease_mgr.queue_and_schedule_lease(
+            req,
+            crate::scheduling_resources::SchedulingOptions::hybrid(),
+            crate::lease_manager::SchedulingClass(1),
+        );
+
+        match rx.try_recv().unwrap() {
+            crate::lease_manager::LeaseReply::Granted { node_id, .. } => {
+                assert_eq!(node_id, "test-node-1");
+            }
+            _ => panic!("expected lease grant"),
+        }
+    }
+
+    #[test]
+    fn test_node_manager_worker_pool_accessible() {
+        let nm = NodeManager::new(make_config());
+        let pool = nm.worker_pool();
+        assert_eq!(pool.num_idle_workers(), 0);
+        assert_eq!(pool.num_registered_workers(), 0);
+    }
+
+    #[test]
+    fn test_node_manager_placement_group_manager() {
+        let nm = NodeManager::new(make_config());
+        let pg_mgr = nm.placement_group_resource_manager();
+        assert_eq!(pg_mgr.num_bundles(), 0);
+    }
+
+    #[test]
+    fn test_node_manager_local_object_manager() {
+        let nm = NodeManager::new(make_config());
+        let obj_mgr = nm.local_object_manager();
+        let locked = obj_mgr.lock();
+        assert_eq!(locked.num_pinned(), 0);
+        assert_eq!(locked.pinned_bytes(), 0);
+    }
+
+    #[test]
+    fn test_node_manager_custom_resources() {
+        let config = RayletConfig {
+            resources: HashMap::from([
+                ("CPU".to_string(), 4.0),
+                ("GPU".to_string(), 2.0),
+                ("memory".to_string(), 1024.0),
+                ("custom_resource".to_string(), 10.0),
+            ]),
+            ..make_config()
+        };
+        let nm = NodeManager::new(config);
+        let local_rm = nm.scheduler().local_resource_manager();
+        let total = local_rm.get_local_total_resources();
+        assert_eq!(total.get("custom_resource"), FixedPoint::from_f64(10.0));
+        assert_eq!(total.get("memory"), FixedPoint::from_f64(1024.0));
+    }
+
+    #[test]
+    fn test_node_manager_no_resources() {
+        let config = RayletConfig {
+            resources: HashMap::new(),
+            ..make_config()
+        };
+        let nm = NodeManager::new(config);
+        let local_rm = nm.scheduler().local_resource_manager();
+        let total = local_rm.get_local_total_resources();
+        assert_eq!(total.get("CPU"), FixedPoint::from_f64(0.0));
+    }
+
+    #[test]
+    fn test_node_manager_demand_calculator() {
+        let nm = NodeManager::new(make_config());
+        let _dc = nm.demand_calculator();
+        // Just verifying it's accessible and doesn't panic
+    }
+
+    #[test]
+    fn test_node_manager_config_preserved() {
+        let nm = NodeManager::new(make_config());
+        assert_eq!(nm.config().node_ip_address, "127.0.0.1");
+        assert_eq!(nm.config().object_store_socket, "/tmp/plasma");
+        assert_eq!(nm.config().gcs_address, "127.0.0.1:6379");
+        assert_eq!(nm.config().session_name, "test-session");
+        assert!(nm.config().auth_token.is_none());
+    }
 }

@@ -292,4 +292,181 @@ mod tests {
         let result = mgr.handle_exists(b"ns", b"").await;
         assert!(result.is_err());
     }
+
+    // ---- Ported from gcs_kv_manager_test.cc (memory parameterization) ----
+
+    /// Full CRUD cycle matching TestInternalKV from gcs_kv_manager_test.cc
+    #[tokio::test]
+    async fn test_internal_kv_full_cycle() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "cfg".to_string());
+
+        // Get non-existent
+        assert!(mgr.handle_get(b"N1", b"A").await.unwrap().is_none());
+
+        // Put new key (no overwrite)
+        let added = mgr
+            .handle_put(b"N1", b"A", b"B".to_vec(), false)
+            .await
+            .unwrap();
+        assert!(added); // was new
+
+        // Put existing key (no overwrite) — should fail to overwrite
+        let added = mgr
+            .handle_put(b"N1", b"A", b"C".to_vec(), false)
+            .await
+            .unwrap();
+        assert!(!added); // not added because exists
+
+        // Value should still be B
+        assert_eq!(
+            mgr.handle_get(b"N1", b"A").await.unwrap(),
+            Some(b"B".to_vec())
+        );
+
+        // Put with overwrite
+        let added = mgr
+            .handle_put(b"N1", b"A", b"C".to_vec(), true)
+            .await
+            .unwrap();
+        assert!(!added); // already existed (overwrite returns false for "was new")
+        assert_eq!(
+            mgr.handle_get(b"N1", b"A").await.unwrap(),
+            Some(b"C".to_vec())
+        );
+
+        // Add more keys with prefix
+        mgr.handle_put(b"N1", b"A_1", b"B".to_vec(), false)
+            .await
+            .unwrap();
+        mgr.handle_put(b"N1", b"A_2", b"C".to_vec(), false)
+            .await
+            .unwrap();
+        mgr.handle_put(b"N1", b"A_3", b"C".to_vec(), false)
+            .await
+            .unwrap();
+
+        // Keys with prefix "A_"
+        let keys = mgr.handle_keys(b"N1", b"A_").await.unwrap();
+        assert_eq!(keys.len(), 3);
+
+        // Different namespace should not see the key
+        assert!(mgr.handle_get(b"N2", b"A_1").await.unwrap().is_none());
+        // Same namespace should
+        assert!(mgr.handle_get(b"N1", b"A_1").await.unwrap().is_some());
+
+        // Multi-get
+        let result = mgr
+            .handle_multi_get(
+                b"N1",
+                &[b"A_1".to_vec(), b"A_2".to_vec(), b"A_3".to_vec()],
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[&b"A_1".to_vec()], b"B");
+        assert_eq!(result[&b"A_2".to_vec()], b"C");
+        assert_eq!(result[&b"A_3".to_vec()], b"C");
+
+        // Multi-get with empty keys
+        let result = mgr.handle_multi_get(b"N1", &[]).await.unwrap();
+        assert!(result.is_empty());
+
+        // Multi-get with non-existent keys
+        let result = mgr
+            .handle_multi_get(b"N1", &[b"A_4".to_vec(), b"A_5".to_vec()])
+            .await
+            .unwrap();
+        assert!(result.is_empty());
+
+        // Delete by prefix
+        let count = mgr.handle_del(b"N1", b"A_", true).await.unwrap();
+        assert_eq!(count, 3);
+
+        // Delete from non-existent namespace
+        let count = mgr.handle_del(b"NX", b"A_", true).await.unwrap();
+        assert_eq!(count, 0);
+
+        // Verify keys are deleted
+        assert!(mgr.handle_get(b"N1", b"A_1").await.unwrap().is_none());
+
+        let result = mgr
+            .handle_multi_get(
+                b"N1",
+                &[b"A_1".to_vec(), b"A_2".to_vec(), b"A_3".to_vec()],
+            )
+            .await
+            .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_namespace_isolation() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "cfg".to_string());
+
+        mgr.handle_put(b"ns1", b"key", b"val1".to_vec(), true)
+            .await
+            .unwrap();
+        mgr.handle_put(b"ns2", b"key", b"val2".to_vec(), true)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            mgr.handle_get(b"ns1", b"key").await.unwrap(),
+            Some(b"val1".to_vec())
+        );
+        assert_eq!(
+            mgr.handle_get(b"ns2", b"key").await.unwrap(),
+            Some(b"val2".to_vec())
+        );
+
+        // Delete from ns1 should not affect ns2
+        mgr.handle_del(b"ns1", b"key", false).await.unwrap();
+        assert!(mgr.handle_get(b"ns1", b"key").await.unwrap().is_none());
+        assert!(mgr.handle_get(b"ns2", b"key").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_key_at_max_length() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "cfg".to_string());
+
+        // Key at exactly max length should be valid
+        let max_key = vec![b'x'; MAX_KEY_LENGTH];
+        let result = mgr
+            .handle_put(b"ns", &max_key, b"v".to_vec(), true)
+            .await;
+        assert!(result.is_ok());
+
+        // Key one byte over should fail
+        let over_key = vec![b'x'; MAX_KEY_LENGTH + 1];
+        let result = mgr
+            .handle_put(b"ns", &over_key, b"v".to_vec(), true)
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_exists_after_del() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "cfg".to_string());
+
+        mgr.handle_put(b"ns", b"k", b"v".to_vec(), true)
+            .await
+            .unwrap();
+        assert!(mgr.handle_exists(b"ns", b"k").await.unwrap());
+
+        mgr.handle_del(b"ns", b"k", false).await.unwrap();
+        assert!(!mgr.handle_exists(b"ns", b"k").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_del_nonexistent_key_returns_zero() {
+        let kv = Arc::new(InMemoryInternalKV::new());
+        let mgr = GcsInternalKVManager::new(kv, "cfg".to_string());
+
+        let count = mgr.handle_del(b"ns", b"nope", false).await.unwrap();
+        assert_eq!(count, 0);
+    }
 }

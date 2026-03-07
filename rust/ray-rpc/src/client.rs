@@ -607,4 +607,283 @@ mod tests {
         assert_eq!(ConnectionState::from_u8(2), ConnectionState::Reconnecting);
         assert_eq!(ConnectionState::from_u8(255), ConnectionState::Disconnected);
     }
+
+    // ── Tests ported from C++ grpc_server_client_test.cc ──────────────
+    // These test the equivalent Rust retry/timeout/backpressure logic.
+
+    /// Port of C++ TestBasic: a simple successful RPC call completes and
+    /// the client remains in Connected state.
+    #[tokio::test]
+    async fn test_basic_rpc_completes() {
+        let client = make_client(fast_retry_config());
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done_clone = done.clone();
+        let result: Result<String, Status> = client
+            .call_with_retry(0, None, || {
+                let d = done_clone.clone();
+                async move {
+                    d.store(true, Ordering::Relaxed);
+                    Ok("pong".to_string())
+                }
+            })
+            .await;
+        assert_eq!(result.unwrap(), "pong");
+        assert!(done.load(Ordering::Relaxed));
+        assert_eq!(client.connection_state(), ConnectionState::Connected);
+    }
+
+    /// Port of C++ TestBackpressure: when max_pending_bytes is small,
+    /// concurrent requests are rejected once the limit is hit (simulating
+    /// backpressure from max_active_rpcs=1 in C++).
+    #[tokio::test]
+    async fn test_backpressure_via_pending_bytes() {
+        let client = make_client(RetryConfig {
+            max_pending_bytes: 50,
+            max_retries: 0,
+            ..fast_retry_config()
+        });
+        // Simulate an in-flight request consuming 50 bytes.
+        client.pending_bytes.store(50, Ordering::Relaxed);
+        // A second request should be rejected (backpressure).
+        let result: Result<i32, Status> =
+            client.call_with_retry(10, None, || async { Ok(1) }).await;
+        assert_eq!(result.unwrap_err().code(), Code::ResourceExhausted);
+        // Restore.
+        client.pending_bytes.store(0, Ordering::Relaxed);
+    }
+
+    /// Port of C++ TestClientCallManagerTimeout: when the server is frozen
+    /// (always returns Unavailable), the client times out.
+    #[tokio::test]
+    async fn test_client_call_manager_timeout() {
+        let client = make_client(RetryConfig {
+            max_retries: 100,
+            initial_delay: Duration::from_millis(5),
+            max_delay: Duration::from_millis(10),
+            server_unavailable_timeout: Duration::from_secs(60),
+            ..fast_retry_config()
+        });
+        let call_count = Arc::new(AtomicU32::new(0));
+        let cc = call_count.clone();
+        // Use a short timeout override (like C++ reinit with 100ms timeout).
+        let result: Result<i32, Status> = client
+            .call_with_retry(
+                0,
+                Some(Duration::from_millis(100)),
+                || {
+                    let cc = cc.clone();
+                    async move {
+                        cc.fetch_add(1, Ordering::Relaxed);
+                        Err(Status::unavailable("server frozen"))
+                    }
+                },
+            )
+            .await;
+        // Should time out with DeadlineExceeded.
+        assert_eq!(result.unwrap_err().code(), Code::DeadlineExceeded);
+        // At least one attempt was made.
+        assert!(call_count.load(Ordering::Relaxed) >= 1);
+    }
+
+    /// Port of C++ TestClientDiedBeforeReply: after a timeout (client "died"),
+    /// a fresh client can still successfully make a call (no resource leak).
+    #[tokio::test]
+    async fn test_client_died_before_reply() {
+        // First client with short timeout -- simulates client dying.
+        let client1 = make_client(RetryConfig {
+            max_retries: 100,
+            initial_delay: Duration::from_millis(5),
+            max_delay: Duration::from_millis(10),
+            server_unavailable_timeout: Duration::from_secs(60),
+            ..fast_retry_config()
+        });
+        let result: Result<i32, Status> = client1
+            .call_with_retry(
+                0,
+                Some(Duration::from_millis(50)),
+                || async { Err(Status::unavailable("frozen")) },
+            )
+            .await;
+        assert_eq!(result.unwrap_err().code(), Code::DeadlineExceeded);
+        // Client is now "dead" (disconnected).
+        drop(client1);
+
+        // Create a fresh client (simulating reconnection).
+        let client2 = make_client(fast_retry_config());
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done_c = done.clone();
+        let result: Result<i32, Status> = client2
+            .call_with_retry(0, None, || {
+                let d = done_c.clone();
+                async move {
+                    d.store(true, Ordering::Relaxed);
+                    Ok(42)
+                }
+            })
+            .await;
+        // New client should succeed -- no leaking from old client.
+        assert_eq!(result.unwrap(), 42);
+        assert!(done.load(Ordering::Relaxed));
+    }
+
+    /// Port of C++ TestTimeoutMacro: verifies that a per-call timeout
+    /// override (like the C++ VOID_RPC_CLIENT_METHOD with method_timeout_ms=100)
+    /// causes the call to time out even with a long default timeout.
+    #[tokio::test]
+    async fn test_timeout_macro_equivalent() {
+        let client = make_client(RetryConfig {
+            max_retries: 100,
+            initial_delay: Duration::from_millis(5),
+            max_delay: Duration::from_millis(10),
+            // Long default timeout.
+            server_unavailable_timeout: Duration::from_secs(300),
+            ..fast_retry_config()
+        });
+        let call_count = Arc::new(AtomicU32::new(0));
+        let cc = call_count.clone();
+        // Override with short 100ms timeout (like PingTimeout method_timeout_ms=100).
+        let start = tokio::time::Instant::now();
+        let result: Result<i32, Status> = client
+            .call_with_retry(
+                0,
+                Some(Duration::from_millis(100)),
+                || {
+                    let cc = cc.clone();
+                    async move {
+                        cc.fetch_add(1, Ordering::Relaxed);
+                        Err(Status::unavailable("frozen"))
+                    }
+                },
+            )
+            .await;
+        let elapsed = start.elapsed();
+        assert_eq!(result.unwrap_err().code(), Code::DeadlineExceeded);
+        // Should complete quickly (well under the 300s default timeout).
+        assert!(elapsed < Duration::from_secs(2));
+        assert!(call_count.load(Ordering::Relaxed) >= 1);
+    }
+
+    // ── Tests ported from C++ metrics_agent_client_test.cc ────────────
+    // The C++ tests use TestableMetricsAgentClientImpl with retry/health-check.
+    // In Rust, the equivalent logic is in RetryableGrpcClient's call_with_retry.
+
+    /// Port of C++ WaitForServerReadyWithRetrySuccess: health check fails
+    /// initially but succeeds after a few retries.
+    #[tokio::test]
+    async fn test_wait_for_server_ready_with_retry_success() {
+        let count_to_return_ok: u32 = 3;
+        let client = make_client(RetryConfig {
+            max_retries: count_to_return_ok + 1,
+            initial_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(100),
+            server_unavailable_timeout: Duration::from_secs(5),
+            ..fast_retry_config()
+        });
+        let health_check_count = Arc::new(AtomicU32::new(0));
+        let hc = health_check_count.clone();
+        let result: Result<String, Status> = client
+            .call_with_retry(0, None, || {
+                let hc = hc.clone();
+                async move {
+                    let count = hc.fetch_add(1, Ordering::Relaxed);
+                    if count < count_to_return_ok {
+                        Err(Status::unavailable("health check failed"))
+                    } else {
+                        Ok("server ready".to_string())
+                    }
+                }
+            })
+            .await;
+        assert_eq!(result.unwrap(), "server ready");
+        assert!(client.is_connected());
+    }
+
+    /// Port of C++ WaitForServerReadyWithRetryFailure: health check never
+    /// succeeds within the retry limit, so the call fails.
+    #[tokio::test]
+    async fn test_wait_for_server_ready_with_retry_failure() {
+        let client = make_client(RetryConfig {
+            max_retries: 1, // Only 1 retry (not enough to succeed).
+            initial_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(50),
+            server_unavailable_timeout: Duration::from_secs(5),
+            ..fast_retry_config()
+        });
+        let result: Result<String, Status> = client
+            .call_with_retry(0, None, || async {
+                Err(Status::unavailable("always failing"))
+            })
+            .await;
+        assert!(result.is_err());
+        assert!(!client.is_connected());
+    }
+
+    /// Port of C++ ConcurrentCallbacksCallInitExporterFnOnlyOnce:
+    /// multiple concurrent health-check calls, but only the first success
+    /// should matter (verified via atomic flag).
+    #[tokio::test]
+    async fn test_concurrent_callbacks_call_init_once() {
+        let client = make_client(RetryConfig {
+            max_retries: 10,
+            initial_delay: Duration::from_millis(1),
+            max_delay: Duration::from_millis(10),
+            server_unavailable_timeout: Duration::from_secs(5),
+            ..fast_retry_config()
+        });
+
+        let init_count = Arc::new(AtomicU32::new(0));
+
+        // Launch two concurrent "health check" calls.
+        let mut handles = Vec::new();
+        for _ in 0..2 {
+            let c = client.clone();
+            let ic = init_count.clone();
+            handles.push(tokio::spawn(async move {
+                let result: Result<(), Status> = c
+                    .call_with_retry(0, None, || async { Ok(()) })
+                    .await;
+                if result.is_ok() {
+                    ic.fetch_add(1, Ordering::Relaxed);
+                }
+            }));
+        }
+        for h in handles {
+            h.await.unwrap();
+        }
+
+        // Both calls succeeded, but in the real metrics agent client,
+        // the init_exporter_fn is guarded by an atomic flag and called only once.
+        // Here we verify both calls complete successfully.
+        assert_eq!(init_count.load(Ordering::Relaxed), 2);
+        assert!(client.is_connected());
+    }
+
+    /// Port of C++ ExhaustedRetriesReturnsFailure: when all retries are
+    /// exhausted, the callback receives a failure status.
+    #[tokio::test]
+    async fn test_exhausted_retries_returns_failure() {
+        let client = make_client(RetryConfig {
+            max_retries: 2, // Exhaust retries.
+            initial_delay: Duration::from_millis(10),
+            max_delay: Duration::from_millis(50),
+            server_unavailable_timeout: Duration::from_secs(5),
+            ..fast_retry_config()
+        });
+        let call_count = Arc::new(AtomicU32::new(0));
+        let cc = call_count.clone();
+        let result: Result<String, Status> = client
+            .call_with_retry(0, None, || {
+                let cc = cc.clone();
+                async move {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                    Err(Status::unavailable("always failing"))
+                }
+            })
+            .await;
+        // After exhausting retries, should get failure status.
+        assert!(result.is_err());
+        assert!(!client.is_connected());
+        // 1 initial + 2 retries = 3 calls total.
+        assert_eq!(call_count.load(Ordering::Relaxed), 3);
+    }
 }

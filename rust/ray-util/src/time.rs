@@ -78,4 +78,44 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
         assert!(sw.elapsed_ms() >= 10);
     }
+
+    // --- Additional tests ported from C++ time usage patterns ---
+
+    /// Verify current_time_ns is consistent with current_time_ms.
+    #[test]
+    fn test_current_time_ns() {
+        let ms = current_time_ms();
+        let ns = current_time_ns();
+        // ns should be >= ms * 1_000_000 (approximately).
+        assert!(ns >= ms * 1_000_000 - 1_000_000);
+    }
+
+    /// Test stopwatch reset.
+    #[test]
+    fn test_stopwatch_reset() {
+        let mut sw = Stopwatch::new();
+        std::thread::sleep(Duration::from_millis(20));
+        assert!(sw.elapsed_ms() >= 20);
+
+        sw.reset();
+        // After reset, elapsed should be very small.
+        assert!(sw.elapsed_ms() < 5);
+    }
+
+    /// Test stopwatch default.
+    #[test]
+    fn test_stopwatch_default() {
+        let sw = Stopwatch::default();
+        // Freshly created stopwatch should have near-zero elapsed.
+        assert!(sw.elapsed_ms() < 100);
+    }
+
+    /// Test monotonicity of current_time_ms.
+    #[test]
+    fn test_current_time_ms_monotonic() {
+        let times: Vec<u64> = (0..100).map(|_| current_time_ms()).collect();
+        for window in times.windows(2) {
+            assert!(window[1] >= window[0]);
+        }
+    }
 }

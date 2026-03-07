@@ -799,4 +799,197 @@ mod tests {
         let kv = InMemoryInternalKV::default();
         assert!(kv.get(b"ns", b"k").await.unwrap().is_none());
     }
+
+    // ---- Ported from in_memory_store_client_test.cc / observable_store_client_test.cc ----
+
+    /// Full put-get-delete cycle matching StoreClientTestBase::TestAsyncPutAndAsyncGet
+    #[tokio::test]
+    async fn test_async_put_and_async_get_cycle() {
+        let store = InMemoryStoreClient::new();
+
+        // Put 5000 entries
+        let count = 100;
+        for i in 0..count {
+            let key = format!("key_{}", i);
+            let val = format!("val_{}", i);
+            store.put("T", &key, val.into_bytes(), true).await.unwrap();
+        }
+
+        // Get and verify each
+        for i in 0..count {
+            let key = format!("key_{}", i);
+            let expected = format!("val_{}", i);
+            let val = store.get("T", &key).await.unwrap();
+            assert_eq!(val, Some(expected.into_bytes()));
+        }
+
+        // Get non-existent key returns None
+        let val = store.get("T", "nonexistent_key").await.unwrap();
+        assert!(val.is_none());
+    }
+
+    /// Full get_all and batch_delete matching StoreClientTestBase::TestAsyncGetAllAndBatchDelete
+    #[tokio::test]
+    async fn test_async_get_all_and_batch_delete_cycle() {
+        let store = InMemoryStoreClient::new();
+        let count = 100;
+
+        // Put entries
+        for i in 0..count {
+            let key = format!("key_{}", i);
+            let val = format!("val_{}", i);
+            store.put("T", &key, val.into_bytes(), true).await.unwrap();
+        }
+
+        // Get all
+        let all = store.get_all("T").await.unwrap();
+        assert_eq!(all.len(), count);
+
+        // Delete half
+        let keys_to_delete: Vec<String> = (0..count / 2).map(|i| format!("key_{}", i)).collect();
+        let deleted = store.batch_delete("T", &keys_to_delete).await.unwrap();
+        assert_eq!(deleted, count as i64 / 2);
+
+        // Verify remaining
+        let all = store.get_all("T").await.unwrap();
+        assert_eq!(all.len(), count / 2);
+
+        // Delete remaining
+        let remaining_keys: Vec<String> =
+            (count / 2..count).map(|i| format!("key_{}", i)).collect();
+        let deleted = store.batch_delete("T", &remaining_keys).await.unwrap();
+        assert_eq!(deleted, count as i64 / 2);
+
+        let all = store.get_all("T").await.unwrap();
+        assert!(all.is_empty());
+    }
+
+    /// Test table isolation — different tables are independent
+    #[tokio::test]
+    async fn test_table_isolation() {
+        let store = InMemoryStoreClient::new();
+
+        store
+            .put("TableA", "key", b"valA".to_vec(), true)
+            .await
+            .unwrap();
+        store
+            .put("TableB", "key", b"valB".to_vec(), true)
+            .await
+            .unwrap();
+
+        let val_a = store.get("TableA", "key").await.unwrap();
+        let val_b = store.get("TableB", "key").await.unwrap();
+        assert_eq!(val_a, Some(b"valA".to_vec()));
+        assert_eq!(val_b, Some(b"valB".to_vec()));
+
+        // Delete from TableA should not affect TableB
+        store.delete("TableA", "key").await.unwrap();
+        assert!(store.get("TableA", "key").await.unwrap().is_none());
+        assert!(store.get("TableB", "key").await.unwrap().is_some());
+    }
+
+    /// Test job ID counter is monotonically increasing
+    #[tokio::test]
+    async fn test_job_id_monotonic() {
+        let store = InMemoryStoreClient::new();
+        let mut prev = 0;
+        for _ in 0..100 {
+            let id = store.get_next_job_id().await.unwrap();
+            assert!(id > prev, "job IDs must be monotonically increasing");
+            prev = id;
+        }
+    }
+
+    /// Test batch_delete with all non-existent keys
+    #[tokio::test]
+    async fn test_batch_delete_nonexistent() {
+        let store = InMemoryStoreClient::new();
+        let count = store
+            .batch_delete("T", &["x".into(), "y".into(), "z".into()])
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    /// Test InMemoryInternalKV namespaces are isolated
+    #[tokio::test]
+    async fn test_internal_kv_namespace_isolation() {
+        let kv = InMemoryInternalKV::new();
+
+        kv.put(b"ns1", b"key", b"v1".to_vec(), true).await.unwrap();
+        kv.put(b"ns2", b"key", b"v2".to_vec(), true).await.unwrap();
+
+        assert_eq!(
+            kv.get(b"ns1", b"key").await.unwrap(),
+            Some(b"v1".to_vec())
+        );
+        assert_eq!(
+            kv.get(b"ns2", b"key").await.unwrap(),
+            Some(b"v2".to_vec())
+        );
+
+        // Delete in ns1 doesn't affect ns2
+        kv.del(b"ns1", b"key", false).await.unwrap();
+        assert!(kv.get(b"ns1", b"key").await.unwrap().is_none());
+        assert!(kv.get(b"ns2", b"key").await.unwrap().is_some());
+    }
+
+    /// Test prefix-based key listing
+    #[tokio::test]
+    async fn test_internal_kv_keys_empty_prefix() {
+        let kv = InMemoryInternalKV::new();
+        kv.put(b"ns", b"a", b"v".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"b", b"v".to_vec(), true).await.unwrap();
+        kv.put(b"ns", b"c", b"v".to_vec(), true).await.unwrap();
+
+        // Empty prefix returns all keys
+        let keys = kv.keys(b"ns", b"").await.unwrap();
+        assert_eq!(keys.len(), 3);
+    }
+
+    /// Test overwrite flag behavior for InMemoryInternalKV
+    #[tokio::test]
+    async fn test_internal_kv_overwrite_replaces_value() {
+        let kv = InMemoryInternalKV::new();
+
+        kv.put(b"ns", b"k", b"v1".to_vec(), true).await.unwrap();
+        // Overwrite with new value
+        kv.put(b"ns", b"k", b"v2".to_vec(), true).await.unwrap();
+        assert_eq!(
+            kv.get(b"ns", b"k").await.unwrap(),
+            Some(b"v2".to_vec())
+        );
+    }
+
+    /// Test put to store returns correct "existed" value
+    #[tokio::test]
+    async fn test_store_put_returns_existed_flag() {
+        let store = InMemoryStoreClient::new();
+
+        // First put: did not exist
+        let existed = store
+            .put("T", "key", b"v1".to_vec(), true)
+            .await
+            .unwrap();
+        assert!(!existed);
+
+        // Second put with overwrite: existed
+        let existed = store
+            .put("T", "key", b"v2".to_vec(), true)
+            .await
+            .unwrap();
+        assert!(existed);
+
+        // Third put without overwrite: existed (and value unchanged)
+        let existed = store
+            .put("T", "key", b"v3".to_vec(), false)
+            .await
+            .unwrap();
+        assert!(existed);
+        assert_eq!(
+            store.get("T", "key").await.unwrap(),
+            Some(b"v2".to_vec())
+        );
+    }
 }

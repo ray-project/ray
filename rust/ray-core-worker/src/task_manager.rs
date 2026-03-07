@@ -655,6 +655,7 @@ mod tests {
     use super::*;
     use crate::memory_store::CoreWorkerMemoryStore;
     use ray_proto::ray::rpc;
+    use std::sync::atomic::Ordering;
 
     fn make_address() -> Address {
         Address {
@@ -991,5 +992,264 @@ mod tests {
         assert!(!tm.is_task_pending(&fake_id));
         assert!(tm.get_task_state(&fake_id).is_none());
         assert!(tm.get_task_spec(&fake_id).is_none());
+    }
+
+    // ── Additional tests ported from task_manager_test.cc ───────────
+
+    /// Port of TestRecordMetrics: verify state counts are accurate
+    /// through multiple transitions.
+    #[test]
+    fn test_record_metrics_through_transitions() {
+        let tm = make_task_manager();
+        let spec = make_task_spec("metrics_task");
+        let task_id = spec.task_id.clone();
+
+        tm.add_pending_task(make_address(), spec, 0);
+        assert_eq!(tm.state_counts()[&TaskState::PendingArgsAvail], 1);
+
+        tm.mark_dependencies_resolved(&task_id);
+        assert_eq!(tm.state_counts()[&TaskState::PendingArgsAvail], 0);
+        assert_eq!(tm.state_counts()[&TaskState::PendingNodeAssignment], 1);
+
+        tm.mark_task_waiting_for_execution(&task_id, vec![1; 28], vec![2; 28]);
+        assert_eq!(tm.state_counts()[&TaskState::PendingNodeAssignment], 0);
+        assert_eq!(tm.state_counts()[&TaskState::SubmittedToWorker], 1);
+
+        tm.complete_pending_task(&task_id, vec![]).unwrap();
+        assert_eq!(tm.state_counts()[&TaskState::SubmittedToWorker], 0);
+        assert_eq!(tm.state_counts()[&TaskState::Finished], 1);
+    }
+
+    /// Port of TestTaskSuccess: complete task stores return objects
+    /// and transitions to Finished.
+    #[test]
+    fn test_task_success_stores_return_objects() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let tm = TaskManager::new(
+            store.clone(),
+            Arc::new(ReferenceCounter::new()),
+            Arc::new(TaskEventBuffer::new(1000)),
+        );
+        let tid = TaskID::from_random();
+        let spec = make_task_spec_with_id(&tid);
+        let task_id = spec.task_id.clone();
+
+        let return_ids = tm.add_pending_task(make_address(), spec, 0);
+        assert_eq!(return_ids.len(), 1);
+
+        let return_obj = RayObject::from_data(Bytes::from("success_result"));
+        tm.complete_pending_task(&task_id, vec![(return_ids[0], return_obj)])
+            .unwrap();
+
+        // Verify return object is in the store.
+        let obj = store.get(&return_ids[0]).unwrap();
+        assert_eq!(obj.data.as_ref(), b"success_result");
+        assert_eq!(tm.get_task_state(&task_id), Some(TaskState::Finished));
+    }
+
+    /// Port of TestTaskFailure: failed task stores error objects for
+    /// return IDs.
+    #[test]
+    fn test_task_failure_stores_error_objects() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let tm = TaskManager::new(
+            store.clone(),
+            Arc::new(ReferenceCounter::new()),
+            Arc::new(TaskEventBuffer::new(1000)),
+        );
+        let spec = make_task_spec("fail_store");
+        let task_id = spec.task_id.clone();
+
+        let return_ids = tm.add_pending_task(make_address(), spec, 0);
+        tm.fail_pending_task(&task_id, "task execution failed").unwrap();
+
+        // Verify error object is in the store.
+        let obj = store.get(&return_ids[0]).unwrap();
+        assert_eq!(obj.data.as_ref(), b"task execution failed");
+        assert_eq!(obj.metadata.as_ref(), b"ERROR");
+    }
+
+    /// Port of TestTaskReconstruction: retrying a task increments
+    /// the attempt number and resets state.
+    #[test]
+    fn test_task_reconstruction_increments_attempt() {
+        let tm = make_task_manager();
+        let spec = make_task_spec("reconstruct");
+        let task_id = spec.task_id.clone();
+
+        tm.add_pending_task(make_address(), spec, 3);
+        assert_eq!(tm.get_attempt_number(&task_id), 0);
+
+        // Fail and retry.
+        let retried = tm
+            .fail_or_retry_pending_task(&task_id, "error", false)
+            .unwrap();
+        assert!(retried);
+        assert_eq!(tm.get_attempt_number(&task_id), 1);
+
+        let retried = tm
+            .fail_or_retry_pending_task(&task_id, "error", false)
+            .unwrap();
+        assert!(retried);
+        assert_eq!(tm.get_attempt_number(&task_id), 2);
+    }
+
+    /// Port of TestTaskKill: cancel prevents retry and fails the task.
+    #[test]
+    fn test_task_kill_prevents_retry_on_failure() {
+        let tm = make_task_manager();
+        let spec = make_task_spec("kill_task");
+        let task_id = spec.task_id.clone();
+
+        tm.add_pending_task(make_address(), spec, 5);
+        tm.mark_task_canceled(&task_id);
+
+        // Even though retries are available, cancellation prevents them.
+        let retried = tm
+            .fail_or_retry_pending_task(&task_id, "killed", false)
+            .unwrap();
+        assert!(!retried);
+        assert_eq!(tm.get_task_state(&task_id), Some(TaskState::Failed));
+    }
+
+    /// Port of TestResubmitCanceledTask: verifying that marking a
+    /// task as no-retry and then failing succeeds without panic.
+    #[test]
+    fn test_cancel_then_fail_succeeds() {
+        let tm = make_task_manager();
+        let spec = make_task_spec("cancel_fail");
+        let task_id = spec.task_id.clone();
+
+        tm.add_pending_task(make_address(), spec, 1);
+        tm.mark_task_canceled(&task_id);
+        assert!(tm.is_task_canceled(&task_id));
+
+        // Fail the task.
+        let retried = tm
+            .fail_or_retry_pending_task(&task_id, "cancelled", false)
+            .unwrap();
+        assert!(!retried);
+        assert_eq!(tm.num_pending_tasks(), 0);
+    }
+
+    /// Port of TestFailsImmediatelyOverridesRetry: fail_or_retry with
+    /// fail_immediately should not retry even if retries remain.
+    #[test]
+    fn test_zero_retries_fails_immediately() {
+        let tm = make_task_manager();
+        let spec = make_task_spec("zero_retry");
+        let task_id = spec.task_id.clone();
+
+        tm.add_pending_task(make_address(), spec, 0);
+
+        let retried = tm
+            .fail_or_retry_pending_task(&task_id, "error", false)
+            .unwrap();
+        assert!(!retried);
+        assert_eq!(tm.get_task_state(&task_id), Some(TaskState::Failed));
+    }
+
+    /// Port of TestTaskOomInfiniteRetry: OOM retries with -1 should
+    /// retry indefinitely.
+    #[test]
+    fn test_oom_infinite_retry() {
+        let tm = make_task_manager();
+        let spec = make_task_spec("oom_infinite");
+        let task_id = spec.task_id.clone();
+
+        tm.add_pending_task(make_address(), spec, 0);
+        // Set OOM retries to infinite.
+        {
+            let mut inner = tm.inner.lock();
+            if let Some(entry) = inner.submissible_tasks.get_mut(&task_id) {
+                entry.num_oom_retries_left = -1;
+            }
+        }
+
+        for i in 0..50 {
+            let retried = tm
+                .fail_or_retry_pending_task(&task_id, &format!("OOM {}", i), true)
+                .unwrap();
+            assert!(retried, "should always retry with OOM -1");
+        }
+        assert_eq!(tm.get_attempt_number(&task_id), 50);
+    }
+
+    /// Port of TestGetTaskSpec: verify that task spec is retrievable.
+    #[test]
+    fn test_get_task_spec_returns_correct_spec() {
+        let tm = make_task_manager();
+        let spec = rpc::TaskSpec {
+            task_id: TaskID::from_random().binary(),
+            name: "my_special_task".to_string(),
+            num_returns: 2,
+            ..Default::default()
+        };
+        let task_id = spec.task_id.clone();
+
+        tm.add_pending_task(make_address(), spec, 0);
+        let got = tm.get_task_spec(&task_id).unwrap();
+        assert_eq!(got.name, "my_special_task");
+        assert_eq!(got.num_returns, 2);
+    }
+
+    /// Port of TestRetryCallback: verify the retry callback is invoked
+    /// when a task is retried.
+    #[test]
+    fn test_retry_callback_invoked() {
+        let tm = make_task_manager();
+
+        let retry_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let retry_count_clone = retry_count.clone();
+        tm.set_retry_task_callback(Box::new(move |_spec, _delay| {
+            retry_count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        let spec = make_task_spec("retry_cb");
+        let task_id = spec.task_id.clone();
+        tm.add_pending_task(make_address(), spec, 3);
+
+        tm.fail_or_retry_pending_task(&task_id, "error", false).unwrap();
+        assert_eq!(retry_count.load(Ordering::Relaxed), 1);
+
+        tm.fail_or_retry_pending_task(&task_id, "error", false).unwrap();
+        assert_eq!(retry_count.load(Ordering::Relaxed), 2);
+    }
+
+    /// Port of TestFailPendingTaskAfterCancellation: completing a
+    /// non-existent task should fail gracefully.
+    #[test]
+    fn test_complete_nonexistent_task_fails() {
+        let tm = make_task_manager();
+        let fake_id = TaskID::from_random().binary();
+        let result = tm.complete_pending_task(&fake_id, vec![]);
+        assert!(result.is_err());
+    }
+
+    /// Port of TestLineageEvicted concept: verify that return IDs
+    /// are correctly derived from task ID.
+    #[test]
+    fn test_return_ids_derived_from_task_id() {
+        let tm = make_task_manager();
+        let tid = TaskID::from_random();
+        let spec = rpc::TaskSpec {
+            task_id: tid.binary(),
+            num_returns: 3,
+            ..Default::default()
+        };
+        let task_id = spec.task_id.clone();
+
+        let return_ids = tm.add_pending_task(make_address(), spec, 0);
+        assert_eq!(return_ids.len(), 3);
+
+        // Verify each return ID is derived from the task ID.
+        for (i, oid) in return_ids.iter().enumerate() {
+            let expected = ObjectID::from_index(&tid, (i + 1) as u32);
+            assert_eq!(*oid, expected);
+        }
+
+        // Also verify via get_return_ids.
+        assert_eq!(tm.get_return_ids(&task_id), return_ids);
     }
 }

@@ -570,6 +570,338 @@ mod tests {
         assert_eq!(store.num_bytes_sealed(), 300);
     }
 
+    // ─── Tests ported from stats_collector_test.cc ────────────────────────
+
+    #[test]
+    fn test_stats_create_and_abort() {
+        // Port of ObjectStatsCollectorTest::CreateAndAbort
+        // Create objects with all source types, then delete (abort) them.
+        let mut store = ObjectStore::new();
+        let sources = [
+            ObjectSource::CreatedByWorker,
+            ObjectSource::RestoredFromStorage,
+            ObjectSource::ReceivedFromRemoteRaylet,
+            ObjectSource::ErrorStoredByRaylet,
+        ];
+
+        let mut oids = Vec::new();
+        let mut total_created = 0i64;
+
+        for (i, &source) in sources.iter().enumerate() {
+            let size = (i as i64 + 1) * 50;
+            let oid = make_oid(100 + i as u8);
+            let info = ObjectInfo {
+                object_id: oid,
+                data_size: size,
+                ..Default::default()
+            };
+            total_created += info.get_object_size();
+            store
+                .create_object(dummy_allocation(), info, source)
+                .unwrap();
+            oids.push(oid);
+        }
+
+        assert_eq!(store.cumulative_created_bytes(), total_created);
+        assert_eq!(store.num_objects(), 4);
+
+        // "Abort" = delete unsealed objects
+        for oid in &oids {
+            store.delete_object(oid).unwrap();
+        }
+
+        assert_eq!(store.num_objects(), 0);
+        assert_eq!(store.num_bytes_unsealed(), 0);
+        assert_eq!(store.num_bytes_sealed(), 0);
+        // Cumulative created should remain
+        assert_eq!(store.cumulative_created_bytes(), total_created);
+    }
+
+    #[test]
+    fn test_stats_create_and_delete() {
+        // Port of ObjectStatsCollectorTest::CreateAndDelete
+        // Create objects, optionally seal some, add refs, then delete.
+        let mut store = ObjectStore::new();
+        let sources = [
+            ObjectSource::CreatedByWorker,
+            ObjectSource::RestoredFromStorage,
+            ObjectSource::ReceivedFromRemoteRaylet,
+            ObjectSource::ErrorStoredByRaylet,
+        ];
+
+        let mut oids = Vec::new();
+        let mut total_created = 0i64;
+
+        for (i, &source) in sources.iter().enumerate() {
+            let size = (i as i64 + 1) * 100;
+            let oid = make_oid(110 + i as u8);
+            let info = ObjectInfo {
+                object_id: oid,
+                data_size: size,
+                ..Default::default()
+            };
+            total_created += info.get_object_size();
+            store
+                .create_object(dummy_allocation(), info, source)
+                .unwrap();
+            oids.push(oid);
+        }
+
+        // Seal some objects (first two)
+        store.seal_object(&oids[0]).unwrap();
+        store.seal_object(&oids[1]).unwrap();
+
+        let sealed_bytes = 100 + 200; // first two objects
+        let unsealed_bytes = 300 + 400; // last two objects
+        assert_eq!(store.num_bytes_sealed(), sealed_bytes);
+        assert_eq!(store.num_bytes_unsealed(), unsealed_bytes);
+
+        // Add reference counts and verify
+        store.get_object_mut(&oids[0]).unwrap().incr_ref();
+        assert_eq!(store.get_object(&oids[0]).unwrap().ref_count(), 1);
+
+        // Delete all objects
+        // First, drop refs
+        store.get_object_mut(&oids[0]).unwrap().decr_ref();
+
+        for oid in &oids {
+            store.delete_object(oid).unwrap();
+        }
+
+        assert_eq!(store.num_objects(), 0);
+        assert_eq!(store.num_bytes_in_use(), 0);
+        assert_eq!(store.cumulative_created_bytes(), total_created);
+    }
+
+    #[test]
+    fn test_stats_eviction() {
+        // Port of ObjectStatsCollectorTest::Eviction
+        // Create objects, seal them, then evict (delete) them.
+        let mut store = ObjectStore::new();
+        let sources = [
+            ObjectSource::CreatedByWorker,
+            ObjectSource::RestoredFromStorage,
+            ObjectSource::ReceivedFromRemoteRaylet,
+            ObjectSource::ErrorStoredByRaylet,
+        ];
+
+        let mut oids = Vec::new();
+        let mut total_created = 0i64;
+
+        for (i, &source) in sources.iter().enumerate() {
+            let size = (100 + i) as i64;
+            let oid = make_oid(120 + i as u8);
+            let info = ObjectInfo {
+                object_id: oid,
+                data_size: size,
+                ..Default::default()
+            };
+            total_created += info.get_object_size();
+            store
+                .create_object(dummy_allocation(), info, source)
+                .unwrap();
+            oids.push(oid);
+        }
+
+        // Seal all
+        for oid in &oids {
+            store.seal_object(oid).unwrap();
+        }
+
+        assert_eq!(store.num_bytes_unsealed(), 0);
+        let sealed = store.num_bytes_sealed();
+        assert_eq!(sealed, total_created);
+
+        // Evict (delete) all
+        for oid in &oids {
+            store.delete_object(oid).unwrap();
+        }
+
+        assert_eq!(store.num_objects(), 0);
+        assert_eq!(store.num_bytes_sealed(), 0);
+        assert_eq!(store.num_bytes_in_use(), 0);
+    }
+
+    #[test]
+    fn test_stats_ref_count_pass_through() {
+        // Port of ObjectStatsCollectorTest::RefCountPassThrough
+        let mut store = ObjectStore::new();
+
+        let oid1 = make_oid(130);
+        let info1 = ObjectInfo {
+            object_id: oid1,
+            data_size: 100,
+            ..Default::default()
+        };
+        store
+            .create_object(dummy_allocation(), info1, ObjectSource::CreatedByWorker)
+            .unwrap();
+
+        let oid2 = make_oid(131);
+        let info2 = ObjectInfo {
+            object_id: oid2,
+            data_size: 200,
+            ..Default::default()
+        };
+        store
+            .create_object(dummy_allocation(), info2, ObjectSource::RestoredFromStorage)
+            .unwrap();
+
+        assert_eq!(store.num_bytes_unsealed(), 300);
+        assert_eq!(store.num_bytes_sealed(), 0);
+
+        // Add ref to oid1
+        store.get_object_mut(&oid1).unwrap().incr_ref();
+        assert_eq!(store.get_object(&oid1).unwrap().ref_count(), 1);
+
+        // Seal oid1
+        store.seal_object(&oid1).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 100);
+        assert_eq!(store.num_bytes_unsealed(), 200);
+
+        // Add another ref to oid1
+        store.get_object_mut(&oid1).unwrap().incr_ref();
+        assert_eq!(store.get_object(&oid1).unwrap().ref_count(), 2);
+
+        // Add ref to oid2
+        store.get_object_mut(&oid2).unwrap().incr_ref();
+
+        // Seal oid2
+        store.seal_object(&oid2).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 300);
+        assert_eq!(store.num_bytes_unsealed(), 0);
+
+        // Add another ref to oid2
+        store.get_object_mut(&oid2).unwrap().incr_ref();
+
+        // Remove refs from oid2
+        store.get_object_mut(&oid2).unwrap().decr_ref();
+        assert_eq!(store.get_object(&oid2).unwrap().ref_count(), 1);
+
+        store.get_object_mut(&oid2).unwrap().decr_ref();
+        assert_eq!(store.get_object(&oid2).unwrap().ref_count(), 0);
+
+        // Remove refs from oid1
+        store.get_object_mut(&oid1).unwrap().decr_ref();
+        assert_eq!(store.get_object(&oid1).unwrap().ref_count(), 1);
+
+        store.get_object_mut(&oid1).unwrap().decr_ref();
+        assert_eq!(store.get_object(&oid1).unwrap().ref_count(), 0);
+
+        // Delete both
+        store.delete_object(&oid1).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 200);
+
+        store.delete_object(&oid2).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 0);
+        assert_eq!(store.num_objects(), 0);
+        assert_eq!(store.cumulative_created_bytes(), 300);
+    }
+
+    #[test]
+    fn test_stats_source_tracking() {
+        // Port of stats_collector_test source tracking: verify source is preserved
+        let mut store = ObjectStore::new();
+
+        let oid1 = make_oid(140);
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid1, data_size: 100, ..Default::default() },
+                ObjectSource::CreatedByWorker,
+            )
+            .unwrap();
+
+        let oid2 = make_oid(141);
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid2, data_size: 200, ..Default::default() },
+                ObjectSource::RestoredFromStorage,
+            )
+            .unwrap();
+
+        let oid3 = make_oid(142);
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid3, data_size: 300, ..Default::default() },
+                ObjectSource::ReceivedFromRemoteRaylet,
+            )
+            .unwrap();
+
+        let oid4 = make_oid(143);
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid4, data_size: 400, ..Default::default() },
+                ObjectSource::ErrorStoredByRaylet,
+            )
+            .unwrap();
+
+        assert_eq!(store.get_object(&oid1).unwrap().source(), ObjectSource::CreatedByWorker);
+        assert_eq!(store.get_object(&oid2).unwrap().source(), ObjectSource::RestoredFromStorage);
+        assert_eq!(store.get_object(&oid3).unwrap().source(), ObjectSource::ReceivedFromRemoteRaylet);
+        assert_eq!(store.get_object(&oid4).unwrap().source(), ObjectSource::ErrorStoredByRaylet);
+    }
+
+    #[test]
+    fn test_stats_sealed_vs_unsealed_bytes() {
+        // Port of stats tracking: verify sealed/unsealed byte counts through lifecycle
+        let mut store = ObjectStore::new();
+
+        let oid1 = make_oid(150);
+        let oid2 = make_oid(151);
+        let oid3 = make_oid(152);
+
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid1, data_size: 100, ..Default::default() },
+                ObjectSource::CreatedByWorker,
+            )
+            .unwrap();
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid2, data_size: 200, ..Default::default() },
+                ObjectSource::CreatedByWorker,
+            )
+            .unwrap();
+        store
+            .create_object(
+                dummy_allocation(),
+                ObjectInfo { object_id: oid3, data_size: 300, ..Default::default() },
+                ObjectSource::CreatedByWorker,
+            )
+            .unwrap();
+
+        assert_eq!(store.num_bytes_unsealed(), 600);
+        assert_eq!(store.num_bytes_sealed(), 0);
+
+        store.seal_object(&oid1).unwrap();
+        assert_eq!(store.num_bytes_unsealed(), 500);
+        assert_eq!(store.num_bytes_sealed(), 100);
+
+        store.seal_object(&oid2).unwrap();
+        assert_eq!(store.num_bytes_unsealed(), 300);
+        assert_eq!(store.num_bytes_sealed(), 300);
+
+        // Delete unsealed object
+        store.delete_object(&oid3).unwrap();
+        assert_eq!(store.num_bytes_unsealed(), 0);
+        assert_eq!(store.num_bytes_sealed(), 300);
+
+        // Delete sealed object
+        store.delete_object(&oid1).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 200);
+
+        store.delete_object(&oid2).unwrap();
+        assert_eq!(store.num_bytes_sealed(), 0);
+        assert_eq!(store.num_bytes_in_use(), 0);
+        assert_eq!(store.cumulative_created_bytes(), 600);
+    }
+
     #[test]
     fn test_object_store_default() {
         let store = ObjectStore::default();

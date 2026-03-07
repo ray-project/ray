@@ -343,4 +343,81 @@ mod tests {
         assert_eq!(config.max_wait_timeout, Duration::from_secs(30));
         assert!(config.block_on_pressure);
     }
+
+    // ─── Additional back-pressure tests ──────────────────────────────
+
+    #[tokio::test]
+    async fn test_set_full_then_not_full_then_full_again() {
+        let ctrl = BackPressureController::new(BackPressureConfig {
+            max_wait_timeout: Duration::from_millis(50),
+            poll_interval: Duration::from_millis(5),
+            block_on_pressure: true,
+        });
+
+        // Toggle full state multiple times.
+        assert!(!ctrl.is_full());
+        ctrl.set_full();
+        assert!(ctrl.is_full());
+        ctrl.set_not_full();
+        assert!(!ctrl.is_full());
+        ctrl.set_full();
+        assert!(ctrl.is_full());
+
+        // Should still time out when full.
+        let result = ctrl.wait_for_space(100).await;
+        assert!(matches!(result, Err(BackPressureError::TimedOut { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_before_any_waiter() {
+        let ctrl = BackPressureController::new(BackPressureConfig::default());
+        ctrl.set_full();
+        ctrl.shutdown();
+
+        // Waiter should immediately get Shutdown error.
+        let result = ctrl.wait_for_space(100).await;
+        assert!(matches!(result, Err(BackPressureError::Shutdown)));
+    }
+
+    #[tokio::test]
+    async fn test_non_blocking_passes_when_not_full() {
+        let ctrl = BackPressureController::new(BackPressureConfig {
+            block_on_pressure: false,
+            ..Default::default()
+        });
+
+        // Not full => should pass.
+        ctrl.wait_for_space(1024).await.unwrap();
+        assert_eq!(ctrl.stats().num_rejected, 0);
+    }
+
+    #[tokio::test]
+    async fn test_stats_bytes_accumulate() {
+        let ctrl = BackPressureController::new(BackPressureConfig {
+            max_wait_timeout: Duration::from_millis(10),
+            poll_interval: Duration::from_millis(5),
+            block_on_pressure: true,
+        });
+        ctrl.set_full();
+
+        let _ = ctrl.wait_for_space(500).await;
+        let _ = ctrl.wait_for_space(300).await;
+        let _ = ctrl.wait_for_space(200).await;
+
+        let stats = ctrl.stats();
+        assert_eq!(stats.num_blocked, 3);
+        assert_eq!(stats.total_bytes_blocked, 1000);
+    }
+
+    #[tokio::test]
+    async fn test_config_accessor() {
+        let ctrl = BackPressureController::new(BackPressureConfig {
+            max_wait_timeout: Duration::from_secs(42),
+            poll_interval: Duration::from_millis(99),
+            block_on_pressure: false,
+        });
+        assert_eq!(ctrl.config().max_wait_timeout, Duration::from_secs(42));
+        assert_eq!(ctrl.config().poll_interval, Duration::from_millis(99));
+        assert!(!ctrl.config().block_on_pressure);
+    }
 }

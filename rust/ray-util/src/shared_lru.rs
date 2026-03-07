@@ -156,4 +156,79 @@ mod tests {
         assert_eq!(cache.get(&"a"), Some(10));
         assert_eq!(cache.len(), 1);
     }
+
+    // --- Ported from C++ shared_lru_test.cc ---
+
+    /// Port of C++ PutAndGet: capacity-1 cache, insert/evict/delete.
+    #[test]
+    fn test_put_and_get_capacity_one() {
+        let cache = SharedLruCache::new(1);
+
+        // No value initially.
+        assert_eq!(cache.get(&"1"), None);
+
+        // Put and get.
+        cache.put("1", "one".to_string());
+        assert_eq!(cache.get(&"1"), Some("one".to_string()));
+
+        // Eviction: inserting "2" evicts "1" (capacity=1).
+        cache.put("2", "two".to_string());
+        assert_eq!(cache.get(&"1"), None);
+        assert_eq!(cache.get(&"2"), Some("two".to_string()));
+
+        // Delete non-existent key returns None.
+        assert_eq!(cache.pop(&"1"), None);
+        assert_eq!(cache.get(&"1"), None);
+    }
+
+    /// Port of C++ SameKeyTest: putting the same key updates the value.
+    #[test]
+    fn test_same_key_update() {
+        let cache = SharedLruCache::new(2);
+
+        cache.put(1, 1);
+        assert_eq!(cache.get(&1), Some(1));
+
+        cache.put(1, 2);
+        assert_eq!(cache.get(&1), Some(2));
+    }
+
+    /// Port of C++ FactoryTest: concurrent get_or_create with factory.
+    /// Since our SharedLruCache doesn't have get_or_create, we test
+    /// concurrent put/get which exercises the same Mutex path.
+    #[test]
+    fn test_concurrent_access() {
+        use std::sync::Arc;
+        let cache = Arc::new(SharedLruCache::new(10));
+        let mut handles = Vec::new();
+
+        for i in 0..100 {
+            let cache = cache.clone();
+            handles.push(std::thread::spawn(move || {
+                cache.put(i % 10, i);
+                cache.get(&(i % 10))
+            }));
+        }
+
+        for h in handles {
+            let val = h.join().unwrap();
+            // Value should be Some (we just inserted).
+            assert!(val.is_some());
+        }
+    }
+
+    /// Port of C++ CustomizedKey: custom key types that implement Hash + Eq.
+    #[test]
+    fn test_custom_key_type() {
+        #[derive(Hash, Eq, PartialEq, Clone)]
+        struct CustomKey(String);
+
+        let cache = SharedLruCache::<CustomKey, String>::new(2);
+        let k1 = CustomKey("hello".to_string());
+        let k2 = CustomKey("hello".to_string());
+
+        cache.put(k1, "val".to_string());
+        // k2 is equal to k1, so should find the value.
+        assert_eq!(cache.get(&k2), Some("val".to_string()));
+    }
 }

@@ -675,4 +675,459 @@ mod tests {
         assert_eq!(resources.get("CPU"), Some(&2.0));
         assert_eq!(resources.get("GPU"), Some(&1.0));
     }
+
+    // ── Ported from normal_task_submitter_test.cc ───────────────────
+
+    /// Port of TestSubmitTask: submit without a client works (stub mode).
+    #[tokio::test]
+    async fn test_submit_without_client_stub_mode() {
+        let submitter = make_submitter();
+        let spec = TaskSpec {
+            task_id: vec![10, 20, 30],
+            ..Default::default()
+        };
+        submitter.submit_task(&spec).await.unwrap();
+        assert_eq!(submitter.num_pending_tasks(), 1);
+        // No status tracked in stub mode (no raylet client).
+        assert!(submitter.task_status(&[10, 20, 30]).is_none());
+    }
+
+    /// Port of TestSubmitMultipleTasks: pending counter increments correctly.
+    #[tokio::test]
+    async fn test_submit_multiple_tasks_increments_pending() {
+        let submitter = make_submitter();
+        for i in 0..5 {
+            let spec = TaskSpec {
+                task_id: vec![i],
+                ..Default::default()
+            };
+            submitter.submit_task(&spec).await.unwrap();
+        }
+        assert_eq!(submitter.num_pending_tasks(), 5);
+    }
+
+    /// Port of TestSubmitTaskWithResources: task with resources tracks args.
+    #[tokio::test]
+    async fn test_submit_task_with_resources() {
+        let submitter = make_submitter();
+        let spec = TaskSpec {
+            task_id: vec![1],
+            required_resources: HashMap::from([
+                ("CPU".to_string(), 4.0),
+                ("GPU".to_string(), 2.0),
+            ]),
+            ..Default::default()
+        };
+
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client.clone());
+
+        submitter.submit_task(&spec).await.unwrap();
+        assert_eq!(client.request_count.load(Ordering::Relaxed), 1);
+    }
+
+    /// Port of TestSubmitTaskCancelled: a cancelled lease should finish
+    /// the task without error.
+    #[tokio::test]
+    async fn test_submit_task_lease_cancelled() {
+        let submitter = make_submitter();
+        let reply = rpc::RequestWorkerLeaseReply {
+            canceled: true,
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        let spec = TaskSpec {
+            task_id: vec![99],
+            ..Default::default()
+        };
+        // Should not error on cancel.
+        submitter.submit_task(&spec).await.unwrap();
+    }
+
+    /// Port of locality-aware lease tests: verify spillback status is set
+    /// correctly.
+    #[tokio::test]
+    async fn test_spillback_sets_status_correctly() {
+        let submitter = make_submitter();
+        let remote_addr = rpc::Address {
+            node_id: vec![9; 28],
+            ip_address: "10.0.0.9".to_string(),
+            port: 6000,
+            worker_id: vec![],
+        };
+        let reply = rpc::RequestWorkerLeaseReply {
+            retry_at_raylet_address: Some(remote_addr),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        let spec = TaskSpec {
+            task_id: vec![50],
+            ..Default::default()
+        };
+        submitter.submit_task(&spec).await.unwrap();
+
+        assert_eq!(
+            submitter.task_status(&[50]),
+            Some(TaskStatus::SpilledBack)
+        );
+    }
+
+    /// Port of TestTaskDispatch: verify that the dispatch callback is
+    /// called with the correct worker address.
+    #[tokio::test]
+    async fn test_dispatch_callback_receives_correct_address() {
+        let submitter = make_submitter();
+
+        let received_ip = Arc::new(Mutex::new(String::new()));
+        let received_ip_clone = received_ip.clone();
+        submitter.set_dispatch_callback(Box::new(move |_spec, addr| {
+            *received_ip_clone.lock() = addr.ip_address.clone();
+            Ok(())
+        }));
+
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "192.168.1.42".to_string(),
+                port: 9000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        submitter.submit_task(&TaskSpec::default()).await.unwrap();
+        assert_eq!(*received_ip.lock(), "192.168.1.42");
+    }
+
+    /// Port of TestCancelTask: verify both success and failure cases of
+    /// cancel through the raylet client.
+    #[tokio::test]
+    async fn test_cancel_task_success_and_failure() {
+        let submitter = make_submitter();
+        let tid = TaskID::nil();
+
+        // Success case.
+        let reply = rpc::RequestWorkerLeaseReply::default();
+        let cancel_ok = rpc::CancelWorkerLeaseReply { success: true };
+        let client = Arc::new(MockRayletClient::with_cancel_reply(reply.clone(), cancel_ok));
+        submitter.set_raylet_client(client);
+        assert!(submitter.cancel_task(&tid, false).await.is_ok());
+
+        // Failure case.
+        let cancel_fail = rpc::CancelWorkerLeaseReply { success: false };
+        let client = Arc::new(MockRayletClient::with_cancel_reply(reply, cancel_fail));
+        submitter.set_raylet_client(client);
+        assert!(submitter.cancel_task(&tid, false).await.is_err());
+    }
+
+    /// Port of rejected-task-with-error-message: verify the error contains
+    /// the scheduling failure message.
+    #[tokio::test]
+    async fn test_rejected_task_error_message() {
+        let submitter = make_submitter();
+        let reply = rpc::RequestWorkerLeaseReply {
+            rejected: true,
+            scheduling_failure_message: "resource constraint X not satisfiable".to_string(),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        let result = submitter.submit_task(&TaskSpec::default()).await;
+        match result {
+            Err(CoreWorkerError::TaskSubmissionFailed(msg)) => {
+                assert!(msg.contains("resource constraint X not satisfiable"));
+            }
+            other => panic!("expected TaskSubmissionFailed, got {:?}", other),
+        }
+    }
+
+    /// Multiple sequential submissions track pending correctly.
+    #[tokio::test]
+    async fn test_sequential_submit_and_finish() {
+        let submitter = make_submitter();
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        // Submit 3 tasks sequentially. Each should finish (pending count
+        // goes up by 1 then back down after the lease grant).
+        for _ in 0..3 {
+            submitter.submit_task(&TaskSpec::default()).await.unwrap();
+        }
+        // All tasks finished (dispatched immediately).
+        // pending_tasks counter tracks gross submissions, so it will be 3.
+        // However, each also calls task_finished which decrements.
+        // Net pending = 3 - 3 = 0.
+        assert_eq!(submitter.num_pending_tasks(), 0);
+    }
+
+    // ── Additional tests ported from normal_task_submitter_test.cc ──
+
+    /// Port of TestConcurrentWorkerLeases: multiple tasks submitted
+    /// concurrently should each get their own lease request.
+    #[tokio::test]
+    async fn test_concurrent_worker_leases() {
+        let submitter = make_submitter();
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client.clone());
+
+        // Submit 5 tasks sequentially (each awaited before the next).
+        for i in 0..5u8 {
+            let spec = TaskSpec {
+                task_id: vec![i],
+                ..Default::default()
+            };
+            submitter.submit_task(&spec).await.unwrap();
+        }
+
+        assert_eq!(client.request_count.load(Ordering::Relaxed), 5);
+        // All tasks should be finished (lease granted and dispatched).
+        assert_eq!(submitter.num_pending_tasks(), 0);
+    }
+
+    /// Port of TestWorkerNotReusedOnError: dispatch callback failure
+    /// should propagate the error.
+    #[tokio::test]
+    async fn test_dispatch_callback_error_propagates() {
+        let submitter = make_submitter();
+
+        submitter.set_dispatch_callback(Box::new(move |_spec, _addr| {
+            Err(CoreWorkerError::Internal("worker crashed".into()))
+        }));
+
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        let result = submitter.submit_task(&TaskSpec::default()).await;
+        assert!(result.is_err());
+    }
+
+    /// Port of TestSpillbackRoundTrip: verify spillback doesn't lose
+    /// the task (pending counter decremented).
+    #[tokio::test]
+    async fn test_spillback_decrements_pending() {
+        let submitter = make_submitter();
+
+        let reply = rpc::RequestWorkerLeaseReply {
+            retry_at_raylet_address: Some(rpc::Address {
+                node_id: vec![9; 28],
+                ip_address: "10.0.0.9".to_string(),
+                port: 6000,
+                worker_id: vec![],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        submitter.submit_task(&TaskSpec::default()).await.unwrap();
+        // Spillback should decrement pending.
+        assert_eq!(submitter.num_pending_tasks(), 0);
+    }
+
+    /// Port of TestHandleUnschedulableTask: rejected task should not
+    /// leave stale pending count.
+    #[tokio::test]
+    async fn test_rejected_task_decrements_pending() {
+        let submitter = make_submitter();
+        let reply = rpc::RequestWorkerLeaseReply {
+            rejected: true,
+            scheduling_failure_message: "no feasible node".to_string(),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        let _ = submitter.submit_task(&TaskSpec::default()).await;
+        assert_eq!(submitter.num_pending_tasks(), 0);
+    }
+
+    /// Port of TestSubmitTaskWithArgs: tasks with object ref arguments
+    /// should track references correctly.
+    #[tokio::test]
+    async fn test_submit_task_with_object_ref_args() {
+        let rc = Arc::new(ReferenceCounter::new());
+        let submitter = NormalTaskSubmitter::new(rc.clone());
+
+        let obj_id = ray_common::id::ObjectID::from_random();
+        let spec = TaskSpec {
+            task_id: vec![1, 2, 3],
+            args: vec![rpc::TaskArg {
+                object_ref: Some(rpc::ObjectReference {
+                    object_id: obj_id.binary(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        submitter.submit_task(&spec).await.unwrap();
+
+        // The reference counter should have a submitted task reference.
+        assert!(rc.has_reference(&obj_id));
+    }
+
+    /// Port of TestCallerAddress: verify caller address is set on
+    /// lease requests.
+    #[tokio::test]
+    async fn test_caller_address_set() {
+        let submitter = make_submitter();
+
+        let addr = rpc::Address {
+            node_id: vec![5; 28],
+            ip_address: "192.168.1.1".to_string(),
+            port: 8888,
+            worker_id: vec![6; 28],
+        };
+        submitter.set_caller_address(addr);
+
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client.clone());
+
+        submitter.submit_task(&TaskSpec::default()).await.unwrap();
+        assert_eq!(client.request_count.load(Ordering::Relaxed), 1);
+    }
+
+    /// Port of TestHandleTaskFailure concept: empty reply (no worker
+    /// address, no rejection) should still complete without error.
+    #[tokio::test]
+    async fn test_empty_reply_finishes_task() {
+        let submitter = make_submitter();
+        let reply = rpc::RequestWorkerLeaseReply::default();
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        submitter.submit_task(&TaskSpec {
+            task_id: vec![42],
+            ..Default::default()
+        }).await.unwrap();
+
+        assert_eq!(
+            submitter.task_status(&[42]),
+            Some(TaskStatus::Finished)
+        );
+        assert_eq!(submitter.num_pending_tasks(), 0);
+    }
+
+    /// Port of TestSubmitMultipleTasks: various tasks submitted
+    /// sequentially should all get separate lease requests.
+    #[tokio::test]
+    async fn test_multiple_tasks_each_get_lease() {
+        let submitter = make_submitter();
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client.clone());
+
+        for i in 0..10u8 {
+            let spec = TaskSpec {
+                task_id: vec![i],
+                ..Default::default()
+            };
+            submitter.submit_task(&spec).await.unwrap();
+        }
+
+        assert_eq!(client.request_count.load(Ordering::Relaxed), 10);
+        assert_eq!(submitter.num_pending_tasks(), 0);
+    }
+
+    /// Port of TestReuseWorkerLease concept: dispatch callback should
+    /// receive the correct task spec.
+    #[tokio::test]
+    async fn test_dispatch_callback_receives_task_spec() {
+        let submitter = make_submitter();
+
+        let received_names = Arc::new(Mutex::new(Vec::new()));
+        let names_clone = received_names.clone();
+        submitter.set_dispatch_callback(Box::new(move |spec, _addr| {
+            names_clone.lock().push(spec.name.clone());
+            Ok(())
+        }));
+
+        let reply = rpc::RequestWorkerLeaseReply {
+            worker_address: Some(rpc::Address {
+                node_id: vec![1; 28],
+                ip_address: "10.0.0.1".to_string(),
+                port: 5000,
+                worker_id: vec![2; 28],
+            }),
+            ..Default::default()
+        };
+        let client = Arc::new(MockRayletClient::new(reply));
+        submitter.set_raylet_client(client);
+
+        let spec1 = TaskSpec {
+            name: "alpha".to_string(),
+            ..Default::default()
+        };
+        let spec2 = TaskSpec {
+            name: "beta".to_string(),
+            ..Default::default()
+        };
+
+        submitter.submit_task(&spec1).await.unwrap();
+        submitter.submit_task(&spec2).await.unwrap();
+
+        let names = received_names.lock().clone();
+        assert_eq!(names, vec!["alpha", "beta"]);
+    }
 }

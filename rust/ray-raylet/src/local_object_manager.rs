@@ -557,4 +557,183 @@ mod tests {
         let to_spill = mgr.select_objects_to_spill();
         assert_eq!(to_spill.len(), 2);
     }
+
+    // --- Additional tests ported from C++ local_object_manager_test.cc ---
+
+    #[test]
+    fn test_spill_multiple_objects_in_batch() {
+        let mut mgr = LocalObjectManager::new(LocalObjectManagerConfig {
+            min_spilling_size: 200, // need at least 200 bytes
+            max_spill_batch_count: 10,
+            ..make_config()
+        });
+
+        // Pin 3 objects of different sizes
+        mgr.pin_object(make_oid(1), 50, 0);
+        mgr.pin_object(make_oid(2), 80, 0);
+        mgr.pin_object(make_oid(3), 120, 0);
+
+        let to_spill = mgr.select_objects_to_spill();
+        // Sorted largest first: 120, 80, 50
+        // 120 + 80 = 200 >= min_spilling_size, so we stop at 2
+        assert_eq!(to_spill.len(), 2);
+        assert_eq!(to_spill[0].1, 120);
+        assert_eq!(to_spill[1].1, 80);
+    }
+
+    #[test]
+    fn test_spill_completed_then_select_excludes_spilled() {
+        let mut mgr = LocalObjectManager::new(LocalObjectManagerConfig {
+            min_spilling_size: 10,
+            ..make_config()
+        });
+
+        let oid1 = make_oid(1);
+        let oid2 = make_oid(2);
+        let oid3 = make_oid(3);
+
+        mgr.pin_object(oid1, 100, 0);
+        mgr.pin_object(oid2, 200, 0);
+        mgr.pin_object(oid3, 300, 0);
+
+        // Spill oid3 completely
+        mgr.mark_pending_spill(&[oid3]);
+        mgr.spill_completed(&oid3, "file:///spill/3".to_string());
+
+        // Spill oid2 completely
+        mgr.mark_pending_spill(&[oid2]);
+        mgr.spill_completed(&oid2, "file:///spill/2".to_string());
+
+        // Only oid1 should be eligible for spilling
+        let to_spill = mgr.select_objects_to_spill();
+        assert_eq!(to_spill.len(), 1);
+        assert_eq!(to_spill[0].0, oid1);
+    }
+
+    #[test]
+    fn test_mark_for_deletion_unpinned_object() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        // Mark a non-pinned object for deletion — should still queue it
+        let oid = make_oid(42);
+        mgr.mark_for_deletion(oid);
+        assert_eq!(mgr.num_pending_deletion(), 1);
+        assert!(!mgr.is_pinned(&oid));
+    }
+
+    #[test]
+    fn test_flush_empty() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let batch = mgr.flush_freed_objects();
+        assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn test_pin_multiple_objects_stats() {
+        let mut mgr = LocalObjectManager::new(make_config());
+
+        mgr.pin_object(make_oid(1), 100, 10);
+        mgr.pin_object(make_oid(2), 200, 20);
+        mgr.pin_object(make_oid(3), 300, 30);
+
+        let stats = mgr.stats();
+        assert_eq!(stats.num_pinned, 3);
+        assert_eq!(stats.pinned_bytes, 660); // (100+10)+(200+20)+(300+30)
+        assert_eq!(stats.num_pending_spill, 0);
+        assert_eq!(stats.total_bytes_spilled, 0);
+        assert_eq!(stats.total_objects_spilled, 0);
+    }
+
+    #[test]
+    fn test_spill_and_release_interleaved() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid = make_oid(1);
+
+        mgr.pin_object(oid, 100, 0);
+        mgr.mark_pending_spill(&[oid]);
+        assert_eq!(mgr.stats().pending_spill_bytes, 100);
+
+        // Release while spill is pending — should clean up both
+        mgr.release_object(&oid);
+        assert_eq!(mgr.stats().pending_spill_bytes, 0);
+        assert_eq!(mgr.stats().num_pending_spill, 0);
+        assert_eq!(mgr.num_pinned(), 0);
+    }
+
+    #[test]
+    fn test_mark_pending_spill_idempotent() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid = make_oid(1);
+
+        mgr.pin_object(oid, 100, 0);
+        mgr.mark_pending_spill(&[oid]);
+        mgr.mark_pending_spill(&[oid]); // second call should be no-op
+        assert_eq!(mgr.stats().pending_spill_bytes, 100);
+        assert_eq!(mgr.stats().num_pending_spill, 1);
+    }
+
+    #[test]
+    fn test_spill_failed_then_reattempt() {
+        let mut mgr = LocalObjectManager::new(LocalObjectManagerConfig {
+            min_spilling_size: 10,
+            ..make_config()
+        });
+        let oid = make_oid(1);
+
+        mgr.pin_object(oid, 100, 0);
+        mgr.mark_pending_spill(&[oid]);
+        mgr.spill_failed(&oid);
+
+        // Object should still be pinned and eligible for re-spill
+        assert!(mgr.is_pinned(&oid));
+        let to_spill = mgr.select_objects_to_spill();
+        assert_eq!(to_spill.len(), 1);
+        assert_eq!(to_spill[0].0, oid);
+    }
+
+    #[test]
+    fn test_cumulative_spill_stats() {
+        let mut mgr = LocalObjectManager::new(make_config());
+
+        for i in 1..=5 {
+            let oid = make_oid(i);
+            mgr.pin_object(oid, 100 * i as i64, 0);
+            mgr.mark_pending_spill(&[oid]);
+            mgr.spill_completed(&oid, format!("file:///spill/{}", i));
+        }
+
+        let stats = mgr.stats();
+        assert_eq!(stats.total_objects_spilled, 5);
+        // 100 + 200 + 300 + 400 + 500 = 1500
+        assert_eq!(stats.total_bytes_spilled, 1500);
+    }
+
+    #[test]
+    fn test_delete_then_flush_all() {
+        let mut mgr = LocalObjectManager::new(LocalObjectManagerConfig {
+            free_objects_batch_size: 100, // large batch size
+            ..make_config()
+        });
+
+        for i in 0..10u8 {
+            mgr.pin_object(make_oid(i), 50, 0);
+            mgr.mark_for_deletion(make_oid(i));
+        }
+
+        assert_eq!(mgr.num_pending_deletion(), 10);
+        let batch = mgr.flush_freed_objects();
+        assert_eq!(batch.len(), 10);
+        assert_eq!(mgr.num_pending_deletion(), 0);
+    }
+
+    #[test]
+    fn test_get_spill_url_none_when_not_spilled() {
+        let mut mgr = LocalObjectManager::new(make_config());
+        let oid = make_oid(1);
+        mgr.pin_object(oid, 100, 0);
+        assert!(mgr.get_spill_url(&oid).is_none());
+
+        // Mark pending but not completed
+        mgr.mark_pending_spill(&[oid]);
+        assert!(mgr.get_spill_url(&oid).is_none());
+    }
 }

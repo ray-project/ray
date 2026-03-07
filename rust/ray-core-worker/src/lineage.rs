@@ -441,4 +441,143 @@ mod tests {
         assert!(lr.can_reconstruct(&oid2));
         assert_eq!(lr.num_objects_with_lineage(), 2);
     }
+
+    // ─── Additional lineage tests ported from C++ patterns ───────────
+
+    #[test]
+    fn test_fail_reconstruction() {
+        let lr = LineageReconstructor::default();
+        let tid = random_tid();
+        let oid = random_oid();
+        lr.record_lineage(tid, b"spec".to_vec(), vec![], vec![oid]);
+
+        lr.start_reconstruction(&oid);
+        assert!(lr.is_reconstructing(&oid));
+
+        lr.fail_reconstruction(&oid);
+        assert!(!lr.is_reconstructing(&oid));
+        // Reconstruction count was already incremented by start_reconstruction.
+        // The object can still be reconstructed again (up to max).
+        assert!(lr.can_reconstruct(&oid));
+    }
+
+    #[test]
+    fn test_reconstruction_nonexistent_object() {
+        let lr = LineageReconstructor::default();
+        let oid = random_oid();
+        assert!(!lr.start_reconstruction(&oid));
+        assert!(!lr.is_reconstructing(&oid));
+    }
+
+    #[test]
+    fn test_lineage_chain_diamond() {
+        // Diamond dependency: A -> C, B -> C (both A and B produce objects that C depends on).
+        let lr = LineageReconstructor::default();
+
+        let task_a = random_tid();
+        let obj_a = random_oid();
+        lr.record_lineage(task_a, b"a".to_vec(), vec![], vec![obj_a]);
+
+        let task_b = random_tid();
+        let obj_b = random_oid();
+        lr.record_lineage(task_b, b"b".to_vec(), vec![], vec![obj_b]);
+
+        let task_c = random_tid();
+        let obj_c = random_oid();
+        lr.record_lineage(task_c, b"c".to_vec(), vec![obj_a, obj_b], vec![obj_c]);
+
+        let chain = lr.get_lineage_chain(&obj_c);
+        assert_eq!(chain.len(), 3);
+        assert!(chain.contains(&task_a));
+        assert!(chain.contains(&task_b));
+        assert!(chain.contains(&task_c));
+    }
+
+    #[test]
+    fn test_lineage_chain_no_deps() {
+        let lr = LineageReconstructor::default();
+        let tid = random_tid();
+        let oid = random_oid();
+        lr.record_lineage(tid, b"leaf".to_vec(), vec![], vec![oid]);
+
+        let chain = lr.get_lineage_chain(&oid);
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain[0], tid);
+    }
+
+    #[test]
+    fn test_lineage_chain_nonexistent() {
+        let lr = LineageReconstructor::default();
+        let chain = lr.get_lineage_chain(&random_oid());
+        assert!(chain.is_empty());
+    }
+
+    #[test]
+    fn test_remove_lineage_clears_object_mapping() {
+        let lr = LineageReconstructor::default();
+        let tid = random_tid();
+        let oid1 = random_oid();
+        let oid2 = random_oid();
+
+        lr.record_lineage(tid, b"spec".to_vec(), vec![], vec![oid1, oid2]);
+        assert_eq!(lr.num_objects_with_lineage(), 2);
+
+        lr.remove_lineage(&tid);
+        assert_eq!(lr.num_objects_with_lineage(), 0);
+        assert_eq!(lr.num_entries(), 0);
+        assert!(!lr.can_reconstruct(&oid1));
+        assert!(!lr.can_reconstruct(&oid2));
+    }
+
+    #[test]
+    fn test_eviction_never_policy() {
+        let config = LineageConfig {
+            max_lineage_entries: 2,
+            eviction_policy: EvictionPolicy::Never,
+            max_reconstructions: 5,
+        };
+        let lr = LineageReconstructor::new(config);
+
+        // Add 5 entries; with Never policy, no eviction should happen.
+        for _ in 0..5 {
+            lr.record_lineage(random_tid(), b"spec".to_vec(), vec![], vec![random_oid()]);
+        }
+        assert_eq!(lr.num_entries(), 5);
+    }
+
+    #[test]
+    fn test_reconstruction_count_persists_across_start_finish() {
+        let config = LineageConfig {
+            max_reconstructions: 3,
+            ..Default::default()
+        };
+        let lr = LineageReconstructor::new(config);
+        let tid = random_tid();
+        let oid = random_oid();
+
+        lr.record_lineage(tid, b"spec".to_vec(), vec![], vec![oid]);
+
+        // 1st reconstruction.
+        assert!(lr.start_reconstruction(&oid));
+        lr.finish_reconstruction(&oid);
+
+        // 2nd reconstruction.
+        assert!(lr.start_reconstruction(&oid));
+        lr.fail_reconstruction(&oid);
+
+        // 3rd reconstruction.
+        assert!(lr.start_reconstruction(&oid));
+        lr.finish_reconstruction(&oid);
+
+        // 4th attempt should fail (max=3).
+        assert!(!lr.start_reconstruction(&oid));
+    }
+
+    #[test]
+    fn test_default_config_values() {
+        let config = LineageConfig::default();
+        assert_eq!(config.max_lineage_entries, 100_000);
+        assert_eq!(config.eviction_policy, EvictionPolicy::SizeLimit);
+        assert_eq!(config.max_reconstructions, 5);
+    }
 }

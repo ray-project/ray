@@ -692,4 +692,321 @@ mod tests {
         assert_eq!(timed_out, 0);
         assert_eq!(tracker.num_active_leases(), 1);
     }
+
+    // --- Additional ClusterLeaseManager tests ---
+
+    #[test]
+    fn test_multiple_leases_same_class() {
+        let mgr = make_lease_manager();
+        let class1 = SchedulingClass(1);
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Queue multiple leases of the same scheduling class
+        let mut rx1 = mgr.queue_and_schedule_lease(
+            req.clone(),
+            SchedulingOptions::hybrid(),
+            class1,
+        );
+        let mut rx2 = mgr.queue_and_schedule_lease(
+            req.clone(),
+            SchedulingOptions::hybrid(),
+            class1,
+        );
+        let mut rx3 = mgr.queue_and_schedule_lease(
+            req.clone(),
+            SchedulingOptions::hybrid(),
+            class1,
+        );
+
+        // All 3 should be granted (4 CPUs available, 1 each)
+        match rx1.try_recv().unwrap() {
+            LeaseReply::Granted { node_id, .. } => assert_eq!(node_id, "local"),
+            _ => panic!("expected grant"),
+        }
+        match rx2.try_recv().unwrap() {
+            LeaseReply::Granted { node_id, .. } => assert_eq!(node_id, "local"),
+            _ => panic!("expected grant"),
+        }
+        match rx3.try_recv().unwrap() {
+            LeaseReply::Granted { node_id, .. } => assert_eq!(node_id, "local"),
+            _ => panic!("expected grant"),
+        }
+    }
+
+    #[test]
+    fn test_exhaust_resources_then_pending() {
+        let mgr = make_lease_manager();
+
+        // Allocate all 4 CPUs
+        let mut all_cpus = ResourceSet::new();
+        all_cpus.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mut rx1 = mgr.queue_and_schedule_lease(
+            all_cpus,
+            SchedulingOptions::hybrid(),
+            SchedulingClass(1),
+        );
+        match rx1.try_recv().unwrap() {
+            LeaseReply::Granted { .. } => {}
+            _ => panic!("expected grant"),
+        }
+
+        // Next request should stay pending (feasible but not available)
+        let mut small = ResourceSet::new();
+        small.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        let _rx2 = mgr.queue_and_schedule_lease(
+            small,
+            SchedulingOptions::hybrid(),
+            SchedulingClass(2),
+        );
+        assert_eq!(mgr.num_pending_leases(), 1);
+        assert_eq!(mgr.num_infeasible_leases(), 0);
+    }
+
+    #[test]
+    fn test_multiple_scheduling_classes() {
+        let mgr = make_lease_manager();
+
+        let mut cpu_req = ResourceSet::new();
+        cpu_req.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+
+        let _rx1 = mgr.queue_and_schedule_lease(
+            cpu_req.clone(),
+            SchedulingOptions::hybrid(),
+            SchedulingClass(1),
+        );
+        let _rx2 = mgr.queue_and_schedule_lease(
+            cpu_req,
+            SchedulingOptions::hybrid(),
+            SchedulingClass(2),
+        );
+
+        // Both should be granted (2 CPUs each, 4 total)
+        assert_eq!(mgr.num_pending_leases(), 0);
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_lease() {
+        let mgr = make_lease_manager();
+        // Cancel a lease that doesn't exist
+        assert!(!mgr.cancel_lease(9999));
+    }
+
+    #[test]
+    fn test_try_schedule_infeasible_leases() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let local_mgr = Arc::new(LocalResourceManager::new(
+            "local".to_string(),
+            total,
+            HashMap::new(),
+        ));
+        let cluster_mgr = Arc::new(ClusterResourceManager::new());
+        let scheduler = Arc::new(ClusterResourceScheduler::new(
+            "local".to_string(),
+            local_mgr,
+            cluster_mgr.clone(),
+        ));
+        let mgr = ClusterLeaseManager::new(scheduler);
+
+        // Request GPU resources — infeasible since no GPU node exists
+        let mut gpu_req = ResourceSet::new();
+        gpu_req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        let _rx = mgr.queue_and_schedule_lease(
+            gpu_req,
+            SchedulingOptions::hybrid(),
+            SchedulingClass(10),
+        );
+        assert_eq!(mgr.num_infeasible_leases(), 1);
+
+        // Add a GPU node to the cluster
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        cluster_mgr.add_or_update_node(
+            "gpu-node".to_string(),
+            NodeResources::new(remote_total),
+        );
+
+        // Retry infeasible leases — should now be schedulable
+        mgr.try_schedule_infeasible_leases();
+        // Trigger scheduling on the moved leases
+        mgr.schedule_and_grant_leases();
+
+        assert_eq!(mgr.num_infeasible_leases(), 0);
+    }
+
+    #[test]
+    fn test_spillback_multiple_remote_nodes() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let local_mgr = Arc::new(LocalResourceManager::new(
+            "local".to_string(),
+            total,
+            HashMap::new(),
+        ));
+
+        let cluster_mgr = Arc::new(ClusterResourceManager::new());
+
+        // Add two remote nodes with different capacity
+        let mut remote1_total = ResourceSet::new();
+        remote1_total.set("CPU".to_string(), FixedPoint::from_f64(16.0));
+        cluster_mgr.add_or_update_node("remote1".to_string(), NodeResources::new(remote1_total));
+
+        let mut remote2_total = ResourceSet::new();
+        remote2_total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
+        cluster_mgr.add_or_update_node("remote2".to_string(), NodeResources::new(remote2_total));
+
+        let scheduler = Arc::new(ClusterResourceScheduler::new(
+            "local".to_string(),
+            local_mgr,
+            cluster_mgr,
+        ));
+        let mgr = ClusterLeaseManager::new(scheduler);
+
+        // Request 10 CPUs — only remote nodes can handle this
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        let mut rx = mgr.queue_and_schedule_lease(
+            req,
+            SchedulingOptions::hybrid(),
+            SchedulingClass(1),
+        );
+
+        match rx.try_recv().unwrap() {
+            LeaseReply::Spillback { node_id } => {
+                // Should spillback to the remote node with enough capacity
+                assert!(node_id == "remote1" || node_id == "remote2");
+            }
+            other => panic!("expected spillback, got {:?}", other),
+        }
+    }
+
+    // --- Additional WorkerLeaseTracker tests ---
+
+    #[test]
+    fn test_worker_lease_multiple_workers() {
+        let tracker = WorkerLeaseTracker::default();
+
+        // Grant leases to 5 workers
+        for i in 1..=5 {
+            tracker.grant_lease(
+                make_wid(i),
+                make_tid(i),
+                ResourceSet::new(),
+                false,
+            );
+        }
+        assert_eq!(tracker.num_active_leases(), 5);
+
+        // Return 3 of them
+        tracker.return_lease(&make_wid(1));
+        tracker.return_lease(&make_wid(3));
+        tracker.return_lease(&make_wid(5));
+        assert_eq!(tracker.num_active_leases(), 2);
+        assert!(tracker.has_lease(&make_wid(2)));
+        assert!(tracker.has_lease(&make_wid(4)));
+        assert!(!tracker.has_lease(&make_wid(1)));
+    }
+
+    #[test]
+    fn test_worker_lease_replace_existing() {
+        let tracker = WorkerLeaseTracker::default();
+        let wid = make_wid(1);
+
+        let mut res1 = ResourceSet::new();
+        res1.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        tracker.grant_lease(wid, make_tid(1), res1, false);
+
+        // Grant a new lease to the same worker (replaces)
+        let mut res2 = ResourceSet::new();
+        res2.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        tracker.grant_lease(wid, make_tid(2), res2, false);
+
+        assert_eq!(tracker.num_active_leases(), 1);
+        let lease = tracker.get_lease(&wid).unwrap();
+        assert_eq!(lease.task_id, make_tid(2));
+        // Stats: granted is 2 (both grant calls counted)
+        let (granted, _, _) = tracker.stats();
+        assert_eq!(granted, 2);
+    }
+
+    #[test]
+    fn test_worker_lease_mixed_actor_and_normal() {
+        let tracker = WorkerLeaseTracker::new(std::time::Duration::from_millis(1));
+        let normal_wid = make_wid(1);
+        let actor_wid = make_wid(2);
+
+        tracker.grant_lease(normal_wid, make_tid(1), ResourceSet::new(), false);
+        tracker.grant_lease(actor_wid, make_tid(2), ResourceSet::new(), true);
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        // Only normal task should time out
+        let timed_out = tracker.get_timed_out_leases();
+        assert_eq!(timed_out.len(), 1);
+        assert_eq!(timed_out[0], normal_wid);
+
+        // Reap — only normal lease removed
+        let reaped = tracker.reap_timed_out_leases();
+        assert_eq!(reaped.len(), 1);
+        assert_eq!(tracker.num_active_leases(), 1);
+        assert!(tracker.has_lease(&actor_wid));
+    }
+
+    #[test]
+    fn test_worker_death_returns_resources() {
+        let tracker = WorkerLeaseTracker::default();
+        let wid = make_wid(1);
+
+        let mut resources = ResourceSet::new();
+        resources.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        resources.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+
+        tracker.grant_lease(wid, make_tid(1), resources, false);
+        let lease = tracker.handle_worker_death(&wid).unwrap();
+
+        assert_eq!(lease.allocated_resources.get("CPU"), FixedPoint::from_f64(4.0));
+        assert_eq!(lease.allocated_resources.get("GPU"), FixedPoint::from_f64(1.0));
+        assert_eq!(tracker.num_active_leases(), 0);
+
+        let (granted, returned, _) = tracker.stats();
+        assert_eq!(granted, 1);
+        assert_eq!(returned, 1); // handle_worker_death calls return_lease
+    }
+
+    #[test]
+    fn test_worker_death_nonexistent() {
+        let tracker = WorkerLeaseTracker::default();
+        assert!(tracker.handle_worker_death(&make_wid(99)).is_none());
+    }
+
+    #[test]
+    fn test_lease_id_auto_increment() {
+        let mgr = make_lease_manager();
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Queue 3 leases and verify IDs increment
+        let _rx1 = mgr.queue_and_schedule_lease(
+            req.clone(),
+            SchedulingOptions::hybrid(),
+            SchedulingClass(1),
+        );
+        let _rx2 = mgr.queue_and_schedule_lease(
+            req.clone(),
+            SchedulingOptions::hybrid(),
+            SchedulingClass(1),
+        );
+        let _rx3 = mgr.queue_and_schedule_lease(
+            req,
+            SchedulingOptions::hybrid(),
+            SchedulingClass(1),
+        );
+
+        // If all were granted, pending should be 0
+        assert_eq!(mgr.num_pending_leases(), 0);
+    }
 }

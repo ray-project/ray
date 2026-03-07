@@ -479,6 +479,190 @@ mod tests {
         cleanup(&config);
     }
 
+    // --- Ported from C++ spilled_object_test.cc: ParseObjectURL ---
+
+    /// Port of C++ ParseObjectURL: various valid URL formats.
+    #[test]
+    fn test_parse_spill_url_various_formats() {
+        // file:// prefix with path
+        let (path, offset, size) =
+            parse_spill_url("file://path/to/file?offset=123&size=456").unwrap();
+        assert_eq!(path, "path/to/file");
+        assert_eq!(offset, 123);
+        assert_eq!(size, 456);
+
+        // http prefix (treated as path after stripping file:// if present)
+        let (path, offset, size) =
+            parse_spill_url("http://123?offset=123&size=456").unwrap();
+        assert_eq!(path, "http://123");
+        assert_eq!(offset, 123);
+        assert_eq!(size, 456);
+
+        // Windows-style path
+        let (path, offset, size) =
+            parse_spill_url("file:///C:/Users/file.txt?offset=123&size=456").unwrap();
+        assert_eq!(path, "/C:/Users/file.txt");
+        assert_eq!(offset, 123);
+        assert_eq!(size, 456);
+
+        // Plain unix path
+        let (path, offset, size) =
+            parse_spill_url("/tmp/file.txt?offset=123&size=456").unwrap();
+        assert_eq!(path, "/tmp/file.txt");
+        assert_eq!(offset, 123);
+        assert_eq!(size, 456);
+
+        // Long session path with large size
+        let long_url = "/tmp/ray/session_2021-07-19_09-50-58_115365_119/ray_spillled_objects/\
+            2f81e7cfcc578f4effffffffffffffffffffffff0200000001000000-multi-1?offset=0&size=2199437144";
+        let (path, offset, size) = parse_spill_url(long_url).unwrap();
+        assert!(path.contains("ray_spillled_objects"));
+        assert_eq!(offset, 0);
+        assert_eq!(size, 2199437144);
+
+        // Large size near u64 max (9223372036854775807 = i64::MAX)
+        let (path, offset, size) =
+            parse_spill_url("/tmp/123?offset=0&size=9223372036854775807").unwrap();
+        assert_eq!(path, "/tmp/123");
+        assert_eq!(offset, 0);
+        assert_eq!(size, 9223372036854775807);
+    }
+
+    /// Port of C++ ParseObjectURL: invalid URL formats that should fail.
+    #[test]
+    fn test_parse_spill_url_invalid_offset() {
+        // Non-numeric offset
+        let result = parse_spill_url("file://path/to/file?offset=a&size=456");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_spill_url_invalid_size() {
+        // Non-numeric size
+        let result = parse_spill_url("file://path/to/file?offset=0&size=bb");
+        assert!(result.is_err());
+    }
+
+    /// Port of C++ ToUINT64: little-endian byte conversion.
+    #[test]
+    fn test_le_bytes_to_u64() {
+        assert_eq!(
+            u64::from_le_bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            0
+        );
+        assert_eq!(
+            u64::from_le_bytes([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+            1
+        );
+        assert_eq!(
+            u64::from_le_bytes([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]),
+            u64::MAX
+        );
+    }
+
+    /// Port of C++ ReadUINT64: sequential reads from a byte buffer.
+    #[test]
+    fn test_read_u64_from_buffer() {
+        let buf: Vec<u8> = vec![
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 1
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // u64::MAX
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // malformed (only 6 bytes)
+        ];
+        let v0 = u64::from_le_bytes(buf[0..8].try_into().unwrap());
+        assert_eq!(v0, 0);
+        let v1 = u64::from_le_bytes(buf[8..16].try_into().unwrap());
+        assert_eq!(v1, 1);
+        let v2 = u64::from_le_bytes(buf[16..24].try_into().unwrap());
+        assert_eq!(v2, u64::MAX);
+        // Malformed: not enough bytes for a u64
+        assert!(buf[24..].len() < 8);
+    }
+
+    /// Port of C++ ParseObjectHeader: construct a spill file and verify header parsing.
+    #[test]
+    fn test_spill_header_parsing() {
+        let config = make_temp_config();
+        let mgr = SpillManager::new(config.clone());
+        let oid = make_oid(42);
+
+        let data = b"somedata";
+        let metadata = b"somemetadata";
+
+        let url = mgr.spill_object(&oid, data, metadata).unwrap();
+        let (restored_data, restored_meta) = mgr.restore_object(&url).unwrap();
+        assert_eq!(restored_data, data);
+        assert_eq!(restored_meta, metadata);
+
+        // Verify the file format directly
+        let (file_path, offset, size) = parse_spill_url(&url).unwrap();
+        let contents = fs::read(&file_path).unwrap();
+        let region = &contents[offset..offset + size];
+
+        // Header: [addr_size:8][meta_size:8][data_size:8]
+        let addr_size = u64::from_le_bytes(region[0..8].try_into().unwrap()) as usize;
+        let meta_size = u64::from_le_bytes(region[8..16].try_into().unwrap()) as usize;
+        let data_size = u64::from_le_bytes(region[16..24].try_into().unwrap()) as usize;
+
+        assert_eq!(addr_size, 28); // ObjectID is 28 bytes
+        assert_eq!(meta_size, metadata.len());
+        assert_eq!(data_size, data.len());
+
+        // Verify content layout
+        let meta_start = 24 + addr_size;
+        let data_start = meta_start + meta_size;
+        assert_eq!(&region[meta_start..data_start], metadata);
+        assert_eq!(&region[data_start..data_start + data_size], data);
+
+        cleanup(&config);
+    }
+
+    /// Port of C++ CreateSpilledObjectReader: corrupt file should fail.
+    #[test]
+    fn test_restore_corrupt_file() {
+        let config = make_temp_config();
+        let mgr = SpillManager::new(config.clone());
+        let oid = make_oid(1);
+
+        let url = mgr.spill_object(&oid, b"data", b"meta").unwrap();
+        let (file_path, _, _) = parse_spill_url(&url).unwrap();
+
+        // Truncate the file to corrupt it
+        fs::write(&file_path, b"short").unwrap();
+
+        let result = mgr.restore_object(&url);
+        assert!(result.is_err());
+
+        cleanup(&config);
+    }
+
+    /// Port of C++ GetChunk concept: verify data/metadata can be read in chunks.
+    #[test]
+    fn test_spill_chunked_read() {
+        let config = make_temp_config();
+        let mgr = SpillManager::new(config.clone());
+        let oid = make_oid(1);
+
+        let data = vec![0xABu8; 1000];
+        let metadata = vec![0xCDu8; 200];
+
+        let url = mgr.spill_object(&oid, &data, &metadata).unwrap();
+
+        // Read back and verify slicing works
+        let (restored_data, restored_meta) = mgr.restore_object(&url).unwrap();
+        assert_eq!(restored_data.len(), 1000);
+        assert_eq!(restored_meta.len(), 200);
+
+        // Verify chunks
+        let chunk_size = 100;
+        for i in (0..data.len()).step_by(chunk_size) {
+            let end = (i + chunk_size).min(data.len());
+            assert_eq!(&restored_data[i..end], &data[i..end]);
+        }
+
+        cleanup(&config);
+    }
+
     #[test]
     fn test_spill_large_metadata() {
         let config = make_temp_config();

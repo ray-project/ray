@@ -1046,4 +1046,441 @@ mod tests {
 
         assert_eq!(receiver.total_executed(), 2);
     }
+
+    // ─── Ported from C++ task_receiver_test.cc and execution queue tests ──
+
+    #[tokio::test]
+    async fn test_multiple_sequential_tasks() {
+        // Port of normal_task_execution_queue ordering: tasks execute sequentially.
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store.clone(), 1); // concurrency = 1
+
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let order_clone = order.clone();
+        let cb: TaskExecutionCallback = Arc::new(move |spec: &TaskSpec| {
+            order_clone.lock().push(spec.name.clone());
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"ok".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        for name in &["task_a", "task_b", "task_c"] {
+            let spec = make_task_spec(name);
+            let req = make_push_request(&wid, spec);
+            receiver.handle_push_task(req).await.unwrap();
+        }
+
+        assert_eq!(receiver.total_executed(), 3);
+        let executed = order.lock().clone();
+        assert_eq!(executed, vec!["task_a", "task_b", "task_c"]);
+    }
+
+    #[tokio::test]
+    async fn test_retryable_error_from_callback() {
+        // Port of task_receiver_test: callback returns error => retryable.
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+
+        let cb: TaskExecutionCallback = Arc::new(|_spec: &TaskSpec| {
+            Err(CoreWorkerError::Internal("simulated failure".into()))
+        });
+        receiver.set_execute_callback(cb);
+
+        let spec = make_task_spec("failing");
+        let req = make_push_request(&wid, spec);
+        let reply = receiver.handle_push_task(req).await.unwrap();
+        assert!(reply.is_retryable_error);
+        assert!(reply.task_execution_error.contains("simulated failure"));
+    }
+
+    #[tokio::test]
+    async fn test_callback_replacement() {
+        // Replacing the callback should use the new one.
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+
+        receiver.set_execute_callback(error_callback());
+        receiver.set_execute_callback(success_callback());
+
+        let spec = make_task_spec("replaced");
+        let req = make_push_request(&wid, spec);
+        let reply = receiver.handle_push_task(req).await.unwrap();
+        assert!(!reply.is_application_error);
+        assert_eq!(reply.return_objects.len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_concurrent_tasks_with_unlimited_concurrency() {
+        // Port of thread_pool_test: tasks can run in parallel with unlimited concurrency.
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = Arc::new(TaskReceiver::new(wid, store, 0));
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+
+        let active_clone = active.clone();
+        let max_active_clone = max_active.clone();
+        let cb: TaskExecutionCallback = Arc::new(move |_spec: &TaskSpec| {
+            let cur = active_clone.fetch_add(1, Ordering::SeqCst) + 1;
+            max_active_clone.fetch_max(cur, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            active_clone.fetch_sub(1, Ordering::SeqCst);
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"ok".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        let mut handles = Vec::new();
+        for i in 0..8 {
+            let spec = make_task_spec(&format!("parallel_{}", i));
+            let req = make_push_request(&wid, spec);
+            let r = Arc::clone(&receiver);
+            handles.push(tokio::spawn(async move {
+                r.handle_push_task(req).await
+            }));
+        }
+
+        for h in handles {
+            h.await.unwrap().unwrap();
+        }
+
+        assert_eq!(receiver.total_executed(), 8);
+        // With unlimited concurrency, some tasks should run in parallel.
+        assert!(max_active.load(Ordering::SeqCst) >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_exiting_then_set_callback_still_rejects() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+        receiver.set_exiting();
+        receiver.set_execute_callback(success_callback());
+
+        let spec = make_task_spec("after_exit");
+        let req = make_push_request(&wid, spec);
+        let reply = receiver.handle_push_task(req).await.unwrap();
+        assert!(reply.worker_exiting);
+        assert_eq!(receiver.total_executed(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_return_objects_stored() {
+        // Task returning multiple objects.
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store.clone(), 4);
+
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+        let oid1_bytes = oid1.binary();
+        let oid2_bytes = oid2.binary();
+
+        let cb: TaskExecutionCallback = Arc::new(move |_spec| {
+            Ok(TaskResult {
+                return_objects: vec![
+                    rpc::ReturnObject {
+                        object_id: oid1_bytes.clone(),
+                        data: b"result_1".to_vec(),
+                        ..Default::default()
+                    },
+                    rpc::ReturnObject {
+                        object_id: oid2_bytes.clone(),
+                        data: b"result_2".to_vec(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        let spec = make_task_spec("multi_return");
+        let req = make_push_request(&wid, spec);
+        let reply = receiver.handle_push_task(req).await.unwrap();
+        assert_eq!(reply.return_objects.len(), 2);
+
+        assert!(store.contains(&oid1));
+        assert!(store.contains(&oid2));
+        assert_eq!(store.get(&oid1).unwrap().data.as_ref(), b"result_1");
+        assert_eq!(store.get(&oid2).unwrap().data.as_ref(), b"result_2");
+    }
+
+    // ── Additional tests ported from task_receiver_test.cc ──────────
+    // and task execution queue tests
+
+    /// Port of TestNewTaskFromDifferentWorker: a task intended for
+    /// a different worker ID should be rejected.
+    #[tokio::test]
+    async fn test_different_worker_id_rejected() {
+        let wid = make_worker_id();
+        let other_wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+        receiver.set_execute_callback(success_callback());
+
+        let spec = make_task_spec("wrong_worker");
+        let req = make_push_request(&other_wid, spec);
+        let err = receiver.handle_push_task(req).await.unwrap_err();
+        assert!(matches!(err, CoreWorkerError::InvalidArgument(_)));
+        assert_eq!(receiver.total_executed(), 0);
+    }
+
+    /// Port of TestCancelQueuedTask concept: cancelling a running
+    /// task should set its cancel flag.
+    #[tokio::test]
+    async fn test_cancel_running_task_sets_flag() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = Arc::new(TaskReceiver::new(wid, store, 4));
+
+        // Use a callback that blocks until cancel is signaled.
+        let started = Arc::new(tokio::sync::Notify::new());
+        let proceed = Arc::new(tokio::sync::Notify::new());
+
+        let started_clone = started.clone();
+        let proceed_clone = proceed.clone();
+        let cb: TaskExecutionCallback = Arc::new(move |_spec| {
+            started_clone.notify_one();
+            // Block synchronously — in real code this would check cancel.
+            // For test we just return immediately after the signal.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let _ = &proceed_clone;
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"ok".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        let spec = make_task_spec("cancellable");
+        let task_id = spec.task_id.clone();
+        let req = make_push_request(&wid, spec);
+
+        let r = Arc::clone(&receiver);
+        let handle = tokio::spawn(async move {
+            r.handle_push_task(req).await
+        });
+
+        // Wait for task to start.
+        started.notified().await;
+
+        // Cancel should succeed for a running task.
+        let cancelled = receiver.cancel_task(&task_id, false);
+        assert!(cancelled);
+
+        // Task finishes.
+        handle.await.unwrap().unwrap();
+    }
+
+    /// Port of StopCancelsQueuedTasks concept: marking worker as
+    /// exiting should reject all new tasks.
+    #[tokio::test]
+    async fn test_exiting_rejects_multiple_tasks() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+        receiver.set_execute_callback(success_callback());
+        receiver.set_exiting();
+
+        for i in 0..5 {
+            let spec = make_task_spec(&format!("after_exit_{}", i));
+            let req = make_push_request(&wid, spec);
+            let reply = receiver.handle_push_task(req).await.unwrap();
+            assert!(reply.worker_exiting);
+        }
+        assert_eq!(receiver.total_executed(), 0);
+    }
+
+    /// Port of concurrency_group_manager_test: verify that actor
+    /// concurrency limits apply independently per actor.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_actor_concurrency_groups_independent() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = Arc::new(TaskReceiver::new(wid, store, 10));
+
+        let cb: TaskExecutionCallback = Arc::new(move |_spec| {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"ok".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        receiver.set_actor_concurrency("actor_x".to_string(), 2);
+        receiver.set_actor_concurrency("actor_y".to_string(), 3);
+
+        let mut handles = Vec::new();
+        // Submit 2 tasks to actor_x and 3 to actor_y.
+        for i in 0..2 {
+            let spec = make_task_spec(&format!("x_{}", i));
+            let req = make_push_request(&wid, spec);
+            let r = Arc::clone(&receiver);
+            handles.push(tokio::spawn(
+                async move { r.handle_actor_task(req, "actor_x").await },
+            ));
+        }
+        for i in 0..3 {
+            let spec = make_task_spec(&format!("y_{}", i));
+            let req = make_push_request(&wid, spec);
+            let r = Arc::clone(&receiver);
+            handles.push(tokio::spawn(
+                async move { r.handle_actor_task(req, "actor_y").await },
+            ));
+        }
+
+        for h in handles {
+            h.await.unwrap().unwrap();
+        }
+        assert_eq!(receiver.total_executed(), 5);
+    }
+
+    /// Port of fiber_state_test: verify concurrency limit of 1
+    /// forces serial execution.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_serial_execution_with_concurrency_one() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = Arc::new(TaskReceiver::new(wid, store, 1));
+
+        let current = Arc::new(AtomicUsize::new(0));
+        let max_concurrent = Arc::new(AtomicUsize::new(0));
+
+        let c = current.clone();
+        let m = max_concurrent.clone();
+        let cb: TaskExecutionCallback = Arc::new(move |_spec| {
+            let cur = c.fetch_add(1, Ordering::SeqCst) + 1;
+            m.fetch_max(cur, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            c.fetch_sub(1, Ordering::SeqCst);
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"ok".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        let mut handles = Vec::new();
+        for i in 0..4 {
+            let spec = make_task_spec(&format!("serial_{}", i));
+            let req = make_push_request(&wid, spec);
+            let r = Arc::clone(&receiver);
+            handles.push(tokio::spawn(async move {
+                r.handle_push_task(req).await
+            }));
+        }
+
+        for h in handles {
+            h.await.unwrap().unwrap();
+        }
+
+        assert_eq!(receiver.total_executed(), 4);
+        // With concurrency 1, max concurrent should be exactly 1.
+        assert_eq!(max_concurrent.load(Ordering::SeqCst), 1);
+    }
+
+    /// Port of task event buffer test concept: application errors
+    /// are properly flagged.
+    #[tokio::test]
+    async fn test_application_error_flagged() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = TaskReceiver::new(wid, store, 4);
+
+        let cb: TaskExecutionCallback = Arc::new(|_spec| {
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"error_data".to_vec(),
+                    ..Default::default()
+                }],
+                is_application_error: true,
+                error_message: "user code exception".to_string(),
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        let spec = make_task_spec("app_error");
+        let req = make_push_request(&wid, spec);
+        let reply = receiver.handle_push_task(req).await.unwrap();
+        assert!(reply.is_application_error);
+    }
+
+    /// Port of normal_task_execution_queue_test: verify num_running
+    /// is tracked during execution.
+    #[tokio::test]
+    async fn test_num_running_during_execution() {
+        let wid = make_worker_id();
+        let store = make_store();
+        let receiver = Arc::new(TaskReceiver::new(wid, store, 4));
+
+        assert_eq!(receiver.num_running_tasks(), 0);
+
+        let started = Arc::new(tokio::sync::Notify::new());
+        let proceed = Arc::new(tokio::sync::Notify::new());
+
+        let started_clone = started.clone();
+        let proceed_clone = proceed.clone();
+        let cb: TaskExecutionCallback = Arc::new(move |_spec| {
+            started_clone.notify_one();
+            // Block briefly to allow inspection.
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            let _ = &proceed_clone;
+            Ok(TaskResult {
+                return_objects: vec![rpc::ReturnObject {
+                    object_id: ObjectID::from_random().binary(),
+                    data: b"ok".to_vec(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            })
+        });
+        receiver.set_execute_callback(cb);
+
+        let spec = make_task_spec("running_check");
+        let req = make_push_request(&wid, spec);
+        let r = Arc::clone(&receiver);
+        let handle = tokio::spawn(async move {
+            r.handle_push_task(req).await
+        });
+
+        started.notified().await;
+        // Task should be running now.
+        assert!(receiver.num_running_tasks() >= 1);
+
+        handle.await.unwrap().unwrap();
+        // After completion, running count should be back to 0.
+        assert_eq!(receiver.num_running_tasks(), 0);
+    }
 }

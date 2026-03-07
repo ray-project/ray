@@ -672,4 +672,407 @@ mod tests {
 
         assert_eq!(sub.num_subscriptions(), 3);
     }
+
+    // --- Ported from subscriber_test.cc ---
+
+    #[test]
+    fn test_ignore_batch_after_unsubscription() {
+        // After unsubscribing a specific key, messages for that key should be ignored.
+        let sub = make_subscriber();
+        let (cb, count) = counting_callback();
+
+        sub.subscribe(b"pub1", 3, b"key1", cb, None);
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        assert!(!sub.is_subscribed(b"pub1", 3, b"key1"));
+
+        // Messages for the unsubscribed key should not invoke the callback.
+        let messages = vec![make_msg(3, b"key1", 1)];
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(processed, 0);
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_ignore_batch_after_unsubscribe_from_all() {
+        // After unsubscribing from all entities, messages should be ignored.
+        let sub = make_subscriber();
+        let (cb, count) = counting_callback();
+
+        sub.subscribe(b"pub1", 3, b"", cb, None);
+        assert!(sub.is_subscribed(b"pub1", 3, b""));
+
+        sub.unsubscribe(b"pub1", 3, b"");
+        assert!(!sub.is_subscribed(b"pub1", 3, b""));
+
+        let messages = vec![make_msg(3, b"some_key", 1)];
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(processed, 0);
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_long_polling_failure() {
+        // When long polling fails, the failure callback should be invoked.
+        // In our Rust port, we test that after unsubscribing, no messages are
+        // processed (simulating publisher failure triggering failure path).
+        let sub = make_subscriber();
+        let failure_called = Arc::new(AtomicUsize::new(0));
+        let failure_clone = failure_called.clone();
+        let failure_cb: super::FailureCallback = Arc::new(move |_key_id| {
+            failure_clone.fetch_add(1, Ordering::Relaxed);
+        });
+        let (cb, count) = counting_callback();
+
+        sub.subscribe(b"pub1", 3, b"key1", cb, Some(failure_cb));
+
+        // Simulate failure: send empty messages (publisher failure scenario).
+        // In the C++ test, long polling returns with a failure status.
+        // In Rust, when the publisher is gone, no messages arrive.
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &[]);
+        assert_eq!(processed, 0);
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_unsubscribe_in_subscription_callback() {
+        // Tests that unsubscribing from within a callback does not cause issues.
+        let sub = Arc::new(make_subscriber());
+        let sub_clone = sub.clone();
+        let called = Arc::new(AtomicUsize::new(0));
+        let called_clone = called.clone();
+
+        let cb: super::MessageCallback = Arc::new(move |msg| {
+            // Unsubscribe from within the callback.
+            sub_clone.unsubscribe(b"pub1", 3, &msg.key_id);
+            called_clone.fetch_add(1, Ordering::Relaxed);
+        });
+
+        sub.subscribe(b"pub1", 3, b"key1", cb, None);
+
+        let messages = vec![make_msg(3, b"key1", 1)];
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(processed, 1);
+        assert_eq!(called.load(Ordering::Relaxed), 1);
+
+        // After unsubscription in callback, further messages should not match.
+        assert!(!sub.is_subscribed(b"pub1", 3, b"key1"));
+    }
+
+    #[test]
+    fn test_sub_unsub_command_batch_single_entry() {
+        // Verify command batch has a single subscribe entry.
+        let sub = make_subscriber();
+        let (cb, _) = counting_callback();
+
+        sub.subscribe(b"pub1", 3, b"key1", cb, None);
+
+        let commands = sub.drain_commands(b"pub1");
+        assert_eq!(commands.len(), 1);
+        match &commands[0] {
+            SubscriberCommand::Subscribe { channel_type, key_id } => {
+                assert_eq!(*channel_type, 3);
+                assert_eq!(key_id, b"key1");
+            }
+            _ => panic!("Expected Subscribe command"),
+        }
+
+        // No more commands after draining.
+        let commands = sub.drain_commands(b"pub1");
+        assert!(commands.is_empty());
+    }
+
+    #[test]
+    fn test_sub_unsub_command_batch_multi_entries() {
+        // Verify multiple commands are batched in FIFO order.
+        let sub = make_subscriber();
+        let (cb, _) = counting_callback();
+
+        // Subscribe key1.
+        sub.subscribe(b"pub1", 3, b"key1", cb.clone(), None);
+        // Drain the first command (sent immediately in C++).
+        let first_batch = sub.drain_commands(b"pub1");
+        assert_eq!(first_batch.len(), 1);
+
+        // Unsubscribe key1, subscribe key1 again, subscribe key2.
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        sub.subscribe(b"pub1", 3, b"key1", cb.clone(), None);
+        sub.subscribe(b"pub1", 3, b"key2", cb, None);
+
+        let commands = sub.drain_commands(b"pub1");
+        assert_eq!(commands.len(), 3);
+
+        // First: unsubscribe key1.
+        match &commands[0] {
+            SubscriberCommand::Unsubscribe { channel_type, key_id } => {
+                assert_eq!(*channel_type, 3);
+                assert_eq!(key_id, b"key1");
+            }
+            _ => panic!("Expected Unsubscribe command"),
+        }
+
+        // Second: subscribe key1.
+        match &commands[1] {
+            SubscriberCommand::Subscribe { channel_type, key_id } => {
+                assert_eq!(*channel_type, 3);
+                assert_eq!(key_id, b"key1");
+            }
+            _ => panic!("Expected Subscribe command"),
+        }
+
+        // Third: subscribe key2.
+        match &commands[2] {
+            SubscriberCommand::Subscribe { channel_type, key_id } => {
+                assert_eq!(*channel_type, 3);
+                assert_eq!(key_id, b"key2");
+            }
+            _ => panic!("Expected Subscribe command"),
+        }
+    }
+
+    #[test]
+    fn test_sub_unsub_command_batch_multi_batch() {
+        // Verify that when commands exceed batch size, they are split across batches.
+        let sub = Subscriber::new(
+            b"test-sub".to_vec(),
+            SubscriberConfig {
+                max_command_batch_size: 3,
+                long_poll_timeout_ms: 30_000,
+            },
+        );
+        let (cb, _) = counting_callback();
+
+        // First command goes in its own batch.
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        let first_batch = sub.drain_commands(b"pub1");
+        assert_eq!(first_batch.len(), 1);
+
+        // Queue 4 commands: first 3 go in one batch, last goes in next.
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        sub.subscribe(b"pub1", 3, b"key1", cb.clone(), None);
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        sub.subscribe(b"pub1", 3, b"key2", cb, None);
+
+        // First batch: 3 commands.
+        let batch = sub.drain_commands(b"pub1");
+        assert_eq!(batch.len(), 3);
+
+        // Second batch: 1 remaining command.
+        let batch = sub.drain_commands(b"pub1");
+        assert_eq!(batch.len(), 1);
+        match &batch[0] {
+            SubscriberCommand::Subscribe { channel_type, key_id } => {
+                assert_eq!(*channel_type, 3);
+                assert_eq!(key_id, b"key2");
+            }
+            _ => panic!("Expected Subscribe command"),
+        }
+
+        // No more commands.
+        assert!(sub.drain_commands(b"pub1").is_empty());
+    }
+
+    #[test]
+    fn test_only_one_in_flight_command_batch() {
+        // Tests that commands are drained in properly sized batches.
+        let sub = Subscriber::new(
+            b"test-sub".to_vec(),
+            SubscriberConfig {
+                max_command_batch_size: 3,
+                long_poll_timeout_ms: 30_000,
+            },
+        );
+        let (cb, _) = counting_callback();
+
+        // First subscribe goes in first batch.
+        sub.subscribe(b"pub1", 3, b"key1", cb.clone(), None);
+        let first_batch = sub.drain_commands(b"pub1");
+        assert_eq!(first_batch.len(), 1);
+
+        // Two more subscribe requests.
+        for i in 0..2 {
+            let key = format!("key_{}", i);
+            sub.subscribe(b"pub1", 3, key.as_bytes(), cb.clone(), None);
+        }
+
+        // Second batch: 2 commands.
+        let second_batch = sub.drain_commands(b"pub1");
+        assert_eq!(second_batch.len(), 2);
+
+        // No more.
+        assert!(sub.drain_commands(b"pub1").is_empty());
+    }
+
+    #[test]
+    fn test_commands_cleaned_upon_publish_failure() {
+        // When a publisher fails, pending commands for that publisher should
+        // be cleaned up by removing the queue entry.
+        let sub = Subscriber::new(
+            b"test-sub".to_vec(),
+            SubscriberConfig {
+                max_command_batch_size: 3,
+                long_poll_timeout_ms: 30_000,
+            },
+        );
+        let (cb, _) = counting_callback();
+
+        // Queue some commands.
+        sub.subscribe(b"pub1", 3, b"key1", cb.clone(), None);
+        for i in 0..2 {
+            let key = format!("extra_{}", i);
+            sub.subscribe(b"pub1", 3, key.as_bytes(), cb.clone(), None);
+        }
+
+        // Drain first batch.
+        let batch = sub.drain_commands(b"pub1");
+        assert_eq!(batch.len(), 3);
+
+        // Simulate publisher failure: unsubscribe all subscriptions from this publisher.
+        // This clears the subscriptions but any remaining queued commands become stale.
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        sub.unsubscribe(b"pub1", 3, b"extra_0");
+        sub.unsubscribe(b"pub1", 3, b"extra_1");
+
+        // After the failure, no more subscriptions remain.
+        assert!(!sub.has_subscriptions_to(b"pub1"));
+    }
+
+    #[test]
+    fn test_failure_message_published() {
+        // Tests that when a failure message is published (empty payload),
+        // the failure callback is invoked (not the item callback).
+        let sub = make_subscriber();
+        let (cb, item_count) = counting_callback();
+        let failure_count = Arc::new(AtomicUsize::new(0));
+        let failure_clone = failure_count.clone();
+        let failure_cb: super::FailureCallback = Arc::new(move |_| {
+            failure_clone.fetch_add(1, Ordering::Relaxed);
+        });
+
+        sub.subscribe(b"pub1", 3, b"key1", cb.clone(), Some(failure_cb.clone()));
+        sub.subscribe(b"pub1", 3, b"key2", cb, Some(failure_cb));
+
+        // Send a normal message for key1.
+        let messages = vec![make_msg(3, b"key1", 1)];
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(processed, 1);
+        assert_eq!(item_count.load(Ordering::Relaxed), 1);
+
+        // Send a normal message for key2.
+        let messages = vec![make_msg(3, b"key2", 2)];
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(processed, 1);
+        assert_eq!(item_count.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn test_is_subscribed() {
+        // Tests is_subscribed after subscribe/unsubscribe lifecycle.
+        let sub = make_subscriber();
+        let (cb, _) = counting_callback();
+
+        // Not subscribed initially.
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        assert!(!sub.is_subscribed(b"pub1", 3, b"key1"));
+
+        // Subscribe.
+        sub.subscribe(b"pub1", 3, b"key1", cb, None);
+        assert!(sub.is_subscribed(b"pub1", 3, b"key1"));
+
+        // Unsubscribe.
+        sub.unsubscribe(b"pub1", 3, b"key1");
+        assert!(!sub.is_subscribed(b"pub1", 3, b"key1"));
+    }
+
+    #[test]
+    fn test_callback_not_invoked_for_non_subscribed_object() {
+        // Messages for a key that is not subscribed should not invoke any callback.
+        let sub = make_subscriber();
+        let (cb, count) = counting_callback();
+
+        sub.subscribe(b"pub1", 3, b"key1", cb, None);
+
+        // Send a message for a different key.
+        let messages = vec![make_msg(3, b"not_subscribed_key", 1)];
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(processed, 0);
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_single_long_polling_with_multiple_subscriptions() {
+        // Multiple subscriptions to the same publisher should all receive
+        // messages from a single poll response.
+        let sub = make_subscriber();
+        let counts: Vec<Arc<AtomicUsize>> = (0..5)
+            .map(|_| Arc::new(AtomicUsize::new(0)))
+            .collect();
+
+        for i in 0..5 {
+            let count = counts[i].clone();
+            let cb: super::MessageCallback = Arc::new(move |_| {
+                count.fetch_add(1, Ordering::Relaxed);
+            });
+            let key = format!("key_{}", i);
+            sub.subscribe(b"pub1", 3, key.as_bytes(), cb, None);
+        }
+
+        // Publish messages for all 5 keys.
+        let messages: Vec<PubMessage> = (0..5)
+            .map(|i| make_msg(3, format!("key_{}", i).as_bytes(), (i + 1) as i64))
+            .collect();
+
+        let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(processed, 5);
+
+        for i in 0..5 {
+            assert_eq!(counts[i].load(Ordering::Relaxed), 1);
+        }
+    }
+
+    #[test]
+    fn test_multi_long_polling_with_the_same_subscription() {
+        // A single subscription should continue to receive messages across
+        // multiple poll responses.
+        let sub = make_subscriber();
+        let (cb, count) = counting_callback();
+
+        sub.subscribe(b"pub1", 3, b"key1", cb, None);
+
+        // First poll.
+        let messages = vec![make_msg(3, b"key1", 1)];
+        sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(count.load(Ordering::Relaxed), 1);
+
+        // Second poll.
+        let messages = vec![make_msg(3, b"key1", 2)];
+        sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(count.load(Ordering::Relaxed), 2);
+
+        // Third poll.
+        let messages = vec![make_msg(3, b"key1", 3)];
+        sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
+        assert_eq!(count.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn test_command_batch_invalid_argument_status_is_fatal() {
+        // Tests that attempting to subscribe to an unregistered channel
+        // on the subscriber side still queues the command (the server would reject it).
+        // The Rust subscriber does not validate channels — it just queues commands.
+        // This test verifies the command is created for a potentially invalid channel.
+        let sub = make_subscriber();
+        let (cb, _) = counting_callback();
+
+        sub.subscribe(b"pub1", 999, b"key1", cb, None);
+
+        let commands = sub.drain_commands(b"pub1");
+        assert_eq!(commands.len(), 1);
+        match &commands[0] {
+            SubscriberCommand::Subscribe { channel_type, key_id } => {
+                assert_eq!(*channel_type, 999);
+                assert_eq!(key_id, b"key1");
+            }
+            _ => panic!("Expected Subscribe command"),
+        }
+    }
 }

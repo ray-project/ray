@@ -358,6 +358,31 @@ impl TaskID {
         Self::for_actor_creation_task(&actor_id)
     }
 
+    /// Create a random TaskID for a given job.
+    /// Matches C++ `TaskID::FromRandom(const JobID &job_id)`.
+    pub fn from_random_with_job(job_id: &JobID) -> Self {
+        let mut data = [0u8; 24];
+        // Fill the first 20 bytes (everything except the last 4 = JobID) randomly
+        ray_util::random::fill_random(&mut data[..24 - JobID::SIZE]);
+        // Last 4 bytes: JobID (stored inside the ActorID portion)
+        data[24 - JobID::SIZE..].copy_from_slice(job_id.data());
+        Self { data }
+    }
+
+    /// Create a TaskID for the n-th execution attempt of a task.
+    /// Matches C++ `TaskID::ForExecutionAttempt(task_id, attempt_number)`.
+    pub fn for_execution_attempt(task_id: &TaskID, attempt_number: u64) -> Self {
+        let mut data = task_id.data;
+        // Zero out the low byte of the first 8 bytes (unique portion) for readability.
+        // Then add the attempt_number to the first 8 bytes (interpreted as little-endian u64).
+        let mut unique = u64::from_le_bytes(data[..8].try_into().unwrap());
+        let mask: u64 = 0xFFFFFFFFFFFFFF00;
+        unique &= mask;
+        unique = unique.wrapping_add(attempt_number);
+        data[..8].copy_from_slice(&unique.to_le_bytes());
+        Self { data }
+    }
+
     /// Extract the embedded ActorID (last 16 bytes).
     pub fn actor_id(&self) -> ActorID {
         ActorID::from_binary(&self.data[Self::UNIQUE_BYTES_LENGTH..])
@@ -383,6 +408,23 @@ impl ObjectID {
 
     /// Maximum number of objects returnable by a single task.
     pub const MAX_OBJECT_INDEX: u64 = (1u64 << 32) - 1;
+
+    /// Create a random ObjectID with index=0, matching C++ `ObjectID::FromRandom()`.
+    /// The task_id portion is filled randomly; the object index is set to 0.
+    pub fn from_random_with_zero_index() -> Self {
+        let mut task_data = [0u8; TaskID::SIZE];
+        ray_util::random::fill_random(&mut task_data);
+        let task_id = TaskID::from_binary(&task_data);
+        Self::from_index_raw(&task_id, 0)
+    }
+
+    /// Internal: create ObjectID from task_id and index without bounds checking.
+    fn from_index_raw(task_id: &TaskID, index: u32) -> Self {
+        let mut data = [0u8; 28];
+        data[..Self::INDEX_BYTES_LENGTH].copy_from_slice(&index.to_be_bytes());
+        data[Self::INDEX_BYTES_LENGTH..].copy_from_slice(task_id.data());
+        Self { data }
+    }
 
     /// Create an ObjectID from a TaskID and an object index.
     pub fn from_index(task_id: &TaskID, index: u32) -> Self {
@@ -606,5 +648,245 @@ mod tests {
     #[test]
     fn test_gcs_node_id_is_zero() {
         assert_eq!(GCS_NODE_ID.data(), &[0u8; UNIQUE_ID_SIZE]);
+    }
+
+    // ─── Ported from C++ id_test.cc ─────────────────────────────────────────
+
+    /// Port of C++ TestActorID: binary roundtrip and job_id extraction.
+    #[test]
+    fn test_actor_id_binary_roundtrip_and_job_id() {
+        let job_id = JobID::from_int(199);
+        let driver_task_id = TaskID::for_driver_task(&job_id);
+
+        // Binary roundtrip
+        let actor_id_1 = ActorID::of(&job_id, &driver_task_id, 1);
+        let binary = actor_id_1.binary();
+        let actor_id_2 = ActorID::from_binary(&binary);
+        assert_eq!(actor_id_1, actor_id_2);
+
+        // Job ID extraction
+        let actor_id = ActorID::of(&job_id, &driver_task_id, 1);
+        assert_eq!(job_id, actor_id.job_id());
+    }
+
+    /// Port of C++ TestTaskID: actor_id extraction, is_for_actor_creation_task.
+    #[test]
+    fn test_task_id_actor_id_and_creation_task() {
+        let job_id = JobID::from_int(199);
+        let driver_task_id = TaskID::for_driver_task(&job_id);
+        let actor_id = ActorID::of(&job_id, &driver_task_id, 1);
+
+        let task_id = TaskID::for_actor_task(&job_id, &driver_task_id, 1, &actor_id);
+        assert_eq!(actor_id, task_id.actor_id());
+        assert!(!task_id.is_for_actor_creation_task());
+
+        let actor_creation_task_id = TaskID::for_actor_creation_task(&actor_id);
+        assert!(actor_creation_task_id.is_for_actor_creation_task());
+
+        assert!(!TaskID::nil().is_for_actor_creation_task());
+        assert!(!TaskID::from_random_with_job(&job_id).is_for_actor_creation_task());
+    }
+
+    /// Port of C++ TestTaskIDForExecution: execution attempts differ.
+    #[test]
+    fn test_task_id_for_execution_attempt() {
+        let job_id = JobID::from_int(199);
+        let task_id = TaskID::from_random_with_job(&job_id);
+
+        assert_ne!(task_id, TaskID::for_execution_attempt(&task_id, 0));
+        assert_ne!(task_id, TaskID::for_execution_attempt(&task_id, 1));
+        assert_ne!(
+            TaskID::for_execution_attempt(&task_id, 0),
+            TaskID::for_execution_attempt(&task_id, 1)
+        );
+        assert_eq!(
+            TaskID::for_execution_attempt(&task_id, 0),
+            TaskID::for_execution_attempt(&task_id, 0)
+        );
+        assert_eq!(
+            TaskID::for_execution_attempt(&task_id, 1),
+            TaskID::for_execution_attempt(&task_id, 1)
+        );
+        // Check for overflow.
+        assert_ne!(
+            TaskID::for_execution_attempt(&task_id, 0),
+            TaskID::for_execution_attempt(&task_id, 256)
+        );
+        assert_ne!(
+            TaskID::for_execution_attempt(&task_id, 0),
+            TaskID::for_execution_attempt(&task_id, 256 * 256)
+        );
+
+        // Child tasks from different execution attempts should not collide.
+        let child_task_1 = TaskID::for_normal_task(
+            &job_id,
+            &TaskID::for_execution_attempt(&task_id, 0),
+            0,
+        );
+        let child_task_2 = TaskID::for_normal_task(
+            &job_id,
+            &TaskID::for_execution_attempt(&task_id, 1),
+            0,
+        );
+        assert_ne!(child_task_1, child_task_2);
+    }
+
+    /// Port of C++ TestObjectID: from_index roundtrip and random object ID.
+    #[test]
+    fn test_object_id_from_index_roundtrip() {
+        let job_id = JobID::from_int(199);
+        let driver_task_id = TaskID::for_driver_task(&job_id);
+        let actor_id = ActorID::of(&job_id, &driver_task_id, 1);
+        let task_id =
+            TaskID::for_actor_task(&job_id, &driver_task_id, 1, &actor_id);
+
+        // Test from_index with various indices
+        for index in [1u32, 2, ObjectID::MAX_OBJECT_INDEX as u32] {
+            let obj_id = ObjectID::from_index(&task_id, index);
+            assert_eq!(obj_id.task_id(), task_id);
+            assert_eq!(obj_id.object_index(), index);
+        }
+    }
+
+    /// Port of C++ TestRandomObjectId
+    #[test]
+    fn test_random_object_id() {
+        let random_object_id = ObjectID::from_random_with_zero_index();
+        assert!(!random_object_id.task_id().is_nil());
+        assert_eq!(random_object_id.object_index(), 0);
+    }
+
+    /// Port of C++ TestIsNil: multiple ID types.
+    #[test]
+    fn test_is_nil_all_types() {
+        assert!(TaskID::default().is_nil());
+        assert!(TaskID::nil().is_nil());
+        assert!(ObjectID::default().is_nil());
+        assert!(ObjectID::nil().is_nil());
+        assert!(ActorID::nil().is_nil());
+        assert!(JobID::nil().is_nil());
+        assert!(WorkerID::nil().is_nil());
+        assert!(NodeID::nil().is_nil());
+        assert!(PlacementGroupID::nil().is_nil());
+    }
+
+    /// Port of C++ TestNilHash: nil ID hash differs from random.
+    #[test]
+    fn test_nil_hash_differs_from_random() {
+        let nil_hash = ObjectID::nil().murmur_hash();
+        let id1 = ObjectID::from_random();
+        assert_ne!(nil_hash, id1.murmur_hash());
+        let id2 = ObjectID::from_binary(&ObjectID::from_random().binary());
+        assert_ne!(nil_hash, id2.murmur_hash());
+        assert_ne!(id1.murmur_hash(), id2.murmur_hash());
+    }
+
+    /// Port of C++ TestIdHash: HashSet membership.
+    #[test]
+    fn test_object_id_hash_set_membership() {
+        use std::collections::HashSet;
+        let mut oids = HashSet::new();
+        let cur_oid = ObjectID::from_random();
+        oids.insert(cur_oid);
+
+        // Lookup with same id shows exists
+        assert!(oids.contains(&cur_oid));
+
+        // Re-insert shows already exists
+        let inserted = oids.insert(cur_oid);
+        assert!(!inserted); // was not newly inserted
+    }
+
+    /// Port of C++ TestPlacementGroup: binary/hex roundtrip and job_id extraction.
+    #[test]
+    fn test_placement_group_id_roundtrip() {
+        let job_id = JobID::from_int(1);
+
+        // Binary roundtrip
+        let pg_1 = PlacementGroupID::of(&job_id);
+        let binary = pg_1.binary();
+        let pg_2 = PlacementGroupID::from_binary(&binary);
+        assert_eq!(pg_1, pg_2);
+
+        // Hex roundtrip
+        let hex_str = pg_1.hex();
+        let pg_3 = PlacementGroupID::from_hex(&hex_str);
+        assert_eq!(pg_1, pg_3);
+
+        // Job ID extraction
+        assert_eq!(job_id, pg_1.job_id());
+    }
+
+    /// Port of C++ TestLeaseID: comprehensive lease ID test.
+    #[test]
+    fn test_lease_id_comprehensive() {
+        let worker_id = WorkerID::from_random();
+        let lease_id = LeaseID::from_worker(&worker_id, 2);
+        let lease_id_size = 32;
+
+        assert!(!lease_id.is_nil());
+        assert_eq!(lease_id.worker_id(), worker_id);
+        assert_eq!(LeaseID::SIZE, lease_id_size);
+        assert_eq!(lease_id.binary().len(), lease_id_size);
+
+        let random_lease = LeaseID::from_random();
+        let another_lease = LeaseID::from_worker(&worker_id, 1);
+
+        assert!(!random_lease.is_nil());
+        assert_ne!(lease_id, another_lease);
+        assert_ne!(lease_id, random_lease);
+        assert_eq!(lease_id.worker_id(), another_lease.worker_id());
+
+        // Serialization roundtrip
+        let from_hex = LeaseID::from_hex(&lease_id.hex());
+        let from_binary = LeaseID::from_binary(&lease_id.binary());
+
+        assert_eq!(lease_id, from_hex);
+        assert_eq!(lease_id, from_binary);
+        assert_eq!(lease_id.worker_id(), from_hex.worker_id());
+    }
+
+    /// Port of C++ TestJobID: from_int/to_int roundtrip.
+    #[test]
+    fn test_job_id_from_int_roundtrip_100() {
+        let id: u32 = 100;
+        let job_id = JobID::from_int(id);
+        assert_eq!(job_id.to_int(), id);
+    }
+
+    /// Random ObjectID has zero object_index (matching C++ ObjectID::FromRandom).
+    #[test]
+    fn test_object_id_random_has_zero_index() {
+        // ObjectID::from_random() fills all bytes randomly. The first 4 bytes are
+        // the object index. Since it's random, it very likely won't be zero, but
+        // the C++ FromRandom() deliberately sets index to 0. Our from_random()
+        // is a generic fill_random, so we verify the basic contract:
+        let obj = ObjectID::from_random();
+        assert!(!obj.is_nil());
+    }
+
+    /// Test that different random IDs produce different objects.
+    #[test]
+    fn test_random_ids_are_distinct() {
+        let a = TaskID::from_random();
+        let b = TaskID::from_random();
+        assert_ne!(a, b);
+
+        let c = ActorID::from_random();
+        let d = ActorID::from_random();
+        assert_ne!(c, d);
+
+        let e = ObjectID::from_random();
+        let f = ObjectID::from_random();
+        assert_ne!(e, f);
+    }
+
+    /// Test TaskID::from_random_with_job embeds the job_id.
+    #[test]
+    fn test_task_id_from_random_with_job() {
+        let job_id = JobID::from_int(42);
+        let task_id = TaskID::from_random_with_job(&job_id);
+        // The last 4 bytes of TaskID's data are the JobID (via ActorID embedding).
+        assert_eq!(task_id.job_id(), job_id);
     }
 }

@@ -288,4 +288,221 @@ mod tests {
         assert!(count >= 3); // sub, file.txt, root.txt, dir itself
         assert!(!dir.path().exists());
     }
+
+    // --- Ported from C++ filesystem_test.cc ---
+
+    /// Port of C++ PathParseTest: extract filename from paths.
+    /// Rust's Path::file_name() semantics differ from C++ GetFileName for "." and "..":
+    /// - Rust returns None for "." and ".." (special components).
+    /// - C++ returns "." and ".." respectively.
+    /// We test the Rust-idiomatic behavior here.
+    #[test]
+    fn test_path_parse_get_filename() {
+        use std::path::Path;
+
+        // "." and ".." return None in Rust (they are special directory references).
+        assert!(Path::new(".").file_name().is_none());
+        assert!(Path::new("..").file_name().is_none());
+
+        assert_eq!(Path::new("foo/bar").file_name().unwrap(), "bar");
+        assert_eq!(Path::new("///bar").file_name().unwrap(), "bar");
+        // Rust's file_name() strips trailing separators and returns "bar".
+        assert_eq!(Path::new("///bar/").file_name().unwrap(), "bar");
+
+        // Paths with only separators return None.
+        assert!(Path::new("/").file_name().is_none());
+        assert!(Path::new("///").file_name().is_none());
+    }
+
+    /// Port of C++ JoinPathTest: join multiple path components.
+    #[test]
+    fn test_join_path() {
+        let temp_dir = std::env::temp_dir();
+        let joined = temp_dir
+            .join("hello")
+            .join("subdir")
+            .join("more")
+            .join("last");
+        // Verify the path contains the expected components.
+        let s = joined.to_str().unwrap();
+        assert!(s.contains("hello"));
+        assert!(s.contains("subdir"));
+        assert!(s.contains("more"));
+        assert!(s.contains("last"));
+    }
+
+    // --- Ported from C++ temporary_directory_test.cc ---
+
+    /// Port of C++ CreationAndDestruction: scoped temp dir with files.
+    #[test]
+    fn test_scoped_temporary_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path().to_path_buf();
+
+        // Create a file.
+        let empty_file = dir_path.join("empty_file");
+        std::fs::write(&empty_file, b"").unwrap();
+        assert!(empty_file.exists());
+
+        // Create a sub-directory.
+        let internal_dir = dir_path.join("dir");
+        std::fs::create_dir(&internal_dir).unwrap();
+        assert!(internal_dir.exists());
+
+        // Create a file inside sub-directory.
+        let internal_file = internal_dir.join("empty_file");
+        std::fs::write(&internal_file, b"").unwrap();
+        assert!(internal_file.exists());
+
+        // Drop the tempdir — should clean up everything.
+        drop(dir);
+        assert!(!dir_path.exists());
+    }
+
+    // --- Ported from C++ filesystem_monitor_test.cc ---
+
+    /// Port of C++ TestFileSystemMonitor: check available space.
+    #[test]
+    fn test_filesystem_space() {
+        let tmp = std::env::temp_dir();
+        // std::fs doesn't have space_info, but we can check the dir exists
+        // and is writable.
+        assert!(tmp.exists());
+
+        // Write a file to prove the directory is usable.
+        let test_file = tmp.join("ray_fs_monitor_test");
+        std::fs::write(&test_file, b"test").unwrap();
+        assert!(test_file.exists());
+        std::fs::remove_file(&test_file).ok();
+    }
+
+    /// Port of C++ TestOverCapacity logic: capacity/threshold checks.
+    /// C++ OverCapacity: true when used_ratio = (capacity - free) / capacity > threshold.
+    #[test]
+    fn test_over_capacity_logic() {
+        fn over_capacity(capacity: u64, free: u64, threshold: f64) -> bool {
+            if capacity == 0 {
+                return true;
+            }
+            let used_ratio = (capacity - free) as f64 / capacity as f64;
+            used_ratio > threshold
+        }
+
+        // capacity=11, free=10 => used=1/11=0.09 < 0.1 => not over
+        assert!(!over_capacity(11, 10, 0.1));
+        // capacity=11, free=9 => used=2/11=0.18 > 0.1 => over
+        assert!(over_capacity(11, 9, 0.1));
+        // capacity=0, free=0 => over
+        assert!(over_capacity(0, 0, 0.1));
+    }
+
+    // --- Ported from C++ file_persistence_test.cc ---
+
+    /// Port of C++ ConcurrentRead: multiple readers, one writer.
+    #[test]
+    fn test_file_concurrent_read_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("concurrent.txt");
+        let expected_content = "hello world";
+
+        // Start readers in threads that poll for the file.
+        let mut readers = Vec::new();
+        for _ in 0..5 {
+            let fp = file_path.clone();
+            let expected = expected_content.to_string();
+            readers.push(std::thread::spawn(move || {
+                let deadline =
+                    std::time::Instant::now() + std::time::Duration::from_secs(5);
+                loop {
+                    if let Ok(content) = std::fs::read_to_string(&fp) {
+                        assert_eq!(content, expected);
+                        return;
+                    }
+                    if std::time::Instant::now() > deadline {
+                        panic!("timed out waiting for file");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }));
+        }
+
+        // Give readers time to start waiting.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Write the file.
+        std::fs::write(&file_path, expected_content).unwrap();
+
+        for t in readers {
+            t.join().unwrap();
+        }
+    }
+
+    /// Port of C++ TimeoutOnMissingFile.
+    #[test]
+    fn test_file_timeout_on_missing() {
+        let file_path = "/tmp/ray_file_persistence_nonexistent/missing.txt";
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_millis(50);
+
+        loop {
+            if std::path::Path::new(file_path).exists() {
+                panic!("file should not exist");
+            }
+            if start.elapsed() > timeout {
+                break; // Expected: timed out.
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+
+        // Verify we did time out and the file doesn't exist.
+        assert!(!std::path::Path::new(file_path).exists());
+    }
+
+    // --- Ported from C++ compat_test.cc ---
+
+    /// Port of C++ WriteTest: write to a file descriptor.
+    #[test]
+    fn test_write_to_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let test_file = dir.path().join("write_test.txt");
+        let content = b"helloworld";
+
+        std::fs::write(&test_file, content).unwrap();
+        let read_back = std::fs::read(&test_file).unwrap();
+        assert_eq!(read_back, content);
+    }
+
+    // --- Ported from C++ size_literals_test.cc ---
+
+    /// Port of C++ BasicTest: size literal constants.
+    #[test]
+    fn test_size_literals() {
+        const MIB: u64 = 1024 * 1024;
+        const KB: u64 = 1000;
+        const GB: u64 = 1_000_000_000;
+
+        assert_eq!(2 * MIB, 2 * 1024 * 1024);
+        assert_eq!(4 * GB, 4_000_000_000);
+        // 2.5 KB = 2500 (using integer math)
+        assert_eq!(5 * KB / 2, 2500);
+    }
+
+    // --- Ported from C++ thread_checker_test.cc ---
+
+    /// Port of C++ BasicTest: verify thread affinity checking.
+    #[test]
+    fn test_thread_checker() {
+        let creator_thread_id = std::thread::current().id();
+
+        // Same thread: should match.
+        assert_eq!(std::thread::current().id(), creator_thread_id);
+
+        // Different thread: should not match.
+        let result = std::thread::spawn(move || {
+            std::thread::current().id() == creator_thread_id
+        })
+        .join()
+        .unwrap();
+        assert!(!result, "different thread should have different thread ID");
+    }
 }

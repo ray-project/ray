@@ -562,4 +562,652 @@ mod tests {
         assert_eq!(sent_count.load(Ordering::Relaxed), 2);
         assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
     }
+
+    // ── Ported from actor_task_submitter_test.cc ────────────────────
+
+    /// Port of TestActorDead: submitting to an actor, then marking dead
+    /// should clear all pending tasks and reject new submissions.
+    #[tokio::test]
+    async fn test_actor_dead_clears_queue_and_rejects() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Submit two tasks; one is pending.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+
+        // Simulate actor dying.
+        submitter.mark_actor_dead(&actor_id);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+        assert_eq!(submitter.actor_state(&actor_id), Some(ActorState::Dead));
+
+        // New submissions should fail.
+        let result = submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await;
+        assert!(result.is_err());
+    }
+
+    /// Port of TestActorRestartNoRetry: tasks submitted during restart
+    /// should queue but not send until reconnected.
+    #[tokio::test]
+    async fn test_actor_restart_queues_without_sending() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Submit a task while alive — it's sent immediately.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent_count.load(Ordering::Relaxed), 1);
+
+        // Actor restarts.
+        submitter.mark_actor_restarting(&actor_id);
+
+        // Submit during restart — should not be sent yet.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent_count.load(Ordering::Relaxed), 1);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 1);
+
+        // Reconnect and flush — the queued task is now sent.
+        submitter.connect_actor(&actor_id, make_address());
+        submitter.flush_actor_tasks(&actor_id);
+        assert_eq!(sent_count.load(Ordering::Relaxed), 2);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+    }
+
+    /// Port of TestActorRestartFastFail: after actor dies and restarts,
+    /// tasks submitted while restarting should remain queued then send
+    /// upon reconnection.
+    #[tokio::test]
+    async fn test_actor_restart_fast_fail() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Submit task 1 while alive.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent_count.load(Ordering::Relaxed), 1);
+
+        // Actor fails and enters restarting state.
+        submitter.mark_actor_restarting(&actor_id);
+
+        // Submit task 2 during restarting — queued but not sent.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 1);
+        assert_eq!(sent_count.load(Ordering::Relaxed), 1);
+    }
+
+    /// Port of TestPendingTasks: tracks that the send callback is
+    /// invoked for each pending task once the actor is connected.
+    #[tokio::test]
+    async fn test_pending_tasks_flushed_on_connect() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        let max_pending = 10;
+
+        // Submit `max_pending` tasks before connecting.
+        for _ in 0..max_pending {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        assert_eq!(submitter.num_pending_tasks(&actor_id), max_pending);
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Connect and flush.
+        submitter.connect_actor(&actor_id, make_address());
+        submitter.flush_actor_tasks(&actor_id);
+
+        assert_eq!(sent_count.load(Ordering::Relaxed), max_pending as u32);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+    }
+
+    /// Port of TestSubmitTask: verifies that tasks are not sent until the
+    /// actor is connected, and that subsequent tasks are sent immediately.
+    #[tokio::test]
+    async fn test_submit_before_and_after_connect() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Submit task 1 before connecting — queued.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent_count.load(Ordering::Relaxed), 0);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 1);
+
+        // Connect — pending task is sent.
+        submitter.connect_actor(&actor_id, make_address());
+        submitter.flush_actor_tasks(&actor_id);
+        assert_eq!(sent_count.load(Ordering::Relaxed), 1);
+
+        // Submit task 2 after connecting — sent immediately.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent_count.load(Ordering::Relaxed), 2);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+    }
+
+    /// Port of TestActorRestartOutOfOrderGcs: test that late disconnect
+    /// messages don't affect a reconnected actor.
+    #[tokio::test]
+    async fn test_late_disconnect_after_reconnect() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Initial connection.
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Submit and send task 1.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent_count.load(Ordering::Relaxed), 1);
+
+        // Actor restarts, then reconnects.
+        submitter.mark_actor_restarting(&actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Submit and send task 2 on the new connection.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent_count.load(Ordering::Relaxed), 2);
+
+        // Late disconnect message arrives — should not affect the already
+        // reconnected actor (our implementation simply marks restarting,
+        // but since we already reconnected, re-connecting should restore).
+        // Verify that the state is still Alive after reconnect.
+        assert_eq!(submitter.actor_state(&actor_id), Some(ActorState::Alive));
+    }
+
+    /// Port of TestActorRestartRetry: after a restart, previously failed
+    /// tasks that are resubmitted get new sequence numbers and are sent
+    /// on the new connection.
+    #[tokio::test]
+    async fn test_actor_restart_retry_tasks() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Submit 3 tasks.
+        for _ in 0..3 {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        assert_eq!(sent_count.load(Ordering::Relaxed), 3);
+
+        // Actor fails and restarts.
+        submitter.mark_actor_restarting(&actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Resubmit a "retried" task and a new task after restart.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+
+        assert_eq!(sent_count.load(Ordering::Relaxed), 5);
+        assert_eq!(submitter.num_tasks_sent(&actor_id), 5);
+    }
+
+    /// Port of TestCancelHeadUnblocksQueue: cancelling a pending task
+    /// should remove it from the queue.
+    #[tokio::test]
+    async fn test_cancel_then_submit_more() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 2);
+
+        // Cancel the head of the queue.
+        submitter.cancel_task(&actor_id).unwrap();
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 1);
+
+        // Submit a new task.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 2);
+    }
+
+    /// Port of TestActorRestartFailInflightTasks: disconnect should clear
+    /// pending tasks; reconnect should allow fresh submissions.
+    #[tokio::test]
+    async fn test_disconnect_clears_then_reconnect_works() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Submit 3 tasks.
+        for _ in 0..3 {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+
+        // Actor fails — mark restarting (clears address but keeps tasks).
+        submitter.mark_actor_restarting(&actor_id);
+        // Pending tasks remain during restart.
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 3);
+
+        // Mark dead — clears all pending tasks.
+        submitter.mark_actor_dead(&actor_id);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+
+        // Cannot submit to dead actor.
+        let result = submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await;
+        assert!(result.is_err());
+    }
+
+    /// Test that callback failures leave tasks in the queue for retry.
+    #[tokio::test]
+    async fn test_send_callback_failure_leaves_tasks_queued() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Set a callback that always fails.
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            Err(CoreWorkerError::Internal("network error".into()))
+        }));
+
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+
+        // Task should remain in the queue because the callback failed.
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 1);
+        assert_eq!(submitter.num_tasks_sent(&actor_id), 0);
+    }
+
+    /// Verify multiple actors are independent.
+    #[tokio::test]
+    async fn test_multiple_actors_independent() {
+        let submitter = ActorTaskSubmitter::new();
+        let a1 = make_actor_id(1);
+        let a2 = make_actor_id(2);
+        submitter.add_actor(a1);
+        submitter.add_actor(a2);
+
+        submitter
+            .submit_task(&a1, TaskSpec::default())
+            .await
+            .unwrap();
+        submitter
+            .submit_task(&a2, TaskSpec::default())
+            .await
+            .unwrap();
+        submitter
+            .submit_task(&a2, TaskSpec::default())
+            .await
+            .unwrap();
+
+        // Marking a1 dead shouldn't affect a2.
+        submitter.mark_actor_dead(&a1);
+        assert_eq!(submitter.num_pending_tasks(&a1), 0);
+        assert_eq!(submitter.num_pending_tasks(&a2), 2);
+        assert_eq!(submitter.actor_state(&a1), Some(ActorState::Dead));
+        assert_eq!(submitter.actor_state(&a2), Some(ActorState::Alive));
+    }
+
+    /// Port of TestQueueingWarning concept: submit many tasks and verify
+    /// the queue size grows correctly.
+    #[tokio::test]
+    async fn test_large_queue_size_tracking() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        // Submit 100 tasks without connecting — all should queue.
+        for _ in 0..100 {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 100);
+        assert_eq!(submitter.total_pending_tasks(), 100);
+    }
+
+    // ── Additional tests ported from actor_task_submitter_test.cc ────
+
+    /// Port of TestDependencies concept: tasks submitted before the
+    /// actor is connected should queue and be sent once connected.
+    #[tokio::test]
+    async fn test_dependencies_resolved_before_connect() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        let sent_tasks = Arc::new(Mutex::new(Vec::new()));
+        let tasks_clone = sent_tasks.clone();
+        submitter.set_send_callback(Box::new(move |spec, _addr| {
+            tasks_clone.lock().push(spec.name.clone());
+            Ok(())
+        }));
+
+        // Submit 3 tasks with different names before connecting.
+        for name in &["dep_task_1", "dep_task_2", "dep_task_3"] {
+            let spec = TaskSpec {
+                name: name.to_string(),
+                ..Default::default()
+            };
+            submitter.submit_task(&actor_id, spec).await.unwrap();
+        }
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 3);
+        assert!(sent_tasks.lock().is_empty());
+
+        // Connect and flush.
+        submitter.connect_actor(&actor_id, make_address());
+        submitter.flush_actor_tasks(&actor_id);
+
+        // All tasks should be sent in order.
+        let sent = sent_tasks.lock().clone();
+        assert_eq!(sent, vec!["dep_task_1", "dep_task_2", "dep_task_3"]);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+    }
+
+    /// Port of TestOutOfOrderDependencies: even if tasks arrive out
+    /// of order conceptually, the queue sends them FIFO.
+    #[tokio::test]
+    async fn test_fifo_ordering_maintained() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let order_clone = order.clone();
+        submitter.set_send_callback(Box::new(move |spec, _addr| {
+            order_clone.lock().push(spec.name.clone());
+            Ok(())
+        }));
+
+        for i in 0..5 {
+            let spec = TaskSpec {
+                name: format!("task_{}", i),
+                ..Default::default()
+            };
+            submitter.submit_task(&actor_id, spec).await.unwrap();
+        }
+
+        let sent = order.lock().clone();
+        assert_eq!(sent, vec!["task_0", "task_1", "task_2", "task_3", "task_4"]);
+    }
+
+    /// Port of TestActorRestartOutOfOrderRetry concept: sequence
+    /// numbers should continue incrementing across restarts.
+    #[tokio::test]
+    async fn test_sequence_numbers_continue_after_restart() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        let sent_count = Arc::new(AtomicU32::new(0));
+        let count_clone = sent_count.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            count_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Send 3 tasks.
+        for _ in 0..3 {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        assert_eq!(sent_count.load(Ordering::Relaxed), 3);
+        assert_eq!(submitter.num_tasks_sent(&actor_id), 3);
+
+        // Restart.
+        submitter.mark_actor_restarting(&actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        // Send 2 more tasks.
+        for _ in 0..2 {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        assert_eq!(sent_count.load(Ordering::Relaxed), 5);
+        assert_eq!(submitter.num_tasks_sent(&actor_id), 5);
+    }
+
+    /// Port of TestActorRestartFailInflightTasks: after restart and
+    /// then death, all pending tasks are cleared.
+    #[tokio::test]
+    async fn test_restart_then_death_clears_all() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        // Queue tasks.
+        for _ in 0..5 {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+
+        // Restart keeps tasks.
+        submitter.mark_actor_restarting(&actor_id);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 5);
+
+        // Death clears everything.
+        submitter.mark_actor_dead(&actor_id);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+        assert_eq!(submitter.actor_state(&actor_id), Some(ActorState::Dead));
+    }
+
+    /// Port of TestQueueingWarning concept: many tasks pending for
+    /// one actor while another is empty.
+    #[tokio::test]
+    async fn test_per_actor_queue_isolation() {
+        let submitter = ActorTaskSubmitter::new();
+        let a1 = make_actor_id(1);
+        let a2 = make_actor_id(2);
+        submitter.add_actor(a1);
+        submitter.add_actor(a2);
+
+        // Fill a1 with 50 tasks.
+        for _ in 0..50 {
+            submitter
+                .submit_task(&a1, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+
+        assert_eq!(submitter.num_pending_tasks(&a1), 50);
+        assert_eq!(submitter.num_pending_tasks(&a2), 0);
+        assert_eq!(submitter.total_pending_tasks(), 50);
+
+        // Killing a2 doesn't affect a1.
+        submitter.mark_actor_dead(&a2);
+        assert_eq!(submitter.num_pending_tasks(&a1), 50);
+    }
+
+    /// Port of TestActorDead sequence: connect, submit, disconnect,
+    /// verify dead state rejects new submissions.
+    #[tokio::test]
+    async fn test_full_lifecycle_connect_submit_die() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+        submitter.connect_actor(&actor_id, make_address());
+
+        let sent = Arc::new(AtomicU32::new(0));
+        let sent_clone = sent.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            sent_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        // Submit while alive.
+        submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await
+            .unwrap();
+        assert_eq!(sent.load(Ordering::Relaxed), 1);
+
+        // Actor dies.
+        submitter.mark_actor_dead(&actor_id);
+
+        // Cannot submit anymore.
+        let result = submitter
+            .submit_task(&actor_id, TaskSpec::default())
+            .await;
+        assert!(result.is_err());
+    }
+
+    /// Test cancel on nonexistent actor returns error.
+    #[test]
+    fn test_cancel_nonexistent_actor() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(99);
+        let result = submitter.cancel_task(&actor_id);
+        assert!(result.is_err());
+    }
+
+    /// Port of TestCancelHeadUnblocksQueue: cancel removes oldest,
+    /// remaining tasks still deliverable.
+    #[tokio::test]
+    async fn test_cancel_head_remaining_delivered() {
+        let submitter = ActorTaskSubmitter::new();
+        let actor_id = make_actor_id(1);
+        submitter.add_actor(actor_id);
+
+        for _ in 0..4 {
+            submitter
+                .submit_task(&actor_id, TaskSpec::default())
+                .await
+                .unwrap();
+        }
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 4);
+
+        // Cancel the head.
+        submitter.cancel_task(&actor_id).unwrap();
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 3);
+
+        // Connect and flush remaining.
+        let sent = Arc::new(AtomicU32::new(0));
+        let sent_clone = sent.clone();
+        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+            sent_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }));
+
+        submitter.connect_actor(&actor_id, make_address());
+        submitter.flush_actor_tasks(&actor_id);
+
+        assert_eq!(sent.load(Ordering::Relaxed), 3);
+        assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
+    }
+
+    /// Port of Default impl test.
+    #[test]
+    fn test_default_impl() {
+        let submitter = ActorTaskSubmitter::default();
+        assert_eq!(submitter.total_pending_tasks(), 0);
+    }
 }

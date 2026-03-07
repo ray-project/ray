@@ -494,6 +494,69 @@ mod tests {
         assert!(handler.subscribe(3).is_some());
     }
 
+    // ---- Ported from pubsub_handler_test.cc ----
+
+    #[test]
+    fn test_subscribe_valid_channel_type() {
+        let handler = InternalPubSubHandler::new();
+        // GCS_ACTOR_CHANNEL = 3 is a valid channel
+        handler.handle_subscribe_command(b"sub1".to_vec(), ChannelType::GcsActorChannel as i32, b"actor_id".to_vec());
+        let subs = handler.subscribers.lock();
+        assert!(subs.contains_key(&b"sub1".to_vec()));
+    }
+
+    #[test]
+    fn test_unsubscribe_removes_subscriber() {
+        let handler = InternalPubSubHandler::new();
+        handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
+        handler.handle_subscribe_command(b"sub1".to_vec(), 4, vec![]);
+
+        handler.handle_unsubscribe_command(b"sub1");
+
+        let subs = handler.subscribers.lock();
+        assert!(!subs.contains_key(&b"sub1".to_vec()));
+    }
+
+    #[test]
+    fn test_publish_to_multiple_channels_only_subscribed_receives() {
+        let handler = InternalPubSubHandler::new();
+        // sub1 subscribes to channel 3 and 5
+        handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
+        handler.handle_subscribe_command(b"sub1".to_vec(), 5, vec![]);
+
+        // Publish to channels 3, 4, 5, 6
+        handler.publish_pubmessage(make_pub_msg(3, b"a"));
+        handler.publish_pubmessage(make_pub_msg(4, b"b"));
+        handler.publish_pubmessage(make_pub_msg(5, b"c"));
+        handler.publish_pubmessage(make_pub_msg(6, b"d"));
+
+        let subs = handler.subscribers.lock();
+        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        // Should only receive from channels 3 and 5
+        assert_eq!(state.pending_messages.len(), 2);
+        let channels: Vec<i32> = state.pending_messages.iter().map(|m| m.channel_type).collect();
+        assert!(channels.contains(&3));
+        assert!(channels.contains(&5));
+    }
+
+    #[test]
+    fn test_handle_publish_batch_delivers_to_subscribers() {
+        let handler = InternalPubSubHandler::new();
+        handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
+
+        // Batch publish
+        let msgs = vec![
+            make_pub_msg(3, b"a1"),
+            make_pub_msg(3, b"a2"),
+            make_pub_msg(3, b"a3"),
+        ];
+        handler.handle_publish(msgs);
+
+        let subs = handler.subscribers.lock();
+        let state = subs.get(&b"sub1".to_vec()).unwrap();
+        assert_eq!(state.pending_messages.len(), 3);
+    }
+
     #[test]
     fn test_subscribe_to_multiple_channels() {
         let handler = InternalPubSubHandler::new();

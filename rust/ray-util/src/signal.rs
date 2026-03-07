@@ -280,4 +280,118 @@ mod tests {
         coord.execute();
         assert_eq!(*order.lock(), vec![1, 2, 3]);
     }
+
+    // --- Ported from C++ signal_test.cc ---
+
+    /// Port of C++ SendTermSignalTest: fork child, send SIGTERM.
+    #[cfg(unix)]
+    #[test]
+    fn test_send_term_signal() {
+        use nix::sys::signal::{self, Signal};
+        use nix::unistd::{fork, ForkResult};
+        use std::thread;
+        use std::time::Duration;
+
+        unsafe {
+            match fork() {
+                Ok(ForkResult::Child) => {
+                    // Child: spin forever.
+                    loop {
+                        std::hint::spin_loop();
+                    }
+                }
+                Ok(ForkResult::Parent { child }) => {
+                    thread::sleep(Duration::from_millis(100));
+                    let result = signal::kill(child, Signal::SIGTERM);
+                    assert!(result.is_ok(), "kill SIGTERM failed");
+                    thread::sleep(Duration::from_millis(100));
+                    // Reap to avoid zombies.
+                    let _ = nix::sys::wait::waitpid(child, None);
+                }
+                Err(e) => panic!("fork failed: {}", e),
+            }
+        }
+    }
+
+    /// Port of C++ SIGABRT_Test: child calls abort.
+    #[cfg(unix)]
+    #[test]
+    fn test_sigabrt_child() {
+        use nix::sys::signal::{self, Signal};
+        use nix::unistd::{fork, ForkResult};
+        use std::thread;
+        use std::time::Duration;
+
+        unsafe {
+            match fork() {
+                Ok(ForkResult::Child) => {
+                    std::process::abort();
+                }
+                Ok(ForkResult::Parent { child }) => {
+                    thread::sleep(Duration::from_millis(100));
+                    // Child should already be dead from abort; kill to clean up.
+                    let _ = signal::kill(child, Signal::SIGKILL);
+                    thread::sleep(Duration::from_millis(100));
+                    let _ = nix::sys::wait::waitpid(child, None);
+                }
+                Err(e) => panic!("fork failed: {}", e),
+            }
+        }
+    }
+
+    /// Port of C++ SIGILL_Test: child raises SIGILL.
+    #[cfg(unix)]
+    #[test]
+    fn test_sigill_child() {
+        use nix::sys::signal::{self, Signal};
+        use nix::unistd::{fork, ForkResult};
+        use std::thread;
+        use std::time::Duration;
+
+        unsafe {
+            match fork() {
+                Ok(ForkResult::Child) => {
+                    libc::raise(libc::SIGILL);
+                    std::process::exit(1); // Shouldn't reach here
+                }
+                Ok(ForkResult::Parent { child }) => {
+                    thread::sleep(Duration::from_millis(100));
+                    let _ = signal::kill(child, Signal::SIGKILL);
+                    thread::sleep(Duration::from_millis(100));
+                    let _ = nix::sys::wait::waitpid(child, None);
+                }
+                Err(e) => panic!("fork failed: {}", e),
+            }
+        }
+    }
+
+    /// Port of C++ SendBusSignalTest: send SIGBUS to child.
+    #[cfg(unix)]
+    #[test]
+    fn test_send_bus_signal() {
+        use nix::sys::signal::{self, Signal};
+        use nix::unistd::{fork, ForkResult};
+        use std::thread;
+        use std::time::Duration;
+
+        unsafe {
+            match fork() {
+                Ok(ForkResult::Child) => {
+                    loop {
+                        std::hint::spin_loop();
+                    }
+                }
+                Ok(ForkResult::Parent { child }) => {
+                    thread::sleep(Duration::from_millis(100));
+                    let result = signal::kill(child, Signal::SIGBUS);
+                    assert!(result.is_ok(), "kill SIGBUS failed");
+                    thread::sleep(Duration::from_millis(200));
+                    // SIGBUS may not kill on all platforms; send SIGKILL as cleanup.
+                    let _ = signal::kill(child, Signal::SIGKILL);
+                    let _ = nix::sys::wait::waitpid(child, None);
+                }
+                Err(e) => panic!("fork failed: {}", e),
+            }
+        }
+    }
 }

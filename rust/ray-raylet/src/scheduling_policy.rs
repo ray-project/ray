@@ -1335,4 +1335,853 @@ mod tests {
             assert_eq!(result, Some("n1".to_string()));
         }
     }
+
+    // ─── Ported from C++ scheduling_policy_test.cc ────────────────────
+
+    /// Port of FeasibleDefinitionTest: a node with total CPU but no
+    /// object_store_memory should be infeasible for requests requiring
+    /// object_store_memory, but feasible for CPU-only requests.
+    #[test]
+    fn test_feasible_definition() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let nr = NodeResources::new(total);
+
+        // Request requiring both CPU and object_store_memory
+        let mut req1 = ResourceSet::new();
+        req1.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req1.set("object_store_memory".to_string(), FixedPoint::from_f64(1.0));
+        assert!(!nr.is_feasible(&req1));
+
+        // Request requiring only CPU
+        let mut req2 = ResourceSet::new();
+        req2.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        assert!(nr.is_feasible(&req2));
+    }
+
+    /// Port of AvailableDefinitionTest: a node should be available for
+    /// a resource it has, but not for a resource it doesn't have.
+    #[test]
+    fn test_available_definition() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let nr = NodeResources::new(total);
+
+        let mut req1 = ResourceSet::new();
+        req1.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req1.set("object_store_memory".to_string(), FixedPoint::from_f64(1.0));
+        assert!(!nr.is_available(&req1));
+
+        let mut req2 = ResourceSet::new();
+        req2.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        assert!(nr.is_available(&req2));
+    }
+
+    /// Port of CriticalResourceUtilizationDefinitionTest: verify correct
+    /// calculation of max utilization across multiple resource types.
+    #[test]
+    fn test_critical_resource_utilization_definition() {
+        // Simple: 1 avail of 2 total = 0.5 utilization
+        {
+            let mut total = ResourceSet::new();
+            total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+            let mut nr = NodeResources::new(total);
+            let mut used = ResourceSet::new();
+            used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+            nr.available.subtract(&used);
+            assert!((nr.critical_resource_utilization() - 0.5).abs() < 0.01);
+        }
+        // Max across multiple resources: memory is 0.75 utilization (max)
+        {
+            let mut total = ResourceSet::new();
+            total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+            total.set("memory".to_string(), FixedPoint::from_f64(1.0));
+            total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
+            total.set("object_store_memory".to_string(), FixedPoint::from_f64(100.0));
+            let mut nr = NodeResources::new(total);
+            let mut used = ResourceSet::new();
+            used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+            used.set("memory".to_string(), FixedPoint::from_f64(0.75));
+            used.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+            used.set("object_store_memory".to_string(), FixedPoint::from_f64(50.0));
+            nr.available.subtract(&used);
+            assert!((nr.critical_resource_utilization() - 0.75).abs() < 0.01);
+        }
+    }
+
+    /// Port of AvailableTruncationTest: when two nodes are both below the
+    /// spread_threshold, their scores are both truncated to 0, and a
+    /// preferred local node should be selected.
+    #[test]
+    fn test_available_truncation() {
+        let mut nodes = HashMap::new();
+
+        // local: 1 avail of 2 total = 0.5 util
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let mut local_nr = NodeResources::new(local_total);
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        local_nr.available.subtract(&used);
+        nodes.insert("local".to_string(), local_nr);
+
+        // remote: 0.75 avail of 2 total = 0.625 util (lower than local)
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let mut remote_nr = NodeResources::new(remote_total);
+        let mut used2 = ResourceSet::new();
+        used2.set("CPU".to_string(), FixedPoint::from_f64(1.25));
+        remote_nr.available.subtract(&used2);
+        nodes.insert("remote".to_string(), remote_nr);
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Both are below 0.51 threshold, truncated to 0 — prefer local
+        let opts = SchedulingOptions {
+            spread_threshold: 0.51,
+            preferred_node_id: Some("local".to_string()),
+            schedule_top_k_absolute: 10,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert_eq!(result, Some("local".to_string()));
+    }
+
+    /// Port of AvailableTieBreakTest: when remote node has lower utilization
+    /// than local (above threshold), remote should be selected.
+    #[test]
+    fn test_available_tie_break() {
+        let mut nodes = HashMap::new();
+
+        // local: 1 avail / 2 total = 0.5 util
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let mut local_nr = NodeResources::new(local_total);
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        local_nr.available.subtract(&used);
+        nodes.insert("local".to_string(), local_nr);
+
+        // remote: 1.5 avail / 2 total = 0.25 util (lower → better)
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let mut remote_nr = NodeResources::new(remote_total);
+        let mut used2 = ResourceSet::new();
+        used2.set("CPU".to_string(), FixedPoint::from_f64(0.5));
+        remote_nr.available.subtract(&used2);
+        nodes.insert("remote".to_string(), remote_nr);
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let opts = SchedulingOptions {
+            spread_threshold: 0.50,
+            schedule_top_k_absolute: 1,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        // Remote has lower utilization so it should be picked
+        assert_eq!(result, Some("remote".to_string()));
+    }
+
+    /// Port of AvailableOverFeasibleTest: an available remote node should
+    /// be preferred over a merely feasible local node.
+    #[test]
+    fn test_available_over_feasible() {
+        let mut nodes = HashMap::new();
+
+        // local: plenty of CPU, 0 GPU available (feasible but not available for GPU)
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        local_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        let mut local_nr = NodeResources::new(local_total);
+        let mut used = ResourceSet::new();
+        used.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        local_nr.available.subtract(&used);
+        nodes.insert("local".to_string(), local_nr);
+
+        // remote: has both CPU and GPU available
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        remote_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("remote".to_string(), NodeResources::new(remote_total));
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let opts = SchedulingOptions {
+            spread_threshold: 0.50,
+            schedule_top_k_absolute: 1,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert_eq!(result, Some("remote".to_string()));
+    }
+
+    /// Port of InfeasibleTest: when no node is feasible, return None.
+    #[test]
+    fn test_infeasible() {
+        let mut nodes = HashMap::new();
+
+        let mut t1 = ResourceSet::new();
+        t1.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        nodes.insert("n1".to_string(), NodeResources::new(t1));
+
+        let mut t2 = ResourceSet::new();
+        t2.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        nodes.insert("n2".to_string(), NodeResources::new(t2));
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let result = policy.schedule(&req, &SchedulingOptions::hybrid(), &nodes, "n1");
+        assert!(result.is_none());
+    }
+
+    /// Port of BarelyFeasibleTest: a fully utilized node is still feasible
+    /// and should be returned when require_node_available is false.
+    #[test]
+    fn test_barely_feasible() {
+        let mut nodes = HashMap::new();
+
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        let mut nr = NodeResources::new(total);
+        // All resources used
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        used.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nr.available.subtract(&used);
+        nodes.insert("local".to_string(), nr);
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let opts = SchedulingOptions {
+            require_node_available: false,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert_eq!(result, Some("local".to_string()));
+    }
+
+    /// Port of ForceSpillbackIfAvailableTest: avoid_local_node should
+    /// force scheduling to a remote node even when local is better.
+    #[test]
+    fn test_force_spillback_if_available() {
+        let mut nodes = HashMap::new();
+
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        local_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("local".to_string(), NodeResources::new(local_total));
+
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        remote_total.set("GPU".to_string(), FixedPoint::from_f64(10.0));
+        nodes.insert("remote".to_string(), NodeResources::new(remote_total));
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let opts = SchedulingOptions {
+            avoid_local_node: true,
+            require_node_available: true,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert_eq!(result, Some("remote".to_string()));
+    }
+
+    /// Port of AvoidSchedulingCPURequestsOnGPUNodes: CPU-only tasks should
+    /// avoid GPU nodes when avoid_gpu_nodes is set. GPU and mixed tasks
+    /// should still schedule on GPU nodes.
+    #[test]
+    fn test_avoid_scheduling_cpu_requests_on_gpu_nodes() {
+        let mut nodes = HashMap::new();
+
+        // local: GPU node with 10 CPUs + 1 GPU
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        local_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("local".to_string(), NodeResources::new(local_total));
+
+        // remote: CPU-only node with 2 CPUs
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        nodes.insert("remote".to_string(), NodeResources::new(remote_total));
+
+        let policy = HybridSchedulingPolicy;
+
+        // CPU-only request with avoid_gpu_nodes should go to remote
+        {
+            let mut req = ResourceSet::new();
+            req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+            let opts = SchedulingOptions {
+                avoid_gpu_nodes: true,
+                ..SchedulingOptions::hybrid()
+            };
+            let result = policy.schedule(&req, &opts, &nodes, "local");
+            assert_eq!(result, Some("remote".to_string()));
+        }
+
+        // GPU request should go to local (GPU node)
+        {
+            let mut req = ResourceSet::new();
+            req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+            let opts = SchedulingOptions {
+                avoid_gpu_nodes: true,
+                ..SchedulingOptions::hybrid()
+            };
+            let result = policy.schedule(&req, &opts, &nodes, "local");
+            assert_eq!(result, Some("local".to_string()));
+        }
+
+        // Mixed CPU+GPU request should go to local
+        {
+            let mut req = ResourceSet::new();
+            req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+            req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+            let opts = SchedulingOptions {
+                avoid_gpu_nodes: true,
+                ..SchedulingOptions::hybrid()
+            };
+            let result = policy.schedule(&req, &opts, &nodes, "local");
+            assert_eq!(result, Some("local".to_string()));
+        }
+    }
+
+    /// Port of SchedulenCPURequestsOnGPUNodeAsALastResort: when no non-GPU
+    /// node is feasible, a GPU node should be used as last resort even with
+    /// avoid_gpu_nodes set.
+    #[test]
+    fn test_schedule_cpu_on_gpu_node_as_last_resort() {
+        let mut nodes = HashMap::new();
+
+        // Only a GPU node exists — no non-GPU node at all
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        remote_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("gpu-node".to_string(), NodeResources::new(remote_total));
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // With avoid_gpu_nodes, but no non-GPU node exists, should fallback to GPU node
+        let opts = SchedulingOptions {
+            avoid_gpu_nodes: true,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "non-existent-local");
+        assert_eq!(result, Some("gpu-node".to_string()));
+    }
+
+    /// Port of ForceSpillbackTest: avoid_local_node with require_node_available=false
+    /// should pick a remote feasible node even if it has no availability.
+    #[test]
+    fn test_force_spillback() {
+        let mut nodes = HashMap::new();
+
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        local_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("local".to_string(), NodeResources::new(local_total));
+
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        remote_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        let mut remote_nr = NodeResources::new(remote_total);
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        used.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        remote_nr.available.subtract(&used);
+        nodes.insert("remote".to_string(), remote_nr);
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let opts = SchedulingOptions {
+            avoid_local_node: true,
+            require_node_available: false,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert_eq!(result, Some("remote".to_string()));
+    }
+
+    /// Port of ForceSpillbackOnlyFeasibleLocallyTest: when spillback is
+    /// forced but no remote node is feasible, should return None.
+    #[test]
+    fn test_force_spillback_only_feasible_locally() {
+        let mut nodes = HashMap::new();
+
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        local_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("local".to_string(), NodeResources::new(local_total));
+
+        // remote: no GPU at all → infeasible for GPU request
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        nodes.insert("remote".to_string(), NodeResources::new(remote_total));
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let opts = SchedulingOptions {
+            avoid_local_node: true,
+            require_node_available: false,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert!(result.is_none());
+    }
+
+    /// Port of NonGpuNodePreferredSchedulingTest: CPU-only tasks prefer
+    /// non-GPU nodes; GPU tasks go to GPU nodes.
+    #[test]
+    fn test_non_gpu_node_preferred_scheduling() {
+        let mut nodes = HashMap::new();
+
+        // local: {CPU:2, GPU:1}
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        local_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("local".to_string(), NodeResources::new(local_total));
+
+        // remote: {CPU: 2}
+        let mut remote_total = ResourceSet::new();
+        remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        nodes.insert("remote".to_string(), NodeResources::new(remote_total));
+
+        // remote2: {CPU: 3}
+        let mut remote2_total = ResourceSet::new();
+        remote2_total.set("CPU".to_string(), FixedPoint::from_f64(3.0));
+        nodes.insert("remote2".to_string(), NodeResources::new(remote2_total));
+
+        let policy = HybridSchedulingPolicy;
+
+        // 1 CPU → prefer non-GPU nodes
+        {
+            let mut req = ResourceSet::new();
+            req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+            let opts = SchedulingOptions {
+                avoid_gpu_nodes: true,
+                schedule_top_k_absolute: 1,
+                ..SchedulingOptions::hybrid()
+            };
+            let result = policy.schedule(&req, &opts, &nodes, "local");
+            assert!(result == Some("remote".to_string()) || result == Some("remote2".to_string()));
+        }
+
+        // CPU+GPU → must go to GPU node
+        {
+            let mut req = ResourceSet::new();
+            req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+            req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+            let opts = SchedulingOptions {
+                avoid_gpu_nodes: true,
+                ..SchedulingOptions::hybrid()
+            };
+            let result = policy.schedule(&req, &opts, &nodes, "local");
+            assert_eq!(result, Some("local".to_string()));
+        }
+    }
+
+    /// Port of StrictPackBundleSchedulingTest: verify target node preference.
+    #[test]
+    fn test_strict_pack_bundle_scheduling() {
+        let mut nodes = HashMap::new();
+
+        let mut n1 = ResourceSet::new();
+        n1.set("CPU".to_string(), FixedPoint::from_f64(8.0));
+        nodes.insert("local".to_string(), NodeResources::new(n1));
+
+        let mut n2 = ResourceSet::new();
+        n2.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        nodes.insert("small".to_string(), NodeResources::new(n2));
+
+        let mut n3 = ResourceSet::new();
+        n3.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        nodes.insert("medium".to_string(), NodeResources::new(n3));
+
+        let mut r1 = ResourceSet::new();
+        r1.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let requests: Vec<&ResourceSet> = vec![&r1, &r1];
+
+        let opts = SchedulingOptions {
+            scheduling_type: SchedulingType::BundleStrictPack,
+            ..SchedulingOptions::default()
+        };
+
+        // Should pack all on one node that has capacity for 4 CPU total
+        let result = BundleStrictPackSchedulingPolicy.schedule(&requests, &opts, &nodes);
+        match result {
+            BundleSchedulingResult::Success(assignments) => {
+                assert_eq!(assignments.len(), 2);
+                assert_eq!(assignments[0], assignments[1]);
+                // Must be on a node with at least 4 CPU (local or medium)
+                assert!(assignments[0] == "local" || assignments[0] == "medium");
+            }
+            _ => panic!("expected success"),
+        }
+    }
+
+    /// Port of StrictPackBundleLabelSelectorSuccessTest.
+    #[test]
+    fn test_strict_pack_label_selector_success() {
+        let mut nodes = HashMap::new();
+
+        let mut n1_total = ResourceSet::new();
+        n1_total.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        let mut n1 = NodeResources::new(n1_total);
+        n1.labels.insert("zone".to_string(), "us-east".to_string());
+        nodes.insert("n1".to_string(), n1);
+
+        let mut n2_total = ResourceSet::new();
+        n2_total.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        let mut n2 = NodeResources::new(n2_total);
+        n2.labels.insert("zone".to_string(), "us-west".to_string());
+        nodes.insert("n2".to_string(), n2);
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        let requests: Vec<&ResourceSet> = vec![&req, &req];
+
+        // StrictPack should place both on the same node.
+        // Since both have enough resources, pick any one.
+        let opts = SchedulingOptions {
+            scheduling_type: SchedulingType::BundleStrictPack,
+            ..SchedulingOptions::default()
+        };
+        let result = BundleStrictPackSchedulingPolicy.schedule(&requests, &opts, &nodes);
+        match result {
+            BundleSchedulingResult::Success(assignments) => {
+                assert_eq!(assignments.len(), 2);
+                assert_eq!(assignments[0], assignments[1]);
+            }
+            _ => panic!("expected success"),
+        }
+    }
+
+    /// Port of RandomPolicyTest: verify both nodes get picked over many runs.
+    #[test]
+    fn test_random_policy() {
+        let mut nodes = HashMap::new();
+
+        let mut t1 = ResourceSet::new();
+        t1.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        nodes.insert("n0".to_string(), NodeResources::new(t1));
+
+        let mut t2 = ResourceSet::new();
+        t2.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        nodes.insert("n1".to_string(), NodeResources::new(t2));
+
+        let policy = RandomSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..200 {
+            if let Some(id) = policy.schedule(&req, &SchedulingOptions::random(), &nodes, "") {
+                seen.insert(id);
+            }
+        }
+        assert!(seen.contains("n0") && seen.contains("n1"),
+            "Random policy should pick both nodes over 200 runs, seen: {:?}", seen);
+    }
+
+    /// Port of NodeAffinitySchedulingStrategyTest: comprehensive node affinity tests.
+    #[test]
+    fn test_node_affinity_scheduling_strategy() {
+        let mut nodes = HashMap::new();
+
+        let mut local_total = ResourceSet::new();
+        local_total.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        nodes.insert("local".to_string(), NodeResources::new(local_total));
+
+        // Unavailable node (0 available)
+        let mut unavail_total = ResourceSet::new();
+        unavail_total.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        let mut unavail_nr = NodeResources::new(unavail_total);
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        unavail_nr.available.subtract(&used);
+        nodes.insert("unavailable".to_string(), unavail_nr);
+
+        // Infeasible node (0 total)
+        let infeasible_total = ResourceSet::new();
+        nodes.insert("infeasible".to_string(), NodeResources::new(infeasible_total));
+
+        let policy = NodeAffinitySchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Hard affinity to local → should return local
+        let opts = SchedulingOptions::node_affinity("local".to_string(), false, false, false);
+        assert_eq!(policy.schedule(&req, &opts, &nodes, "local"), Some("local".to_string()));
+
+        // Hard affinity to unavailable (no spill, no fail) → still returns it
+        let opts = SchedulingOptions::node_affinity("unavailable".to_string(), false, false, false);
+        assert_eq!(policy.schedule(&req, &opts, &nodes, "local"), Some("unavailable".to_string()));
+
+        // Hard affinity to unavailable with fail_on_unavailable → None
+        let opts = SchedulingOptions::node_affinity("unavailable".to_string(), false, false, true);
+        assert!(policy.schedule(&req, &opts, &nodes, "local").is_none());
+
+        // Soft affinity to unavailable with spill → fallback to local
+        let opts = SchedulingOptions::node_affinity("unavailable".to_string(), true, true, false);
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert!(result.is_some());
+
+        // Hard affinity to infeasible (no soft) → None
+        let opts = SchedulingOptions::node_affinity("infeasible".to_string(), false, false, false);
+        assert!(policy.schedule(&req, &opts, &nodes, "local").is_none());
+
+        // Soft affinity to infeasible → fallback
+        let opts = SchedulingOptions::node_affinity("infeasible".to_string(), true, true, false);
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert!(result.is_some());
+
+        // Hard affinity to non-existent → None
+        let opts = SchedulingOptions::node_affinity("not_exist".to_string(), false, false, false);
+        assert!(policy.schedule(&req, &opts, &nodes, "local").is_none());
+
+        // Soft affinity to non-existent → fallback
+        let opts = SchedulingOptions::node_affinity("not_exist".to_string(), true, true, false);
+        let result = policy.schedule(&req, &opts, &nodes, "local");
+        assert!(result.is_some());
+    }
+
+    /// Port of SpreadPolicyTest.
+    #[test]
+    fn test_spread_policy() {
+        let mut nodes = HashMap::new();
+
+        let mut n0 = ResourceSet::new();
+        n0.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        n0.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        nodes.insert("n0".to_string(), NodeResources::new(n0));
+
+        // Unavailable
+        let mut n1_total = ResourceSet::new();
+        n1_total.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        n1_total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        let mut n1 = NodeResources::new(n1_total);
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        n1.available.subtract(&used);
+        nodes.insert("n1".to_string(), n1);
+
+        let mut n3 = ResourceSet::new();
+        n3.set("CPU".to_string(), FixedPoint::from_f64(20.0));
+        nodes.insert("n3".to_string(), NodeResources::new(n3));
+
+        let policy = SpreadSchedulingPolicy::new();
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Multiple spread calls should spread across available nodes
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..10 {
+            let opts = SchedulingOptions::spread();
+            if let Some(id) = policy.schedule(&req, &opts, &nodes, "n0") {
+                seen.insert(id);
+            }
+        }
+        assert!(seen.len() >= 2, "spread should visit multiple nodes");
+
+        // Spread with require_node_available and GPU request (no available GPU nodes)
+        let mut gpu_req = ResourceSet::new();
+        gpu_req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        let opts = SchedulingOptions {
+            require_node_available: true,
+            ..SchedulingOptions::spread()
+        };
+        // n1 has GPU but no CPU available — GPU is still available though
+        // n0 has GPU and is available
+        let result = policy.schedule(&gpu_req, &opts, &nodes, "n0");
+        assert!(result.is_some());
+    }
+
+    // ─── Ported from C++ hybrid_scheduling_policy_test.cc ─────────────
+
+    /// Port of GetBestNode: with 1 candidate, always pick the lowest scorer.
+    #[test]
+    fn test_get_best_node_single_candidate() {
+        let mut nodes = HashMap::new();
+
+        // n1: score 0 (best), n2: score 0, n3: 0.6, n4: 0.7
+        let mut n1_total = ResourceSet::new();
+        n1_total.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        nodes.insert("n1".to_string(), NodeResources::new(n1_total.clone()));
+        nodes.insert("n2".to_string(), NodeResources::new(n1_total.clone()));
+
+        // n3 with some utilization
+        let mut n3 = NodeResources::new(n1_total.clone());
+        let mut used3 = ResourceSet::new();
+        used3.set("CPU".to_string(), FixedPoint::from_f64(6.0));
+        n3.available.subtract(&used3);
+        nodes.insert("n3".to_string(), n3);
+
+        // n4 with more utilization
+        let mut n4 = NodeResources::new(n1_total);
+        let mut used4 = ResourceSet::new();
+        used4.set("CPU".to_string(), FixedPoint::from_f64(7.0));
+        n4.available.subtract(&used4);
+        nodes.insert("n4".to_string(), n4);
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // top_k=1 should always return one of the lowest-score nodes
+        let opts = SchedulingOptions {
+            schedule_top_k_absolute: 1,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "").unwrap();
+        // n1 and n2 both have score 0, so either is valid
+        assert!(result == "n1" || result == "n2", "got {}", result);
+    }
+
+    /// Port of GetBestNodePrioritizePreferredNode: preferred node should be
+    /// chosen when its score ties with the best.
+    #[test]
+    fn test_get_best_node_prioritize_preferred() {
+        let mut nodes = HashMap::new();
+
+        let total = {
+            let mut t = ResourceSet::new();
+            t.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+            t
+        };
+
+        // n1, n2: score 0 (idle)
+        nodes.insert("n1".to_string(), NodeResources::new(total.clone()));
+        nodes.insert("n2".to_string(), NodeResources::new(total.clone()));
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        // Prefer n2 — its score (0) equals the best score, so it should be chosen
+        let opts = SchedulingOptions {
+            preferred_node_id: Some("n2".to_string()),
+            schedule_top_k_absolute: 10,
+            ..SchedulingOptions::hybrid()
+        };
+        let result = policy.schedule(&req, &opts, &nodes, "n1");
+        assert_eq!(result, Some("n2".to_string()));
+    }
+
+    // ─── Bundle label selector infeasible tests ──────────────────────
+
+    /// Port of PackBundleLabelSelectorInfeasibleTest: PACK policy with
+    /// an infeasible label should return Infeasible (not Failed).
+    /// The Rust BundlePack policy checks is_feasible per-node which
+    /// considers total resources. A node with resources but wrong label
+    /// won't have the request's "label resource", so this tests the
+    /// infeasibility at the resource level.
+    #[test]
+    fn test_bundle_pack_infeasible_resource() {
+        let mut nodes = HashMap::new();
+
+        let mut n1 = ResourceSet::new();
+        n1.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        nodes.insert("n1".to_string(), NodeResources::new(n1));
+
+        // Request a resource no node has
+        let mut req = ResourceSet::new();
+        req.set("NONEXISTENT".to_string(), FixedPoint::from_f64(1.0));
+        let requests: Vec<&ResourceSet> = vec![&req];
+
+        let opts = SchedulingOptions {
+            scheduling_type: SchedulingType::BundlePack,
+            ..SchedulingOptions::default()
+        };
+        let result = BundlePackSchedulingPolicy.schedule(&requests, &opts, &nodes);
+        assert!(matches!(result, BundleSchedulingResult::Infeasible));
+    }
+
+    /// Port of SpreadBundleLabelSelectorInfeasibleTest.
+    #[test]
+    fn test_bundle_spread_infeasible_resource() {
+        let mut nodes = HashMap::new();
+
+        let mut n1 = ResourceSet::new();
+        n1.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        nodes.insert("n1".to_string(), NodeResources::new(n1));
+
+        let mut req = ResourceSet::new();
+        req.set("NONEXISTENT".to_string(), FixedPoint::from_f64(1.0));
+        let requests: Vec<&ResourceSet> = vec![&req];
+
+        let opts = SchedulingOptions {
+            scheduling_type: SchedulingType::BundleSpread,
+            ..SchedulingOptions::default()
+        };
+        let result = BundleSpreadSchedulingPolicy.schedule(&requests, &opts, &nodes);
+        assert!(matches!(result, BundleSchedulingResult::Infeasible));
+    }
+
+    /// Port of StrictSpreadBundleLabelSelectorInfeasibleTest.
+    #[test]
+    fn test_bundle_strict_spread_infeasible_resource() {
+        let mut nodes = HashMap::new();
+
+        let mut n1 = ResourceSet::new();
+        n1.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+        nodes.insert("n1".to_string(), NodeResources::new(n1));
+
+        let mut req = ResourceSet::new();
+        req.set("NONEXISTENT".to_string(), FixedPoint::from_f64(1.0));
+        let requests: Vec<&ResourceSet> = vec![&req];
+
+        let opts = SchedulingOptions {
+            scheduling_type: SchedulingType::BundleStrictSpread,
+            ..SchedulingOptions::default()
+        };
+        let result = BundleStrictSpreadSchedulingPolicy.schedule(&requests, &opts, &nodes);
+        assert!(matches!(result, BundleSchedulingResult::Infeasible));
+    }
+
+    /// Port of draining node test: draining nodes should be skipped.
+    #[test]
+    fn test_hybrid_skips_draining_nodes() {
+        let mut nodes = HashMap::new();
+
+        let mut t = ResourceSet::new();
+        t.set("CPU".to_string(), FixedPoint::from_f64(10.0));
+
+        let mut draining = NodeResources::new(t.clone());
+        draining.is_draining = true;
+        nodes.insert("draining".to_string(), draining);
+
+        nodes.insert("healthy".to_string(), NodeResources::new(t));
+
+        let policy = HybridSchedulingPolicy;
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+
+        let result = policy.schedule(&req, &SchedulingOptions::hybrid(), &nodes, "");
+        assert_eq!(result, Some("healthy".to_string()));
+    }
 }

@@ -290,4 +290,350 @@ mod tests {
             .unwrap();
         assert_eq!(obj.data.as_ref(), b"arrived");
     }
+
+    // ─── Ported from C++ memory_store_test.cc ────────────────────────
+
+    #[test]
+    fn test_put_get_delete_stats() {
+        // Port of TestMemoryStoreStats: put objects, delete some, verify size tracks.
+        let store = CoreWorkerMemoryStore::new();
+        let id1 = ObjectID::from_random();
+        let id2 = ObjectID::from_random();
+        let id3 = ObjectID::from_random();
+
+        store.put(id1, make_object(b"aaa")).unwrap();
+        store.put(id2, make_object(b"bbb")).unwrap();
+        store.put(id3, make_object(b"ccc")).unwrap();
+        assert_eq!(store.size(), 3);
+
+        // Delete one.
+        store.delete(&id3);
+        assert_eq!(store.size(), 2);
+        assert!(store.contains(&id1));
+        assert!(store.contains(&id2));
+        assert!(!store.contains(&id3));
+
+        // Delete remaining.
+        store.delete(&id1);
+        store.delete(&id2);
+        assert_eq!(store.size(), 0);
+
+        // Re-put after delete should succeed.
+        store.put(id1, make_object(b"new1")).unwrap();
+        store.put(id2, make_object(b"new2")).unwrap();
+        store.put(id3, make_object(b"new3")).unwrap();
+        assert_eq!(store.size(), 3);
+    }
+
+    #[test]
+    fn test_all_object_ids() {
+        let store = CoreWorkerMemoryStore::new();
+        let id1 = ObjectID::from_random();
+        let id2 = ObjectID::from_random();
+        store.put(id1, make_object(b"x")).unwrap();
+        store.put(id2, make_object(b"y")).unwrap();
+
+        let ids = store.all_object_ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&id1));
+        assert!(ids.contains(&id2));
+    }
+
+    #[test]
+    fn test_delete_nonexistent_returns_false() {
+        let store = CoreWorkerMemoryStore::new();
+        assert!(!store.delete(&ObjectID::from_random()));
+    }
+
+    #[tokio::test]
+    async fn test_get_or_wait_multiple_objects_different_arrival_times() {
+        // Port of TestWaitWithWaiting: objects arriving at different times.
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let oid1 = ObjectID::from_random();
+        let oid2 = ObjectID::from_random();
+
+        // oid1 is put immediately.
+        store.put(oid1, make_object(b"first")).unwrap();
+
+        // oid2 arrives after a delay.
+        let store2 = store.clone();
+        let oid2_copy = oid2;
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            store2.put(oid2_copy, make_object(b"second")).unwrap();
+        });
+
+        // oid1 should be immediately available.
+        let obj1 = store
+            .get_or_wait(&oid1, Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert_eq!(obj1.data.as_ref(), b"first");
+
+        // oid2 should arrive within timeout.
+        let obj2 = store
+            .get_or_wait(&oid2, Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert_eq!(obj2.data.as_ref(), b"second");
+    }
+
+    #[tokio::test]
+    async fn test_get_or_wait_spurious_wake() {
+        // Simulate a spurious wake: another object is put but we are waiting for a different one.
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let target = ObjectID::from_random();
+        let other = ObjectID::from_random();
+
+        let store2 = store.clone();
+        let target_copy = target;
+        tokio::spawn(async move {
+            // First put a different object (spurious wake).
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            store2.put(other, make_object(b"other")).unwrap();
+            // Then put the target.
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            store2.put(target_copy, make_object(b"target")).unwrap();
+        });
+
+        let obj = store
+            .get_or_wait(&target, Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert_eq!(obj.data.as_ref(), b"target");
+    }
+
+    #[test]
+    fn test_put_many_objects_and_verify() {
+        // Port of TestObjectAllocator: put many objects and verify counts.
+        let store = CoreWorkerMemoryStore::new();
+        let count = 100;
+        let mut ids = Vec::new();
+        for i in 0..count {
+            let oid = ObjectID::from_random();
+            let data = format!("data_{}", i);
+            store
+                .put(oid, RayObject::from_data(Bytes::from(data)))
+                .unwrap();
+            ids.push(oid);
+        }
+        assert_eq!(store.size(), count);
+
+        // Verify each object is retrievable.
+        for (i, oid) in ids.iter().enumerate() {
+            let obj = store.get(oid).unwrap();
+            let expected = format!("data_{}", i);
+            assert_eq!(obj.data.as_ref(), expected.as_bytes());
+        }
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let store = CoreWorkerMemoryStore::default();
+        assert_eq!(store.size(), 0);
+    }
+
+    #[test]
+    fn test_object_with_empty_data() {
+        let store = CoreWorkerMemoryStore::new();
+        let oid = ObjectID::from_random();
+        let obj = RayObject::from_data(Bytes::new());
+        store.put(oid, obj).unwrap();
+        let got = store.get(&oid).unwrap();
+        assert!(got.data.is_empty());
+    }
+
+    // ── Additional tests ported from memory_store_test.cc ───────────
+
+    /// Port of TestReportUnhandledErrors concept: put, then delete
+    /// without get should work without panic.
+    #[test]
+    fn test_put_delete_without_get() {
+        let store = CoreWorkerMemoryStore::new();
+        let id1 = ObjectID::from_random();
+        let id2 = ObjectID::from_random();
+
+        store.put(id1, make_object(b"error1")).unwrap();
+        store.put(id2, make_object(b"error2")).unwrap();
+
+        // Delete without getting.
+        assert!(store.delete(&id1));
+        assert!(store.delete(&id2));
+        assert_eq!(store.size(), 0);
+    }
+
+    /// Port of TestReportUnhandledErrors: put, get, then delete
+    /// should succeed without issues.
+    #[test]
+    fn test_put_get_then_delete() {
+        let store = CoreWorkerMemoryStore::new();
+        let id1 = ObjectID::from_random();
+        let id2 = ObjectID::from_random();
+
+        store.put(id1, make_object(b"data1")).unwrap();
+        store.put(id2, make_object(b"data2")).unwrap();
+
+        // Get both.
+        let _obj1 = store.get(&id1).unwrap();
+        let _obj2 = store.get(&id2).unwrap();
+
+        // Delete both.
+        store.delete(&id1);
+        store.delete(&id2);
+        assert_eq!(store.size(), 0);
+    }
+
+    /// Port of TestWaitNoWaiting: multiple objects, some immediately
+    /// available, some not.
+    #[tokio::test]
+    async fn test_wait_no_waiting_mixed_availability() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let id1 = ObjectID::from_random();
+        let id2 = ObjectID::from_random();
+        let id3 = ObjectID::from_random();
+
+        // id1 and id3 are immediately available.
+        store.put(id1, make_object(b"ready1")).unwrap();
+        store.put(id3, make_object(b"ready3")).unwrap();
+
+        // id1 and id3 should resolve immediately.
+        let obj1 = store
+            .get_or_wait(&id1, Duration::from_millis(100))
+            .await
+            .unwrap();
+        assert_eq!(obj1.data.as_ref(), b"ready1");
+
+        let obj3 = store
+            .get_or_wait(&id3, Duration::from_millis(100))
+            .await
+            .unwrap();
+        assert_eq!(obj3.data.as_ref(), b"ready3");
+
+        // id2 should time out.
+        let result = store.get_or_wait(&id2, Duration::from_millis(10)).await;
+        assert!(matches!(result, Err(CoreWorkerError::TimedOut(_))));
+    }
+
+    /// Port of TestWaitTimeout: waiting for more objects than
+    /// available should timeout.
+    #[tokio::test]
+    async fn test_wait_timeout_insufficient_objects() {
+        let store = CoreWorkerMemoryStore::new();
+        let id1 = ObjectID::from_random();
+
+        // No objects in store.
+        let result = store.get_or_wait(&id1, Duration::from_millis(10)).await;
+        assert!(matches!(result, Err(CoreWorkerError::TimedOut(_))));
+    }
+
+    /// Port of TestObjectAllocator concept: put many objects with
+    /// increasing data sizes and verify all are stored correctly.
+    #[test]
+    fn test_many_objects_with_varying_sizes() {
+        let store = CoreWorkerMemoryStore::new();
+        let mut ids_and_sizes = Vec::new();
+
+        for i in 1..=50 {
+            let oid = ObjectID::from_random();
+            let data = vec![i as u8; i * 10];
+            let obj = RayObject::from_data(Bytes::from(data.clone()));
+            store.put(oid, obj).unwrap();
+            ids_and_sizes.push((oid, data));
+        }
+
+        assert_eq!(store.size(), 50);
+
+        // Verify each object.
+        for (oid, expected_data) in &ids_and_sizes {
+            let obj = store.get(oid).unwrap();
+            assert_eq!(obj.data.as_ref(), expected_data.as_slice());
+        }
+    }
+
+    /// Port of TestWaitWithWaiting: objects arriving at different
+    /// times, parallel waiting.
+    #[tokio::test]
+    async fn test_parallel_wait_different_objects() {
+        let store = Arc::new(CoreWorkerMemoryStore::new());
+        let id1 = ObjectID::from_random();
+        let id2 = ObjectID::from_random();
+
+        let store2 = store.clone();
+        let id1_copy = id1;
+        let id2_copy = id2;
+
+        // Spawn a background task that puts objects with delays.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            store2.put(id1_copy, make_object(b"first")).unwrap();
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            store2.put(id2_copy, make_object(b"second")).unwrap();
+        });
+
+        // Wait for both in parallel.
+        let store_a = store.clone();
+        let store_b = store.clone();
+
+        let h1 = tokio::spawn(async move {
+            store_a.get_or_wait(&id1, Duration::from_secs(2)).await
+        });
+        let h2 = tokio::spawn(async move {
+            store_b.get_or_wait(&id2, Duration::from_secs(2)).await
+        });
+
+        let r1 = h1.await.unwrap().unwrap();
+        let r2 = h2.await.unwrap().unwrap();
+        assert_eq!(r1.data.as_ref(), b"first");
+        assert_eq!(r2.data.as_ref(), b"second");
+    }
+
+    /// Port of TestMemoryStoreStats concept: re-putting after delete
+    /// should work for the same object IDs.
+    #[test]
+    fn test_reput_after_delete_cycle() {
+        let store = CoreWorkerMemoryStore::new();
+        let ids: Vec<_> = (0..5).map(|_| ObjectID::from_random()).collect();
+
+        // Put all.
+        for (i, oid) in ids.iter().enumerate() {
+            store.put(*oid, make_object(format!("round1_{}", i).as_bytes())).unwrap();
+        }
+        assert_eq!(store.size(), 5);
+
+        // Delete all.
+        for oid in &ids {
+            store.delete(oid);
+        }
+        assert_eq!(store.size(), 0);
+
+        // Re-put with different data.
+        for (i, oid) in ids.iter().enumerate() {
+            store.put(*oid, make_object(format!("round2_{}", i).as_bytes())).unwrap();
+        }
+        assert_eq!(store.size(), 5);
+
+        // Verify new data.
+        for (i, oid) in ids.iter().enumerate() {
+            let obj = store.get(oid).unwrap();
+            assert_eq!(obj.data.as_ref(), format!("round2_{}", i).as_bytes());
+        }
+    }
+
+    /// Test that RayObject metadata and nested refs are preserved.
+    #[test]
+    fn test_ray_object_full_fields() {
+        let nested1 = ObjectID::from_random();
+        let nested2 = ObjectID::from_random();
+        let obj = RayObject::new(
+            Bytes::from("payload_data"),
+            Bytes::from("application/msgpack"),
+            vec![nested1, nested2],
+        );
+
+        assert_eq!(obj.data.as_ref(), b"payload_data");
+        assert_eq!(obj.metadata.as_ref(), b"application/msgpack");
+        assert_eq!(obj.nested_refs.len(), 2);
+        assert_eq!(obj.nested_refs[0], nested1);
+        assert_eq!(obj.nested_refs[1], nested2);
+    }
 }

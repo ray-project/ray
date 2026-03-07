@@ -724,4 +724,385 @@ mod tests {
         pub_.publish(3, b"k2", vec![]);
         assert_eq!(pub_.total_messages_published(), 2);
     }
+
+    // --- Ported from publisher_test.cc ---
+
+    #[tokio::test]
+    async fn test_subscriber_batch_size() {
+        // Tests that batched delivery respects publish_batch_size.
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 5,
+            max_buffered_bytes: -1,
+            subscriber_timeout_ms: 30_000,
+        });
+        pub_.register_channel(3, false);
+        pub_.register_subscription(b"sub1", 3, b"");
+
+        // Queue 10 messages.
+        for i in 0..10u8 {
+            pub_.publish(3, &[i], vec![i; 1]);
+        }
+
+        // First poll: should get at most batch_size (5) messages.
+        let rx = pub_.connect_subscriber(b"sub1", 0);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 5);
+
+        // Ack those 5 messages.
+        let max_seq = messages.last().unwrap().sequence_id;
+
+        // Second poll: should get the remaining 5 messages.
+        let rx = pub_.connect_subscriber(b"sub1", max_seq);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 5);
+    }
+
+    #[test]
+    fn test_subscriber_active_timeout() {
+        // Tests that subscriber timeout detection works correctly.
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 10,
+            max_buffered_bytes: -1,
+            subscriber_timeout_ms: 50,
+        });
+        pub_.register_channel(3, false);
+        pub_.register_subscription(b"sub1", 3, b"");
+        assert_eq!(pub_.num_subscribers(), 1);
+
+        // Immediately after registration, subscriber is not yet timed out.
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.is_empty());
+
+        // Wait past 1x timeout but less than 2x: subscriber is potentially dead
+        // but not yet removed (the first check flushes the poll).
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.is_empty());
+        // Subscriber state still exists.
+        assert_eq!(pub_.num_subscribers(), 1);
+
+        // Wait past 2x timeout: subscriber should be considered dead.
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.contains(&b"sub1".to_vec()));
+        assert_eq!(pub_.num_subscribers(), 0);
+    }
+
+    #[test]
+    fn test_subscriber_disconnected() {
+        // Tests that a subscriber that stops polling is eventually cleaned up.
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 10,
+            max_buffered_bytes: -1,
+            subscriber_timeout_ms: 50,
+        });
+        pub_.register_channel(3, false);
+        pub_.register_subscription(b"sub1", 3, b"");
+
+        // Not dead yet.
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.is_empty());
+
+        // Wait past 2x timeout without connecting at all.
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.contains(&b"sub1".to_vec()));
+        assert_eq!(pub_.num_subscribers(), 0);
+    }
+
+    #[test]
+    fn test_subscriber_timeout_complicated() {
+        // Tests subscriber timeout with connection refresh right before timeout.
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 10,
+            max_buffered_bytes: -1,
+            subscriber_timeout_ms: 80,
+        });
+        pub_.register_channel(3, false);
+        pub_.register_subscription(b"sub1", 3, b"");
+
+        // Connect to refresh the poll time.
+        let _rx = pub_.connect_subscriber(b"sub1", 0);
+
+        // Wait just under the timeout and connect again to refresh.
+        std::thread::sleep(std::time::Duration::from_millis(70));
+        let _rx = pub_.connect_subscriber(b"sub1", 0);
+
+        // Now wait again — since we refreshed, subscriber should still be alive.
+        std::thread::sleep(std::time::Duration::from_millis(70));
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.is_empty());
+
+        // Wait past 2x timeout without any new connection.
+        std::thread::sleep(std::time::Duration::from_millis(170));
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.contains(&b"sub1".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn test_node_failure_when_connection_existed() {
+        // Tests that dead subscriber detection works when a connection exists.
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 10,
+            max_buffered_bytes: -1,
+            subscriber_timeout_ms: 50,
+        });
+        pub_.register_channel(3, false);
+        pub_.register_subscription(b"sub1", 3, b"key1");
+
+        // Connect subscriber.
+        let _rx = pub_.connect_subscriber(b"sub1", 0);
+        assert_eq!(pub_.num_subscribers(), 1);
+
+        // Wait past 2x timeout.
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        let dead = pub_.check_dead_subscribers();
+        assert!(dead.contains(&b"sub1".to_vec()));
+
+        // Unregister subscriber for cleanup.
+        pub_.unregister_subscriber(b"sub1");
+        assert_eq!(pub_.num_subscribers(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_publish_failure() {
+        // Tests that publish_failure sends a message with empty payload (failure marker).
+        // In our Rust port, publish_failure is equivalent to publishing with empty payload.
+        let pub_ = make_publisher();
+        pub_.register_subscription(b"sub1", 3, b"key1");
+
+        let rx = pub_.connect_subscriber(b"sub1", 0);
+
+        // Publish with empty payload to simulate a failure message.
+        pub_.publish(3, b"key1", vec![]);
+
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].key_id, b"key1");
+        assert!(messages[0].payload.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_max_buffer_size_per_entity() {
+        // Tests that droppable channels enforce per-entity buffer limits.
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 100,
+            max_buffered_bytes: 100,
+            subscriber_timeout_ms: 30_000,
+        });
+        pub_.register_channel(7, true); // droppable
+
+        pub_.register_subscription(b"sub1", 7, b"entity1");
+
+        // Publish 3 messages of 50 bytes each. Buffer is 100, so the first
+        // should be evicted when the third arrives.
+        pub_.publish(7, b"entity1", vec![b'a'; 50]);
+        pub_.publish(7, b"entity1", vec![b'b'; 50]);
+        pub_.publish(7, b"entity1", vec![b'c'; 50]);
+
+        // Should have dropped at least 1 message.
+        assert!(pub_.total_messages_dropped() > 0);
+
+        let rx = pub_.connect_subscriber(b"sub1", 0);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 2);
+        // The first message (all 'a') should have been evicted.
+        assert_eq!(messages[0].payload, vec![b'b'; 50]);
+        assert_eq!(messages[1].payload, vec![b'c'; 50]);
+    }
+
+    #[tokio::test]
+    async fn test_max_buffer_size_all_entities() {
+        // Tests buffer limits when subscribed to all entities in a droppable channel.
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 100,
+            max_buffered_bytes: 100,
+            subscriber_timeout_ms: 30_000,
+        });
+        pub_.register_channel(7, true); // droppable
+        pub_.register_subscription(b"sub1", 7, b""); // all entities
+
+        // Publish 3 messages of ~50 bytes each with different keys.
+        pub_.publish(7, b"aaa", vec![b'a'; 50]);
+        pub_.publish(7, b"bbb", vec![b'b'; 50]);
+        pub_.publish(7, b"ccc", vec![b'c'; 50]);
+
+        // At least 1 message should have been dropped.
+        assert!(pub_.total_messages_dropped() > 0);
+
+        let rx = pub_.connect_subscriber(b"sub1", 0);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 2);
+        // First message (all 'a') should have been evicted.
+        assert_eq!(messages[0].payload, vec![b'b'; 50]);
+        assert_eq!(messages[1].payload, vec![b'c'; 50]);
+    }
+
+    #[tokio::test]
+    async fn test_max_message_size() {
+        // Tests that very large messages are handled by droppable channel eviction.
+        let max_message_size: usize = 1000;
+        let pub_ = Publisher::new(PublisherConfig {
+            publish_batch_size: 2, // Small batch to test batched delivery.
+            max_buffered_bytes: (max_message_size * 2) as i64,
+            subscriber_timeout_ms: 30_000,
+        });
+        pub_.register_channel(7, true); // droppable
+        pub_.register_subscription(b"sub1", 7, b""); // all entities
+
+        // Fill buffer with small messages that exceed capacity.
+        for i in 0..6u8 {
+            pub_.publish(
+                7,
+                format!("{}", i).as_bytes(),
+                vec![b'x'; max_message_size / 3],
+            );
+        }
+
+        // We should get messages in batches of 2 due to batch_size.
+        let rx = pub_.connect_subscriber(b"sub1", 0);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 2);
+        let max_seq = messages.last().unwrap().sequence_id;
+
+        let rx = pub_.connect_subscriber(b"sub1", max_seq);
+        let messages = rx.await.unwrap();
+        // Remaining messages after eviction.
+        assert!(messages.len() <= 2);
+    }
+
+    #[tokio::test]
+    async fn test_multi_subscribers() {
+        // Tests that a published message is delivered to multiple subscribers.
+        let pub_ = make_publisher();
+        pub_.register_subscription(b"sub1", 3, b"actor_X");
+        pub_.register_subscription(b"sub2", 3, b"actor_X");
+        pub_.register_subscription(b"sub3", 3, b"actor_X");
+
+        // Connect all subscribers.
+        let rx1 = pub_.connect_subscriber(b"sub1", 0);
+        let rx2 = pub_.connect_subscriber(b"sub2", 0);
+        let rx3 = pub_.connect_subscriber(b"sub3", 0);
+
+        // Publish a message to actor_X.
+        pub_.publish(3, b"actor_X", b"data".to_vec());
+
+        let msgs1 = rx1.await.unwrap();
+        let msgs2 = rx2.await.unwrap();
+        let msgs3 = rx3.await.unwrap();
+
+        assert_eq!(msgs1.len(), 1);
+        assert_eq!(msgs2.len(), 1);
+        assert_eq!(msgs3.len(), 1);
+        assert_eq!(msgs1[0].key_id, b"actor_X");
+    }
+
+    #[test]
+    fn test_unregister_subscription_detailed() {
+        // Ported from TestUnregisterSubscription: tests that unregistering a
+        // subscription prevents future messages from being delivered.
+        let pub_ = make_publisher();
+        pub_.register_subscription(b"sub1", 3, b"key1");
+
+        // Unregister the subscription.
+        pub_.unregister_subscription(b"sub1", 3, b"key1");
+
+        // Publish should not enqueue to the subscriber (no matching subscription).
+        pub_.publish(3, b"key1", b"data".to_vec());
+        assert_eq!(pub_.subscriber_mailbox_size(b"sub1"), 0);
+
+        // Unregistering non-existent subscriptions should not panic.
+        pub_.unregister_subscription(b"sub1", 3, b"nonexistent_key");
+        pub_.unregister_subscription(b"nonexistent_sub", 3, b"key1");
+
+        // Cleanup.
+        pub_.unregister_subscriber(b"sub1");
+        assert_eq!(pub_.num_subscribers(), 0);
+    }
+
+    #[test]
+    fn test_unregister_subscriber_detailed() {
+        // Ported from TestUnregisterSubscriber: tests that unregistering a
+        // subscriber removes all its state.
+        let pub_ = make_publisher();
+        pub_.register_subscription(b"sub1", 3, b"key1");
+        assert_eq!(pub_.num_subscribers(), 1);
+
+        pub_.unregister_subscriber(b"sub1");
+        assert_eq!(pub_.num_subscribers(), 0);
+
+        // Unregistering a subscriber that doesn't exist should not panic.
+        pub_.unregister_subscriber(b"sub1");
+        pub_.unregister_subscriber(b"nonexistent_sub");
+    }
+
+    #[test]
+    fn test_registration_idempotency() {
+        // Ported from TestRegistrationIdempotency: double register, then
+        // unregister, publish should behave correctly.
+        let pub_ = make_publisher();
+
+        // Double register.
+        assert!(pub_.register_subscription(b"sub1", 3, b"key1"));
+        assert!(pub_.register_subscription(b"sub1", 3, b"key1"));
+
+        // Publish should still deliver exactly once.
+        pub_.publish(3, b"key1", b"data".to_vec());
+        assert_eq!(pub_.subscriber_mailbox_size(b"sub1"), 1);
+
+        // Unregister the subscription (once should suffice).
+        pub_.unregister_subscription(b"sub1", 3, b"key1");
+        pub_.publish(3, b"key1", b"more_data".to_vec());
+        // No new messages since subscription was removed.
+        assert_eq!(pub_.subscriber_mailbox_size(b"sub1"), 1);
+
+        // Double unregister subscriber should not panic.
+        pub_.unregister_subscriber(b"sub1");
+        pub_.unregister_subscriber(b"sub1");
+        assert_eq!(pub_.num_subscribers(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_subscriber_lost_a_publish() {
+        // Ported from TestSubscriberLostAPublish: tests message delivery with
+        // sequence acknowledgment. In the Rust implementation, messages are
+        // removed from the mailbox upon flush (not retained for re-delivery).
+        // The subscriber should ack messages via max_processed_sequence_id
+        // to avoid re-delivery of unprocessed messages that weren't flushed.
+        let pub_ = make_publisher();
+        pub_.register_subscription(b"sub1", 3, b"key1");
+
+        // First poll: publish msg1, then connect and receive it.
+        pub_.publish(3, b"key1", b"msg1".to_vec());
+        let rx = pub_.connect_subscriber(b"sub1", 0);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 1);
+
+        // Publisher publishes msg2 while subscriber has no active poll.
+        pub_.publish(3, b"key1", b"msg2".to_vec());
+
+        // Subscriber retries with max_processed_sequence_id=0 (lost reply).
+        // In Rust, msg1 was already flushed from mailbox, so only msg2 remains.
+        let rx = pub_.connect_subscriber(b"sub1", 0);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].payload, b"msg2");
+        let max_processed = messages[0].sequence_id;
+
+        // Now ack msg2 and publish msg3. Should get only msg3.
+        pub_.publish(3, b"key1", b"msg3".to_vec());
+        let rx = pub_.connect_subscriber(b"sub1", max_processed);
+        let messages = rx.await.unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].payload, b"msg3");
+    }
+
+    #[test]
+    fn test_register_subscription_invalid_channel_returns_false() {
+        // Ported from TestRegisterSubscriptionInvalidChannelTypeReturnsInvalidArgument.
+        // In the Rust port, register_subscription returns false for invalid channels.
+        let pub_ = make_publisher();
+        // Channel 99 was never registered.
+        assert!(!pub_.register_subscription(b"sub1", 99, b"key1"));
+    }
 }

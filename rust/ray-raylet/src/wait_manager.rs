@@ -356,4 +356,104 @@ mod tests {
         // No pending waits should be registered
         assert_eq!(mgr.num_pending_waits(), 0);
     }
+
+    // ─── Additional ports from C++ wait_manager_test.cc ───────────────
+
+    /// Port of TestMultiWaits: two waits on the same object both complete
+    /// when the object becomes local.
+    #[test]
+    fn test_multi_waits_same_object() {
+        let mgr = WaitManager::new();
+        let obj1 = make_object_id(1);
+
+        let mut rx1 = mgr.wait(vec![obj1], 1, None, |_| false);
+        let mut rx2 = mgr.wait(vec![obj1], 1, None, |_| false);
+
+        assert_eq!(mgr.num_pending_waits(), 2);
+        assert!(rx1.try_recv().is_err());
+        assert!(rx2.try_recv().is_err());
+
+        // Object arrives, both waits should complete
+        mgr.handle_object_local(&obj1);
+
+        let (ready1, remaining1) = rx1.try_recv().unwrap();
+        assert_eq!(ready1.len(), 1);
+        assert!(ready1.contains(&obj1));
+        assert_eq!(remaining1.len(), 0);
+
+        let (ready2, remaining2) = rx2.try_recv().unwrap();
+        assert_eq!(ready2.len(), 1);
+        assert!(ready2.contains(&obj1));
+        assert_eq!(remaining2.len(), 0);
+
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
+
+    /// Port of TestWaitTimeout with zero timeout: wait with timeout=0
+    /// should complete immediately via force_complete.
+    #[test]
+    fn test_wait_timeout_zero_immediate_completion() {
+        let mgr = WaitManager::new();
+        let obj1 = make_object_id(1);
+        let obj2 = make_object_id(2);
+
+        // Wait with timeout (simulated as immediate force-complete)
+        let mut rx = mgr.wait(vec![obj1, obj2], 1, Some(0), |_| false);
+
+        // Force complete immediately (simulating timeout=0)
+        mgr.complete_wait(1);
+
+        let (ready, remaining) = rx.try_recv().unwrap();
+        assert_eq!(ready.len(), 0);
+        assert_eq!(remaining.len(), 2);
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
+
+    /// Test: handle_object_local for an object no one is waiting for
+    /// should be a no-op.
+    #[test]
+    fn test_handle_object_local_no_waiters() {
+        let mgr = WaitManager::new();
+        let obj1 = make_object_id(1);
+
+        // No waits registered
+        mgr.handle_object_local(&obj1); // should not panic
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
+
+    /// Test: complete_wait for a non-existent wait_id should be a no-op.
+    #[test]
+    fn test_complete_nonexistent_wait() {
+        let mgr = WaitManager::new();
+        mgr.complete_wait(999); // should not panic
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
+
+    /// Test: wait with num_required=0 should complete immediately.
+    #[test]
+    fn test_wait_zero_required() {
+        let mgr = WaitManager::new();
+        let obj1 = make_object_id(1);
+
+        let mut rx = mgr.wait(vec![obj1], 0, None, |_| false);
+
+        // num_required=0 → ready.len()=0 >= 0 → completes immediately
+        let (ready, remaining) = rx.try_recv().unwrap();
+        assert_eq!(ready.len(), 0);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
+
+    /// Test: handle_object_local called multiple times for same object
+    /// should be idempotent.
+    #[test]
+    fn test_handle_object_local_idempotent() {
+        let mgr = WaitManager::new();
+        let obj1 = make_object_id(1);
+
+        let _rx = mgr.wait(vec![obj1], 1, None, |_| false);
+        mgr.handle_object_local(&obj1);
+        mgr.handle_object_local(&obj1); // second call should be no-op
+        assert_eq!(mgr.num_pending_waits(), 0);
+    }
 }

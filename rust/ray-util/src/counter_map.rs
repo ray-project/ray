@@ -82,6 +82,63 @@ impl<K: Eq + Hash> CounterMap<K> {
         self.counters.is_empty()
     }
 
+    /// Increment the count for a key by a given amount. Returns the new count.
+    pub fn increment_by(&mut self, key: K, amount: i64) -> i64
+    where
+        K: Clone,
+    {
+        self.total += amount;
+        let count = self.counters.entry(key.clone()).or_insert(0);
+        *count += amount;
+        let result = *count;
+        if result == 0 {
+            self.counters.remove(&key);
+        }
+        result
+    }
+
+    /// Decrement the count for a key by a given amount. Returns the new count.
+    /// Removes the entry if count reaches zero.
+    pub fn decrement_by(&mut self, key: K, amount: i64) -> i64
+    where
+        K: Clone,
+    {
+        self.total -= amount;
+        if let Some(count) = self.counters.get_mut(&key) {
+            *count -= amount;
+            let result = *count;
+            if result == 0 {
+                self.counters.remove(&key);
+            }
+            result
+        } else {
+            self.counters.insert(key, -amount);
+            -amount
+        }
+    }
+
+    /// Swap `amount` counts from `src` key to `dst` key.
+    /// Decrements `src` by `amount` and increments `dst` by `amount`.
+    /// Total remains unchanged.
+    pub fn swap(&mut self, src: K, dst: K, amount: i64)
+    where
+        K: Clone,
+    {
+        // Decrement src
+        if let Some(count) = self.counters.get_mut(&src) {
+            *count -= amount;
+            if *count == 0 {
+                self.counters.remove(&src);
+            }
+        } else {
+            self.counters.insert(src, -amount);
+        }
+
+        // Increment dst
+        let count = self.counters.entry(dst).or_insert(0);
+        *count += amount;
+    }
+
     /// Iterate over all (key, count) pairs.
     pub fn iter(&self) -> impl Iterator<Item = (&K, &i64)> {
         self.counters.iter()
@@ -149,5 +206,138 @@ mod tests {
         let cloned = map.clone();
         assert_eq!(cloned.get(&"a"), 1);
         assert_eq!(cloned.total(), 1);
+    }
+
+    // --- Ported from C++ counter_test.cc ---
+
+    /// Port of C++ TestBasic: full increment/decrement/multi-value ops.
+    #[test]
+    fn test_basic_from_cpp() {
+        let mut c = CounterMap::<String>::new();
+        c.increment("k1".into());
+        c.increment("k1".into());
+        c.increment("k2".into());
+        assert_eq!(c.get(&"k1".into()), 2);
+        assert_eq!(c.get(&"k2".into()), 1);
+        assert_eq!(c.get(&"k3".into()), 0);
+        assert_eq!(c.total(), 3);
+        assert_eq!(c.len(), 2);
+
+        c.decrement("k1".into());
+        c.decrement("k2".into());
+        assert_eq!(c.get(&"k1".into()), 1);
+        assert_eq!(c.get(&"k2".into()), 0);
+        assert_eq!(c.get(&"k3".into()), 0);
+        assert_eq!(c.total(), 1);
+        assert_eq!(c.len(), 1);
+    }
+
+    /// Port of C++ TestIterate: iterate and check values.
+    #[test]
+    fn test_iterate_from_cpp() {
+        let mut c = CounterMap::<String>::new();
+        let mut num_keys = 0;
+        c.increment("k1".into());
+        c.increment("k1".into());
+        c.increment("k2".into());
+
+        for (key, &value) in c.iter() {
+            num_keys += 1;
+            if key == "k1" {
+                assert_eq!(value, 2);
+            } else {
+                assert_eq!(value, 1);
+            }
+        }
+        assert_eq!(num_keys, 2);
+    }
+
+    // --- Ported from C++ counter_test.cc: Swap and multi-value ops ---
+
+    /// Port of C++ TestBasic: swap operation.
+    #[test]
+    fn test_swap_from_cpp() {
+        let mut c = CounterMap::<String>::new();
+        c.increment("k1".into());
+        c.increment("k1".into());
+        c.increment("k2".into());
+        c.decrement("k1".into());
+        c.decrement("k2".into());
+        // Now: k1=1, k2=0(removed), total=1
+
+        c.swap("k1".into(), "k2".into(), 1);
+        assert_eq!(c.get(&"k1".into()), 0);
+        assert_eq!(c.get(&"k2".into()), 1);
+        assert_eq!(c.total(), 1);
+        assert_eq!(c.len(), 1);
+    }
+
+    /// Port of C++ TestBasic: multi-value increment/decrement.
+    #[test]
+    fn test_multi_value_ops_from_cpp() {
+        let mut c = CounterMap::<String>::new();
+        c.increment("k1".into());
+        c.increment("k1".into());
+        c.increment("k2".into());
+        c.decrement("k1".into());
+        c.decrement("k2".into());
+        c.swap("k1".into(), "k2".into(), 1);
+        // Now: k1=0, k2=1, total=1
+
+        // Test multi-value increment
+        c.increment_by("k1".into(), 10);
+        c.increment_by("k2".into(), 5);
+        assert_eq!(c.get(&"k1".into()), 10);
+        assert_eq!(c.get(&"k2".into()), 6);
+        assert_eq!(c.total(), 16);
+        assert_eq!(c.len(), 2);
+
+        // Test multi-value decrement
+        c.decrement_by("k1".into(), 5);
+        c.decrement_by("k2".into(), 1);
+        assert_eq!(c.get(&"k1".into()), 5);
+        assert_eq!(c.get(&"k2".into()), 5);
+        assert_eq!(c.total(), 10);
+        assert_eq!(c.len(), 2);
+
+        // Swap with amount
+        c.swap("k1".into(), "k2".into(), 5);
+        assert_eq!(c.get(&"k1".into()), 0);
+        assert_eq!(c.get(&"k2".into()), 10);
+        assert_eq!(c.total(), 10);
+        assert_eq!(c.len(), 1);
+    }
+
+    /// Test increment_by with zero amount.
+    #[test]
+    fn test_increment_by_zero() {
+        let mut c = CounterMap::<String>::new();
+        c.increment("k1".into());
+        c.increment_by("k1".into(), 0);
+        assert_eq!(c.get(&"k1".into()), 1);
+        assert_eq!(c.total(), 1);
+    }
+
+    /// Test decrement_by removing entry at zero.
+    #[test]
+    fn test_decrement_by_to_zero_removes() {
+        let mut c = CounterMap::<String>::new();
+        c.increment_by("k1".into(), 5);
+        assert_eq!(c.len(), 1);
+        c.decrement_by("k1".into(), 5);
+        assert_eq!(c.get(&"k1".into()), 0);
+        assert_eq!(c.len(), 0);
+        assert_eq!(c.total(), 0);
+    }
+
+    /// Test swap between two non-existent keys.
+    #[test]
+    fn test_swap_nonexistent_keys() {
+        let mut c = CounterMap::<String>::new();
+        c.swap("k1".into(), "k2".into(), 3);
+        assert_eq!(c.get(&"k1".into()), -3);
+        assert_eq!(c.get(&"k2".into()), 3);
+        // total is unchanged (still 0)
+        assert_eq!(c.total(), 0);
     }
 }

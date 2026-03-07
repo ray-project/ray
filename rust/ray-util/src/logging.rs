@@ -68,4 +68,96 @@ mod tests {
         assert!(log_file.exists());
         std::fs::remove_dir_all(&tmp).ok();
     }
+
+    // --- Ported from C++ logging_test.cc ---
+
+    /// Port of C++ LogTestWithoutInit: logging macros work without init.
+    #[test]
+    fn test_log_without_init() {
+        // Verify that tracing macros don't panic even without initialization.
+        tracing::debug!("This is the DEBUG message");
+        tracing::info!("This is the INFO message");
+        tracing::warn!("This is the WARNING message");
+        tracing::error!("This is the ERROR message");
+    }
+
+    /// Port of C++ LogPerfTest: measure logging performance.
+    #[test]
+    fn test_log_perf() {
+        let rounds = 10;
+
+        let start = std::time::Instant::now();
+        for _ in 0..rounds {
+            tracing::debug!("This is the RAY_DEBUG message");
+        }
+        let debug_elapsed = start.elapsed();
+
+        let start = std::time::Instant::now();
+        for _ in 0..rounds {
+            tracing::error!("This is the RAY_ERROR message");
+        }
+        let error_elapsed = start.elapsed();
+
+        // Just verify it completes in reasonable time.
+        assert!(
+            debug_elapsed.as_millis() < 5000,
+            "DEBUG logging took too long: {:?}",
+            debug_elapsed
+        );
+        assert!(
+            error_elapsed.as_millis() < 5000,
+            "ERROR logging took too long: {:?}",
+            error_elapsed
+        );
+    }
+
+    /// Port of C++ TestCheckOp: assert macros with values.
+    #[test]
+    fn test_check_operations() {
+        let i: i32 = 1;
+        assert_eq!(i, 1);
+        assert_ne!(i, 0);
+        assert!(i <= 1);
+        assert!(i < 2);
+        assert!(i >= 1);
+        assert!(i > 0);
+
+        let j: i32 = 0;
+        assert_ne!(i, j);
+    }
+
+    /// Port of C++ TestRayLogEveryMs: rate-limited logging concept.
+    #[test]
+    fn test_rate_limited_logging_concept() {
+        use std::time::{Duration, Instant};
+
+        // Simulate rate-limited logging: track last log time, log only every 10ms.
+        let mut last_log = Instant::now() - Duration::from_millis(100);
+        let interval = Duration::from_millis(10);
+        let start = Instant::now();
+        let mut num_logged = 0u64;
+        let mut num_iterations = 0u64;
+
+        while start.elapsed() < Duration::from_millis(100) {
+            num_iterations += 1;
+            if last_log.elapsed() >= interval {
+                tracing::info!("rate limited log");
+                num_logged += 1;
+                last_log = Instant::now();
+            }
+        }
+
+        // Should have logged more than 5 times but less than total iterations.
+        assert!(
+            num_logged >= 5,
+            "expected at least 5 logs, got {}",
+            num_logged
+        );
+        assert!(
+            num_logged < num_iterations,
+            "rate limiting didn't work: logged={}, iterations={}",
+            num_logged,
+            num_iterations
+        );
+    }
 }

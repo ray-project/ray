@@ -434,4 +434,526 @@ mod tests {
         // No nodes registered → no idle nodes.
         assert!(mgr.get_idle_node_ids().is_empty());
     }
+
+    // ---- Ported from gcs_autoscaler_state_manager_test.cc ----
+
+    #[test]
+    fn test_session_name() {
+        let mgr = make_manager();
+        assert_eq!(mgr.session_name(), "test-session");
+    }
+
+    #[test]
+    fn test_initial_state_empty() {
+        let mgr = make_manager();
+        assert_eq!(mgr.current_version(), 0);
+        assert_eq!(mgr.last_seen_autoscaler_version(), 0);
+        assert!(mgr.get_cluster_resource_constraint().is_none());
+        assert_eq!(mgr.get_total_backlog_size(), 0);
+        assert!(mgr.get_aggregated_demands().is_empty());
+        assert!(mgr.get_draining_nodes().is_empty());
+        assert!(mgr.get_idle_node_ids().is_empty());
+    }
+
+    #[test]
+    fn test_version_bumps_on_demand_update() {
+        let mgr = make_manager();
+        let v0 = mgr.current_version();
+        mgr.update_resource_demands(
+            vec![1u8; 28],
+            NodeResourceDemand {
+                resource_demands: vec![],
+                backlog_size: 1,
+            },
+        );
+        let v1 = mgr.current_version();
+        assert!(v1 > v0, "version should increase after demand update");
+
+        mgr.update_resource_demands(
+            vec![2u8; 28],
+            NodeResourceDemand {
+                resource_demands: vec![],
+                backlog_size: 2,
+            },
+        );
+        let v2 = mgr.current_version();
+        assert!(v2 > v1, "version should increase again");
+    }
+
+    #[test]
+    fn test_get_cluster_resource_state_returns_empty_nodes() {
+        let mgr = make_manager();
+        let (version, node_states) = mgr.handle_get_cluster_resource_state();
+        assert!(version > 0);
+        assert!(node_states.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_report_autoscaling_state_overwrites() {
+        let mgr = make_manager();
+        mgr.handle_report_autoscaling_state(b"state1".to_vec(), 1);
+        assert_eq!(mgr.last_seen_autoscaler_version(), 1);
+
+        mgr.handle_report_autoscaling_state(b"state2".to_vec(), 5);
+        assert_eq!(mgr.last_seen_autoscaler_version(), 5);
+
+        // Older version should still overwrite (no version check in this impl)
+        mgr.handle_report_autoscaling_state(b"state3".to_vec(), 3);
+        assert_eq!(mgr.last_seen_autoscaler_version(), 3);
+    }
+
+    #[test]
+    fn test_resource_constraint_overwrite() {
+        let mgr = make_manager();
+        mgr.handle_request_cluster_resource_constraint(b"c1".to_vec());
+        assert_eq!(
+            mgr.get_cluster_resource_constraint(),
+            Some(b"c1".to_vec())
+        );
+        mgr.handle_request_cluster_resource_constraint(b"c2".to_vec());
+        assert_eq!(
+            mgr.get_cluster_resource_constraint(),
+            Some(b"c2".to_vec())
+        );
+    }
+
+    #[test]
+    fn test_multiple_demand_shapes_aggregated_separately() {
+        let mgr = make_manager();
+
+        let cpu_shape = HashMap::from([("CPU".to_string(), 1.0)]);
+        let gpu_shape = HashMap::from([("GPU".to_string(), 1.0)]);
+
+        mgr.update_resource_demands(
+            vec![1u8; 28],
+            NodeResourceDemand {
+                resource_demands: vec![
+                    ResourceDemandEntry {
+                        shape: cpu_shape.clone(),
+                        count: 5,
+                        infeasible_count: 0,
+                    },
+                    ResourceDemandEntry {
+                        shape: gpu_shape.clone(),
+                        count: 3,
+                        infeasible_count: 1,
+                    },
+                ],
+                backlog_size: 10,
+            },
+        );
+
+        let aggregated = mgr.get_aggregated_demands();
+        assert_eq!(aggregated.len(), 2);
+        let total_count: u64 = aggregated.iter().map(|e| e.count).sum();
+        assert_eq!(total_count, 8);
+    }
+
+    #[test]
+    fn test_update_demands_same_node_replaces() {
+        let mgr = make_manager();
+        let node_id = vec![1u8; 28];
+
+        mgr.update_resource_demands(
+            node_id.clone(),
+            NodeResourceDemand {
+                resource_demands: vec![],
+                backlog_size: 10,
+            },
+        );
+        assert_eq!(mgr.get_total_backlog_size(), 10);
+
+        // Replace with new demands
+        mgr.update_resource_demands(
+            node_id,
+            NodeResourceDemand {
+                resource_demands: vec![],
+                backlog_size: 20,
+            },
+        );
+        assert_eq!(mgr.get_total_backlog_size(), 20);
+    }
+
+    #[test]
+    fn test_remove_nonexistent_node_demands() {
+        let mgr = make_manager();
+        // Should not panic
+        mgr.remove_node_demands(&[99u8; 28]);
+        assert_eq!(mgr.get_total_backlog_size(), 0);
+    }
+
+    #[test]
+    fn test_draining_nodes_list() {
+        let mgr = make_manager();
+        let node1 = vec![1u8; 28];
+        let node2 = vec![2u8; 28];
+
+        // Manually insert draining status
+        mgr.drain_status
+            .write()
+            .insert(node1.clone(), DrainStatus::Draining);
+        mgr.drain_status
+            .write()
+            .insert(node2.clone(), DrainStatus::Draining);
+
+        let draining = mgr.get_draining_nodes();
+        assert_eq!(draining.len(), 2);
+
+        // Mark one as drained
+        mgr.mark_node_drained(&node1);
+        let draining = mgr.get_draining_nodes();
+        assert_eq!(draining.len(), 1);
+        assert_eq!(draining[0], node2);
+    }
+
+    #[test]
+    fn test_drain_status_default_is_running() {
+        let mgr = make_manager();
+        // Any unknown node should return Running
+        assert_eq!(mgr.get_drain_status(&[42u8; 28]), DrainStatus::Running);
+        assert_eq!(mgr.get_drain_status(&[0u8; 28]), DrainStatus::Running);
+    }
+
+    #[test]
+    fn test_remove_drain_status_idempotent() {
+        let mgr = make_manager();
+        let node_id = vec![1u8; 28];
+
+        // Remove drain status for node that was never draining
+        mgr.remove_drain_status(&node_id);
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Running);
+
+        // Set and remove twice
+        mgr.drain_status
+            .write()
+            .insert(node_id.clone(), DrainStatus::Draining);
+        mgr.remove_drain_status(&node_id);
+        mgr.remove_drain_status(&node_id); // Second remove should not panic
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Running);
+    }
+
+    #[test]
+    fn test_backlog_from_multiple_nodes() {
+        let mgr = make_manager();
+
+        for i in 1..=5u8 {
+            mgr.update_resource_demands(
+                vec![i; 28],
+                NodeResourceDemand {
+                    resource_demands: vec![],
+                    backlog_size: i as u64 * 10,
+                },
+            );
+        }
+
+        // 10 + 20 + 30 + 40 + 50 = 150
+        assert_eq!(mgr.get_total_backlog_size(), 150);
+
+        // Remove one node
+        mgr.remove_node_demands(&[3u8; 28]);
+        // 150 - 30 = 120
+        assert_eq!(mgr.get_total_backlog_size(), 120);
+    }
+
+    #[test]
+    fn test_aggregated_demands_empty() {
+        let mgr = make_manager();
+        // Node with empty demand list
+        mgr.update_resource_demands(
+            vec![1u8; 28],
+            NodeResourceDemand {
+                resource_demands: vec![],
+                backlog_size: 5,
+            },
+        );
+        assert!(mgr.get_aggregated_demands().is_empty());
+        assert_eq!(mgr.get_total_backlog_size(), 5);
+    }
+
+    #[test]
+    fn test_version_increments_monotonically() {
+        let mgr = make_manager();
+        let mut last = mgr.current_version();
+        for _ in 0..10 {
+            let (v, _) = mgr.handle_get_cluster_resource_state();
+            assert!(v > last);
+            last = v;
+        }
+    }
+
+    // ---- Additional tests ported from gcs_autoscaler_state_manager_test.cc ----
+
+    /// Port of TestDrainNonAliveNode — drain_node should fail for unknown nodes.
+    #[test]
+    fn test_drain_non_alive_node() {
+        let mgr = make_manager();
+        let node_id = vec![1u8; 28];
+        // Node is not alive, drain should return false
+        assert!(!mgr.drain_node(&node_id));
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Running);
+    }
+
+    /// Port of TestDrainNodeRaceCondition — draining then removing status
+    /// while node is not in the alive set.
+    #[test]
+    fn test_drain_race_condition() {
+        let mgr = make_manager();
+        let node_id = vec![1u8; 28];
+
+        // Manually insert draining status without adding node to alive set
+        mgr.drain_status
+            .write()
+            .insert(node_id.clone(), DrainStatus::Draining);
+
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Draining);
+        let draining = mgr.get_draining_nodes();
+        assert_eq!(draining.len(), 1);
+
+        // Remove drain status
+        mgr.remove_drain_status(&node_id);
+        assert_eq!(mgr.get_drain_status(&node_id), DrainStatus::Running);
+        assert!(mgr.get_draining_nodes().is_empty());
+    }
+
+    /// Port of TestIdleTime — idle nodes reporting.
+    #[test]
+    fn test_idle_nodes_no_nodes_means_empty() {
+        let mgr = make_manager();
+        assert!(mgr.get_idle_node_ids().is_empty());
+    }
+
+    /// Port of TestClusterResourcesConstraint — setting and clearing constraints.
+    #[test]
+    fn test_cluster_resources_constraint_lifecycle() {
+        let mgr = make_manager();
+
+        // Initially no constraint
+        assert!(mgr.get_cluster_resource_constraint().is_none());
+
+        // Set constraint
+        let constraint = b"min_resources:{CPU:4}".to_vec();
+        mgr.handle_request_cluster_resource_constraint(constraint.clone());
+        assert_eq!(mgr.get_cluster_resource_constraint(), Some(constraint));
+
+        // Overwrite constraint
+        let constraint2 = b"min_resources:{GPU:2}".to_vec();
+        mgr.handle_request_cluster_resource_constraint(constraint2.clone());
+        assert_eq!(mgr.get_cluster_resource_constraint(), Some(constraint2));
+    }
+
+    /// Port of TestBasicResourceRequests — verifying demands from multiple nodes.
+    #[test]
+    fn test_basic_resource_requests() {
+        let mgr = make_manager();
+
+        // Node 1 requests CPU
+        let demand1 = NodeResourceDemand {
+            resource_demands: vec![ResourceDemandEntry {
+                shape: HashMap::from([("CPU".to_string(), 1.0)]),
+                count: 10,
+                infeasible_count: 0,
+            }],
+            backlog_size: 10,
+        };
+        mgr.update_resource_demands(vec![1u8; 28], demand1);
+
+        // Node 2 requests GPU
+        let demand2 = NodeResourceDemand {
+            resource_demands: vec![ResourceDemandEntry {
+                shape: HashMap::from([("GPU".to_string(), 1.0)]),
+                count: 5,
+                infeasible_count: 2,
+            }],
+            backlog_size: 5,
+        };
+        mgr.update_resource_demands(vec![2u8; 28], demand2);
+
+        let aggregated = mgr.get_aggregated_demands();
+        assert_eq!(aggregated.len(), 2);
+
+        let total_count: u64 = aggregated.iter().map(|e| e.count).sum();
+        assert_eq!(total_count, 15);
+        let total_infeasible: u64 = aggregated.iter().map(|e| e.infeasible_count).sum();
+        assert_eq!(total_infeasible, 2);
+        assert_eq!(mgr.get_total_backlog_size(), 15);
+    }
+
+    /// Port of TestGangResourceRequestsBasic — multiple demand shapes on same node.
+    #[test]
+    fn test_gang_resource_requests_basic() {
+        let mgr = make_manager();
+
+        let demand = NodeResourceDemand {
+            resource_demands: vec![
+                ResourceDemandEntry {
+                    shape: HashMap::from([("CPU".to_string(), 1.0)]),
+                    count: 3,
+                    infeasible_count: 0,
+                },
+                ResourceDemandEntry {
+                    shape: HashMap::from([("GPU".to_string(), 1.0)]),
+                    count: 2,
+                    infeasible_count: 0,
+                },
+                ResourceDemandEntry {
+                    shape: HashMap::from([("CPU".to_string(), 4.0), ("GPU".to_string(), 2.0)]),
+                    count: 1,
+                    infeasible_count: 1,
+                },
+            ],
+            backlog_size: 6,
+        };
+        mgr.update_resource_demands(vec![1u8; 28], demand);
+
+        let aggregated = mgr.get_aggregated_demands();
+        assert_eq!(aggregated.len(), 3);
+        let total_count: u64 = aggregated.iter().map(|e| e.count).sum();
+        assert_eq!(total_count, 6);
+    }
+
+    /// Port of TestReportAutoscalingState — verifying version tracking.
+    #[test]
+    fn test_report_autoscaling_state_version_tracking() {
+        let mgr = make_manager();
+
+        assert_eq!(mgr.last_seen_autoscaler_version(), 0);
+
+        mgr.handle_report_autoscaling_state(b"state_v1".to_vec(), 1);
+        assert_eq!(mgr.last_seen_autoscaler_version(), 1);
+
+        mgr.handle_report_autoscaling_state(b"state_v5".to_vec(), 5);
+        assert_eq!(mgr.last_seen_autoscaler_version(), 5);
+
+        // Even setting to a lower version should update
+        mgr.handle_report_autoscaling_state(b"state_v3".to_vec(), 3);
+        assert_eq!(mgr.last_seen_autoscaler_version(), 3);
+    }
+
+    /// Port of TestDrainingStatus — full drain lifecycle.
+    #[test]
+    fn test_full_drain_lifecycle() {
+        let mgr = make_manager();
+        let node1 = vec![1u8; 28];
+        let node2 = vec![2u8; 28];
+
+        // Start draining two nodes (directly set status since no node_manager nodes)
+        mgr.drain_status
+            .write()
+            .insert(node1.clone(), DrainStatus::Draining);
+        mgr.drain_status
+            .write()
+            .insert(node2.clone(), DrainStatus::Draining);
+
+        assert_eq!(mgr.get_draining_nodes().len(), 2);
+        assert_eq!(mgr.get_drain_status(&node1), DrainStatus::Draining);
+        assert_eq!(mgr.get_drain_status(&node2), DrainStatus::Draining);
+
+        // Drain node1
+        mgr.mark_node_drained(&node1);
+        assert_eq!(mgr.get_drain_status(&node1), DrainStatus::Drained);
+        assert_eq!(mgr.get_draining_nodes().len(), 1);
+
+        // Remove node1 from drain tracking
+        mgr.remove_drain_status(&node1);
+        assert_eq!(mgr.get_drain_status(&node1), DrainStatus::Running);
+
+        // node2 still draining
+        assert_eq!(mgr.get_draining_nodes().len(), 1);
+        assert_eq!(mgr.get_drain_status(&node2), DrainStatus::Draining);
+    }
+
+    /// Port of TestGetClusterStatusBasic — cluster resource state with empty cluster.
+    #[test]
+    fn test_get_cluster_status_basic() {
+        let mgr = make_manager();
+        let (version, nodes) = mgr.handle_get_cluster_resource_state();
+        assert_eq!(version, 1);
+        assert!(nodes.is_empty());
+
+        // Second call bumps version
+        let (version2, _) = mgr.handle_get_cluster_resource_state();
+        assert_eq!(version2, 2);
+    }
+
+    /// Port of TestGcsKvManagerInternalConfig — session name test.
+    #[test]
+    fn test_gcs_session_name_and_config() {
+        let store = Arc::new(InMemoryStoreClient::new());
+        let storage = Arc::new(GcsTableStorage::new(store));
+        let node_mgr = Arc::new(GcsNodeManager::new(storage));
+        let resource_mgr = Arc::new(GcsResourceManager::new());
+        let mgr = GcsAutoscalerStateManager::new(
+            "my-custom-session".to_string(),
+            node_mgr,
+            resource_mgr,
+        );
+        assert_eq!(mgr.session_name(), "my-custom-session");
+    }
+
+    /// Test that demands and backlog are consistent after many updates and removals.
+    #[test]
+    fn test_demands_consistency_after_churn() {
+        let mgr = make_manager();
+
+        // Add demands for 10 nodes
+        for i in 1..=10u8 {
+            let demand = NodeResourceDemand {
+                resource_demands: vec![ResourceDemandEntry {
+                    shape: HashMap::from([("CPU".to_string(), 1.0)]),
+                    count: i as u64,
+                    infeasible_count: 0,
+                }],
+                backlog_size: i as u64,
+            };
+            mgr.update_resource_demands(vec![i; 28], demand);
+        }
+
+        assert_eq!(mgr.get_total_backlog_size(), 55); // 1+2+...+10
+        let aggregated = mgr.get_aggregated_demands();
+        assert_eq!(aggregated.len(), 1);
+        assert_eq!(aggregated[0].count, 55);
+
+        // Remove odd nodes
+        for i in (1..=10u8).filter(|x| x % 2 == 1) {
+            mgr.remove_node_demands(&[i; 28]);
+        }
+
+        // Remaining: 2+4+6+8+10 = 30
+        assert_eq!(mgr.get_total_backlog_size(), 30);
+    }
+
+    /// Test concurrent version bumps from both get_cluster_resource_state and update_demands.
+    #[test]
+    fn test_concurrent_version_sources() {
+        let mgr = make_manager();
+
+        let v0 = mgr.current_version();
+        assert_eq!(v0, 0);
+
+        // update_demands bumps version
+        mgr.update_resource_demands(
+            vec![1u8; 28],
+            NodeResourceDemand {
+                resource_demands: vec![],
+                backlog_size: 1,
+            },
+        );
+        let v1 = mgr.current_version();
+        assert_eq!(v1, 1);
+
+        // get_cluster_resource_state also bumps version
+        let (v2, _) = mgr.handle_get_cluster_resource_state();
+        assert_eq!(v2, 2);
+
+        // Another update
+        mgr.update_resource_demands(
+            vec![2u8; 28],
+            NodeResourceDemand {
+                resource_demands: vec![],
+                backlog_size: 1,
+            },
+        );
+        let v3 = mgr.current_version();
+        assert_eq!(v3, 3);
+    }
 }

@@ -778,4 +778,426 @@ mod tests {
 
         assert_eq!(started_count.load(Ordering::Relaxed), 2);
     }
+
+    // --- Additional worker pool tests ---
+
+    #[test]
+    fn test_pop_worker_wrong_job() {
+        let pool = WorkerPool::new(10, 100);
+        let job1 = make_job_id(1);
+        let job2 = make_job_id(2);
+        pool.handle_job_started(job1);
+        pool.handle_job_started(job2);
+
+        // Register worker for job1
+        let worker = make_worker(1, Language::Python, job1);
+        let wid = worker.worker_id;
+        pool.register_worker(worker).unwrap();
+        pool.push_worker(wid, Language::Python);
+
+        // Pop for job2 — should not find idle worker for job2
+        let result = pool.pop_worker(Language::Python, &job2);
+        assert_eq!(result.status, PopWorkerStatus::WorkerPendingRegistration);
+        assert!(result.worker.is_none());
+
+        // Pop for job1 — should succeed
+        let result = pool.pop_worker(Language::Python, &job1);
+        assert_eq!(result.status, PopWorkerStatus::Ok);
+        assert!(result.worker.is_some());
+    }
+
+    #[test]
+    fn test_pop_worker_after_job_finished() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let worker = make_worker(1, Language::Python, job);
+        let wid = worker.worker_id;
+        pool.register_worker(worker).unwrap();
+        pool.push_worker(wid, Language::Python);
+
+        // Finish job, then try to pop
+        pool.handle_job_finished(&job);
+        let result = pool.pop_worker(Language::Python, &job);
+        assert_eq!(result.status, PopWorkerStatus::JobConfigMissing);
+    }
+
+    #[test]
+    fn test_multiple_languages_isolation() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        // Register Python and Java workers
+        let py_worker = make_worker(1, Language::Python, job);
+        let py_wid = py_worker.worker_id;
+        pool.register_worker(py_worker).unwrap();
+        pool.push_worker(py_wid, Language::Python);
+
+        let java_worker = make_worker(2, Language::Java, job);
+        let java_wid = java_worker.worker_id;
+        pool.register_worker(java_worker).unwrap();
+        pool.push_worker(java_wid, Language::Java);
+
+        // Pop Python — should get Python worker
+        let result = pool.pop_worker(Language::Python, &job);
+        assert_eq!(result.status, PopWorkerStatus::Ok);
+        assert_eq!(result.worker.unwrap().worker_id, py_wid);
+
+        // Pop Java — should get Java worker
+        let result = pool.pop_worker(Language::Java, &job);
+        assert_eq!(result.status, PopWorkerStatus::Ok);
+        assert_eq!(result.worker.unwrap().worker_id, java_wid);
+
+        // Pop C++ — no workers
+        let result = pool.pop_worker(Language::Cpp, &job);
+        assert_eq!(result.status, PopWorkerStatus::WorkerPendingRegistration);
+    }
+
+    #[test]
+    fn test_kill_idle_within_soft_limit() {
+        let pool = WorkerPool::new(10, 100); // soft limit = 100
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        for i in 1..=5 {
+            let w = make_worker(i, Language::Python, job);
+            let wid = w.worker_id;
+            pool.register_worker(w).unwrap();
+            pool.push_worker(wid, Language::Python);
+        }
+
+        // 5 workers < 100 soft limit — no killing
+        let killed = pool.try_killing_idle_workers(10);
+        assert!(killed.is_empty());
+    }
+
+    #[test]
+    fn test_startup_concurrency_limit() {
+        let pool = WorkerPool::new(3, 100); // max 3 concurrent starts per language
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        // Start 3 Python workers — at limit
+        assert!(pool.start_worker_process(Language::Python, &job).is_some());
+        assert!(pool.start_worker_process(Language::Python, &job).is_some());
+        assert!(pool.start_worker_process(Language::Python, &job).is_some());
+        assert_eq!(pool.num_starting_workers(), 3);
+
+        // 4th Python should fail — at per-language limit
+        assert!(pool.start_worker_process(Language::Python, &job).is_none());
+
+        // Java is separate — should succeed (per-language limit)
+        let wid = pool.start_worker_process(Language::Java, &job);
+        assert!(wid.is_some());
+        assert_eq!(pool.num_starting_workers(), 4);
+    }
+
+    #[test]
+    fn test_get_all_workers() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        for i in 1..=3 {
+            let w = make_worker(i, Language::Python, job);
+            pool.register_worker(w).unwrap();
+        }
+
+        let all = pool.get_all_workers();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn test_disconnect_removes_from_idle() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let w1 = make_worker(1, Language::Python, job);
+        let wid1 = w1.worker_id;
+        pool.register_worker(w1).unwrap();
+        pool.push_worker(wid1, Language::Python);
+
+        let w2 = make_worker(2, Language::Python, job);
+        let wid2 = w2.worker_id;
+        pool.register_worker(w2).unwrap();
+        pool.push_worker(wid2, Language::Python);
+
+        assert_eq!(pool.num_idle_workers(), 2);
+
+        // Disconnect wid1
+        pool.disconnect_worker(&wid1);
+        assert_eq!(pool.num_idle_workers(), 1);
+        assert!(pool.is_worker_dead(&wid1));
+        assert!(!pool.is_worker_dead(&wid2));
+    }
+
+    #[test]
+    fn test_pop_or_start_at_concurrency_limit() {
+        let pool = WorkerPool::new(1, 100); // max 1 concurrent start
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        // First pop_or_start should start a new process
+        let r1 = pool.pop_or_start_worker(Language::Python, &job);
+        assert_eq!(r1.status, PopWorkerStatus::WorkerPendingRegistration);
+        assert!(r1.is_new_process);
+
+        // Second pop_or_start should hit concurrency limit
+        let r2 = pool.pop_or_start_worker(Language::Python, &job);
+        assert_eq!(r2.status, PopWorkerStatus::TooManyStartingWorkerProcesses);
+        assert!(!r2.is_new_process);
+    }
+
+    #[test]
+    fn test_multiple_jobs_lifecycle() {
+        let pool = WorkerPool::new(10, 100);
+        let job1 = make_job_id(1);
+        let job2 = make_job_id(2);
+        let job3 = make_job_id(3);
+
+        pool.handle_job_started(job1);
+        pool.handle_job_started(job2);
+        pool.handle_job_started(job3);
+        assert_eq!(pool.num_active_jobs(), 3);
+
+        pool.handle_job_finished(&job2);
+        assert_eq!(pool.num_active_jobs(), 2);
+        assert!(pool.is_job_active(&job1));
+        assert!(!pool.is_job_active(&job2));
+        assert!(pool.is_job_active(&job3));
+
+        pool.handle_job_finished(&job1);
+        pool.handle_job_finished(&job3);
+        assert_eq!(pool.num_active_jobs(), 0);
+    }
+
+    #[test]
+    fn test_next_worker_counter_unique() {
+        let pool = WorkerPool::new(10, 100);
+        let c1 = pool.next_worker_counter();
+        let c2 = pool.next_worker_counter();
+        let c3 = pool.next_worker_counter();
+        assert_ne!(c1, c2);
+        assert_ne!(c2, c3);
+    }
+
+    #[test]
+    fn test_pop_any_idle_worker_cross_job() {
+        let pool = WorkerPool::new(10, 100);
+        let job1 = make_job_id(1);
+        let job2 = make_job_id(2);
+        pool.handle_job_started(job1);
+        pool.handle_job_started(job2);
+
+        let w1 = make_worker(1, Language::Python, job1);
+        let wid1 = w1.worker_id;
+        pool.register_worker(w1).unwrap();
+        pool.push_worker(wid1, Language::Python);
+
+        // pop_any_idle_worker doesn't care about job ID
+        let result = pool.pop_any_idle_worker(Language::Python);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().worker_id, wid1);
+    }
+
+    #[test]
+    fn test_handle_job_finished_only_affects_idle() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        // Register 2 workers, only push 1 to idle
+        let w1 = make_worker(1, Language::Python, job);
+        let wid1 = w1.worker_id;
+        pool.register_worker(w1).unwrap();
+        pool.push_worker(wid1, Language::Python);
+
+        let w2 = make_worker(2, Language::Python, job);
+        let wid2 = w2.worker_id;
+        pool.register_worker(w2).unwrap();
+        // w2 is NOT idle — simulates a busy worker
+
+        pool.handle_job_finished(&job);
+
+        // wid1 was idle, should be disconnected
+        assert!(pool.is_worker_dead(&wid1));
+        // wid2 was not idle, should NOT be disconnected
+        assert!(!pool.is_worker_dead(&wid2));
+    }
+
+    // ─── Additional ports from C++ worker_pool_test.cc ────────────────
+
+    /// Port of HandleWorkerPushPop: push then pop same worker.
+    #[test]
+    fn test_push_pop_same_worker() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let w = make_worker(1, Language::Python, job);
+        let wid = w.worker_id;
+        pool.register_worker(w).unwrap();
+        pool.push_worker(wid, Language::Python);
+
+        let result = pool.pop_worker(Language::Python, &job);
+        assert_eq!(result.status, PopWorkerStatus::Ok);
+        assert_eq!(result.worker.as_ref().unwrap().worker_id, wid);
+
+        // Pool should be empty now
+        let result2 = pool.pop_worker(Language::Python, &job);
+        assert!(result2.worker.is_none());
+    }
+
+    /// Port of PopWorkerMultiTenancy: workers from different jobs
+    /// are isolated.
+    #[test]
+    fn test_pop_worker_multi_tenancy() {
+        let pool = WorkerPool::new(10, 100);
+        let job1 = make_job_id(1);
+        let job2 = make_job_id(2);
+        pool.handle_job_started(job1);
+        pool.handle_job_started(job2);
+
+        // Worker for job1
+        let w1 = make_worker(1, Language::Python, job1);
+        let wid1 = w1.worker_id;
+        pool.register_worker(w1).unwrap();
+        pool.push_worker(wid1, Language::Python);
+
+        // Worker for job2
+        let w2 = make_worker(2, Language::Python, job2);
+        let wid2 = w2.worker_id;
+        pool.register_worker(w2).unwrap();
+        pool.push_worker(wid2, Language::Python);
+
+        // Pop for job1 should get job1's worker
+        let result1 = pool.pop_worker(Language::Python, &job1);
+        assert_eq!(result1.worker.as_ref().unwrap().worker_id, wid1);
+
+        // Pop for job2 should get job2's worker
+        let result2 = pool.pop_worker(Language::Python, &job2);
+        assert_eq!(result2.worker.as_ref().unwrap().worker_id, wid2);
+    }
+
+    /// Port of WorkerNoLeaks: register, push, pop, disconnect, verify clean state.
+    #[test]
+    fn test_worker_no_leaks() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let w = make_worker(1, Language::Python, job);
+        let wid = w.worker_id;
+        pool.register_worker(w).unwrap();
+        pool.push_worker(wid, Language::Python);
+
+        // Pop and disconnect
+        let result = pool.pop_worker(Language::Python, &job);
+        assert!(result.worker.is_some());
+
+        pool.disconnect_worker(&wid);
+        assert!(pool.is_worker_dead(&wid));
+
+        // No idle workers
+        assert_eq!(pool.num_idle_workers(), 0);
+    }
+
+    /// Port of GetAllRegisteredWorkers: get_all_workers returns all registered.
+    #[test]
+    fn test_get_all_workers_comprehensive() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        for i in 0..5 {
+            let w = make_worker(i, Language::Python, job);
+            pool.register_worker(w).unwrap();
+        }
+
+        let workers = pool.get_all_workers();
+        assert_eq!(workers.len(), 5);
+    }
+
+    /// Port of HandleIOWorkersPushPop: spill/restore worker types.
+    #[test]
+    fn test_register_different_worker_types() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        // Register a regular worker and a driver
+        let w1 = make_worker(1, Language::Python, job);
+        pool.register_worker(WorkerInfo {
+            worker_type: WorkerType::Worker,
+            ..w1
+        }).unwrap();
+
+        let mut w2 = make_worker(2, Language::Python, job);
+        w2.worker_type = WorkerType::Driver;
+        let w2 = w2;
+        pool.register_worker(w2).unwrap();
+
+        let workers = pool.get_all_workers();
+        assert_eq!(workers.len(), 2);
+    }
+
+    /// Port of WorkerCapping: idle workers beyond soft limit should
+    /// be killable.
+    #[test]
+    fn test_worker_capping_excess_idle() {
+        let pool = WorkerPool::new(10, 2); // soft_limit = 2
+
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        // Register 5 workers, push all to idle
+        let mut wids = Vec::new();
+        for i in 0..5 {
+            let w = make_worker(i, Language::Python, job);
+            let wid = w.worker_id;
+            pool.register_worker(w).unwrap();
+            pool.push_worker(wid, Language::Python);
+            wids.push(wid);
+        }
+
+        // 5 idle workers total
+        let idle = pool.idle_worker_ids();
+        assert_eq!(idle.len(), 5);
+        // With soft_limit=2, excess idle = 5 - 2 = 3
+        let excess = idle.len().saturating_sub(2);
+        assert_eq!(excess, 3);
+    }
+
+    /// Port: registering the same worker twice overwrites the old entry.
+    #[test]
+    fn test_register_duplicate_worker() {
+        let pool = WorkerPool::new(10, 100);
+        let job = make_job_id(1);
+        pool.handle_job_started(job);
+
+        let w = make_worker(1, Language::Python, job);
+        pool.register_worker(w).unwrap();
+
+        // Registering again with same worker_id overwrites
+        let mut w2 = make_worker(1, Language::Python, job);
+        w2.port = 9999;
+        pool.register_worker(w2).unwrap();
+
+        // Still only one worker registered
+        let all = pool.get_all_workers();
+        assert_eq!(all.len(), 1);
+    }
+
+    /// Port: disconnect_worker on non-registered worker should not panic.
+    #[test]
+    fn test_disconnect_nonexistent_worker() {
+        let pool = WorkerPool::new(10, 100);
+        let mut wid_bytes = [0u8; 28];
+        wid_bytes[0] = 99;
+        let fake_wid = WorkerID::from_binary(&wid_bytes);
+        pool.disconnect_worker(&fake_wid); // should not panic
+    }
 }

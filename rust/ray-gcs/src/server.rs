@@ -658,4 +658,264 @@ mod tests {
         // 3. Resource manager should have removed the node
         assert_eq!(resource_mgr.num_alive_nodes(), 0);
     }
+
+    // ---- Additional tests ported from gcs_server_rpc_test.cc ----
+
+    /// Port of TestJobInfo — add and finish a job.
+    #[tokio::test]
+    async fn test_job_info_lifecycle() {
+        let config = GcsServerConfig::default();
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let job_mgr = server.job_manager().unwrap();
+
+        // Add a job
+        let job_data = rpc::JobTableData {
+            job_id: vec![1, 0, 0, 0],
+            is_dead: false,
+            ..Default::default()
+        };
+        job_mgr.handle_add_job(job_data).await.unwrap();
+        assert_eq!(job_mgr.num_running_jobs(), 1);
+
+        // Mark job finished
+        job_mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
+        assert_eq!(job_mgr.num_running_jobs(), 0);
+    }
+
+    /// Port of TestNodeInfo — register and unregister nodes.
+    #[tokio::test]
+    async fn test_node_info_lifecycle() {
+        let config = GcsServerConfig::default();
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let node_mgr = server.node_manager().unwrap();
+
+        // Register a node
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                state: 0, // ALIVE
+                node_manager_address: "127.0.0.1".to_string(),
+                node_manager_port: 10001,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        let all_nodes = node_mgr.handle_get_all_node_info();
+        assert_eq!(all_nodes.len(), 1);
+        assert_eq!(all_nodes[0].state, 0); // ALIVE
+
+        // Unregister node
+        node_mgr.handle_unregister_node(&node_id).await.unwrap();
+
+        let all_nodes = node_mgr.handle_get_all_node_info();
+        assert_eq!(all_nodes.len(), 1);
+        assert_eq!(all_nodes[0].state, 1); // DEAD
+    }
+
+    /// Port of TestWorkerInfo — report worker failure and add worker info.
+    #[tokio::test]
+    async fn test_worker_info_lifecycle() {
+        let config = GcsServerConfig::default();
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let worker_mgr = server.worker_manager().unwrap();
+
+        // Report worker failure
+        let mut wid1 = vec![0u8; 28];
+        wid1[0] = 1;
+        let failure_data = rpc::WorkerTableData {
+            worker_address: Some(rpc::Address {
+                worker_id: wid1,
+                node_id: vec![0u8; 28],
+                ip_address: "127.0.0.1".to_string(),
+                port: 5566,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        worker_mgr
+            .handle_report_worker_failure(failure_data)
+            .await
+            .unwrap();
+
+        let all = worker_mgr.handle_get_all_worker_info(None).await.unwrap();
+        assert_eq!(all.len(), 1);
+
+        // Add a worker info
+        let mut wid2 = vec![0u8; 28];
+        wid2[0] = 2;
+        let worker_data = rpc::WorkerTableData {
+            worker_address: Some(rpc::Address {
+                worker_id: wid2,
+                node_id: vec![0u8; 28],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        worker_mgr
+            .handle_add_worker_info(worker_data)
+            .await
+            .unwrap();
+
+        let all = worker_mgr.handle_get_all_worker_info(None).await.unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    /// Port of TestJobGarbageCollection — multiple jobs, finish triggers GC.
+    #[tokio::test]
+    async fn test_job_garbage_collection() {
+        let config = GcsServerConfig::default();
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let job_mgr = server.job_manager().unwrap();
+
+        // Add two jobs
+        for i in 1..=2u8 {
+            let job_data = rpc::JobTableData {
+                job_id: vec![i, 0, 0, 0],
+                is_dead: false,
+                ..Default::default()
+            };
+            job_mgr.handle_add_job(job_data).await.unwrap();
+        }
+        assert_eq!(job_mgr.num_running_jobs(), 2);
+
+        // Finish first job
+        job_mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
+        assert_eq!(job_mgr.num_running_jobs(), 1);
+
+        // Finish second job
+        job_mgr.handle_mark_job_finished(&[2, 0, 0, 0]).await.unwrap();
+        assert_eq!(job_mgr.num_running_jobs(), 0);
+    }
+
+    /// Port of TestNodeInfoFilters — register multiple nodes, kill one, verify state queries.
+    #[tokio::test]
+    async fn test_node_info_filters() {
+        let config = GcsServerConfig::default();
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        let node_mgr = server.node_manager().unwrap();
+
+        // Register 3 nodes
+        for i in 1..=3u8 {
+            let mut node_id = vec![0u8; 28];
+            node_id[0] = i;
+            node_mgr
+                .handle_register_node(rpc::GcsNodeInfo {
+                    node_id,
+                    state: 0,
+                    node_manager_address: format!("127.0.0.{}", i),
+                    node_manager_port: 10000 + i as i32,
+                    ..Default::default()
+                })
+                .await
+                .unwrap();
+        }
+
+        assert_eq!(node_mgr.num_alive_nodes(), 3);
+
+        // Kill node 3
+        let mut dead_node_id = vec![0u8; 28];
+        dead_node_id[0] = 3;
+        node_mgr
+            .handle_unregister_node(&dead_node_id)
+            .await
+            .unwrap();
+
+        // Get all nodes — should have 3 total (2 alive + 1 dead)
+        let all_nodes = node_mgr.handle_get_all_node_info();
+        assert_eq!(all_nodes.len(), 3);
+
+        // Count alive and dead
+        let alive_count = all_nodes.iter().filter(|n| n.state == 0).count();
+        let dead_count = all_nodes.iter().filter(|n| n.state == 1).count();
+        assert_eq!(alive_count, 2);
+        assert_eq!(dead_count, 1);
+
+        // Verify dead node has correct ID
+        let dead_node = all_nodes.iter().find(|n| n.state == 1).unwrap();
+        assert_eq!(dead_node.node_id, dead_node_id);
+    }
+
+    /// Test that multiple manager types work together via the server.
+    #[tokio::test]
+    async fn test_multi_manager_integration() {
+        let config = GcsServerConfig::default();
+        let mut server = GcsServer::new(config);
+        server.initialize().await.unwrap();
+
+        // Add a job
+        let job_mgr = server.job_manager().unwrap();
+        job_mgr
+            .handle_add_job(rpc::JobTableData {
+                job_id: vec![1, 0, 0, 0],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Register a node
+        let node_mgr = server.node_manager().unwrap();
+        let mut node_id = vec![0u8; 28];
+        node_id[0] = 1;
+        node_mgr
+            .handle_register_node(rpc::GcsNodeInfo {
+                node_id: node_id.clone(),
+                state: 0,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Add a worker
+        let worker_mgr = server.worker_manager().unwrap();
+        worker_mgr
+            .handle_add_worker_info(rpc::WorkerTableData {
+                worker_address: Some(rpc::Address {
+                    worker_id: vec![1, 2, 3],
+                    node_id: node_id.clone(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Add task events
+        let task_mgr = server.task_manager().unwrap();
+        let mut tid = vec![0u8; 24];
+        tid[0] = 1;
+        task_mgr.handle_add_task_event_data(rpc::TaskEventData {
+            events_by_task: vec![rpc::TaskEvents {
+                task_id: tid,
+                attempt_number: 0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+
+        // Verify all managers have data
+        assert_eq!(job_mgr.num_running_jobs(), 1);
+        assert_eq!(node_mgr.num_alive_nodes(), 1);
+        assert_eq!(
+            worker_mgr
+                .handle_get_all_worker_info(None)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(task_mgr.num_events(), 1);
+    }
 }

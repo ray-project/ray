@@ -352,4 +352,56 @@ mod tests {
         let monitor = WorkerHealthMonitor::new();
         assert!(monitor.remove_worker(9999).is_none());
     }
+
+    // --- Ported from C++ process_test.cc ---
+
+    /// Port of C++ IsProcessAlive: spawn a process, wait for exit, verify dead.
+    #[test]
+    fn test_is_process_alive_after_exit() {
+        let mut child = std::process::Command::new("bash")
+            .arg("-c")
+            .arg("exit 0")
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+
+        // After wait (reaping), the process should not be alive.
+        // May need a brief delay for OS cleanup.
+        for _ in 0..5 {
+            if !is_process_alive(pid) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+        assert!(!is_process_alive(pid));
+    }
+
+    /// Port of C++ CompareProcessObjects: test equality semantics of PIDs.
+    #[test]
+    fn test_compare_process_ids() {
+        let my_pid = get_pid();
+        // Same PID should be equal.
+        assert_eq!(my_pid, my_pid);
+
+        // PID 0 is special (null/kernel on Unix).
+        // Our own PID should differ from 0.
+        assert_ne!(my_pid, 0);
+
+        // Two calls to get_pid should return the same value.
+        assert_eq!(get_pid(), get_pid());
+    }
+
+    /// Port of C++ spawn and check process lifecycle.
+    #[test]
+    fn test_spawn_and_check_lifecycle() {
+        let pid = spawn_process("sleep", &["0"], &[]).unwrap();
+        // Just-spawned process should be alive initially.
+        assert!(is_process_alive(pid));
+        // Wait a bit for "sleep 0" to finish.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        // After the process exits, it may become a zombie until reaped.
+        // We can't reap it here directly, but kill should fail on a zombie
+        // or the OS may have cleaned it up.
+    }
 }

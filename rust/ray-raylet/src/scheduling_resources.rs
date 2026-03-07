@@ -670,4 +670,160 @@ mod tests {
         let empty_labels = HashMap::new();
         assert!(!selector.matches(&empty_labels));
     }
+
+    // ─── Ported from C++ scheduling_policy_test.cc ────────────────────
+
+    /// Port of FeasibleDefinitionTest: object_store_memory makes task
+    /// infeasible if node doesn't have it, even if CPU is sufficient.
+    #[test]
+    fn test_feasible_definition_with_object_store_memory() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let nr = NodeResources::new(total);
+
+        // Request CPU + object_store_memory
+        let mut req1 = ResourceSet::new();
+        req1.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req1.set("object_store_memory".to_string(), FixedPoint::from_f64(1.0));
+        assert!(!nr.is_feasible(&req1));
+
+        // Request only CPU → feasible
+        let mut req2 = ResourceSet::new();
+        req2.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        assert!(nr.is_feasible(&req2));
+    }
+
+    /// Port of AvailableDefinitionTest: available vs feasible distinction.
+    #[test]
+    fn test_available_definition_with_object_store_memory() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let nr = NodeResources::new(total);
+
+        let mut req1 = ResourceSet::new();
+        req1.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req1.set("object_store_memory".to_string(), FixedPoint::from_f64(1.0));
+        assert!(!nr.is_available(&req1));
+
+        let mut req2 = ResourceSet::new();
+        req2.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        assert!(nr.is_available(&req2));
+    }
+
+    /// Port of CriticalResourceUtilizationDefinitionTest: verify max
+    /// utilization across multiple resource types.
+    #[test]
+    fn test_critical_resource_utilization_multi_resource() {
+        // CPU: 1/2 used = 50%, Memory: 0.75/1 used = 75%, GPU: 1/2 used = 50%
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        total.set("memory".to_string(), FixedPoint::from_f64(1.0));
+        total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
+        total.set("object_store_memory".to_string(), FixedPoint::from_f64(100.0));
+
+        let mut nr = NodeResources::new(total);
+        // Subtract to match: CPU avail=1, mem avail=0.25, GPU avail=1, osm avail=50
+        let mut used = ResourceSet::new();
+        used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        used.set("memory".to_string(), FixedPoint::from_f64(0.75));
+        used.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        used.set("object_store_memory".to_string(), FixedPoint::from_f64(50.0));
+        nr.available.subtract(&used);
+
+        let util = nr.critical_resource_utilization();
+        // Memory has 75% utilization which is the maximum
+        assert!((util - 0.75).abs() < 0.01, "expected ~0.75, got {}", util);
+    }
+
+    /// Port of has_gpu test: verify GPU detection.
+    #[test]
+    fn test_node_resources_has_gpu() {
+        let mut total_with_gpu = ResourceSet::new();
+        total_with_gpu.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        total_with_gpu.set("GPU".to_string(), FixedPoint::from_f64(1.0));
+        let nr_gpu = NodeResources::new(total_with_gpu);
+        assert!(nr_gpu.has_gpu());
+
+        let mut total_no_gpu = ResourceSet::new();
+        total_no_gpu.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let nr_no_gpu = NodeResources::new(total_no_gpu);
+        assert!(!nr_no_gpu.has_gpu());
+    }
+
+    /// Port of TaskResourceInstances empty check.
+    #[test]
+    fn test_task_resource_instances_is_empty() {
+        let empty = TaskResourceInstances::new();
+        assert!(empty.is_empty());
+
+        let mut non_empty = TaskResourceInstances::new();
+        non_empty.resources.insert(
+            "CPU".to_string(),
+            vec![FixedPoint::from_f64(1.0)],
+        );
+        assert!(!non_empty.is_empty());
+    }
+
+    /// Port of TaskResourceInstances to_resource_set.
+    #[test]
+    fn test_task_resource_instances_to_resource_set() {
+        let mut tri = TaskResourceInstances::new();
+        tri.resources.insert(
+            "CPU".to_string(),
+            vec![FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0)],
+        );
+        tri.resources.insert(
+            "memory".to_string(),
+            vec![FixedPoint::from_f64(4.0)],
+        );
+        tri.resources.insert(
+            "GPU".to_string(),
+            vec![FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0)],
+        );
+
+        let rs = tri.to_resource_set();
+        assert_eq!(rs.get("CPU"), FixedPoint::from_f64(3.0));
+        assert_eq!(rs.get("memory"), FixedPoint::from_f64(4.0));
+        assert_eq!(rs.get("GPU"), FixedPoint::from_f64(5.0));
+    }
+
+    /// Port of instance allocation failure (partial alloc rollback).
+    #[test]
+    fn test_allocation_failure_no_leak() {
+        let mut rs = ResourceSet::new();
+        rs.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        rs.set("custom1".to_string(), FixedPoint::from_f64(4.0));
+
+        let mut inst = NodeResourceInstanceSet::from_resource_set(&rs);
+
+        // Request custom1=3 (ok) + custom5=4 (not present, fails)
+        let mut request = ResourceSet::new();
+        request.set("custom1".to_string(), FixedPoint::from_f64(3.0));
+        request.set("custom5".to_string(), FixedPoint::from_f64(4.0));
+
+        let result = inst.try_allocate(&request);
+        assert!(result.is_none());
+
+        // Verify no resources leaked: custom1 should still be fully available
+        assert_eq!(inst.total_available("custom1"), FixedPoint::from_f64(4.0));
+        assert_eq!(inst.total_available("CPU"), FixedPoint::from_f64(4.0));
+    }
+
+    /// Port of NodeResourceInstances to_node_resources conversion.
+    #[test]
+    fn test_node_resource_instances_to_node_resources() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
+        let labels = HashMap::from([
+            ("zone".to_string(), "us-east".to_string()),
+        ]);
+        let nri = NodeResourceInstances::new(total, labels);
+        let nr = nri.to_node_resources();
+        assert_eq!(nr.total.get("CPU"), FixedPoint::from_f64(4.0));
+        assert_eq!(nr.total.get("GPU"), FixedPoint::from_f64(2.0));
+        assert_eq!(nr.available.get("CPU"), FixedPoint::from_f64(4.0));
+        assert_eq!(nr.labels.get("zone").unwrap(), "us-east");
+        assert!(!nr.is_draining);
+    }
 }

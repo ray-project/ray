@@ -273,4 +273,320 @@ mod tests {
         mgr.release_worker_resources(&alloc);
         assert!(mgr.version() > v1);
     }
+
+    // ─── Ported from C++ local_resource_manager_test.cc ──────────────
+
+    /// Port of NodeDrainingTest: verify draining state after setting.
+    #[test]
+    fn test_node_draining_with_resources() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        // Allocate some resources (node is not idle)
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        let _alloc = mgr.allocate_local_task_resources(&req).unwrap();
+
+        mgr.set_local_node_draining(i64::MAX as u64);
+        assert!(mgr.is_local_node_draining());
+        assert!(!mgr.is_local_node_idle());
+    }
+
+    /// Port of ObjectStoreMemoryDrainingTest: draining with object store memory.
+    #[test]
+    fn test_object_store_memory_draining() {
+        let mut total = ResourceSet::new();
+        total.set("object_store_memory".to_string(), FixedPoint::from_f64(100.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        // Initially idle
+        assert!(mgr.is_local_node_idle());
+
+        // Allocate some object store memory
+        let mut req = ResourceSet::new();
+        req.set("object_store_memory".to_string(), FixedPoint::from_f64(50.0));
+        let alloc = mgr.allocate_local_task_resources(&req).unwrap();
+        assert!(!mgr.is_local_node_idle());
+
+        mgr.set_local_node_draining(i64::MAX as u64);
+        assert!(mgr.is_local_node_draining());
+
+        // Release resources — node becomes idle
+        mgr.release_worker_resources(&alloc);
+        assert!(mgr.is_local_node_idle());
+    }
+
+    /// Port of IdleResourceTimeTest: verify idle state tracks allocations.
+    #[test]
+    fn test_idle_resource_time() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
+        total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
+        total.set("CUSTOM".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        // Initially idle
+        assert!(mgr.is_local_node_idle());
+
+        // Allocate CPU + CUSTOM → not idle
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("CUSTOM".to_string(), FixedPoint::from_f64(1.0));
+        let _alloc1 = mgr.allocate_local_task_resources(&req).unwrap();
+        assert!(!mgr.is_local_node_idle());
+
+        // Release only CPU — still not idle (CUSTOM still allocated)
+        let mut cpu_only = crate::scheduling_resources::TaskResourceInstances::new();
+        cpu_only.resources.insert(
+            "CPU".to_string(),
+            vec![FixedPoint::from_f64(1.0)],
+        );
+        mgr.release_worker_resources(&cpu_only);
+        assert!(!mgr.is_local_node_idle());
+
+        // Release CUSTOM — now idle
+        let mut custom_only = crate::scheduling_resources::TaskResourceInstances::new();
+        custom_only.resources.insert(
+            "CUSTOM".to_string(),
+            vec![FixedPoint::from_f64(1.0)],
+        );
+        mgr.release_worker_resources(&custom_only);
+        assert!(mgr.is_local_node_idle());
+
+        // Allocate again, release all at once
+        let alloc2 = mgr.allocate_local_task_resources(&req).unwrap();
+        assert!(!mgr.is_local_node_idle());
+        mgr.release_worker_resources(&alloc2);
+        assert!(mgr.is_local_node_idle());
+    }
+
+    /// Port of CreateSyncMessageNegativeResourceAvailability: verify that
+    /// available resources never go below zero in the reported view.
+    #[test]
+    fn test_available_never_negative() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        // Allocate all resources
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        let _alloc = mgr.allocate_local_task_resources(&req).unwrap();
+
+        // Available should be exactly 0, not negative
+        let avail = mgr.get_local_available_resources();
+        assert!(avail.get("CPU") >= FixedPoint::ZERO);
+    }
+
+    /// Test add_local_resource_instances and delete_local_resource.
+    #[test]
+    fn test_add_and_delete_local_resources() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        // Add GPU instances
+        mgr.add_local_resource_instances(
+            "GPU".to_string(),
+            vec![FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0)],
+        );
+
+        let total = mgr.get_local_total_resources();
+        assert_eq!(total.get("GPU"), FixedPoint::from_f64(2.0));
+        let avail = mgr.get_local_available_resources();
+        assert_eq!(avail.get("GPU"), FixedPoint::from_f64(2.0));
+
+        // Delete GPU
+        mgr.delete_local_resource("GPU");
+        let total = mgr.get_local_total_resources();
+        assert_eq!(total.get("GPU"), FixedPoint::ZERO);
+    }
+
+    /// Test labels.
+    #[test]
+    fn test_labels() {
+        let mut labels = HashMap::new();
+        labels.insert("zone".to_string(), "us-east".to_string());
+        labels.insert("tier".to_string(), "prod".to_string());
+        let mgr = LocalResourceManager::new("node1".to_string(), make_resources(), labels);
+
+        let retrieved = mgr.get_labels();
+        assert_eq!(retrieved.get("zone").unwrap(), "us-east");
+        assert_eq!(retrieved.get("tier").unwrap(), "prod");
+    }
+
+    /// Test local_node_id accessor.
+    #[test]
+    fn test_local_node_id() {
+        let mgr = LocalResourceManager::new("test-node".to_string(), make_resources(), HashMap::new());
+        assert_eq!(mgr.local_node_id(), "test-node");
+    }
+
+    /// Test multiple allocations exhaust resources.
+    #[test]
+    fn test_multiple_allocations_exhaust() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+
+        let alloc1 = mgr.allocate_local_task_resources(&req).unwrap();
+        let alloc2 = mgr.allocate_local_task_resources(&req).unwrap();
+
+        // Should be fully exhausted now
+        assert!(!mgr.is_local_node_available(&req));
+        assert!(mgr.allocate_local_task_resources(&req).is_none());
+
+        // Release one
+        mgr.release_worker_resources(&alloc1);
+        assert!(mgr.is_local_node_available(&req));
+
+        mgr.release_worker_resources(&alloc2);
+        assert!(mgr.is_local_node_idle());
+    }
+
+    // ─── Additional ports from C++ local_resource_manager_test.cc ─────
+
+    /// Port of BasicGetResourceUsageMapTest: resource usage reporting.
+    /// Verifies that available and total resources track correctly.
+    #[test]
+    fn test_basic_resource_usage_reporting() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
+        total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
+        total.set("CUSTOM".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        // No allocation: available == total
+        let avail = mgr.get_local_available_resources();
+        let total = mgr.get_local_total_resources();
+        assert_eq!(avail.get("CPU"), FixedPoint::from_f64(8.0));
+        assert_eq!(total.get("CPU"), FixedPoint::from_f64(8.0));
+        assert_eq!(avail.get("GPU"), FixedPoint::from_f64(2.0));
+        assert_eq!(avail.get("CUSTOM"), FixedPoint::from_f64(4.0));
+
+        // After allocation
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        req.set("GPU".to_string(), FixedPoint::from_f64(0.5));
+        req.set("CUSTOM".to_string(), FixedPoint::from_f64(2.0));
+        let alloc = mgr.allocate_local_task_resources(&req).unwrap();
+
+        let avail = mgr.get_local_available_resources();
+        assert_eq!(avail.get("CPU"), FixedPoint::from_f64(7.0));
+        assert_eq!(avail.get("GPU"), FixedPoint::from_f64(1.5));
+        assert_eq!(avail.get("CUSTOM"), FixedPoint::from_f64(2.0));
+
+        // Total unchanged
+        let total = mgr.get_local_total_resources();
+        assert_eq!(total.get("CPU"), FixedPoint::from_f64(8.0));
+
+        mgr.release_worker_resources(&alloc);
+    }
+
+    /// Port of PopulateResourceViewSyncMessage: version increments on
+    /// every resource change.
+    #[test]
+    fn test_version_on_draining() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        let v0 = mgr.version();
+        mgr.set_local_node_draining(1000);
+        let v1 = mgr.version();
+        assert!(v1 > v0, "version should increment on draining");
+    }
+
+    /// Port of MaybeMarkFootprintAsBusyPreservesIdleTime: verifying
+    /// idle state after allocate + release cycle.
+    #[test]
+    fn test_idle_preserved_after_release() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        assert!(mgr.is_local_node_idle());
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
+        let alloc = mgr.allocate_local_task_resources(&req).unwrap();
+        assert!(!mgr.is_local_node_idle());
+
+        mgr.release_worker_resources(&alloc);
+        assert!(mgr.is_local_node_idle());
+    }
+
+    /// Port: feasibility does not change with availability.
+    #[test]
+    fn test_feasibility_independent_of_availability() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        let mut req = ResourceSet::new();
+        req.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+
+        // Feasible before and after allocation
+        assert!(mgr.is_local_node_feasible(&req));
+        assert!(mgr.is_local_node_available(&req));
+
+        let alloc = mgr.allocate_local_task_resources(&req).unwrap();
+        assert!(mgr.is_local_node_feasible(&req)); // still feasible
+        assert!(!mgr.is_local_node_available(&req)); // but not available
+
+        mgr.release_worker_resources(&alloc);
+        assert!(mgr.is_local_node_available(&req));
+    }
+
+    /// Port: version increments on add/delete resource operations.
+    #[test]
+    fn test_version_on_add_delete_resource() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        let v0 = mgr.version();
+        mgr.add_local_resource_instances(
+            "GPU".to_string(),
+            vec![FixedPoint::from_f64(1.0)],
+        );
+        let v1 = mgr.version();
+        assert!(v1 > v0);
+
+        mgr.delete_local_resource("GPU");
+        let v2 = mgr.version();
+        assert!(v2 > v1);
+    }
+
+    /// Port: resource operations on non-existent resource types.
+    #[test]
+    fn test_allocate_nonexistent_resource_fails() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        // Request a resource type that doesn't exist
+        let mut req = ResourceSet::new();
+        req.set("TPU".to_string(), FixedPoint::from_f64(1.0));
+        assert!(mgr.allocate_local_task_resources(&req).is_none());
+    }
+
+    /// Port: draining deadline persistence.
+    #[test]
+    fn test_draining_deadline() {
+        let mut total = ResourceSet::new();
+        total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
+        let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
+
+        assert_eq!(mgr.draining_deadline_ms(), 0);
+        assert!(!mgr.is_local_node_draining());
+
+        mgr.set_local_node_draining(99999);
+        assert!(mgr.is_local_node_draining());
+        assert_eq!(mgr.draining_deadline_ms(), 99999);
+    }
 }
