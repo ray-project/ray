@@ -9,6 +9,7 @@ import random
 import re
 import time
 import uuid
+import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -418,20 +419,19 @@ def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     return len(finished) == 1
 
 
-# zstd for autoscaling metric reports - ~2x faster decompression than zlib (reduces controller CPU).
-# Compresses ~2MB reports to ~27KB for 1000 replicas.
 def compress_metric_report(report: Any) -> bytes:
-    """Compress a metric report (HandleMetricReport or ReplicaMetricReport) for RPC."""
-    import zstandard
+    """Compress a metric report (HandleMetricReport or ReplicaMetricReport) for RPC.
 
-    return zstandard.ZstdCompressor(level=3).compress(cloudpickle.dumps(report))
+    Uses zlib level 9 for compression. Compresses ~2MB reports to ~25KB for 1000 replicas.
+
+    TODO: switch to zstandard for better compression ratio.
+    """
+    return zlib.compress(cloudpickle.dumps(report), level=9)
 
 
 def decompress_metric_report(compressed: bytes) -> Any:
     """Decompress a metric report from RPC."""
-    import zstandard
-
-    return cloudpickle.loads(zstandard.ZstdDecompressor().decompress(compressed))
+    return cloudpickle.loads(zlib.decompress(compressed))
 
 
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
