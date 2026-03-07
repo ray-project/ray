@@ -28,6 +28,7 @@ def cluster():
 
 
 def train_fn(config: dict):
+
     train_context = ray.train.get_context()
     rank = train_context.get_world_rank()
 
@@ -81,6 +82,10 @@ def train_fn(config: dict):
             print("Finished epoch: ", epoch)
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
 def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
     """End to end test for TPU elastic training with the JaxTrainer."""
     unit_time_s = 1.0
