@@ -62,6 +62,7 @@ steps:
           - "3.10"
         cuda:
           - "12.1.1-cudnn8"
+          - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -201,6 +202,7 @@ steps:
           - "3.10"
         cuda:
           - "12.1.1-cudnn8"
+          - "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -211,7 +213,7 @@ steps:
       - ray-wheel-build
       - ray-mlcudabaseextra-testdeps
 
-  - label: ":crane: publish: ray-ml-anyscale py{{matrix}} cu12.1.1-cudnn8"
+  - label: ":crane: publish: ray-ml-anyscale py{{matrix.python}} {{matrix.platform}}"
     key: anyscalemlbuild
     instance_type: release-medium
     mount_buildkite_agent: true
@@ -219,11 +221,16 @@ steps:
       - oss
     commands:
       - bazel run //ci/ray_ci/automation:push_release_test_image --
-        --python-version {{matrix}}
-        --platform cu12.1.1-cudnn8
+        --python-version {{matrix.python}}
+        --platform {{matrix.platform}}
         --image-type ray-ml
         --upload
     depends_on:
       - ray-ml-anyscale-cuda-build
     matrix:
-      - "3.10"
+      setup:
+        python:
+          - "3.10"
+        platform:
+          - cu12.1.1-cudnn8
+          - cu13.0.0-cudnn

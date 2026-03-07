@@ -2260,6 +2260,38 @@
     timeout: 1800
     script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
 
+- name: compiled_graphs_GPU_cu130
+  python: "3.10"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    byod:
+      type: gpu-cu130
+    cluster_compute: experimental/compute_l4_gpu.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/compiled_graph_gpu_microbenchmark.py
+
+- name: compiled_graphs_GPU_multinode_cu130
+  python: "3.10"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    byod:
+      type: gpu-cu130
+    cluster_compute: experimental/compute_l4_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/compiled_graph_gpu_microbenchmark.py --distributed
+
 - name: rdt_single_node_T4_microbenchmark
   python: "3.10"
   group: core-daily-test

@@ -441,6 +441,8 @@ class Test(dict):
         byod_type = self.get_byod_type()
         if byod_type.startswith("llm-"):
             return byod_type[len("llm-") :]
+        if byod_type.startswith("gpu-"):
+            return byod_type[len("gpu-") :]
         return byod_type
 
     def get_byod_post_build_script(self) -> Optional[str]:
@@ -561,7 +563,8 @@ class Test(dict):
 
     def use_byod_ml_image(self) -> bool:
         """Returns whether to use the ML image for this test."""
-        return self.get_byod_type() == "gpu"
+        byod_type = self.get_byod_type()
+        return byod_type == "gpu" or byod_type.startswith("gpu-")
 
     def use_byod_llm_image(self) -> bool:
         return self.get_byod_type().startswith("llm-")
