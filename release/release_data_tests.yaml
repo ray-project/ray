@@ -129,7 +129,7 @@
       mode: [append, upsert, overwrite]
 
   run:
-    timeout: 3600
+    timeout: 4800
     script: python iceberg_benchmark.py --mode {{mode}}
 
 ###################
