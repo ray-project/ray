@@ -275,7 +275,7 @@ def get_num_ready_tpu_slices(
         accelerator_type: The accelerator type string (e.g. "TPU-V6E").
 
     Returns:
-        The integer count of fully ready and intact TPU slices.
+        The integer count of fully ready and available TPU slices.
     """
     if not ray.is_initialized():
         return 0
@@ -293,10 +293,20 @@ def get_num_ready_tpu_slices(
         logger.warning(f"Failed to parse TPU topology for readiness check: {e}")
         return 0
 
+    # Fetch live resource usage via the State API to ensure slices are idle.
+    from ray.util.state import api as state_api
+
+    try:
+        live_nodes = state_api.list_nodes()
+        # Map NodeID to its resource usage
+        node_usage = {n.node_id: n.resources_usage for n in live_nodes}
+    except Exception as e:
+        logger.warning(f"Failed to fetch node state: {e}")
+        node_usage = {}
+
     slice_to_nodes = {}
     for node in ray.nodes():
-        # Build a mapping of currently alive Ray nodes and
-        # the TPU slice they belong to in GKE.
+        # Build a mapping of currently alive Ray nodes and the TPU slice they belong to.
         if node.get("Alive"):
             labels = node.get("Labels", {})
             if labels.get(ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY) == pod_type:
@@ -304,21 +314,32 @@ def get_num_ready_tpu_slices(
                 if slice_name:
                     slice_to_nodes.setdefault(slice_name, []).append(node)
 
-    ready_slices = 0
+    ready_and_available_slices = 0
     for slice_name, nodes in slice_to_nodes.items():
-        # Sum the physical TPU chips across all alive VMs in this slice.
         slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
-        # Check if the total chips match the topology requirement.
+
+        # Validate the slice has all it's physical chips.
         if slice_tpu_chips == total_chips_expected:
-            # A ready TPU slice must have an available TPU head (worker rank 0) node.
+            # TPU slices must have a head worker (rank 0).
             has_head = any(
                 n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
                 for n in nodes
             )
-            if has_head:
-                ready_slices += 1
 
-    return ready_slices
+            # Validate all nodes in this slice are idle to avoid scheduling on
+            # fractured slices.
+            slice_is_idle = True
+            for n in nodes:
+                node_id = n.get("NodeID")
+                usage = node_usage.get(node_id, {})
+                if usage.get("TPU", 0) > 0:
+                    slice_is_idle = False
+                    break
+
+            if has_head and slice_is_idle:
+                ready_and_available_slices += 1
+
+    return ready_and_available_slices
 
 
 @PublicAPI(stability="alpha")
