@@ -153,11 +153,13 @@ def _arrow_table_reduce(t: "pyarrow.Table"):
         try:
             # Delegate to ChunkedArray reducer.
             reduced_column = _arrow_chunked_array_reduce(column)
-        except Exception as e:
+        except Exception:
             if is_in_test():
                 # In tests, surface optimized serialization failures instead of
                 # silently falling back to IPC serialization.
-                raise e from None
+                # Re-raise with original traceback so the failing serializer
+                # function and line are preserved for debugging.
+                raise
             if type(column.type) not in _serialization_fallback_set:
                 logger.warning(
                     "Failed to complete optimized serialization of Arrow Table, "
@@ -551,18 +553,41 @@ def _union_array_to_array_payload(a: "pyarrow.UnionArray") -> "PicklableArrayPay
 
         # Propagate slice truncation to children and rewrite value offsets so they
         # index into the new child slices.
-        children = []
+        # Dense union optimization:
+        # - Build row -> child index mapping once.
+        # - Compute per-child min/max offsets in one pass via numpy indexed
+        #   reductions (`minimum.at` / `maximum.at`), instead of scanning all rows
+        #   per type code.
+        # This avoids O(k * n) mask scans and brings the hot path to O(n + k).
+        num_fields = a.type.num_fields
+        type_code_to_child_idx = np.full(256, -1, dtype=np.int16)
         for i, type_code in enumerate(a.type.type_codes):
-            mask = type_codes == np.int8(type_code)
-            if mask.any():
-                child_offset = int(value_offsets[mask].min())
-                child_limit = int(value_offsets[mask].max()) + 1
-                child_length = child_limit - child_offset
-                value_offsets[mask] -= child_offset
-            else:
-                child_offset = 0
-                child_length = 0
-            child = a.field(i).slice(child_offset, child_length)
+            type_code_to_child_idx[np.uint8(type_code)] = i
+
+        child_indices = type_code_to_child_idx[type_codes.view(np.uint8)]
+        if (child_indices < 0).any():
+            raise ValueError("Dense union array contains unknown type code.")
+
+        sentinel_min = np.iinfo(np.int32).max
+        sentinel_max = np.iinfo(np.int32).min
+        child_min_offsets = np.full(num_fields, sentinel_min, dtype=np.int32)
+        child_max_offsets = np.full(num_fields, sentinel_max, dtype=np.int32)
+        np.minimum.at(child_min_offsets, child_indices, value_offsets)
+        np.maximum.at(child_max_offsets, child_indices, value_offsets)
+
+        child_present = child_min_offsets != sentinel_min
+        child_offsets = np.zeros(num_fields, dtype=np.int32)
+        child_lengths = np.zeros(num_fields, dtype=np.int32)
+        child_offsets[child_present] = child_min_offsets[child_present]
+        child_lengths[child_present] = (
+            child_max_offsets[child_present] - child_min_offsets[child_present] + 1
+        )
+
+        value_offsets -= child_offsets[child_indices]
+
+        children = []
+        for i in range(num_fields):
+            child = a.field(i).slice(int(child_offsets[i]), int(child_lengths[i]))
             children.append(_array_to_array_payload(child))
         value_offset_buf = pa.py_buffer(value_offsets)
         new_buffers = [bitmap_buf, type_code_buf, value_offset_buf]
