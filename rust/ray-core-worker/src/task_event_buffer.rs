@@ -81,17 +81,14 @@ struct TaskEventBufferInner {
 }
 
 /// Callback invoked during flush with the batch of events and dropped attempts.
-pub type FlushCallback =
-    Arc<dyn Fn(&[TaskStatusEvent], &[(Vec<u8>, i32)]) + Send + Sync>;
+pub type FlushCallback = Arc<dyn Fn(&[TaskStatusEvent], &[(Vec<u8>, i32)]) + Send + Sync>;
 
 impl TaskEventBuffer {
     /// Create a new TaskEventBuffer with the given max capacity.
     pub fn new(max_status_events: usize) -> Self {
         Self {
             inner: Mutex::new(TaskEventBufferInner {
-                status_events: VecDeque::with_capacity(
-                    max_status_events.min(10_000),
-                ),
+                status_events: VecDeque::with_capacity(max_status_events.min(10_000)),
                 max_status_events,
                 dropped_task_attempts: std::collections::HashSet::new(),
                 flush_callback: None,
@@ -112,12 +109,7 @@ impl TaskEventBuffer {
     ///
     /// This is the primary entry point called by TaskManager on every
     /// status transition.
-    pub fn record_task_status_event(
-        &self,
-        task_id: &[u8],
-        status: TaskState,
-        attempt_number: i32,
-    ) {
+    pub fn record_task_status_event(&self, task_id: &[u8], status: TaskState, attempt_number: i32) {
         if !self.enabled.load(Ordering::Relaxed) {
             return;
         }
@@ -141,10 +133,9 @@ impl TaskEventBuffer {
         // Evict oldest event if buffer is full.
         if inner.status_events.len() >= inner.max_status_events {
             if let Some(evicted) = inner.status_events.pop_front() {
-                inner.dropped_task_attempts.insert((
-                    evicted.task_id.clone(),
-                    evicted.attempt_number,
-                ));
+                inner
+                    .dropped_task_attempts
+                    .insert((evicted.task_id.clone(), evicted.attempt_number));
                 self.total_events_dropped.fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -168,10 +159,7 @@ impl TaskEventBuffer {
             let mut inner = self.inner.lock();
             let count = batch_size.min(inner.status_events.len());
             events = inner.status_events.drain(..count).collect::<Vec<_>>();
-            dropped = inner
-                .dropped_task_attempts
-                .drain()
-                .collect::<Vec<_>>();
+            dropped = inner.dropped_task_attempts.drain().collect::<Vec<_>>();
             callback = inner.flush_callback.clone();
         }
 
@@ -290,16 +278,8 @@ mod tests {
     #[test]
     fn test_record_and_flush() {
         let buffer = TaskEventBuffer::new(100);
-        buffer.record_task_status_event(
-            &make_task_id(1),
-            TaskState::PendingArgsAvail,
-            0,
-        );
-        buffer.record_task_status_event(
-            &make_task_id(2),
-            TaskState::SubmittedToWorker,
-            0,
-        );
+        buffer.record_task_status_event(&make_task_id(1), TaskState::PendingArgsAvail, 0);
+        buffer.record_task_status_event(&make_task_id(2), TaskState::SubmittedToWorker, 0);
 
         assert_eq!(buffer.num_buffered_events(), 2);
         assert_eq!(buffer.total_events_recorded(), 2);
@@ -315,11 +295,7 @@ mod tests {
         let buffer = TaskEventBuffer::new(3);
 
         for i in 0..5u8 {
-            buffer.record_task_status_event(
-                &make_task_id(i),
-                TaskState::PendingArgsAvail,
-                0,
-            );
+            buffer.record_task_status_event(&make_task_id(i), TaskState::PendingArgsAvail, 0);
         }
 
         // Buffer should have 3 events (the last 3 added).
@@ -337,17 +313,9 @@ mod tests {
 
         // Fill buffer with events from different tasks.
         buffer.record_task_status_event(&tid, TaskState::PendingArgsAvail, 0);
-        buffer.record_task_status_event(
-            &make_task_id(2),
-            TaskState::PendingArgsAvail,
-            0,
-        );
+        buffer.record_task_status_event(&make_task_id(2), TaskState::PendingArgsAvail, 0);
         // This push evicts task_id=1 attempt 0.
-        buffer.record_task_status_event(
-            &make_task_id(3),
-            TaskState::PendingArgsAvail,
-            0,
-        );
+        buffer.record_task_status_event(&make_task_id(3), TaskState::PendingArgsAvail, 0);
 
         // Now try to record another event for the dropped task attempt.
         buffer.record_task_status_event(&tid, TaskState::Finished, 0);
@@ -363,11 +331,7 @@ mod tests {
         let buffer = TaskEventBuffer::new(100);
         buffer.set_enabled(false);
 
-        buffer.record_task_status_event(
-            &make_task_id(1),
-            TaskState::PendingArgsAvail,
-            0,
-        );
+        buffer.record_task_status_event(&make_task_id(1), TaskState::PendingArgsAvail, 0);
         assert_eq!(buffer.num_buffered_events(), 0);
         assert_eq!(buffer.total_events_recorded(), 0);
     }
@@ -382,16 +346,8 @@ mod tests {
             flushed_clone.fetch_add(events.len(), Ordering::Relaxed);
         }));
 
-        buffer.record_task_status_event(
-            &make_task_id(1),
-            TaskState::PendingArgsAvail,
-            0,
-        );
-        buffer.record_task_status_event(
-            &make_task_id(2),
-            TaskState::Finished,
-            0,
-        );
+        buffer.record_task_status_event(&make_task_id(1), TaskState::PendingArgsAvail, 0);
+        buffer.record_task_status_event(&make_task_id(2), TaskState::Finished, 0);
 
         buffer.flush_events(100);
         assert_eq!(flushed_count.load(Ordering::Relaxed), 2);
@@ -401,11 +357,7 @@ mod tests {
     fn test_partial_flush() {
         let buffer = TaskEventBuffer::new(100);
         for i in 0..10u8 {
-            buffer.record_task_status_event(
-                &make_task_id(i),
-                TaskState::PendingArgsAvail,
-                0,
-            );
+            buffer.record_task_status_event(&make_task_id(i), TaskState::PendingArgsAvail, 0);
         }
 
         // Flush only 3 events.
@@ -423,11 +375,7 @@ mod tests {
     fn test_event_timestamps() {
         let buffer = TaskEventBuffer::new(100);
         let before = current_time_nanos();
-        buffer.record_task_status_event(
-            &make_task_id(1),
-            TaskState::PendingArgsAvail,
-            0,
-        );
+        buffer.record_task_status_event(&make_task_id(1), TaskState::PendingArgsAvail, 0);
         let after = current_time_nanos();
 
         let events = buffer.flush_events(1);
@@ -440,11 +388,7 @@ mod tests {
         let buffer = TaskEventBuffer::new(2);
         // Fill and evict to create dropped attempts.
         for i in 0..4u8 {
-            buffer.record_task_status_event(
-                &make_task_id(i),
-                TaskState::PendingArgsAvail,
-                0,
-            );
+            buffer.record_task_status_event(&make_task_id(i), TaskState::PendingArgsAvail, 0);
         }
         assert!(buffer.num_dropped_task_attempts() > 0);
 
@@ -463,11 +407,7 @@ mod tests {
             flushed_clone.fetch_add(events.len(), Ordering::Relaxed);
         }));
 
-        buffer.record_task_status_event(
-            &vec![0u8; 28],
-            TaskState::PendingArgsAvail,
-            0,
-        );
+        buffer.record_task_status_event(&vec![0u8; 28], TaskState::PendingArgsAvail, 0);
 
         let handle = buffer.start_periodic_flush(50, 100);
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;

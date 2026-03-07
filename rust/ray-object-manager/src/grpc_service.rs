@@ -102,8 +102,8 @@ mod tests {
     use super::*;
     use crate::common::ObjectManagerConfig;
     use crate::plasma::allocator::IAllocator;
-    use rpc::object_manager_service_server::ObjectManagerService;
     use crate::plasma::store::{PlasmaStore, PlasmaStoreConfig};
+    use rpc::object_manager_service_server::ObjectManagerService;
 
     struct DummyAllocator;
     impl IAllocator for DummyAllocator {

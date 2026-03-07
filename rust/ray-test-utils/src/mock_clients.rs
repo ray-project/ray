@@ -142,14 +142,14 @@ mod tests {
         let client = FakeCoreWorkerClient::new();
         assert_eq!(client.num_requests(), 0);
 
-        client.push_request(FakeCoreWorkerRequest::PushTask(
-            Box::new(rpc::PushTaskRequest::default()),
-        ));
+        client.push_request(FakeCoreWorkerRequest::PushTask(Box::new(
+            rpc::PushTaskRequest::default(),
+        )));
         assert_eq!(client.num_requests(), 1);
 
-        client.push_request(FakeCoreWorkerRequest::KillActor(
-            Box::new(rpc::KillActorRequest::default()),
-        ));
+        client.push_request(FakeCoreWorkerRequest::KillActor(Box::new(
+            rpc::KillActorRequest::default(),
+        )));
         assert_eq!(client.num_requests(), 2);
 
         let _ = client.pop_request();

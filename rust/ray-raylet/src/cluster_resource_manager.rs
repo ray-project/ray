@@ -255,7 +255,9 @@ mod tests {
         new_avail.set("CPU".to_string(), FixedPoint::from_f64(5.0));
         let mut updated = NodeResources::new(new_total);
         updated.available = new_avail;
-        updated.labels.insert("zone".to_string(), "us-east-1a".to_string());
+        updated
+            .labels
+            .insert("zone".to_string(), "us-east-1a".to_string());
         updated.is_draining = true;
         updated.draining_deadline_ms = 123456;
 

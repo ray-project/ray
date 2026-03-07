@@ -37,10 +37,7 @@ pub struct JobInfoGcsServiceImpl {
 }
 
 impl JobInfoGcsServiceImpl {
-    pub async fn add_job(
-        &self,
-        request: rpc::AddJobRequest,
-    ) -> Result<rpc::AddJobReply, Status> {
+    pub async fn add_job(&self, request: rpc::AddJobRequest) -> Result<rpc::AddJobReply, Status> {
         if let Some(data) = request.data {
             self.job_manager.handle_add_job(data).await?;
         }
@@ -175,7 +172,9 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
         &self,
         req: Request<rpc::RegisterNodeRequest>,
     ) -> Result<Response<rpc::RegisterNodeReply>, Status> {
-        self.register_node(req.into_inner()).await.map(Response::new)
+        self.register_node(req.into_inner())
+            .await
+            .map(Response::new)
     }
 
     async fn unregister_node(
@@ -194,9 +193,7 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
         let request = req.into_inner();
         let mut drain_node_status = Vec::new();
         for data in &request.drain_node_data {
-            let node_id = ray_common::id::NodeID::from_binary(
-                data.node_id.as_slice(),
-            );
+            let node_id = ray_common::id::NodeID::from_binary(data.node_id.as_slice());
             self.node_manager.handle_drain_node(&node_id, 0);
             drain_node_status.push(rpc::DrainNodeStatus {
                 node_id: data.node_id.clone(),
@@ -247,8 +244,7 @@ impl rpc::node_info_gcs_service_server::NodeInfoGcsService for NodeInfoGcsServic
             .node_ids
             .iter()
             .map(|node_id_bytes| {
-                let node_id =
-                    ray_common::id::NodeID::from_binary(node_id_bytes.as_slice());
+                let node_id = ray_common::id::NodeID::from_binary(node_id_bytes.as_slice());
                 self.node_manager.is_node_alive(&node_id)
             })
             .collect();
@@ -512,9 +508,7 @@ impl InternalKVGcsServiceImpl {
         })
     }
 
-    pub fn get_internal_config(
-        &self,
-    ) -> Result<rpc::GetInternalConfigReply, Status> {
+    pub fn get_internal_config(&self) -> Result<rpc::GetInternalConfigReply, Status> {
         Ok(rpc::GetInternalConfigReply {
             config: self.kv_manager.raylet_config_list().to_string(),
             ..Default::default()
@@ -540,11 +534,7 @@ impl rpc::internal_kv_gcs_service_server::InternalKvGcsService for InternalKVGcs
         let request = req.into_inner();
         let mut results = Vec::new();
         for key in &request.keys {
-            if let Some(value) = self
-                .kv_manager
-                .handle_get(&request.namespace, key)
-                .await?
-            {
+            if let Some(value) = self.kv_manager.handle_get(&request.namespace, key).await? {
                 results.push(rpc::MapFieldEntry {
                     key: key.clone(),
                     value,
@@ -663,9 +653,7 @@ impl rpc::worker_info_gcs_service_server::WorkerInfoGcsService for WorkerInfoGcs
         &self,
         _req: Request<rpc::UpdateWorkerDebuggerPortRequest>,
     ) -> Result<Response<rpc::UpdateWorkerDebuggerPortReply>, Status> {
-        Ok(Response::new(
-            rpc::UpdateWorkerDebuggerPortReply::default(),
-        ))
+        Ok(Response::new(rpc::UpdateWorkerDebuggerPortReply::default()))
     }
 
     async fn update_worker_num_paused_threads(
@@ -970,9 +958,7 @@ impl rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService
             }
         }
 
-        Ok(Response::new(
-            rpc::GcsSubscriberCommandBatchReply::default(),
-        ))
+        Ok(Response::new(rpc::GcsSubscriberCommandBatchReply::default()))
     }
 }
 
@@ -1011,17 +997,13 @@ impl rpc::task_info_gcs_service_server::TaskInfoGcsService for TaskInfoGcsServic
             // Use the first job filter if present.
             if let Some(jf) = filters.job_filters.first() {
                 if !jf.job_id.is_empty() {
-                    job_id = Some(ray_common::id::JobID::from_binary(
-                        jf.job_id.as_slice(),
-                    ));
+                    job_id = Some(ray_common::id::JobID::from_binary(jf.job_id.as_slice()));
                 }
             }
             // Collect task filters.
             for tf in &filters.task_filters {
                 if !tf.task_id.is_empty() {
-                    task_ids_vec.push(ray_common::id::TaskID::from_binary(
-                        tf.task_id.as_slice(),
-                    ));
+                    task_ids_vec.push(ray_common::id::TaskID::from_binary(tf.task_id.as_slice()));
                 }
             }
         }
@@ -1032,11 +1014,9 @@ impl rpc::task_info_gcs_service_server::TaskInfoGcsService for TaskInfoGcsServic
             Some(task_ids_vec)
         };
 
-        let events = self.task_manager.handle_get_task_events(
-            job_id.as_ref(),
-            task_ids.as_deref(),
-            limit,
-        );
+        let events =
+            self.task_manager
+                .handle_get_task_events(job_id.as_ref(), task_ids.as_deref(), limit);
         Ok(Response::new(rpc::GetTaskEventsReply {
             events_by_task: events,
             ..Default::default()
@@ -2147,7 +2127,10 @@ mod tests {
             .unwrap()
             .into_inner();
         assert_eq!(reply.resources_list.len(), 1);
-        assert_eq!(*reply.resources_list[0].resources_total.get("CPU").unwrap(), 8.0);
+        assert_eq!(
+            *reply.resources_list[0].resources_total.get("CPU").unwrap(),
+            8.0
+        );
     }
 
     #[tokio::test]
@@ -2204,23 +2187,19 @@ mod tests {
         use rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService;
 
         // Subscribe
-        svc.gcs_subscriber_command_batch(Request::new(
-            rpc::GcsSubscriberCommandBatchRequest {
-                subscriber_id: b"sub1".to_vec(),
-                commands: vec![rpc::Command {
-                    channel_type: 1, // some channel
-                    key_id: vec![],
-                    command_message_one_of: Some(
-                        rpc::command::CommandMessageOneOf::SubscribeMessage(
-                            rpc::SubMessage {
-                                sub_message_one_of: None,
-                            },
-                        ),
-                    ),
-                }],
-                ..Default::default()
-            },
-        ))
+        svc.gcs_subscriber_command_batch(Request::new(rpc::GcsSubscriberCommandBatchRequest {
+            subscriber_id: b"sub1".to_vec(),
+            commands: vec![rpc::Command {
+                channel_type: 1, // some channel
+                key_id: vec![],
+                command_message_one_of: Some(rpc::command::CommandMessageOneOf::SubscribeMessage(
+                    rpc::SubMessage {
+                        sub_message_one_of: None,
+                    },
+                )),
+            }],
+            ..Default::default()
+        }))
         .await
         .unwrap();
 
@@ -2261,21 +2240,19 @@ mod tests {
         use rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService;
 
         // Subscribe then unsubscribe
-        svc.gcs_subscriber_command_batch(Request::new(
-            rpc::GcsSubscriberCommandBatchRequest {
-                subscriber_id: b"sub1".to_vec(),
-                commands: vec![rpc::Command {
-                    channel_type: 1,
-                    key_id: vec![],
-                    command_message_one_of: Some(
-                        rpc::command::CommandMessageOneOf::UnsubscribeMessage(
-                            rpc::UnsubscribeMessage {},
-                        ),
+        svc.gcs_subscriber_command_batch(Request::new(rpc::GcsSubscriberCommandBatchRequest {
+            subscriber_id: b"sub1".to_vec(),
+            commands: vec![rpc::Command {
+                channel_type: 1,
+                key_id: vec![],
+                command_message_one_of: Some(
+                    rpc::command::CommandMessageOneOf::UnsubscribeMessage(
+                        rpc::UnsubscribeMessage {},
                     ),
-                }],
-                ..Default::default()
-            },
-        ))
+                ),
+            }],
+            ..Default::default()
+        }))
         .await
         .unwrap();
         // Should not panic
@@ -2360,8 +2337,11 @@ mod tests {
         let (_, storage) = make_store();
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let resource_manager = Arc::new(GcsResourceManager::new());
-        let autoscaler =
-            Arc::new(GcsAutoscalerStateManager::new("test".into(), node_manager.clone(), resource_manager.clone()));
+        let autoscaler = Arc::new(GcsAutoscalerStateManager::new(
+            "test".into(),
+            node_manager.clone(),
+            resource_manager.clone(),
+        ));
         let svc = AutoscalerStateServiceImpl {
             autoscaler_state_manager: autoscaler,
             node_manager,
@@ -2383,8 +2363,11 @@ mod tests {
         let (_, storage) = make_store();
         let node_manager = Arc::new(GcsNodeManager::new(storage));
         let resource_manager = Arc::new(GcsResourceManager::new());
-        let autoscaler =
-            Arc::new(GcsAutoscalerStateManager::new("test".into(), node_manager.clone(), resource_manager.clone()));
+        let autoscaler = Arc::new(GcsAutoscalerStateManager::new(
+            "test".into(),
+            node_manager.clone(),
+            resource_manager.clone(),
+        ));
         let svc = AutoscalerStateServiceImpl {
             autoscaler_state_manager: autoscaler,
             node_manager: node_manager.clone(),

@@ -201,8 +201,7 @@ mod tests {
     fn test_prepare_request_with_custom_timeout() {
         let mgr = make_manager();
         let request = Request::new(());
-        let prepared =
-            mgr.prepare_request_with_timeout(request, Duration::from_millis(500));
+        let prepared = mgr.prepare_request_with_timeout(request, Duration::from_millis(500));
         let metadata = prepared.metadata();
         assert!(metadata.get("x-ray-cluster-id").is_some());
     }

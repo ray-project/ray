@@ -53,10 +53,9 @@ impl RayletClient for GrpcRayletClient {
     ) -> Result<rpc::RequestWorkerLeaseReply, Status> {
         let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{}", addr))
             .map_err(|e| Status::internal(format!("invalid raylet address '{}': {}", addr, e)))?;
-        let channel = endpoint
-            .connect()
-            .await
-            .map_err(|e| Status::unavailable(format!("failed to connect to raylet '{}': {}", addr, e)))?;
+        let channel = endpoint.connect().await.map_err(|e| {
+            Status::unavailable(format!("failed to connect to raylet '{}': {}", addr, e))
+        })?;
         let mut client = rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
         let resp = client.request_worker_lease(request).await?;
         Ok(resp.into_inner())
@@ -75,10 +74,9 @@ impl CoreWorkerClient for GrpcCoreWorkerClient {
     ) -> Result<rpc::PushTaskReply, Status> {
         let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{}", addr))
             .map_err(|e| Status::internal(format!("invalid worker address '{}': {}", addr, e)))?;
-        let channel = endpoint
-            .connect()
-            .await
-            .map_err(|e| Status::unavailable(format!("failed to connect to worker '{}': {}", addr, e)))?;
+        let channel = endpoint.connect().await.map_err(|e| {
+            Status::unavailable(format!("failed to connect to worker '{}': {}", addr, e))
+        })?;
         let mut client = rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
         let resp = client.push_task(request).await?;
         Ok(resp.into_inner())
@@ -119,10 +117,7 @@ impl GcsActorScheduler {
     ///
     /// Returns `Ok(ScheduleResult)` on success (worker leased and PushTask accepted),
     /// or `Err(Status)` on failure.
-    pub async fn schedule(
-        &self,
-        task_spec: &rpc::TaskSpec,
-    ) -> Result<ScheduleResult, Status> {
+    pub async fn schedule(&self, task_spec: &rpc::TaskSpec) -> Result<ScheduleResult, Status> {
         // 1. Select a node
         let (node_id, node_addr) = self.select_node(task_spec)?;
 
@@ -166,10 +161,7 @@ impl GcsActorScheduler {
 
     /// Select a node for the actor. Prefers the owner's node if alive, else picks
     /// a random alive node.
-    fn select_node(
-        &self,
-        task_spec: &rpc::TaskSpec,
-    ) -> Result<(NodeID, String), Status> {
+    fn select_node(&self, task_spec: &rpc::TaskSpec) -> Result<(NodeID, String), Status> {
         let alive_nodes = self.node_manager.get_all_alive_nodes();
         if alive_nodes.is_empty() {
             return Err(Status::unavailable("no alive nodes in the cluster"));
@@ -179,7 +171,11 @@ impl GcsActorScheduler {
         if let Some(ref caller_address) = task_spec.caller_address {
             if !caller_address.node_id.is_empty() {
                 let owner_node_id = NodeID::from_binary(
-                    caller_address.node_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
+                    caller_address
+                        .node_id
+                        .as_slice()
+                        .try_into()
+                        .unwrap_or(&[0u8; 28]),
                 );
                 if let Some(node_info) = alive_nodes.get(&owner_node_id) {
                     let addr = format!(
@@ -202,10 +198,7 @@ impl GcsActorScheduler {
     }
 
     /// Build a `RequestWorkerLeaseRequest` from a task spec.
-    fn build_lease_request(
-        &self,
-        task_spec: &rpc::TaskSpec,
-    ) -> rpc::RequestWorkerLeaseRequest {
+    fn build_lease_request(&self, task_spec: &rpc::TaskSpec) -> rpc::RequestWorkerLeaseRequest {
         let creation_spec = task_spec.actor_creation_task_spec.as_ref();
 
         let lease_spec = rpc::LeaseSpec {
@@ -213,7 +206,9 @@ impl GcsActorScheduler {
             job_id: task_spec.job_id.clone(),
             caller_address: task_spec.caller_address.clone(),
             r#type: 1, // ACTOR_CREATION_TASK
-            actor_id: creation_spec.map(|s| s.actor_id.clone()).unwrap_or_default(),
+            actor_id: creation_spec
+                .map(|s| s.actor_id.clone())
+                .unwrap_or_default(),
             is_detached_actor: creation_spec.map(|s| s.is_detached).unwrap_or(false),
             max_actor_restarts: creation_spec.map(|s| s.max_actor_restarts).unwrap_or(0),
             required_resources: task_spec.required_resources.clone(),
@@ -303,8 +298,8 @@ pub(crate) mod tests {
     use super::*;
     use crate::store_client::InMemoryStoreClient;
     use crate::table_storage::GcsTableStorage;
-    use std::collections::VecDeque;
     use parking_lot::Mutex;
+    use std::collections::VecDeque;
 
     /// Mock RayletClient that stores requests and returns configured replies.
     pub struct MockRayletClient {
@@ -440,10 +435,7 @@ pub(crate) mod tests {
         let task_spec = make_task_spec_for_scheduling(1);
         let result = scheduler.schedule(&task_spec).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message()
-            .contains("no alive nodes"));
+        assert!(result.unwrap_err().message().contains("no alive nodes"));
     }
 
     #[tokio::test]

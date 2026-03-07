@@ -146,11 +146,7 @@ impl GcsAutoscalerStateManager {
     }
 
     /// Update resource demands from a raylet node.
-    pub fn update_resource_demands(
-        &self,
-        node_id: Vec<u8>,
-        demands: NodeResourceDemand,
-    ) {
+    pub fn update_resource_demands(&self, node_id: Vec<u8>, demands: NodeResourceDemand) {
         self.node_resource_demands.write().insert(node_id, demands);
         // Bump version since cluster state changed.
         self.cluster_resource_state_version
@@ -170,11 +166,13 @@ impl GcsAutoscalerStateManager {
         for node_demand in demands.values() {
             for entry in &node_demand.resource_demands {
                 let key = format!("{:?}", entry.shape);
-                let agg = aggregated.entry(key).or_insert_with(|| ResourceDemandEntry {
-                    shape: entry.shape.clone(),
-                    count: 0,
-                    infeasible_count: 0,
-                });
+                let agg = aggregated
+                    .entry(key)
+                    .or_insert_with(|| ResourceDemandEntry {
+                        shape: entry.shape.clone(),
+                        count: 0,
+                        infeasible_count: 0,
+                    });
                 agg.count += entry.count;
                 agg.infeasible_count += entry.infeasible_count;
             }
@@ -264,7 +262,8 @@ impl GcsAutoscalerStateManager {
 
     /// Get the last autoscaler state version.
     pub fn last_seen_autoscaler_version(&self) -> i64 {
-        self.last_seen_autoscaler_state_version.load(Ordering::SeqCst)
+        self.last_seen_autoscaler_state_version
+            .load(Ordering::SeqCst)
     }
 
     /// Get the current cluster resource constraint.
@@ -506,15 +505,9 @@ mod tests {
     fn test_resource_constraint_overwrite() {
         let mgr = make_manager();
         mgr.handle_request_cluster_resource_constraint(b"c1".to_vec());
-        assert_eq!(
-            mgr.get_cluster_resource_constraint(),
-            Some(b"c1".to_vec())
-        );
+        assert_eq!(mgr.get_cluster_resource_constraint(), Some(b"c1".to_vec()));
         mgr.handle_request_cluster_resource_constraint(b"c2".to_vec());
-        assert_eq!(
-            mgr.get_cluster_resource_constraint(),
-            Some(b"c2".to_vec())
-        );
+        assert_eq!(mgr.get_cluster_resource_constraint(), Some(b"c2".to_vec()));
     }
 
     #[test]
@@ -882,11 +875,8 @@ mod tests {
         let storage = Arc::new(GcsTableStorage::new(store));
         let node_mgr = Arc::new(GcsNodeManager::new(storage));
         let resource_mgr = Arc::new(GcsResourceManager::new());
-        let mgr = GcsAutoscalerStateManager::new(
-            "my-custom-session".to_string(),
-            node_mgr,
-            resource_mgr,
-        );
+        let mgr =
+            GcsAutoscalerStateManager::new("my-custom-session".to_string(), node_mgr, resource_mgr);
         assert_eq!(mgr.session_name(), "my-custom-session");
     }
 

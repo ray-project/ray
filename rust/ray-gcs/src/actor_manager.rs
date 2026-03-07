@@ -69,8 +69,12 @@ pub struct GcsActorManager {
     pubsub_handler: RwLock<Option<Arc<InternalPubSubHandler>>>,
     /// Pending CreateActor reply channels: actor_id → Vec<oneshot::Sender>.
     #[allow(clippy::type_complexity)]
-    create_callbacks:
-        RwLock<HashMap<ActorID, Vec<oneshot::Sender<Result<ray_proto::ray::rpc::CreateActorReply, Status>>>>>,
+    create_callbacks: RwLock<
+        HashMap<
+            ActorID,
+            Vec<oneshot::Sender<Result<ray_proto::ray::rpc::CreateActorReply, Status>>>,
+        >,
+    >,
     /// Task specs stored for actors being created (needed for scheduling).
     actor_task_specs: RwLock<HashMap<ActorID, ray_proto::ray::rpc::TaskSpec>>,
 }
@@ -212,7 +216,11 @@ impl GcsActorManager {
             .as_ref()
             .ok_or_else(|| Status::invalid_argument("missing actor_creation_task_spec"))?;
         let actor_id = ActorID::from_binary(
-            creation_spec.actor_id.as_slice().try_into().unwrap_or(&[0u8; 16]),
+            creation_spec
+                .actor_id
+                .as_slice()
+                .try_into()
+                .unwrap_or(&[0u8; 16]),
         );
 
         // Transition to PENDING_CREATION
@@ -277,7 +285,10 @@ impl GcsActorManager {
             }
         });
 
-        tracing::info!(?actor_id, "Actor creation requested, scheduling in progress");
+        tracing::info!(
+            ?actor_id,
+            "Actor creation requested, scheduling in progress"
+        );
         Ok(rx)
     }
 
@@ -311,9 +322,8 @@ impl GcsActorManager {
                 *counts.entry(ActorState::Alive).or_insert(0) += 1;
 
                 // Track actor by node
-                let node_id_obj = NodeID::from_binary(
-                    node_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
-                );
+                let node_id_obj =
+                    NodeID::from_binary(node_id.as_slice().try_into().unwrap_or(&[0u8; 28]));
                 self.actors_by_node
                     .write()
                     .entry(node_id_obj)
@@ -413,9 +423,7 @@ impl GcsActorManager {
                 channel_type: ChannelType::GcsActorChannel as i32,
                 key_id: actor.actor_id.clone(),
                 inner_message: Some(
-                    ray_proto::ray::rpc::pub_message::InnerMessage::ActorMessage(
-                        actor.clone(),
-                    ),
+                    ray_proto::ray::rpc::pub_message::InnerMessage::ActorMessage(actor.clone()),
                 ),
                 ..Default::default()
             };
@@ -589,9 +597,8 @@ impl GcsActorManager {
                     // Resolve any pending create callbacks with error
                     if let Some(senders) = callbacks.remove(&actor_id) {
                         for tx in senders {
-                            let _ = tx.send(Err(Status::unavailable(
-                                "node died during actor creation",
-                            )));
+                            let _ = tx
+                                .send(Err(Status::unavailable("node died during actor creation")));
                         }
                     }
 
@@ -1076,9 +1083,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        mgr.handle_register_actor(non_detached_spec)
-            .await
-            .unwrap();
+        mgr.handle_register_actor(non_detached_spec).await.unwrap();
         {
             let mut reg = mgr.registered_actors.write();
             if let Some(a) = reg.get_mut(&non_detached_aid) {
@@ -1097,9 +1102,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        mgr.handle_register_actor(detached_spec)
-            .await
-            .unwrap();
+        mgr.handle_register_actor(detached_spec).await.unwrap();
         {
             let mut reg = mgr.registered_actors.write();
             if let Some(a) = reg.get_mut(&detached_aid) {
@@ -1115,9 +1118,7 @@ mod tests {
 
         // Non-detached should be dead, detached should survive
         assert_eq!(mgr.num_registered_actors(), 1);
-        let detached = mgr
-            .handle_get_actor_info(&detached_aid.binary())
-            .unwrap();
+        let detached = mgr.handle_get_actor_info(&detached_aid.binary()).unwrap();
         assert_eq!(ActorState::from(detached.state), ActorState::Alive);
     }
 

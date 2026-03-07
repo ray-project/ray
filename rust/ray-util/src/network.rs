@@ -73,7 +73,10 @@ mod tests {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
         let listener = TcpListener::bind(addr).unwrap();
         let bound_port = listener.local_addr().unwrap().port();
-        assert!(!is_port_available(IpAddr::V4(Ipv4Addr::LOCALHOST), bound_port));
+        assert!(!is_port_available(
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            bound_port
+        ));
     }
 
     #[test]
@@ -223,9 +226,7 @@ mod tests {
     #[test]
     fn test_url_ip_tcp_parse() {
         fn parse_tcp_endpoint(url: &str) -> String {
-            let stripped = url
-                .strip_prefix("tcp://")
-                .unwrap_or(url);
+            let stripped = url.strip_prefix("tcp://").unwrap_or(url);
             let stripped = stripped.strip_suffix('/').unwrap_or(stripped);
 
             // Handle bracketed IPv6

@@ -27,8 +27,8 @@ use crate::error::{CoreWorkerError, CoreWorkerResult};
 use crate::future_resolver::FutureResolver;
 use crate::memory_store::{CoreWorkerMemoryStore, RayObject};
 use crate::normal_task_submitter::NormalTaskSubmitter;
-use crate::options::CoreWorkerOptions;
 use crate::object_recovery_manager::ObjectRecoveryManager;
+use crate::options::CoreWorkerOptions;
 use crate::ownership_directory::OwnershipDirectory;
 use crate::reference_counter::ReferenceCounter;
 use crate::task_event_buffer::TaskEventBuffer;
@@ -63,14 +63,9 @@ pub struct CoreWorker {
 impl CoreWorker {
     /// Create a new CoreWorker from options.
     pub fn new(options: CoreWorkerOptions) -> Self {
-        let context = WorkerContext::new(
-            options.worker_type,
-            options.worker_id,
-            options.job_id,
-        );
+        let context = WorkerContext::new(options.worker_type, options.worker_id, options.job_id);
         let reference_counter = Arc::new(ReferenceCounter::new());
-        let normal_task_submitter =
-            NormalTaskSubmitter::new(reference_counter.clone());
+        let normal_task_submitter = NormalTaskSubmitter::new(reference_counter.clone());
 
         let worker_address = Address {
             node_id: options.node_id.binary(),
@@ -104,21 +99,18 @@ impl CoreWorker {
             3, // max recovery attempts
         ));
 
-        let back_pressure = Arc::new(BackPressureController::new(
-            BackPressureConfig::default(),
-        ));
+        let back_pressure = Arc::new(BackPressureController::new(BackPressureConfig::default()));
 
-        let direct_transport = Arc::new(DirectActorTransport::new(
-            DirectTransportConfig::default(),
-        ));
+        let direct_transport =
+            Arc::new(DirectActorTransport::new(DirectTransportConfig::default()));
 
         let spill_manager = Arc::new(SpillManager::new(SpillManagerConfig::default()));
 
         let publisher = Arc::new(Publisher::new(ray_pubsub::PublisherConfig::default()));
         // Register standard channels.
-        publisher.register_channel(0, true);  // WorkerObjectEviction (droppable)
+        publisher.register_channel(0, true); // WorkerObjectEviction (droppable)
         publisher.register_channel(1, false); // WorkerRefRemovedChannel
-        publisher.register_channel(2, true);  // WorkerObjectLocationsChannel (droppable)
+        publisher.register_channel(2, true); // WorkerObjectLocationsChannel (droppable)
 
         Self {
             context,
@@ -154,11 +146,8 @@ impl CoreWorker {
         let obj = RayObject::new(data, metadata, Vec::new());
         self.memory_store.put(object_id, obj)?;
         // Track as owned in both reference counter and ownership directory.
-        self.reference_counter.add_owned_object(
-            object_id,
-            self.worker_address.clone(),
-            vec![],
-        );
+        self.reference_counter
+            .add_owned_object(object_id, self.worker_address.clone(), vec![]);
         self.ownership_directory
             .add_owned_object(object_id, self.worker_address.clone());
         self.ownership_directory.mark_object_created(&object_id);
@@ -251,11 +240,7 @@ impl CoreWorker {
     }
 
     /// Create an actor. Registers the handle and queues the creation task.
-    pub fn create_actor(
-        &self,
-        actor_id: ActorID,
-        handle: ActorHandle,
-    ) -> CoreWorkerResult<()> {
+    pub fn create_actor(&self, actor_id: ActorID, handle: ActorHandle) -> CoreWorkerResult<()> {
         self.actor_task_submitter.add_actor(actor_id);
         self.actor_manager
             .register_actor_handle(actor_id, Arc::new(handle));
@@ -599,7 +584,14 @@ mod tests {
         worker.create_actor(aid, handle).unwrap();
         // Actor should be registered.
         assert!(worker.actor_manager().get_actor_handle(&aid).is_some());
-        assert_eq!(worker.actor_manager().get_actor_handle(&aid).unwrap().name(), "test_actor");
+        assert_eq!(
+            worker
+                .actor_manager()
+                .get_actor_handle(&aid)
+                .unwrap()
+                .name(),
+            "test_actor"
+        );
 
         worker.kill_actor(&aid, false, false).unwrap();
         // Actor should be removed.
@@ -697,7 +689,10 @@ mod tests {
         });
 
         // The callback should have been invoked.
-        assert!(called.load(Ordering::Relaxed), "actor task send callback was not invoked");
+        assert!(
+            called.load(Ordering::Relaxed),
+            "actor task send callback was not invoked"
+        );
     }
 
     #[tokio::test]
@@ -729,7 +724,10 @@ mod tests {
         assert!(!reply.is_retryable_error);
 
         // The callback should have been invoked.
-        assert!(called.load(Ordering::Relaxed), "task execution callback was not invoked");
+        assert!(
+            called.load(Ordering::Relaxed),
+            "task execution callback was not invoked"
+        );
     }
 
     #[test]

@@ -54,9 +54,7 @@ pub struct EventLoopConfig {
 
 impl Default for EventLoopConfig {
     fn default() -> Self {
-        Self {
-            debug_ticks: false,
-        }
+        Self { debug_ticks: false }
     }
 }
 

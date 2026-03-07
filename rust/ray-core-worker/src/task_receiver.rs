@@ -159,9 +159,9 @@ impl TaskReceiver {
             )));
         }
 
-        let task_spec = request.task_spec.ok_or_else(|| {
-            CoreWorkerError::InvalidArgument("PushTask missing task_spec".into())
-        })?;
+        let task_spec = request
+            .task_spec
+            .ok_or_else(|| CoreWorkerError::InvalidArgument("PushTask missing task_spec".into()))?;
 
         let task_id = task_spec.task_id.clone();
 
@@ -179,9 +179,11 @@ impl TaskReceiver {
             .insert(task_id.clone(), cancel_token.clone());
 
         // Acquire concurrency permit.
-        let _permit = self.concurrency_semaphore.acquire().await.map_err(|_| {
-            CoreWorkerError::Internal("concurrency semaphore closed".into())
-        })?;
+        let _permit = self
+            .concurrency_semaphore
+            .acquire()
+            .await
+            .map_err(|_| CoreWorkerError::Internal("concurrency semaphore closed".into()))?;
 
         self.num_executing.fetch_add(1, Ordering::Relaxed);
 
@@ -199,15 +201,11 @@ impl TaskReceiver {
                         ..Default::default()
                     });
                 }
-                let callback = callback
-                    .as_ref()
-                    .ok_or(CoreWorkerError::NotInitialized)?;
+                let callback = callback.as_ref().ok_or(CoreWorkerError::NotInitialized)?;
                 callback(&task_spec)
             })
             .await
-            .map_err(|e| {
-                CoreWorkerError::Internal(format!("task execution join error: {}", e))
-            })?
+            .map_err(|e| CoreWorkerError::Internal(format!("task execution join error: {}", e)))?
         };
 
         self.num_executing.fetch_sub(1, Ordering::Relaxed);
@@ -269,9 +267,7 @@ impl TaskReceiver {
         }
 
         let callback = self.execute_callback.lock();
-        let callback = callback.as_ref().ok_or(
-            CoreWorkerError::NotInitialized
-        )?;
+        let callback = callback.as_ref().ok_or(CoreWorkerError::NotInitialized)?;
 
         callback(task_spec)
     }
@@ -394,9 +390,9 @@ impl TaskReceiver {
             )));
         }
 
-        let task_spec = request.task_spec.ok_or_else(|| {
-            CoreWorkerError::InvalidArgument("PushTask missing task_spec".into())
-        })?;
+        let task_spec = request
+            .task_spec
+            .ok_or_else(|| CoreWorkerError::InvalidArgument("PushTask missing task_spec".into()))?;
 
         let task_id = task_spec.task_id.clone();
         let cancel_token = CancelFlag::new();
@@ -470,10 +466,7 @@ mod tests {
         }
     }
 
-    fn make_push_request(
-        worker_id: &WorkerID,
-        task_spec: TaskSpec,
-    ) -> rpc::PushTaskRequest {
+    fn make_push_request(worker_id: &WorkerID, task_spec: TaskSpec) -> rpc::PushTaskRequest {
         rpc::PushTaskRequest {
             intended_worker_id: worker_id.binary(),
             task_spec: Some(task_spec),
@@ -653,9 +646,7 @@ mod tests {
         let req = make_push_request(&wid, spec);
 
         let receiver_clone = Arc::clone(&receiver);
-        let handle = tokio::spawn(async move {
-            receiver_clone.handle_push_task(req).await
-        });
+        let handle = tokio::spawn(async move { receiver_clone.handle_push_task(req).await });
 
         // Wait for the callback to start executing.
         tokio::task::spawn_blocking(move || barrier.wait())
@@ -692,9 +683,7 @@ mod tests {
             let spec = make_task_spec(&format!("task_{}", i));
             let req = make_push_request(&wid, spec);
             let r = Arc::clone(&receiver);
-            handles.push(tokio::spawn(async move {
-                r.handle_push_task(req).await
-            }));
+            handles.push(tokio::spawn(async move { r.handle_push_task(req).await }));
         }
 
         for h in handles {
@@ -734,9 +723,7 @@ mod tests {
             let spec = make_task_spec(&format!("unlimited_{}", i));
             let req = make_push_request(&wid, spec);
             let r = Arc::clone(&receiver);
-            handles.push(tokio::spawn(async move {
-                r.handle_push_task(req).await
-            }));
+            handles.push(tokio::spawn(async move { r.handle_push_task(req).await }));
         }
 
         for h in handles {
@@ -869,7 +856,10 @@ mod tests {
         let spec = make_task_spec("fallback_task");
         let req = make_push_request(&wid, spec);
 
-        let reply = receiver.handle_actor_task(req, "unknown_actor").await.unwrap();
+        let reply = receiver
+            .handle_actor_task(req, "unknown_actor")
+            .await
+            .unwrap();
         assert!(!reply.is_retryable_error);
         assert_eq!(reply.return_objects.len(), 1);
         assert_eq!(receiver.total_executed(), 1);
@@ -936,9 +926,9 @@ mod tests {
             let req = make_push_request(&wid, spec);
             let r = Arc::clone(&receiver);
             let ah = actor_hex.to_string();
-            handles.push(tokio::spawn(async move {
-                r.handle_actor_task(req, &ah).await
-            }));
+            handles.push(tokio::spawn(
+                async move { r.handle_actor_task(req, &ah).await },
+            ));
         }
 
         for h in handles {
@@ -978,7 +968,10 @@ mod tests {
         let spec = make_task_spec("wrong_wid_task");
         let req = make_push_request(&other_wid, spec);
 
-        let err = receiver.handle_actor_task(req, actor_hex).await.unwrap_err();
+        let err = receiver
+            .handle_actor_task(req, actor_hex)
+            .await
+            .unwrap_err();
         assert!(matches!(err, CoreWorkerError::InvalidArgument(_)));
     }
 
@@ -998,7 +991,10 @@ mod tests {
             ..Default::default()
         };
 
-        let err = receiver.handle_actor_task(req, actor_hex).await.unwrap_err();
+        let err = receiver
+            .handle_actor_task(req, actor_hex)
+            .await
+            .unwrap_err();
         assert!(matches!(err, CoreWorkerError::InvalidArgument(_)));
     }
 
@@ -1089,9 +1085,8 @@ mod tests {
         let store = make_store();
         let receiver = TaskReceiver::new(wid, store, 4);
 
-        let cb: TaskExecutionCallback = Arc::new(|_spec: &TaskSpec| {
-            Err(CoreWorkerError::Internal("simulated failure".into()))
-        });
+        let cb: TaskExecutionCallback =
+            Arc::new(|_spec: &TaskSpec| Err(CoreWorkerError::Internal("simulated failure".into())));
         receiver.set_execute_callback(cb);
 
         let spec = make_task_spec("failing");
@@ -1151,9 +1146,7 @@ mod tests {
             let spec = make_task_spec(&format!("parallel_{}", i));
             let req = make_push_request(&wid, spec);
             let r = Arc::clone(&receiver);
-            handles.push(tokio::spawn(async move {
-                r.handle_push_task(req).await
-            }));
+            handles.push(tokio::spawn(async move { r.handle_push_task(req).await }));
         }
 
         for h in handles {
@@ -1278,9 +1271,7 @@ mod tests {
         let req = make_push_request(&wid, spec);
 
         let r = Arc::clone(&receiver);
-        let handle = tokio::spawn(async move {
-            r.handle_push_task(req).await
-        });
+        let handle = tokio::spawn(async move { r.handle_push_task(req).await });
 
         // Wait for task to start.
         started.notified().await;
@@ -1342,17 +1333,17 @@ mod tests {
             let spec = make_task_spec(&format!("x_{}", i));
             let req = make_push_request(&wid, spec);
             let r = Arc::clone(&receiver);
-            handles.push(tokio::spawn(
-                async move { r.handle_actor_task(req, "actor_x").await },
-            ));
+            handles.push(tokio::spawn(async move {
+                r.handle_actor_task(req, "actor_x").await
+            }));
         }
         for i in 0..3 {
             let spec = make_task_spec(&format!("y_{}", i));
             let req = make_push_request(&wid, spec);
             let r = Arc::clone(&receiver);
-            handles.push(tokio::spawn(
-                async move { r.handle_actor_task(req, "actor_y").await },
-            ));
+            handles.push(tokio::spawn(async move {
+                r.handle_actor_task(req, "actor_y").await
+            }));
         }
 
         for h in handles {
@@ -1395,9 +1386,7 @@ mod tests {
             let spec = make_task_spec(&format!("serial_{}", i));
             let req = make_push_request(&wid, spec);
             let r = Arc::clone(&receiver);
-            handles.push(tokio::spawn(async move {
-                r.handle_push_task(req).await
-            }));
+            handles.push(tokio::spawn(async move { r.handle_push_task(req).await }));
         }
 
         for h in handles {
@@ -1471,9 +1460,7 @@ mod tests {
         let spec = make_task_spec("running_check");
         let req = make_push_request(&wid, spec);
         let r = Arc::clone(&receiver);
-        let handle = tokio::spawn(async move {
-            r.handle_push_task(req).await
-        });
+        let handle = tokio::spawn(async move { r.handle_push_task(req).await });
 
         started.notified().await;
         // Task should be running now.

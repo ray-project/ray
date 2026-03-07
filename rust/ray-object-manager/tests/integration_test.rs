@@ -82,18 +82,15 @@ fn make_object_manager(node_val: u8) -> Arc<Mutex<ObjectManager>> {
 async fn start_object_manager_server(
     om: Arc<Mutex<ObjectManager>>,
 ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
-    let svc = ObjectManagerServiceImpl {
-        object_manager: om,
-    };
+    let svc = ObjectManagerServiceImpl { object_manager: om };
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
     let handle = tokio::spawn(async move {
-        let server = tonic::transport::Server::builder().add_service(
-            rpc::object_manager_service_server::ObjectManagerServiceServer::new(svc),
-        );
+        let server = tonic::transport::Server::builder()
+            .add_service(rpc::object_manager_service_server::ObjectManagerServiceServer::new(svc));
         server.serve_with_incoming(incoming).await.ok();
     });
 
@@ -265,11 +262,7 @@ async fn test_push_multi_chunk_object_via_grpc() {
     };
     let allocator = Arc::new(DummyAllocator);
     let store = Arc::new(PlasmaStore::new(allocator, &store_config));
-    let receiver_om = Arc::new(Mutex::new(ObjectManager::new(
-        config,
-        make_nid(2),
-        store,
-    )));
+    let receiver_om = Arc::new(Mutex::new(ObjectManager::new(config, make_nid(2), store)));
 
     let (addr, handle) = start_object_manager_server(Arc::clone(&receiver_om)).await;
 
@@ -449,5 +442,7 @@ fn test_transport_loop_timeout_detection() {
 
     // Push should be cancelled.
     let om_lock = om.lock();
-    assert!(!om_lock.push_manager().is_pushing(&make_nid(5), &make_oid(20)));
+    assert!(!om_lock
+        .push_manager()
+        .is_pushing(&make_nid(5), &make_oid(20)));
 }

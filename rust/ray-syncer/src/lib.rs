@@ -30,17 +30,14 @@ use parking_lot::Mutex;
 
 use ray_common::id::NodeID;
 use ray_proto::ray::rpc::syncer::{
-    CommandsSyncMessage, MessageType, RaySyncMessage, RaySyncMessageBatch,
-    ResourceViewSyncMessage,
+    CommandsSyncMessage, MessageType, RaySyncMessage, RaySyncMessageBatch, ResourceViewSyncMessage,
 };
 
 /// Callback invoked when a resource view update is received from a peer.
-pub type ResourceViewCallback =
-    Box<dyn Fn(&NodeID, &ResourceViewSyncMessage) + Send + Sync>;
+pub type ResourceViewCallback = Box<dyn Fn(&NodeID, &ResourceViewSyncMessage) + Send + Sync>;
 
 /// Callback invoked when a command is received from a peer.
-pub type CommandsCallback =
-    Box<dyn Fn(&NodeID, &CommandsSyncMessage) + Send + Sync>;
+pub type CommandsCallback = Box<dyn Fn(&NodeID, &CommandsSyncMessage) + Send + Sync>;
 
 /// Snapshot of a peer node's state as known by this syncer.
 #[derive(Debug, Clone, Default)]
@@ -178,10 +175,7 @@ impl NodeSyncState {
                     }
                 }
                 None => {
-                    tracing::warn!(
-                        message_type = msg.message_type,
-                        "Unknown sync message type"
-                    );
+                    tracing::warn!(message_type = msg.message_type, "Unknown sync message type");
                 }
             }
         }
@@ -190,10 +184,7 @@ impl NodeSyncState {
     }
 
     fn apply_resource_view(&self, sender: &NodeID, msg: &RaySyncMessage) -> bool {
-        let mut snapshot = self
-            .peer_snapshots
-            .entry(*sender)
-            .or_default();
+        let mut snapshot = self.peer_snapshots.entry(*sender).or_default();
 
         // Only apply if version is newer.
         if msg.version <= snapshot.resource_view_version {
@@ -222,23 +213,19 @@ impl NodeSyncState {
     }
 
     fn apply_commands(&self, sender: &NodeID, msg: &RaySyncMessage) -> bool {
-        let mut snapshot = self
-            .peer_snapshots
-            .entry(*sender)
-            .or_default();
+        let mut snapshot = self.peer_snapshots.entry(*sender).or_default();
 
         if msg.version <= snapshot.commands_version {
             return false;
         }
 
-        let cmd: CommandsSyncMessage =
-            match prost::Message::decode(msg.sync_message.as_slice()) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to decode CommandsSyncMessage");
-                    return false;
-                }
-            };
+        let cmd: CommandsSyncMessage = match prost::Message::decode(msg.sync_message.as_slice()) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to decode CommandsSyncMessage");
+                return false;
+            }
+        };
 
         snapshot.commands_version = msg.version;
         snapshot.commands = Some(cmd);
@@ -257,10 +244,7 @@ impl NodeSyncState {
     }
 
     /// Get the resource view for a specific peer.
-    pub fn get_peer_resource_view(
-        &self,
-        node_id: &NodeID,
-    ) -> Option<ResourceViewSyncMessage> {
+    pub fn get_peer_resource_view(&self, node_id: &NodeID) -> Option<ResourceViewSyncMessage> {
         self.peer_snapshots
             .get(node_id)
             .and_then(|s| s.resource_view.clone())

@@ -106,8 +106,7 @@ impl RaySyncerTrait for RaySyncerService {
         let scv = sent_commands_version.clone();
 
         tokio::spawn(async move {
-            let interval_duration =
-                std::time::Duration::from_millis(config.sync_interval_ms);
+            let interval_duration = std::time::Duration::from_millis(config.sync_interval_ms);
             let mut interval = tokio::time::interval(interval_duration);
 
             loop {

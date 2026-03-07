@@ -312,9 +312,7 @@ mod tests {
     async fn test_submit_to_unregistered_actor_fails() {
         let submitter = ActorTaskSubmitter::new();
         let actor_id = make_actor_id(99);
-        let result = submitter
-            .submit_task(&actor_id, TaskSpec::default())
-            .await;
+        let result = submitter.submit_task(&actor_id, TaskSpec::default()).await;
         assert!(result.is_err());
     }
 
@@ -380,9 +378,7 @@ mod tests {
         submitter.add_actor(actor_id);
         submitter.mark_actor_dead(&actor_id);
 
-        let result = submitter
-            .submit_task(&actor_id, TaskSpec::default())
-            .await;
+        let result = submitter.submit_task(&actor_id, TaskSpec::default()).await;
         assert!(result.is_err());
     }
 
@@ -590,9 +586,7 @@ mod tests {
         assert_eq!(submitter.actor_state(&actor_id), Some(ActorState::Dead));
 
         // New submissions should fail.
-        let result = submitter
-            .submit_task(&actor_id, TaskSpec::default())
-            .await;
+        let result = submitter.submit_task(&actor_id, TaskSpec::default()).await;
         assert!(result.is_err());
     }
 
@@ -889,9 +883,7 @@ mod tests {
         assert_eq!(submitter.num_pending_tasks(&actor_id), 0);
 
         // Cannot submit to dead actor.
-        let result = submitter
-            .submit_task(&actor_id, TaskSpec::default())
-            .await;
+        let result = submitter.submit_task(&actor_id, TaskSpec::default()).await;
         assert!(result.is_err());
     }
 
@@ -1154,9 +1146,7 @@ mod tests {
         submitter.mark_actor_dead(&actor_id);
 
         // Cannot submit anymore.
-        let result = submitter
-            .submit_task(&actor_id, TaskSpec::default())
-            .await;
+        let result = submitter.submit_task(&actor_id, TaskSpec::default()).await;
         assert!(result.is_err());
     }
 

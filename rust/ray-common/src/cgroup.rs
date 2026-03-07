@@ -246,10 +246,7 @@ impl CgroupManager for SysfsCgroupDriver {
 }
 
 /// Create a cgroup manager appropriate for the current platform.
-pub fn create_cgroup_manager(
-    node_id: &str,
-    enabled: bool,
-) -> Box<dyn CgroupManager> {
+pub fn create_cgroup_manager(node_id: &str, enabled: bool) -> Box<dyn CgroupManager> {
     if !enabled {
         return Box::new(NoopCgroupManager::new(node_id));
     }
@@ -618,10 +615,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(
-            std::fs::read_to_string(cg.join("cpu.weight")).unwrap(),
-            "1"
-        );
+        assert_eq!(std::fs::read_to_string(cg.join("cpu.weight")).unwrap(), "1");
 
         // Max clamp: 99999 -> 10000
         SysfsCgroupDriver::apply_constraints(
@@ -748,7 +742,11 @@ mod tests {
     fn test_cgroup_hierarchy_with_various_node_ids() {
         for node_id in &["abc", "node_id_123", "a-b-c-d"] {
             let h = CgroupHierarchy::new(Path::new("/sys/fs/cgroup"), node_id);
-            assert!(h.root.to_str().unwrap().ends_with(&format!("ray-node_{node_id}")));
+            assert!(h
+                .root
+                .to_str()
+                .unwrap()
+                .ends_with(&format!("ray-node_{node_id}")));
             assert!(h.system.starts_with(&h.root));
             assert!(h.workers.starts_with(&h.root));
             assert!(h.non_ray.starts_with(&h.root));
@@ -818,11 +816,7 @@ mod tests {
         let mount_file = dir.path().join("mounts");
 
         // Write a valid cgroup2 mount entry
-        std::fs::write(
-            &mount_file,
-            "cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n",
-        )
-        .unwrap();
+        std::fs::write(&mount_file, "cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n").unwrap();
 
         let content = std::fs::read_to_string(&mount_file).unwrap();
         let has_cgroup2 = content.lines().any(|line| {
@@ -900,11 +894,7 @@ mod tests {
 
         // Fallback mount file exists with correct content
         let fallback = dir.path().join("fallback_mounts");
-        std::fs::write(
-            &fallback,
-            "cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n",
-        )
-        .unwrap();
+        std::fs::write(&fallback, "cgroup2 /sys/fs/cgroup cgroup2 rw 0 0\n").unwrap();
 
         // Try primary, fall back to secondary
         let content = std::fs::read_to_string(&primary)
@@ -958,8 +948,7 @@ mod tests {
         .unwrap();
 
         let content = std::fs::read_to_string(cg.join("cgroup.controllers")).unwrap();
-        let controllers: std::collections::HashSet<&str> =
-            content.split_whitespace().collect();
+        let controllers: std::collections::HashSet<&str> = content.split_whitespace().collect();
 
         assert!(controllers.contains("cpu"));
         assert!(controllers.contains("memory"));
@@ -1119,10 +1108,7 @@ mod tests {
     fn test_noop_manager_hierarchy_paths() {
         let mgr = NoopCgroupManager::new("noop-node");
         let h = mgr.hierarchy();
-        assert_eq!(
-            h.root,
-            PathBuf::from("/sys/fs/cgroup/ray-node_noop-node")
-        );
+        assert_eq!(h.root, PathBuf::from("/sys/fs/cgroup/ray-node_noop-node"));
         assert!(h.system.to_str().unwrap().contains("system"));
         assert!(h.workers.to_str().unwrap().contains("workers"));
         assert!(h.non_ray.to_str().unwrap().contains("non-ray"));

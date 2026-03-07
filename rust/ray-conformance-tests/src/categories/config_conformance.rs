@@ -60,14 +60,20 @@ fn test_config_default_values_conformance() {
             assert!(
                 (actual - expected).abs() < 1e-6,
                 "FAIL [{}]: config.{} = {}, expected {}",
-                case.description, key, actual, expected
+                case.description,
+                key,
+                actual,
+                expected
             );
         } else if let Some(expected) = case.expected.value_f64 {
             let actual = get_f64_field(&config, key);
             assert!(
                 (actual - expected).abs() < 1e-10,
                 "FAIL [{}]: config.{} = {}, expected {}",
-                case.description, key, actual, expected
+                case.description,
+                key,
+                actual,
+                expected
             );
         } else if let Some(expected) = case.expected.value_bool {
             let actual = get_bool_field(&config, key);

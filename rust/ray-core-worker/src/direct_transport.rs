@@ -133,13 +133,15 @@ impl DirectActorTransport {
     /// Register an actor for direct transport.
     pub fn add_actor(&self, actor_id: ActorID) {
         let mut actors = self.actors.lock();
-        actors.entry(actor_id).or_insert_with(|| ActorTransportState {
-            address: None,
-            connection_state: ConnectionState::Disconnected,
-            pending_tasks: VecDeque::new(),
-            next_sequence_number: 0,
-            num_in_flight: 0,
-        });
+        actors
+            .entry(actor_id)
+            .or_insert_with(|| ActorTransportState {
+                address: None,
+                connection_state: ConnectionState::Disconnected,
+                pending_tasks: VecDeque::new(),
+                next_sequence_number: 0,
+                num_in_flight: 0,
+            });
     }
 
     /// Connect an actor to its worker address.
@@ -161,8 +163,7 @@ impl DirectActorTransport {
         if let Some(state) = actors.get_mut(actor_id) {
             state.connection_state = ConnectionState::Dead;
             let count = state.pending_tasks.len();
-            self.total_failed
-                .fetch_add(count as u64, Ordering::Relaxed);
+            self.total_failed.fetch_add(count as u64, Ordering::Relaxed);
             state.pending_tasks.clear();
             state.num_in_flight = 0;
             count
@@ -267,10 +268,7 @@ impl DirectActorTransport {
 
     /// Get the connection state for an actor.
     pub fn connection_state(&self, actor_id: &ActorID) -> Option<ConnectionState> {
-        self.actors
-            .lock()
-            .get(actor_id)
-            .map(|s| s.connection_state)
+        self.actors.lock().get(actor_id).map(|s| s.connection_state)
     }
 
     /// Get the number of pending tasks for an actor.
@@ -305,8 +303,7 @@ impl DirectActorTransport {
         let mut actors = self.actors.lock();
         for (_, state) in actors.iter_mut() {
             let count = state.pending_tasks.len();
-            self.total_failed
-                .fetch_add(count as u64, Ordering::Relaxed);
+            self.total_failed.fetch_add(count as u64, Ordering::Relaxed);
             state.pending_tasks.clear();
             state.connection_state = ConnectionState::Dead;
         }
@@ -430,7 +427,9 @@ mod tests {
         transport.add_actor(aid);
         transport.disconnect_actor(&aid);
 
-        let err = transport.submit_task(&aid, make_task("doomed")).unwrap_err();
+        let err = transport
+            .submit_task(&aid, make_task("doomed"))
+            .unwrap_err();
         assert!(matches!(err, DirectTransportError::ActorDead(_)));
     }
 
@@ -439,7 +438,9 @@ mod tests {
         let transport = DirectActorTransport::new(DirectTransportConfig::default());
         let aid = make_aid(99);
 
-        let err = transport.submit_task(&aid, make_task("orphan")).unwrap_err();
+        let err = transport
+            .submit_task(&aid, make_task("orphan"))
+            .unwrap_err();
         assert!(matches!(err, DirectTransportError::NotConnected(_)));
     }
 
@@ -609,7 +610,9 @@ mod tests {
         assert_eq!(transport.total_failed(), 1);
 
         // Cannot submit more.
-        let err = transport.submit_task(&aid, make_task("after_dead")).unwrap_err();
+        let err = transport
+            .submit_task(&aid, make_task("after_dead"))
+            .unwrap_err();
         assert!(matches!(err, DirectTransportError::ActorDead(_)));
     }
 
@@ -635,7 +638,9 @@ mod tests {
             Some(ConnectionState::Connected)
         );
         // But this is an implementation detail; the important thing is submit works.
-        transport.submit_task(&aid, make_task("after_reconnect")).unwrap();
+        transport
+            .submit_task(&aid, make_task("after_reconnect"))
+            .unwrap();
     }
 
     #[test]

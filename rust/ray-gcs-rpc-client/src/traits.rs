@@ -147,10 +147,7 @@ pub trait GcsClient: Send + Sync {
     ) -> Result<rpc::GetTaskEventsReply, Status>;
 
     // ── Extended Node RPCs ──────────────────────────────────────────
-    async fn drain_node(
-        &self,
-        req: rpc::DrainNodeRequest,
-    ) -> Result<rpc::DrainNodeReply, Status>;
+    async fn drain_node(&self, req: rpc::DrainNodeRequest) -> Result<rpc::DrainNodeReply, Status>;
 
     // ── Extended Placement Group RPCs ───────────────────────────────
     async fn get_placement_group(

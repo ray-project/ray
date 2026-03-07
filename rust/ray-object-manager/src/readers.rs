@@ -425,7 +425,7 @@ mod tests {
     fn test_parse_url_failure_cases() {
         // Port of C++ ParseObjectURL failure cases
         let fail_cases = vec![
-            "/tmp/123?offset=-1&size=1",           // negative offset
+            "/tmp/123?offset=-1&size=1",             // negative offset
             "file://path/to/file?offset=a&size=456", // non-numeric offset
             "file://path/to/file?offset=0&size=bb",  // non-numeric size
         ];
@@ -460,7 +460,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 0
             0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 1
             0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // u64::MAX
-            0xff, 0xff, 0xff, 0xff, 0xff, 0xff,             // malformed (6 bytes)
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // malformed (6 bytes)
         ];
         let mut cursor = std::io::Cursor::new(&data);
 
@@ -485,17 +485,14 @@ mod tests {
         let cases: Vec<(u64, u64, u64)> = vec![
             (11, 1, 11),
             (1, 11, 1),
-            (0, 11, 1),  // Note: Rust impl returns 1 for empty objects
+            (0, 11, 1), // Note: Rust impl returns 1 for empty objects
             (9, 2, 5),
             (10, 2, 5),
             (11, 2, 6),
         ];
 
         for (data_size, chunk_size, expected) in cases {
-            let reader = MemoryObjectReader::new(
-                vec![0u8; data_size as usize],
-                vec![],
-            );
+            let reader = MemoryObjectReader::new(vec![0u8; data_size as usize], vec![]);
             let chunk_reader = ChunkObjectReader::new(Box::new(reader), chunk_size);
             assert_eq!(
                 chunk_reader.num_chunks(),
@@ -532,7 +529,11 @@ mod tests {
         drop(f);
 
         let total_size = 10 + 24 + 4 + 8 + 4;
-        let url = format!("{}?offset=10&size={}", path.to_str().unwrap(), total_size - 10);
+        let url = format!(
+            "{}?offset=10&size={}",
+            path.to_str().unwrap(),
+            total_size - 10
+        );
         assert!(SpilledObjectReader::create(&url).is_some());
 
         // Malformatted URL should fail
@@ -695,10 +696,8 @@ mod tests {
                 }
 
                 for chunk_size in &chunk_sizes {
-                    let reader =
-                        MemoryObjectReader::new(data.clone(), metadata.clone());
-                    let chunk_reader =
-                        ChunkObjectReader::new(Box::new(reader), *chunk_size);
+                    let reader = MemoryObjectReader::new(data.clone(), metadata.clone());
+                    let chunk_reader = ChunkObjectReader::new(Box::new(reader), *chunk_size);
 
                     let mut actual_output = Vec::new();
                     let nc = chunk_reader.num_chunks();
@@ -720,7 +719,8 @@ mod tests {
                         );
                         if i + 1 != nc {
                             assert_eq!(
-                                chunk.len() as u64, *chunk_size,
+                                chunk.len() as u64,
+                                *chunk_size,
                                 "non-last chunk {} should be full",
                                 i
                             );
@@ -764,10 +764,8 @@ mod tests {
 
                 let chunk_sizes: Vec<u64> = vec![1, 2, 3, 5, 100];
                 for chunk_size in &chunk_sizes {
-                    let reader =
-                        SpilledObjectReader::create(path.to_str().unwrap()).unwrap();
-                    let chunk_reader =
-                        ChunkObjectReader::new(Box::new(reader), *chunk_size);
+                    let reader = SpilledObjectReader::create(path.to_str().unwrap()).unwrap();
+                    let chunk_reader = ChunkObjectReader::new(Box::new(reader), *chunk_size);
 
                     if expected_output.is_empty() {
                         assert_eq!(chunk_reader.num_chunks(), 1);

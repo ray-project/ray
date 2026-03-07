@@ -347,10 +347,7 @@ impl WorkerLeaseTracker {
     /// Return a lease — task completed, worker is available again.
     ///
     /// Returns the allocated resources so they can be released back.
-    pub fn return_lease(
-        &self,
-        worker_id: &ray_common::id::WorkerID,
-    ) -> Option<ActiveLease> {
+    pub fn return_lease(&self, worker_id: &ray_common::id::WorkerID) -> Option<ActiveLease> {
         let mut inner = self.inner.lock();
         let lease = inner.active_leases.remove(worker_id);
         if lease.is_some() {
@@ -361,18 +358,12 @@ impl WorkerLeaseTracker {
     }
 
     /// Get the lease for a worker (if any).
-    pub fn get_lease(
-        &self,
-        worker_id: &ray_common::id::WorkerID,
-    ) -> Option<ActiveLease> {
+    pub fn get_lease(&self, worker_id: &ray_common::id::WorkerID) -> Option<ActiveLease> {
         self.inner.lock().active_leases.get(worker_id).cloned()
     }
 
     /// Check if a worker currently holds a lease.
-    pub fn has_lease(
-        &self,
-        worker_id: &ray_common::id::WorkerID,
-    ) -> bool {
+    pub fn has_lease(&self, worker_id: &ray_common::id::WorkerID) -> bool {
         self.inner.lock().active_leases.contains_key(worker_id)
     }
 
@@ -387,18 +378,14 @@ impl WorkerLeaseTracker {
             .active_leases
             .values()
             .filter(|lease| {
-                !lease.is_actor_task
-                    && now.duration_since(lease.granted_at) >= self.lease_timeout
+                !lease.is_actor_task && now.duration_since(lease.granted_at) >= self.lease_timeout
             })
             .map(|lease| lease.worker_id)
             .collect()
     }
 
     /// Handle worker death — remove its lease and return the resources.
-    pub fn handle_worker_death(
-        &self,
-        worker_id: &ray_common::id::WorkerID,
-    ) -> Option<ActiveLease> {
+    pub fn handle_worker_death(&self, worker_id: &ray_common::id::WorkerID) -> Option<ActiveLease> {
         self.return_lease(worker_id)
     }
 
@@ -410,7 +397,11 @@ impl WorkerLeaseTracker {
     /// Statistics: (total_granted, total_returned, total_timed_out).
     pub fn stats(&self) -> (u64, u64, u64) {
         let inner = self.inner.lock();
-        (inner.total_granted, inner.total_returned, inner.total_timed_out)
+        (
+            inner.total_granted,
+            inner.total_returned,
+            inner.total_timed_out,
+        )
     }
 
     /// Mark timed-out leases and increment the timed_out counter.
@@ -520,8 +511,11 @@ mod tests {
         let mut small_req = ResourceSet::new();
         small_req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
 
-        let _rx2 =
-            mgr.queue_and_schedule_lease(small_req, SchedulingOptions::hybrid(), SchedulingClass(2));
+        let _rx2 = mgr.queue_and_schedule_lease(
+            small_req,
+            SchedulingOptions::hybrid(),
+            SchedulingClass(2),
+        );
         assert_eq!(mgr.num_pending_leases(), 1, "should have 1 pending lease");
 
         // Cancel the pending lease
@@ -704,21 +698,12 @@ mod tests {
         req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
 
         // Queue multiple leases of the same scheduling class
-        let mut rx1 = mgr.queue_and_schedule_lease(
-            req.clone(),
-            SchedulingOptions::hybrid(),
-            class1,
-        );
-        let mut rx2 = mgr.queue_and_schedule_lease(
-            req.clone(),
-            SchedulingOptions::hybrid(),
-            class1,
-        );
-        let mut rx3 = mgr.queue_and_schedule_lease(
-            req.clone(),
-            SchedulingOptions::hybrid(),
-            class1,
-        );
+        let mut rx1 =
+            mgr.queue_and_schedule_lease(req.clone(), SchedulingOptions::hybrid(), class1);
+        let mut rx2 =
+            mgr.queue_and_schedule_lease(req.clone(), SchedulingOptions::hybrid(), class1);
+        let mut rx3 =
+            mgr.queue_and_schedule_lease(req.clone(), SchedulingOptions::hybrid(), class1);
 
         // All 3 should be granted (4 CPUs available, 1 each)
         match rx1.try_recv().unwrap() {
@@ -742,11 +727,8 @@ mod tests {
         // Allocate all 4 CPUs
         let mut all_cpus = ResourceSet::new();
         all_cpus.set("CPU".to_string(), FixedPoint::from_f64(4.0));
-        let mut rx1 = mgr.queue_and_schedule_lease(
-            all_cpus,
-            SchedulingOptions::hybrid(),
-            SchedulingClass(1),
-        );
+        let mut rx1 =
+            mgr.queue_and_schedule_lease(all_cpus, SchedulingOptions::hybrid(), SchedulingClass(1));
         match rx1.try_recv().unwrap() {
             LeaseReply::Granted { .. } => {}
             _ => panic!("expected grant"),
@@ -755,11 +737,8 @@ mod tests {
         // Next request should stay pending (feasible but not available)
         let mut small = ResourceSet::new();
         small.set("CPU".to_string(), FixedPoint::from_f64(1.0));
-        let _rx2 = mgr.queue_and_schedule_lease(
-            small,
-            SchedulingOptions::hybrid(),
-            SchedulingClass(2),
-        );
+        let _rx2 =
+            mgr.queue_and_schedule_lease(small, SchedulingOptions::hybrid(), SchedulingClass(2));
         assert_eq!(mgr.num_pending_leases(), 1);
         assert_eq!(mgr.num_infeasible_leases(), 0);
     }
@@ -776,11 +755,8 @@ mod tests {
             SchedulingOptions::hybrid(),
             SchedulingClass(1),
         );
-        let _rx2 = mgr.queue_and_schedule_lease(
-            cpu_req,
-            SchedulingOptions::hybrid(),
-            SchedulingClass(2),
-        );
+        let _rx2 =
+            mgr.queue_and_schedule_lease(cpu_req, SchedulingOptions::hybrid(), SchedulingClass(2));
 
         // Both should be granted (2 CPUs each, 4 total)
         assert_eq!(mgr.num_pending_leases(), 0);
@@ -813,21 +789,15 @@ mod tests {
         // Request GPU resources — infeasible since no GPU node exists
         let mut gpu_req = ResourceSet::new();
         gpu_req.set("GPU".to_string(), FixedPoint::from_f64(1.0));
-        let _rx = mgr.queue_and_schedule_lease(
-            gpu_req,
-            SchedulingOptions::hybrid(),
-            SchedulingClass(10),
-        );
+        let _rx =
+            mgr.queue_and_schedule_lease(gpu_req, SchedulingOptions::hybrid(), SchedulingClass(10));
         assert_eq!(mgr.num_infeasible_leases(), 1);
 
         // Add a GPU node to the cluster
         let mut remote_total = ResourceSet::new();
         remote_total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
         remote_total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
-        cluster_mgr.add_or_update_node(
-            "gpu-node".to_string(),
-            NodeResources::new(remote_total),
-        );
+        cluster_mgr.add_or_update_node("gpu-node".to_string(), NodeResources::new(remote_total));
 
         // Retry infeasible leases — should now be schedulable
         mgr.try_schedule_infeasible_leases();
@@ -868,11 +838,8 @@ mod tests {
         // Request 10 CPUs — only remote nodes can handle this
         let mut req = ResourceSet::new();
         req.set("CPU".to_string(), FixedPoint::from_f64(10.0));
-        let mut rx = mgr.queue_and_schedule_lease(
-            req,
-            SchedulingOptions::hybrid(),
-            SchedulingClass(1),
-        );
+        let mut rx =
+            mgr.queue_and_schedule_lease(req, SchedulingOptions::hybrid(), SchedulingClass(1));
 
         match rx.try_recv().unwrap() {
             LeaseReply::Spillback { node_id } => {
@@ -891,12 +858,7 @@ mod tests {
 
         // Grant leases to 5 workers
         for i in 1..=5 {
-            tracker.grant_lease(
-                make_wid(i),
-                make_tid(i),
-                ResourceSet::new(),
-                false,
-            );
+            tracker.grant_lease(make_wid(i), make_tid(i), ResourceSet::new(), false);
         }
         assert_eq!(tracker.num_active_leases(), 5);
 
@@ -967,8 +929,14 @@ mod tests {
         tracker.grant_lease(wid, make_tid(1), resources, false);
         let lease = tracker.handle_worker_death(&wid).unwrap();
 
-        assert_eq!(lease.allocated_resources.get("CPU"), FixedPoint::from_f64(4.0));
-        assert_eq!(lease.allocated_resources.get("GPU"), FixedPoint::from_f64(1.0));
+        assert_eq!(
+            lease.allocated_resources.get("CPU"),
+            FixedPoint::from_f64(4.0)
+        );
+        assert_eq!(
+            lease.allocated_resources.get("GPU"),
+            FixedPoint::from_f64(1.0)
+        );
         assert_eq!(tracker.num_active_leases(), 0);
 
         let (granted, returned, _) = tracker.stats();
@@ -1000,11 +968,8 @@ mod tests {
             SchedulingOptions::hybrid(),
             SchedulingClass(1),
         );
-        let _rx3 = mgr.queue_and_schedule_lease(
-            req,
-            SchedulingOptions::hybrid(),
-            SchedulingClass(1),
-        );
+        let _rx3 =
+            mgr.queue_and_schedule_lease(req, SchedulingOptions::hybrid(), SchedulingClass(1));
 
         // If all were granted, pending should be 0
         assert_eq!(mgr.num_pending_leases(), 0);

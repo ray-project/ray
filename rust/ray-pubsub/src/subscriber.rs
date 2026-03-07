@@ -57,14 +57,8 @@ impl PublisherSubscriptions {
 /// A command to send to the publisher (subscribe or unsubscribe).
 #[derive(Debug, Clone)]
 pub enum SubscriberCommand {
-    Subscribe {
-        channel_type: i32,
-        key_id: Vec<u8>,
-    },
-    Unsubscribe {
-        channel_type: i32,
-        key_id: Vec<u8>,
-    },
+    Subscribe { channel_type: i32, key_id: Vec<u8> },
+    Unsubscribe { channel_type: i32, key_id: Vec<u8> },
 }
 
 /// Sequence tracking per publisher.
@@ -203,12 +197,7 @@ impl Subscriber {
     }
 
     /// Unsubscribe from a channel+key on a specific publisher.
-    pub fn unsubscribe(
-        &self,
-        publisher_id: &[u8],
-        channel_type: i32,
-        key_id: &[u8],
-    ) {
+    pub fn unsubscribe(&self, publisher_id: &[u8], channel_type: i32, key_id: &[u8]) {
         let mut inner = self.inner.lock();
 
         // Remove the subscription.
@@ -237,12 +226,7 @@ impl Subscriber {
     }
 
     /// Check if subscribed to a specific channel+key on a publisher.
-    pub fn is_subscribed(
-        &self,
-        publisher_id: &[u8],
-        channel_type: i32,
-        key_id: &[u8],
-    ) -> bool {
+    pub fn is_subscribed(&self, publisher_id: &[u8], channel_type: i32, key_id: &[u8]) -> bool {
         let inner = self.inner.lock();
         if let Some(channel) = inner.channels.get(&channel_type) {
             if let Some(subs) = channel.subscriptions.get(publisher_id) {
@@ -377,7 +361,10 @@ impl Subscriber {
 
     /// Check if a publisher has an active long-poll connection.
     pub fn is_publisher_connected(&self, publisher_id: &[u8]) -> bool {
-        self.inner.lock().connected_publishers.contains(publisher_id)
+        self.inner
+            .lock()
+            .connected_publishers
+            .contains(publisher_id)
     }
 
     /// Check if there are any active subscriptions to a publisher.
@@ -517,10 +504,7 @@ mod tests {
 
         sub.subscribe(b"pub1", 3, b"", cb, None);
 
-        let messages = vec![
-            make_msg(3, b"actor_A", 1),
-            make_msg(3, b"actor_B", 2),
-        ];
+        let messages = vec![make_msg(3, b"actor_A", 1), make_msg(3, b"actor_B", 2)];
 
         let processed = sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
         assert_eq!(processed, 2);
@@ -648,10 +632,7 @@ mod tests {
         sub.subscribe(b"pub1", 3, b"", cb1, None); // channel 3
         sub.subscribe(b"pub1", 4, b"", cb2, None); // channel 4
 
-        let messages = vec![
-            make_msg(3, b"a", 1),
-            make_msg(4, b"b", 2),
-        ];
+        let messages = vec![make_msg(3, b"a", 1), make_msg(4, b"b", 2)];
 
         sub.handle_poll_response(b"pub1", b"pub1_id", &messages);
         assert_eq!(count1.load(Ordering::Relaxed), 1);
@@ -769,7 +750,10 @@ mod tests {
         let commands = sub.drain_commands(b"pub1");
         assert_eq!(commands.len(), 1);
         match &commands[0] {
-            SubscriberCommand::Subscribe { channel_type, key_id } => {
+            SubscriberCommand::Subscribe {
+                channel_type,
+                key_id,
+            } => {
                 assert_eq!(*channel_type, 3);
                 assert_eq!(key_id, b"key1");
             }
@@ -803,7 +787,10 @@ mod tests {
 
         // First: unsubscribe key1.
         match &commands[0] {
-            SubscriberCommand::Unsubscribe { channel_type, key_id } => {
+            SubscriberCommand::Unsubscribe {
+                channel_type,
+                key_id,
+            } => {
                 assert_eq!(*channel_type, 3);
                 assert_eq!(key_id, b"key1");
             }
@@ -812,7 +799,10 @@ mod tests {
 
         // Second: subscribe key1.
         match &commands[1] {
-            SubscriberCommand::Subscribe { channel_type, key_id } => {
+            SubscriberCommand::Subscribe {
+                channel_type,
+                key_id,
+            } => {
                 assert_eq!(*channel_type, 3);
                 assert_eq!(key_id, b"key1");
             }
@@ -821,7 +811,10 @@ mod tests {
 
         // Third: subscribe key2.
         match &commands[2] {
-            SubscriberCommand::Subscribe { channel_type, key_id } => {
+            SubscriberCommand::Subscribe {
+                channel_type,
+                key_id,
+            } => {
                 assert_eq!(*channel_type, 3);
                 assert_eq!(key_id, b"key2");
             }
@@ -860,7 +853,10 @@ mod tests {
         let batch = sub.drain_commands(b"pub1");
         assert_eq!(batch.len(), 1);
         match &batch[0] {
-            SubscriberCommand::Subscribe { channel_type, key_id } => {
+            SubscriberCommand::Subscribe {
+                channel_type,
+                key_id,
+            } => {
                 assert_eq!(*channel_type, 3);
                 assert_eq!(key_id, b"key2");
             }
@@ -1003,9 +999,7 @@ mod tests {
         // Multiple subscriptions to the same publisher should all receive
         // messages from a single poll response.
         let sub = make_subscriber();
-        let counts: Vec<Arc<AtomicUsize>> = (0..5)
-            .map(|_| Arc::new(AtomicUsize::new(0)))
-            .collect();
+        let counts: Vec<Arc<AtomicUsize>> = (0..5).map(|_| Arc::new(AtomicUsize::new(0))).collect();
 
         for i in 0..5 {
             let count = counts[i].clone();
@@ -1068,7 +1062,10 @@ mod tests {
         let commands = sub.drain_commands(b"pub1");
         assert_eq!(commands.len(), 1);
         match &commands[0] {
-            SubscriberCommand::Subscribe { channel_type, key_id } => {
+            SubscriberCommand::Subscribe {
+                channel_type,
+                key_id,
+            } => {
                 assert_eq!(*channel_type, 999);
                 assert_eq!(key_id, b"key1");
             }

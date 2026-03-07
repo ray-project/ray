@@ -41,7 +41,8 @@ fn test_job_table_data_serde_roundtrip() {
     };
 
     let json = serde_json::to_string(&job).expect("serialize JobTableData");
-    let roundtrip: rpc::JobTableData = serde_json::from_str(&json).expect("deserialize JobTableData");
+    let roundtrip: rpc::JobTableData =
+        serde_json::from_str(&json).expect("deserialize JobTableData");
 
     assert_eq!(job, roundtrip);
     assert_eq!(roundtrip.driver_pid, 12345);

@@ -94,11 +94,7 @@ impl SubscriberState {
             let count = self.publish_batch_size.min(self.mailbox.len());
             if count > 0 {
                 let batch: Vec<PubMessage> = self.mailbox.drain(..count).collect();
-                self.mailbox_bytes = self
-                    .mailbox
-                    .iter()
-                    .map(|m| m.payload.len())
-                    .sum();
+                self.mailbox_bytes = self.mailbox.iter().map(|m| m.payload.len()).sum();
                 self.has_active_poll = false;
                 let _ = sender.send(batch);
                 return true;
@@ -195,8 +191,7 @@ impl SubscriptionIndex {
 
     #[allow(dead_code)]
     fn is_empty(&self) -> bool {
-        self.subscribers_to_all.is_empty()
-            && self.per_entity.is_empty()
+        self.subscribers_to_all.is_empty() && self.per_entity.is_empty()
     }
 }
 
@@ -281,12 +276,7 @@ impl Publisher {
     }
 
     /// Unregister a subscription for a specific channel+key.
-    pub fn unregister_subscription(
-        &self,
-        subscriber_id: &[u8],
-        channel_type: i32,
-        key_id: &[u8],
-    ) {
+    pub fn unregister_subscription(&self, subscriber_id: &[u8], channel_type: i32, key_id: &[u8]) {
         let mut inner = self.inner.lock();
         if let Some(index) = inner.subscription_indices.get_mut(&channel_type) {
             index.unregister_key(subscriber_id, key_id);
@@ -305,7 +295,8 @@ impl Publisher {
     /// Publish a message to all matching subscribers on a channel.
     pub fn publish(&self, channel_type: i32, key_id: &[u8], payload: Vec<u8>) {
         let seq = self.next_sequence_id.fetch_add(1, Ordering::Relaxed);
-        self.total_messages_published.fetch_add(1, Ordering::Relaxed);
+        self.total_messages_published
+            .fetch_add(1, Ordering::Relaxed);
 
         let mut inner = self.inner.lock();
 
@@ -325,8 +316,7 @@ impl Publisher {
                         && !state.mailbox.is_empty()
                     {
                         state.mailbox.pop_front();
-                        state.mailbox_bytes =
-                            state.mailbox.iter().map(|m| m.payload.len()).sum();
+                        state.mailbox_bytes = state.mailbox.iter().map(|m| m.payload.len()).sum();
                         self.total_messages_dropped.fetch_add(1, Ordering::Relaxed);
                     }
                 }
@@ -369,8 +359,7 @@ impl Publisher {
                     break;
                 }
             }
-            state.mailbox_bytes =
-                state.mailbox.iter().map(|m| m.payload.len()).sum();
+            state.mailbox_bytes = state.mailbox.iter().map(|m| m.payload.len()).sum();
 
             state.has_active_poll = true;
             state.poll_sender = Some(tx);
@@ -581,13 +570,10 @@ mod tests {
             pub_clone.publish(3, b"k1", b"v1".to_vec());
         });
 
-        let messages: Vec<PubMessage> = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            rx,
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let messages: Vec<PubMessage> = tokio::time::timeout(std::time::Duration::from_secs(1), rx)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(messages.len(), 1);
     }
 

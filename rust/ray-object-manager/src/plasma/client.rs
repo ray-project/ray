@@ -173,9 +173,11 @@ impl PlasmaClient {
         };
 
         // Create in the store.
-        inner
-            .store
-            .create_object(info.clone(), ObjectSource::CreatedByWorker, inner.allocator.as_ref())?;
+        inner.store.create_object(
+            info.clone(),
+            ObjectSource::CreatedByWorker,
+            inner.allocator.as_ref(),
+        )?;
 
         // Track in client.
         inner.objects_in_use.insert(
@@ -238,7 +240,9 @@ impl PlasmaClient {
                 inner.objects_in_use.remove(object_id);
                 // Process deferred deletions.
                 if inner.deletion_cache.remove(object_id) {
-                    let _ = inner.store.delete_object(object_id, inner.allocator.as_ref());
+                    let _ = inner
+                        .store
+                        .delete_object(object_id, inner.allocator.as_ref());
                 }
             }
         }
@@ -300,8 +304,7 @@ impl PlasmaClient {
                         allocated_size: entry.object_info.data_size
                             + entry.object_info.metadata_size,
                         device_num: 0,
-                        mmap_size: entry.object_info.data_size
-                            + entry.object_info.metadata_size,
+                        mmap_size: entry.object_info.data_size + entry.object_info.metadata_size,
                         fallback_allocated: false,
                         is_experimental_mutable_object: false,
                     },
@@ -511,9 +514,7 @@ mod tests {
         let client = make_client();
         let oid = make_oid(1);
 
-        let plasma_obj = client
-            .create(oid, 1024, 0, make_info(oid))
-            .unwrap();
+        let plasma_obj = client.create(oid, 1024, 0, make_info(oid)).unwrap();
         assert_eq!(plasma_obj.data_size, 1024);
         assert_eq!(client.num_objects_in_use(), 1);
 

@@ -178,8 +178,14 @@ pub fn gen_create_actor_request(
         port: 5678,
         worker_id: WorkerID::from_random().binary(),
     };
-    let task_spec =
-        gen_actor_creation_task_spec(job_id, max_restarts, detached, name, namespace, &owner_address);
+    let task_spec = gen_actor_creation_task_spec(
+        job_id,
+        max_restarts,
+        detached,
+        name,
+        namespace,
+        &owner_address,
+    );
     rpc::CreateActorRequest {
         task_spec: Some(task_spec),
     }
@@ -199,8 +205,14 @@ pub fn gen_register_actor_request(
         port: 5678,
         worker_id: WorkerID::from_random().binary(),
     };
-    let task_spec =
-        gen_actor_creation_task_spec(job_id, max_restarts, detached, name, namespace, &owner_address);
+    let task_spec = gen_actor_creation_task_spec(
+        job_id,
+        max_restarts,
+        detached,
+        name,
+        namespace,
+        &owner_address,
+    );
     rpc::RegisterActorRequest {
         task_spec: Some(task_spec),
     }
@@ -277,10 +289,7 @@ mod tests {
         assert_eq!(info.node_manager_address, "10.0.0.1");
         assert_eq!(info.node_name, "test-node");
         assert_eq!(info.instance_id, "instance_x");
-        assert_eq!(
-            info.state,
-            rpc::gcs_node_info::GcsNodeState::Alive as i32
-        );
+        assert_eq!(info.state, rpc::gcs_node_info::GcsNodeState::Alive as i32);
     }
 
     #[test]
@@ -325,10 +334,7 @@ mod tests {
         assert_eq!(data.job_id, job_id.binary());
         let config = data.config.unwrap();
         assert_eq!(config.ray_namespace, "test_ns");
-        assert_eq!(
-            config.metadata.get("job_submission_id").unwrap(),
-            "sub-123"
-        );
+        assert_eq!(config.metadata.get("job_submission_id").unwrap(), "sub-123");
     }
 
     #[test]

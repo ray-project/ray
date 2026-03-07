@@ -87,10 +87,7 @@ impl CoreWorkerClient {
     // ── Task submission RPCs ────────────────────────────────────────
 
     /// Push a normal task to a worker for execution.
-    pub async fn push_task(
-        &self,
-        req: rpc::PushTaskRequest,
-    ) -> Result<rpc::PushTaskReply, Status> {
+    pub async fn push_task(&self, req: rpc::PushTaskRequest) -> Result<rpc::PushTaskReply, Status> {
         impl_cw_rpc!(self, push_task, req)
     }
 
@@ -155,10 +152,7 @@ impl CoreWorkerClient {
     // ── Memory management RPCs ──────────────────────────────────────
 
     /// Trigger local garbage collection.
-    pub async fn local_gc(
-        &self,
-        req: rpc::LocalGcRequest,
-    ) -> Result<rpc::LocalGcReply, Status> {
+    pub async fn local_gc(&self, req: rpc::LocalGcRequest) -> Result<rpc::LocalGcReply, Status> {
         impl_cw_rpc!(self, local_gc, req)
     }
 
@@ -217,10 +211,7 @@ impl CoreWorkerClient {
     // ── Worker lifecycle RPCs ───────────────────────────────────────
 
     /// Exit (shut down) the worker.
-    pub async fn exit(
-        &self,
-        req: rpc::ExitRequest,
-    ) -> Result<rpc::ExitReply, Status> {
+    pub async fn exit(&self, req: rpc::ExitRequest) -> Result<rpc::ExitReply, Status> {
         impl_cw_rpc!(self, exit, req)
     }
 
@@ -299,8 +290,7 @@ mod tests {
             max_retries: 10,
             ..RetryConfig::default()
         };
-        let client =
-            CoreWorkerClient::connect_lazy("http://127.0.0.1:50001", config);
+        let client = CoreWorkerClient::connect_lazy("http://127.0.0.1:50001", config);
         assert!(client.is_connected());
     }
 
@@ -308,8 +298,7 @@ mod tests {
     async fn test_connect_to_unreachable_fails() {
         // connect() tries to actually establish a connection, which should fail
         // for an unreachable address.
-        let result =
-            CoreWorkerClient::connect("http://192.0.2.1:1", RetryConfig::default()).await;
+        let result = CoreWorkerClient::connect("http://192.0.2.1:1", RetryConfig::default()).await;
         assert!(result.is_err());
     }
 
@@ -340,11 +329,8 @@ mod tests {
     async fn test_from_channel_preserves_address() {
         let channel = Channel::from_static("http://[::1]:50051").connect_lazy();
         let address = "custom-address-label".to_string();
-        let client = CoreWorkerClient::from_channel(
-            channel,
-            RetryConfig::default(),
-            address.clone(),
-        );
+        let client =
+            CoreWorkerClient::from_channel(channel, RetryConfig::default(), address.clone());
         // The address stored is whatever string we pass, not derived from channel.
         assert_eq!(client.address(), "custom-address-label");
     }
@@ -360,11 +346,7 @@ mod tests {
             server_unavailable_timeout: std::time::Duration::from_secs(120),
             max_pending_bytes: 50 * 1024 * 1024,
         };
-        let client = CoreWorkerClient::from_channel(
-            channel,
-            config,
-            "http://[::1]:1".to_string(),
-        );
+        let client = CoreWorkerClient::from_channel(channel, config, "http://[::1]:1".to_string());
         assert!(client.is_connected());
         assert_eq!(client.address(), "http://[::1]:1");
     }
@@ -402,11 +384,7 @@ mod tests {
             max_retries: 0,
             ..RetryConfig::default()
         };
-        let client = CoreWorkerClient::from_channel(
-            channel,
-            config,
-            "http://[::1]:1".to_string(),
-        );
+        let client = CoreWorkerClient::from_channel(channel, config, "http://[::1]:1".to_string());
         assert!(client.is_connected());
     }
 

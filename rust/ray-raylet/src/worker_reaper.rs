@@ -250,9 +250,7 @@ impl WorkerReaper {
         let mut timed_out = Vec::new();
 
         for (wid, worker) in inner.tracked.iter() {
-            if worker.reap_state.is_none()
-                && worker.started_at.elapsed() >= startup_timeout
-            {
+            if worker.reap_state.is_none() && worker.started_at.elapsed() >= startup_timeout {
                 timed_out.push((*wid, worker.pid));
             }
         }
@@ -282,7 +280,12 @@ impl WorkerReaper {
             .lock()
             .tracked
             .values()
-            .filter(|w| matches!(w.reap_state, Some(ReapState::TermSent | ReapState::KillSent)))
+            .filter(|w| {
+                matches!(
+                    w.reap_state,
+                    Some(ReapState::TermSent | ReapState::KillSent)
+                )
+            })
             .count()
     }
 

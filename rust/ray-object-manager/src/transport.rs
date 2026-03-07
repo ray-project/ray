@@ -49,18 +49,15 @@ impl Default for TransportConfig {
 
 /// Callback for sending a push chunk to a remote node.
 /// (node_id, object_id, chunk_index, chunk_data) → success.
-pub type SendChunkCallback =
-    Arc<dyn Fn(&NodeID, &ObjectID, i64, &[u8]) -> bool + Send + Sync>;
+pub type SendChunkCallback = Arc<dyn Fn(&NodeID, &ObjectID, i64, &[u8]) -> bool + Send + Sync>;
 
 /// Callback for initiating a pull from a remote node.
 /// (object_id, node_id) → success.
-pub type PullObjectCallback =
-    Arc<dyn Fn(&ObjectID, &NodeID) -> bool + Send + Sync>;
+pub type PullObjectCallback = Arc<dyn Fn(&ObjectID, &NodeID) -> bool + Send + Sync>;
 
 /// Callback for restoring a spilled object.
 /// (object_id, spill_url, spill_node_id) → success.
-pub type RestoreObjectCallback =
-    Arc<dyn Fn(&ObjectID, &str, &NodeID) -> bool + Send + Sync>;
+pub type RestoreObjectCallback = Arc<dyn Fn(&ObjectID, &str, &NodeID) -> bool + Send + Sync>;
 
 /// Statistics from the transport loop.
 #[derive(Debug, Clone, Default)]
@@ -92,10 +89,7 @@ pub struct TransportLoop {
 
 impl TransportLoop {
     /// Create a new transport loop.
-    pub fn new(
-        config: TransportConfig,
-        object_manager: Arc<Mutex<ObjectManager>>,
-    ) -> Self {
+    pub fn new(config: TransportConfig, object_manager: Arc<Mutex<ObjectManager>>) -> Self {
         Self {
             config,
             object_manager,
@@ -349,13 +343,13 @@ impl Drop for TransportLoopHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicU64;
     use crate::common::ObjectManagerConfig;
     use crate::object_manager::ObjectManager;
     use crate::plasma::allocator::IAllocator;
     use crate::plasma::store::{PlasmaStore, PlasmaStoreConfig};
     use crate::pull_manager::BundlePriority;
     use ray_common::id::NodeID;
+    use std::sync::atomic::AtomicU64;
 
     struct DummyAllocator;
     impl IAllocator for DummyAllocator {
@@ -374,9 +368,15 @@ mod tests {
             None
         }
         fn free(&self, _: crate::plasma::allocator::Allocation) {}
-        fn footprint_limit(&self) -> i64 { i64::MAX }
-        fn allocated(&self) -> i64 { 0 }
-        fn fallback_allocated(&self) -> i64 { 0 }
+        fn footprint_limit(&self) -> i64 {
+            i64::MAX
+        }
+        fn allocated(&self) -> i64 {
+            0
+        }
+        fn fallback_allocated(&self) -> i64 {
+            0
+        }
     }
 
     fn make_nid(val: u8) -> NodeID {
@@ -400,11 +400,7 @@ mod tests {
         };
         let allocator = Arc::new(DummyAllocator);
         let store = Arc::new(PlasmaStore::new(allocator, &store_config));
-        ObjectManager::new(
-            ObjectManagerConfig::default(),
-            make_nid(1),
-            store,
-        )
+        ObjectManager::new(ObjectManagerConfig::default(), make_nid(1), store)
     }
 
     #[test]
@@ -469,7 +465,9 @@ mod tests {
         // Start a push.
         {
             let mut om_lock = om.lock();
-            om_lock.push_manager_mut().start_push(make_nid(2), make_oid(1), 1024);
+            om_lock
+                .push_manager_mut()
+                .start_push(make_nid(2), make_oid(1), 1024);
         }
 
         let mut tl = TransportLoop::new(TransportConfig::default(), om);
@@ -509,7 +507,9 @@ mod tests {
 
         // Push should be cancelled.
         let om_lock = om.lock();
-        assert!(!om_lock.push_manager().is_pushing(&make_nid(2), &make_oid(1)));
+        assert!(!om_lock
+            .push_manager()
+            .is_pushing(&make_nid(2), &make_oid(1)));
     }
 
     #[test]
@@ -544,7 +544,11 @@ mod tests {
             ..Default::default()
         };
         store
-            .create_object(info.clone(), crate::common::ObjectSource::CreatedByWorker, allocator.as_ref())
+            .create_object(
+                info.clone(),
+                crate::common::ObjectSource::CreatedByWorker,
+                allocator.as_ref(),
+            )
             .unwrap();
         store.seal_object(&oid).unwrap();
 
@@ -565,7 +569,9 @@ mod tests {
         // Start a push for this object.
         {
             let mut om_lock = om.lock();
-            om_lock.push_manager_mut().start_push(make_nid(2), oid, data_size as u64);
+            om_lock
+                .push_manager_mut()
+                .start_push(make_nid(2), oid, data_size as u64);
         }
 
         // Track what data the send callback receives.
@@ -582,8 +588,11 @@ mod tests {
 
         let data = received_data.lock();
         // The callback should have received exactly data_size bytes (not empty).
-        assert_eq!(data.len(), data_size as usize,
-            "Push should send real object data, not empty chunks");
+        assert_eq!(
+            data.len(),
+            data_size as usize,
+            "Push should send real object data, not empty chunks"
+        );
     }
 
     #[tokio::test]

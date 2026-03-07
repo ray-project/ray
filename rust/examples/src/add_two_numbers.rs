@@ -63,7 +63,10 @@ async fn main() {
     let nm_clone = Arc::clone(&nm);
     let _raylet_handle = tokio::spawn(async move { nm_clone.run().await });
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    println!("       Raylet registered with GCS (node_id={})", &raylet_node_id.hex()[..16]);
+    println!(
+        "       Raylet registered with GCS (node_id={})",
+        &raylet_node_id.hex()[..16]
+    );
 
     // ── Step 3: Create the CoreWorker with an "add" task callback ───────
     println!("[3/7] Creating CoreWorker with 'add' task callback...");
@@ -89,21 +92,21 @@ async fn main() {
         for arg in &spec.args {
             if !arg.data.is_empty() {
                 // Inlined argument: data is the f64 bytes directly.
-                let bytes: [u8; 8] = arg.data[..8]
-                    .try_into()
-                    .map_err(|_| ray_core_worker::error::CoreWorkerError::InvalidArgument(
+                let bytes: [u8; 8] = arg.data[..8].try_into().map_err(|_| {
+                    ray_core_worker::error::CoreWorkerError::InvalidArgument(
                         "argument must be 8 bytes (f64)".into(),
-                    ))?;
+                    )
+                })?;
                 values.push(f64::from_le_bytes(bytes));
             } else if let Some(ref obj_ref) = arg.object_ref {
                 // Object reference: look up in the memory store.
                 let oid = ObjectID::from_binary(&obj_ref.object_id);
                 if let Some(obj) = worker_store.get(&oid) {
-                    let bytes: [u8; 8] = obj.data[..8]
-                        .try_into()
-                        .map_err(|_| ray_core_worker::error::CoreWorkerError::InvalidArgument(
+                    let bytes: [u8; 8] = obj.data[..8].try_into().map_err(|_| {
+                        ray_core_worker::error::CoreWorkerError::InvalidArgument(
                             "object data must be 8 bytes (f64)".into(),
-                        ))?;
+                        )
+                    })?;
                     values.push(f64::from_le_bytes(bytes));
                 } else {
                     return Err(ray_core_worker::error::CoreWorkerError::InvalidArgument(
@@ -122,8 +125,10 @@ async fn main() {
         let sum = values[0] + values[1];
         let return_oid = ObjectID::from_random();
 
-        println!("       [worker] Executing task '{}': {} + {} = {}",
-            spec.name, values[0], values[1], sum);
+        println!(
+            "       [worker] Executing task '{}': {} + {} = {}",
+            spec.name, values[0], values[1], sum
+        );
 
         Ok(TaskResult {
             return_objects: vec![rpc::ReturnObject {
@@ -147,9 +152,8 @@ async fn main() {
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
     let _worker_handle = tokio::spawn(async move {
-        let server = tonic::transport::Server::builder().add_service(
-            rpc::core_worker_service_server::CoreWorkerServiceServer::new(svc),
-        );
+        let server = tonic::transport::Server::builder()
+            .add_service(rpc::core_worker_service_server::CoreWorkerServiceServer::new(svc));
         server.serve_with_incoming(incoming).await.ok();
     });
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -161,11 +165,20 @@ async fn main() {
     let oid_a = ObjectID::from_random();
     let oid_b = ObjectID::from_random();
 
-    println!("[5/7] Putting objects: a={} ({}), b={} ({})",
-        a, &oid_a.hex()[..12], b, &oid_b.hex()[..12]);
+    println!(
+        "[5/7] Putting objects: a={} ({}), b={} ({})",
+        a,
+        &oid_a.hex()[..12],
+        b,
+        &oid_b.hex()[..12]
+    );
 
-    core_worker.put_object(oid_a, Bytes::from(a.to_le_bytes().to_vec()), Bytes::new()).unwrap();
-    core_worker.put_object(oid_b, Bytes::from(b.to_le_bytes().to_vec()), Bytes::new()).unwrap();
+    core_worker
+        .put_object(oid_a, Bytes::from(a.to_le_bytes().to_vec()), Bytes::new())
+        .unwrap();
+    core_worker
+        .put_object(oid_b, Bytes::from(b.to_le_bytes().to_vec()), Bytes::new())
+        .unwrap();
 
     // ── Step 6: Submit "add" task via gRPC PushTask ─────────────────────
     println!("[6/7] Submitting remote task: add({}, {})...", a, b);
@@ -211,7 +224,11 @@ async fn main() {
         .into_inner();
 
     // ── Step 7: Read the result ─────────────────────────────────────────
-    assert_eq!(reply.return_objects.len(), 1, "expected exactly one return object");
+    assert_eq!(
+        reply.return_objects.len(),
+        1,
+        "expected exactly one return object"
+    );
     let result_data = &reply.return_objects[0].data;
     let result_bytes: [u8; 8] = result_data[..8].try_into().unwrap();
     let result: f64 = f64::from_le_bytes(result_bytes);

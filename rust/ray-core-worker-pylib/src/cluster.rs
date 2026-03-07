@@ -71,8 +71,8 @@ impl PyClusterHandle {
 #[cfg(feature = "python")]
 #[pyo3::pyfunction]
 pub fn start_cluster() -> pyo3::PyResult<PyClusterHandle> {
-    use std::collections::HashMap;
     use ray_raylet::node_manager::{NodeManager, RayletConfig};
+    use std::collections::HashMap;
     let runtime = Arc::new(
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()

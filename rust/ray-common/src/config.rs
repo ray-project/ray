@@ -404,7 +404,10 @@ mod tests {
         // All other fields should be default
         assert_eq!(config.event_stats, default.event_stats);
         assert_eq!(config.ray_cookie, default.ray_cookie);
-        assert_eq!(config.memory_usage_threshold, default.memory_usage_threshold);
+        assert_eq!(
+            config.memory_usage_threshold,
+            default.memory_usage_threshold
+        );
         assert_eq!(config.auth_mode, default.auth_mode);
     }
 

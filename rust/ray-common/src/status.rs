@@ -292,24 +292,64 @@ mod tests {
     #[test]
     fn test_all_error_factory_methods() {
         let cases: Vec<(RayError, StatusCode, &str)> = vec![
-            (RayError::out_of_memory("oom"), StatusCode::OutOfMemory, "oom"),
+            (
+                RayError::out_of_memory("oom"),
+                StatusCode::OutOfMemory,
+                "oom",
+            ),
             (RayError::key_error("key"), StatusCode::KeyError, "key"),
             (RayError::type_error("type"), StatusCode::TypeError, "type"),
             (RayError::invalid("inv"), StatusCode::Invalid, "inv"),
             (RayError::io_error("io"), StatusCode::IOError, "io"),
             (RayError::not_found("nf"), StatusCode::NotFound, "nf"),
-            (RayError::not_implemented("ni"), StatusCode::NotImplemented, "ni"),
+            (
+                RayError::not_implemented("ni"),
+                StatusCode::NotImplemented,
+                "ni",
+            ),
             (RayError::timed_out("to"), StatusCode::TimedOut, "to"),
             (RayError::disconnected("dc"), StatusCode::Disconnected, "dc"),
-            (RayError::redis_error("redis"), StatusCode::RedisError, "redis"),
-            (RayError::object_store_full("full"), StatusCode::ObjectStoreFull, "full"),
-            (RayError::object_not_found("onf"), StatusCode::ObjectNotFound, "onf"),
-            (RayError::already_exists("ae"), StatusCode::AlreadyExists, "ae"),
-            (RayError::unauthenticated("ua"), StatusCode::Unauthenticated, "ua"),
-            (RayError::permission_denied("pd"), StatusCode::PermissionDenied, "pd"),
+            (
+                RayError::redis_error("redis"),
+                StatusCode::RedisError,
+                "redis",
+            ),
+            (
+                RayError::object_store_full("full"),
+                StatusCode::ObjectStoreFull,
+                "full",
+            ),
+            (
+                RayError::object_not_found("onf"),
+                StatusCode::ObjectNotFound,
+                "onf",
+            ),
+            (
+                RayError::already_exists("ae"),
+                StatusCode::AlreadyExists,
+                "ae",
+            ),
+            (
+                RayError::unauthenticated("ua"),
+                StatusCode::Unauthenticated,
+                "ua",
+            ),
+            (
+                RayError::permission_denied("pd"),
+                StatusCode::PermissionDenied,
+                "pd",
+            ),
             (RayError::interrupted("int"), StatusCode::Interrupted, "int"),
-            (RayError::invalid_argument("ia"), StatusCode::InvalidArgument, "ia"),
-            (RayError::channel_error("ch"), StatusCode::ChannelError, "ch"),
+            (
+                RayError::invalid_argument("ia"),
+                StatusCode::InvalidArgument,
+                "ia",
+            ),
+            (
+                RayError::channel_error("ch"),
+                StatusCode::ChannelError,
+                "ch",
+            ),
         ];
         for (err, expected_code, expected_msg) in cases {
             assert_eq!(err.code, expected_code);
@@ -358,7 +398,10 @@ mod tests {
             (StatusCode::ObjectNotFound, "ObjectNotFound"),
             (StatusCode::ObjectAlreadySealed, "ObjectAlreadySealed"),
             (StatusCode::ObjectStoreFull, "ObjectStoreFull"),
-            (StatusCode::TransientObjectStoreFull, "TransientObjectStoreFull"),
+            (
+                StatusCode::TransientObjectStoreFull,
+                "TransientObjectStoreFull",
+            ),
             (StatusCode::OutOfDisk, "OutOfDisk"),
             (StatusCode::ObjectUnknownOwner, "ObjectUnknownOwner"),
             (StatusCode::RpcError, "RpcError"),
@@ -378,17 +421,43 @@ mod tests {
     #[test]
     fn test_status_code_from_str_roundtrip_all() {
         let all_names = vec![
-            "OK", "OutOfMemory", "KeyError", "TypeError", "Invalid", "IOError",
-            "UnknownError", "NotImplemented", "RedisError", "TimedOut", "Interrupted",
-            "IntentionalSystemExit", "UnexpectedSystemExit", "CreationTaskError",
-            "NotFound", "Disconnected", "SchedulingCancelled", "AlreadyExists",
-            "ObjectExists", "ObjectNotFound", "ObjectAlreadySealed", "ObjectStoreFull",
-            "TransientObjectStoreFull", "OutOfDisk", "ObjectUnknownOwner", "RpcError",
-            "OutOfResource", "ObjectRefEndOfStream", "Unauthenticated", "InvalidArgument",
-            "ChannelError", "ChannelTimeoutError", "PermissionDenied",
+            "OK",
+            "OutOfMemory",
+            "KeyError",
+            "TypeError",
+            "Invalid",
+            "IOError",
+            "UnknownError",
+            "NotImplemented",
+            "RedisError",
+            "TimedOut",
+            "Interrupted",
+            "IntentionalSystemExit",
+            "UnexpectedSystemExit",
+            "CreationTaskError",
+            "NotFound",
+            "Disconnected",
+            "SchedulingCancelled",
+            "AlreadyExists",
+            "ObjectExists",
+            "ObjectNotFound",
+            "ObjectAlreadySealed",
+            "ObjectStoreFull",
+            "TransientObjectStoreFull",
+            "OutOfDisk",
+            "ObjectUnknownOwner",
+            "RpcError",
+            "OutOfResource",
+            "ObjectRefEndOfStream",
+            "Unauthenticated",
+            "InvalidArgument",
+            "ChannelError",
+            "ChannelTimeoutError",
+            "PermissionDenied",
         ];
         for name in all_names {
-            let code = StatusCode::from_str_name(name).unwrap_or_else(|| panic!("failed to parse {name}"));
+            let code =
+                StatusCode::from_str_name(name).unwrap_or_else(|| panic!("failed to parse {name}"));
             assert_eq!(code.as_str(), name);
         }
         assert_eq!(StatusCode::from_str_name("Bogus"), None);

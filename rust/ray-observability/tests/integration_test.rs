@@ -81,10 +81,22 @@ fn test_actor_lifecycle_events() {
     }));
 
     // Simulate an actor lifecycle.
-    exporter.add_event(domain_events::actor_created("act-1", "ModelServer", "job-1"));
-    exporter.add_event(domain_events::actor_died("act-1", "ModelServer", "OOM killed"));
+    exporter.add_event(domain_events::actor_created(
+        "act-1",
+        "ModelServer",
+        "job-1",
+    ));
+    exporter.add_event(domain_events::actor_died(
+        "act-1",
+        "ModelServer",
+        "OOM killed",
+    ));
     exporter.add_event(domain_events::actor_restarted("act-1", "ModelServer", 1));
-    exporter.add_event(domain_events::actor_died("act-1", "ModelServer", "user request"));
+    exporter.add_event(domain_events::actor_died(
+        "act-1",
+        "ModelServer",
+        "user request",
+    ));
 
     exporter.flush();
 

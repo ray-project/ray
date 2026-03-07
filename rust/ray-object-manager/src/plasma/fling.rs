@@ -224,7 +224,9 @@ mod tests {
             send_fd(fds[0], fd).expect("send_fd failed");
             let received = recv_fd(fds[1]).expect("recv_fd failed");
             assert!(received >= 0);
-            unsafe { libc::close(received); }
+            unsafe {
+                libc::close(received);
+            }
         }
 
         unsafe {

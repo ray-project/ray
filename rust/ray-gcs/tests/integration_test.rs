@@ -40,8 +40,7 @@ async fn test_gcs_job_rpc_roundtrip() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::job_info_gcs_service_client::JobInfoGcsServiceClient::new(channel);
+    let mut client = rpc::job_info_gcs_service_client::JobInfoGcsServiceClient::new(channel);
 
     // AddJob
     let add_resp = client
@@ -75,8 +74,7 @@ async fn test_gcs_job_finish_roundtrip() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::job_info_gcs_service_client::JobInfoGcsServiceClient::new(channel);
+    let mut client = rpc::job_info_gcs_service_client::JobInfoGcsServiceClient::new(channel);
 
     // AddJob
     client
@@ -121,8 +119,7 @@ async fn test_gcs_node_register_roundtrip() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+    let mut client = rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
 
     // RegisterNode
     let node_id = vec![42u8; 28];
@@ -161,8 +158,7 @@ async fn test_gcs_node_unregister() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+    let mut client = rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
 
     let node_id = vec![7u8; 28];
     client
@@ -208,8 +204,7 @@ async fn test_gcs_kv_roundtrip() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::internal_kv_gcs_service_client::InternalKvGcsServiceClient::new(channel);
+    let mut client = rpc::internal_kv_gcs_service_client::InternalKvGcsServiceClient::new(channel);
 
     // Put
     let put_resp = client
@@ -292,8 +287,7 @@ async fn test_gcs_cluster_id() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+    let mut client = rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
 
     let resp = client
         .get_cluster_id(rpc::GetClusterIdRequest::default())
@@ -330,8 +324,7 @@ async fn test_gcs_actor_register_and_get() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::actor_info_gcs_service_client::ActorInfoGcsServiceClient::new(channel);
+    let mut client = rpc::actor_info_gcs_service_client::ActorInfoGcsServiceClient::new(channel);
 
     let actor_id = vec![99u8; 16];
     let job_id = vec![1, 0, 0, 0];
@@ -381,8 +374,7 @@ async fn test_gcs_list_named_actors() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::actor_info_gcs_service_client::ActorInfoGcsServiceClient::new(channel);
+    let mut client = rpc::actor_info_gcs_service_client::ActorInfoGcsServiceClient::new(channel);
 
     // Register a named actor
     let actor_id = vec![88u8; 16];
@@ -449,8 +441,7 @@ async fn test_gcs_get_next_job_id_monotonic() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::job_info_gcs_service_client::JobInfoGcsServiceClient::new(channel);
+    let mut client = rpc::job_info_gcs_service_client::JobInfoGcsServiceClient::new(channel);
 
     let resp1 = client
         .get_next_job_id(rpc::GetNextJobIdRequest::default())
@@ -478,8 +469,7 @@ async fn test_gcs_worker_info_roundtrip() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::worker_info_gcs_service_client::WorkerInfoGcsServiceClient::new(channel);
+    let mut client = rpc::worker_info_gcs_service_client::WorkerInfoGcsServiceClient::new(channel);
 
     // AddWorkerInfo
     client
@@ -590,8 +580,7 @@ async fn test_gcs_node_address_and_liveness() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+    let mut client = rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
 
     // Register a node
     let node_id = vec![50u8; 28];
@@ -612,9 +601,7 @@ async fn test_gcs_node_address_and_liveness() {
 
     // GetAllNodeAddressAndLiveness
     let resp = client
-        .get_all_node_address_and_liveness(
-            rpc::GetAllNodeAddressAndLivenessRequest::default(),
-        )
+        .get_all_node_address_and_liveness(rpc::GetAllNodeAddressAndLivenessRequest::default())
         .await
         .unwrap();
     let nodes = resp.into_inner().node_info_list;
@@ -636,8 +623,7 @@ async fn test_gcs_check_alive() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+    let mut client = rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
 
     let node_id = vec![60u8; 28];
     client
@@ -820,8 +806,7 @@ async fn test_gcs_kv_multi_get() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::internal_kv_gcs_service_client::InternalKvGcsServiceClient::new(channel);
+    let mut client = rpc::internal_kv_gcs_service_client::InternalKvGcsServiceClient::new(channel);
 
     // Put two keys
     for (k, v) in &[(b"k1".as_slice(), b"v1".as_slice()), (b"k2", b"v2")] {
@@ -864,8 +849,7 @@ async fn test_gcs_drain_node() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
+    let mut client = rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient::new(channel);
 
     // Register a node
     let node_id = vec![70u8; 28];

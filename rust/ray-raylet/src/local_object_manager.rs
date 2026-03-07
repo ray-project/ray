@@ -115,12 +115,7 @@ impl LocalObjectManager {
 
     /// Pin an object. Called when a new object is created on this node
     /// or when a task needs an object to stay resident.
-    pub fn pin_object(
-        &mut self,
-        object_id: ObjectID,
-        data_size: i64,
-        metadata_size: i64,
-    ) {
+    pub fn pin_object(&mut self, object_id: ObjectID, data_size: i64, metadata_size: i64) {
         let total = data_size + metadata_size;
         let obj = PinnedObject {
             object_id,

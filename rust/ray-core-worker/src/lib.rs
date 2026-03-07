@@ -12,30 +12,30 @@
 //! Handles task submission, object get/put, actor management,
 //! reference counting, and the CoreWorkerService gRPC server.
 
-pub mod error;
-pub mod options;
-pub mod context;
-pub mod memory_store;
-pub mod reference_counter;
-pub mod future_resolver;
-pub mod ownership_directory;
 pub mod actor_handle;
 pub mod actor_manager;
-pub mod task_spec_builder;
-pub mod normal_task_submitter;
 pub mod actor_task_submitter;
+pub mod back_pressure;
+pub mod context;
+pub mod core_worker;
 pub mod dependency_resolver;
-pub mod task_receiver;
+pub mod direct_transport;
+pub mod error;
+pub mod future_resolver;
+pub mod generator;
+pub mod grpc_service;
+pub mod lineage;
+pub mod memory_store;
+pub mod normal_task_submitter;
+pub mod object_recovery_manager;
+pub mod options;
+pub mod ownership_directory;
+pub mod reference_counter;
+pub mod runtime_env;
 pub mod task_event_buffer;
 pub mod task_manager;
-pub mod object_recovery_manager;
-pub mod back_pressure;
-pub mod generator;
-pub mod direct_transport;
-pub mod lineage;
-pub mod runtime_env;
-pub mod core_worker;
-pub mod grpc_service;
+pub mod task_receiver;
+pub mod task_spec_builder;
 
 // Re-export primary types.
 pub use core_worker::CoreWorker;

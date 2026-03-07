@@ -1397,13 +1397,19 @@ mod tests {
             total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
             total.set("memory".to_string(), FixedPoint::from_f64(1.0));
             total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
-            total.set("object_store_memory".to_string(), FixedPoint::from_f64(100.0));
+            total.set(
+                "object_store_memory".to_string(),
+                FixedPoint::from_f64(100.0),
+            );
             let mut nr = NodeResources::new(total);
             let mut used = ResourceSet::new();
             used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
             used.set("memory".to_string(), FixedPoint::from_f64(0.75));
             used.set("GPU".to_string(), FixedPoint::from_f64(1.0));
-            used.set("object_store_memory".to_string(), FixedPoint::from_f64(50.0));
+            used.set(
+                "object_store_memory".to_string(),
+                FixedPoint::from_f64(50.0),
+            );
             nr.available.subtract(&used);
             assert!((nr.critical_resource_utilization() - 0.75).abs() < 0.01);
         }
@@ -1904,8 +1910,11 @@ mod tests {
                 seen.insert(id);
             }
         }
-        assert!(seen.contains("n0") && seen.contains("n1"),
-            "Random policy should pick both nodes over 200 runs, seen: {:?}", seen);
+        assert!(
+            seen.contains("n0") && seen.contains("n1"),
+            "Random policy should pick both nodes over 200 runs, seen: {:?}",
+            seen
+        );
     }
 
     /// Port of NodeAffinitySchedulingStrategyTest: comprehensive node affinity tests.
@@ -1928,7 +1937,10 @@ mod tests {
 
         // Infeasible node (0 total)
         let infeasible_total = ResourceSet::new();
-        nodes.insert("infeasible".to_string(), NodeResources::new(infeasible_total));
+        nodes.insert(
+            "infeasible".to_string(),
+            NodeResources::new(infeasible_total),
+        );
 
         let policy = NodeAffinitySchedulingPolicy;
         let mut req = ResourceSet::new();
@@ -1936,11 +1948,17 @@ mod tests {
 
         // Hard affinity to local → should return local
         let opts = SchedulingOptions::node_affinity("local".to_string(), false, false, false);
-        assert_eq!(policy.schedule(&req, &opts, &nodes, "local"), Some("local".to_string()));
+        assert_eq!(
+            policy.schedule(&req, &opts, &nodes, "local"),
+            Some("local".to_string())
+        );
 
         // Hard affinity to unavailable (no spill, no fail) → still returns it
         let opts = SchedulingOptions::node_affinity("unavailable".to_string(), false, false, false);
-        assert_eq!(policy.schedule(&req, &opts, &nodes, "local"), Some("unavailable".to_string()));
+        assert_eq!(
+            policy.schedule(&req, &opts, &nodes, "local"),
+            Some("unavailable".to_string())
+        );
 
         // Hard affinity to unavailable with fail_on_unavailable → None
         let opts = SchedulingOptions::node_affinity("unavailable".to_string(), false, false, true);

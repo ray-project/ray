@@ -11,12 +11,12 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use ray_common::id::{ActorID, ClusterID, JobID, NodeID, ObjectID, TaskID, WorkerID};
 use ray_core_worker::actor_handle::ActorHandle;
 use ray_core_worker::core_worker::CoreWorker;
 use ray_core_worker::grpc_service::CoreWorkerServiceImpl;
 use ray_core_worker::options::{CoreWorkerOptions, Language, WorkerType};
 use ray_core_worker::task_receiver::{TaskExecutionCallback, TaskResult};
-use ray_common::id::{ActorID, ClusterID, JobID, NodeID, ObjectID, TaskID, WorkerID};
 use ray_proto::ray::rpc;
 
 fn make_test_core_worker() -> Arc<CoreWorker> {
@@ -79,7 +79,10 @@ async fn test_core_worker_service_num_pending_tasks() {
     let reply = svc
         .handle_num_pending_tasks(rpc::NumPendingTasksRequest::default())
         .unwrap();
-    assert_eq!(reply.num_pending_tasks, 0, "fresh worker should have 0 pending tasks");
+    assert_eq!(
+        reply.num_pending_tasks, 0,
+        "fresh worker should have 0 pending tasks"
+    );
 
     // Submit a task, then verify the count changes
     let task_spec = rpc::TaskSpec {
@@ -99,19 +102,18 @@ async fn test_core_worker_service_num_pending_tasks() {
 }
 
 /// Helper to start a CoreWorker gRPC server and return its address.
-async fn start_core_worker_server(core_worker: Arc<CoreWorker>) -> (SocketAddr, tokio::task::JoinHandle<()>) {
-    let svc = CoreWorkerServiceImpl {
-        core_worker,
-    };
+async fn start_core_worker_server(
+    core_worker: Arc<CoreWorker>,
+) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    let svc = CoreWorkerServiceImpl { core_worker };
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
     let handle = tokio::spawn(async move {
-        let server = tonic::transport::Server::builder().add_service(
-            rpc::core_worker_service_server::CoreWorkerServiceServer::new(svc),
-        );
+        let server = tonic::transport::Server::builder()
+            .add_service(rpc::core_worker_service_server::CoreWorkerServiceServer::new(svc));
         server.serve_with_incoming(incoming).await.ok();
     });
 
@@ -267,8 +269,7 @@ async fn test_actor_task_delivery_via_grpc() {
                 .connect()
                 .await
                 .unwrap();
-            let mut client =
-                rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
+            let mut client = rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
             client
                 .push_task(rpc::PushTaskRequest {
                     intended_worker_id: worker_id_bytes,
@@ -306,7 +307,10 @@ async fn test_actor_task_delivery_via_grpc() {
     // 7. Verify tasks were executed on the actor worker.
     assert_eq!(tasks_executed.load(Ordering::Relaxed), 3);
     assert_eq!(driver.actor_task_submitter().num_tasks_sent(&actor_id), 3);
-    assert_eq!(driver.actor_task_submitter().num_pending_tasks(&actor_id), 0);
+    assert_eq!(
+        driver.actor_task_submitter().num_pending_tasks(&actor_id),
+        0
+    );
 
     // 8. Clean up.
     actor_server_handle.abort();

@@ -49,12 +49,7 @@ impl ActorManager {
     }
 
     /// Register a named actor mapping.
-    pub fn register_named_actor(
-        &self,
-        namespace: String,
-        name: String,
-        actor_id: ActorID,
-    ) {
+    pub fn register_named_actor(&self, namespace: String, name: String, actor_id: ActorID) {
         self.named_actors
             .write()
             .insert((namespace, name), actor_id);
@@ -432,11 +427,7 @@ mod tests {
         let mgr = ActorManager::new();
         for i in 0..5 {
             let aid = ActorID::from_random();
-            mgr.register_named_actor(
-                format!("ns_{}", i),
-                format!("actor_{}", i),
-                aid,
-            );
+            mgr.register_named_actor(format!("ns_{}", i), format!("actor_{}", i), aid);
         }
         let all = mgr.get_all_named_actors(None);
         assert_eq!(all.len(), 5);

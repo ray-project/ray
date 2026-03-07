@@ -213,7 +213,8 @@ mod tests {
         // Verify a valid schedulable node is returned.
         let valid_nodes = ["local", "remote"];
         assert!(
-            node.as_ref().map_or(false, |n| valid_nodes.contains(&n.as_str())),
+            node.as_ref()
+                .map_or(false, |n| valid_nodes.contains(&n.as_str())),
             "scheduler should return a valid node, got {:?}",
             node
         );
@@ -327,8 +328,7 @@ mod tests {
         remote_total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
         cluster_mgr.add_or_update_node("remote".to_string(), NodeResources::new(remote_total));
 
-        let scheduler =
-            ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
+        let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
 
         // Request more CPUs than any node has
         let mut req = ResourceSet::new();
@@ -412,7 +412,9 @@ mod tests {
 
         let mut seen = std::collections::HashSet::new();
         for _ in 0..20 {
-            if let Some(id) = scheduler.get_best_schedulable_node(&req, &SchedulingOptions::spread()) {
+            if let Some(id) =
+                scheduler.get_best_schedulable_node(&req, &SchedulingOptions::spread())
+            {
                 seen.insert(id);
             }
         }
@@ -431,7 +433,8 @@ mod tests {
             HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
-        let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
+        let scheduler =
+            ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
 
         // GPU request should be infeasible initially
         let mut gpu_req = ResourceSet::new();
@@ -439,10 +442,7 @@ mod tests {
         assert!(!scheduler.is_feasible(&gpu_req));
 
         // Add GPU resources
-        local_mgr.add_local_resource_instances(
-            "GPU".to_string(),
-            vec![FixedPoint::from_f64(1.0)],
-        );
+        local_mgr.add_local_resource_instances("GPU".to_string(), vec![FixedPoint::from_f64(1.0)]);
 
         // Now GPU request should be feasible
         assert!(scheduler.is_feasible(&gpu_req));
@@ -461,7 +461,10 @@ mod tests {
 
         // Remote should have less available now
         let view = scheduler.get_full_resource_view();
-        assert_eq!(view["remote"].available.get("CPU"), FixedPoint::from_f64(6.0));
+        assert_eq!(
+            view["remote"].available.get("CPU"),
+            FixedPoint::from_f64(6.0)
+        );
 
         // Allocate more than available should fail
         let mut big_req = ResourceSet::new();
@@ -488,7 +491,9 @@ mod tests {
         let mut remote_total = ResourceSet::new();
         remote_total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
         let mut remote_nr = NodeResources::new(remote_total);
-        remote_nr.labels.insert("zone".to_string(), "us-west".to_string());
+        remote_nr
+            .labels
+            .insert("zone".to_string(), "us-west".to_string());
         cluster_mgr.add_or_update_node("remote".to_string(), remote_nr);
 
         let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
@@ -550,7 +555,8 @@ mod tests {
             cluster_mgr.add_or_update_node(format!("remote-{}", i), NodeResources::new(rt));
         }
 
-        let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr.clone());
+        let scheduler =
+            ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr.clone());
 
         let mut req = ResourceSet::new();
         req.set("CPU".to_string(), FixedPoint::from_f64(1.0));
@@ -629,7 +635,9 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         for i in 0..10 {
@@ -637,7 +645,8 @@ mod tests {
             rt.set("CPU".to_string(), FixedPoint::from_f64((i + 1) as f64));
             cluster_mgr.add_or_update_node(format!("n{}", i), NodeResources::new(rt));
         }
-        let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr.clone());
+        let scheduler =
+            ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr.clone());
         // 10 remote + local via get_full_resource_view
         let view = scheduler.get_full_resource_view();
         assert_eq!(view.len(), 11);
@@ -650,7 +659,9 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         let _local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         for i in 0..4 {
@@ -670,7 +681,9 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         let _local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         for i in 0..4 {
@@ -698,7 +711,9 @@ mod tests {
         total.set("memory".to_string(), FixedPoint::from_f64(5.0));
         total.set("custom1".to_string(), FixedPoint::from_f64(10.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
 
@@ -717,19 +732,25 @@ mod tests {
         // CPU=11 exceeds everyone
         let mut req_infeasible = ResourceSet::new();
         req_infeasible.set("CPU".to_string(), FixedPoint::from_f64(11.0));
-        assert!(scheduler.get_best_schedulable_node(&req_infeasible, &opts).is_none());
+        assert!(scheduler
+            .get_best_schedulable_node(&req_infeasible, &opts)
+            .is_none());
 
         // CPU=5 feasible on both
         let mut req_ok = ResourceSet::new();
         req_ok.set("CPU".to_string(), FixedPoint::from_f64(5.0));
-        assert!(scheduler.get_best_schedulable_node(&req_ok, &opts).is_some());
+        assert!(scheduler
+            .get_best_schedulable_node(&req_ok, &opts)
+            .is_some());
 
         // custom100 missing resource → infeasible
         let mut req_missing = ResourceSet::new();
         req_missing.set("CPU".to_string(), FixedPoint::from_f64(5.0));
         req_missing.set("memory".to_string(), FixedPoint::from_f64(2.0));
         req_missing.set("custom100".to_string(), FixedPoint::from_f64(5.0));
-        assert!(scheduler.get_best_schedulable_node(&req_missing, &opts).is_none());
+        assert!(scheduler
+            .get_best_schedulable_node(&req_missing, &opts)
+            .is_none());
     }
 
     /// Port of SchedulingUpdateAvailableResourcesTest: allocate local, verify view.
@@ -740,7 +761,9 @@ mod tests {
         total.set("memory".to_string(), FixedPoint::from_f64(5.0));
         total.set("custom1".to_string(), FixedPoint::from_f64(5.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
@@ -751,13 +774,17 @@ mod tests {
         req.set("custom1".to_string(), FixedPoint::from_f64(3.0));
 
         let alloc = scheduler.allocate_local_task_resources(&req).unwrap();
-        let avail = scheduler.local_resource_manager().get_local_available_resources();
+        let avail = scheduler
+            .local_resource_manager()
+            .get_local_available_resources();
         assert_eq!(avail.get("CPU"), FixedPoint::from_f64(3.0));
         assert_eq!(avail.get("memory"), FixedPoint::from_f64(0.0));
         assert_eq!(avail.get("custom1"), FixedPoint::from_f64(2.0));
 
         scheduler.release_worker_resources(&alloc);
-        let avail = scheduler.local_resource_manager().get_local_available_resources();
+        let avail = scheduler
+            .local_resource_manager()
+            .get_local_available_resources();
         assert_eq!(avail.get("CPU"), FixedPoint::from_f64(10.0));
     }
 
@@ -770,7 +797,9 @@ mod tests {
         total.set("custom1".to_string(), FixedPoint::from_f64(4.0));
         total.set("custom3".to_string(), FixedPoint::from_f64(4.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
@@ -784,7 +813,9 @@ mod tests {
         assert!(scheduler.allocate_local_task_resources(&req).is_none());
 
         // Verify no resources leaked
-        let avail = scheduler.local_resource_manager().get_local_available_resources();
+        let avail = scheduler
+            .local_resource_manager()
+            .get_local_available_resources();
         assert_eq!(avail.get("custom1"), FixedPoint::from_f64(4.0));
         assert_eq!(avail.get("custom3"), FixedPoint::from_f64(4.0));
     }
@@ -796,22 +827,35 @@ mod tests {
         total.set("CPU".to_string(), FixedPoint::from_f64(1.0));
         total.set("custom1".to_string(), FixedPoint::from_f64(1.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
-        let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
+        let scheduler =
+            ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
 
         // Add more CPU instances: [0, 1, 1]
         local_mgr.add_local_resource_instances(
             "CPU".to_string(),
-            vec![FixedPoint::ZERO, FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0)],
+            vec![
+                FixedPoint::ZERO,
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+            ],
         );
         local_mgr.add_local_resource_instances(
             "custom1".to_string(),
-            vec![FixedPoint::ZERO, FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0)],
+            vec![
+                FixedPoint::ZERO,
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+            ],
         );
 
-        let total = scheduler.local_resource_manager().get_local_total_resources();
+        let total = scheduler
+            .local_resource_manager()
+            .get_local_total_resources();
         assert_eq!(total.get("CPU"), FixedPoint::from_f64(3.0));
         assert_eq!(total.get("custom1"), FixedPoint::from_f64(3.0));
     }
@@ -822,10 +866,13 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
-        let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
+        let scheduler =
+            ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
 
         // No custom resource initially
         let mut custom_req = ResourceSet::new();
@@ -833,10 +880,8 @@ mod tests {
         assert!(!scheduler.is_feasible(&custom_req));
 
         // Add custom1
-        local_mgr.add_local_resource_instances(
-            "custom1".to_string(),
-            vec![FixedPoint::from_f64(5.0)],
-        );
+        local_mgr
+            .add_local_resource_instances("custom1".to_string(), vec![FixedPoint::from_f64(5.0)]);
         assert!(scheduler.is_feasible(&custom_req));
 
         // Delete custom1
@@ -849,7 +894,9 @@ mod tests {
     fn test_available_resource_empty() {
         let total = ResourceSet::new(); // zero resources
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
@@ -867,7 +914,9 @@ mod tests {
         total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
         total.set("GPU".to_string(), FixedPoint::from_f64(1.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
 
@@ -898,7 +947,9 @@ mod tests {
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         // No GPU locally
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
 
@@ -924,7 +975,9 @@ mod tests {
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         total.set("custom1".to_string(), FixedPoint::from_f64(8.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
@@ -934,11 +987,15 @@ mod tests {
         req.set("custom1".to_string(), FixedPoint::from_f64(3.0));
 
         let alloc = scheduler.allocate_local_task_resources(&req).unwrap();
-        let avail = scheduler.local_resource_manager().get_local_available_resources();
+        let avail = scheduler
+            .local_resource_manager()
+            .get_local_available_resources();
         assert_eq!(avail.get("custom1"), FixedPoint::from_f64(5.0));
 
         scheduler.release_worker_resources(&alloc);
-        let avail = scheduler.local_resource_manager().get_local_available_resources();
+        let avail = scheduler
+            .local_resource_manager()
+            .get_local_available_resources();
         assert_eq!(avail.get("custom1"), FixedPoint::from_f64(8.0));
     }
 
@@ -949,7 +1006,9 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr, cluster_mgr);
@@ -972,7 +1031,9 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
         let mut remote_total = ResourceSet::new();
@@ -1001,7 +1062,9 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "local".to_string(), total, HashMap::new(),
+            "local".to_string(),
+            total,
+            HashMap::new(),
         ));
         let cluster_mgr = Arc::new(ClusterResourceManager::new());
 
@@ -1009,7 +1072,8 @@ mod tests {
         remote_total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
         cluster_mgr.add_or_update_node("remote".to_string(), NodeResources::new(remote_total));
 
-        let scheduler = ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
+        let scheduler =
+            ClusterResourceScheduler::new("local".to_string(), local_mgr.clone(), cluster_mgr);
 
         // Drain the local node
         local_mgr.set_local_node_draining(i64::MAX as u64);

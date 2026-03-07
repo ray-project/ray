@@ -85,10 +85,7 @@ impl PyCoreWorker {
     }
 
     /// Submit a normal task.
-    pub fn submit_task(
-        &self,
-        task_spec: &ray_proto::ray::rpc::TaskSpec,
-    ) -> CoreWorkerResult<()> {
+    pub fn submit_task(&self, task_spec: &ray_proto::ray::rpc::TaskSpec) -> CoreWorkerResult<()> {
         self.runtime.block_on(self.inner.submit_task(task_spec))
     }
 
@@ -169,16 +166,13 @@ impl PyCoreWorker {
     ) -> pyo3::PyResult<Self> {
         use crate::common::PyWorkerType;
         use ray_common::id::NodeID;
-        let wt = PyWorkerType::from_i32(worker_type)
-            .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(
-                format!("invalid worker_type: {}", worker_type),
-            ))?;
+        let wt = PyWorkerType::from_i32(worker_type).ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(format!("invalid worker_type: {}", worker_type))
+        })?;
         let wid = worker_id
             .map(|w| *w.inner())
             .unwrap_or_else(WorkerID::from_random);
-        let nid = node_id
-            .map(|n| *n.inner())
-            .unwrap_or_else(NodeID::nil);
+        let nid = node_id.map(|n| *n.inner()).unwrap_or_else(NodeID::nil);
         let options = CoreWorkerOptions {
             worker_type: wt.to_core(),
             node_ip_address,
@@ -229,24 +223,22 @@ impl PyCoreWorker {
             .map(|b| ObjectID::from_binary(b))
             .collect();
         // Release the GIL while waiting for objects.
-        let results = py.allow_threads(|| {
-            self.get_objects(&oids, timeout_ms)
-        })
-        .map_err(crate::common::to_py_err)?;
+        let results = py
+            .allow_threads(|| self.get_objects(&oids, timeout_ms))
+            .map_err(crate::common::to_py_err)?;
         let mut out = Vec::with_capacity(results.len());
         for opt in results {
             match opt {
                 Some(obj) if obj.metadata.as_ref() == b"ERROR" => {
                     let msg = String::from_utf8_lossy(&obj.data);
-                    return Err(pyo3::exceptions::PyRuntimeError::new_err(
-                        format!("RayTaskError: {}", msg),
-                    ));
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "RayTaskError: {}",
+                        msg
+                    )));
                 }
                 Some(obj) => {
-                    let data =
-                        pyo3::types::PyBytes::new_bound(py, &obj.data).into();
-                    let meta =
-                        pyo3::types::PyBytes::new_bound(py, &obj.metadata).into();
+                    let data = pyo3::types::PyBytes::new_bound(py, &obj.data).into();
+                    let meta = pyo3::types::PyBytes::new_bound(py, &obj.metadata).into();
                     out.push(Some((data, meta)));
                 }
                 None => out.push(None),
@@ -271,10 +263,8 @@ impl PyCoreWorker {
             .map(|b| ObjectID::from_binary(b))
             .collect();
         // Release the GIL while waiting.
-        py.allow_threads(|| {
-            self.wait(&oids, num_objects, timeout_ms)
-        })
-        .map_err(crate::common::to_py_err)
+        py.allow_threads(|| self.wait(&oids, num_objects, timeout_ms))
+            .map_err(crate::common::to_py_err)
     }
 
     /// Delete (free) objects by their binary IDs.
@@ -370,32 +360,36 @@ impl PyCoreWorker {
             let num_returns = std::cmp::max(spec.num_returns, 1) as usize;
             let args: Vec<Vec<u8>> = spec.args.iter().map(|a| a.data.clone()).collect();
 
-            let result_data = pyo3::Python::with_gil(|py| -> Result<Vec<Vec<u8>>, CoreWorkerError> {
-                // Convert args to Python list of bytes objects.
-                let py_args: Vec<pyo3::PyObject> = args
-                    .iter()
-                    .map(|a| {
-                        pyo3::types::PyBytes::new_bound(py, a).into()
-                    })
-                    .collect();
-                let py_args_list = pyo3::types::PyList::new_bound(py, &py_args);
-                let result = callback
-                    .call1(py, (&name, py_args_list, num_returns))
-                    .map_err(|e| CoreWorkerError::Internal(format!("Python callback error: {}", e)))?;
-                if num_returns <= 1 {
-                    // Single return: callback returns bytes.
-                    let bytes: Vec<u8> = result
-                        .extract(py)
-                        .map_err(|e| CoreWorkerError::Internal(format!("callback must return bytes: {}", e)))?;
-                    Ok(vec![bytes])
-                } else {
-                    // Multi-return: callback returns list[bytes].
-                    let list: Vec<Vec<u8>> = result
-                        .extract(py)
-                        .map_err(|e| CoreWorkerError::Internal(format!("callback must return list[bytes] for multi-return: {}", e)))?;
-                    Ok(list)
-                }
-            })?;
+            let result_data =
+                pyo3::Python::with_gil(|py| -> Result<Vec<Vec<u8>>, CoreWorkerError> {
+                    // Convert args to Python list of bytes objects.
+                    let py_args: Vec<pyo3::PyObject> = args
+                        .iter()
+                        .map(|a| pyo3::types::PyBytes::new_bound(py, a).into())
+                        .collect();
+                    let py_args_list = pyo3::types::PyList::new_bound(py, &py_args);
+                    let result = callback
+                        .call1(py, (&name, py_args_list, num_returns))
+                        .map_err(|e| {
+                            CoreWorkerError::Internal(format!("Python callback error: {}", e))
+                        })?;
+                    if num_returns <= 1 {
+                        // Single return: callback returns bytes.
+                        let bytes: Vec<u8> = result.extract(py).map_err(|e| {
+                            CoreWorkerError::Internal(format!("callback must return bytes: {}", e))
+                        })?;
+                        Ok(vec![bytes])
+                    } else {
+                        // Multi-return: callback returns list[bytes].
+                        let list: Vec<Vec<u8>> = result.extract(py).map_err(|e| {
+                            CoreWorkerError::Internal(format!(
+                                "callback must return list[bytes] for multi-return: {}",
+                                e
+                            ))
+                        })?;
+                        Ok(list)
+                    }
+                })?;
 
             let task_id = TaskID::from_binary(&spec.task_id);
             let return_objects: Vec<task_rpc::ReturnObject> = result_data
@@ -473,12 +467,13 @@ impl PyCoreWorker {
         let wid = *worker_id.inner();
 
         // Create and register actor handle.
-        let handle = ray_core_worker::actor_handle::ActorHandle::from_proto(actor_rpc::ActorHandle {
-            actor_id: aid.binary(),
-            name: name.to_string(),
-            ray_namespace: namespace.to_string(),
-            ..Default::default()
-        });
+        let handle =
+            ray_core_worker::actor_handle::ActorHandle::from_proto(actor_rpc::ActorHandle {
+                actor_id: aid.binary(),
+                name: name.to_string(),
+                ray_namespace: namespace.to_string(),
+                ..Default::default()
+            });
         self.inner
             .create_actor(aid, handle)
             .map_err(crate::common::to_py_err)?;
@@ -516,13 +511,9 @@ impl PyCoreWorker {
                             .map_err(|e| format!("push_task failed: {}", e))?;
                         let reply = response.into_inner();
                         // Check for task execution error (actor callback crashed).
-                        if !reply.task_execution_error.is_empty()
-                            && reply.return_objects.is_empty()
+                        if !reply.task_execution_error.is_empty() && reply.return_objects.is_empty()
                         {
-                            return Err(format!(
-                                "ACTOR_TASK_ERROR:{}",
-                                reply.task_execution_error
-                            ));
+                            return Err(format!("ACTOR_TASK_ERROR:{}", reply.task_execution_error));
                         }
                         for ret_obj in &reply.return_objects {
                             let oid = ObjectID::from_binary(&ret_obj.object_id);
@@ -544,9 +535,7 @@ impl PyCoreWorker {
                             "actor task send channel closed".into(),
                         )
                     })?
-                    .map_err(|e| {
-                        ray_core_worker::error::CoreWorkerError::Internal(e)
-                    })
+                    .map_err(|e| ray_core_worker::error::CoreWorkerError::Internal(e))
             }));
 
         // Connect actor to worker address.
@@ -671,13 +660,8 @@ impl PyCoreWorker {
                         .map_err(|e| format!("push_task failed: {}", e))?;
                     let reply = response.into_inner();
                     // Check for task execution error (e.g. Python callback raised).
-                    if !reply.task_execution_error.is_empty()
-                        && reply.return_objects.is_empty()
-                    {
-                        return Err(format!(
-                            "TASK_ERROR:{}",
-                            reply.task_execution_error
-                        ));
+                    if !reply.task_execution_error.is_empty() && reply.return_objects.is_empty() {
+                        return Err(format!("TASK_ERROR:{}", reply.task_execution_error));
                     }
                     for ret_obj in &reply.return_objects {
                         let oid = ObjectID::from_binary(&ret_obj.object_id);
@@ -775,20 +759,15 @@ impl PyCoreWorker {
         // rx.recv() while the worker's Python callback needs the GIL.
         let mut retries_left = max_retries;
         loop {
-            let submit_result = py.allow_threads(|| {
-                self.runtime
-                    .block_on(self.inner.submit_task(&spec))
-            });
+            let submit_result =
+                py.allow_threads(|| self.runtime.block_on(self.inner.submit_task(&spec)));
             match submit_result {
                 Ok(()) => break,
                 Err(ref e) if retries_left > 0 => {
                     let msg = format!("{}", e);
                     if msg.contains("TASK_ERROR:") {
                         retries_left -= 1;
-                        tracing::debug!(
-                            retries_left,
-                            "Task failed, retrying"
-                        );
+                        tracing::debug!(retries_left, "Task failed, retrying");
                         continue;
                     }
                     // Non-task errors (e.g. connection) — don't retry.
@@ -797,17 +776,14 @@ impl PyCoreWorker {
                 Err(e) => {
                     // Final failure — store error objects so py_get returns error.
                     let msg = format!("{}", e);
-                    let error_msg = msg
-                        .strip_prefix("TASK_ERROR:")
-                        .unwrap_or(&msg);
+                    let error_msg = msg.strip_prefix("TASK_ERROR:").unwrap_or(&msg);
                     let store = self.inner.memory_store();
                     for oid in &return_oids {
-                        let error_obj =
-                            ray_core_worker::memory_store::RayObject::new(
-                                bytes::Bytes::from(error_msg.to_string()),
-                                bytes::Bytes::from_static(b"ERROR"),
-                                Vec::new(),
-                            );
+                        let error_obj = ray_core_worker::memory_store::RayObject::new(
+                            bytes::Bytes::from(error_msg.to_string()),
+                            bytes::Bytes::from_static(b"ERROR"),
+                            Vec::new(),
+                        );
                         let _ = store.put(*oid, error_obj);
                     }
                     break;
@@ -1030,8 +1006,7 @@ mod tests {
         // to avoid nested runtime panic.
         let w = make_py_worker();
         let oid = ObjectID::from_random();
-        w.put_object(oid, b"value".to_vec(), b"m".to_vec())
-            .unwrap();
+        w.put_object(oid, b"value".to_vec(), b"m".to_vec()).unwrap();
         let results = w.get_objects(&[oid], 1000).unwrap();
         assert_eq!(results.len(), 1);
         let obj = results[0].as_ref().unwrap();
@@ -1153,18 +1128,9 @@ mod tests {
         // Verify all 18 trait methods return Ok.
         assert!(c.report_worker_backlog(Default::default()).await.is_ok());
         assert!(c.prestart_workers(Default::default()).await.is_ok());
-        assert!(c
-            .prepare_bundle_resources(Default::default())
-            .await
-            .is_ok());
-        assert!(c
-            .commit_bundle_resources(Default::default())
-            .await
-            .is_ok());
-        assert!(c
-            .cancel_resource_reserve(Default::default())
-            .await
-            .is_ok());
+        assert!(c.prepare_bundle_resources(Default::default()).await.is_ok());
+        assert!(c.commit_bundle_resources(Default::default()).await.is_ok());
+        assert!(c.cancel_resource_reserve(Default::default()).await.is_ok());
         assert!(c.pin_object_ids(Default::default()).await.is_ok());
         assert!(c.get_resource_load(Default::default()).await.is_ok());
         assert!(c.shutdown_raylet(Default::default()).await.is_ok());

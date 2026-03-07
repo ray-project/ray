@@ -112,11 +112,7 @@ impl GcsInternalKVManager {
             .map_err(|e| tonic::Status::internal(e.to_string()))
     }
 
-    pub async fn handle_exists(
-        &self,
-        namespace: &[u8],
-        key: &[u8],
-    ) -> Result<bool, tonic::Status> {
+    pub async fn handle_exists(&self, namespace: &[u8], key: &[u8]) -> Result<bool, tonic::Status> {
         Self::validate_key(key).map_err(tonic::Status::invalid_argument)?;
         self.kv
             .exists(namespace, key)
@@ -357,10 +353,7 @@ mod tests {
 
         // Multi-get
         let result = mgr
-            .handle_multi_get(
-                b"N1",
-                &[b"A_1".to_vec(), b"A_2".to_vec(), b"A_3".to_vec()],
-            )
+            .handle_multi_get(b"N1", &[b"A_1".to_vec(), b"A_2".to_vec(), b"A_3".to_vec()])
             .await
             .unwrap();
         assert_eq!(result.len(), 3);
@@ -391,10 +384,7 @@ mod tests {
         assert!(mgr.handle_get(b"N1", b"A_1").await.unwrap().is_none());
 
         let result = mgr
-            .handle_multi_get(
-                b"N1",
-                &[b"A_1".to_vec(), b"A_2".to_vec(), b"A_3".to_vec()],
-            )
+            .handle_multi_get(b"N1", &[b"A_1".to_vec(), b"A_2".to_vec(), b"A_3".to_vec()])
             .await
             .unwrap();
         assert!(result.is_empty());
@@ -434,16 +424,12 @@ mod tests {
 
         // Key at exactly max length should be valid
         let max_key = vec![b'x'; MAX_KEY_LENGTH];
-        let result = mgr
-            .handle_put(b"ns", &max_key, b"v".to_vec(), true)
-            .await;
+        let result = mgr.handle_put(b"ns", &max_key, b"v".to_vec(), true).await;
         assert!(result.is_ok());
 
         // Key one byte over should fail
         let over_key = vec![b'x'; MAX_KEY_LENGTH + 1];
-        let result = mgr
-            .handle_put(b"ns", &over_key, b"v".to_vec(), true)
-            .await;
+        let result = mgr.handle_put(b"ns", &over_key, b"v".to_vec(), true).await;
         assert!(result.is_err());
     }
 

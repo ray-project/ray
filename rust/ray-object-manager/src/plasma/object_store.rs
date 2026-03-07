@@ -551,14 +551,22 @@ mod tests {
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid1, data_size: 100, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid1,
+                    data_size: 100,
+                    ..Default::default()
+                },
                 ObjectSource::CreatedByWorker,
             )
             .unwrap();
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid2, data_size: 200, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid2,
+                    data_size: 200,
+                    ..Default::default()
+                },
                 ObjectSource::CreatedByWorker,
             )
             .unwrap();
@@ -807,7 +815,11 @@ mod tests {
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid1, data_size: 100, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid1,
+                    data_size: 100,
+                    ..Default::default()
+                },
                 ObjectSource::CreatedByWorker,
             )
             .unwrap();
@@ -816,7 +828,11 @@ mod tests {
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid2, data_size: 200, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid2,
+                    data_size: 200,
+                    ..Default::default()
+                },
                 ObjectSource::RestoredFromStorage,
             )
             .unwrap();
@@ -825,7 +841,11 @@ mod tests {
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid3, data_size: 300, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid3,
+                    data_size: 300,
+                    ..Default::default()
+                },
                 ObjectSource::ReceivedFromRemoteRaylet,
             )
             .unwrap();
@@ -834,15 +854,31 @@ mod tests {
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid4, data_size: 400, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid4,
+                    data_size: 400,
+                    ..Default::default()
+                },
                 ObjectSource::ErrorStoredByRaylet,
             )
             .unwrap();
 
-        assert_eq!(store.get_object(&oid1).unwrap().source(), ObjectSource::CreatedByWorker);
-        assert_eq!(store.get_object(&oid2).unwrap().source(), ObjectSource::RestoredFromStorage);
-        assert_eq!(store.get_object(&oid3).unwrap().source(), ObjectSource::ReceivedFromRemoteRaylet);
-        assert_eq!(store.get_object(&oid4).unwrap().source(), ObjectSource::ErrorStoredByRaylet);
+        assert_eq!(
+            store.get_object(&oid1).unwrap().source(),
+            ObjectSource::CreatedByWorker
+        );
+        assert_eq!(
+            store.get_object(&oid2).unwrap().source(),
+            ObjectSource::RestoredFromStorage
+        );
+        assert_eq!(
+            store.get_object(&oid3).unwrap().source(),
+            ObjectSource::ReceivedFromRemoteRaylet
+        );
+        assert_eq!(
+            store.get_object(&oid4).unwrap().source(),
+            ObjectSource::ErrorStoredByRaylet
+        );
     }
 
     #[test]
@@ -857,21 +893,33 @@ mod tests {
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid1, data_size: 100, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid1,
+                    data_size: 100,
+                    ..Default::default()
+                },
                 ObjectSource::CreatedByWorker,
             )
             .unwrap();
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid2, data_size: 200, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid2,
+                    data_size: 200,
+                    ..Default::default()
+                },
                 ObjectSource::CreatedByWorker,
             )
             .unwrap();
         store
             .create_object(
                 dummy_allocation(),
-                ObjectInfo { object_id: oid3, data_size: 300, ..Default::default() },
+                ObjectInfo {
+                    object_id: oid3,
+                    data_size: 300,
+                    ..Default::default()
+                },
                 ObjectSource::CreatedByWorker,
             )
             .unwrap();

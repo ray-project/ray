@@ -25,22 +25,15 @@ fn test_address_proto_encoding_conformance() {
         let node_id = if case.input.node_id_hex.is_empty() {
             vec![]
         } else {
-            hex::decode(&case.input.node_id_hex).unwrap_or_else(|e| {
-                panic!(
-                    "FAIL [{}]: invalid node_id hex: {e}",
-                    case.description
-                )
-            })
+            hex::decode(&case.input.node_id_hex)
+                .unwrap_or_else(|e| panic!("FAIL [{}]: invalid node_id hex: {e}", case.description))
         };
 
         let worker_id = if case.input.worker_id_hex.is_empty() {
             vec![]
         } else {
             hex::decode(&case.input.worker_id_hex).unwrap_or_else(|e| {
-                panic!(
-                    "FAIL [{}]: invalid worker_id hex: {e}",
-                    case.description
-                )
+                panic!("FAIL [{}]: invalid worker_id hex: {e}", case.description)
             })
         };
 
@@ -62,12 +55,8 @@ fn test_address_proto_encoding_conformance() {
         );
 
         // Verify decode roundtrip
-        let decoded = Address::decode(buf.as_slice()).unwrap_or_else(|e| {
-            panic!(
-                "FAIL [{}]: Address decode failed: {e}",
-                case.description
-            )
-        });
+        let decoded = Address::decode(buf.as_slice())
+            .unwrap_or_else(|e| panic!("FAIL [{}]: Address decode failed: {e}", case.description));
         assert_eq!(
             decoded, address,
             "FAIL [{}]: Address decode roundtrip mismatch",

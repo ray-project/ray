@@ -88,17 +88,13 @@ fn make_object_manager(node_id: NodeID) -> Arc<Mutex<ObjectManager>> {
 async fn start_om_server(
     om: Arc<Mutex<ObjectManager>>,
 ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
-    let svc = ObjectManagerServiceImpl {
-        object_manager: om,
-    };
+    let svc = ObjectManagerServiceImpl { object_manager: om };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
     let handle = tokio::spawn(async move {
         tonic::transport::Server::builder()
-            .add_service(
-                rpc::object_manager_service_server::ObjectManagerServiceServer::new(svc),
-            )
+            .add_service(rpc::object_manager_service_server::ObjectManagerServiceServer::new(svc))
             .serve_with_incoming(incoming)
             .await
             .ok();

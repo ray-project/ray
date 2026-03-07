@@ -115,13 +115,13 @@ impl DemandCalculator {
         let shape = DemandShape::from_resource_set(resources);
         let mut demands = self.demands.lock();
 
-        let entry = demands.entry(shape.clone()).or_insert_with(|| {
-            AggregatedDemand {
+        let entry = demands
+            .entry(shape.clone())
+            .or_insert_with(|| AggregatedDemand {
                 shape,
                 count: 0,
                 last_updated: Instant::now(),
-            }
-        });
+            });
         entry.count += 1;
         entry.last_updated = Instant::now();
     }
@@ -144,13 +144,13 @@ impl DemandCalculator {
         let shape = DemandShape::from_resource_set(resources);
         let mut infeasible = self.infeasible.lock();
 
-        let entry = infeasible.entry(shape.clone()).or_insert_with(|| {
-            AggregatedDemand {
+        let entry = infeasible
+            .entry(shape.clone())
+            .or_insert_with(|| AggregatedDemand {
                 shape,
                 count: 0,
                 last_updated: Instant::now(),
-            }
-        });
+            });
         entry.count += 1;
         entry.last_updated = Instant::now();
     }
@@ -255,7 +255,9 @@ impl DemandCalculator {
         let cutoff = Instant::now() - ttl;
 
         self.demands.lock().retain(|_, d| d.last_updated >= cutoff);
-        self.infeasible.lock().retain(|_, d| d.last_updated >= cutoff);
+        self.infeasible
+            .lock()
+            .retain(|_, d| d.last_updated >= cutoff);
     }
 }
 

@@ -315,10 +315,7 @@ impl GcsClient for GcsRpcClient {
 
     // ── Extended Node RPCs ──────────────────────────────────────────
 
-    async fn drain_node(
-        &self,
-        req: rpc::DrainNodeRequest,
-    ) -> Result<rpc::DrainNodeReply, Status> {
+    async fn drain_node(&self, req: rpc::DrainNodeRequest) -> Result<rpc::DrainNodeReply, Status> {
         impl_gcs_rpc!(self, node, drain_node, req)
     }
 
@@ -444,10 +441,7 @@ pub mod fake {
 
     #[async_trait::async_trait]
     impl GcsClient for FakeGcsClient {
-        async fn add_job(
-            &self,
-            _req: rpc::AddJobRequest,
-        ) -> Result<rpc::AddJobReply, Status> {
+        async fn add_job(&self, _req: rpc::AddJobRequest) -> Result<rpc::AddJobReply, Status> {
             self.record(&self.job_requests, "add_job");
             Ok(rpc::AddJobReply::default())
         }
@@ -711,8 +705,8 @@ pub mod fake {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::fake::FakeGcsClient;
+    use super::*;
 
     // ── FakeGcsClient tests ───────────────────────────────────────
 

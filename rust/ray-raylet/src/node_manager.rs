@@ -116,13 +116,11 @@ impl NodeManager {
 
         let wait_manager = Arc::new(WaitManager::new());
 
-        let local_object_manager = Arc::new(parking_lot::Mutex::new(
-            LocalObjectManager::new(LocalObjectManagerConfig::default()),
-        ));
+        let local_object_manager = Arc::new(parking_lot::Mutex::new(LocalObjectManager::new(
+            LocalObjectManagerConfig::default(),
+        )));
 
-        let demand_calculator = Arc::new(DemandCalculator::new(
-            DemandCalculatorConfig::default(),
-        ));
+        let demand_calculator = Arc::new(DemandCalculator::new(DemandCalculatorConfig::default()));
 
         let placement_group_resource_manager =
             Arc::new(PlacementGroupResourceManager::new(local_resource_manager));
@@ -285,13 +283,12 @@ impl NodeManager {
         );
 
         // Bind the TCP listener first to discover the actual port.
-        let listener =
-            tokio::net::TcpListener::bind(format!(
-                "{}:{}",
-                ray_common::constants::DEFAULT_SERVER_BIND_ADDRESS,
-                self.config.port
-            ))
-            .await?;
+        let listener = tokio::net::TcpListener::bind(format!(
+            "{}:{}",
+            ray_common::constants::DEFAULT_SERVER_BIND_ADDRESS,
+            self.config.port
+        ))
+        .await?;
         let bound_port = listener.local_addr()?.port();
         tracing::info!(port = bound_port, "Raylet gRPC server listening");
 
@@ -356,15 +353,14 @@ impl NodeManager {
         } else {
             ray_rpc::auth::AuthenticationMode::Disabled
         };
-        let auth = ray_rpc::auth::AuthInterceptor::new(
-            auth_mode,
-            self.config.auth_token.clone(),
-        );
+        let auth = ray_rpc::auth::AuthInterceptor::new(auth_mode, self.config.auth_token.clone());
 
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
         tonic::transport::Server::builder()
             .add_service(
-                rpc::node_manager_service_server::NodeManagerServiceServer::with_interceptor(svc, auth),
+                rpc::node_manager_service_server::NodeManagerServiceServer::with_interceptor(
+                    svc, auth,
+                ),
             )
             .add_service(health_service)
             .serve_with_incoming_shutdown(incoming, shutdown_signal())
@@ -393,10 +389,7 @@ mod tests {
             log_dir: None,
             ray_config: RayConfig::default(),
             node_id: "test-node-1".to_string(),
-            resources: HashMap::from([
-                ("CPU".to_string(), 8.0),
-                ("GPU".to_string(), 2.0),
-            ]),
+            resources: HashMap::from([("CPU".to_string(), 8.0), ("GPU".to_string(), 2.0)]),
             labels: HashMap::from([("region".to_string(), "us-east".to_string())]),
             session_name: "test-session".to_string(),
             auth_token: None,
@@ -426,7 +419,10 @@ mod tests {
         let nm = NodeManager::new(make_config());
         nm.handle_drain(5000);
         // After drain, node should be marked as draining
-        assert!(nm.scheduler().local_resource_manager().is_local_node_draining());
+        assert!(nm
+            .scheduler()
+            .local_resource_manager()
+            .is_local_node_draining());
     }
 
     #[test]
@@ -451,11 +447,17 @@ mod tests {
         let nm = NodeManager::new(make_config());
 
         // Initially not draining
-        assert!(!nm.scheduler().local_resource_manager().is_local_node_draining());
+        assert!(!nm
+            .scheduler()
+            .local_resource_manager()
+            .is_local_node_draining());
 
         // Drain with a deadline
         nm.handle_drain(10000);
-        assert!(nm.scheduler().local_resource_manager().is_local_node_draining());
+        assert!(nm
+            .scheduler()
+            .local_resource_manager()
+            .is_local_node_draining());
     }
 
     #[test]

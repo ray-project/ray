@@ -81,11 +81,7 @@ impl PyObjectRef {
     /// Construct an ObjectRef from raw binary object ID bytes.
     #[new]
     fn py_new(object_id_bytes: &[u8]) -> Self {
-        Self::new(
-            ObjectID::from_binary(object_id_bytes),
-            None,
-            String::new(),
-        )
+        Self::new(ObjectID::from_binary(object_id_bytes), None, String::new())
     }
 
     /// Return the raw bytes of the object ID.

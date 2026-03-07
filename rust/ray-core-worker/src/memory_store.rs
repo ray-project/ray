@@ -62,9 +62,7 @@ impl CoreWorkerMemoryStore {
     pub fn put(&self, object_id: ObjectID, object: RayObject) -> CoreWorkerResult<()> {
         let mut store = self.objects.lock();
         if store.contains_key(&object_id) {
-            return Err(CoreWorkerError::ObjectAlreadyExists(
-                object_id.hex(),
-            ));
+            return Err(CoreWorkerError::ObjectAlreadyExists(object_id.hex()));
         }
         store.insert(object_id, object);
         // Wake up any waiters.
@@ -171,11 +169,7 @@ mod tests {
         let store = CoreWorkerMemoryStore::new();
         let oid = ObjectID::from_random();
         let nested = ObjectID::from_random();
-        let obj = RayObject::new(
-            Bytes::from("payload"),
-            Bytes::from("msgpack"),
-            vec![nested],
-        );
+        let obj = RayObject::new(Bytes::from("payload"), Bytes::from("msgpack"), vec![nested]);
         store.put(oid, obj).unwrap();
         let got = store.get(&oid).unwrap();
         assert_eq!(got.data.as_ref(), b"payload");
@@ -574,12 +568,10 @@ mod tests {
         let store_a = store.clone();
         let store_b = store.clone();
 
-        let h1 = tokio::spawn(async move {
-            store_a.get_or_wait(&id1, Duration::from_secs(2)).await
-        });
-        let h2 = tokio::spawn(async move {
-            store_b.get_or_wait(&id2, Duration::from_secs(2)).await
-        });
+        let h1 =
+            tokio::spawn(async move { store_a.get_or_wait(&id1, Duration::from_secs(2)).await });
+        let h2 =
+            tokio::spawn(async move { store_b.get_or_wait(&id2, Duration::from_secs(2)).await });
 
         let r1 = h1.await.unwrap().unwrap();
         let r2 = h2.await.unwrap().unwrap();
@@ -596,7 +588,9 @@ mod tests {
 
         // Put all.
         for (i, oid) in ids.iter().enumerate() {
-            store.put(*oid, make_object(format!("round1_{}", i).as_bytes())).unwrap();
+            store
+                .put(*oid, make_object(format!("round1_{}", i).as_bytes()))
+                .unwrap();
         }
         assert_eq!(store.size(), 5);
 
@@ -608,7 +602,9 @@ mod tests {
 
         // Re-put with different data.
         for (i, oid) in ids.iter().enumerate() {
-            store.put(*oid, make_object(format!("round2_{}", i).as_bytes())).unwrap();
+            store
+                .put(*oid, make_object(format!("round2_{}", i).as_bytes()))
+                .unwrap();
         }
         assert_eq!(store.size(), 5);
 

@@ -51,10 +51,7 @@ pub fn spawn_worker_process(
     env_vars.insert("RAY_NODE_ID".to_string(), config.node_id.clone());
     env_vars.insert("RAY_WORKER_ID".to_string(), worker_id.hex());
     env_vars.insert("RAY_JOB_ID".to_string(), job_id.hex());
-    env_vars.insert(
-        "RAY_RAYLET_PID".to_string(),
-        std::process::id().to_string(),
-    );
+    env_vars.insert("RAY_RAYLET_PID".to_string(), std::process::id().to_string());
     env_vars.insert(
         "RAY_NODE_IP_ADDRESS".to_string(),
         config.node_ip_address.clone(),
@@ -64,20 +61,20 @@ pub fn spawn_worker_process(
         format!("{}:{}", config.node_ip_address, config.raylet_port),
     );
     env_vars.insert("RAY_GCS_ADDRESS".to_string(), config.gcs_address.clone());
-    env_vars.insert(
-        "RAY_SESSION_NAME".to_string(),
-        config.session_name.clone(),
-    );
+    env_vars.insert("RAY_SESSION_NAME".to_string(), config.session_name.clone());
 
     let (program, args) = match language {
         Language::Python => {
-            let cmd = config
-                .python_worker_command
-                .as_deref()
-                .unwrap_or("python");
-            (cmd.to_string(), vec!["-m".to_string(), "ray.worker".to_string()])
+            let cmd = config.python_worker_command.as_deref().unwrap_or("python");
+            (
+                cmd.to_string(),
+                vec!["-m".to_string(), "ray.worker".to_string()],
+            )
         }
-        Language::Java => ("java".to_string(), vec!["-cp".to_string(), "ray-worker".to_string()]),
+        Language::Java => (
+            "java".to_string(),
+            vec!["-cp".to_string(), "ray-worker".to_string()],
+        ),
         Language::Cpp => ("ray_cpp_worker".to_string(), vec![]),
     };
 
@@ -132,7 +129,10 @@ pub fn make_spawn_callback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{atomic::{AtomicU32, Ordering}, Mutex};
+    use std::sync::{
+        atomic::{AtomicU32, Ordering},
+        Mutex,
+    };
 
     #[test]
     fn test_make_spawn_callback_called() {
@@ -170,7 +170,11 @@ mod tests {
         let callback = make_spawn_callback(config, Some(cgm));
 
         // Spawning will fail (nonexistent binary), but the cgroup code path is exercised.
-        let pid = callback(Language::Python, &JobID::from_int(1), &WorkerID::from_random());
+        let pid = callback(
+            Language::Python,
+            &JobID::from_int(1),
+            &WorkerID::from_random(),
+        );
         assert!(pid.is_none());
     }
 
@@ -186,7 +190,11 @@ mod tests {
         };
 
         let callback = make_spawn_callback(config, None);
-        let pid = callback(Language::Python, &JobID::from_int(1), &WorkerID::from_random());
+        let pid = callback(
+            Language::Python,
+            &JobID::from_int(1),
+            &WorkerID::from_random(),
+        );
         assert!(pid.is_none());
     }
 

@@ -161,7 +161,10 @@ mod tests {
         // Use match instead of unwrap_err (ActorHandle doesn't impl Debug).
         match result {
             Err(CoreWorkerError::Internal(msg)) => {
-                assert!(msg.contains("failed to decode"), "unexpected message: {msg}");
+                assert!(
+                    msg.contains("failed to decode"),
+                    "unexpected message: {msg}"
+                );
             }
             _ => panic!("expected CoreWorkerError::Internal"),
         }

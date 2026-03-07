@@ -86,8 +86,13 @@ fn ray_event_to_task_events(event: &RayEvent) -> rpc::TaskEvents {
         task_info: None,
         state_updates: Some(rpc::TaskStateUpdate {
             node_id: Some(
-                format!("[{}] {}: {}", event.source_type_str(), event.label, event.message)
-                    .into_bytes(),
+                format!(
+                    "[{}] {}: {}",
+                    event.source_type_str(),
+                    event.label,
+                    event.message
+                )
+                .into_bytes(),
             ),
             state_ts_ns,
             ..Default::default()
@@ -138,7 +143,9 @@ mod tests {
         assert!(node_id_str.contains("[GCS]"));
 
         // Info severity maps to Running status.
-        assert!(state.state_ts_ns.contains_key(&(rpc::TaskStatus::Running as i32)));
+        assert!(state
+            .state_ts_ns
+            .contains_key(&(rpc::TaskStatus::Running as i32)));
     }
 
     #[test]
@@ -156,7 +163,9 @@ mod tests {
         assert!(node_id_str.contains("TASK_FAILED"));
 
         // Error severity maps to Failed status.
-        assert!(state.state_ts_ns.contains_key(&(rpc::TaskStatus::Failed as i32)));
+        assert!(state
+            .state_ts_ns
+            .contains_key(&(rpc::TaskStatus::Failed as i32)));
     }
 
     #[test]
@@ -189,43 +198,225 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ray_gcs_rpc_client::GcsClient for StubGcsClient {
-        async fn add_job(&self, _: rpc::AddJobRequest) -> Result<rpc::AddJobReply, tonic::Status> { unimplemented!() }
-        async fn mark_job_finished(&self, _: rpc::MarkJobFinishedRequest) -> Result<rpc::MarkJobFinishedReply, tonic::Status> { unimplemented!() }
-        async fn get_all_job_info(&self, _: rpc::GetAllJobInfoRequest) -> Result<rpc::GetAllJobInfoReply, tonic::Status> { unimplemented!() }
-        async fn get_next_job_id(&self, _: rpc::GetNextJobIdRequest) -> Result<rpc::GetNextJobIdReply, tonic::Status> { unimplemented!() }
-        async fn report_job_error(&self, _: rpc::ReportJobErrorRequest) -> Result<rpc::ReportJobErrorReply, tonic::Status> { unimplemented!() }
-        async fn register_node(&self, _: rpc::RegisterNodeRequest) -> Result<rpc::RegisterNodeReply, tonic::Status> { unimplemented!() }
-        async fn unregister_node(&self, _: rpc::UnregisterNodeRequest) -> Result<rpc::UnregisterNodeReply, tonic::Status> { unimplemented!() }
-        async fn get_all_node_info(&self, _: rpc::GetAllNodeInfoRequest) -> Result<rpc::GetAllNodeInfoReply, tonic::Status> { unimplemented!() }
-        async fn get_cluster_id(&self, _: rpc::GetClusterIdRequest) -> Result<rpc::GetClusterIdReply, tonic::Status> { unimplemented!() }
-        async fn check_alive(&self, _: rpc::CheckAliveRequest) -> Result<rpc::CheckAliveReply, tonic::Status> { unimplemented!() }
-        async fn register_actor(&self, _: rpc::RegisterActorRequest) -> Result<rpc::RegisterActorReply, tonic::Status> { unimplemented!() }
-        async fn create_actor(&self, _: rpc::CreateActorRequest) -> Result<rpc::CreateActorReply, tonic::Status> { unimplemented!() }
-        async fn get_actor_info(&self, _: rpc::GetActorInfoRequest) -> Result<rpc::GetActorInfoReply, tonic::Status> { unimplemented!() }
-        async fn get_named_actor_info(&self, _: rpc::GetNamedActorInfoRequest) -> Result<rpc::GetNamedActorInfoReply, tonic::Status> { unimplemented!() }
-        async fn get_all_actor_info(&self, _: rpc::GetAllActorInfoRequest) -> Result<rpc::GetAllActorInfoReply, tonic::Status> { unimplemented!() }
-        async fn kill_actor_via_gcs(&self, _: rpc::KillActorViaGcsRequest) -> Result<rpc::KillActorViaGcsReply, tonic::Status> { unimplemented!() }
-        async fn report_worker_failure(&self, _: rpc::ReportWorkerFailureRequest) -> Result<rpc::ReportWorkerFailureReply, tonic::Status> { unimplemented!() }
-        async fn add_worker_info(&self, _: rpc::AddWorkerInfoRequest) -> Result<rpc::AddWorkerInfoReply, tonic::Status> { unimplemented!() }
-        async fn get_all_worker_info(&self, _: rpc::GetAllWorkerInfoRequest) -> Result<rpc::GetAllWorkerInfoReply, tonic::Status> { unimplemented!() }
-        async fn get_all_resource_usage(&self, _: rpc::GetAllResourceUsageRequest) -> Result<rpc::GetAllResourceUsageReply, tonic::Status> { unimplemented!() }
-        async fn create_placement_group(&self, _: rpc::CreatePlacementGroupRequest) -> Result<rpc::CreatePlacementGroupReply, tonic::Status> { unimplemented!() }
-        async fn remove_placement_group(&self, _: rpc::RemovePlacementGroupRequest) -> Result<rpc::RemovePlacementGroupReply, tonic::Status> { unimplemented!() }
-        async fn get_all_placement_group(&self, _: rpc::GetAllPlacementGroupRequest) -> Result<rpc::GetAllPlacementGroupReply, tonic::Status> { unimplemented!() }
-        async fn internal_kv_get(&self, _: rpc::InternalKvGetRequest) -> Result<rpc::InternalKvGetReply, tonic::Status> { unimplemented!() }
-        async fn internal_kv_put(&self, _: rpc::InternalKvPutRequest) -> Result<rpc::InternalKvPutReply, tonic::Status> { unimplemented!() }
-        async fn internal_kv_del(&self, _: rpc::InternalKvDelRequest) -> Result<rpc::InternalKvDelReply, tonic::Status> { unimplemented!() }
-        async fn internal_kv_keys(&self, _: rpc::InternalKvKeysRequest) -> Result<rpc::InternalKvKeysReply, tonic::Status> { unimplemented!() }
-        async fn add_task_event_data(&self, _: rpc::AddTaskEventDataRequest) -> Result<rpc::AddTaskEventDataReply, tonic::Status> { unimplemented!() }
-        async fn get_task_events(&self, _: rpc::GetTaskEventsRequest) -> Result<rpc::GetTaskEventsReply, tonic::Status> { unimplemented!() }
-        async fn drain_node(&self, _: rpc::DrainNodeRequest) -> Result<rpc::DrainNodeReply, tonic::Status> { unimplemented!() }
-        async fn get_placement_group(&self, _: rpc::GetPlacementGroupRequest) -> Result<rpc::GetPlacementGroupReply, tonic::Status> { unimplemented!() }
-        async fn get_named_placement_group(&self, _: rpc::GetNamedPlacementGroupRequest) -> Result<rpc::GetNamedPlacementGroupReply, tonic::Status> { unimplemented!() }
-        async fn wait_placement_group_until_ready(&self, _: rpc::WaitPlacementGroupUntilReadyRequest) -> Result<rpc::WaitPlacementGroupUntilReadyReply, tonic::Status> { unimplemented!() }
-        async fn list_named_actors(&self, _: rpc::ListNamedActorsRequest) -> Result<rpc::ListNamedActorsReply, tonic::Status> { unimplemented!() }
-        async fn internal_kv_multi_get(&self, _: rpc::InternalKvMultiGetRequest) -> Result<rpc::InternalKvMultiGetReply, tonic::Status> { unimplemented!() }
-        async fn internal_kv_exists(&self, _: rpc::InternalKvExistsRequest) -> Result<rpc::InternalKvExistsReply, tonic::Status> { unimplemented!() }
-        async fn get_all_available_resources(&self, _: rpc::GetAllAvailableResourcesRequest) -> Result<rpc::GetAllAvailableResourcesReply, tonic::Status> { unimplemented!() }
+        async fn add_job(&self, _: rpc::AddJobRequest) -> Result<rpc::AddJobReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn mark_job_finished(
+            &self,
+            _: rpc::MarkJobFinishedRequest,
+        ) -> Result<rpc::MarkJobFinishedReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_all_job_info(
+            &self,
+            _: rpc::GetAllJobInfoRequest,
+        ) -> Result<rpc::GetAllJobInfoReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_next_job_id(
+            &self,
+            _: rpc::GetNextJobIdRequest,
+        ) -> Result<rpc::GetNextJobIdReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn report_job_error(
+            &self,
+            _: rpc::ReportJobErrorRequest,
+        ) -> Result<rpc::ReportJobErrorReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn register_node(
+            &self,
+            _: rpc::RegisterNodeRequest,
+        ) -> Result<rpc::RegisterNodeReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn unregister_node(
+            &self,
+            _: rpc::UnregisterNodeRequest,
+        ) -> Result<rpc::UnregisterNodeReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_all_node_info(
+            &self,
+            _: rpc::GetAllNodeInfoRequest,
+        ) -> Result<rpc::GetAllNodeInfoReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_cluster_id(
+            &self,
+            _: rpc::GetClusterIdRequest,
+        ) -> Result<rpc::GetClusterIdReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn check_alive(
+            &self,
+            _: rpc::CheckAliveRequest,
+        ) -> Result<rpc::CheckAliveReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn register_actor(
+            &self,
+            _: rpc::RegisterActorRequest,
+        ) -> Result<rpc::RegisterActorReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn create_actor(
+            &self,
+            _: rpc::CreateActorRequest,
+        ) -> Result<rpc::CreateActorReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_actor_info(
+            &self,
+            _: rpc::GetActorInfoRequest,
+        ) -> Result<rpc::GetActorInfoReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_named_actor_info(
+            &self,
+            _: rpc::GetNamedActorInfoRequest,
+        ) -> Result<rpc::GetNamedActorInfoReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_all_actor_info(
+            &self,
+            _: rpc::GetAllActorInfoRequest,
+        ) -> Result<rpc::GetAllActorInfoReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn kill_actor_via_gcs(
+            &self,
+            _: rpc::KillActorViaGcsRequest,
+        ) -> Result<rpc::KillActorViaGcsReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn report_worker_failure(
+            &self,
+            _: rpc::ReportWorkerFailureRequest,
+        ) -> Result<rpc::ReportWorkerFailureReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn add_worker_info(
+            &self,
+            _: rpc::AddWorkerInfoRequest,
+        ) -> Result<rpc::AddWorkerInfoReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_all_worker_info(
+            &self,
+            _: rpc::GetAllWorkerInfoRequest,
+        ) -> Result<rpc::GetAllWorkerInfoReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_all_resource_usage(
+            &self,
+            _: rpc::GetAllResourceUsageRequest,
+        ) -> Result<rpc::GetAllResourceUsageReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn create_placement_group(
+            &self,
+            _: rpc::CreatePlacementGroupRequest,
+        ) -> Result<rpc::CreatePlacementGroupReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn remove_placement_group(
+            &self,
+            _: rpc::RemovePlacementGroupRequest,
+        ) -> Result<rpc::RemovePlacementGroupReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_all_placement_group(
+            &self,
+            _: rpc::GetAllPlacementGroupRequest,
+        ) -> Result<rpc::GetAllPlacementGroupReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn internal_kv_get(
+            &self,
+            _: rpc::InternalKvGetRequest,
+        ) -> Result<rpc::InternalKvGetReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn internal_kv_put(
+            &self,
+            _: rpc::InternalKvPutRequest,
+        ) -> Result<rpc::InternalKvPutReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn internal_kv_del(
+            &self,
+            _: rpc::InternalKvDelRequest,
+        ) -> Result<rpc::InternalKvDelReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn internal_kv_keys(
+            &self,
+            _: rpc::InternalKvKeysRequest,
+        ) -> Result<rpc::InternalKvKeysReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn add_task_event_data(
+            &self,
+            _: rpc::AddTaskEventDataRequest,
+        ) -> Result<rpc::AddTaskEventDataReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_task_events(
+            &self,
+            _: rpc::GetTaskEventsRequest,
+        ) -> Result<rpc::GetTaskEventsReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn drain_node(
+            &self,
+            _: rpc::DrainNodeRequest,
+        ) -> Result<rpc::DrainNodeReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_placement_group(
+            &self,
+            _: rpc::GetPlacementGroupRequest,
+        ) -> Result<rpc::GetPlacementGroupReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_named_placement_group(
+            &self,
+            _: rpc::GetNamedPlacementGroupRequest,
+        ) -> Result<rpc::GetNamedPlacementGroupReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn wait_placement_group_until_ready(
+            &self,
+            _: rpc::WaitPlacementGroupUntilReadyRequest,
+        ) -> Result<rpc::WaitPlacementGroupUntilReadyReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn list_named_actors(
+            &self,
+            _: rpc::ListNamedActorsRequest,
+        ) -> Result<rpc::ListNamedActorsReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn internal_kv_multi_get(
+            &self,
+            _: rpc::InternalKvMultiGetRequest,
+        ) -> Result<rpc::InternalKvMultiGetReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn internal_kv_exists(
+            &self,
+            _: rpc::InternalKvExistsRequest,
+        ) -> Result<rpc::InternalKvExistsReply, tonic::Status> {
+            unimplemented!()
+        }
+        async fn get_all_available_resources(
+            &self,
+            _: rpc::GetAllAvailableResourcesRequest,
+        ) -> Result<rpc::GetAllAvailableResourcesReply, tonic::Status> {
+            unimplemented!()
+        }
     }
 
     #[test]

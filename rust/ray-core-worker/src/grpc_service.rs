@@ -35,10 +35,7 @@ impl CoreWorkerServiceImpl {
         &self,
         request: rpc::PushTaskRequest,
     ) -> Result<rpc::PushTaskReply, Status> {
-        tracing::debug!(
-            seq = request.sequence_number,
-            "PushTask received"
-        );
+        tracing::debug!(seq = request.sequence_number, "PushTask received");
         self.core_worker
             .task_receiver()
             .handle_push_task(request)
@@ -65,15 +62,16 @@ impl CoreWorkerServiceImpl {
         let task_id_hex = hex::encode(&request.intended_task_id);
         tracing::debug!(task_id = %task_id_hex, "CancelTask received");
 
-        let running = self.core_worker.task_receiver().is_task_running(
-            &request.intended_task_id,
-        );
+        let running = self
+            .core_worker
+            .task_receiver()
+            .is_task_running(&request.intended_task_id);
 
         if running {
-            let cancelled = self.core_worker.task_receiver().cancel_task(
-                &request.intended_task_id,
-                request.force_kill,
-            );
+            let cancelled = self
+                .core_worker
+                .task_receiver()
+                .cancel_task(&request.intended_task_id, request.force_kill);
             Ok(rpc::CancelTaskReply {
                 requested_task_running: true,
                 attempt_succeeded: cancelled,
@@ -158,16 +156,11 @@ impl CoreWorkerServiceImpl {
     }
 
     /// Handle worker exit request.
-    pub async fn handle_exit(
-        &self,
-        request: rpc::ExitRequest,
-    ) -> Result<rpc::ExitReply, Status> {
+    pub async fn handle_exit(&self, request: rpc::ExitRequest) -> Result<rpc::ExitReply, Status> {
         tracing::info!(force = request.force_exit, "Exit requested");
         // Mark the task receiver as exiting so no new tasks are accepted.
         self.core_worker.task_receiver().set_exiting();
-        Ok(rpc::ExitReply {
-            success: true,
-        })
+        Ok(rpc::ExitReply { success: true })
     }
 
     pub fn handle_delete_objects(
@@ -258,10 +251,8 @@ impl CoreWorkerServiceImpl {
         request: rpc::PubsubLongPollingRequest,
     ) -> Result<rpc::PubsubLongPollingReply, Status> {
         let publisher = self.core_worker.publisher();
-        let rx = publisher.connect_subscriber(
-            &request.subscriber_id,
-            request.max_processed_sequence_id,
-        );
+        let rx =
+            publisher.connect_subscriber(&request.subscriber_id, request.max_processed_sequence_id);
 
         // Wait for messages (or publisher timeout/disconnection).
         let messages = match tokio::time::timeout(
@@ -325,7 +316,9 @@ impl CoreWorkerServiceImpl {
                 );
                 // Ignore error if object already exists (duplicate delivery).
                 let _ = self.core_worker.memory_store().put(oid, ray_obj);
-                self.core_worker.dependency_resolver().object_available(&oid);
+                self.core_worker
+                    .dependency_resolver()
+                    .object_available(&oid);
             }
         }
 
@@ -428,10 +421,10 @@ impl CoreWorkerServiceImpl {
         );
 
         // Try to cancel via the task receiver if the task is executing on this worker.
-        let cancelled = self.core_worker.task_receiver().cancel_task(
-            &request.remote_object_id,
-            request.force_kill,
-        );
+        let cancelled = self
+            .core_worker
+            .task_receiver()
+            .cancel_task(&request.remote_object_id, request.force_kill);
 
         if cancelled {
             tracing::info!(object_id = %object_id_hex, "Task cancellation succeeded");
@@ -534,7 +527,9 @@ impl CoreWorkerServiceImpl {
         request: rpc::PlasmaObjectReadyRequest,
     ) -> Result<rpc::PlasmaObjectReadyReply, Status> {
         let oid = ObjectID::from_binary(&request.object_id);
-        self.core_worker.dependency_resolver().object_available(&oid);
+        self.core_worker
+            .dependency_resolver()
+            .object_available(&oid);
         Ok(rpc::PlasmaObjectReadyReply::default())
     }
 
@@ -749,9 +744,7 @@ impl rpc::core_worker_service_server::CoreWorkerService for CoreWorkerServiceImp
         &self,
         req: Request<rpc::ExitRequest>,
     ) -> Result<Response<rpc::ExitReply>, Status> {
-        self.handle_exit(req.into_inner())
-            .await
-            .map(Response::new)
+        self.handle_exit(req.into_inner()).await.map(Response::new)
     }
 
     async fn assign_object_owner(
@@ -784,8 +777,8 @@ impl rpc::core_worker_service_server::CoreWorkerService for CoreWorkerServiceImp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ray_common::id::{JobID, ObjectID, WorkerID};
     use crate::options::CoreWorkerOptions;
+    use ray_common::id::{JobID, ObjectID, WorkerID};
 
     fn make_service() -> CoreWorkerServiceImpl {
         let cw = CoreWorker::new(CoreWorkerOptions {
@@ -818,11 +811,17 @@ mod tests {
             }],
             ..Default::default()
         };
-        let reply = svc.handle_update_object_location_batch(request).await.unwrap();
+        let reply = svc
+            .handle_update_object_location_batch(request)
+            .await
+            .unwrap();
         assert_eq!(reply, rpc::UpdateObjectLocationBatchReply::default());
 
         // Verify location was added.
-        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        let locs = svc
+            .core_worker
+            .reference_counter()
+            .get_object_locations(&oid);
         assert_eq!(locs, vec![node_id_hex.clone()]);
 
         // Remove the location.
@@ -835,8 +834,13 @@ mod tests {
             }],
             ..Default::default()
         };
-        svc.handle_update_object_location_batch(request).await.unwrap();
-        let locs = svc.core_worker.reference_counter().get_object_locations(&oid);
+        svc.handle_update_object_location_batch(request)
+            .await
+            .unwrap();
+        let locs = svc
+            .core_worker
+            .reference_counter()
+            .get_object_locations(&oid);
         assert!(locs.is_empty());
     }
 
@@ -849,13 +853,18 @@ mod tests {
 
         // Register and add a location.
         svc.core_worker.reference_counter().add_local_reference(oid);
-        svc.core_worker.reference_counter().add_object_location(&oid, node_id_hex.clone());
+        svc.core_worker
+            .reference_counter()
+            .add_object_location(&oid, node_id_hex.clone());
 
         let request = rpc::GetObjectLocationsOwnerRequest {
             object_ids: vec![oid.binary()],
             ..Default::default()
         };
-        let reply = svc.handle_get_object_locations_owner(request).await.unwrap();
+        let reply = svc
+            .handle_get_object_locations_owner(request)
+            .await
+            .unwrap();
         assert_eq!(reply.object_location_infos.len(), 1);
         assert_eq!(reply.object_location_infos[0].node_ids, vec![node_id]);
     }
@@ -870,7 +879,10 @@ mod tests {
             object_ids: vec![oid.binary()],
             ..Default::default()
         };
-        let reply = svc.handle_get_object_locations_owner(request).await.unwrap();
+        let reply = svc
+            .handle_get_object_locations_owner(request)
+            .await
+            .unwrap();
         assert_eq!(reply.object_location_infos.len(), 1);
         assert!(reply.object_location_infos[0].node_ids.is_empty());
     }
@@ -933,7 +945,10 @@ mod tests {
 
         assert!(svc.core_worker.reference_counter().owned_by_us(&oid));
         let owner = svc.core_worker.reference_counter().get_owner(&oid).unwrap();
-        assert_eq!(owner.ip_address, svc.core_worker.worker_address().ip_address);
+        assert_eq!(
+            owner.ip_address,
+            svc.core_worker.worker_address().ip_address
+        );
     }
 
     #[tokio::test]
@@ -943,7 +958,11 @@ mod tests {
 
         // Put an object into the memory store.
         svc.core_worker
-            .put_object(oid, bytes::Bytes::from("spill_data"), bytes::Bytes::from("meta"))
+            .put_object(
+                oid,
+                bytes::Bytes::from("spill_data"),
+                bytes::Bytes::from("meta"),
+            )
             .unwrap();
 
         // Spill the object.
@@ -968,7 +987,10 @@ mod tests {
             spilled_objects_url: vec![url.clone()],
             object_ids_to_restore: vec![oid.binary()],
         };
-        let restore_reply = svc.handle_restore_spilled_objects(restore_req).await.unwrap();
+        let restore_reply = svc
+            .handle_restore_spilled_objects(restore_req)
+            .await
+            .unwrap();
         assert!(restore_reply.bytes_restored_total > 0);
 
         // Verify the object is back in the memory store.
@@ -1079,11 +1101,11 @@ mod tests {
         let subscribe_cmd = rpc::Command {
             channel_type: 3,
             key_id: b"actor_A".to_vec(),
-            command_message_one_of: Some(
-                rpc::command::CommandMessageOneOf::SubscribeMessage(rpc::SubMessage {
+            command_message_one_of: Some(rpc::command::CommandMessageOneOf::SubscribeMessage(
+                rpc::SubMessage {
                     sub_message_one_of: None,
-                }),
-            ),
+                },
+            )),
         };
         let req = rpc::PubsubCommandBatchRequest {
             subscriber_id: b"sub1".to_vec(),
@@ -1093,16 +1115,21 @@ mod tests {
         assert_eq!(reply, rpc::PubsubCommandBatchReply {});
 
         // Verify the subscription was registered by publishing and checking mailbox.
-        svc.core_worker.publisher().publish(3, b"actor_A", b"hello".to_vec());
-        assert_eq!(svc.core_worker.publisher().subscriber_mailbox_size(b"sub1"), 1);
+        svc.core_worker
+            .publisher()
+            .publish(3, b"actor_A", b"hello".to_vec());
+        assert_eq!(
+            svc.core_worker.publisher().subscriber_mailbox_size(b"sub1"),
+            1
+        );
 
         // Unsubscribe.
         let unsub_cmd = rpc::Command {
             channel_type: 3,
             key_id: b"actor_A".to_vec(),
-            command_message_one_of: Some(
-                rpc::command::CommandMessageOneOf::UnsubscribeMessage(rpc::UnsubscribeMessage {}),
-            ),
+            command_message_one_of: Some(rpc::command::CommandMessageOneOf::UnsubscribeMessage(
+                rpc::UnsubscribeMessage {},
+            )),
         };
         let req = rpc::PubsubCommandBatchRequest {
             subscriber_id: b"sub1".to_vec(),
@@ -1111,9 +1138,14 @@ mod tests {
         svc.handle_pubsub_command_batch(req).await.unwrap();
 
         // Publishing again should not increase mailbox (unsubscribed).
-        svc.core_worker.publisher().publish(3, b"actor_A", b"world".to_vec());
+        svc.core_worker
+            .publisher()
+            .publish(3, b"actor_A", b"world".to_vec());
         // Mailbox should still have the old message only (unsubscribe removes from index).
-        assert_eq!(svc.core_worker.publisher().subscriber_mailbox_size(b"sub1"), 1);
+        assert_eq!(
+            svc.core_worker.publisher().subscriber_mailbox_size(b"sub1"),
+            1
+        );
     }
 
     #[tokio::test]
@@ -1122,8 +1154,12 @@ mod tests {
 
         // Register channel and subscription, then publish a message.
         svc.core_worker.publisher().register_channel(3, false);
-        svc.core_worker.publisher().register_subscription(b"sub1", 3, b"");
-        svc.core_worker.publisher().publish(3, b"k1", b"v1".to_vec());
+        svc.core_worker
+            .publisher()
+            .register_subscription(b"sub1", 3, b"");
+        svc.core_worker
+            .publisher()
+            .publish(3, b"k1", b"v1".to_vec());
 
         // Long-poll should return immediately with the queued message.
         let req = rpc::PubsubLongPollingRequest {
@@ -1208,7 +1244,11 @@ mod tests {
 
         // Put an object into the memory store.
         svc.core_worker
-            .put_object(oid, bytes::Bytes::from("status_data"), bytes::Bytes::from("meta"))
+            .put_object(
+                oid,
+                bytes::Bytes::from("status_data"),
+                bytes::Bytes::from("meta"),
+            )
             .unwrap();
 
         let req = rpc::GetObjectStatusRequest {
@@ -1296,7 +1336,10 @@ mod tests {
         );
         let ray_obj = reply.object.unwrap();
         assert_eq!(ray_obj.nested_inlined_refs.len(), 1);
-        assert_eq!(ray_obj.nested_inlined_refs[0].object_id, nested_oid.binary());
+        assert_eq!(
+            ray_obj.nested_inlined_refs[0].object_id,
+            nested_oid.binary()
+        );
     }
 
     // ─── Tests for handle_delete_objects ─────────────────────────────
@@ -1398,9 +1441,7 @@ mod tests {
         // Worker should not be exiting initially.
         assert!(!svc.core_worker.task_receiver().is_exiting());
 
-        let req = rpc::ExitRequest {
-            force_exit: false,
-        };
+        let req = rpc::ExitRequest { force_exit: false };
         let reply = svc.handle_exit(req).await.unwrap();
         assert!(reply.success);
 
@@ -1412,9 +1453,7 @@ mod tests {
     async fn test_exit_force_exit() {
         let svc = make_service();
 
-        let req = rpc::ExitRequest {
-            force_exit: true,
-        };
+        let req = rpc::ExitRequest { force_exit: true };
         let reply = svc.handle_exit(req).await.unwrap();
         assert!(reply.success);
         assert!(svc.core_worker.task_receiver().is_exiting());
@@ -1434,7 +1473,11 @@ mod tests {
             ..Default::default()
         });
         svc.core_worker.create_actor(aid, handle).unwrap();
-        assert!(svc.core_worker.actor_manager().get_actor_handle(&aid).is_some());
+        assert!(svc
+            .core_worker
+            .actor_manager()
+            .get_actor_handle(&aid)
+            .is_some());
 
         // Kill the actor via the gRPC handler.
         let req = rpc::KillActorRequest {
@@ -1446,7 +1489,11 @@ mod tests {
         assert_eq!(reply, rpc::KillActorReply::default());
 
         // Actor should be removed.
-        assert!(svc.core_worker.actor_manager().get_actor_handle(&aid).is_none());
+        assert!(svc
+            .core_worker
+            .actor_manager()
+            .get_actor_handle(&aid)
+            .is_none());
     }
 
     // ─── Tests for handle_cancel_task ───────────────────────────────
@@ -1503,7 +1550,10 @@ mod tests {
         let svc = make_service();
 
         let req = rpc::RegisterMutableObjectReaderRequest::default();
-        let reply = svc.handle_register_mutable_object_reader(req).await.unwrap();
+        let reply = svc
+            .handle_register_mutable_object_reader(req)
+            .await
+            .unwrap();
         assert_eq!(reply, rpc::RegisterMutableObjectReaderReply::default());
     }
 

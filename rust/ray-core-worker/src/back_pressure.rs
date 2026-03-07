@@ -321,9 +321,7 @@ mod tests {
         let mut handles = Vec::new();
         for _ in 0..3 {
             let ctrl2 = ctrl.clone();
-            handles.push(tokio::spawn(async move {
-                ctrl2.wait_for_space(100).await
-            }));
+            handles.push(tokio::spawn(async move { ctrl2.wait_for_space(100).await }));
         }
 
         tokio::time::sleep(Duration::from_millis(30)).await;

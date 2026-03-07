@@ -718,16 +718,10 @@ mod tests {
         );
 
         // Child tasks from different execution attempts should not collide.
-        let child_task_1 = TaskID::for_normal_task(
-            &job_id,
-            &TaskID::for_execution_attempt(&task_id, 0),
-            0,
-        );
-        let child_task_2 = TaskID::for_normal_task(
-            &job_id,
-            &TaskID::for_execution_attempt(&task_id, 1),
-            0,
-        );
+        let child_task_1 =
+            TaskID::for_normal_task(&job_id, &TaskID::for_execution_attempt(&task_id, 0), 0);
+        let child_task_2 =
+            TaskID::for_normal_task(&job_id, &TaskID::for_execution_attempt(&task_id, 1), 0);
         assert_ne!(child_task_1, child_task_2);
     }
 
@@ -737,8 +731,7 @@ mod tests {
         let job_id = JobID::from_int(199);
         let driver_task_id = TaskID::for_driver_task(&job_id);
         let actor_id = ActorID::of(&job_id, &driver_task_id, 1);
-        let task_id =
-            TaskID::for_actor_task(&job_id, &driver_task_id, 1, &actor_id);
+        let task_id = TaskID::for_actor_task(&job_id, &driver_task_id, 1, &actor_id);
 
         // Test from_index with various indices
         for index in [1u32, 2, ObjectID::MAX_OBJECT_INDEX as u32] {

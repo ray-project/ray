@@ -253,12 +253,7 @@ impl PullManager {
     }
 
     /// Set the spilled URL for an object.
-    pub fn set_spilled_url(
-        &mut self,
-        object_id: &ObjectID,
-        url: String,
-        spill_node_id: NodeID,
-    ) {
+    pub fn set_spilled_url(&mut self, object_id: &ObjectID, url: String, spill_node_id: NodeID) {
         if let Some(req) = self.object_pull_requests.get_mut(object_id) {
             req.spilled_url = url;
             req.spilled_node_id = spill_node_id;

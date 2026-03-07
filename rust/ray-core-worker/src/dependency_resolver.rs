@@ -59,10 +59,7 @@ impl DependencyResolver {
     ///
     /// Returns immediately if `dependencies` is empty or all are locally available.
     /// Otherwise registers waiters for each missing object and awaits them all.
-    pub async fn resolve_dependencies(
-        &self,
-        dependencies: &[ObjectID],
-    ) -> CoreWorkerResult<()> {
+    pub async fn resolve_dependencies(&self, dependencies: &[ObjectID]) -> CoreWorkerResult<()> {
         if dependencies.is_empty() {
             return Ok(());
         }
@@ -291,18 +288,20 @@ mod tests {
         let oid2 = make_oid(2);
 
         // Put oid1 into the store so it's locally available
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         store
-            .put(oid1, RayObject::new(Bytes::from("data"), Bytes::new(), vec![]))
+            .put(
+                oid1,
+                RayObject::new(Bytes::from("data"), Bytes::new(), vec![]),
+            )
             .unwrap();
 
         let resolver = Arc::new(DependencyResolver::with_memory_store(store));
 
         let resolver_clone = Arc::clone(&resolver);
-        let handle = tokio::spawn(async move {
-            resolver_clone.resolve_dependencies(&[oid1, oid2]).await
-        });
+        let handle =
+            tokio::spawn(async move { resolver_clone.resolve_dependencies(&[oid1, oid2]).await });
 
         // Only oid2 should be pending (oid1 is locally available)
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -317,10 +316,13 @@ mod tests {
         let store = Arc::new(CoreWorkerMemoryStore::new());
         let oid1 = make_oid(1);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         store
-            .put(oid1, RayObject::new(Bytes::from("data"), Bytes::new(), vec![]))
+            .put(
+                oid1,
+                RayObject::new(Bytes::from("data"), Bytes::new(), vec![]),
+            )
             .unwrap();
 
         let resolver = DependencyResolver::with_memory_store(store);
@@ -368,8 +370,8 @@ mod tests {
         let store = Arc::new(CoreWorkerMemoryStore::new());
         let oid = make_oid(1);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         // Pre-populate with an "in plasma" marker object.
         store
             .put(oid, RayObject::new(Bytes::new(), Bytes::from("3"), vec![]))
@@ -388,8 +390,8 @@ mod tests {
         let oid1 = make_oid(1);
         let oid2 = make_oid(2);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         let data = RayObject::from_data(Bytes::from("value"));
         store.put(oid1, data.clone()).unwrap();
         store.put(oid2, data.clone()).unwrap();
@@ -410,9 +412,8 @@ mod tests {
         let resolver = Arc::new(DependencyResolver::with_memory_store(store.clone()));
 
         let resolver_clone = Arc::clone(&resolver);
-        let handle = tokio::spawn(async move {
-            resolver_clone.resolve_dependencies(&[oid1, oid2]).await
-        });
+        let handle =
+            tokio::spawn(async move { resolver_clone.resolve_dependencies(&[oid1, oid2]).await });
 
         // Both are pending.
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -436,9 +437,8 @@ mod tests {
         let oid2 = make_oid(2);
 
         let resolver_clone = Arc::clone(&resolver);
-        let handle = tokio::spawn(async move {
-            resolver_clone.resolve_dependencies(&[oid1, oid2]).await
-        });
+        let handle =
+            tokio::spawn(async move { resolver_clone.resolve_dependencies(&[oid1, oid2]).await });
 
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(resolver.num_pending(), 2);
@@ -463,8 +463,8 @@ mod tests {
         let store = Arc::new(CoreWorkerMemoryStore::new());
         let oid = make_oid(10);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         store
             .put(oid, RayObject::from_data(Bytes::from("data")))
             .unwrap();
@@ -513,8 +513,8 @@ mod tests {
         let oid2 = make_oid(2);
         let nested_oid = make_oid(3);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         let data = RayObject::new(Bytes::from("val"), Bytes::new(), vec![nested_oid]);
         store.put(oid1, data.clone()).unwrap();
         store.put(oid2, data.clone()).unwrap();
@@ -532,8 +532,8 @@ mod tests {
         let local_oid = make_oid(1);
         let remote_oid = make_oid(2);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         store
             .put(local_oid, RayObject::from_data(Bytes::from("local")))
             .unwrap();
@@ -575,9 +575,8 @@ mod tests {
         let oid2 = make_oid(2);
 
         let resolver_clone = Arc::clone(&resolver);
-        let handle = tokio::spawn(async move {
-            resolver_clone.resolve_dependencies(&[oid1, oid2]).await
-        });
+        let handle =
+            tokio::spawn(async move { resolver_clone.resolve_dependencies(&[oid1, oid2]).await });
 
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(resolver.num_pending(), 2);
@@ -604,9 +603,8 @@ mod tests {
 
         let resolver_clone = Arc::clone(&resolver);
         let oids_clone = oids.clone();
-        let handle = tokio::spawn(async move {
-            resolver_clone.resolve_dependencies(&oids_clone).await
-        });
+        let handle =
+            tokio::spawn(async move { resolver_clone.resolve_dependencies(&oids_clone).await });
 
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(resolver.num_pending(), 5);
@@ -631,12 +629,8 @@ mod tests {
         // Two separate resolve calls for the same object.
         let r1 = Arc::clone(&resolver);
         let r2 = Arc::clone(&resolver);
-        let h1 = tokio::spawn(async move {
-            r1.resolve_dependencies(&[oid]).await
-        });
-        let h2 = tokio::spawn(async move {
-            r2.resolve_dependencies(&[oid]).await
-        });
+        let h1 = tokio::spawn(async move { r1.resolve_dependencies(&[oid]).await });
+        let h2 = tokio::spawn(async move { r2.resolve_dependencies(&[oid]).await });
 
         tokio::time::sleep(Duration::from_millis(10)).await;
         assert_eq!(resolver.num_pending(), 1);
@@ -657,8 +651,8 @@ mod tests {
         let store = Arc::new(CoreWorkerMemoryStore::new());
         let oid = make_oid(1);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         store
             .put(oid, RayObject::from_data(Bytes::from("data")))
             .unwrap();
@@ -678,8 +672,8 @@ mod tests {
         let store = Arc::new(CoreWorkerMemoryStore::new());
         let oid = make_oid(1);
 
-        use bytes::Bytes;
         use crate::memory_store::RayObject;
+        use bytes::Bytes;
         store
             .put(oid, RayObject::from_data(Bytes::from("data")))
             .unwrap();

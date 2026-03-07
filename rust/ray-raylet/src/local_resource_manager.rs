@@ -297,7 +297,10 @@ mod tests {
     #[test]
     fn test_object_store_memory_draining() {
         let mut total = ResourceSet::new();
-        total.set("object_store_memory".to_string(), FixedPoint::from_f64(100.0));
+        total.set(
+            "object_store_memory".to_string(),
+            FixedPoint::from_f64(100.0),
+        );
         let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
 
         // Initially idle
@@ -305,7 +308,10 @@ mod tests {
 
         // Allocate some object store memory
         let mut req = ResourceSet::new();
-        req.set("object_store_memory".to_string(), FixedPoint::from_f64(50.0));
+        req.set(
+            "object_store_memory".to_string(),
+            FixedPoint::from_f64(50.0),
+        );
         let alloc = mgr.allocate_local_task_resources(&req).unwrap();
         assert!(!mgr.is_local_node_idle());
 
@@ -338,19 +344,17 @@ mod tests {
 
         // Release only CPU — still not idle (CUSTOM still allocated)
         let mut cpu_only = crate::scheduling_resources::TaskResourceInstances::new();
-        cpu_only.resources.insert(
-            "CPU".to_string(),
-            vec![FixedPoint::from_f64(1.0)],
-        );
+        cpu_only
+            .resources
+            .insert("CPU".to_string(), vec![FixedPoint::from_f64(1.0)]);
         mgr.release_worker_resources(&cpu_only);
         assert!(!mgr.is_local_node_idle());
 
         // Release CUSTOM — now idle
         let mut custom_only = crate::scheduling_resources::TaskResourceInstances::new();
-        custom_only.resources.insert(
-            "CUSTOM".to_string(),
-            vec![FixedPoint::from_f64(1.0)],
-        );
+        custom_only
+            .resources
+            .insert("CUSTOM".to_string(), vec![FixedPoint::from_f64(1.0)]);
         mgr.release_worker_resources(&custom_only);
         assert!(mgr.is_local_node_idle());
 
@@ -419,7 +423,8 @@ mod tests {
     /// Test local_node_id accessor.
     #[test]
     fn test_local_node_id() {
-        let mgr = LocalResourceManager::new("test-node".to_string(), make_resources(), HashMap::new());
+        let mgr =
+            LocalResourceManager::new("test-node".to_string(), make_resources(), HashMap::new());
         assert_eq!(mgr.local_node_id(), "test-node");
     }
 
@@ -550,10 +555,7 @@ mod tests {
         let mgr = LocalResourceManager::new("node1".to_string(), total, HashMap::new());
 
         let v0 = mgr.version();
-        mgr.add_local_resource_instances(
-            "GPU".to_string(),
-            vec![FixedPoint::from_f64(1.0)],
-        );
+        mgr.add_local_resource_instances("GPU".to_string(), vec![FixedPoint::from_f64(1.0)]);
         let v1 = mgr.version();
         assert!(v1 > v0);
 

@@ -599,11 +599,7 @@ impl GcsPlacementGroupScheduler {
     }
 
     /// Acquire (reserve) resources for the scheduled bundles.
-    pub fn acquire_bundle_resources(
-        &self,
-        schedule: &ScheduleMap,
-        bundles: &[BundleSpec],
-    ) -> bool {
+    pub fn acquire_bundle_resources(&self, schedule: &ScheduleMap, bundles: &[BundleSpec]) -> bool {
         let mut view = self.resource_view.write();
 
         // Verify all resources are still available
@@ -843,10 +839,7 @@ mod tests {
 
     #[test]
     fn test_pack_single_bundle() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(8.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(8.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(2.0)];
@@ -870,10 +863,7 @@ mod tests {
     #[test]
     fn test_pack_multiple_bundles_same_node() {
         // node1 has 8 CPU (enough for all 3 bundles), node2 only has 2 CPU
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(8.0)),
-            ("node2", make_node(2.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(8.0)), ("node2", make_node(2.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(2.0), make_bundle(2.0), make_bundle(2.0)];
@@ -948,10 +938,7 @@ mod tests {
 
     #[test]
     fn test_spread_fallback_when_not_enough_nodes() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(1.0), make_bundle(1.0), make_bundle(1.0)];
@@ -975,10 +962,7 @@ mod tests {
 
     #[test]
     fn test_strict_pack_all_on_one_node() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(8.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(8.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(2.0), make_bundle(2.0), make_bundle(2.0)];
@@ -1005,10 +989,7 @@ mod tests {
 
     #[test]
     fn test_strict_pack_with_soft_target() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(8.0)),
-            ("node2", make_node(8.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(8.0)), ("node2", make_node(8.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(2.0), make_bundle(2.0)];
@@ -1032,10 +1013,7 @@ mod tests {
 
     #[test]
     fn test_strict_pack_infeasible_no_single_node_fits() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(3.0), make_bundle(3.0)];
@@ -1084,10 +1062,7 @@ mod tests {
 
     #[test]
     fn test_strict_spread_fails_not_enough_nodes() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(1.0), make_bundle(1.0), make_bundle(1.0)];
@@ -1219,10 +1194,7 @@ mod tests {
 
     #[test]
     fn test_commit_bundle_resources_updates_index() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let mut schedule = ScheduleMap::new();
@@ -1281,10 +1253,7 @@ mod tests {
 
     #[test]
     fn test_remove_dead_node() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let mut schedule = ScheduleMap::new();
@@ -1344,10 +1313,7 @@ mod tests {
     #[test]
     fn test_pack_spills_to_second_node() {
         // node1 can fit 2 bundles, node2 can fit 2 bundles, need 3 total
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(2.0), make_bundle(2.0), make_bundle(2.0)];
@@ -1374,10 +1340,7 @@ mod tests {
 
     #[test]
     fn test_pack_failed_insufficient_total_resources() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(2.0)),
-            ("node2", make_node(2.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(2.0)), ("node2", make_node(2.0))]);
 
         let pg_id = make_pg_id(1);
         // Need 10 CPU total, only 4 available
@@ -1398,10 +1361,7 @@ mod tests {
 
     #[test]
     fn test_spread_with_single_bundle() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(1.0)];
@@ -1441,10 +1401,7 @@ mod tests {
     #[test]
     fn test_strict_pack_soft_target_insufficient_falls_back() {
         // node1 can't fit both, node2 can
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(2.0)),
-            ("node2", make_node(8.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(2.0)), ("node2", make_node(8.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(3.0), make_bundle(3.0)];
@@ -1469,10 +1426,7 @@ mod tests {
 
     #[test]
     fn test_strict_spread_with_existing_locations_rejects_same_node() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let mut existing = HashMap::new();
@@ -1553,10 +1507,7 @@ mod tests {
 
     #[test]
     fn test_lease_commit_tracking() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(1.0), make_bundle(1.0)];
@@ -1716,10 +1667,7 @@ mod tests {
 
     #[test]
     fn test_remove_node_cleans_up_bundle_index() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg1 = make_pg_id(1);
         let pg2 = make_pg_id(2);
@@ -1792,7 +1740,10 @@ mod tests {
             &HashMap::new(),
         );
         assert!(
-            matches!(result, SchedulingResult::Infeasible | SchedulingResult::Failed),
+            matches!(
+                result,
+                SchedulingResult::Infeasible | SchedulingResult::Failed
+            ),
             "scheduling with zero nodes should fail"
         );
     }
@@ -1811,7 +1762,10 @@ mod tests {
             &HashMap::new(),
         );
         assert!(
-            matches!(result, SchedulingResult::Infeasible | SchedulingResult::Failed),
+            matches!(
+                result,
+                SchedulingResult::Infeasible | SchedulingResult::Failed
+            ),
             "scheduling with zero nodes should fail"
         );
     }
@@ -1830,7 +1784,10 @@ mod tests {
             &HashMap::new(),
         );
         assert!(
-            matches!(result, SchedulingResult::Infeasible | SchedulingResult::Failed),
+            matches!(
+                result,
+                SchedulingResult::Infeasible | SchedulingResult::Failed
+            ),
             "scheduling with zero nodes should fail"
         );
     }
@@ -1849,7 +1806,10 @@ mod tests {
             &HashMap::new(),
         );
         assert!(
-            matches!(result, SchedulingResult::Infeasible | SchedulingResult::Failed),
+            matches!(
+                result,
+                SchedulingResult::Infeasible | SchedulingResult::Failed
+            ),
             "scheduling with zero nodes should fail"
         );
     }
@@ -1857,10 +1817,7 @@ mod tests {
     /// Port of TestSpreadSchedulePlacementGroupSuccess.
     #[test]
     fn test_spread_schedule_placement_group_success() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(1.0), make_bundle(1.0)];
         let result = scheduler.schedule_placement_group(
@@ -1884,10 +1841,7 @@ mod tests {
     /// Port of TestPackSchedulePlacementGroupSuccess.
     #[test]
     fn test_pack_schedule_placement_group_success() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(1.0), make_bundle(1.0)];
         let result = scheduler.schedule_placement_group(
@@ -1908,10 +1862,7 @@ mod tests {
     /// Port of TestStrictPackSchedulePlacementGroupSuccess.
     #[test]
     fn test_strict_pack_schedule_placement_group_success() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(1.0), make_bundle(1.0)];
         let result = scheduler.schedule_placement_group(
@@ -1935,10 +1886,7 @@ mod tests {
     /// Port of TestSpreadStrategyResourceCheck.
     #[test]
     fn test_spread_strategy_resource_check() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(2.0)),
-            ("node2", make_node(2.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(2.0)), ("node2", make_node(2.0))]);
         let pg_id = make_pg_id(1);
         // Each bundle needs 3 CPU, but nodes only have 2
         let bundles = vec![make_bundle(3.0), make_bundle(3.0)];
@@ -1955,10 +1903,7 @@ mod tests {
     /// Port of TestStrictPackStrategyResourceCheck.
     #[test]
     fn test_strict_pack_strategy_resource_check() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(2.0)),
-            ("node2", make_node(2.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(2.0)), ("node2", make_node(2.0))]);
         let pg_id = make_pg_id(1);
         // Need 5 CPU total on one node, but max is 2
         let bundles = vec![make_bundle(3.0), make_bundle(2.0)];
@@ -1975,10 +1920,7 @@ mod tests {
     /// Port of TestStrictSpreadStrategyResourceCheck.
     #[test]
     fn test_strict_spread_strategy_resource_check() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(2.0)),
-            ("node2", make_node(2.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(2.0)), ("node2", make_node(2.0))]);
         let pg_id = make_pg_id(1);
         // 3 bundles with strict spread but only 2 nodes
         let bundles = vec![make_bundle(1.0), make_bundle(1.0), make_bundle(1.0)];
@@ -2026,10 +1968,7 @@ mod tests {
     /// Port of TestStrictPackStrategyBalancedScheduling — multiple PGs balanced across nodes.
     #[test]
     fn test_strict_pack_balanced_scheduling() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         // Schedule first PG — should go on one node
         let pg1 = make_pg_id(1);
@@ -2074,10 +2013,7 @@ mod tests {
     /// Port of DestroyPlacementGroup.
     #[test]
     fn test_destroy_placement_group() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let bundles = vec![make_bundle(2.0), make_bundle(2.0)];
@@ -2121,10 +2057,7 @@ mod tests {
     /// Port of TestBundleLocationIndex.
     #[test]
     fn test_bundle_location_index() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(8.0)),
-            ("node2", make_node(8.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(8.0)), ("node2", make_node(8.0))]);
 
         let pg1 = make_pg_id(1);
         let pg2 = make_pg_id(2);
@@ -2178,10 +2111,7 @@ mod tests {
     /// Port of TestPackStrategyLargeBundlesScheduling.
     #[test]
     fn test_pack_strategy_large_bundles_scheduling() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(8.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(8.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         // 3 bundles each needing 3 CPU = 9 total, distributed across nodes
@@ -2207,10 +2137,7 @@ mod tests {
     /// Port of TestBundlesRemovedWhenNodeDead — remove_node cleans bundle index.
     #[test]
     fn test_bundles_removed_when_node_dead() {
-        let scheduler = setup_scheduler(vec![
-            ("node1", make_node(4.0)),
-            ("node2", make_node(4.0)),
-        ]);
+        let scheduler = setup_scheduler(vec![("node1", make_node(4.0)), ("node2", make_node(4.0))]);
 
         let pg_id = make_pg_id(1);
         let mut schedule = ScheduleMap::new();

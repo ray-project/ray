@@ -296,7 +296,10 @@ fn format_tags(tags: &[(String, String)]) -> String {
     if tags.is_empty() {
         return String::new();
     }
-    let pairs: Vec<String> = tags.iter().map(|(k, v)| format!("{}=\"{}\"", k, v)).collect();
+    let pairs: Vec<String> = tags
+        .iter()
+        .map(|(k, v)| format!("{}=\"{}\"", k, v))
+        .collect();
     format!("{{{}}}", pairs.join(","))
 }
 

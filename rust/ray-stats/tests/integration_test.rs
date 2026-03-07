@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-use ray_stats::exporter::{ExporterConfig, MetricSnapshot, MetricsSink, MetricsExporter};
+use ray_stats::exporter::{ExporterConfig, MetricSnapshot, MetricsExporter, MetricsSink};
 use ray_stats::{Counter, Gauge, Histogram};
 
 /// A sink that collects snapshots for inspection.
@@ -80,7 +80,8 @@ fn test_full_metrics_pipeline() {
             MetricSnapshot::Histogram { tags, .. } => tags,
         };
         assert!(
-            tags.iter().any(|(k, v)| k == "cluster" && v == "test-cluster"),
+            tags.iter()
+                .any(|(k, v)| k == "cluster" && v == "test-cluster"),
             "global tag 'cluster=test-cluster' should be present"
         );
     }
@@ -190,5 +191,8 @@ fn test_disabled_exporter_no_output() {
     }));
 
     exporter.export();
-    assert!(collected.lock().is_empty(), "disabled exporter should produce no output");
+    assert!(
+        collected.lock().is_empty(),
+        "disabled exporter should produce no output"
+    );
 }

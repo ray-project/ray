@@ -154,7 +154,9 @@ impl RetryableGrpcClient {
         Fut: Future<Output = Result<T, Status>>,
     {
         // Check pending bytes limit
-        let prev = self.pending_bytes.fetch_add(request_size, Ordering::Relaxed);
+        let prev = self
+            .pending_bytes
+            .fetch_add(request_size, Ordering::Relaxed);
         if request_size > 0 && prev + request_size > self.retry_config.max_pending_bytes {
             self.pending_bytes
                 .fetch_sub(request_size, Ordering::Relaxed);
@@ -227,9 +229,7 @@ impl RetryableGrpcClient {
 
                     // Exponential backoff capped at max_delay
                     delay = std::cmp::min(
-                        Duration::from_secs_f64(
-                            delay.as_secs_f64() * self.retry_config.multiplier,
-                        ),
+                        Duration::from_secs_f64(delay.as_secs_f64() * self.retry_config.multiplier),
                         self.retry_config.max_delay,
                     );
                 }
@@ -459,9 +459,7 @@ mod tests {
             ..fast_retry_config()
         });
         let result: Result<i32, Status> = client
-            .call_with_retry(50, None, || async {
-                Err(Status::internal("fail"))
-            })
+            .call_with_retry(50, None, || async { Err(Status::internal("fail")) })
             .await;
         assert!(result.is_err());
         assert_eq!(client.pending_bytes(), 0);
@@ -527,9 +525,7 @@ mod tests {
         assert!(client.is_connected());
 
         let _: Result<i32, Status> = client
-            .call_with_retry(0, None, || async {
-                Err(Status::unavailable("down"))
-            })
+            .call_with_retry(0, None, || async { Err(Status::unavailable("down")) })
             .await;
         assert!(!client.is_connected());
     }
@@ -556,8 +552,7 @@ mod tests {
         for i in 0..10 {
             let c = client.clone();
             handles.push(tokio::spawn(async move {
-                c.call_with_retry(100, None, || async move { Ok(i) })
-                    .await
+                c.call_with_retry(100, None, || async move { Ok(i) }).await
             }));
         }
         let mut results = Vec::new();
@@ -575,9 +570,7 @@ mod tests {
 
         // Both share the same connection state
         let _: Result<i32, Status> = client
-            .call_with_retry(0, None, || async {
-                Err(Status::unavailable("down"))
-            })
+            .call_with_retry(0, None, || async { Err(Status::unavailable("down")) })
             .await;
         assert_eq!(clone.connection_state(), ConnectionState::Disconnected);
     }
@@ -667,17 +660,13 @@ mod tests {
         let cc = call_count.clone();
         // Use a short timeout override (like C++ reinit with 100ms timeout).
         let result: Result<i32, Status> = client
-            .call_with_retry(
-                0,
-                Some(Duration::from_millis(100)),
-                || {
-                    let cc = cc.clone();
-                    async move {
-                        cc.fetch_add(1, Ordering::Relaxed);
-                        Err(Status::unavailable("server frozen"))
-                    }
-                },
-            )
+            .call_with_retry(0, Some(Duration::from_millis(100)), || {
+                let cc = cc.clone();
+                async move {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                    Err(Status::unavailable("server frozen"))
+                }
+            })
             .await;
         // Should time out with DeadlineExceeded.
         assert_eq!(result.unwrap_err().code(), Code::DeadlineExceeded);
@@ -698,11 +687,9 @@ mod tests {
             ..fast_retry_config()
         });
         let result: Result<i32, Status> = client1
-            .call_with_retry(
-                0,
-                Some(Duration::from_millis(50)),
-                || async { Err(Status::unavailable("frozen")) },
-            )
+            .call_with_retry(0, Some(Duration::from_millis(50)), || async {
+                Err(Status::unavailable("frozen"))
+            })
             .await;
         assert_eq!(result.unwrap_err().code(), Code::DeadlineExceeded);
         // Client is now "dead" (disconnected).
@@ -744,17 +731,13 @@ mod tests {
         // Override with short 100ms timeout (like PingTimeout method_timeout_ms=100).
         let start = tokio::time::Instant::now();
         let result: Result<i32, Status> = client
-            .call_with_retry(
-                0,
-                Some(Duration::from_millis(100)),
-                || {
-                    let cc = cc.clone();
-                    async move {
-                        cc.fetch_add(1, Ordering::Relaxed);
-                        Err(Status::unavailable("frozen"))
-                    }
-                },
-            )
+            .call_with_retry(0, Some(Duration::from_millis(100)), || {
+                let cc = cc.clone();
+                async move {
+                    cc.fetch_add(1, Ordering::Relaxed);
+                    Err(Status::unavailable("frozen"))
+                }
+            })
             .await;
         let elapsed = start.elapsed();
         assert_eq!(result.unwrap_err().code(), Code::DeadlineExceeded);
@@ -839,9 +822,8 @@ mod tests {
             let c = client.clone();
             let ic = init_count.clone();
             handles.push(tokio::spawn(async move {
-                let result: Result<(), Status> = c
-                    .call_with_retry(0, None, || async { Ok(()) })
-                    .await;
+                let result: Result<(), Status> =
+                    c.call_with_retry(0, None, || async { Ok(()) }).await;
                 if result.is_ok() {
                     ic.fetch_add(1, Ordering::Relaxed);
                 }

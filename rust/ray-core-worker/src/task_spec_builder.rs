@@ -233,7 +233,10 @@ mod tests {
         assert_eq!(spec.r#type, rpc::TaskType::ActorTask as i32);
         let actor_spec = spec.actor_task_spec.unwrap();
         assert_eq!(actor_spec.actor_id, aid.binary());
-        assert_eq!(actor_spec.actor_creation_dummy_object_id, dummy_oid.binary());
+        assert_eq!(
+            actor_spec.actor_creation_dummy_object_id,
+            dummy_oid.binary()
+        );
         assert_eq!(actor_spec.sequence_number, 42);
     }
 

@@ -25,8 +25,7 @@ pub mod k8s {
     pub const CA_CERT_PATH: &str = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
 
     /// Default path to the Kubernetes namespace file.
-    pub const NAMESPACE_PATH: &str =
-        "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
+    pub const NAMESPACE_PATH: &str = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
 
     /// Read the K8s service account token from the default path.
     pub fn read_service_account_token() -> Option<String> {
@@ -267,8 +266,7 @@ impl TlsConfig {
 
     /// Check if TLS is configured (any cert paths set).
     pub fn is_enabled(&self) -> bool {
-        self.ca_cert_path.is_some()
-            || self.client_cert_path.is_some()
+        self.ca_cert_path.is_some() || self.client_cert_path.is_some()
     }
 
     /// Check if mutual TLS is configured.
@@ -339,7 +337,12 @@ mod tests {
             AuthInterceptor::new(AuthenticationMode::ClusterAuth, Some("secret123".into()));
         let request = Request::new(());
         let result = interceptor.intercept_request(request).unwrap();
-        let auth = result.metadata().get("authorization").unwrap().to_str().unwrap();
+        let auth = result
+            .metadata()
+            .get("authorization")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert_eq!(auth, "Bearer secret123");
     }
 
@@ -431,7 +434,12 @@ mod tests {
             AuthInterceptor::from_token_file(AuthenticationMode::ClusterAuth, &token_path);
         let request = Request::new(());
         let result = interceptor.intercept_request(request).unwrap();
-        let auth = result.metadata().get("authorization").unwrap().to_str().unwrap();
+        let auth = result
+            .metadata()
+            .get("authorization")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert_eq!(auth, "Bearer file-token-123");
     }
 
@@ -583,8 +591,7 @@ mod tests {
 
     #[test]
     fn test_interceptor_trait_rejects_unauthenticated() {
-        let mut auth =
-            AuthInterceptor::new(AuthenticationMode::ClusterAuth, Some("secret".into()));
+        let mut auth = AuthInterceptor::new(AuthenticationMode::ClusterAuth, Some("secret".into()));
         let request = Request::new(());
         // No auth header — should be rejected.
         use tonic::service::Interceptor;
@@ -595,8 +602,7 @@ mod tests {
 
     #[test]
     fn test_interceptor_trait_accepts_valid_token() {
-        let mut auth =
-            AuthInterceptor::new(AuthenticationMode::ClusterAuth, Some("secret".into()));
+        let mut auth = AuthInterceptor::new(AuthenticationMode::ClusterAuth, Some("secret".into()));
         let mut request = Request::new(());
         request
             .metadata_mut()

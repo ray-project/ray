@@ -64,7 +64,10 @@ async fn main() {
     let nm_clone = Arc::clone(&nm);
     let _raylet_handle = tokio::spawn(async move { nm_clone.run().await });
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    println!("       Raylet registered (node={})", &raylet_node_id.hex()[..16]);
+    println!(
+        "       Raylet registered (node={})",
+        &raylet_node_id.hex()[..16]
+    );
 
     // ── Step 2: Create the actor worker with stateful Counter callback ──
     println!("[3/8] Creating actor worker with Counter state...");
@@ -101,7 +104,10 @@ async fn main() {
                 1 // default increment by 1
             };
             let new_val = counter_cb.fetch_add(amount, Ordering::Relaxed) + amount;
-            println!("       [actor] increment({}) -> count is now {}", amount, new_val);
+            println!(
+                "       [actor] increment({}) -> count is now {}",
+                amount, new_val
+            );
             new_val
         } else if name == "get_count" {
             let val = counter_cb.load(Ordering::Relaxed);
@@ -166,9 +172,7 @@ async fn main() {
         })
         .await
         .unwrap();
-    assert!(
-        register_reply.status.is_none() || register_reply.status.as_ref().unwrap().code == 0
-    );
+    assert!(register_reply.status.is_none() || register_reply.status.as_ref().unwrap().code == 0);
     println!(
         "       Actor registered: name=Counter, id={}",
         &actor_id.hex()[..16]
@@ -208,8 +212,7 @@ async fn main() {
                 .connect()
                 .await
                 .unwrap();
-            let mut client =
-                rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
+            let mut client = rpc::core_worker_service_client::CoreWorkerServiceClient::new(channel);
             client
                 .push_task(rpc::PushTaskRequest {
                     intended_worker_id: worker_id_bytes,

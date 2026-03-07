@@ -126,12 +126,10 @@ pub async fn wait_for_shutdown_signal() -> bool {
     {
         use tokio::signal::unix::{signal, SignalKind};
 
-        let mut sigterm = signal(SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
-        let mut sigint = signal(SignalKind::interrupt())
-            .expect("failed to install SIGINT handler");
-        let mut sighup = signal(SignalKind::hangup())
-            .expect("failed to install SIGHUP handler");
+        let mut sigterm =
+            signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+        let mut sigint = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+        let mut sighup = signal(SignalKind::hangup()).expect("failed to install SIGHUP handler");
 
         tokio::select! {
             _ = sigterm.recv() => {
@@ -376,11 +374,9 @@ mod tests {
 
         unsafe {
             match fork() {
-                Ok(ForkResult::Child) => {
-                    loop {
-                        std::hint::spin_loop();
-                    }
-                }
+                Ok(ForkResult::Child) => loop {
+                    std::hint::spin_loop();
+                },
                 Ok(ForkResult::Parent { child }) => {
                     thread::sleep(Duration::from_millis(100));
                     let result = signal::kill(child, Signal::SIGBUS);

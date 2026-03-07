@@ -402,7 +402,9 @@ mod tests {
         mgr.handle_create_placement_group(make_pg(1, "dup_pg"))
             .await
             .unwrap();
-        let result = mgr.handle_create_placement_group(make_pg(2, "dup_pg")).await;
+        let result = mgr
+            .handle_create_placement_group(make_pg(2, "dup_pg"))
+            .await;
         assert!(result.is_err()); // AlreadyExists
     }
 

@@ -53,8 +53,7 @@ impl std::fmt::Display for TaskState {
 }
 
 /// Callback for retrying a task after a delay.
-pub type RetryTaskCallback =
-    Box<dyn Fn(&TaskSpec, u32) -> CoreWorkerResult<()> + Send + Sync>;
+pub type RetryTaskCallback = Box<dyn Fn(&TaskSpec, u32) -> CoreWorkerResult<()> + Send + Sync>;
 
 /// A single tracked task entry.
 struct TaskEntry {
@@ -194,11 +193,8 @@ impl TaskManager {
 
         // Register return objects as owned in the reference counter.
         for oid in &return_ids {
-            self.reference_counter.add_owned_object(
-                *oid,
-                caller_address.clone(),
-                vec![],
-            );
+            self.reference_counter
+                .add_owned_object(*oid, caller_address.clone(), vec![]);
         }
 
         // Track argument references.
@@ -215,14 +211,14 @@ impl TaskManager {
             .update_submitted_task_references(&arg_ids);
 
         // Record task event.
-        self.task_event_buffer.record_task_status_event(
-            &task_id,
-            TaskState::PendingArgsAvail,
-            0,
-        );
+        self.task_event_buffer
+            .record_task_status_event(&task_id, TaskState::PendingArgsAvail, 0);
 
         let mut inner = self.inner.lock();
-        *inner.state_counts.entry(TaskState::PendingArgsAvail).or_insert(0) += 1;
+        *inner
+            .state_counts
+            .entry(TaskState::PendingArgsAvail)
+            .or_insert(0) += 1;
         inner.num_pending_tasks += 1;
         inner.submissible_tasks.insert(task_id, entry);
 
@@ -247,9 +243,15 @@ impl TaskManager {
             }
         };
         if let Some((old, attempt)) = transition {
-            Self::update_state_counts(&mut inner.state_counts, old, TaskState::PendingNodeAssignment);
+            Self::update_state_counts(
+                &mut inner.state_counts,
+                old,
+                TaskState::PendingNodeAssignment,
+            );
             self.task_event_buffer.record_task_status_event(
-                task_id, TaskState::PendingNodeAssignment, attempt,
+                task_id,
+                TaskState::PendingNodeAssignment,
+                attempt,
             );
         }
     }
@@ -281,7 +283,9 @@ impl TaskManager {
         if let Some((old, attempt)) = transition {
             Self::update_state_counts(&mut inner.state_counts, old, TaskState::SubmittedToWorker);
             self.task_event_buffer.record_task_status_event(
-                task_id, TaskState::SubmittedToWorker, attempt,
+                task_id,
+                TaskState::SubmittedToWorker,
+                attempt,
             );
         }
     }
@@ -328,9 +332,8 @@ impl TaskManager {
             };
 
             Self::update_state_counts(&mut inner.state_counts, old_state, TaskState::Finished);
-            self.task_event_buffer.record_task_status_event(
-                task_id, TaskState::Finished, attempt,
-            );
+            self.task_event_buffer
+                .record_task_status_event(task_id, TaskState::Finished, attempt);
             arg_ids = args;
 
             inner.num_pending_tasks = inner.num_pending_tasks.saturating_sub(1);
@@ -347,11 +350,7 @@ impl TaskManager {
     /// Permanently fail a pending task.
     ///
     /// Marks return objects as failed in the memory store and removes the task.
-    pub fn fail_pending_task(
-        &self,
-        task_id: &[u8],
-        error_message: &str,
-    ) -> CoreWorkerResult<()> {
+    pub fn fail_pending_task(&self, task_id: &[u8], error_message: &str) -> CoreWorkerResult<()> {
         let (return_ids, arg_ids);
         {
             let mut inner = self.inner.lock();
@@ -381,9 +380,8 @@ impl TaskManager {
             };
 
             Self::update_state_counts(&mut inner.state_counts, old_state, TaskState::Failed);
-            self.task_event_buffer.record_task_status_event(
-                task_id, TaskState::Failed, attempt,
-            );
+            self.task_event_buffer
+                .record_task_status_event(task_id, TaskState::Failed, attempt);
             return_ids = rets;
             arg_ids = args;
 
@@ -476,11 +474,15 @@ impl TaskManager {
             let (old, fail_attempt, old2, retry_attempt, spec, delay_ms) = retry_data;
             Self::update_state_counts(&mut inner.state_counts, old, TaskState::Failed);
             self.task_event_buffer.record_task_status_event(
-                task_id, TaskState::Failed, fail_attempt,
+                task_id,
+                TaskState::Failed,
+                fail_attempt,
             );
             Self::update_state_counts(&mut inner.state_counts, old2, TaskState::PendingArgsAvail);
             self.task_event_buffer.record_task_status_event(
-                task_id, TaskState::PendingArgsAvail, retry_attempt,
+                task_id,
+                TaskState::PendingArgsAvail,
+                retry_attempt,
             );
 
             retry_info = Some((spec, delay_ms));
@@ -757,7 +759,8 @@ mod tests {
         let task_id = spec.task_id.clone();
 
         tm.add_pending_task(make_address(), spec, 0);
-        tm.fail_pending_task(&task_id, "something went wrong").unwrap();
+        tm.fail_pending_task(&task_id, "something went wrong")
+            .unwrap();
 
         assert_eq!(tm.get_task_state(&task_id), Some(TaskState::Failed));
         assert_eq!(tm.num_pending_tasks(), 0);
@@ -1061,7 +1064,8 @@ mod tests {
         let task_id = spec.task_id.clone();
 
         let return_ids = tm.add_pending_task(make_address(), spec, 0);
-        tm.fail_pending_task(&task_id, "task execution failed").unwrap();
+        tm.fail_pending_task(&task_id, "task execution failed")
+            .unwrap();
 
         // Verify error object is in the store.
         let obj = store.get(&return_ids[0]).unwrap();
@@ -1210,10 +1214,12 @@ mod tests {
         let task_id = spec.task_id.clone();
         tm.add_pending_task(make_address(), spec, 3);
 
-        tm.fail_or_retry_pending_task(&task_id, "error", false).unwrap();
+        tm.fail_or_retry_pending_task(&task_id, "error", false)
+            .unwrap();
         assert_eq!(retry_count.load(Ordering::Relaxed), 1);
 
-        tm.fail_or_retry_pending_task(&task_id, "error", false).unwrap();
+        tm.fail_or_retry_pending_task(&task_id, "error", false)
+            .unwrap();
         assert_eq!(retry_count.load(Ordering::Relaxed), 2);
     }
 

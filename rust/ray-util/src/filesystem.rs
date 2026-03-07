@@ -188,10 +188,7 @@ mod tests {
     #[test]
     fn test_get_socket_path() {
         let path = get_socket_path("test_session", "raylet");
-        assert_eq!(
-            path,
-            PathBuf::from("/tmp/ray/test_session/sockets/raylet")
-        );
+        assert_eq!(path, PathBuf::from("/tmp/ray/test_session/sockets/raylet"));
     }
 
     #[test]
@@ -206,7 +203,10 @@ mod tests {
         assert!(dir.exists());
         // On macOS, /tmp may resolve to /private/tmp, so check the filename part.
         let dir_name = dir.file_name().unwrap().to_str().unwrap();
-        assert!(dir_name.starts_with("test_"), "dir name should start with prefix: {dir_name}");
+        assert!(
+            dir_name.starts_with("test_"),
+            "dir name should start with prefix: {dir_name}"
+        );
         // Cleanup.
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -411,8 +411,7 @@ mod tests {
             let fp = file_path.clone();
             let expected = expected_content.to_string();
             readers.push(std::thread::spawn(move || {
-                let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_secs(5);
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
                 loop {
                     if let Ok(content) = std::fs::read_to_string(&fp) {
                         assert_eq!(content, expected);
@@ -498,11 +497,9 @@ mod tests {
         assert_eq!(std::thread::current().id(), creator_thread_id);
 
         // Different thread: should not match.
-        let result = std::thread::spawn(move || {
-            std::thread::current().id() == creator_thread_id
-        })
-        .join()
-        .unwrap();
+        let result = std::thread::spawn(move || std::thread::current().id() == creator_thread_id)
+            .join()
+            .unwrap();
         assert!(!result, "different thread should have different thread ID");
     }
 }

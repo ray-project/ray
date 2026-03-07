@@ -293,8 +293,9 @@ mod tests {
         let mgr = GcsTaskManager::new(None);
         let num_events = 100usize;
 
-        let events: Vec<ray_proto::ray::rpc::TaskEvents> =
-            (0..num_events).map(|i| make_task_event(i as u8, 0)).collect();
+        let events: Vec<ray_proto::ray::rpc::TaskEvents> = (0..num_events)
+            .map(|i| make_task_event(i as u8, 0))
+            .collect();
 
         let data = ray_proto::ray::rpc::TaskEventData {
             events_by_task: events,
@@ -434,10 +435,7 @@ mod tests {
         // Make events with distinct first bytes to get different task IDs
         // but same job_id derivation
         let data = ray_proto::ray::rpc::TaskEventData {
-            events_by_task: vec![
-                make_task_event(1, 0),
-                make_task_event(2, 0),
-            ],
+            events_by_task: vec![make_task_event(1, 0), make_task_event(2, 0)],
             ..Default::default()
         };
         mgr.handle_add_task_event_data(data);

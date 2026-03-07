@@ -92,7 +92,8 @@ fn test_actor_id_of_conformance() {
         let actor_id = ActorID::of(&job_id, &task_id, case.input.counter);
         let result_hex = actor_id.hex();
         assert_eq!(
-            result_hex, case.expected.actor_id_hex,
+            result_hex,
+            case.expected.actor_id_hex,
             "FAIL [{}]: ActorID::of(job={}, task={}, counter={}) = {}, expected {}",
             case.description,
             case.input.job_id_int,
@@ -135,7 +136,8 @@ fn test_object_id_from_index_conformance() {
         let object_id = ObjectID::from_index(&task_id, case.input.index);
         let result_hex = object_id.hex();
         assert_eq!(
-            result_hex, case.expected.object_id_hex,
+            result_hex,
+            case.expected.object_id_hex,
             "FAIL [{}]: ObjectID::from_index(task={}, index={}) = {}, expected {}",
             case.description,
             case.input.task_id_hex,

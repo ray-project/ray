@@ -190,10 +190,7 @@ impl RayletClient for RayletRpcClient {
         impl_raylet_rpc!(self, cancel_local_task, req)
     }
 
-    async fn global_gc(
-        &self,
-        req: rpc::GlobalGcRequest,
-    ) -> Result<rpc::GlobalGcReply, Status> {
+    async fn global_gc(&self, req: rpc::GlobalGcRequest) -> Result<rpc::GlobalGcReply, Status> {
         impl_raylet_rpc!(self, global_gc, req)
     }
 }
@@ -368,8 +365,8 @@ pub mod fake {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::fake::FakeRayletClient;
+    use super::*;
 
     #[tokio::test]
     async fn test_fake_lease_rpcs() {

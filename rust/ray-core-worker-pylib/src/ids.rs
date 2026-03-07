@@ -184,7 +184,9 @@ py_id_wrapper!(PyJobID, id::JobID, {
     /// Construct a JobID from an integer.
     #[staticmethod]
     fn py_from_int(value: u32) -> Self {
-        Self { inner: id::JobID::from_int(value) }
+        Self {
+            inner: id::JobID::from_int(value),
+        }
     }
 
     /// Convert to the integer representation.

@@ -91,18 +91,18 @@ pub async fn start_test_gcs_server_with_config(
         let worker_manager = Arc::new(ray_gcs::worker_manager::GcsWorkerManager::new(
             table_storage.clone(),
         ));
-        let placement_group_manager =
-            Arc::new(ray_gcs::placement_group_manager::GcsPlacementGroupManager::new(
-                table_storage.clone(),
-            ));
+        let placement_group_manager = Arc::new(
+            ray_gcs::placement_group_manager::GcsPlacementGroupManager::new(table_storage.clone()),
+        );
         let task_manager = Arc::new(ray_gcs::task_manager::GcsTaskManager::new(None));
         let pubsub_handler = Arc::new(ray_gcs::pubsub_handler::InternalPubSubHandler::new());
-        let autoscaler_state_manager =
-            Arc::new(ray_gcs::autoscaler_state_manager::GcsAutoscalerStateManager::new(
+        let autoscaler_state_manager = Arc::new(
+            ray_gcs::autoscaler_state_manager::GcsAutoscalerStateManager::new(
                 String::new(),
                 Arc::clone(&node_manager),
                 Arc::clone(&resource_manager),
-            ));
+            ),
+        );
 
         // Set cluster ID (random 28 bytes, matching C++ ClusterID format)
         let cluster_id: Vec<u8> = (0..28).map(|_| rand::random::<u8>()).collect();
@@ -231,9 +231,7 @@ pub async fn start_test_raylet_server() -> TestRayletServer {
 
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
         tonic::transport::Server::builder()
-            .add_service(
-                rpc::node_manager_service_server::NodeManagerServiceServer::new(svc),
-            )
+            .add_service(rpc::node_manager_service_server::NodeManagerServiceServer::new(svc))
             .add_service(health_service)
             .serve_with_incoming_shutdown(incoming, async {
                 shutdown_rx.await.ok();

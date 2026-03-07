@@ -254,11 +254,7 @@ impl NormalTaskSubmitter {
     }
 
     /// Cancel a pending task.
-    pub async fn cancel_task(
-        &self,
-        task_id: &TaskID,
-        _force_kill: bool,
-    ) -> CoreWorkerResult<()> {
+    pub async fn cancel_task(&self, task_id: &TaskID, _force_kill: bool) -> CoreWorkerResult<()> {
         let client = self.raylet_client.lock().clone();
         if let Some(client) = client {
             let req = rpc::CancelWorkerLeaseRequest {
@@ -665,10 +661,7 @@ mod tests {
     #[test]
     fn test_extract_required_resources() {
         let spec = TaskSpec {
-            required_resources: HashMap::from([
-                ("CPU".to_string(), 2.0),
-                ("GPU".to_string(), 1.0),
-            ]),
+            required_resources: HashMap::from([("CPU".to_string(), 2.0), ("GPU".to_string(), 1.0)]),
             ..Default::default()
         };
         let resources = extract_required_resources(&spec);
@@ -712,10 +705,7 @@ mod tests {
         let submitter = make_submitter();
         let spec = TaskSpec {
             task_id: vec![1],
-            required_resources: HashMap::from([
-                ("CPU".to_string(), 4.0),
-                ("GPU".to_string(), 2.0),
-            ]),
+            required_resources: HashMap::from([("CPU".to_string(), 4.0), ("GPU".to_string(), 2.0)]),
             ..Default::default()
         };
 
@@ -779,10 +769,7 @@ mod tests {
         };
         submitter.submit_task(&spec).await.unwrap();
 
-        assert_eq!(
-            submitter.task_status(&[50]),
-            Some(TaskStatus::SpilledBack)
-        );
+        assert_eq!(submitter.task_status(&[50]), Some(TaskStatus::SpilledBack));
     }
 
     /// Port of TestTaskDispatch: verify that the dispatch callback is
@@ -824,7 +811,10 @@ mod tests {
         // Success case.
         let reply = rpc::RequestWorkerLeaseReply::default();
         let cancel_ok = rpc::CancelWorkerLeaseReply { success: true };
-        let client = Arc::new(MockRayletClient::with_cancel_reply(reply.clone(), cancel_ok));
+        let client = Arc::new(MockRayletClient::with_cancel_reply(
+            reply.clone(),
+            cancel_ok,
+        ));
         submitter.set_raylet_client(client);
         assert!(submitter.cancel_task(&tid, false).await.is_ok());
 
@@ -1049,15 +1039,15 @@ mod tests {
         let client = Arc::new(MockRayletClient::new(reply));
         submitter.set_raylet_client(client);
 
-        submitter.submit_task(&TaskSpec {
-            task_id: vec![42],
-            ..Default::default()
-        }).await.unwrap();
+        submitter
+            .submit_task(&TaskSpec {
+                task_id: vec![42],
+                ..Default::default()
+            })
+            .await
+            .unwrap();
 
-        assert_eq!(
-            submitter.task_status(&[42]),
-            Some(TaskStatus::Finished)
-        );
+        assert_eq!(submitter.task_status(&[42]), Some(TaskStatus::Finished));
         assert_eq!(submitter.num_pending_tasks(), 0);
     }
 

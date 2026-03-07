@@ -433,10 +433,7 @@ impl SchedulingOptions {
     ///
     /// Hard expressions must all be satisfied or scheduling fails.
     /// Soft expressions increase priority when satisfied.
-    pub fn node_label_with_expressions(
-        hard: LabelSelector,
-        soft: LabelSelector,
-    ) -> Self {
+    pub fn node_label_with_expressions(hard: LabelSelector, soft: LabelSelector) -> Self {
         Self {
             scheduling_type: SchedulingType::NodeLabel,
             label_match_expressions_hard: hard,
@@ -719,7 +716,10 @@ mod tests {
         total.set("CPU".to_string(), FixedPoint::from_f64(2.0));
         total.set("memory".to_string(), FixedPoint::from_f64(1.0));
         total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
-        total.set("object_store_memory".to_string(), FixedPoint::from_f64(100.0));
+        total.set(
+            "object_store_memory".to_string(),
+            FixedPoint::from_f64(100.0),
+        );
 
         let mut nr = NodeResources::new(total);
         // Subtract to match: CPU avail=1, mem avail=0.25, GPU avail=1, osm avail=50
@@ -727,7 +727,10 @@ mod tests {
         used.set("CPU".to_string(), FixedPoint::from_f64(1.0));
         used.set("memory".to_string(), FixedPoint::from_f64(0.75));
         used.set("GPU".to_string(), FixedPoint::from_f64(1.0));
-        used.set("object_store_memory".to_string(), FixedPoint::from_f64(50.0));
+        used.set(
+            "object_store_memory".to_string(),
+            FixedPoint::from_f64(50.0),
+        );
         nr.available.subtract(&used);
 
         let util = nr.critical_resource_utilization();
@@ -757,10 +760,9 @@ mod tests {
         assert!(empty.is_empty());
 
         let mut non_empty = TaskResourceInstances::new();
-        non_empty.resources.insert(
-            "CPU".to_string(),
-            vec![FixedPoint::from_f64(1.0)],
-        );
+        non_empty
+            .resources
+            .insert("CPU".to_string(), vec![FixedPoint::from_f64(1.0)]);
         assert!(!non_empty.is_empty());
     }
 
@@ -770,15 +772,23 @@ mod tests {
         let mut tri = TaskResourceInstances::new();
         tri.resources.insert(
             "CPU".to_string(),
-            vec![FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0)],
+            vec![
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+            ],
         );
-        tri.resources.insert(
-            "memory".to_string(),
-            vec![FixedPoint::from_f64(4.0)],
-        );
+        tri.resources
+            .insert("memory".to_string(), vec![FixedPoint::from_f64(4.0)]);
         tri.resources.insert(
             "GPU".to_string(),
-            vec![FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0), FixedPoint::from_f64(1.0)],
+            vec![
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+                FixedPoint::from_f64(1.0),
+            ],
         );
 
         let rs = tri.to_resource_set();
@@ -815,9 +825,7 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(4.0));
         total.set("GPU".to_string(), FixedPoint::from_f64(2.0));
-        let labels = HashMap::from([
-            ("zone".to_string(), "us-east".to_string()),
-        ]);
+        let labels = HashMap::from([("zone".to_string(), "us-east".to_string())]);
         let nri = NodeResourceInstances::new(total, labels);
         let nr = nri.to_node_resources();
         assert_eq!(nr.total.get("CPU"), FixedPoint::from_f64(4.0));

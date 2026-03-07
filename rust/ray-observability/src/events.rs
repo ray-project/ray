@@ -208,7 +208,10 @@ mod tests {
         assert_eq!(parsed.severity, EventSeverity::Fatal);
         assert_eq!(parsed.label, "crash");
         assert_eq!(parsed.message, "System crash detected");
-        assert_eq!(parsed.custom_fields.get("core_dump").unwrap(), "/tmp/core.1234");
+        assert_eq!(
+            parsed.custom_fields.get("core_dump").unwrap(),
+            "/tmp/core.1234"
+        );
     }
 
     #[test]

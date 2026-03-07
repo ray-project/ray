@@ -367,11 +367,7 @@ mod tests {
         let mut b2 = ResourceSet::new();
         b2.set("GPU".to_string(), FixedPoint::from_f64(2.0));
 
-        let bundles = vec![
-            ((pg_id, 0), b0),
-            ((pg_id, 1), b1),
-            ((pg_id, 2), b2),
-        ];
+        let bundles = vec![((pg_id, 0), b0), ((pg_id, 1), b1), ((pg_id, 2), b2)];
 
         mgr.prepare_bundles(&bundles).unwrap();
         assert_eq!(mgr.num_bundles(), 3);
@@ -484,7 +480,9 @@ mod tests {
         let mut total = ResourceSet::new();
         total.set("CPU".to_string(), FixedPoint::from_f64(8.0));
         let local_mgr = Arc::new(LocalResourceManager::new(
-            "node1".to_string(), total, HashMap::new(),
+            "node1".to_string(),
+            total,
+            HashMap::new(),
         ));
 
         // Drain the node
@@ -548,15 +546,13 @@ mod tests {
         let mut b2 = ResourceSet::new();
         b2.set("CPU".to_string(), FixedPoint::from_f64(1.0));
 
-        mgr.prepare_bundles(&[
-            ((pg_id, 0), b0),
-            ((pg_id, 1), b1),
-            ((pg_id, 2), b2),
-        ]).unwrap();
+        mgr.prepare_bundles(&[((pg_id, 0), b0), ((pg_id, 1), b1), ((pg_id, 2), b2)])
+            .unwrap();
         assert_eq!(mgr.num_bundles(), 3);
 
         // Commit all
-        mgr.commit_bundles(&[(pg_id, 0), (pg_id, 1), (pg_id, 2)]).unwrap();
+        mgr.commit_bundles(&[(pg_id, 0), (pg_id, 1), (pg_id, 2)])
+            .unwrap();
         assert_eq!(mgr.num_committed_bundles(), 3);
     }
 
@@ -574,11 +570,8 @@ mod tests {
         let mut b2 = ResourceSet::new();
         b2.set("GPU".to_string(), FixedPoint::from_f64(2.0));
 
-        mgr.prepare_bundles(&[
-            ((pg_id, 0), b0),
-            ((pg_id, 1), b1),
-            ((pg_id, 2), b2),
-        ]).unwrap();
+        mgr.prepare_bundles(&[((pg_id, 0), b0), ((pg_id, 1), b1), ((pg_id, 2), b2)])
+            .unwrap();
 
         // Commit only 0 and 2
         mgr.commit_bundles(&[(pg_id, 0), (pg_id, 2)]).unwrap();

@@ -344,10 +344,7 @@ impl PyGcsClient {
             .runtime
             .block_on(self.client.register_actor(req))
             .map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!(
-                    "register_actor failed: {}",
-                    e
-                ))
+                pyo3::exceptions::PyRuntimeError::new_err(format!("register_actor failed: {}", e))
             })?;
 
         // Check status.
@@ -481,10 +478,7 @@ impl PyGcsClient {
 
     /// Remove a placement group.
     #[pyo3(name = "remove_placement_group")]
-    fn py_remove_placement_group(
-        &self,
-        pg_id_bytes: Vec<u8>,
-    ) -> pyo3::PyResult<()> {
+    fn py_remove_placement_group(&self, pg_id_bytes: Vec<u8>) -> pyo3::PyResult<()> {
         let req = rpc::RemovePlacementGroupRequest {
             placement_group_id: pg_id_bytes,
         };
@@ -882,10 +876,10 @@ mod tests {
     fn test_kv_put_and_get() {
         let fake = FakeGcs::new();
         // Pre-populate
-        fake.kv_store.lock().unwrap().insert(
-            (b"ns".to_vec(), b"key1".to_vec()),
-            b"value1".to_vec(),
-        );
+        fake.kv_store
+            .lock()
+            .unwrap()
+            .insert((b"ns".to_vec(), b"key1".to_vec()), b"value1".to_vec());
         let client = PyGcsClient::with_client("fake:0".into(), Box::new(fake));
 
         let val = client.internal_kv_get("ns", "key1");

@@ -111,7 +111,11 @@ impl SpillManager {
         std::fs::create_dir_all(&self.config.spill_directory)
             .map_err(|e| SpillError::IoError(e.to_string()))?;
 
-        let file_name = format!("object_{:016x}_{}", file_index, hex::encode(&object_id.binary()));
+        let file_name = format!(
+            "object_{:016x}_{}",
+            file_index,
+            hex::encode(&object_id.binary())
+        );
         let file_path = self.config.spill_directory.join(&file_name);
 
         // Write in spill format: [addr_size:8][meta_size:8][data_size:8][addr][meta][data]
@@ -120,7 +124,8 @@ impl SpillManager {
         let meta_size = (metadata.len() as u64).to_le_bytes();
         let data_size = (data.len() as u64).to_le_bytes();
 
-        let mut contents = Vec::with_capacity(SPILL_HEADER_SIZE + address.len() + metadata.len() + data.len());
+        let mut contents =
+            Vec::with_capacity(SPILL_HEADER_SIZE + address.len() + metadata.len() + data.len());
         contents.extend_from_slice(&addr_size);
         contents.extend_from_slice(&meta_size);
         contents.extend_from_slice(&data_size);
@@ -128,10 +133,13 @@ impl SpillManager {
         contents.extend_from_slice(metadata);
         contents.extend_from_slice(data);
 
-        std::fs::write(&file_path, &contents)
-            .map_err(|e| SpillError::IoError(e.to_string()))?;
+        std::fs::write(&file_path, &contents).map_err(|e| SpillError::IoError(e.to_string()))?;
 
-        let url = format!("file://{}?offset=0&size={}", file_path.display(), contents.len());
+        let url = format!(
+            "file://{}?offset=0&size={}",
+            file_path.display(),
+            contents.len()
+        );
 
         let info = SpilledObjectInfo {
             object_id: *object_id,
@@ -154,10 +162,7 @@ impl SpillManager {
     ///
     /// Reads the object data back from disk.
     /// Returns (data, metadata) on success.
-    pub fn restore_object(
-        &self,
-        url: &str,
-    ) -> Result<(Vec<u8>, Vec<u8>), SpillError> {
+    pub fn restore_object(&self, url: &str) -> Result<(Vec<u8>, Vec<u8>), SpillError> {
         let (file_path, offset, size) = parse_spill_url(url)?;
 
         let file_contents = std::fs::read(&file_path)
@@ -165,7 +170,9 @@ impl SpillManager {
 
         let region = if size > 0 {
             if offset + size > file_contents.len() {
-                return Err(SpillError::IoError("Spill region out of bounds".to_string()));
+                return Err(SpillError::IoError(
+                    "Spill region out of bounds".to_string(),
+                ));
             }
             &file_contents[offset..offset + size]
         } else {
@@ -173,7 +180,9 @@ impl SpillManager {
         };
 
         if region.len() < SPILL_HEADER_SIZE {
-            return Err(SpillError::CorruptData("Spill header too small".to_string()));
+            return Err(SpillError::CorruptData(
+                "Spill header too small".to_string(),
+            ));
         }
 
         let addr_size = u64::from_le_bytes(region[0..8].try_into().unwrap()) as usize;
@@ -206,8 +215,7 @@ impl SpillManager {
     pub fn delete_spilled_object(&self, url: &str) -> Result<(), SpillError> {
         let (file_path, _, _) = parse_spill_url(url)?;
         if Path::new(&file_path).exists() {
-            std::fs::remove_file(&file_path)
-                .map_err(|e| SpillError::IoError(e.to_string()))?;
+            std::fs::remove_file(&file_path).map_err(|e| SpillError::IoError(e.to_string()))?;
         }
         Ok(())
     }
@@ -418,8 +426,7 @@ mod tests {
         let mgr = SpillManager::new(config.clone());
 
         for i in 0..5u8 {
-            mgr.spill_object(&make_oid(i), &[i; 100], &[i; 10])
-                .unwrap();
+            mgr.spill_object(&make_oid(i), &[i; 100], &[i; 10]).unwrap();
         }
 
         assert_eq!(mgr.num_spilled_objects(), 5);
@@ -492,8 +499,7 @@ mod tests {
         assert_eq!(size, 456);
 
         // http prefix (treated as path after stripping file:// if present)
-        let (path, offset, size) =
-            parse_spill_url("http://123?offset=123&size=456").unwrap();
+        let (path, offset, size) = parse_spill_url("http://123?offset=123&size=456").unwrap();
         assert_eq!(path, "http://123");
         assert_eq!(offset, 123);
         assert_eq!(size, 456);
@@ -506,8 +512,7 @@ mod tests {
         assert_eq!(size, 456);
 
         // Plain unix path
-        let (path, offset, size) =
-            parse_spill_url("/tmp/file.txt?offset=123&size=456").unwrap();
+        let (path, offset, size) = parse_spill_url("/tmp/file.txt?offset=123&size=456").unwrap();
         assert_eq!(path, "/tmp/file.txt");
         assert_eq!(offset, 123);
         assert_eq!(size, 456);

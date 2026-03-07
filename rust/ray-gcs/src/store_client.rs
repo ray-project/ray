@@ -682,10 +682,7 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_store_multi_get_empty_table() {
         let store = InMemoryStoreClient::new();
-        let result = store
-            .multi_get("NoTable", &["a".into()])
-            .await
-            .unwrap();
+        let result = store.multi_get("NoTable", &["a".into()]).await.unwrap();
         assert!(result.is_empty());
     }
 
@@ -920,14 +917,8 @@ mod tests {
         kv.put(b"ns1", b"key", b"v1".to_vec(), true).await.unwrap();
         kv.put(b"ns2", b"key", b"v2".to_vec(), true).await.unwrap();
 
-        assert_eq!(
-            kv.get(b"ns1", b"key").await.unwrap(),
-            Some(b"v1".to_vec())
-        );
-        assert_eq!(
-            kv.get(b"ns2", b"key").await.unwrap(),
-            Some(b"v2".to_vec())
-        );
+        assert_eq!(kv.get(b"ns1", b"key").await.unwrap(), Some(b"v1".to_vec()));
+        assert_eq!(kv.get(b"ns2", b"key").await.unwrap(), Some(b"v2".to_vec()));
 
         // Delete in ns1 doesn't affect ns2
         kv.del(b"ns1", b"key", false).await.unwrap();
@@ -956,10 +947,7 @@ mod tests {
         kv.put(b"ns", b"k", b"v1".to_vec(), true).await.unwrap();
         // Overwrite with new value
         kv.put(b"ns", b"k", b"v2".to_vec(), true).await.unwrap();
-        assert_eq!(
-            kv.get(b"ns", b"k").await.unwrap(),
-            Some(b"v2".to_vec())
-        );
+        assert_eq!(kv.get(b"ns", b"k").await.unwrap(), Some(b"v2".to_vec()));
     }
 
     /// Test put to store returns correct "existed" value
@@ -968,28 +956,16 @@ mod tests {
         let store = InMemoryStoreClient::new();
 
         // First put: did not exist
-        let existed = store
-            .put("T", "key", b"v1".to_vec(), true)
-            .await
-            .unwrap();
+        let existed = store.put("T", "key", b"v1".to_vec(), true).await.unwrap();
         assert!(!existed);
 
         // Second put with overwrite: existed
-        let existed = store
-            .put("T", "key", b"v2".to_vec(), true)
-            .await
-            .unwrap();
+        let existed = store.put("T", "key", b"v2".to_vec(), true).await.unwrap();
         assert!(existed);
 
         // Third put without overwrite: existed (and value unchanged)
-        let existed = store
-            .put("T", "key", b"v3".to_vec(), false)
-            .await
-            .unwrap();
+        let existed = store.put("T", "key", b"v3".to_vec(), false).await.unwrap();
         assert!(existed);
-        assert_eq!(
-            store.get("T", "key").await.unwrap(),
-            Some(b"v2".to_vec())
-        );
+        assert_eq!(store.get("T", "key").await.unwrap(), Some(b"v2".to_vec()));
     }
 }

@@ -197,13 +197,8 @@ impl FutureResolver {
                 }
 
                 ResolvedObject {
-                    object: data.map(|d| {
-                        RayObject::new(
-                            d,
-                            metadata.unwrap_or_default(),
-                            nested_refs,
-                        )
-                    }),
+                    object: data
+                        .map(|d| RayObject::new(d, metadata.unwrap_or_default(), nested_refs)),
                     status: ObjectStatus::Created,
                     node_id,
                     object_size,
@@ -216,11 +211,8 @@ impl FutureResolver {
                     ObjectStatus::OwnerDied => "object owner died",
                     _ => unreachable!(),
                 };
-                let error_obj = RayObject::new(
-                    Bytes::from(error_msg),
-                    Bytes::from("ERROR"),
-                    Vec::new(),
-                );
+                let error_obj =
+                    RayObject::new(Bytes::from(error_msg), Bytes::from("ERROR"), Vec::new());
                 let _ = self.memory_store.put(object_id, error_obj);
 
                 ResolvedObject {

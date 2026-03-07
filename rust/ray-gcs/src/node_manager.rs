@@ -361,7 +361,10 @@ mod tests {
 
         let messages = handler.handle_subscriber_poll(b"test_sub", 0).await;
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].channel_type, ChannelType::GcsNodeInfoChannel as i32);
+        assert_eq!(
+            messages[0].channel_type,
+            ChannelType::GcsNodeInfoChannel as i32
+        );
         // Verify the inner message contains the node info
         match &messages[0].inner_message {
             Some(ray_proto::ray::rpc::pub_message::InnerMessage::NodeInfoMessage(info)) => {
@@ -503,32 +506,20 @@ mod tests {
         mgr.handle_register_node(make_node_info(1)).await.unwrap();
         mgr.handle_register_node(make_node_info(2)).await.unwrap();
         // 2 registrations x (1 + 10) = 22
-        assert_eq!(
-            added_count.load(std::sync::atomic::Ordering::Relaxed),
-            22
-        );
-        assert_eq!(
-            removed_count.load(std::sync::atomic::Ordering::Relaxed),
-            0
-        );
+        assert_eq!(added_count.load(std::sync::atomic::Ordering::Relaxed), 22);
+        assert_eq!(removed_count.load(std::sync::atomic::Ordering::Relaxed), 0);
 
         // Remove one node — should trigger the remove listener once
         mgr.handle_unregister_node(&node_id(1).binary())
             .await
             .unwrap();
-        assert_eq!(
-            removed_count.load(std::sync::atomic::Ordering::Relaxed),
-            1
-        );
+        assert_eq!(removed_count.load(std::sync::atomic::Ordering::Relaxed), 1);
 
         // Removing an already-dead node should not trigger the listener again
         mgr.handle_unregister_node(&node_id(1).binary())
             .await
             .unwrap();
-        assert_eq!(
-            removed_count.load(std::sync::atomic::Ordering::Relaxed),
-            1
-        );
+        assert_eq!(removed_count.load(std::sync::atomic::Ordering::Relaxed), 1);
     }
 
     // ---- Additional tests ported from gcs_node_manager_test.cc / gcs_server_rpc_test.cc ----

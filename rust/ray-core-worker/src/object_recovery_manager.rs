@@ -61,8 +61,7 @@ struct RecoveryEntry {
 }
 
 /// Callback when an object needs recovery via lineage re-execution.
-pub type LineageReconstructionCallback =
-    Box<dyn Fn(&ray_common::id::TaskID) -> bool + Send + Sync>;
+pub type LineageReconstructionCallback = Box<dyn Fn(&ray_common::id::TaskID) -> bool + Send + Sync>;
 
 /// Callback when an object needs to be fetched from another node.
 pub type FetchObjectCallback = Box<dyn Fn(&ObjectID, &str) -> bool + Send + Sync>;
@@ -95,10 +94,7 @@ struct ObjectRecoveryManagerInner {
 
 impl ObjectRecoveryManager {
     /// Create a new object recovery manager.
-    pub fn new(
-        reference_counter: Arc<ReferenceCounter>,
-        max_recovery_attempts: u32,
-    ) -> Self {
+    pub fn new(reference_counter: Arc<ReferenceCounter>, max_recovery_attempts: u32) -> Self {
         Self {
             inner: Mutex::new(ObjectRecoveryManagerInner {
                 recovering: HashMap::new(),
@@ -434,7 +430,10 @@ mod tests {
 
         // Spill URL takes precedence.
         let strategy = mgr.recover_object(oid);
-        assert!(matches!(strategy, RecoveryStrategy::RestoreFromSpill { .. }));
+        assert!(matches!(
+            strategy,
+            RecoveryStrategy::RestoreFromSpill { .. }
+        ));
     }
 
     #[test]

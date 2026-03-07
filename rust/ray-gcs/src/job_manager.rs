@@ -65,11 +65,9 @@ impl GcsJobManager {
             let pub_msg = ray_proto::ray::rpc::PubMessage {
                 channel_type: ChannelType::GcsJobChannel as i32,
                 key_id: job_data.job_id.clone(),
-                inner_message: Some(
-                    ray_proto::ray::rpc::pub_message::InnerMessage::JobMessage(
-                        job_data.clone(),
-                    ),
-                ),
+                inner_message: Some(ray_proto::ray::rpc::pub_message::InnerMessage::JobMessage(
+                    job_data.clone(),
+                )),
                 ..Default::default()
             };
             handler.publish_pubmessage(pub_msg);

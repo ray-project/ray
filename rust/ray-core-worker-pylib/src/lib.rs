@@ -11,12 +11,12 @@
 //! Replaces `python/ray/_raylet.pyx` (Cython).
 //! Will be built with maturin to produce `_raylet.so`.
 
-pub mod common;
 pub mod cluster;
-pub mod ids;
-pub mod object_ref;
+pub mod common;
 pub mod core_worker;
 pub mod gcs_client;
+pub mod ids;
+pub mod object_ref;
 pub mod serialization;
 
 // Re-export primary types for Rust consumers.
@@ -52,8 +52,7 @@ fn is_initialized() -> bool {
 }
 
 #[cfg(feature = "python")]
-static INITIALIZED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Mark Ray as initialized. Called internally after successful init.
 #[cfg(feature = "python")]

@@ -128,9 +128,7 @@ impl DependencyManager {
 
         if !lost.is_empty() {
             inner.total_tasks_failed += 1;
-            return DependencyStatus::Failed {
-                lost_objects: lost,
-            };
+            return DependencyStatus::Failed { lost_objects: lost };
         }
 
         if pending.is_empty() {

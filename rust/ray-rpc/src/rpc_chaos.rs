@@ -129,7 +129,9 @@ impl RpcFailureManager {
         let json: serde_json::Value =
             serde_json::from_str(config_json).expect("testing_rpc_failure is not valid JSON");
 
-        let obj = json.as_object().expect("testing_rpc_failure must be a JSON object");
+        let obj = json
+            .as_object()
+            .expect("testing_rpc_failure must be a JSON object");
 
         for (method, config) in obj {
             let config_obj = config
@@ -139,9 +141,7 @@ impl RpcFailureManager {
             // Validate keys.
             for key in config_obj.keys() {
                 if !VALID_KEYS.contains(&key.as_str()) {
-                    panic!(
-                        "Unknown key specified in testing_rpc_failure config: {key}"
-                    );
+                    panic!("Unknown key specified in testing_rpc_failure config: {key}");
                 }
             }
 
@@ -184,9 +184,7 @@ impl RpcFailureManager {
                 "Total failure probability exceeds 100%"
             );
 
-            inner
-                .failable_methods
-                .insert(method.clone(), failable);
+            inner.failable_methods.insert(method.clone(), failable);
 
             if method == "*" {
                 inner.wildcard_set = true;
@@ -208,18 +206,14 @@ impl RpcFailureManager {
         if inner.wildcard_set {
             // Clone the failable to work around borrow checker.
             let mut failable = inner.failable_methods.get("*").unwrap().clone();
-            let result =
-                get_failure_type_from_failable(&mut failable, name, &mut inner);
+            let result = get_failure_type_from_failable(&mut failable, name, &mut inner);
             inner.failable_methods.insert("*".to_string(), failable);
             return result;
         }
 
         if let Some(mut failable) = inner.failable_methods.get(name).cloned() {
-            let result =
-                get_failure_type_from_failable(&mut failable, name, &mut inner);
-            inner
-                .failable_methods
-                .insert(name.to_string(), failable);
+            let result = get_failure_type_from_failable(&mut failable, name, &mut inner);
+            inner.failable_methods.insert(name.to_string(), failable);
             result
         } else {
             RpcFailure::None
@@ -275,9 +269,7 @@ fn get_failure_type_from_failable(
         failable.num_remaining_failures -= 1;
         RpcFailure::Response
     } else if random_number
-        <= failable.req_failure_prob
-            + failable.resp_failure_prob
-            + failable.in_flight_failure_prob
+        <= failable.req_failure_prob + failable.resp_failure_prob + failable.in_flight_failure_prob
     {
         failable.num_remaining_failures -= 1;
         RpcFailure::InFlight

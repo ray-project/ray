@@ -133,11 +133,8 @@ mod tests {
     /// Port of C++ GetNext: stateful next/reset pattern.
     #[test]
     fn test_get_next_from_cpp() {
-        let mut exp = ExponentialBackoff::new(
-            Duration::from_millis(1),
-            2.0,
-            Duration::from_millis(9),
-        );
+        let mut exp =
+            ExponentialBackoff::new(Duration::from_millis(1), 2.0, Duration::from_millis(9));
         assert_eq!(exp.next_delay(), Duration::from_millis(1));
         assert_eq!(exp.next_delay(), Duration::from_millis(2));
         assert_eq!(exp.next_delay(), Duration::from_millis(4));

@@ -88,18 +88,12 @@ impl ObjectManagerClient {
     ///
     /// The object data is included in the request message. For very large objects,
     /// chunked streaming should be used (future enhancement).
-    pub async fn push(
-        &self,
-        req: rpc::PushRequest,
-    ) -> Result<rpc::PushReply, Status> {
+    pub async fn push(&self, req: rpc::PushRequest) -> Result<rpc::PushReply, Status> {
         impl_om_rpc!(self, push, req)
     }
 
     /// Pull objects from this node — request them to be sent to us.
-    pub async fn pull(
-        &self,
-        req: rpc::PullRequest,
-    ) -> Result<rpc::PullReply, Status> {
+    pub async fn pull(&self, req: rpc::PullRequest) -> Result<rpc::PullReply, Status> {
         impl_om_rpc!(self, pull, req)
     }
 
@@ -135,8 +129,7 @@ impl ObjectManagerClientPool {
         if clients.contains_key(node_id) {
             return false; // Already exists.
         }
-        let client =
-            ObjectManagerClient::connect_lazy(address, self.retry_config.clone());
+        let client = ObjectManagerClient::connect_lazy(address, self.retry_config.clone());
         clients.insert(node_id.to_string(), client);
         true
     }
@@ -158,10 +151,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_connect_lazy_creates_client() {
-        let client = ObjectManagerClient::connect_lazy(
-            "http://127.0.0.1:50001",
-            RetryConfig::default(),
-        );
+        let client =
+            ObjectManagerClient::connect_lazy("http://127.0.0.1:50001", RetryConfig::default());
         assert_eq!(client.address(), "http://127.0.0.1:50001");
         assert!(client.is_connected());
     }
@@ -306,10 +297,7 @@ mod tests {
         let pool = Arc::new(ObjectManagerClientPool::new(RetryConfig::default()));
         // Pre-populate 10 nodes.
         for i in 0..10 {
-            pool.get_or_create(
-                &format!("node_{}", i),
-                &format!("http://10.0.0.{}:8000", i),
-            );
+            pool.get_or_create(&format!("node_{}", i), &format!("http://10.0.0.{}:8000", i));
         }
         assert_eq!(pool.num_connections(), 10);
 
@@ -348,10 +336,7 @@ mod tests {
         // Create new nodes while simultaneously removing existing ones.
         let creator = tokio::spawn(async move {
             for i in 2..12 {
-                pool_c.get_or_create(
-                    &format!("node_{}", i),
-                    &format!("http://10.0.0.{}:8000", i),
-                );
+                pool_c.get_or_create(&format!("node_{}", i), &format!("http://10.0.0.{}:8000", i));
             }
         });
         let remover = tokio::spawn(async move {
@@ -404,11 +389,8 @@ mod tests {
             server_unavailable_timeout: std::time::Duration::from_secs(90),
             max_pending_bytes: 200 * 1024 * 1024,
         };
-        let client = ObjectManagerClient::from_channel(
-            channel,
-            config,
-            "http://[::1]:1".to_string(),
-        );
+        let client =
+            ObjectManagerClient::from_channel(channel, config, "http://[::1]:1".to_string());
         assert!(client.is_connected());
         assert_eq!(client.address(), "http://[::1]:1");
     }

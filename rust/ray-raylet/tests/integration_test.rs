@@ -45,8 +45,7 @@ async fn test_raylet_get_system_config() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
+    let mut client = rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
 
     let resp = client
         .get_system_config(rpc::GetSystemConfigRequest::default())
@@ -70,8 +69,7 @@ async fn test_raylet_drain() {
     let channel = tonic::transport::Endpoint::from_shared(endpoint)
         .unwrap()
         .connect_lazy();
-    let mut client =
-        rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
+    let mut client = rpc::node_manager_service_client::NodeManagerServiceClient::new(channel);
 
     let resp = client
         .drain_raylet(rpc::DrainRayletRequest {
@@ -116,9 +114,7 @@ async fn test_raylet_registers_with_gcs() {
 
     // 3. Run the raylet in a background task.
     let nm_clone = Arc::clone(&nm);
-    let raylet_handle = tokio::spawn(async move {
-        nm_clone.run().await
-    });
+    let raylet_handle = tokio::spawn(async move { nm_clone.run().await });
 
     // Give the raylet time to register.
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;

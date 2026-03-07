@@ -339,12 +339,7 @@ mod tests {
     #[test]
     fn test_allocate_and_free_tracks_bytes() {
         let dir = tempfile::tempdir().unwrap();
-        let allocator = PlasmaAllocator::new(
-            1024 * 1024,
-            dir.path().to_str().unwrap(),
-            "",
-            false,
-        );
+        let allocator = PlasmaAllocator::new(1024 * 1024, dir.path().to_str().unwrap(), "", false);
 
         let a1 = allocator.allocate(4096).unwrap();
         let a2 = allocator.allocate(4096).unwrap();

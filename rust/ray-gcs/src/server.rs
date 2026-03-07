@@ -203,7 +203,11 @@ impl GcsServer {
             let pg_mgr = Arc::clone(&placement_group_manager);
             node_manager.add_node_removed_listener(Box::new(move |node_info| {
                 let node_id = ray_common::id::NodeID::from_binary(
-                    node_info.node_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
+                    node_info
+                        .node_id
+                        .as_slice()
+                        .try_into()
+                        .unwrap_or(&[0u8; 28]),
                 );
                 actor_mgr.on_node_dead(&node_id);
                 job_mgr.on_node_dead(&node_id);
@@ -215,7 +219,11 @@ impl GcsServer {
             let resource_mgr = Arc::clone(&resource_manager);
             node_manager.add_node_added_listener(Box::new(move |node_info| {
                 let node_id = ray_common::id::NodeID::from_binary(
-                    node_info.node_id.as_slice().try_into().unwrap_or(&[0u8; 28]),
+                    node_info
+                        .node_id
+                        .as_slice()
+                        .try_into()
+                        .unwrap_or(&[0u8; 28]),
                 );
                 resource_mgr.on_node_add(&node_id);
             }));
@@ -337,9 +345,7 @@ impl GcsServer {
             worker_manager: Arc::clone(self.worker_manager.as_ref().unwrap()),
         };
         let pg_svc = PlacementGroupInfoGcsServiceImpl {
-            placement_group_manager: Arc::clone(
-                self.placement_group_manager.as_ref().unwrap(),
-            ),
+            placement_group_manager: Arc::clone(self.placement_group_manager.as_ref().unwrap()),
         };
         let resource_svc = NodeResourceInfoGcsServiceImpl {
             resource_manager: Arc::clone(self.resource_manager.as_ref().unwrap()),
@@ -355,9 +361,7 @@ impl GcsServer {
             task_manager: Arc::clone(self.task_manager.as_ref().unwrap()),
         };
         let autoscaler_svc = AutoscalerStateServiceImpl {
-            autoscaler_state_manager: Arc::clone(
-                self.autoscaler_state_manager.as_ref().unwrap(),
-            ),
+            autoscaler_state_manager: Arc::clone(self.autoscaler_state_manager.as_ref().unwrap()),
             node_manager: Arc::clone(self.node_manager.as_ref().unwrap()),
         };
 
@@ -385,13 +389,12 @@ impl GcsServer {
             .await;
 
         // Bind TCP listener
-        let listener =
-            tokio::net::TcpListener::bind(format!(
-                "{}:{}",
-                ray_common::constants::DEFAULT_SERVER_BIND_ADDRESS,
-                self.config.port
-            ))
-            .await?;
+        let listener = tokio::net::TcpListener::bind(format!(
+            "{}:{}",
+            ray_common::constants::DEFAULT_SERVER_BIND_ADDRESS,
+            self.config.port
+        ))
+        .await?;
         let bound_port = listener.local_addr()?.port();
         tracing::info!(port = bound_port, "GCS gRPC server listening");
 
@@ -620,9 +623,7 @@ mod tests {
         assert_eq!(actor_mgr.num_registered_actors(), 1);
 
         // Manually place actor on the node (simulating scheduling)
-        let aid = ray_common::id::ActorID::from_binary(
-            actor_id.as_slice().try_into().unwrap(),
-        );
+        let aid = ray_common::id::ActorID::from_binary(actor_id.as_slice().try_into().unwrap());
         actor_mgr.on_actor_creation_success(
             &aid,
             rpc::Address {
@@ -641,9 +642,7 @@ mod tests {
         assert_eq!(ActorState::from(actor.state), ActorState::Alive);
 
         // Kill the node — this should cascade to all managers
-        let nid = ray_common::id::NodeID::from_binary(
-            node_id.as_slice().try_into().unwrap(),
-        );
+        let nid = ray_common::id::NodeID::from_binary(node_id.as_slice().try_into().unwrap());
         node_mgr.handle_unregister_node(&node_id).await.unwrap();
 
         // Verify cascade:
@@ -680,7 +679,10 @@ mod tests {
         assert_eq!(job_mgr.num_running_jobs(), 1);
 
         // Mark job finished
-        job_mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
+        job_mgr
+            .handle_mark_job_finished(&[1, 0, 0, 0])
+            .await
+            .unwrap();
         assert_eq!(job_mgr.num_running_jobs(), 0);
     }
 
@@ -790,11 +792,17 @@ mod tests {
         assert_eq!(job_mgr.num_running_jobs(), 2);
 
         // Finish first job
-        job_mgr.handle_mark_job_finished(&[1, 0, 0, 0]).await.unwrap();
+        job_mgr
+            .handle_mark_job_finished(&[1, 0, 0, 0])
+            .await
+            .unwrap();
         assert_eq!(job_mgr.num_running_jobs(), 1);
 
         // Finish second job
-        job_mgr.handle_mark_job_finished(&[2, 0, 0, 0]).await.unwrap();
+        job_mgr
+            .handle_mark_job_finished(&[2, 0, 0, 0])
+            .await
+            .unwrap();
         assert_eq!(job_mgr.num_running_jobs(), 0);
     }
 

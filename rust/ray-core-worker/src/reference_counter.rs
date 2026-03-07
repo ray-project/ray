@@ -142,11 +142,7 @@ impl ReferenceCounter {
     }
 
     /// Register an object that is borrowed (owned by someone else).
-    pub fn add_borrowed_object(
-        &self,
-        object_id: ObjectID,
-        owner_address: Address,
-    ) {
+    pub fn add_borrowed_object(&self, object_id: ObjectID, owner_address: Address) {
         let mut refs = self.refs.lock();
         let entry = refs.entry(object_id).or_insert_with(Reference::new);
         entry.is_owned_by_us = false;
@@ -633,8 +629,8 @@ mod tests {
 
     #[test]
     fn test_object_freed_callback() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         let freed_count = Arc::new(AtomicUsize::new(0));
         let freed_count2 = freed_count.clone();
@@ -654,8 +650,8 @@ mod tests {
 
     #[test]
     fn test_object_freed_callback_not_called_when_refs_remain() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         let freed_count = Arc::new(AtomicUsize::new(0));
         let freed_count2 = freed_count.clone();
@@ -899,8 +895,8 @@ mod tests {
     /// remaining.
     #[test]
     fn test_object_freed_callback_on_last_ref() {
-        use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
 
         let freed = Arc::new(AtomicUsize::new(0));
         let freed2 = freed.clone();

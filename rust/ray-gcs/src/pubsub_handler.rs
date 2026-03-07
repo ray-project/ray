@@ -68,9 +68,8 @@ impl InternalPubSubHandler {
         let mut channels = HashMap::new();
         // Create channels for each known type (values match proto ChannelType)
         for channel_type in [3, 4, 5, 6, 7, 8, 9, 10] {
-            let (tx, _) = broadcast::channel(
-                ray_common::constants::DEFAULT_PUBSUB_CHANNEL_CAPACITY,
-            );
+            let (tx, _) =
+                broadcast::channel(ray_common::constants::DEFAULT_PUBSUB_CHANNEL_CAPACITY);
             channels.insert(channel_type, tx);
         }
         Self {
@@ -182,11 +181,13 @@ impl InternalPubSubHandler {
         key_id: Vec<u8>,
     ) {
         let mut subs = self.subscribers.lock();
-        let state = subs.entry(subscriber_id).or_insert_with(|| SubscriberState {
-            pending_messages: Vec::new(),
-            next_sequence_id: self.sequence_counter.fetch_add(1, Ordering::Relaxed),
-            subscriptions: HashMap::new(),
-        });
+        let state = subs
+            .entry(subscriber_id)
+            .or_insert_with(|| SubscriberState {
+                pending_messages: Vec::new(),
+                next_sequence_id: self.sequence_counter.fetch_add(1, Ordering::Relaxed),
+                subscriptions: HashMap::new(),
+            });
         let keys = state.subscriptions.entry(channel_type).or_default();
         if !key_id.is_empty() && !keys.contains(&key_id) {
             keys.push(key_id);
@@ -439,9 +440,16 @@ mod tests {
 
         let subs = handler.subscribers.lock();
         let state = subs.get(&b"sub1".to_vec()).unwrap();
-        let seq_ids: Vec<i64> = state.pending_messages.iter().map(|m| m.sequence_id).collect();
+        let seq_ids: Vec<i64> = state
+            .pending_messages
+            .iter()
+            .map(|m| m.sequence_id)
+            .collect();
         for i in 1..seq_ids.len() {
-            assert!(seq_ids[i] > seq_ids[i - 1], "sequence IDs must be monotonic");
+            assert!(
+                seq_ids[i] > seq_ids[i - 1],
+                "sequence IDs must be monotonic"
+            );
         }
     }
 
@@ -451,9 +459,8 @@ mod tests {
         handler.handle_subscribe_command(b"sub1".to_vec(), 3, vec![]);
 
         let handler_clone = Arc::clone(&handler);
-        let poll_handle = tokio::spawn(async move {
-            handler_clone.handle_subscriber_poll(b"sub1", 0).await
-        });
+        let poll_handle =
+            tokio::spawn(async move { handler_clone.handle_subscriber_poll(b"sub1", 0).await });
 
         // Give poll time to start waiting
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -461,13 +468,10 @@ mod tests {
         // Publish wakes the poll
         handler.publish_pubmessage(make_pub_msg(3, b"wake"));
 
-        let messages = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            poll_handle,
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let messages = tokio::time::timeout(std::time::Duration::from_secs(1), poll_handle)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].key_id, b"wake");
     }
@@ -500,7 +504,11 @@ mod tests {
     fn test_subscribe_valid_channel_type() {
         let handler = InternalPubSubHandler::new();
         // GCS_ACTOR_CHANNEL = 3 is a valid channel
-        handler.handle_subscribe_command(b"sub1".to_vec(), ChannelType::GcsActorChannel as i32, b"actor_id".to_vec());
+        handler.handle_subscribe_command(
+            b"sub1".to_vec(),
+            ChannelType::GcsActorChannel as i32,
+            b"actor_id".to_vec(),
+        );
         let subs = handler.subscribers.lock();
         assert!(subs.contains_key(&b"sub1".to_vec()));
     }
@@ -534,7 +542,11 @@ mod tests {
         let state = subs.get(&b"sub1".to_vec()).unwrap();
         // Should only receive from channels 3 and 5
         assert_eq!(state.pending_messages.len(), 2);
-        let channels: Vec<i32> = state.pending_messages.iter().map(|m| m.channel_type).collect();
+        let channels: Vec<i32> = state
+            .pending_messages
+            .iter()
+            .map(|m| m.channel_type)
+            .collect();
         assert!(channels.contains(&3));
         assert!(channels.contains(&5));
     }

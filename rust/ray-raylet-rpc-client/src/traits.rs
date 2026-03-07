@@ -93,8 +93,5 @@ pub trait RayletClient: Send + Sync {
     ) -> Result<rpc::CancelLocalTaskReply, Status>;
 
     // ── GC & Misc ─────────────────────────────────────────────────
-    async fn global_gc(
-        &self,
-        req: rpc::GlobalGcRequest,
-    ) -> Result<rpc::GlobalGcReply, Status>;
+    async fn global_gc(&self, req: rpc::GlobalGcRequest) -> Result<rpc::GlobalGcReply, Status>;
 }

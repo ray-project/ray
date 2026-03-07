@@ -467,7 +467,7 @@ mod tests {
         let mut evicted = Vec::new();
         let freed = policy.require_space(500, &mut evicted);
         assert!(freed >= 100); // Need at least 100 more
-        // o1 must NOT be evicted (it's pinned)
+                               // o1 must NOT be evicted (it's pinned)
         assert!(!evicted.contains(&o1));
         // o2 should be evicted (LRU order, added before o3)
         assert!(evicted.contains(&o2));

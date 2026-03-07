@@ -66,7 +66,8 @@ pub struct PopWorkerResult {
 
 /// Callback invoked when a worker process needs to be started.
 /// Receives language, job_id, and worker_id. Returns the PID of the started process.
-pub type StartWorkerCallback = Box<dyn Fn(Language, &JobID, &WorkerID) -> Option<u32> + Send + Sync>;
+pub type StartWorkerCallback =
+    Box<dyn Fn(Language, &JobID, &WorkerID) -> Option<u32> + Send + Sync>;
 
 /// The worker pool manages the lifecycle of worker processes.
 pub struct WorkerPool {
@@ -223,9 +224,7 @@ impl WorkerPool {
         let mut workers = self.all_workers.write();
         if let Some(worker) = workers.get_mut(worker_id) {
             worker.is_alive = false;
-            self.dead_workers
-                .write()
-                .insert(*worker_id, worker.clone());
+            self.dead_workers.write().insert(*worker_id, worker.clone());
         }
 
         // Remove from idle queues
@@ -270,11 +269,7 @@ impl WorkerPool {
             states
                 .values()
                 .flat_map(|s| s.idle_workers.iter())
-                .filter(|wid| {
-                    workers
-                        .get(wid)
-                        .is_some_and(|w| w.job_id == *job_id)
-                })
+                .filter(|wid| workers.get(wid).is_some_and(|w| w.job_id == *job_id))
                 .copied()
                 .collect()
         };
@@ -333,11 +328,7 @@ impl WorkerPool {
     /// This combines pop_worker() + start_worker_process() into a single
     /// convenience method. Returns (worker_id, is_new) where is_new indicates
     /// whether a new process was started.
-    pub fn pop_or_start_worker(
-        &self,
-        language: Language,
-        job_id: &JobID,
-    ) -> PopOrStartResult {
+    pub fn pop_or_start_worker(&self, language: Language, job_id: &JobID) -> PopOrStartResult {
         // First try to pop an existing idle worker.
         let result = self.pop_worker(language, job_id);
         if result.status == PopWorkerStatus::Ok {
@@ -759,8 +750,8 @@ mod tests {
 
     #[test]
     fn test_start_worker_callback() {
-        use std::sync::Arc;
         use std::sync::atomic::AtomicU32;
+        use std::sync::Arc;
 
         let pool = WorkerPool::new(10, 100);
         let job = make_job_id(1);
@@ -1133,7 +1124,8 @@ mod tests {
         pool.register_worker(WorkerInfo {
             worker_type: WorkerType::Worker,
             ..w1
-        }).unwrap();
+        })
+        .unwrap();
 
         let mut w2 = make_worker(2, Language::Python, job);
         w2.worker_type = WorkerType::Driver;

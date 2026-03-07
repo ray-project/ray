@@ -558,7 +558,7 @@ mod tests {
     /// Test add, get, erase operations on bundle location index.
     #[test]
     fn test_bundle_location_index() {
-        use crate::id::{NodeID, PlacementGroupID, JobID};
+        use crate::id::{JobID, NodeID, PlacementGroupID};
 
         type BundleID = (PlacementGroupID, i64);
 
@@ -1173,7 +1173,10 @@ mod tests {
 
         // Different values produce different hash
         let mut s3 = HashMap::new();
-        s3.insert("key".to_string(), vec!["value1".to_string(), "value2".to_string()]);
+        s3.insert(
+            "key".to_string(),
+            vec!["value1".to_string(), "value2".to_string()],
+        );
         assert_ne!(hash_map(&s1), hash_map(&s3));
 
         // Different key produces different hash
@@ -1234,7 +1237,7 @@ mod tests {
         let cgroup_current_bytes: i64 = 850 * 1024 * 1024; // 850 MB
         let inactive_file_bytes: i64 = 30 * 1024 * 1024; // 30 MB
         let active_file_bytes: i64 = 20 * 1024 * 1024; // 20 MB
-        // Working set = 850 - 30 - 20 = 800 MB (80% of 1GB, above 70%)
+                                                       // Working set = 850 - 30 - 20 = 800 MB (80% of 1GB, above 70%)
         let used_bytes = cgroup_current_bytes - inactive_file_bytes - active_file_bytes;
         let threshold = 0.70f64;
 
@@ -1352,10 +1355,7 @@ mod tests {
     #[test]
     fn test_convert_value_trims_vector_elements() {
         let input = "no_spaces, with spaces ";
-        let result: Vec<String> = input
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect();
+        let result: Vec<String> = input.split(',').map(|s| s.trim().to_string()).collect();
         assert_eq!(result, vec!["no_spaces", "with spaces"]);
     }
 

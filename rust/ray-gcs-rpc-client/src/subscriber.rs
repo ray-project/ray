@@ -84,12 +84,7 @@ impl GcsSubscriberClient {
     /// - `channel_type`: The pubsub channel (e.g., GcsActorChannel = 3)
     /// - `key_id`: Specific key to filter on, or empty for all keys
     /// - `callback`: Invoked for each received PubMessage
-    pub fn subscribe(
-        &self,
-        channel_type: i32,
-        key_id: Vec<u8>,
-        callback: SubscriberCallback,
-    ) {
+    pub fn subscribe(&self, channel_type: i32, key_id: Vec<u8>, callback: SubscriberCallback) {
         let cb = Arc::new(callback);
         self.subscriptions.lock().push(Subscription {
             channel_type,
@@ -110,13 +105,11 @@ impl GcsSubscriberClient {
             .map(|s| rpc::Command {
                 channel_type: s.channel_type,
                 key_id: s.key_id.clone(),
-                command_message_one_of: Some(
-                    rpc::command::CommandMessageOneOf::SubscribeMessage(
-                        rpc::SubMessage {
-                            sub_message_one_of: None,
-                        },
-                    ),
-                ),
+                command_message_one_of: Some(rpc::command::CommandMessageOneOf::SubscribeMessage(
+                    rpc::SubMessage {
+                        sub_message_one_of: None,
+                    },
+                )),
             })
             .collect();
 
@@ -261,9 +254,7 @@ mod tests {
     }
 
     #[tonic::async_trait]
-    impl rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService
-        for MockPubSubService
-    {
+    impl rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsService for MockPubSubService {
         async fn gcs_publish(
             &self,
             _request: tonic::Request<rpc::GcsPublishRequest>,
@@ -320,7 +311,9 @@ mod tests {
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             tonic::transport::Server::builder()
                 .add_service(
-                    rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsServiceServer::new(svc),
+                    rpc::internal_pub_sub_gcs_service_server::InternalPubSubGcsServiceServer::new(
+                        svc,
+                    ),
                 )
                 .serve_with_incoming(incoming)
                 .await
@@ -573,8 +566,8 @@ mod tests {
 
     #[test]
     fn test_with_poll_timeout() {
-        let sub = GcsSubscriberClient::new(b"sub1".to_vec())
-            .with_poll_timeout(Duration::from_secs(5));
+        let sub =
+            GcsSubscriberClient::new(b"sub1".to_vec()).with_poll_timeout(Duration::from_secs(5));
         assert_eq!(sub.poll_timeout, Duration::from_secs(5));
     }
 }

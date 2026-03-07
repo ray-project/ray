@@ -259,10 +259,10 @@ mod tests {
         });
 
         let config = HealthCheckConfig {
-            initial_delay_ms: 0,   // no initial delay
-            timeout_ms: 50,        // very short timeout
-            period_ms: 10,         // very short period
-            failure_threshold: 1,  // die after 1 failure
+            initial_delay_ms: 0,  // no initial delay
+            timeout_ms: 50,       // very short timeout
+            period_ms: 10,        // very short period
+            failure_threshold: 1, // die after 1 failure
         };
         let mgr = GcsHealthCheckManager::new(config, callback);
 
@@ -294,9 +294,9 @@ mod tests {
 
         let config = HealthCheckConfig {
             initial_delay_ms: 0,
-            timeout_ms: 10,        // extremely short timeout
+            timeout_ms: 10, // extremely short timeout
             period_ms: 10,
-            failure_threshold: 2,  // die after 2 failures
+            failure_threshold: 2, // die after 2 failures
         };
         let mgr = GcsHealthCheckManager::new(config, callback);
 
@@ -308,7 +308,10 @@ mod tests {
 
         // Should get death notification after 2 failed checks
         let result = tokio::time::timeout(Duration::from_secs(5), death_rx.recv()).await;
-        assert!(result.is_ok(), "Death callback should have fired after 2 timeouts");
+        assert!(
+            result.is_ok(),
+            "Death callback should have fired after 2 timeouts"
+        );
         let dead_node = result.unwrap().unwrap();
         assert_eq!(dead_node, nid);
     }
@@ -346,7 +349,10 @@ mod tests {
         let mut actual_dead = HashSet::new();
         for _ in 0..3 {
             let result = tokio::time::timeout(Duration::from_secs(5), death_rx.recv()).await;
-            assert!(result.is_ok(), "Should receive death notification for each node");
+            assert!(
+                result.is_ok(),
+                "Should receive death notification for each node"
+            );
             actual_dead.insert(result.unwrap().unwrap());
         }
 
@@ -434,7 +440,10 @@ mod tests {
 
         // Wait a bit and verify no death callback was fired
         let result = tokio::time::timeout(Duration::from_millis(300), death_rx.recv()).await;
-        assert!(result.is_err(), "Should not receive death notification after removal");
+        assert!(
+            result.is_err(),
+            "Should not receive death notification after removal"
+        );
     }
 
     #[tokio::test]

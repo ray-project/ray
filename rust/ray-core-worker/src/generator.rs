@@ -289,9 +289,7 @@ mod tests {
 
         // Third yield should block.
         let waiter2 = waiter.clone();
-        let handle = tokio::spawn(async move {
-            waiter2.yield_result(make_oid(3), 10).await
-        });
+        let handle = tokio::spawn(async move { waiter2.yield_result(make_oid(3), 10).await });
 
         // Give producer time to start waiting.
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -316,9 +314,7 @@ mod tests {
 
         // Next yield of 100 bytes would exceed 200 limit.
         let waiter2 = waiter.clone();
-        let handle = tokio::spawn(async move {
-            waiter2.yield_result(make_oid(2), 100).await
-        });
+        let handle = tokio::spawn(async move { waiter2.yield_result(make_oid(2), 100).await });
 
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         assert_eq!(waiter.num_buffered(), 1); // Second is blocked.

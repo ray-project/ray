@@ -68,11 +68,7 @@ where
 /// Wait for an atomic counter to reach the expected value.
 ///
 /// Returns `true` if the counter reached the expected value, `false` on timeout.
-pub async fn wait_for_expected_count(
-    counter: &AtomicI32,
-    expected: i32,
-    timeout_ms: u64,
-) -> bool {
+pub async fn wait_for_expected_count(counter: &AtomicI32, expected: i32, timeout_ms: u64) -> bool {
     wait_for_condition(|| counter.load(Ordering::SeqCst) == expected, timeout_ms).await
 }
 

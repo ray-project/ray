@@ -23,9 +23,9 @@ use ray_proto::ray::rpc;
 
 use crate::lease_manager::{LeaseReply, SchedulingClass};
 use crate::node_manager::NodeManager;
-use crate::worker_pool::Language;
 use crate::placement_group_resource_manager::BundleID;
 use crate::scheduling_resources::SchedulingOptions;
+use crate::worker_pool::Language;
 
 /// The gRPC service implementation wrapping the NodeManager.
 pub struct NodeManagerServiceImpl {
@@ -56,9 +56,7 @@ fn compute_scheduling_class(resources: &ResourceSet) -> SchedulingClass {
 }
 
 /// Convert a proto `SchedulingStrategy` into our internal `SchedulingOptions`.
-fn scheduling_options_from_proto(
-    strategy: Option<&rpc::SchedulingStrategy>,
-) -> SchedulingOptions {
+fn scheduling_options_from_proto(strategy: Option<&rpc::SchedulingStrategy>) -> SchedulingOptions {
     let Some(strategy) = strategy else {
         return SchedulingOptions::hybrid();
     };
@@ -166,8 +164,8 @@ impl NodeManagerServiceImpl {
             LeaseReply::Rejected { reason } => Ok(rpc::RequestWorkerLeaseReply {
                 rejected: true,
                 scheduling_failure_message: reason,
-                failure_type: rpc::request_worker_lease_reply::SchedulingFailureType::SchedulingFailed
-                    as i32,
+                failure_type:
+                    rpc::request_worker_lease_reply::SchedulingFailureType::SchedulingFailed as i32,
                 ..Default::default()
             }),
         }
@@ -243,7 +241,10 @@ impl NodeManagerServiceImpl {
         self.node_manager.worker_pool().handle_job_started(job_id);
 
         // Start one worker process for the requested language.
-        let worker_id = self.node_manager.worker_pool().start_worker_process(language, &job_id);
+        let worker_id = self
+            .node_manager
+            .worker_pool()
+            .start_worker_process(language, &job_id);
         if let Some(wid) = worker_id {
             tracing::info!(worker_id = %wid.hex(), "Prestarted worker");
         }
@@ -331,8 +332,7 @@ impl NodeManagerServiceImpl {
             .iter()
             .filter_map(|b| {
                 let ident = b.bundle_id.as_ref()?;
-                let pg_id =
-                    PlacementGroupID::from_binary(ident.placement_group_id.as_slice());
+                let pg_id = PlacementGroupID::from_binary(ident.placement_group_id.as_slice());
                 Some((pg_id, ident.bundle_index))
             })
             .collect();
@@ -374,8 +374,7 @@ impl NodeManagerServiceImpl {
             .iter()
             .filter_map(|b| {
                 let ident = b.bundle_id.as_ref()?;
-                let pg_id =
-                    PlacementGroupID::from_binary(ident.placement_group_id.as_slice());
+                let pg_id = PlacementGroupID::from_binary(ident.placement_group_id.as_slice());
                 Some((pg_id, ident.bundle_index))
             })
             .collect();
@@ -926,10 +925,7 @@ mod tests {
         rpc::RequestWorkerLeaseRequest {
             lease_spec: Some(rpc::LeaseSpec {
                 lease_id: vec![1, 2, 3, 4, 5, 6, 7, 8],
-                required_resources: std::collections::HashMap::from([(
-                    "CPU".to_string(),
-                    cpu,
-                )]),
+                required_resources: std::collections::HashMap::from([("CPU".to_string(), cpu)]),
                 ..Default::default()
             }),
             ..Default::default()
@@ -1202,10 +1198,8 @@ mod tests {
 
     #[test]
     fn test_resources_from_map() {
-        let map = std::collections::HashMap::from([
-            ("CPU".to_string(), 4.0),
-            ("GPU".to_string(), 2.0),
-        ]);
+        let map =
+            std::collections::HashMap::from([("CPU".to_string(), 4.0), ("GPU".to_string(), 2.0)]);
         let rs = resources_from_map(&map);
         assert_eq!(rs.get("CPU"), FixedPoint::from_f64(4.0));
         assert_eq!(rs.get("GPU"), FixedPoint::from_f64(2.0));
@@ -1219,7 +1213,10 @@ mod tests {
         let mut rs2 = ResourceSet::new();
         rs2.set("CPU".to_string(), FixedPoint::from_f64(2.0));
 
-        assert_eq!(compute_scheduling_class(&rs1), compute_scheduling_class(&rs2));
+        assert_eq!(
+            compute_scheduling_class(&rs1),
+            compute_scheduling_class(&rs2)
+        );
     }
 
     #[test]
@@ -1230,7 +1227,10 @@ mod tests {
         let mut rs2 = ResourceSet::new();
         rs2.set("CPU".to_string(), FixedPoint::from_f64(4.0));
 
-        assert_ne!(compute_scheduling_class(&rs1), compute_scheduling_class(&rs2));
+        assert_ne!(
+            compute_scheduling_class(&rs1),
+            compute_scheduling_class(&rs2)
+        );
     }
 
     #[test]
