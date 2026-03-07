@@ -206,64 +206,29 @@ class EnvironmentCredentialProvider(DatabricksCredentialProvider):
 
 @dataclass
 class BaseCredentialConfig:
-    """Base configuration for credential resolution.
-
-    Args:
-        credential_provider: An explicit credential provider instance.
-            If provided, it is used directly.
-    """
-
     credential_provider: Optional[DatabricksCredentialProvider] = None
 
 
 @dataclass
 class DatabricksTableCredentialConfig(BaseCredentialConfig):
-    """Configuration for Databricks table credential resolution.
-
-    If credential_provider is None, falls back to EnvironmentCredentialProvider.
-    """
-
     pass
 
 
 @dataclass
 class UnityCatalogCredentialConfig(BaseCredentialConfig):
-    """Configuration for Unity Catalog credential resolution.
-
-    Args:
-        url: The Databricks host URL. Must be provided together with token
-            if credential_provider is None.
-        token: The Databricks authentication token. Must be provided together
-            with url if credential_provider is None.
-    """
-
     url: Optional[str] = None
     token: Optional[str] = None
 
 
-# Union type for use in type annotations. While both config types share
-# the BaseCredentialConfig base class, the Union makes the set of expected
-# concrete types explicit for callers and static type checkers.
 CredentialConfig = Union[DatabricksTableCredentialConfig, UnityCatalogCredentialConfig]
 
 
 def resolve_credential_provider(
     config: CredentialConfig,
 ) -> DatabricksCredentialProvider:
-    """Resolve credential provider from a config object.
-
-    Args:
-        config: A CredentialConfig subclass instance.
-
-    Returns:
-        A DatabricksCredentialProvider instance.
-    """
     if config.credential_provider is not None:
         return config.credential_provider
 
-    # Using match/case (Python 3.10+) for structural pattern matching on the
-    # tagged union. This provides clear dispatch by config type and extracts
-    # fields with type guards in a single expression.
     match config:
         case DatabricksTableCredentialConfig():
             return EnvironmentCredentialProvider()
