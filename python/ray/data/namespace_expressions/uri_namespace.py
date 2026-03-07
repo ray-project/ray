@@ -35,9 +35,9 @@ class _URINamespace:
         Returns:
             A DownloadExpr that will download content from the URI column.
         """
-        from ray.data.expressions import download
+        from ray.data.expressions import download, ColumnExpr
 
-        if self._expr.name is None:
+        if not isinstance(self._expr, ColumnExpr):
             raise TypeError(
                 "download() can only be called on a column expression, "
                 f"but got {type(self._expr).__name__}"

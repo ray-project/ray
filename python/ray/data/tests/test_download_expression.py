@@ -72,6 +72,10 @@ class TestDownloadExpressionStructure:
         with pytest.raises(TypeError):
             (col("uri") + lit("test")).uri.download()
 
+        # Should raise error when called on an alias expression
+        with pytest.raises(TypeError):
+            col("uri").alias("x").uri.download()
+
 
 class TestDownloadExpressionFunctionality:
     """Test actual download functionality with real and mocked data."""
