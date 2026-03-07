@@ -294,15 +294,13 @@ def get_num_ready_tpu_slices(
         return 0
 
     # Fetch live resource usage via the State API to ensure slices are idle.
-    from ray.util.state import api as state_api
-
     try:
-        live_nodes = state_api.list_nodes()
-        # Map NodeID to its resource usage
-        node_usage = {n.node_id: n.resources_usage for n in live_nodes}
+        from ray._private.state import available_resources_per_node
+
+        node_avail_resources = available_resources_per_node()
     except Exception as e:
-        logger.warning(f"Failed to fetch node state: {e}")
-        node_usage = {}
+        logger.warning(f"Failed to fetch live available resources per node: {e}")
+        node_avail_resources = {}
 
     slice_to_nodes = {}
     for node in ray.nodes():
@@ -326,13 +324,17 @@ def get_num_ready_tpu_slices(
                 for n in nodes
             )
 
-            # Validate all nodes in this slice are idle to avoid scheduling on
-            # fractured slices.
+            # Validate all nodes in this slice are completely idle to avoid
+            # scheduling on multi-tenant slices currently in use.
             slice_is_idle = True
             for n in nodes:
                 node_id = n.get("NodeID")
-                usage = node_usage.get(node_id, {})
-                if usage.get("TPU", 0) > 0:
+                # _available_resources_per_node returns dicts keyed by NodeID strings
+                avail = node_avail_resources.get(node_id, {})
+                total_tpus = n.get("Resources", {}).get("TPU", 0)
+
+                # If available TPUs < total TPUs on this specific node, it is in use
+                if avail.get("TPU", 0) < total_tpus:
                     slice_is_idle = False
                     break
 

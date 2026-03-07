@@ -426,16 +426,8 @@ def _make_mock_tpu_node(
     }
 
 
-def _make_mock_state_api_node(node_id, tpu_used=0):
-    """Helper to mock a NodeState object returned by state_api.list_nodes()."""
-    mock_node = MagicMock()
-    mock_node.node_id = node_id
-    mock_node.resources_usage = {"TPU": tpu_used}
-    return mock_node
-
-
 @pytest.mark.parametrize(
-    "topology, accelerator_type, mock_nodes, mock_state_nodes, expected_ready",
+    "topology, accelerator_type, mock_nodes, mock_avail_resources, expected_ready",
     [
         # 1 fully intact and available v4 slice (2 physical hosts).
         (
@@ -445,13 +437,13 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
             ],
-            [
-                _make_mock_state_api_node("A", tpu_used=0),
-                _make_mock_state_api_node("B", tpu_used=0),
-            ],
+            {
+                "A": {"TPU": 4},
+                "B": {"TPU": 4},
+            },
             1,
         ),
-        # 1 fully intact slice, BUT one node is using TPUs (unavailable) -> 0 ready slices.
+        # 1 fully intact slice, but one node is using 2 TPUs (unavailable) -> 0 ready slices.
         (
             "2x2x2",
             "v4",
@@ -459,10 +451,10 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
             ],
-            [
-                _make_mock_state_api_node("A", tpu_used=4),  # TPUs in use!
-                _make_mock_state_api_node("B", tpu_used=0),
-            ],
+            {
+                "A": {"TPU": 2},
+                "B": {"TPU": 4},
+            },
             0,
         ),
         # Fractured slice (missing a physical host) -> 0 ready slices.
@@ -473,9 +465,9 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
                 # Worker 1 is missing
             ],
-            [
-                _make_mock_state_api_node("A", tpu_used=0),
-            ],
+            {
+                "A": {"TPU": 4},
+            },
             0,
         ),
         # Correct number of hosts, but missing the head node (rank 0) -> 0 ready slices.
@@ -486,10 +478,10 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="A"),
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 2, node_id="B"),
             ],
-            [
-                _make_mock_state_api_node("A", tpu_used=0),
-                _make_mock_state_api_node("B", tpu_used=0),
-            ],
+            {
+                "A": {"TPU": 4},
+                "B": {"TPU": 4},
+            },
             0,
         ),
         # Fractured slice (one physical host is dead) -> 0 ready slices.
@@ -500,9 +492,9 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                 _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
                 _make_mock_tpu_node(False, "v4-16", "slice-1", 1, node_id="B"),
             ],
-            [
-                _make_mock_state_api_node("A", tpu_used=0),
-            ],
+            {
+                "A": {"TPU": 4},
+            },
             0,
         ),
         # 2 slices total: one intact & available, one fractured -> 1 ready slice.
@@ -515,11 +507,11 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                 _make_mock_tpu_node(True, "v4-16", "slice-B", 0, node_id="B0"),
                 # slice-B worker 1 is missing
             ],
-            [
-                _make_mock_state_api_node("A0", tpu_used=0),
-                _make_mock_state_api_node("A1", tpu_used=0),
-                _make_mock_state_api_node("B0", tpu_used=0),
-            ],
+            {
+                "A0": {"TPU": 4},
+                "A1": {"TPU": 4},
+                "B0": {"TPU": 4},
+            },
             1,
         ),
         # 1 fully intact and available v6e 2x4 slice (single-host).
@@ -531,9 +523,9 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                     True, "v6e-8", "slice-1", 0, tpu_chips=8, node_id="A"
                 ),
             ],
-            [
-                _make_mock_state_api_node("A", tpu_used=0),
-            ],
+            {
+                "A": {"TPU": 8},
+            },
             1,
         ),
         # 1 fully intact and available v6e 2x4 slice (2 physical hosts).
@@ -548,10 +540,10 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                     True, "v6e-8", "slice-1", 1, tpu_chips=4, node_id="B"
                 ),
             ],
-            [
-                _make_mock_state_api_node("A", tpu_used=0),
-                _make_mock_state_api_node("B", tpu_used=0),
-            ],
+            {
+                "A": {"TPU": 4},
+                "B": {"TPU": 4},
+            },
             1,
         ),
         # 2 fully intact v6e slices.
@@ -568,37 +560,37 @@ def _make_mock_state_api_node(node_id, tpu_used=0):
                 _make_mock_tpu_node(True, "v6e-16", "slice-2", 2, node_id="S2_2"),
                 _make_mock_tpu_node(True, "v6e-16", "slice-2", 3, node_id="S2_3"),
             ],
-            [
-                _make_mock_state_api_node("S1_0", tpu_used=0),
-                _make_mock_state_api_node("S1_1", tpu_used=0),
-                _make_mock_state_api_node("S1_2", tpu_used=0),
-                _make_mock_state_api_node("S1_3", tpu_used=0),
-                _make_mock_state_api_node("S2_0", tpu_used=0),
-                _make_mock_state_api_node("S2_1", tpu_used=0),
-                _make_mock_state_api_node("S2_2", tpu_used=0),
-                _make_mock_state_api_node("S2_3", tpu_used=0),
-            ],
+            {
+                "S1_0": {"TPU": 4},
+                "S1_1": {"TPU": 4},
+                "S1_2": {"TPU": 4},
+                "S1_3": {"TPU": 4},
+                "S2_0": {"TPU": 4},
+                "S2_1": {"TPU": 4},
+                "S2_2": {"TPU": 4},
+                "S2_3": {"TPU": 4},
+            },
             2,
         ),
     ],
 )
 @patch("ray.is_initialized", return_value=True)
-@patch("ray.util.state.api.list_nodes")
+@patch("ray._private.state.available_resources_per_node")
 @patch("ray.nodes")
 def test_get_num_ready_tpu_slices_calculation(
     mock_nodes_call,
-    mock_state_api_nodes,
+    mock_avail_resources_call,
     mock_is_initialized,
     topology,
     accelerator_type,
     mock_nodes,
-    mock_state_nodes,
+    mock_avail_resources,
     expected_ready,
 ):
     """Test that the TPU slice readiness utility correctly calculates the number of ready
-    slices in different mocked scenarios."""
+    slices in different mocked scenarios, including idle resource verification."""
     mock_nodes_call.return_value = mock_nodes
-    mock_state_api_nodes.return_value = mock_state_nodes
+    mock_avail_resources_call.return_value = mock_avail_resources
 
     actual_ready = ray.util.tpu.get_num_ready_tpu_slices(
         topology=topology,
