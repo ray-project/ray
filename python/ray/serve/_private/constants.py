@@ -366,19 +366,15 @@ RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
     "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
 )
 
-# How often autoscaling metrics are recorded on Serve replicas.
-RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
+# Factor of look_back_period_s for autoscaling metric record interval.
+# Record interval = look_back_period_s * factor. Used by both router and replica.
+RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
+    "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
-)
-
-# How often autoscaling metrics are recorded on Serve handles.
-RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
 )
 
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)

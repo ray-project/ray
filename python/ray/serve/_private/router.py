@@ -36,8 +36,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
@@ -282,13 +282,14 @@ class RouterMetricsManager:
 
             # Record number of queued + ongoing requests at regular
             # intervals into the in-memory metrics store
+            record_interval_s = (
+                autoscaling_config.look_back_period_s
+                * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
+            )
             self.metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
                 self._add_autoscaling_metrics_point,
-                min(
-                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                    autoscaling_config.metrics_interval_s,
-                ),
+                min(record_interval_s, autoscaling_config.metrics_interval_s),
             )
             # Push metrics to the controller periodically.
             self.metrics_pusher.register_or_update_task(
@@ -460,11 +461,12 @@ class RouterMetricsManager:
                     # If the running requests timeseries is empty, we set the sum
                     # to the current number of requests.
                     running_requests_sum = num_requests
-                avg_running_requests[replica_id] = (
+                replica_str = replica_id.to_full_id_str()
+                avg_running_requests[replica_str] = (
                     running_requests_sum / num_data_points
                 )
                 # Get running requests data
-                running_requests[replica_id] = self.metrics_store.data.get(
+                running_requests[replica_str] = self.metrics_store.data.get(
                     replica_id, [TimeStampedValue(timestamp, num_requests)]
                 )
         handle_metric_report = HandleMetricReport(
