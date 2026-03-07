@@ -52,7 +52,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         self._latest_allocated_resources: Optional[List["ResourceDict"]] = None
 
     def _count_possible_workers(
-        self, allocated_resources: List[Dict[str, float]]
+        self, allocated_resources: List[Dict[str, float]], current_num_workers: int = 0
     ) -> int:
         """Count the number of workers that can be started/restarted with the given
         the list of node resources. The returned number is capped at the maximum
@@ -103,12 +103,18 @@ class ElasticScalingPolicy(ScalingPolicy):
                     # slices available.
                     if num_available_slices > 0:
                         try:
-                            num_alive_slices = get_num_ready_tpu_slices(
+                            # This strictly finds physically intact slices that are fully available
+                            # for scheduling.
+                            num_ready_slices = get_num_ready_tpu_slices(
                                 topology=self.scaling_config.topology,
                                 accelerator_type=self.scaling_config.accelerator_type,
                             )
+                            # Add back the slices we already own and are currently running
+                            running_slices = current_num_workers // workers_per_slice
+                            alive_slices = num_ready_slices + running_slices
+
                             num_available_slices = min(
-                                num_available_slices, num_alive_slices
+                                num_available_slices, alive_slices
                             )
                         except Exception as e:
                             logger.warning(
@@ -201,7 +207,9 @@ class ElasticScalingPolicy(ScalingPolicy):
         if allocated_resources is None:
             return NoopDecision()
 
-        num_workers = self._count_possible_workers(allocated_resources)
+        num_workers = self._count_possible_workers(
+            allocated_resources, current_num_workers=worker_group_state.num_workers
+        )
 
         if num_workers == worker_group_state.num_workers:
             logger.info(
