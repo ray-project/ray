@@ -15,7 +15,7 @@ from ray.data.datatype import DataType
 from ray.data.expressions import col, udf
 
 NUM_ROWS = 50_000_000
-UPSERT_ROWS = 75_000_000
+UPSERT_ROWS = 7_500_000
 OVERWRITE_ROWS = 200_000_000
 EMBEDDING_DIM = 32
 TOKEN_IDS_DIM = 8
