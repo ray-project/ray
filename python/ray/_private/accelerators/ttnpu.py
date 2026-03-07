@@ -66,9 +66,9 @@ class TTNPUAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_TENSTORRENT_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
-        os.environ[TTNPUAcceleratorManager.get_visible_accelerator_ids_env_var()] = (
-            ",".join([str(i) for i in visible_npu_devices])
-        )
+        os.environ[
+            TTNPUAcceleratorManager.get_visible_accelerator_ids_env_var()
+        ] = ",".join([str(i) for i in visible_npu_devices])
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
