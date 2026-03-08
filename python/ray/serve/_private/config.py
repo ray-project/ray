@@ -285,12 +285,16 @@ class DeploymentConfig(BaseModel):
     def validate_deployment_actors_unique_names(self):
         if self.deployment_actors is None:
             return self
-        names = [cfg.name for cfg in self.deployment_actors]
-        if len(names) != len(set(names)):
-            duplicates = [n for n in names if names.count(n) > 1]
+        seen = set()
+        duplicates = set()
+        for cfg in self.deployment_actors:
+            if cfg.name in seen:
+                duplicates.add(cfg.name)
+            seen.add(cfg.name)
+        if duplicates:
             raise ValueError(
                 f"deployment_actors must have unique names. "
-                f"Duplicate name(s): {list(set(duplicates))}"
+                f"Duplicate name(s): {sorted(duplicates)}"
             )
         return self
 
