@@ -97,9 +97,9 @@ python/requirements/
 # Things that need to execute on GPU's
 python/ray/dag/
 python/ray/experimental/channel/
-python/ray/experimental/gpu_object_manager/
+python/ray/experimental/rdt/
 python/ray/experimental/collective/
-python/ray/tests/gpu_objects/
+python/ray/tests/rdt/
 python/ray/dashboard/modules/reporter/gpu_providers.py
 python/ray/tests/test_gpu_provider_on_gpu.py
 @ python cgraphs_direct_transport
@@ -217,6 +217,8 @@ ci/docker/forge.aarch64.wanda.yaml
 .buildkite/hooks/post-command
 .buildkite/release/
 .buildkite/release-automation/
+build-wheel.sh
+build-image.sh
 @ tools
 ;
 
