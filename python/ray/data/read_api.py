@@ -109,7 +109,7 @@ from ray.data.datasource.util import (
     _validate_head_node_resources_for_local_scheduling,
 )
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -4406,12 +4406,13 @@ def read_kafka(
     start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
     end_offset: Union[int, datetime, Literal["latest"]] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
-    timeout_ms: int = 10000,
+    timeout_ms: Optional[int] = None,
 ) -> Dataset:
     """Read data from Kafka topics.
 
@@ -4464,7 +4465,11 @@ def read_kafka(
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
 
-        kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
+        kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
+        consumer_config: Confluent/librdkafka consumer configuration dict to
+            pass through directly to the underlying client. These options override
+            defaults and any mapped values from `kafka_auth_config`. The `bootstrap.servers` option is derived from `bootstrap_servers` and cannot be overridden here.
+            See https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html#pythonclient-configuration for more details.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
@@ -4473,9 +4478,10 @@ def read_kafka(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
-        timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-            If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-            it has read so far.
+        timeout_ms: Optional timeout in milliseconds for every read task to poll until reaching end_offset.
+            If None (default), no task-level timeout is applied and each read task
+            will poll until it reaches end_offset. If set, the read task will stop
+            polling after the timeout and return the messages it has read so far.
 
     Returns:
         A :class:`~ray.data.Dataset` containing Kafka messages with the following schema:
@@ -4490,7 +4496,7 @@ def read_kafka(
 
     Raises:
         ValueError: If invalid parameters are provided.
-        ImportError: If kafka-python is not installed.
+        ImportError: If confluent-kafka is not installed.
     """  # noqa: E501
     if trigger != "once":
         raise ValueError(f"Only trigger='once' is supported. Got trigger={trigger!r}")
@@ -4502,6 +4508,7 @@ def read_kafka(
             start_offset=start_offset,
             end_offset=end_offset,
             kafka_auth_config=kafka_auth_config,
+            consumer_config=consumer_config,
             timeout_ms=timeout_ms,
         ),
         parallelism=-1,
@@ -4536,7 +4543,7 @@ def _get_datasource_or_legacy_reader(
             "`create_reader` has been deprecated in Ray 2.9. Instead of creating a "
             "`Reader`, implement `Datasource.get_read_tasks` and "
             "`Datasource.estimate_inmemory_data_size`.",
-            DeprecationWarning,
+            RayDeprecationWarning,
         )
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
     else:
