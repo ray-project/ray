@@ -1,6 +1,6 @@
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -8,13 +8,11 @@ import ray
 from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.kafka_datasource import (
     KafkaAuthConfig,
-    _add_authentication_to_config,
-    _build_consumer_config_for_discovery,
     _build_consumer_config_for_read,
     _datetime_to_ms,
 )
 
-pytest.importorskip("kafka")
+pytest.importorskip("confluent_kafka")
 
 
 @pytest.fixture(scope="session")
@@ -34,17 +32,28 @@ def bootstrap_server(kafka_container):
     return kafka_container.get_bootstrap_server()
 
 
+def _json_value_serializer(obj, ctx):
+    return json.dumps(obj).encode("utf-8")
+
+
+def _str_key_serializer(obj, ctx):
+    return obj.encode("utf-8") if obj else None
+
+
 @pytest.fixture(scope="session")
 def kafka_producer(bootstrap_server):
-    from kafka import KafkaProducer
+    from confluent_kafka.serializing_producer import SerializingProducer
 
     print(f"Creating shared Kafka producer for {bootstrap_server}")
-    producer = KafkaProducer(
-        bootstrap_servers=[bootstrap_server],
-        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        key_serializer=lambda k: k.encode("utf-8") if k else None,
+    producer = SerializingProducer(
+        {
+            "bootstrap.servers": bootstrap_server,
+            "value.serializer": _json_value_serializer,
+            "key.serializer": _str_key_serializer,
+        }
     )
     yield producer
+    producer.flush()
     print("Closing shared Kafka producer")
     producer.close()
 
@@ -97,35 +106,84 @@ def consume_messages(consumer, topic, expected_count, timeout=10):
     return messages
 
 
-def test_add_authentication_to_config():
-    """Test authentication config passthrough with all kafka-python auth parameters."""
-    # Test empty authentication
-    config = {}
-    _add_authentication_to_config(config, None)
-    assert config == {}
+def test_build_consumer_config_for_read():
+    """Test read config builder."""
+    bootstrap_servers = ["localhost:9092"]
 
-    _add_authentication_to_config(config, {})
-    assert config == {}
+    # Test basic config
+    config = _build_consumer_config_for_read(bootstrap_servers, None)
+    assert config["bootstrap.servers"] == "localhost:9092"
+    assert config["enable.auto.commit"] is False
+    assert "group.id" in config
 
-    # Test all authentication parameters at once
-    config = {}
-    token_provider = object()
-    ssl_context = object()  # Mock SSL context
+    # Test with authentication via consumer_config
+    user_conf = {
+        "security.protocol": "SASL_SSL",
+        "sasl.mechanism": "PLAIN",
+        "sasl.username": "user",
+        "sasl.password": "pass",
+    }
+    config_with_auth = _build_consumer_config_for_read(
+        bootstrap_servers, None, user_conf
+    )
+    assert config_with_auth["security.protocol"] == "SASL_SSL"
+    assert config_with_auth["sasl.mechanism"] == "PLAIN"
+    assert config_with_auth["sasl.username"] == "user"
+    assert config_with_auth["sasl.password"] == "pass"
 
-    kafka_auth_config = KafkaAuthConfig(
-        # Security protocol
+
+def test_build_consumer_config_with_pass_through():
+    """Test that extra consumer_config options pass through and cannot override bootstrap.servers."""
+    bootstrap_servers = ["localhost:9092"]
+
+    # Extra options should pass through
+    extra = {
+        "ssl.endpoint.identification.algorithm": "none",
+        "group.id": "custom-group",
+        "enable.auto.commit": True,
+    }
+    config = _build_consumer_config_for_read(bootstrap_servers, None, extra)
+    assert config["bootstrap.servers"] == "localhost:9092"
+    assert config["ssl.endpoint.identification.algorithm"] == "none"
+    assert config["group.id"] == "custom-group"
+    assert config["enable.auto.commit"] is True
+
+    # Attempt to override bootstrap.servers should be ignored
+    override = {"bootstrap.servers": "override:9092"}
+    config2 = _build_consumer_config_for_read(bootstrap_servers, None, override)
+    assert config2["bootstrap.servers"] == "localhost:9092"
+
+
+def test_read_kafka_config_conflict_raises():
+    """Specifying both kafka_auth_config and consumer_config should error."""
+    with pytest.raises(
+        ValueError, match="Provide only one of kafka_auth_config.* or consumer_config"
+    ):
+        ray.data.read_kafka(
+            topics="t",
+            bootstrap_servers="localhost:9092",
+            kafka_auth_config=KafkaAuthConfig(security_protocol="SSL"),
+            consumer_config={"security.protocol": "SSL"},
+        )
+
+
+def test_build_consumer_config_with_kafka_auth_config_deprecated():
+    """Test kafka-python style KafkaAuthConfig mapping (deprecated path)."""
+    bootstrap_servers = ["localhost:9092"]
+    auth = KafkaAuthConfig(
         security_protocol="SASL_SSL",
-        # SASL configuration
         sasl_mechanism="SCRAM-SHA-256",
         sasl_plain_username="testuser",
         sasl_plain_password="testpass",
         sasl_kerberos_name="kafka/hostname@REALM",
         sasl_kerberos_service_name="kafka",
+        # These are unsupported and should be ignored with warnings
         sasl_kerberos_domain_name="example.com",
-        sasl_oauth_token_provider=token_provider,
-        # SSL configuration
-        ssl_context=ssl_context,
+        sasl_oauth_token_provider=object(),
+        ssl_context=object(),
+        # ssl_check_hostname False is unsafe to map; ensure not weakening
         ssl_check_hostname=False,
+        # SSL files
         ssl_cafile="/path/to/ca.pem",
         ssl_certfile="/path/to/cert.pem",
         ssl_keyfile="/path/to/key.pem",
@@ -133,77 +191,21 @@ def test_add_authentication_to_config():
         ssl_ciphers="HIGH:!aNULL",
         ssl_crlfile="/path/to/crl.pem",
     )
-
-    _add_authentication_to_config(config, kafka_auth_config)
-
-    # Verify all parameters are passed through correctly
-    assert config["security_protocol"] == "SASL_SSL"
-    assert config["sasl_mechanism"] == "SCRAM-SHA-256"
-    assert config["sasl_plain_username"] == "testuser"
-    assert config["sasl_plain_password"] == "testpass"
-    assert config["sasl_kerberos_name"] == "kafka/hostname@REALM"
-    assert config["sasl_kerberos_service_name"] == "kafka"
-    assert config["sasl_kerberos_domain_name"] == "example.com"
-    assert config["sasl_oauth_token_provider"] == token_provider
-    assert config["ssl_context"] == ssl_context
-    assert config["ssl_check_hostname"] is False
-    assert config["ssl_cafile"] == "/path/to/ca.pem"
-    assert config["ssl_certfile"] == "/path/to/cert.pem"
-    assert config["ssl_keyfile"] == "/path/to/key.pem"
-    assert config["ssl_password"] == "keypassword"
-    assert config["ssl_ciphers"] == "HIGH:!aNULL"
-    assert config["ssl_crlfile"] == "/path/to/crl.pem"
-
-
-def test_build_consumer_config_for_discovery():
-    bootstrap_servers = ["localhost:9092", "localhost:9093"]
-
-    # Test without authentication
-    config = _build_consumer_config_for_discovery(bootstrap_servers, {})
-    assert config["bootstrap_servers"] == bootstrap_servers
-    assert config["enable_auto_commit"] is False
-    assert config["consumer_timeout_ms"] == 1000
-    assert "group_id" not in config
-
-    # Test with authentication
-    kafka_auth_config = KafkaAuthConfig(
-        security_protocol="SASL_SSL",
-        sasl_mechanism="SCRAM-SHA-256",
-        sasl_plain_username="admin",
-        sasl_plain_password="secret",
-    )
-    config = _build_consumer_config_for_discovery(bootstrap_servers, kafka_auth_config)
-    assert config["security_protocol"] == "SASL_SSL"
-    assert config["sasl_mechanism"] == "SCRAM-SHA-256"
-    assert config["sasl_plain_username"] == "admin"
-    assert config["sasl_plain_password"] == "secret"
-
-
-def test_build_consumer_config_for_read():
-    """Test read config builder."""
-    bootstrap_servers = ["localhost:9092"]
-
-    # Test basic config
-    config = _build_consumer_config_for_read(bootstrap_servers, {})
-    assert config["bootstrap_servers"] == bootstrap_servers
-    assert config["enable_auto_commit"] is False
-    assert config["value_deserializer"] is not None
-    assert config["key_deserializer"] is not None
-
-    # Test with authentication
-    kafka_auth_config = KafkaAuthConfig(
-        security_protocol="SASL_SSL",
-        sasl_mechanism="PLAIN",
-        sasl_plain_username="user",
-        sasl_plain_password="pass",
-    )
-    config_with_auth = _build_consumer_config_for_read(
-        bootstrap_servers, kafka_auth_config
-    )
-    assert config_with_auth["security_protocol"] == "SASL_SSL"
-    assert config_with_auth["sasl_mechanism"] == "PLAIN"
-    assert config_with_auth["sasl_plain_username"] == "user"
-    assert config_with_auth["sasl_plain_password"] == "pass"
+    config = _build_consumer_config_for_read(bootstrap_servers, auth, None)
+    assert config["security.protocol"] == "SASL_SSL"
+    assert config["sasl.mechanism"] == "SCRAM-SHA-256"
+    assert config["sasl.username"] == "testuser"
+    assert config["sasl.password"] == "testpass"
+    assert config["sasl.kerberos.principal"] == "kafka/hostname@REALM"
+    assert config["sasl.kerberos.service.name"] == "kafka"
+    # No weakening of TLS verification
+    assert "enable.ssl.certificate.verification" not in config
+    assert config["ssl.ca.location"] == "/path/to/ca.pem"
+    assert config["ssl.certificate.location"] == "/path/to/cert.pem"
+    assert config["ssl.key.location"] == "/path/to/key.pem"
+    assert config["ssl.key.password"] == "keypassword"
+    assert config["ssl.cipher.suites"] == "HIGH:!aNULL"
+    assert config["ssl.crl.location"] == "/path/to/crl.pem"
 
 
 def test_datetime_to_ms_without_timezone():
@@ -242,7 +244,7 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
 
     for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
-        kafka_producer.send(topic, value=message, key=f"key-{i}")
+        kafka_producer.produce(topic, value=message, key=f"key-{i}")
     kafka_producer.flush()
 
     # Wait a bit for messages to be committed
@@ -268,7 +270,7 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
     assert "timestamp" in first_record
     assert first_record["topic"] == topic
 
-    # Verify data types: key is string, value is binary
+    # Verify data types: key is bytes, value is binary
     assert isinstance(first_record["key"], bytes)
     assert isinstance(first_record["value"], bytes)
     key_str = first_record["key"].decode("utf-8")
@@ -303,7 +305,7 @@ def test_read_kafka_with_offsets(
 
     for i in range(total_messages):
         message = {"id": i, "value": f"message-{i}"}
-        kafka_producer.send(topic, value=message)
+        kafka_producer.produce(topic, value=message)
     kafka_producer.flush()
     time.sleep(0.3)
 
@@ -321,15 +323,14 @@ def test_read_kafka_with_offsets(
 def test_read_kafka_multiple_partitions(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
-    from kafka.admin import KafkaAdminClient, NewTopic
+    from confluent_kafka.admin import AdminClient, NewTopic
 
     topic = "test-multi-partition"
 
     # Create topic with 3 partitions
-    admin_client = KafkaAdminClient(bootstrap_servers=[bootstrap_server])
-    topic_config = NewTopic(name=topic, num_partitions=3, replication_factor=1)
+    admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
+    topic_config = NewTopic(topic, num_partitions=3, replication_factor=1)
     admin_client.create_topics([topic_config])
-    admin_client.close()
 
     time.sleep(2)  # Wait for topic creation
 
@@ -337,7 +338,7 @@ def test_read_kafka_multiple_partitions(
     for i in range(150):
         message = {"id": i, "value": f"message-{i}"}
         partition = i % 3
-        kafka_producer.send(topic, value=message, partition=partition)
+        kafka_producer.produce(topic, value=message, partition=partition)
     kafka_producer.flush()
     time.sleep(0.3)
 
@@ -360,12 +361,12 @@ def test_read_kafka_multiple_topics(
     # Send messages to topic1
     for i in range(50):
         message = {"id": i, "value": f"topic1-message-{i}"}
-        kafka_producer.send(topic1, value=message)
+        kafka_producer.produce(topic1, value=message)
 
     # Send messages to topic2
     for i in range(30):
         message = {"id": i, "value": f"topic2-message-{i}"}
-        kafka_producer.send(topic2, value=message)
+        kafka_producer.produce(topic2, value=message)
 
     kafka_producer.flush()
     time.sleep(0.3)
@@ -391,7 +392,7 @@ def test_read_kafka_with_message_headers(
             ("header1", b"value1"),
             ("header2", f"value-{i}".encode("utf-8")),
         ]
-        kafka_producer.send(topic, value=message, headers=headers)
+        kafka_producer.produce(topic, value=message, headers=headers)
     kafka_producer.flush()
     time.sleep(0.3)
 
@@ -410,9 +411,8 @@ def test_read_kafka_with_message_headers(
 
 
 @pytest.mark.parametrize(
-    "start_offset,end_offset,expected_count, test_id",
+    "start_offset,end_offset,expected_count,test_id",
     [
-        (150, 200, 0, "start-offset-exceeds-available-messages"),
         (0, 150, 100, "end-offset-exceeds-available-messages"),
         (
             "earliest",
@@ -431,36 +431,52 @@ def test_read_kafka_offset_exceeds_available_messages(
     expected_count,
     test_id,
 ):
-    import time
-
     topic = f"test-offset-timeout-{test_id}"
 
     for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
-        kafka_producer.send(topic, value=message)
+        kafka_producer.produce(topic, value=message)
     kafka_producer.flush()
     time.sleep(0.3)
 
-    # Try to read up to offset 200 (way beyond available messages)
-    # This should timeout and only return the 50 available messages
-
-    start_time = time.time()
+    # end_offset exceeds available messages, but it gets clamped to the high
+    # watermark during offset resolution, so the read completes without
+    # hanging.
     ds = ray.data.read_kafka(
         topics=[topic],
         bootstrap_servers=[bootstrap_server],
         start_offset=start_offset,
         end_offset=end_offset,
-        timeout_ms=3000,  # 3 second timeout
     )
 
     records = ds.take_all()
 
-    elapsed_time = time.time() - start_time
-
-    # Should get all 50 available messages
     assert len(records) == expected_count
 
-    assert elapsed_time >= 3, f"Expected timeout wait, but only took {elapsed_time}s"
+
+def test_read_kafka_default_no_timeout(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    topic = "test-default-no-timeout"
+
+    for i in range(50):
+        message = {"id": i, "value": f"message-{i}"}
+        kafka_producer.produce(topic, value=message)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # timeout_ms is intentionally omitted (defaults to None).
+    # Verifies the no-timeout code path works correctly.
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=0,
+        end_offset=50,
+    )
+
+    records = ds.take_all()
+
+    assert len(records) == 50
 
 
 def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
@@ -484,6 +500,12 @@ def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
             r"start_offset \(150\) > end_offset \(latest \(resolved to 100\)\) for partition 0 in topic test-invalid-offsets-3",
             "test-invalid-offsets-3",
         ),
+        (
+            150,
+            200,
+            r"start_offset \(150\) > end_offset \(200 \(resolved to 100\)\) for partition 0 in topic test-invalid-offsets-4",
+            "test-invalid-offsets-4",
+        ),
     ],
 )
 def test_read_kafka_invalid_offsets(
@@ -497,7 +519,7 @@ def test_read_kafka_invalid_offsets(
 ):
     for i in range(100):
         message = {"id": i, "value": f"message-{i}"}
-        kafka_producer.send(topic, value=message)
+        kafka_producer.produce(topic, value=message)
     kafka_producer.flush()
     time.sleep(0.3)
 
@@ -517,12 +539,13 @@ def test_read_kafka_with_datetime_offsets(
     """Test reading Kafka messages using datetime-based start and end offsets."""
     topic = "test-datetime-offsets"
 
-    msg_ts = _datetime_to_ms(datetime(2025, 1, 15))
-    time_before = datetime(2025, 1, 1)
-    time_after = datetime(2025, 2, 1)
+    now = datetime.now(timezone.utc)
+    time_before = now - timedelta(hours=1)
+    time_after = now + timedelta(hours=1)
+    msg_ts = _datetime_to_ms(now)
 
     for i in range(3):
-        kafka_producer.send(topic, value={"id": i}, timestamp_ms=msg_ts)
+        kafka_producer.produce(topic, value={"id": i}, timestamp=msg_ts)
     kafka_producer.flush()
     # Brief wait for consumer-side metadata propagation after flush()
     time.sleep(0.3)
@@ -548,10 +571,26 @@ def test_read_kafka_datetime_partial_range(
     batch2_ts = _datetime_to_ms(datetime(2025, 2, 1))
     boundary_time = datetime(2025, 1, 15)  # Between the two batches
 
-    kafka_producer.send(topic, value={"batch": 1, "id": 0}, timestamp_ms=batch1_ts)
-    kafka_producer.send(topic, value={"batch": 1, "id": 1}, timestamp_ms=batch1_ts)
-    kafka_producer.send(topic, value={"batch": 2, "id": 0}, timestamp_ms=batch2_ts)
-    kafka_producer.send(topic, value={"batch": 2, "id": 1}, timestamp_ms=batch2_ts)
+    kafka_producer.produce(
+        topic,
+        value={"batch": 1, "id": 0},
+        timestamp=batch1_ts,
+    )
+    kafka_producer.produce(
+        topic,
+        value={"batch": 1, "id": 1},
+        timestamp=batch1_ts,
+    )
+    kafka_producer.produce(
+        topic,
+        value={"batch": 2, "id": 0},
+        timestamp=batch2_ts,
+    )
+    kafka_producer.produce(
+        topic,
+        value={"batch": 2, "id": 1},
+        timestamp=batch2_ts,
+    )
     kafka_producer.flush()
     # Brief wait for consumer-side metadata propagation after flush()
     time.sleep(0.3)
@@ -583,7 +622,7 @@ def test_read_kafka_datetime_after_all_messages(
     """Test datetime start_offset after all messages returns 0 rows."""
     topic = "test-datetime-after-all"
 
-    kafka_producer.send(topic, value={"id": 0})
+    kafka_producer.produce(topic, value={"id": 0})
     kafka_producer.flush()
     # Brief wait for consumer-side metadata propagation after flush()
     time.sleep(0.3)
@@ -606,7 +645,7 @@ def test_read_kafka_datetime_before_all_messages(
     """Test datetime end_offset before all messages returns 0 rows."""
     topic = "test-datetime-before-all"
 
-    kafka_producer.send(topic, value={"id": 0})
+    kafka_producer.produce(topic, value={"id": 0})
     kafka_producer.flush()
     # Brief wait for consumer-side metadata propagation after flush()
     time.sleep(0.3)

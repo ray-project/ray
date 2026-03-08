@@ -3,7 +3,7 @@ Travel planning agent that orchestrates by calling two downstream agents over A2
   - Research agent (A2A) -> attractions/logistics/sources
   - Weather agent  (A2A) -> forecast/packing suggestions
 
-This agent is itself a LangGraph agent so it can be served via the existing
+This agent is itself a LangChain agent so it can be served via the existing
 Ray Serve patterns (/chat SSE and/or A2A wrapper).
 """
 
@@ -76,7 +76,7 @@ async def build_agent():
     Build the travel planning agent with A2A tools.
 
     Returns:
-        A LangGraph agent configured with A2A research and weather tools.
+        A LangChain agent configured with A2A research and weather tools.
     """
     tools = [a2a_research, a2a_weather]
     return await build_tool_agent(
