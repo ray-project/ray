@@ -201,6 +201,12 @@ def _doassert_expr() -> Optional[str]:
         if ch in ")]}":
             if depth > 0:
                 depth -= 1
+                i += 1
+                continue
+            # The outer `doassert(` opening parenthesis has already been consumed.
+            # A `)` at depth 0 closes the call, so parsing should stop here.
+            if ch == ")":
+                break
             i += 1
             continue
         if ch == "," and depth == 0:
