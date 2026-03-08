@@ -208,7 +208,7 @@ pub async fn start_test_raylet_server() -> TestRayletServer {
         session_name: String::new(),
         auth_token: None,
         python_worker_command: None,
-        raw_config_json: String::new(),
+        raw_config_json: "{}".to_string(),
     };
 
     let nm = Arc::new(NodeManager::new(config));

@@ -444,7 +444,7 @@ async fn test_full_stack_gcs_raylet_worker() {
         session_name: "e2e-test".to_string(),
         auth_token: None,
         python_worker_command: None,
-        raw_config_json: String::new(),
+        raw_config_json: "{}".to_string(),
     };
     let nm = Arc::new(ray_raylet::node_manager::NodeManager::new(raylet_config));
     let nm_clone = Arc::clone(&nm);

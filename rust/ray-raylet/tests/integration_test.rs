@@ -109,7 +109,7 @@ async fn test_raylet_registers_with_gcs() {
         session_name: "integration-test".to_string(),
         auth_token: None,
         python_worker_command: None,
-        raw_config_json: String::new(),
+        raw_config_json: "{}".to_string(),
     };
 
     let nm = Arc::new(NodeManager::new(config));

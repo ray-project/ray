@@ -119,7 +119,7 @@ fn make_raylet_config(node_id: &NodeID, gcs_address: &str) -> RayletConfig {
         session_name: "multi-node-test".to_string(),
         auth_token: None,
         python_worker_command: None,
-        raw_config_json: String::new(),
+        raw_config_json: "{}".to_string(),
     }
 }
 

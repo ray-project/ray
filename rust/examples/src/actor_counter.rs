@@ -60,7 +60,7 @@ async fn main() {
             session_name: "actor-counter".to_string(),
             auth_token: None,
             python_worker_command: None,
-            raw_config_json: String::new(),
+            raw_config_json: "{}".to_string(),
         },
     ));
     let nm_clone = Arc::clone(&nm);
