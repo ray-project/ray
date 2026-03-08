@@ -53,7 +53,7 @@ To understand the following content better, you should understand the difference
   * `submissionMode` (Optional): Specifies how RayJob submits the Ray job to the RayCluster. There are three possible values, with the default being `K8sJobMode`.
     * `K8sJobMode`: The KubeRay operator creates a submitter Kubernetes Job to submit the Ray job.
     * `HTTPMode`: The KubeRay operator sends a request to the RayCluster to create a Ray job.
-    * `InteractiveMode`: The KubeRay operator waits for the user to submit a job to the RayCluster. This mode is currently in alpha and the [KubeRay kubectl plugin](kubectl-plugin) relies on it. To avoid RayJobs staying in `Initializing` or `Waiting` for too long, set `preRunningDeadlineSeconds`.
+    * `InteractiveMode`: The KubeRay operator waits for the user to submit a job to the RayCluster. This mode is currently in alpha and the [KubeRay kubectl plugin](kubectl-plugin) relies on it.
     * `SidecarMode`: The KubeRay operator injects a container into the Ray head Pod to submit the Ray job. This mode does not support `clusterSelector`, `submitterPodTemplate`, and `submitterConfig`, and requires the head Pod's restart policy to be `Never`.
   * `submitterPodTemplate` (Optional): Defines the Pod template for the submitter Kubernetes Job. This field is only effective when `submissionMode` is "K8sJobMode".
     * `RAY_DASHBOARD_ADDRESS` - The KubeRay operator injects this environment variable to the submitter Pod. The value is `$HEAD_SERVICE:$DASHBOARD_PORT`.
@@ -63,7 +63,7 @@ To understand the following content better, you should understand the difference
   * `submitterConfig` (Optional): Additional configurations for the submitter Kubernetes Job.
     * `backoffLimit` (Optional, added in version 1.2.0): The number of retries before marking the submitter Job as failed. The default value is 2.
 * Automatic resource cleanup
-  * `preRunningDeadlineSeconds` (Optional): Maximum number of seconds a RayJob can remain before reaching `Running`. If the RayJob does not transition to `Running` within this deadline (for example, while in `Initializing` or `Waiting`), the KubeRay operator transitions the `JobDeploymentStatus` to `Failed` with reason `PreRunningDeadlineExceeded`. The default value is 0 (no pre-running deadline is enforced).
+  * `preRunningDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Running` within `preRunningDeadlineSeconds` seconds, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed` with reason `PreRunningDeadlineExceeded`. The default value is 0 (no pre-running deadline is enforced).
   * `shutdownAfterJobFinishes` (Optional): Determines whether to recycle the RayCluster after the Ray job finishes. The default value is false.
   * `ttlSecondsAfterFinished` (Optional): Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
   * `activeDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Complete` or `Failed` within `activeDeadlineSeconds`, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed`, citing `DeadlineExceeded` as the reason.
