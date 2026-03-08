@@ -1,6 +1,5 @@
 import logging
 import math
-import pprint
 import threading
 import time
 import typing
@@ -45,7 +44,10 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+from ray.data._internal.metadata_exporter import (
+    Topology as TopologyMetadata,
+    sanitize_for_struct,
+)
 from ray.data._internal.operator_schema_exporter import (
     OperatorSchema,
     get_operator_schema_exporter,
@@ -64,6 +66,10 @@ logger = logging.getLogger(__name__)
 
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
+
+# Maximum string/sequence length for DataContext logging. Set high to avoid truncation
+# while still protecting against pathological cases.
+DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 
 # Visible for testing.
 _num_shutdown = 0
@@ -196,7 +202,10 @@ class StreamingExecutor(Executor, threading.Thread):
             ):
                 logger.debug(
                     f"Data Context for dataset {self._dataset_id}:\n%s",
-                    pprint.pformat(self._data_context),
+                    sanitize_for_struct(
+                        self._data_context,
+                        truncate_length=DATA_CONTEXT_LOG_TRUNCATE_LENGTH,
+                    ),
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
