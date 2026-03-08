@@ -807,6 +807,9 @@ class AsyncioRouter:
         # Notify request router that request completed (for cleanup, e.g., token release)
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
+            # Decrement queue length cache for successfully dispatched requests.
+            # The increment happens in on_send_request during dispatch/assignment.
+            self.request_router.on_replica_result_finished(replica_id)
 
         if isinstance(result, ActorDiedError):
             # Replica has died but controller hasn't notified the router yet.
@@ -922,6 +925,7 @@ class AsyncioRouter:
                 self.request_router.on_request_completed(
                     replica.replica_id, pr.metadata.internal_request_id
                 )
+                self.request_router.on_replica_result_finished(replica.replica_id)
 
         return None
 
