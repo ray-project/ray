@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -325,11 +326,37 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
         task_list_index_ = cur_list_index;
       }
 
+      const std::optional<ActorID> &GetActorIdIndexKey() const { return actor_id_key_; }
+
+      void SetActorIdIndexKey(std::optional<ActorID> actor_id_key) {
+        actor_id_key_ = std::move(actor_id_key);
+      }
+
+      const std::optional<std::string> &GetTaskNameIndexKey() const {
+        return task_name_key_;
+      }
+
+      void SetTaskNameIndexKey(std::optional<std::string> task_name_key) {
+        task_name_key_ = std::move(task_name_key);
+      }
+
+      const std::optional<rpc::TaskStatus> &GetLatestStateIndexKey() const {
+        return latest_state_key_;
+      }
+
+      void SetLatestStateIndexKey(std::optional<rpc::TaskStatus> latest_state_key) {
+        latest_state_key_ = latest_state_key;
+      }
+
      private:
       /// Iterator to the task list.
       std::list<rpc::TaskEvents>::iterator iter_;
       /// Index of the task list.
       size_t task_list_index_;
+
+      std::optional<ActorID> actor_id_key_;
+      std::optional<std::string> task_name_key_;
+      std::optional<rpc::TaskStatus> latest_state_key_;
     };
 
     /// A helper class to summarize the stats of a job.
@@ -465,6 +492,14 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
         job_index_;
     absl::flat_hash_map<WorkerID, absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
         worker_index_;
+    absl::flat_hash_map<ActorID, absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
+        actor_index_;
+    absl::flat_hash_map<std::string,
+                        absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
+        task_name_index_;
+    absl::flat_hash_map<rpc::TaskStatus,
+                        absl::flat_hash_set<std::shared_ptr<TaskEventLocator>>>
+        latest_state_index_;
 
     // A summary for per job stats.
     absl::flat_hash_map<JobID, JobTaskSummary> job_task_summary_;
