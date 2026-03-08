@@ -400,6 +400,7 @@ mod tests {
             session_name: "test-session".to_string(),
             auth_token: None,
             python_worker_command: None,
+            raw_config_json: "{}".to_string(),
         }
     }
 

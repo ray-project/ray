@@ -913,7 +913,7 @@ mod tests {
             session_name: String::new(),
             auth_token: None,
             python_worker_command: None,
-            raw_config_json: String::new(),
+            raw_config_json: "{}".to_string(),
         }
     }
 
