@@ -312,9 +312,9 @@ class RefBundle:
         Returns:
             A single RefBundle containing all blocks from the input bundles.
             owns_blocks is True only if all input bundles own their blocks.
-            schema is the first non-empty schema found.
+            schema is the unified schema of the non-empty input bundles.
         """
-        from ray.data.block import _take_first_non_empty_schema
+        from ray.data._internal.util import unify_ref_bundles_schema
 
         bundles = list(bundles)
         if not bundles:
@@ -330,8 +330,7 @@ class RefBundle:
         # destroy blocks when they're no longer needed. To be safe, we only set this
         # to True if all input bundles own their blocks.
         owns_blocks = all(bundle.owns_blocks for bundle in bundles)
-        # TODO: Reconcile the schemas rather than taking the first non-empty schema.
-        schema = _take_first_non_empty_schema(bundle.schema for bundle in bundles)
+        schema = unify_ref_bundles_schema(bundles)
         return cls(
             blocks=tuple(merged_blocks),
             schema=schema,
