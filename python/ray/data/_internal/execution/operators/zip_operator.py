@@ -320,7 +320,9 @@ def _zip_one_block(
     result = BlockAccessor.for_block(block).zip(other_block)
     from ray.data.block import BlockMetadataWithSchema
 
-    return result, BlockMetadataWithSchema.from_block(result, stats=stats.build())
+    return result, BlockMetadataWithSchema.from_block(
+        result, block_exec_stats=stats.build()
+    )
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

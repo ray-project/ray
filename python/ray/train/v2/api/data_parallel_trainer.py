@@ -302,7 +302,7 @@ class DataParallelTrainer:
             if sigint_count <= 1:
                 try:
                     ray.get(controller.abort.remote())
-                except ray.exceptions.ActorDiedError:
+                except ray.exceptions.RayActorError:
                     # We catch the error and exit 0 to indicate graceful termination.
                     # However, for some reason the process still exits with 1.
                     sys.exit(0)

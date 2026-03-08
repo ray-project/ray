@@ -1,5 +1,6 @@
 import abc
 import logging
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -29,7 +30,7 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.stats import StatsDict, Timer
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -94,6 +95,19 @@ class OpTask(ABC):
         return object_ref.task_id()
 
 
+@dataclass(frozen=True)
+class TaskExecDriverStats:
+    """Task's execution stats reported from the driver"""
+
+    task_output_backpressure_s: float
+
+
+TaskDoneCallbackType = Callable[
+    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    None,
+]
+
+
 class DataOpTask(OpTask):
     """Represents an OpTask that handles Block data."""
 
@@ -102,7 +116,7 @@ class DataOpTask(OpTask):
         task_index: int,
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
-        task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
+        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
         block_ready_callback: Callable[
             [ray.ObjectRef[Block]], None
         ] = lambda block_ref: None,
@@ -110,6 +124,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[BlockMetadata]], None
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        operator_name: str = "Unknown",
     ):
         """Create a DataOpTask
         Args:
@@ -123,6 +138,8 @@ class DataOpTask(OpTask):
             metadata_ready_callback: A callback that's invoked when a new block metadata
                 reference is ready. This is exposed as a seam for testing.
             task_resource_bundle: The execution resources of this task.
+            operator_name: The name of the physical operator that created this task.
+                Used for logging the operator name in warnings/errors.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -134,6 +151,7 @@ class DataOpTask(OpTask):
         self._task_done_callback = task_done_callback
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
+        self._operator_name = operator_name
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -142,7 +160,11 @@ class DataOpTask(OpTask):
         self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
         self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
 
+        self._last_block_meta: Optional[BlockMetadata] = None
         self._has_finished = False
+
+        self._start_output_backpressure_s: Optional[float] = None
+        self._total_output_backpressure_s: float = 0
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -156,6 +178,9 @@ class DataOpTask(OpTask):
         Returns: The number of blocks read.
         """
         bytes_read = 0
+
+        self._track_task_output_backpressure(max_bytes_to_read)
+
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             if self._pending_block_ref.is_nil():
                 assert self._pending_meta_ref.is_nil(), (
@@ -169,7 +194,16 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    self._task_done_callback(None)
+                    self._task_done_callback(
+                        None,  # exception
+                        self._last_block_meta.task_exec_stats
+                        if self._last_block_meta is not None
+                        else None,
+                        TaskExecDriverStats(
+                            task_output_backpressure_s=self._total_output_backpressure_s,
+                        ),
+                    )
+
                     self._has_finished = True
                     break
 
@@ -196,7 +230,12 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        self._task_done_callback(ex)
+                        self._task_done_callback(
+                            ex,
+                            None,  # TaskExecStats
+                            None,  # TaskExecDriverStats
+                        )
+
                         self._has_finished = True
                         raise ex from None
 
@@ -219,11 +258,12 @@ class DataOpTask(OpTask):
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
                 logger.warning(
-                    f"Metadata object not ready for "
-                    f"ref={self._pending_meta_ref.hex()} "
-                    f"(operator={self.__class__.__name__}). "
-                    f"Metadata may still be computing or worker may have failed and "
-                    f"object is being reconstructed. Will retry in next iteration."
+                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
+                    f"operator '{self._operator_name}' "
+                    f"(metadata_ref={self._pending_meta_ref.hex()}). "
+                    f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
+                    f"Will retry next iteration. "
+                    f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
                 )
                 break
 
@@ -235,12 +275,32 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
+
+            self._last_block_meta = meta
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
+        if max_bytes_to_read == 0:
+            # Whenever provided `max_bytes_to_read == 0` we treat as task
+            # being in output backpressure, therefore correspondingly starting
+            # the timer (if necessary)
+            if self._start_output_backpressure_s is None:
+                self._start_output_backpressure_s = time.perf_counter()
+
+        elif (
+            max_bytes_to_read is None or max_bytes_to_read > 0
+        ) and self._start_output_backpressure_s is not None:
+            # Increment cumulative duration of task being in output
+            # backpressure
+            self._total_output_backpressure_s += (
+                time.perf_counter() - self._start_output_backpressure_s
+            )
+            self._start_output_backpressure_s = None
 
     @property
     def has_finished(self) -> bool:
