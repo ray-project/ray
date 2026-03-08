@@ -1521,6 +1521,7 @@ version = "3.0.0-dev"
 dependencies = [
  "async-trait",
  "bytes",
+ "hex",
  "pyo3",
  "ray-common",
  "ray-core-worker",
@@ -1690,6 +1691,7 @@ name = "ray-raylet"
 version = "3.0.0-dev"
 dependencies = [
  "anyhow",
+ "base64",
  "clap",
  "dashmap",
  "hex",

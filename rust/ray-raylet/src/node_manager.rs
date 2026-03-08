@@ -65,6 +65,12 @@ pub struct RayletConfig {
     pub session_name: String,
     /// Cluster auth token. When set, all gRPC requests must include a matching Bearer token.
     pub auth_token: Option<String>,
+    /// Custom Python worker command (full shell command). If None, defaults to `python -m ray.worker`.
+    pub python_worker_command: Option<String>,
+    /// Raw config_list JSON string from `ray start` (returned by GetSystemConfig RPC).
+    /// This must be the original JSON so the C++ CoreWorker can parse it without
+    /// encountering Rust-only config fields.
+    pub raw_config_json: String,
 }
 
 /// The main raylet node manager.
@@ -299,7 +305,7 @@ impl NodeManager {
             gcs_address: self.config.gcs_address.clone(),
             node_id: self.config.node_id.clone(),
             session_name: self.config.session_name.clone(),
-            python_worker_command: None,
+            python_worker_command: self.config.python_worker_command.clone(),
         };
         // Create cgroup manager if enabled.
         let cgroup_manager: Option<std::sync::Arc<dyn ray_common::cgroup::CgroupManager>> = {
@@ -393,6 +399,7 @@ mod tests {
             labels: HashMap::from([("region".to_string(), "us-east".to_string())]),
             session_name: "test-session".to_string(),
             auth_token: None,
+            python_worker_command: None,
         }
     }
 

@@ -54,9 +54,14 @@ AUTOSCALER_PRIVATE_DIR = os.path.join("autoscaler", "_private")
 AUTOSCALER_V2_DIR = os.path.join("autoscaler", "v2")
 
 # Location of the raylet executables.
-RAYLET_EXECUTABLE = os.path.join(
-    RAY_PATH, "core", "src", "ray", "raylet", "raylet" + EXE_SUFFIX
-)
+if os.environ.get("RAY_USE_RUST_RAYLET") == "1":
+    RAYLET_EXECUTABLE = os.path.join(
+        RAY_HOME, "rust", "target", "debug", "raylet" + EXE_SUFFIX
+    )
+else:
+    RAYLET_EXECUTABLE = os.path.join(
+        RAY_PATH, "core", "src", "ray", "raylet", "raylet" + EXE_SUFFIX
+    )
 if os.environ.get("RAY_USE_RUST_GCS") == "1":
     GCS_SERVER_EXECUTABLE = os.path.join(
         RAY_HOME, "rust", "target", "debug", "gcs_server" + EXE_SUFFIX

@@ -412,15 +412,20 @@ impl PyCoreWorker {
     }
 
     /// Start a gRPC server for this CoreWorker and return the bound port.
-    #[pyo3(name = "start_grpc_server")]
-    fn py_start_grpc_server(&self) -> pyo3::PyResult<u16> {
+    ///
+    /// Arguments:
+    ///   bind_ip: IP address to bind to (default "0.0.0.0")
+    ///   bind_port: port to bind to (default 0 = random)
+    #[pyo3(name = "start_grpc_server", signature = (bind_ip="0.0.0.0", bind_port=0))]
+    fn py_start_grpc_server(&self, bind_ip: &str, bind_port: u16) -> pyo3::PyResult<u16> {
         use ray_core_worker::grpc_service::CoreWorkerServiceImpl;
         use ray_proto::ray::rpc as grpc_rpc;
 
+        let bind_addr = format!("{}:{}", bind_ip, bind_port);
         let core_worker = Arc::clone(&self.inner);
         let port = self.runtime.block_on(async {
             let svc = CoreWorkerServiceImpl { core_worker };
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            let listener = tokio::net::TcpListener::bind(&bind_addr)
                 .await
                 .map_err(|e| {
                     pyo3::exceptions::PyRuntimeError::new_err(format!("bind failed: {}", e))
@@ -689,6 +694,105 @@ impl PyCoreWorker {
         Ok(())
     }
 
+    /// Set up multi-worker round-robin task dispatch for multi-node execution.
+    ///
+    /// Instead of dispatching to a single worker, this distributes tasks
+    /// across all provided workers in round-robin order. Each worker is
+    /// identified by its IP address, gRPC port, and worker ID.
+    ///
+    /// Arguments:
+    ///   workers: list of (ip, port, worker_id_hex) tuples
+    #[pyo3(name = "setup_multi_worker_dispatch")]
+    fn py_setup_multi_worker_dispatch(
+        &self,
+        workers: Vec<(String, u16, String)>,
+    ) -> pyo3::PyResult<()> {
+        use ray_proto::ray::rpc as dispatch_rpc;
+
+        if workers.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "at least one worker required",
+            ));
+        }
+
+        let worker_addresses: Vec<dispatch_rpc::Address> = workers
+            .iter()
+            .map(|(ip, port, wid_hex)| {
+                let wid_bytes = hex::decode(wid_hex).unwrap_or_default();
+                dispatch_rpc::Address {
+                    node_id: vec![],
+                    ip_address: ip.clone(),
+                    port: *port as i32,
+                    worker_id: wid_bytes,
+                }
+            })
+            .collect();
+
+        let client = Arc::new(RoundRobinDispatchClient {
+            workers: worker_addresses,
+            next_index: std::sync::atomic::AtomicUsize::new(0),
+        });
+
+        let submitter = self.inner.normal_task_submitter();
+        submitter.set_raylet_client(client);
+
+        // Set the same dispatch callback as setup_task_dispatch.
+        let driver_store = Arc::clone(self.inner.memory_store());
+        submitter.set_dispatch_callback(Box::new(move |spec, addr| {
+            let endpoint = format!("http://{}:{}", addr.ip_address, addr.port);
+            let spec_clone = spec.clone();
+            let wid_bytes = addr.worker_id.clone();
+            let store = Arc::clone(&driver_store);
+            let (tx, rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
+            tokio::spawn(async move {
+                let result = async {
+                    let channel = tonic::transport::Endpoint::from_shared(endpoint)
+                        .map_err(|e| format!("invalid endpoint: {}", e))?
+                        .connect()
+                        .await
+                        .map_err(|e| format!("connect failed: {}", e))?;
+                    let mut client =
+                        dispatch_rpc::core_worker_service_client::CoreWorkerServiceClient::new(
+                            channel,
+                        );
+                    let response = client
+                        .push_task(dispatch_rpc::PushTaskRequest {
+                            intended_worker_id: wid_bytes,
+                            task_spec: Some(spec_clone),
+                            ..Default::default()
+                        })
+                        .await
+                        .map_err(|e| format!("push_task failed: {}", e))?;
+                    let reply = response.into_inner();
+                    if !reply.task_execution_error.is_empty() && reply.return_objects.is_empty() {
+                        return Err(format!("TASK_ERROR:{}", reply.task_execution_error));
+                    }
+                    for ret_obj in &reply.return_objects {
+                        let oid = ObjectID::from_binary(&ret_obj.object_id);
+                        let ray_obj = RayObject::new(
+                            Bytes::copy_from_slice(&ret_obj.data),
+                            Bytes::copy_from_slice(&ret_obj.metadata),
+                            Vec::new(),
+                        );
+                        let _ = store.put(oid, ray_obj);
+                    }
+                    Ok(())
+                }
+                .await;
+                let _ = tx.send(result);
+            });
+            rx.recv()
+                .map_err(|_| {
+                    ray_core_worker::error::CoreWorkerError::Internal(
+                        "task dispatch channel closed".into(),
+                    )
+                })?
+                .map_err(ray_core_worker::error::CoreWorkerError::Internal)
+        }));
+
+        Ok(())
+    }
+
     /// Submit a non-actor remote task.
     ///
     /// Arguments:
@@ -806,6 +910,156 @@ impl PyCoreWorker {
 #[cfg_attr(not(feature = "python"), allow(dead_code))]
 struct DirectDispatchRayletClient {
     worker_address: ray_proto::ray::rpc::Address,
+}
+
+// ─── RoundRobinDispatchClient ───────────────────────────────────────
+
+/// A `RayletClient` that distributes tasks across multiple workers
+/// in round-robin order. Used for multi-node dispatch when the driver
+/// knows all worker addresses across the cluster.
+#[cfg_attr(not(feature = "python"), allow(dead_code))]
+struct RoundRobinDispatchClient {
+    workers: Vec<ray_proto::ray::rpc::Address>,
+    next_index: std::sync::atomic::AtomicUsize,
+}
+
+#[async_trait::async_trait]
+impl ray_raylet_rpc_client::RayletClient for RoundRobinDispatchClient {
+    async fn request_worker_lease(
+        &self,
+        _req: ray_proto::ray::rpc::RequestWorkerLeaseRequest,
+    ) -> Result<ray_proto::ray::rpc::RequestWorkerLeaseReply, tonic::Status> {
+        if self.workers.is_empty() {
+            return Err(tonic::Status::unavailable("no workers registered"));
+        }
+        let idx = self
+            .next_index
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            % self.workers.len();
+        Ok(ray_proto::ray::rpc::RequestWorkerLeaseReply {
+            worker_address: Some(self.workers[idx].clone()),
+            ..Default::default()
+        })
+    }
+
+    async fn return_worker_lease(
+        &self,
+        _req: ray_proto::ray::rpc::ReturnWorkerLeaseRequest,
+    ) -> Result<ray_proto::ray::rpc::ReturnWorkerLeaseReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn cancel_worker_lease(
+        &self,
+        _req: ray_proto::ray::rpc::CancelWorkerLeaseRequest,
+    ) -> Result<ray_proto::ray::rpc::CancelWorkerLeaseReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn report_worker_backlog(
+        &self,
+        _req: ray_proto::ray::rpc::ReportWorkerBacklogRequest,
+    ) -> Result<ray_proto::ray::rpc::ReportWorkerBacklogReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn prestart_workers(
+        &self,
+        _req: ray_proto::ray::rpc::PrestartWorkersRequest,
+    ) -> Result<ray_proto::ray::rpc::PrestartWorkersReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn prepare_bundle_resources(
+        &self,
+        _req: ray_proto::ray::rpc::PrepareBundleResourcesRequest,
+    ) -> Result<ray_proto::ray::rpc::PrepareBundleResourcesReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn commit_bundle_resources(
+        &self,
+        _req: ray_proto::ray::rpc::CommitBundleResourcesRequest,
+    ) -> Result<ray_proto::ray::rpc::CommitBundleResourcesReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn cancel_resource_reserve(
+        &self,
+        _req: ray_proto::ray::rpc::CancelResourceReserveRequest,
+    ) -> Result<ray_proto::ray::rpc::CancelResourceReserveReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn pin_object_ids(
+        &self,
+        _req: ray_proto::ray::rpc::PinObjectIDsRequest,
+    ) -> Result<ray_proto::ray::rpc::PinObjectIDsReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn get_resource_load(
+        &self,
+        _req: ray_proto::ray::rpc::GetResourceLoadRequest,
+    ) -> Result<ray_proto::ray::rpc::GetResourceLoadReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn shutdown_raylet(
+        &self,
+        _req: ray_proto::ray::rpc::ShutdownRayletRequest,
+    ) -> Result<ray_proto::ray::rpc::ShutdownRayletReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn drain_raylet(
+        &self,
+        _req: ray_proto::ray::rpc::DrainRayletRequest,
+    ) -> Result<ray_proto::ray::rpc::DrainRayletReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn notify_gcs_restart(
+        &self,
+        _req: ray_proto::ray::rpc::NotifyGcsRestartRequest,
+    ) -> Result<ray_proto::ray::rpc::NotifyGcsRestartReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn get_node_stats(
+        &self,
+        _req: ray_proto::ray::rpc::GetNodeStatsRequest,
+    ) -> Result<ray_proto::ray::rpc::GetNodeStatsReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn get_system_config(
+        &self,
+        _req: ray_proto::ray::rpc::GetSystemConfigRequest,
+    ) -> Result<ray_proto::ray::rpc::GetSystemConfigReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn kill_local_actor(
+        &self,
+        _req: ray_proto::ray::rpc::KillLocalActorRequest,
+    ) -> Result<ray_proto::ray::rpc::KillLocalActorReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn cancel_local_task(
+        &self,
+        _req: ray_proto::ray::rpc::CancelLocalTaskRequest,
+    ) -> Result<ray_proto::ray::rpc::CancelLocalTaskReply, tonic::Status> {
+        Ok(Default::default())
+    }
+
+    async fn global_gc(
+        &self,
+        _req: ray_proto::ray::rpc::GlobalGcRequest,
+    ) -> Result<ray_proto::ray::rpc::GlobalGcReply, tonic::Status> {
+        Ok(Default::default())
+    }
 }
 
 #[async_trait::async_trait]

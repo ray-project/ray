@@ -460,7 +460,7 @@ impl NodeManagerServiceImpl {
         _request: rpc::GetSystemConfigRequest,
     ) -> Result<rpc::GetSystemConfigReply, Status> {
         Ok(rpc::GetSystemConfigReply {
-            system_config: self.node_manager.config().ray_config.to_json(),
+            system_config: self.node_manager.config().raw_config_json.clone(),
         })
     }
 
@@ -912,6 +912,8 @@ mod tests {
             labels: std::collections::HashMap::new(),
             session_name: String::new(),
             auth_token: None,
+            python_worker_command: None,
+            raw_config_json: String::new(),
         }
     }
 

@@ -59,6 +59,8 @@ async fn main() {
             labels: HashMap::new(),
             session_name: "actor-counter".to_string(),
             auth_token: None,
+            python_worker_command: None,
+            raw_config_json: String::new(),
         },
     ));
     let nm_clone = Arc::clone(&nm);
