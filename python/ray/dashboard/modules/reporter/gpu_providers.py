@@ -320,9 +320,10 @@ class NvidiaGpuProvider(GpuProvider):
                 )
                 utilization = int(utilization_info.gpu)
             except self._pynvml.NVMLError as e:
-                logger.info(
-                    f"Failed to retrieve GPU utilization via `nvmlDeviceGetUtilizationRates`: {e}"
-                )
+                if log_once("gpu_utilization"):
+                    logger.info(
+                        f"Failed to retrieve GPU utilization via `nvmlDeviceGetUtilizationRates`: {e}"
+                    )
 
             # Get running processes
             processes_pids = {}
