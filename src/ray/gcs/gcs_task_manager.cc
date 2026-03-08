@@ -43,8 +43,44 @@ std::optional<std::string> GetNormalizedTaskNameIndexKey(
     const rpc::TaskEvents &task_event);
 
 std::optional<ActorID> GetActorIdIndexKey(const rpc::TaskEvents &task_event);
+template <typename Key, typename IndexMap, typename SetKeyFunc>
+void UpdateIndexEntry(
+    const std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator> &loc,
+    const std::optional<Key> &old_key,
+    const std::optional<Key> &new_key,
+    IndexMap &index_map,
+    SetKeyFunc &&set_key_fn) {
+  if (old_key.has_value() && (!new_key.has_value() || *new_key != *old_key)) {
+    auto iter = index_map.find(*old_key);
+    RAY_CHECK(iter != index_map.end());
+    RAY_CHECK(iter->second.erase(loc) == 1);
+    if (iter->second.empty()) {
+      index_map.erase(iter);
+    }
+  }
+  if (new_key.has_value() && (!old_key.has_value() || *new_key != *old_key)) {
+    index_map[*new_key].insert(loc);
+  }
+  set_key_fn(new_key);
+}
 
-}  // namespace
+template <typename Key, typename IndexMap>
+void RemoveFromIndexEntry(
+    const std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator> &loc,
+    const std::optional<Key> &key,
+    IndexMap &index_map) {
+  if (!key.has_value()) {
+    return;
+  }
+  auto iter = index_map.find(*key);
+  RAY_CHECK(iter != index_map.end());
+  RAY_CHECK(iter->second.erase(loc) == 1);
+  if (iter->second.empty()) {
+    index_map.erase(iter);
+  }
+}
+
+
 
 GcsTaskManager::GcsTaskManager(
     instrumented_io_context &io_service,
@@ -263,62 +299,28 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
     worker_index_[worker_id].insert(loc);
   }
 
-  const auto old_actor_id_key = loc->GetActorIdIndexKey();
-  const auto new_actor_id_key = GetActorIdIndexKey(task_events);
-  if (old_actor_id_key.has_value() &&
-      (!new_actor_id_key.has_value() || *new_actor_id_key != *old_actor_id_key)) {
-    auto iter = actor_index_.find(*old_actor_id_key);
-    RAY_CHECK(iter != actor_index_.end());
-    RAY_CHECK(iter->second.erase(loc) == 1);
-    if (iter->second.empty()) {
-      actor_index_.erase(iter);
-    }
-  }
-  if (new_actor_id_key.has_value() &&
-      (!old_actor_id_key.has_value() || *new_actor_id_key != *old_actor_id_key)) {
-    actor_index_[*new_actor_id_key].insert(loc);
-  }
-  loc->SetActorIdIndexKey(new_actor_id_key);
+  UpdateIndexEntry(loc,
+                   loc->GetActorIdIndexKey(),
+                   GetActorIdIndexKey(task_events),
+                   actor_index_,
+                   [&loc](auto key) { loc->SetActorIdIndexKey(std::move(key)); });
 
-  const auto old_task_name_key = loc->GetTaskNameIndexKey();
-  const auto new_task_name_key = GetNormalizedTaskNameIndexKey(task_events);
-  if (old_task_name_key.has_value() &&
-      (!new_task_name_key.has_value() || *new_task_name_key != *old_task_name_key)) {
-    auto iter = task_name_index_.find(*old_task_name_key);
-    RAY_CHECK(iter != task_name_index_.end());
-    RAY_CHECK(iter->second.erase(loc) == 1);
-    if (iter->second.empty()) {
-      task_name_index_.erase(iter);
-    }
-  }
-  if (new_task_name_key.has_value() &&
-      (!old_task_name_key.has_value() || *new_task_name_key != *old_task_name_key)) {
-    task_name_index_[*new_task_name_key].insert(loc);
-  }
-  loc->SetTaskNameIndexKey(new_task_name_key);
+  UpdateIndexEntry(loc,
+                   loc->GetTaskNameIndexKey(),
+                   GetNormalizedTaskNameIndexKey(task_events),
+                   task_name_index_,
+                   [&loc](auto key) { loc->SetTaskNameIndexKey(std::move(key)); });
 
-  std::optional<rpc::TaskStatus> new_latest_state_key;
-  if (task_events.has_task_info()) {
-    new_latest_state_key = GetLatestState(task_events);
+  const std::optional<rpc::TaskStatus> new_latest_state_key =
+      task_events.has_task_info() ? std::make_optional(GetLatestState(task_events))
+                                  : std::nullopt;
+  UpdateIndexEntry(
+      loc,
+      loc->GetLatestStateIndexKey(),
+      new_latest_state_key,
+      latest_state_index_,
+      [&loc](auto key) { loc->SetLatestStateIndexKey(key); });
   }
-  const auto old_latest_state_key = loc->GetLatestStateIndexKey();
-  if (old_latest_state_key.has_value() &&
-      (!new_latest_state_key.has_value() ||
-       *new_latest_state_key != *old_latest_state_key)) {
-    auto iter = latest_state_index_.find(*old_latest_state_key);
-    RAY_CHECK(iter != latest_state_index_.end());
-    RAY_CHECK(iter->second.erase(loc) == 1);
-    if (iter->second.empty()) {
-      latest_state_index_.erase(iter);
-    }
-  }
-  if (new_latest_state_key.has_value() &&
-      (!old_latest_state_key.has_value() ||
-       *new_latest_state_key != *old_latest_state_key)) {
-    latest_state_index_[*new_latest_state_key].insert(loc);
-  }
-  loc->SetLatestStateIndexKey(new_latest_state_key);
-}
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
     const std::shared_ptr<TaskEventLocator> &loc) {
@@ -328,35 +330,9 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
   const auto task_id = TaskID::FromBinary(task_events.task_id());
   const auto worker_id = GetWorkerID(task_events);
 
-  const auto &actor_id_key = loc->GetActorIdIndexKey();
-  if (actor_id_key.has_value()) {
-    auto iter = actor_index_.find(*actor_id_key);
-    RAY_CHECK(iter != actor_index_.end());
-    RAY_CHECK(iter->second.erase(loc) == 1);
-    if (iter->second.empty()) {
-      actor_index_.erase(iter);
-    }
-  }
-
-  const auto &task_name_key = loc->GetTaskNameIndexKey();
-  if (task_name_key.has_value()) {
-    auto iter = task_name_index_.find(*task_name_key);
-    RAY_CHECK(iter != task_name_index_.end());
-    RAY_CHECK(iter->second.erase(loc) == 1);
-    if (iter->second.empty()) {
-      task_name_index_.erase(iter);
-    }
-  }
-
-  const auto &latest_state_key = loc->GetLatestStateIndexKey();
-  if (latest_state_key.has_value()) {
-    auto iter = latest_state_index_.find(*latest_state_key);
-    RAY_CHECK(iter != latest_state_index_.end());
-    RAY_CHECK(iter->second.erase(loc) == 1);
-    if (iter->second.empty()) {
-      latest_state_index_.erase(iter);
-    }
-  }
+  RemoveFromIndexEntry(loc, loc->GetActorIdIndexKey(), actor_index_);
+  RemoveFromIndexEntry(loc, loc->GetTaskNameIndexKey(), task_name_index_);
+  RemoveFromIndexEntry(loc, loc->GetLatestStateIndexKey(), latest_state_index_);
 
   // Remove from secondary indices.
   RAY_CHECK(!job_id.IsNil());
@@ -549,7 +525,14 @@ std::optional<ActorID> GetActorIdIndexKey(const rpc::TaskEvents &task_event) {
   if (!task_event.has_task_info()) {
     return std::nullopt;
   }
-  return ActorID::FromBinary(task_event.task_info().actor_id());
+  const auto &actor_id_binary = task_event.task_info().actor_id();
+  if (actor_id_binary.empty()) {
+    return std::nullopt;
+  }
+  if (actor_id_binary.size() != ActorID::Size()) {
+    return std::nullopt;
+  }
+  return ActorID::FromBinary(actor_id_binary);
 }
 
 }  // namespace
@@ -561,27 +544,74 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
 
   const auto &filters = request.filters();
 
-  if (filters.task_filters_size() == 0 && filters.job_filters_size() == 0) {
+  absl::flat_hash_set<TaskID> equal_task_ids;
+  for (const auto &task_filter_obj : filters.task_filters()) {
+    if (task_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+      equal_task_ids.insert(TaskID::FromBinary(task_filter_obj.task_id()));
+    }
+  }
+
+  absl::flat_hash_set<JobID> equal_job_ids;
+  for (const auto &job_filter_obj : filters.job_filters()) {
+    if (job_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+      equal_job_ids.insert(JobID::FromBinary(job_filter_obj.job_id()));
+    }
+  }
+
+  absl::flat_hash_set<ActorID> equal_actor_ids;
+  for (const auto &actor_filter_obj : filters.actor_filters()) {
+    if (actor_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+      const auto &actor_id_binary = actor_filter_obj.actor_id();
+      if (!actor_id_binary.empty() && actor_id_binary.size() != ActorID::Size()) {
+        throw std::invalid_argument("Invalid actor id size");
+      }
+      equal_actor_ids.insert(ActorID::FromBinary(actor_id_binary));
+    }
+  }
+
+  absl::flat_hash_set<std::string> equal_task_names;
+  for (const auto &task_name_filter_obj : filters.task_name_filters()) {
+    if (task_name_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+      equal_task_names.insert(absl::AsciiStrToLower(task_name_filter_obj.task_name()));
+    }
+  }
+
+  const google::protobuf::EnumDescriptor *task_status_descriptor =
+      ray::rpc::TaskStatus_descriptor();
+  absl::flat_hash_set<rpc::TaskStatus> equal_states;
+  bool invalid_state_filter = false;
+  for (const auto &state_filter_obj : filters.state_filters()) {
+    if (state_filter_obj.predicate() != rpc::FilterPredicate::EQUAL) {
+      continue;
+    }
+    rpc::TaskStatus parsed = rpc::TaskStatus::NIL;
+    bool found = false;
+    for (int i = 0; i < task_status_descriptor->value_count(); ++i) {
+      const auto *value = task_status_descriptor->value(i);
+      if (absl::EqualsIgnoreCase(value->name(), state_filter_obj.state())) {
+        parsed = static_cast<rpc::TaskStatus>(value->number());
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      invalid_state_filter = true;
+      break;
+    }
+    equal_states.insert(parsed);
+  }
+
+  if (equal_task_ids.empty() && equal_job_ids.empty()) {
     reply->set_num_profile_task_events_dropped(
         task_event_storage_->NumProfileEventsDropped());
     reply->set_num_status_task_events_dropped(
         task_event_storage_->NumTaskAttemptsDropped());
-  }
-
-  if (filters.task_filters_size() == 0 && filters.job_filters_size() > 0) {
-    absl::flat_hash_set<JobID> job_ids;
-    for (const auto &job_filter_obj : filters.job_filters()) {
-      if (job_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
-        job_ids.insert(JobID::FromBinary(job_filter_obj.job_id()));
-      }
-    }
-    if (job_ids.size() == 1) {
-      const JobID &job_id = *job_ids.begin();
-      if (task_event_storage_->HasJob(job_id)) {
-        const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
-        reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
-        reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
-      }
+  } else if (equal_task_ids.empty() && equal_job_ids.size() == 1) {
+    const JobID &job_id = *equal_job_ids.begin();
+    if (task_event_storage_->HasJob(job_id)) {
+      const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
+      reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
+      reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
     }
   }
 
@@ -601,27 +631,27 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
           candidate_task_locators = other;
           return;
         }
-        for (auto it = candidate_task_locators->begin();
-             it != candidate_task_locators->end();) {
-          if (other.find(*it) == other.end()) {
-            candidate_task_locators->erase(it++);
-          } else {
-            ++it;
+        absl::flat_hash_set<std::shared_ptr<
+            GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>>
+            intersection;
+        const auto *p_smaller = &other;
+        const auto *p_larger = &*candidate_task_locators;
+        if (p_smaller->size() > p_larger->size()) {
+          std::swap(p_smaller, p_larger);
+        }
+        for (const auto &item : *p_smaller) {
+          if (p_larger->contains(item)) {
+            intersection.insert(item);
           }
         }
+        candidate_task_locators = std::move(intersection);
       };
 
   if (filters.task_filters_size() > 0) {
-    absl::flat_hash_set<TaskID> task_ids;
-    for (const auto &task_filter_obj : filters.task_filters()) {
-      if (task_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
-        task_ids.insert(TaskID::FromBinary(task_filter_obj.task_id()));
-      }
-    }
-    if (task_ids.size() > 1) {
+    if (equal_task_ids.size() > 1) {
       set_candidate_to_empty();
-    } else if (task_ids.size() == 1) {
-      const TaskID &task_id = *task_ids.begin();
+    } else if (equal_task_ids.size() == 1) {
+      const TaskID &task_id = *equal_task_ids.begin();
       const auto iter = task_event_storage_->task_index_.find(task_id);
       if (iter == task_event_storage_->task_index_.end()) {
         set_candidate_to_empty();
@@ -632,16 +662,10 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   if (filters.job_filters_size() > 0) {
-    absl::flat_hash_set<JobID> job_ids;
-    for (const auto &job_filter_obj : filters.job_filters()) {
-      if (job_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
-        job_ids.insert(JobID::FromBinary(job_filter_obj.job_id()));
-      }
-    }
-    if (job_ids.size() > 1) {
+    if (equal_job_ids.size() > 1) {
       set_candidate_to_empty();
-    } else if (job_ids.size() == 1) {
-      const JobID &job_id = *job_ids.begin();
+    } else if (equal_job_ids.size() == 1) {
+      const JobID &job_id = *equal_job_ids.begin();
       const auto iter = task_event_storage_->job_index_.find(job_id);
       if (iter == task_event_storage_->job_index_.end()) {
         set_candidate_to_empty();
@@ -652,16 +676,10 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   if (filters.actor_filters_size() > 0) {
-    absl::flat_hash_set<ActorID> actor_ids;
-    for (const auto &actor_filter_obj : filters.actor_filters()) {
-      if (actor_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
-        actor_ids.insert(ActorID::FromBinary(actor_filter_obj.actor_id()));
-      }
-    }
-    if (actor_ids.size() > 1) {
+    if (equal_actor_ids.size() > 1) {
       set_candidate_to_empty();
-    } else if (actor_ids.size() == 1) {
-      const ActorID &actor_id = *actor_ids.begin();
+    } else if (equal_actor_ids.size() == 1) {
+      const ActorID &actor_id = *equal_actor_ids.begin();
       const auto iter = task_event_storage_->actor_index_.find(actor_id);
       if (iter == task_event_storage_->actor_index_.end()) {
         set_candidate_to_empty();
@@ -672,16 +690,10 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   if (filters.task_name_filters_size() > 0) {
-    absl::flat_hash_set<std::string> task_names;
-    for (const auto &task_name_filter_obj : filters.task_name_filters()) {
-      if (task_name_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
-        task_names.insert(absl::AsciiStrToLower(task_name_filter_obj.task_name()));
-      }
-    }
-    if (task_names.size() > 1) {
+    if (equal_task_names.size() > 1) {
       set_candidate_to_empty();
-    } else if (task_names.size() == 1) {
-      const std::string &task_name = *task_names.begin();
+    } else if (equal_task_names.size() == 1) {
+      const std::string &task_name = *equal_task_names.begin();
       const auto iter = task_event_storage_->task_name_index_.find(task_name);
       if (iter == task_event_storage_->task_name_index_.end()) {
         set_candidate_to_empty();
@@ -692,33 +704,12 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   }
 
   if (filters.state_filters_size() > 0) {
-    const google::protobuf::EnumDescriptor *task_status_descriptor =
-        ray::rpc::TaskStatus_descriptor();
-    absl::flat_hash_set<rpc::TaskStatus> states;
-    for (const auto &state_filter_obj : filters.state_filters()) {
-      if (state_filter_obj.predicate() != rpc::FilterPredicate::EQUAL) {
-        continue;
-      }
-      rpc::TaskStatus parsed = rpc::TaskStatus::NIL;
-      bool found = false;
-      for (int i = 0; i < task_status_descriptor->value_count(); ++i) {
-        const auto *value = task_status_descriptor->value(i);
-        if (absl::EqualsIgnoreCase(value->name(), state_filter_obj.state())) {
-          parsed = static_cast<rpc::TaskStatus>(value->number());
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        set_candidate_to_empty();
-        break;
-      }
-      states.insert(parsed);
-    }
-    if (states.size() > 1) {
+    if (invalid_state_filter) {
       set_candidate_to_empty();
-    } else if (states.size() == 1) {
-      const rpc::TaskStatus state = *states.begin();
+    } else if (equal_states.size() > 1) {
+      set_candidate_to_empty();
+    } else if (equal_states.size() == 1) {
+      const rpc::TaskStatus state = *equal_states.begin();
       const auto iter = task_event_storage_->latest_state_index_.find(state);
       if (iter == task_event_storage_->latest_state_index_.end()) {
         set_candidate_to_empty();
@@ -786,10 +777,21 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       if (!std::all_of(filters.actor_filters().begin(),
                        filters.actor_filters().end(),
                        [&task_event](const auto &actor_filter) {
+                         const auto &task_actor_binary =
+                             task_event.task_info().actor_id();
+                         if (!task_actor_binary.empty() &&
+                             task_actor_binary.size() != ActorID::Size()) {
+                           return false;
+                         }
+                         const auto &filter_actor_binary = actor_filter.actor_id();
+                         if (!filter_actor_binary.empty() &&
+                             filter_actor_binary.size() != ActorID::Size()) {
+                           throw std::invalid_argument("Invalid actor id size");
+                         }
                          return apply_predicate(
-                             ActorID::FromBinary(task_event.task_info().actor_id()),
+                             ActorID::FromBinary(task_actor_binary),
                              actor_filter.predicate(),
-                             ActorID::FromBinary(actor_filter.actor_id()));
+                             ActorID::FromBinary(filter_actor_binary));
                        })) {
         return false;
       }
