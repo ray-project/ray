@@ -88,9 +88,9 @@ def _max_throughput_from_resources(
     """For each resource type, compute the max throughput the resource budget allows."""
     assert rates, "Rates must be non-empty"
     assert all(rate > 0 for rate in rates.values()), "Rates must be positive"
-    assert (
-        rates.keys() == resource_requirements.keys()
-    ), "Rates and resource requirements must have the same keys"
+    assert set(rates.keys()) <= set(
+        resource_requirements.keys()
+    ), "You must provide a resource requirement for each operator with a rate"
 
     max_throughput = float("inf")
 
@@ -115,8 +115,8 @@ def _max_throughput_from_concurrency(
 ) -> float:
     """Each operator's throughput is capped at rate * concurrency_limit."""
     assert rates, "Rates must be non-empty"
-    assert (
-        rates.keys() == concurrency_limits.keys()
-    ), "Rates and concurrency limits must have the same keys"
+    assert set(rates.keys()) <= set(
+        concurrency_limits.keys()
+    ), "You must provide a concurrency limit for each operator with a rate"
 
     return min(rates[op] * concurrency_limits[op] for op in rates)
