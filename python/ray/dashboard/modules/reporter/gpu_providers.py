@@ -16,6 +16,8 @@ try:
 except ImportError:
     from typing_extensions import NotRequired
 
+from ray.util.debug import log_once
+
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -318,7 +320,7 @@ class NvidiaGpuProvider(GpuProvider):
                 )
                 utilization = int(utilization_info.gpu)
             except self._pynvml.NVMLError as e:
-                logger.debug(
+                logger.info(
                     f"Failed to retrieve GPU utilization via `nvmlDeviceGetUtilizationRates`: {e}"
                 )
 
@@ -343,10 +345,11 @@ class NvidiaGpuProvider(GpuProvider):
                         gpu_utilization=None,
                     )
             except self._pynvml.NVMLError as e:
-                logger.debug(
-                    "Failed to retrieve per-process GPU memory via `nvmlDeviceGetComputeRunningProcesses` "
-                    f"and `nvmlDeviceGetGraphicsRunningProcesses` APIs: {e}"
-                )
+                if log_once("gpu_per_process_memory"):
+                    logger.info(
+                        "Failed to retrieve per-process GPU memory via `nvmlDeviceGetComputeRunningProcesses` "
+                        f"and `nvmlDeviceGetGraphicsRunningProcesses` APIs: {e}"
+                    )
 
             # Use a newer API (driver 550+) to get per-process SM utilization, but the user
             # may not always have the access to the newest API.
@@ -372,9 +375,10 @@ class NvidiaGpuProvider(GpuProvider):
                     else:
                         processes_pids[pid]["gpu_utilization"] = int(nv_process.smUtil)
             except self._pynvml.NVMLError as e:
-                logger.debug(
-                    f"Failed to retrieve GPU process SM utilization using `nvmlDeviceGetProcessesUtilizationInfo`, error: {e}"
-                )
+                if log_once("gpu_process_sm_utilization"):
+                    logger.info(
+                        f"Failed to retrieve GPU process SM utilization using `nvmlDeviceGetProcessesUtilizationInfo`, error: {e}"
+                    )
 
             # Optional: power (milliwatts) and temperature (Celsius)
             power_mw = None
@@ -382,14 +386,16 @@ class NvidiaGpuProvider(GpuProvider):
             try:
                 power_mw = self._pynvml.nvmlDeviceGetPowerUsage(gpu_handle)
             except (self._pynvml.NVMLError, AttributeError) as e:
-                logger.debug(f"Failed to retrieve GPU power: {e}")
+                if log_once("gpu_power"):
+                    logger.info(f"Failed to retrieve GPU power: {e}")
             try:
                 # NVML_TEMPERATURE_GPU = 0
                 temperature_c = self._pynvml.nvmlDeviceGetTemperature(
                     gpu_handle, self._pynvml.NVML_TEMPERATURE_GPU
                 )
             except (self._pynvml.NVMLError, AttributeError) as e:
-                logger.debug(f"Failed to retrieve GPU temperature: {e}")
+                if log_once("gpu_temperature"):
+                    logger.info(f"Failed to retrieve GPU temperature: {e}")
 
             return GpuUtilizationInfo(
                 index=gpu_index,
