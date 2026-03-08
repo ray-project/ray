@@ -1,17 +1,16 @@
-import os
 import threading
 import time
 import traceback
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-from datetime import datetime
 
 import ray
 from ray._private.ray_constants import (
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
+    RAY_NIXL_CPU_MEMORY_POOL_SIZE,
+    RAY_NIXL_GPU_MEMORY_POOL_SIZE,
     RAY_NIXL_MEMORY_POOL_ENABLED,
-    RAY_NIXL_MEMORY_POOL_SIZE,
 )
 from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
@@ -23,6 +22,7 @@ if TYPE_CHECKING:
     import torch
 
 from ray.experimental.rdt.nixl_memory_pool import MemoryPoolManager
+
 
 @dataclass
 class NixlCommunicatorMetadata(CommunicatorMetadata):
@@ -82,12 +82,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agents: OrderedDict = OrderedDict()
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
-        self._use_memory_pool = RAY_NIXL_MEMORY_POOL_ENABLED
-        self._pool_manager: Optional[MemoryPoolManager] = None
-        self._pool_reg_descs: Optional[Any] = None
-        self._pool_agent_meta: Optional[
-            bytes
-        ] = None  # Cache agent_meta to avoid changes
+        self._cpu_memory_pool: Optional[MemoryPoolManager] = None
+        self._gpu_memory_pool: Optional[MemoryPoolManager] = None
+        self._memory_pool_initialized = False
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -123,30 +120,41 @@ class NixlTensorTransport(TensorTransportManager):
             actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
         self._nixl_agent = nixl_agent(actor_id, agent_config)
 
-        if self._use_memory_pool and self._pool_manager is None:
-            try:
-                import torch
+        if RAY_NIXL_MEMORY_POOL_ENABLED and not self._memory_pool_initialized:
+            self._memory_pool_initialized = True
+            import torch
 
-                self._pool_manager = MemoryPoolManager(
-                    pool_size=RAY_NIXL_MEMORY_POOL_SIZE, device=torch.device("cpu")
-                )
+            if RAY_NIXL_CPU_MEMORY_POOL_SIZE > 0:
+                try:
+                    self._cpu_memory_pool = MemoryPoolManager(
+                        pool_size=RAY_NIXL_CPU_MEMORY_POOL_SIZE,
+                        device=torch.device("cpu"),
+                    )
+                    self._nixl_agent.register_memory(
+                        self._cpu_memory_pool.get_pool_tensor()
+                    )
+                except Exception as e:
+                    print(
+                        f"Failed to initialize NIXL CPU memory pool: {e}. "
+                        "CPU pool disabled."
+                    )
+                    self._cpu_memory_pool = None
 
-                # Register the entire memory pool once
-                pool_tensor = self._pool_manager.get_pool_tensor()
-                self._pool_reg_descs = self._nixl_agent.register_memory([pool_tensor])
-                # Cache agent_meta immediately after registering the pool
-                # This ensures agent_meta remains stable across multiple transfers
-                self._pool_agent_meta = self._nixl_agent.get_agent_metadata()
-            except Exception as e:
-                # If memory pool initialization fails, fall back to traditional mode
-                print(
-                    f"Failed to initialize NIXL memory pool: {e}. "
-                    "Falling back to traditional mode."
-                )
-                self._use_memory_pool = False
-                self._pool_manager = None
-                self._pool_reg_descs = None
-                self._pool_agent_meta = None
+            if RAY_NIXL_GPU_MEMORY_POOL_SIZE > 0 and torch.cuda.is_available():
+                try:
+                    self._gpu_memory_pool = MemoryPoolManager(
+                        pool_size=RAY_NIXL_GPU_MEMORY_POOL_SIZE,
+                        device=torch.device("cuda"),
+                    )
+                    self._nixl_agent.register_memory(
+                        self._gpu_memory_pool.get_pool_tensor()
+                    )
+                except Exception as e:
+                    print(
+                        f"Failed to initialize NIXL GPU memory pool: {e}. "
+                        "GPU pool disabled."
+                    )
+                    self._gpu_memory_pool = None
 
         return self._nixl_agent
 
@@ -207,12 +215,23 @@ class NixlTensorTransport(TensorTransportManager):
 
                 nixl_agent = self.get_nixl_agent()
                 xfer_descs, pool_offsets, pool_sizes = None, None, None
-                if self._use_memory_pool and self._pool_manager is not None:
-                    xfer_descs, pool_offsets, pool_sizes = self._allocate_from_memory_pool(rdt_object)
+                use_memory_pool = False
+                pool = (
+                    self._cpu_memory_pool
+                    if device.type == "cpu"
+                    else self._gpu_memory_pool
+                )
+                if pool is not None:
+                    (
+                        xfer_descs,
+                        pool_offsets,
+                        pool_sizes,
+                    ) = self._allocate_from_memory_pool(rdt_object, pool)
+                    use_memory_pool = xfer_descs is not None
                 if xfer_descs is None:
                     self._add_tensor_descs(rdt_object)
                     xfer_descs = nixl_agent.get_xfer_descs(rdt_object)
-               
+
                 serialized_descs = nixl_agent.get_serialized_descs(xfer_descs)
                 agent_meta = nixl_agent.get_agent_metadata()
                 agent_name = nixl_agent.name
@@ -220,6 +239,8 @@ class NixlTensorTransport(TensorTransportManager):
             else:
                 serialized_descs, agent_meta = None, None
                 agent_name, agent_meta_version = None, None
+                pool_offsets, pool_sizes = None, None
+                use_memory_pool = False
 
             ret = NixlTransportMetadata(
                 tensor_meta=tensor_meta,
@@ -228,7 +249,7 @@ class NixlTensorTransport(TensorTransportManager):
                 nixl_agent_meta=agent_meta,
                 nixl_agent_name=agent_name,
                 nixl_agent_meta_version=agent_meta_version,
-                use_memory_pool=self._use_memory_pool,
+                use_memory_pool=use_memory_pool,
                 pool_offsets=pool_offsets,
                 pool_sizes=pool_sizes,
             )
@@ -387,12 +408,21 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            if tensor_transport_meta.use_memory_pool and tensor_transport_meta.pool_offsets is not None:
-                for offset, size in zip(
-                    tensor_transport_meta.pool_offsets,
-                    tensor_transport_meta.pool_sizes,
-                ):
-                    self._pool_manager.free(offset, size)
+            if (
+                tensor_transport_meta.use_memory_pool
+                and tensor_transport_meta.pool_offsets is not None
+            ):
+                pool = (
+                    self._cpu_memory_pool
+                    if tensor_transport_meta.tensor_device == "cpu"
+                    else self._gpu_memory_pool
+                )
+                if pool is not None:
+                    for offset, size in zip(
+                        tensor_transport_meta.pool_offsets,
+                        tensor_transport_meta.pool_sizes,
+                    ):
+                        pool.free(offset, size)
             else:
                 for tensor in tensors:
                     key = tensor.untyped_storage().data_ptr()
@@ -401,7 +431,9 @@ class NixlTensorTransport(TensorTransportManager):
                         tensor_desc.metadata_count -= 1
                         if tensor_desc.metadata_count == 0:
                             self._tensor_desc_cache.pop(key)
-                            self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                            self.get_nixl_agent().deregister_memory(
+                                tensor_desc.reg_desc
+                            )
                             self._nixl_agent_meta_version += 1
 
     def abort_transport(
@@ -464,14 +496,16 @@ class NixlTensorTransport(TensorTransportManager):
                     )
                     self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
 
-    def _allocate_from_memory_pool(self, tensors: List["torch.Tensor"]) -> Tuple[List[int], List[int]]:
+    def _allocate_from_memory_pool(
+        self, tensors: List["torch.Tensor"], pool: MemoryPoolManager
+    ) -> Tuple[Optional[Any], Optional[List[int]], Optional[List[int]]]:
         """
-        Allocate memory from the memory pool for the given tensors.
+        Allocate memory from the given memory pool for the given tensors.
         """
-        if self._pool_manager is None:
+        if pool is None:
             return None, None, None
 
-        pool_device = self._pool_manager.device
+        pool_device = pool.device
         if any(t.device != pool_device for t in tensors):
             return None, None, None
 
@@ -481,13 +515,13 @@ class NixlTensorTransport(TensorTransportManager):
 
             # Try to allocate all tensors from memory pool atomically
             # If any allocation fails, all tensors will use traditional mode
-            allocations = self._pool_manager.allocate_multiple(tensor_sizes)
+            allocations = pool.allocate_multiple(tensor_sizes)
             if allocations is not None:
                 # All allocations succeeded
                 pool_offsets = []
                 pool_sizes = []  # Track sizes for garbage collection
                 pool_tensors = []  # Create tensor views into the pool
-                pool_tensor = self._pool_manager.get_pool_tensor()
+                pool_tensor = pool.get_pool_tensor()
 
                 for i, tensor in enumerate(tensors):
                     offset, allocated_size = allocations[i]
@@ -497,7 +531,7 @@ class NixlTensorTransport(TensorTransportManager):
                     )
 
                     # Copy tensor to memory pool
-                    self._pool_manager.copy_to_pool(tensor, offset)
+                    pool.copy_to_pool(tensor, offset)
                     pool_offsets.append(offset)
                     pool_sizes.append(tensor_size)
 
@@ -522,5 +556,5 @@ class NixlTensorTransport(TensorTransportManager):
                 f"Memory pool allocation failed: {e}. "
                 "Falling back to traditional mode."
             )
-        
+
         return None, None, None
