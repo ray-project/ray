@@ -10,6 +10,7 @@ from ray.data.expressions import (
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
     Operation,
+    PyArrowComputeExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
@@ -241,6 +242,18 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         new_args = [self.visit(arg) for arg in expr.args]
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
+
+        if isinstance(expr, PyArrowComputeExpr):
+            return PyArrowComputeExpr(
+                fn=expr.fn,
+                data_type=expr.data_type,
+                args=new_args,
+                kwargs=new_kwargs,
+                pc_func_name=expr.pc_func_name,
+                pc_positional_args=expr.pc_positional_args,
+                pc_kwargs=expr.pc_kwargs,
+            )
+
         return UDFExpr(
             fn=expr.fn,
             data_type=expr.data_type,

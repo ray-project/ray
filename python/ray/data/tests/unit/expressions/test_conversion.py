@@ -303,6 +303,129 @@ class TestToPyArrow:
         with pytest.raises(TypeError, match="Star expressions cannot be converted"):
             star().to_pyarrow()
 
+    # ── PyArrowComputeExpr Conversion ──
+
+    @pytest.fixture
+    def string_table(self):
+        """Sample PyArrow table with string data for testing compute expressions."""
+        return pa.table(
+            {
+                "name": ["Alice", "Bob", "Charlie", "Aardvark"],
+                "x": [1.5, 2.7, 3.2, 4.8],
+            }
+        )
+
+    @pytest.mark.parametrize(
+        "ray_expr,description",
+        [
+            (col("name").str.starts_with("A"), "starts_with"),
+            (col("name").str.ends_with("e"), "ends_with"),
+            (col("name").str.contains("li"), "contains"),
+            (col("name").str.match("A%"), "match (LIKE)"),
+            (col("name").str.match_regex("^A.*"), "match_regex"),
+        ],
+        ids=["starts_with", "ends_with", "contains", "match", "match_regex"],
+    )
+    def test_string_search_to_pyarrow(self, string_table, ray_expr, description):
+        """Test string search expressions convert to PyArrow and produce correct results."""
+        pa_expr = ray_expr.to_pyarrow()
+        assert isinstance(pa_expr, pc.Expression)
+
+        # Verify the filter produces correct results
+        dataset = ds.dataset(string_table)
+        result = dataset.scanner(filter=pa_expr).to_table()
+        assert result.num_rows > 0
+
+    @pytest.mark.parametrize(
+        "ray_expr,description",
+        [
+            (col("name").str.upper(), "upper"),
+            (col("name").str.lower(), "lower"),
+            (col("name").str.len(), "len"),
+            (col("name").str.reverse(), "reverse"),
+        ],
+        ids=["upper", "lower", "len", "reverse"],
+    )
+    def test_string_transform_to_pyarrow(self, string_table, ray_expr, description):
+        """Test string transform expressions convert to PyArrow."""
+        pa_expr = ray_expr.to_pyarrow()
+        assert isinstance(pa_expr, pc.Expression)
+
+    @pytest.mark.parametrize(
+        "ray_expr,description",
+        [
+            (col("name").str.strip(), "strip whitespace"),
+            (col("name").str.strip("Ae"), "strip chars"),
+            (col("name").str.lstrip(), "lstrip whitespace"),
+            (col("name").str.rstrip(), "rstrip whitespace"),
+        ],
+        ids=["strip_ws", "strip_chars", "lstrip_ws", "rstrip_ws"],
+    )
+    def test_string_strip_to_pyarrow(self, string_table, ray_expr, description):
+        """Test refactored strip methods convert to PyArrow."""
+        pa_expr = ray_expr.to_pyarrow()
+        assert isinstance(pa_expr, pc.Expression)
+
+    @pytest.mark.parametrize(
+        "ray_expr,description",
+        [
+            (col("x").ceil(), "ceil"),
+            (col("x").floor(), "floor"),
+            (col("x").abs(), "abs"),
+            (col("x").sign(), "sign"),
+            (col("x").negate(), "negate"),
+        ],
+        ids=["ceil", "floor", "abs", "sign", "negate"],
+    )
+    def test_math_to_pyarrow(self, string_table, ray_expr, description):
+        """Test math expressions convert to PyArrow."""
+        pa_expr = ray_expr.to_pyarrow()
+        assert isinstance(pa_expr, pc.Expression)
+
+    def test_power_to_pyarrow(self, string_table):
+        """Test power expression with argument converts to PyArrow."""
+        ray_expr = col("x").power(2)
+        pa_expr = ray_expr.to_pyarrow()
+        assert isinstance(pa_expr, pc.Expression)
+
+    def test_pyarrow_compute_in_composite_filter(self, string_table):
+        """Test PyArrowComputeExpr works in composite boolean expressions."""
+        ray_expr = col("name").str.starts_with("A") & (col("x") > 2.0)
+        pa_expr = ray_expr.to_pyarrow()
+        assert isinstance(pa_expr, pc.Expression)
+
+        dataset = ds.dataset(string_table)
+        result = dataset.scanner(filter=pa_expr).to_table()
+        # Only "Aardvark" starts with A and has x > 2.0
+        assert result.num_rows == 1
+        assert result.column("name")[0].as_py() == "Aardvark"
+
+    def test_negated_pyarrow_compute(self, string_table):
+        """Test negated PyArrowComputeExpr converts correctly."""
+        ray_expr = ~col("name").str.starts_with("A")
+        pa_expr = ray_expr.to_pyarrow()
+        assert isinstance(pa_expr, pc.Expression)
+
+        dataset = ds.dataset(string_table)
+        result = dataset.scanner(filter=pa_expr).to_table()
+        # Bob and Charlie don't start with A
+        assert result.num_rows == 2
+
+    def test_plain_udf_still_raises_with_pyarrow_compute(self):
+        """Ensure plain UDFExpr still raises even when PyArrowComputeExpr exists."""
+
+        def dummy_fn(x):
+            return x
+
+        udf_expr = UDFExpr(
+            fn=dummy_fn,
+            args=[col("x")],
+            kwargs={},
+            data_type=DataType(int),
+        )
+        with pytest.raises(TypeError, match="UDF expressions cannot be converted"):
+            udf_expr.to_pyarrow()
+
 
 # ──────────────────────────────────────
 # Iceberg Conversion Tests

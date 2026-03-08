@@ -9,7 +9,7 @@ import pyarrow
 import pyarrow.compute as pc
 
 from ray.data.datatype import DataType
-from ray.data.expressions import _create_pyarrow_compute_udf, pyarrow_udf
+from ray.data.expressions import _create_pyarrow_compute_udf
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr, UDFExpr
@@ -280,7 +280,7 @@ class _StringNamespace:
             self._expr, width, padding, *args, **kwargs
         )
 
-    # Custom methods that need special logic beyond simple PyArrow function calls
+    # Strip methods - dispatch to the appropriate PyArrow function
     def strip(self, characters: str | None = None) -> "UDFExpr":
         """Remove leading and trailing whitespace or specified characters.
 
@@ -288,17 +288,16 @@ class _StringNamespace:
             characters: Characters to remove. If None, removes whitespace.
 
         Returns:
-            UDFExpr that strips characters from both ends.
+            Expression that strips characters from both ends.
         """
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_strip(arr: pyarrow.Array) -> pyarrow.Array:
-            if characters is None:
-                return pc.utf8_trim_whitespace(arr)
-            else:
-                return pc.utf8_trim(arr, characters=characters)
-
-        return _str_strip(self._expr)
+        if characters is None:
+            return _create_str_udf(pc.utf8_trim_whitespace, DataType.string())(
+                self._expr
+            )
+        else:
+            return _create_str_udf(pc.utf8_trim, DataType.string())(
+                self._expr, characters
+            )
 
     def lstrip(self, characters: str | None = None) -> "UDFExpr":
         """Remove leading whitespace or specified characters.
@@ -307,17 +306,16 @@ class _StringNamespace:
             characters: Characters to remove. If None, removes whitespace.
 
         Returns:
-            UDFExpr that strips characters from the left.
+            Expression that strips characters from the left.
         """
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_lstrip(arr: pyarrow.Array) -> pyarrow.Array:
-            if characters is None:
-                return pc.utf8_ltrim_whitespace(arr)
-            else:
-                return pc.utf8_ltrim(arr, characters=characters)
-
-        return _str_lstrip(self._expr)
+        if characters is None:
+            return _create_str_udf(pc.utf8_ltrim_whitespace, DataType.string())(
+                self._expr
+            )
+        else:
+            return _create_str_udf(pc.utf8_ltrim, DataType.string())(
+                self._expr, characters
+            )
 
     def rstrip(self, characters: str | None = None) -> "UDFExpr":
         """Remove trailing whitespace or specified characters.
@@ -326,19 +324,18 @@ class _StringNamespace:
             characters: Characters to remove. If None, removes whitespace.
 
         Returns:
-            UDFExpr that strips characters from the right.
+            Expression that strips characters from the right.
         """
+        if characters is None:
+            return _create_str_udf(pc.utf8_rtrim_whitespace, DataType.string())(
+                self._expr
+            )
+        else:
+            return _create_str_udf(pc.utf8_rtrim, DataType.string())(
+                self._expr, characters
+            )
 
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_rstrip(arr: pyarrow.Array) -> pyarrow.Array:
-            if characters is None:
-                return pc.utf8_rtrim_whitespace(arr)
-            else:
-                return pc.utf8_rtrim(arr, characters=characters)
-
-        return _str_rstrip(self._expr)
-
-    # Padding
+    # Padding - dispatch to the appropriate PyArrow function
     def pad(
         self,
         width: int,
@@ -353,18 +350,19 @@ class _StringNamespace:
             side: "left", "right", or "both" for padding side.
 
         Returns:
-            UDFExpr that pads strings.
+            Expression that pads strings.
         """
-
-        @pyarrow_udf(return_dtype=DataType.string())
-        def _str_pad(arr: pyarrow.Array) -> pyarrow.Array:
-            if side == "right":
-                return pc.utf8_rpad(arr, width=width, padding=fillchar)
-            elif side == "left":
-                return pc.utf8_lpad(arr, width=width, padding=fillchar)
-            elif side == "both":
-                return pc.utf8_center(arr, width=width, padding=fillchar)
-            else:
-                raise ValueError("side must be 'left', 'right', or 'both'")
-
-        return _str_pad(self._expr)
+        if side == "right":
+            return _create_str_udf(pc.utf8_rpad, DataType.string())(
+                self._expr, width, fillchar
+            )
+        elif side == "left":
+            return _create_str_udf(pc.utf8_lpad, DataType.string())(
+                self._expr, width, fillchar
+            )
+        elif side == "both":
+            return _create_str_udf(pc.utf8_center, DataType.string())(
+                self._expr, width, fillchar
+            )
+        else:
+            raise ValueError("side must be 'left', 'right', or 'both'")

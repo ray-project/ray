@@ -774,6 +774,46 @@ class TestPushIntoBranchesBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
 
+def test_filter_pushdown_with_string_expression(parquet_ds):
+    """Test that string namespace expressions can be pushed down to Parquet."""
+    # iris.parquet has species: "setosa", "versicolor", "virginica"
+    filtered = parquet_ds.filter(expr=col("species").str.starts_with("setosa"))
+    result = filtered.take_all()
+    assert filtered.count() == 50  # iris setosa has 50 records
+    assert all(r["species"].startswith("setosa") for r in result)
+    # Verify the filter was pushed down (no separate Filter operator)
+    _check_plan_with_flexible_read(filtered, "", result)
+
+
+def test_filter_pushdown_with_match_regex(parquet_ds):
+    """Test regex match predicate pushdown to Parquet."""
+    filtered = parquet_ds.filter(expr=col("species").str.match_regex("^v.*"))
+    result = filtered.take_all()
+    assert all(r["species"].startswith("v") for r in result)
+    # versicolor (50) + virginica (50)
+    assert filtered.count() == 100
+    _check_plan_with_flexible_read(filtered, "", result)
+
+
+def test_filter_pushdown_with_negated_string_expression(parquet_ds):
+    """Test negated string expression predicate pushdown."""
+    filtered = parquet_ds.filter(expr=~col("species").str.starts_with("setosa"))
+    result = filtered.take_all()
+    assert all(not r["species"].startswith("setosa") for r in result)
+    assert filtered.count() == 100
+    _check_plan_with_flexible_read(filtered, "", result)
+
+
+def test_filter_pushdown_with_composite_string_expression(parquet_ds):
+    """Test composite expression with string ops pushes down to Parquet."""
+    filtered = parquet_ds.filter(
+        expr=col("species").str.starts_with("v") & (col("sepal.length") > 6.0)
+    )
+    result = filtered.take_all()
+    assert all(r["species"].startswith("v") and r["sepal.length"] > 6.0 for r in result)
+    _check_plan_with_flexible_read(filtered, "", result)
+
+
 if __name__ == "__main__":
     import sys
 

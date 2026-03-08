@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import inspect
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -207,6 +208,13 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         return self.visit(expr.expr)
 
     def visit_udf(self, expr: "UDFExpr") -> "pyarrow.compute.Expression":
+        if isinstance(expr, PyArrowComputeExpr):
+            assert len(expr.args) == 1, (
+                f"PyArrowComputeExpr for '{expr.pc_func_name}' expected 1 input arg, "
+                f"got {len(expr.args)}"
+            )
+            input_pa_expr = self.visit(expr.args[0])
+            return _build_pyarrow_expression(expr, input_pa_expr)
         raise TypeError("UDF expressions cannot be converted to PyArrow expressions")
 
     def visit_download(self, expr: "DownloadExpr") -> "pyarrow.compute.Expression":
@@ -223,6 +231,57 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
         raise TypeError(
             "Monotonically Increasing ID expressions cannot be converted to PyArrow expressions"
         )
+
+
+def _build_pyarrow_expression(
+    expr: "PyArrowComputeExpr",
+    input_pa_expr: "pyarrow.compute.Expression",
+) -> "pyarrow.compute.Expression":
+    """Convert a PyArrowComputeExpr to a native PyArrow compute expression.
+
+    Uses ``pc.Expression._call`` to build a native expression from the stored
+    compute function name and arguments.
+
+    Args:
+        expr: The PyArrowComputeExpr containing function metadata.
+        input_pa_expr: The PyArrow expression for the input column/subexpression.
+
+    Returns:
+        A PyArrow compute expression.
+    """
+    func_name = expr.pc_func_name
+    positional = expr.pc_positional_args
+    kwargs = expr.pc_kwargs
+
+    kernel = pc.get_function(func_name)
+    opts_class_name = kernel._doc.options_class
+
+    if opts_class_name:
+        # Function uses FunctionOptions -- build from positional + kwargs
+        opts_class = getattr(pc, opts_class_name)
+
+        # Map positional args to option parameter names using the
+        # PyArrow Python wrapper's signature (skip the first param which
+        # is the array input, and exclude 'options'/'memory_pool').
+        sig = inspect.signature(getattr(pc, func_name))
+        param_names = [
+            name
+            for name, param in list(sig.parameters.items())[1:]
+            if name not in ("options", "memory_pool")
+        ]
+
+        options_kwargs = {}
+        for i, val in enumerate(positional):
+            if i < len(param_names):
+                options_kwargs[param_names[i]] = val
+        options_kwargs.update(kwargs)
+
+        options = opts_class(**options_kwargs)
+        return pc.Expression._call(func_name, [input_pa_expr], options)
+    else:
+        # No options -- extra positional args become additional Expression args
+        extra_args = [pc.scalar(v) for v in positional]
+        return pc.Expression._call(func_name, [input_pa_expr] + extra_args)
 
 
 @DeveloperAPI(stability="alpha")
@@ -1139,6 +1198,43 @@ class UDFExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
+@dataclass(frozen=True, eq=False, repr=False)
+class PyArrowComputeExpr(UDFExpr):
+    """Expression backed by a native PyArrow compute function.
+
+    Unlike plain UDFExpr, this expression preserves the identity of the
+    underlying PyArrow compute function, enabling conversion to PyArrow
+    expressions for predicate pushdown into data sources.
+
+    Attributes:
+        pc_func_name: The name of the PyArrow compute function
+            (e.g., ``"starts_with"``, ``"match_substring_regex"``).
+        pc_positional_args: Positional arguments to pass to the compute
+            function (after the array input). These are raw Python values,
+            NOT Expr nodes.
+        pc_kwargs: Keyword arguments to pass to the compute function.
+            These are raw Python values, NOT Expr nodes.
+    """
+
+    pc_func_name: str = ""
+    pc_positional_args: tuple = field(default_factory=tuple)
+    pc_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    def structurally_equals(self, other: Any) -> bool:
+        if not isinstance(other, PyArrowComputeExpr):
+            return False
+        if self.pc_func_name != other.pc_func_name:
+            return False
+        if self.pc_positional_args != other.pc_positional_args:
+            return False
+        if self.pc_kwargs != other.pc_kwargs:
+            return False
+        return len(self.args) == len(other.args) and all(
+            a.structurally_equals(b) for a, b in zip(self.args, other.args)
+        )
+
+
 def _create_udf_callable(
     fn: Callable[..., BatchColumn],
     return_dtype: DataType,
@@ -1387,15 +1483,33 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
 def _create_pyarrow_compute_udf(
     pc_func: Callable[..., pyarrow.Array],
     return_dtype: DataType | None = None,
-) -> Callable[..., "UDFExpr"]:
-    """Create an expression UDF backed by a PyArrow compute function."""
+) -> Callable[..., "PyArrowComputeExpr"]:
+    """Create an expression backed by a PyArrow compute function.
 
-    def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "UDFExpr":
+    Unlike plain UDFs, these expressions preserve the compute function
+    identity, enabling conversion to PyArrow expressions for predicate
+    pushdown.
+    """
+    func_name = pc_func.__name__
+
+    def wrapper(expr: "Expr", *positional: Any, **kwargs: Any) -> "PyArrowComputeExpr":
         @pyarrow_udf(return_dtype=return_dtype or expr.data_type)
         def udf(arr: pyarrow.Array) -> pyarrow.Array:
             return pc_func(arr, *positional, **kwargs)
 
-        return udf(expr)
+        # Build the base UDFExpr via pyarrow_udf for runtime evaluation
+        base_udf_expr = udf(expr)
+
+        # Upgrade to PyArrowComputeExpr, preserving fn for runtime eval
+        return PyArrowComputeExpr(
+            fn=base_udf_expr.fn,
+            args=base_udf_expr.args,
+            kwargs=base_udf_expr.kwargs,
+            data_type=base_udf_expr.data_type,
+            pc_func_name=func_name,
+            pc_positional_args=positional,
+            pc_kwargs=kwargs,
+        )
 
     return wrapper
 
@@ -1645,6 +1759,7 @@ __all__ = [
     "BinaryExpr",
     "UnaryExpr",
     "UDFExpr",
+    "PyArrowComputeExpr",
     "DownloadExpr",
     "AliasExpr",
     "StarExpr",
