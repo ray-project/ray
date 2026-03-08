@@ -18,7 +18,6 @@ from ray.data._internal.execution.backpressure_policy import (
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
     Executor,
     OutputIterator,
     PhysicalOperator,
@@ -684,57 +683,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._get_state_dict(state=state),
             )
             self._metrics_last_updated = now
-
-
-def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
-    """Raises an exception on invalid DAGs.
-
-    It checks if the sum of min actor pool sizes are larger than the resource
-    limit, as well as other unsupported resource configurations.
-
-    This should be called prior to creating the topology from the DAG.
-
-    Args:
-        dag: The DAG to validate.
-        limits: The limits to validate against.
-    """
-
-    seen = set()
-
-    def walk(op):
-        seen.add(op)
-        for parent in op.input_dependencies:
-            if parent not in seen:
-                yield from walk(parent)
-        yield op
-
-    base_usage = ExecutionResources(cpu=1)
-    for op in walk(dag):
-        min_resource_usage, _ = op.min_max_resource_requirements()
-        base_usage = base_usage.add(min_resource_usage)
-
-    if not base_usage.satisfies_limit(limits):
-        error_message = (
-            "The current cluster doesn't have the required resources to execute your "
-            "Dataset pipeline:\n"
-        )
-        if base_usage.cpu > limits.cpu:
-            error_message += (
-                f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
-                f"only has {limits.cpu}.\n"
-            )
-        if base_usage.gpu > limits.gpu:
-            error_message += (
-                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
-                f"only has {limits.gpu}.\n"
-            )
-        if base_usage.object_store_memory > limits.object_store_memory:
-            error_message += (
-                f"- Your application needs {base_usage.object_store_memory}B object "
-                f"store memory, but your cluster only has "
-                f"{limits.object_store_memory}B.\n"
-            )
-        raise ValueError(error_message.strip())
 
 
 def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) -> None:
