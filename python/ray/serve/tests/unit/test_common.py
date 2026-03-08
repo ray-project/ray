@@ -9,10 +9,24 @@ from ray.serve._private.common import (
     ReplicaID,
     RunningReplicaInfo,
 )
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX
+from ray.serve._private.utils import get_deployment_actor_name, get_random_string
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
+
+
+def test_get_deployment_actor_name():
+    """Test deterministic actor name for deployment-scoped actors."""
+    dep_id = DeploymentID(name="MyDeployment", app_name="my_app")
+    assert get_deployment_actor_name(dep_id, "prefix_tree") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}my_app::MyDeployment::prefix_tree"
+    )
+
+    dep_id_default_app = DeploymentID(name="Other")  # app_name="default"
+    assert get_deployment_actor_name(dep_id_default_app, "x") == (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}default::Other::x"
+    )
 
 
 def test_replica_id_formatting():

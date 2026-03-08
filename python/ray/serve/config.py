@@ -3,7 +3,7 @@ import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -903,6 +903,77 @@ class GangRuntimeFailurePolicy(str, Enum):
     Tear down and restart individual replica when it fails.
     Other replicas in the gang will continue running.
     """
+
+
+@PublicAPI(stability="alpha")
+class DeploymentActorConfig(BaseModel):
+    """Configuration for a deployment-scoped actor.
+
+    Deployment-scoped actors are long-lived actors managed by the Serve controller
+    that outlive any single replica but are cleaned up when the deployment is
+    deleted or serve.shutdown() is called. They are shared by all replicas of
+    a deployment.
+
+    Example:
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import DeploymentActorConfig
+
+            @ray.remote
+            class PrefixTreeActor:
+                def __init__(self, max_depth: int = 100):
+                    self.max_depth = max_depth
+
+            @serve.deployment(
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="prefix_tree",
+                        actor_class=PrefixTreeActor,
+                        init_kwargs={"max_depth": 100},
+                        actor_options={"num_cpus": 0.1},
+                    ),
+                ],
+            )
+            class MyDeployment:
+                def __init__(self):
+                    self.tree = serve.get_deployment_actor("prefix_tree")
+
+                def __call__(self, request):
+                    ray.get(self.tree.insert.remote(request.text))
+    """
+
+    name: str = Field(
+        description="Unique name for this deployment-scoped actor within the deployment.",
+    )
+    actor_class: Union[type, str] = Field(
+        description=(
+            "The actor class for this deployment-scoped actor. "
+            "Can be a class or an import path string (e.g. 'my_module:PrefixTreeActor')."
+        ),
+    )
+    init_args: Tuple[Any, ...] = Field(
+        default_factory=tuple,
+        description="Positional arguments to pass to the actor constructor.",
+    )
+    init_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Keyword arguments to pass to the actor constructor.",
+    )
+    actor_options: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Ray actor options (e.g. num_cpus, num_gpus, runtime_env). "
+            "Overrides deployment's runtime_env for this actor."
+        ),
+    )
+
+    @field_validator("init_args")
+    @classmethod
+    def _init_args_to_tuple(cls, v):
+        if v is not None and isinstance(v, list):
+            return tuple(v)
+        return v or ()
 
 
 @PublicAPI(stability="alpha")

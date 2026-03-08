@@ -112,6 +112,11 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         for deployment_config in app_config.deployments
         if isinstance(deployment_config.autoscaling_config, dict)
     ]
+    deployment_actors_configs = [
+        deployment.deployment_actors
+        for deployment in app_config.deployments
+        if isinstance(deployment.deployment_actors, list)
+    ]
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
@@ -123,6 +128,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
             "autoscaling_policy": app_config.autoscaling_policy,
             "deployment_autoscaling_policies": deployment_autoscaling_policies,
             "request_router_configs": request_router_configs,
+            "deployment_actors": deployment_actors_configs,
         },
         sort_keys=True,
     ).encode("utf-8")

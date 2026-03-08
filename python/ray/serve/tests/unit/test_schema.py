@@ -9,9 +9,11 @@ from pydantic import ValidationError
 
 from ray import serve
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.deploy_utils import get_app_code_version
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
+    DeploymentActorConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
@@ -30,6 +32,12 @@ from ray.serve.tests.common.remote_uris import (
     TEST_MODULE_PINNED_URI,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_P4, NVIDIA_TESLA_V100
+
+
+class _SchemaTestDummyActor:
+    """Dummy actor class for deployment_actors schema tests."""
+
+    pass
 
 
 def get_valid_runtime_envs() -> List[Dict]:
@@ -509,6 +517,41 @@ class TestDeploymentSchema:
             ),
         ):
             DeploymentSchema.model_validate(deployment_schema)
+
+    def test_deployment_actors_schema_validation(self):
+        """Test that DeploymentSchema accepts deployment_actors as list of dicts."""
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["deployment_actors"] = [
+            {
+                "name": "actor1",
+                "actor_class": "ray.serve.tests.unit.test_schema:_SchemaTestDummyActor",
+                "init_kwargs": {"x": 1},
+            },
+        ]
+
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.deployment_actors is not None
+        assert len(schema.deployment_actors) == 1
+        item = schema.deployment_actors[0]
+        assert (item["name"] if isinstance(item, dict) else item.name) == "actor1"
+        assert (
+            item.get("init_kwargs", {}) if isinstance(item, dict) else item.init_kwargs
+        ) == {"x": 1}
+
+    def test_deployment_actors_schema_unset(self):
+        """Test that deployment_actors defaults to DEFAULT.VALUE when unset."""
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.deployment_actors is DEFAULT.VALUE
+
+    def test_deployment_actors_schema_nullable(self):
+        """Test that deployment_actors can be explicitly set to None."""
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["deployment_actors"] = None
+
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.deployment_actors is None
 
 
 class TestServeApplicationSchema:
@@ -1079,6 +1122,113 @@ def test_schema_to_deployment_gang_scheduling_config_from_dict():
     assert gc.gang_size == 3
     assert gc.gang_placement_strategy == GangPlacementStrategy.PACK
     assert dep.num_replicas == 6
+
+
+def test_deployment_actors_deployment_schema_roundtrip():
+    """Ensure deployment_to_schema -> schema_to_deployment preserves deployment_actors."""
+    actor_config = DeploymentActorConfig(
+        name="prefix_tree",
+        actor_class=_SchemaTestDummyActor,
+        init_kwargs={"max_depth": 100},
+        actor_options={"num_cpus": 0.1},
+    )
+    dc = DeploymentConfig.from_default(
+        num_replicas=2,
+        deployment_actors=[actor_config],
+    )
+    dc.user_configured_option_names = {"num_replicas", "deployment_actors"}
+
+    rc = ReplicaConfig.create(deployment_def="", init_args=(), init_kwargs={})
+    dep = Deployment(
+        name="ActorDep",
+        deployment_config=dc,
+        replica_config=rc,
+        _internal=True,
+    )
+
+    schema = deployment_to_schema(dep)
+    assert schema.deployment_actors is not None
+    assert len(schema.deployment_actors) == 1
+    assert schema.deployment_actors[0].name == "prefix_tree"
+    assert schema.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+    dep2 = schema_to_deployment(schema)
+    actors = dep2._deployment_config.deployment_actors
+    assert actors is not None
+    assert len(actors) == 1
+    assert actors[0].name == "prefix_tree"
+    assert actors[0].init_kwargs == {"max_depth": 100}
+    assert actors[0].actor_class is _SchemaTestDummyActor
+
+
+def test_schema_to_deployment_deployment_actors_from_dict():
+    """Ensure schema_to_deployment works when deployment_actors comes from a parsed dict."""
+    schema = DeploymentSchema.model_validate(
+        {
+            "name": "ActorDep",
+            "num_replicas": 2,
+            "deployment_actors": [
+                {
+                    "name": "shared_actor",
+                    "actor_class": "ray.serve.tests.unit.test_schema:_SchemaTestDummyActor",
+                    "init_kwargs": {"depth": 5},
+                },
+            ],
+        }
+    )
+
+    dep = schema_to_deployment(schema)
+    actors = dep._deployment_config.deployment_actors
+    assert actors is not None
+    assert len(actors) == 1
+    assert actors[0].name == "shared_actor"
+    assert actors[0].init_kwargs == {"depth": 5}
+    # actor_class stays as import path string when provided via dict/YAML
+    assert (
+        actors[0].actor_class
+        == "ray.serve.tests.unit.test_schema:_SchemaTestDummyActor"
+    )
+    assert dep.num_replicas == 2
+
+
+def test_get_app_code_version_includes_deployment_actors():
+    """Test that get_app_code_version changes when deployment_actors changes."""
+    base_config = {
+        "import_path": "module.graph",
+        "deployments": [{"name": "dep1"}],
+    }
+
+    base_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(base_config)
+    )
+
+    with_actors = copy.deepcopy(base_config)
+    with_actors["deployments"][0]["deployment_actors"] = [
+        {
+            "name": "tree",
+            "actor_class": "my_module:TreeActor",
+            "init_kwargs": {"depth": 10},
+        },
+    ]
+    actors_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(with_actors)
+    )
+    assert base_version != actors_version
+
+    same_actors = copy.deepcopy(with_actors)
+    same_actors_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(same_actors)
+    )
+    assert actors_version == same_actors_version
+
+    changed_actors = copy.deepcopy(with_actors)
+    changed_actors["deployments"][0]["deployment_actors"][0]["init_kwargs"] = {
+        "depth": 20
+    }
+    changed_actors_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(changed_actors)
+    )
+    assert actors_version != changed_actors_version
 
 
 def test_serve_instance_details_is_json_serializable():
