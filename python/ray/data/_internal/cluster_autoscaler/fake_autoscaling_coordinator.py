@@ -59,7 +59,7 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
             )
 
         if not resources and request_remaining:
-            resources = self._initial_cluster_resources
+            resources = [r.copy() for r in self._initial_cluster_resources]
 
         # Always accept the request and record it.
         self._allocations[requester_id] = self.Allocation(
