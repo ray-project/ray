@@ -85,4 +85,4 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
             del self._allocations[requester_id]
             return []
 
-        return allocation.resources
+        return [r.copy() for r in allocation.resources]
