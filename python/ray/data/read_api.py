@@ -3828,19 +3828,22 @@ def from_tf(
 
     if tf is not None:
 
-        def _contains_ragged(spec) -> bool:
+        def _contains_ragged_or_sparse(spec) -> bool:
             return any(
-                isinstance(s, tf.RaggedTensorSpec) for s in tf.nest.flatten(spec)
+                isinstance(s, (tf.RaggedTensorSpec, tf.SparseTensorSpec))
+                for s in tf.nest.flatten(spec)
             )
 
         def _to_numpy_or_list(value):
             if isinstance(value, tf.RaggedTensor):
                 return value.to_list()
+            if isinstance(value, tf.SparseTensor):
+                return tf.sparse.to_dense(value).numpy()
             if tf.is_tensor(value):
                 return value.numpy()
             return value
 
-        if _contains_ragged(dataset.element_spec):
+        if _contains_ragged_or_sparse(dataset.element_spec):
             items = [
                 tf.nest.map_structure(_to_numpy_or_list, element) for element in dataset
             ]
