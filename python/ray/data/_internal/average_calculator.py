@@ -21,6 +21,8 @@ class TimeWindowAverageCalculator:
 
     def report(self, value: float):
         """Report a value to the calculator."""
+        assert value >= 0, f"Value should be non-negative, got {value}"
+
         now = time.time()
         self._values.append((now, value))
         self._sum += value
@@ -33,10 +35,22 @@ class TimeWindowAverageCalculator:
         self._trim(time.time())
         if len(self._values) == 0:
             return None
-        return self._sum / len(self._values)
+
+        avg = self._sum / len(self._values)
+
+        assert avg >= 0, (
+            f"Average should be non-negative, got {avg} "
+            f"(sum={self._sum}, count={len(self._values)})"
+        )
+        return avg
 
     def _trim(self, now):
         """Remove the values reported outside of the time window."""
         while len(self._values) > 0 and now - self._values[0][0] > self._window_s:
             _, value = self._values.popleft()
             self._sum -= value
+
+        # Set sum to 0 if it's negative to avoid accumulated floating-point error from
+        # repeated += / -= operations.
+        if self._sum < 0:
+            self._sum = 0
