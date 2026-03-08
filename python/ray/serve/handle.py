@@ -996,6 +996,8 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         If `handle.options(stream=True)` is set and a generator method is called, this
         returns a `DeploymentResponseGenerator` instead.
+        If the selected replica becomes unavailable before dispatch executes,
+        ``ReplicaUnavailableError`` is propagated from the router dispatch path.
 
         Args:
             selection: A ReplicaSelection from choose_replica() context manager.
@@ -1006,7 +1008,6 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             DeploymentResponse or DeploymentResponseGenerator (if streaming).
 
         Raises:
-            ReplicaUnavailableError: If the selected replica is no longer available.
             ValueError: If selection was created by a different DeploymentHandle.
         """
         future, request_metadata = self._dispatch(selection, args, kwargs)
