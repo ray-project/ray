@@ -463,7 +463,7 @@ class TestDeploymentSchema:
             "min_replicas": 4,
             "max_replicas": 8,
         }
-        schema = DeploymentSchema.parse_obj(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
         assert schema.gang_scheduling_config.gang_size == 4
         assert schema.num_replicas == "auto"
 

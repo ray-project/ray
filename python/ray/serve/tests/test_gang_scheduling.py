@@ -1713,6 +1713,8 @@ class TestGangAutoscaling:
         ray.init(address=cluster.address)
         serve.start()
 
+        signal = SignalActor.remote()
+
         @serve.deployment(
             num_replicas="auto",
             ray_actor_options={"num_cpus": 0.1},
@@ -1731,33 +1733,11 @@ class TestGangAutoscaling:
         )
         class UnalignedDownscale:
             async def __call__(self):
-                import asyncio
-
-                await asyncio.sleep(1)
+                await signal.wait.remote()
                 return os.getpid()
 
         handle = serve.run(UnalignedDownscale.bind(), name="unaligned_downscale_app")
         wait_for_condition(check_apps_running, apps=["unaligned_downscale_app"])
-
-        # With target_ongoing_requests=2 and 13 ongoing:
-        # desired = ceil(13/2) = 7 (unaligned).
-        # Gang policy rounds down: 7 // 3 * 3 = 6.
-        errors = []
-        stop_event = threading.Event()
-
-        def send_requests():
-            while not stop_event.is_set():
-                try:
-                    handle.remote().result(timeout_s=10)
-                except Exception as e:
-                    errors.append(str(e))
-
-        threads = []
-        for _ in range(13):
-            t = threading.Thread(target=send_requests, daemon=True)
-            t.start()
-            threads.append(t)
-
         wait_for_condition(
             check_num_replicas_eq,
             name="UnalignedDownscale",
@@ -1765,6 +1745,11 @@ class TestGangAutoscaling:
             app_name="unaligned_downscale_app",
             timeout=60,
         )
+
+        # Send 13 blocking requests. With target_ongoing_requests=2:
+        # desired = ceil(13/2) = 7 (unaligned).
+        # Gang policy rounds down: 7 // 3 * 3 = 6.
+        results = [handle.remote() for _ in range(13)]
 
         # Wait for downscale from 9 to 6.
         def downscaled_and_aligned():
@@ -1779,11 +1764,10 @@ class TestGangAutoscaling:
 
         wait_for_condition(downscaled_and_aligned, timeout=30)
 
-        stop_event.set()
-        for t in threads:
-            t.join(timeout=5)
-
-        assert len(errors) == 0
+        # Release all requests so the queue drains.
+        signal.send.remote()
+        for res in results:
+            res.result()
 
         serve.delete("unaligned_downscale_app")
         serve.shutdown()
