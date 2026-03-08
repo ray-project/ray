@@ -63,7 +63,7 @@ _KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
 KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
 KAFKA_QUERY_OFFSET_TIMEOUT_S = 10
 # Cap each consume timeout to keep responsiveness of timeout/position checks.
-KAFKA_CONSUME_TIMEOUT_MAX_MS = 10_000  # 10 seconds per consume call
+KAFKA_CONSUME_TIMEOUT_MAX_S = 10  # 10 seconds per consume call
 
 KAFKA_MSG_SCHEMA = pa.schema(
     [
@@ -368,6 +368,12 @@ def _resolve_offsets(
             consumer, topic_partition, end_offset, latest_offset
         )
 
+    # Clamp end_offset to the high watermark so we never try to read beyond
+    # what is currently available.  This prevents the read loop from polling
+    # indefinitely when a user-supplied integer end_offset exceeds the number
+    # of messages in the partition.
+    end_offset = min(end_offset, latest_offset)
+
     if start_offset > end_offset:
         start_str = (
             f"{original_start}"
@@ -401,7 +407,7 @@ class KafkaDatasource(Datasource):
         end_offset: Union[int, datetime, Literal["latest"]] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
         consumer_config: Optional[Dict[str, Any]] = None,
-        timeout_ms: int = 10000,
+        timeout_ms: Optional[int] = None,
     ):
         """Initialize Kafka datasource.
 
@@ -423,9 +429,10 @@ class KafkaDatasource(Datasource):
                 Keys and values are passed through to the underlying client. The
                 `bootstrap.servers` option is derived from `bootstrap_servers` and
                 cannot be overridden here.
-            timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-                If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-                it has read so far.
+            timeout_ms: Optional timeout in milliseconds for every read task to poll until reaching end_offset.
+                If None (default), no task-level timeout is applied and each read task
+                will poll until it reaches end_offset. If set, the read task will stop
+                polling after the timeout and return the messages it has read so far.
 
         Raises:
             ValueError: If required configuration is missing.
@@ -439,7 +446,7 @@ class KafkaDatasource(Datasource):
         if not bootstrap_servers:
             raise ValueError("bootstrap_servers cannot be empty")
 
-        if timeout_ms <= 0:
+        if timeout_ms is not None and timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
 
         if isinstance(start_offset, int) and isinstance(end_offset, int):
@@ -562,7 +569,7 @@ class KafkaDatasource(Datasource):
                 ] = end_offset,
                 kafka_auth_config: Optional[KafkaAuthConfig] = self._kafka_auth_config,
                 user_consumer_config: Optional[Dict[str, Any]] = self._consumer_config,
-                timeout_ms: int = timeout_ms,
+                timeout_ms: Optional[int] = timeout_ms,
                 target_max_block_size: int = target_max_block_size,
             ):
                 """Create a Kafka read function with captured variables."""
@@ -597,7 +604,9 @@ class KafkaDatasource(Datasource):
 
                         if resolved_start < resolved_end:
                             start_time = time.perf_counter()
-                            timeout_seconds = timeout_ms / 1000.0
+                            timeout_seconds = (
+                                timeout_ms / 1000.0 if timeout_ms is not None else None
+                            )
 
                             tp_with_offset = TopicPartition(
                                 topic_name, partition_id, resolved_start
@@ -611,22 +620,22 @@ class KafkaDatasource(Datasource):
                                 if next_offset >= resolved_end:
                                     break
 
-                                elapsed_time_s = time.perf_counter() - start_time
-                                if elapsed_time_s >= timeout_seconds:
-                                    logger.warning(
-                                        f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
-                                        f"end_offset {resolved_end} was not reached. Returning {len(records)} messages collected in this read task so far."
+                                if timeout_seconds is not None:
+                                    elapsed_time_s = time.perf_counter() - start_time
+                                    if elapsed_time_s >= timeout_seconds:
+                                        logger.warning(
+                                            f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
+                                            f"end_offset {resolved_end} was not reached. Returning {len(records)} messages collected in this read task so far."
+                                        )
+                                        break
+                                    remaining_timeout_s = (
+                                        timeout_seconds - elapsed_time_s
                                     )
-                                    break
-
-                                remaining_timeout_ms = int(
-                                    max(0, timeout_seconds - elapsed_time_s) * 1000
-                                )
-                                poll_timeout_ms = min(
-                                    remaining_timeout_ms,
-                                    KAFKA_CONSUME_TIMEOUT_MAX_MS,
-                                )
-                                consume_timeout_s = poll_timeout_ms / 1000.0
+                                    consume_timeout_s = min(
+                                        remaining_timeout_s, KAFKA_CONSUME_TIMEOUT_MAX_S
+                                    )
+                                else:
+                                    consume_timeout_s = KAFKA_CONSUME_TIMEOUT_MAX_S
 
                                 remaining = resolved_end - next_offset
                                 batch_size = min(
