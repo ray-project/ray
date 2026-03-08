@@ -19,7 +19,7 @@ from pydantic import (
 from ray import cloudpickle
 from ray._common import ray_option_utils
 from ray._common.serialization import pickle_dumps
-from ray._common.utils import resources_from_ray_options
+from ray._common.utils import import_attr, resources_from_ray_options
 from ray.serve._private.constants import (
     DEFAULT_CONSTRUCTOR_RETRY_COUNT,
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -33,6 +33,7 @@ from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
+    DeploymentActorConfig,
     DeploymentMode,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -43,6 +44,7 @@ from ray.serve.config import (
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentActorConfig as DeploymentActorConfigProto,
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
     EncodingType as EncodingTypeProto,
@@ -212,6 +214,11 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
+    deployment_actors: Optional[List[DeploymentActorConfig]] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
@@ -272,6 +279,19 @@ class DeploymentConfig(BaseModel):
                 f"gang_size ({self.gang_scheduling_config.gang_size})."
             )
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_deployment_actors_unique_names(self):
+        if self.deployment_actors is None:
+            return self
+        names = [cfg.name for cfg in self.deployment_actors]
+        if len(names) != len(set(names)):
+            duplicates = [n for n in names if names.count(n) > 1]
+            raise ValueError(
+                f"deployment_actors must have unique names. "
+                f"Duplicate name(s): {list(set(duplicates))}"
+            )
         return self
 
     def needs_pickle(self):
@@ -345,6 +365,24 @@ class DeploymentConfig(BaseModel):
                 gang_placement_strategy=placement_strategy,
                 runtime_failure_policy=failure_policy,
             )
+        if self.deployment_actors:
+            deployment_actors_proto = []
+            for cfg in self.deployment_actors:
+                actor_class = cfg.actor_class
+                if isinstance(actor_class, str):
+                    actor_class = import_attr(actor_class)
+                deployment_actors_proto.append(
+                    DeploymentActorConfigProto(
+                        name=cfg.name,
+                        _serialized_actor_class=cloudpickle.dumps(actor_class),
+                        serialized_init_args=cloudpickle.dumps(cfg.init_args or ()),
+                        serialized_init_kwargs=cloudpickle.dumps(cfg.init_kwargs or {}),
+                        serialized_actor_options=cloudpickle.dumps(
+                            cfg.actor_options or {}
+                        ),
+                    )
+                )
+            data["deployment_actors"] = deployment_actors_proto
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
@@ -448,6 +486,29 @@ class DeploymentConfig(BaseModel):
             data["gang_scheduling_config"] = GangSchedulingConfig(**gang_config)
         else:
             data.pop("gang_scheduling_config", None)
+        if "deployment_actors" in data and data["deployment_actors"]:
+            deployment_actors = []
+            for proto_dict in data["deployment_actors"]:
+
+                def _loads(b):
+                    return cloudpickle.loads(b) if b else None
+
+                serialized_cls = proto_dict.get("_serialized_actor_class")
+                serialized_args = proto_dict.get("serialized_init_args")
+                serialized_kwargs = proto_dict.get("serialized_init_kwargs")
+                serialized_opts = proto_dict.get("serialized_actor_options")
+                deployment_actors.append(
+                    DeploymentActorConfig(
+                        name=proto_dict.get("name", ""),
+                        actor_class=_loads(serialized_cls),
+                        init_args=_loads(serialized_args) or (),
+                        init_kwargs=_loads(serialized_kwargs) or {},
+                        actor_options=_loads(serialized_opts) or {},
+                    )
+                )
+            data["deployment_actors"] = deployment_actors
+        else:
+            data.pop("deployment_actors", None)
 
         return cls(**data)
 

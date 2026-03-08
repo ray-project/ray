@@ -21,6 +21,7 @@ from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
+    DeploymentActorConfig,
     DeploymentMode,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -52,6 +53,12 @@ def fake_policy():
 
 class FakeRequestRouter:
     ...
+
+
+class _TestDummyActor:
+    """Used for deployment_actors import path test."""
+
+    pass
 
 
 def test_autoscaling_config_validation():
@@ -254,6 +261,67 @@ class TestDeploymentConfig:
             deployment_config.request_router_config.get_request_router_class()
             == PowerOfTwoChoicesRequestRouter
         )
+
+    def test_deployment_actors_config(self):
+        """Test deployment_actors config and proto roundtrip."""
+
+        class DummyActor:
+            pass
+
+        actor_config = DeploymentActorConfig(
+            name="prefix_tree",
+            actor_class=DummyActor,
+            init_kwargs={"max_depth": 100},
+            actor_options={"num_cpus": 0.1},
+        )
+        config = DeploymentConfig(
+            num_replicas=1,
+            deployment_actors=[actor_config],
+        )
+        assert config.deployment_actors is not None
+        assert len(config.deployment_actors) == 1
+        assert config.deployment_actors[0].name == "prefix_tree"
+        assert config.deployment_actors[0].actor_class is DummyActor
+        assert config.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+        deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert deserialized.deployment_actors is not None
+        assert len(deserialized.deployment_actors) == 1
+        assert deserialized.deployment_actors[0].name == "prefix_tree"
+        assert deserialized.deployment_actors[0].actor_class is DummyActor
+        assert deserialized.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+        # Test with import path string
+        actor_config_str = DeploymentActorConfig(
+            name="actor_from_path",
+            actor_class="ray.serve.tests.unit.test_config._TestDummyActor",
+            init_kwargs={"max_depth": 50},
+        )
+        config_str = DeploymentConfig(
+            num_replicas=1,
+            deployment_actors=[actor_config_str],
+        )
+        proto = config_str.to_proto()
+        assert len(proto.deployment_actors) == 1
+        assert proto.deployment_actors[0].name == "actor_from_path"
+
+        # Test duplicate names raise
+        with pytest.raises(ValueError, match="unique names"):
+            DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=DummyActor,
+                        init_kwargs={},
+                    ),
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=DummyActor,
+                        init_kwargs={},
+                    ),
+                ],
+            )
 
 
 class TestReplicaConfig:

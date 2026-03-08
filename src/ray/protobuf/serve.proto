@@ -155,6 +155,24 @@ message GangSchedulingConfig {
 }
 //[End] GANG SCHEDULING CONFIG
 
+// Configuration for a deployment-scoped actor.
+message DeploymentActorConfig {
+  // Unique name for this actor within the deployment.
+  string name = 5;
+
+  // Cloudpickled actor class.
+  bytes _serialized_actor_class = 1;
+
+  // Cloudpickled init args.
+  bytes serialized_init_args = 2;
+
+  // Cloudpickled init kwargs.
+  bytes serialized_init_kwargs = 3;
+
+  // Cloudpickled actor options.
+  bytes serialized_actor_options = 4;
+}
+
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
   // The number of processes to start up that will handle requests to this deployment.
@@ -207,6 +225,9 @@ message DeploymentConfig {
 
   // Gang scheduling configuration for atomic replica scheduling.
   GangSchedulingConfig gang_scheduling_config = 21;
+
+  // Deployment-scoped actors managed by the controller.
+  repeated DeploymentActorConfig deployment_actors = 22;
 }
 
 // Deployment language.
