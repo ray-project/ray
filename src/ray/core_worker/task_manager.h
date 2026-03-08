@@ -16,6 +16,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -515,6 +516,25 @@ class TaskManager : public TaskManagerInterface {
   void RecordMetrics();
 
  private:
+  struct PendingTaskReferences {
+    std::vector<rpc::ObjectReference> returned_refs;
+    std::vector<ObjectID> return_ids;
+  };
+
+  PendingTaskReferences AddPendingTaskReferences(
+      const rpc::Address &caller_address,
+      const TaskID &task_id,
+      size_t num_returns,
+      const std::string &call_site,
+      int max_retries,
+      bool is_actor_creation_task,
+      const std::optional<std::string> &tensor_transport);
+
+  void RegisterPendingTaskSpec(const TaskSpecification &spec,
+                               const std::string &call_site,
+                               int max_retries,
+                               std::vector<ObjectID> return_ids);
+
   struct TaskEntry {
     TaskEntry(TaskSpecification spec,
               int num_retries_left,

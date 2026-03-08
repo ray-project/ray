@@ -137,6 +137,12 @@ def main(results=None):
 
     results += timeit("single client tasks and get batch", small_value_batch)
 
+    def submit_task_burst():
+        submitted = [small_value.remote() for _ in range(10000)]
+        ray.get(submitted)
+
+    results += timeit("single client submit 10k tasks", submit_task_burst, 10000)
+
     @ray.remote
     def do_put():
         for _ in range(10):

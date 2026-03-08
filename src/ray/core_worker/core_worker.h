@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <deque>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
@@ -56,6 +57,8 @@
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray::core {
+
+class BoundedExecutor;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -1379,6 +1382,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+  FRIEND_TEST(CoreWorkerTest, TaskBuildingOffloaded);
 
   /// Used to lazily subscribe to node_changes only if the worker takes any owner actions.
   void SubscribeToNodeChanges();
@@ -1910,6 +1914,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
+
+  std::unique_ptr<BoundedExecutor> task_building_executor_;
+
+  std::function<void()> task_building_hook_;
 
   /// Worker's PID
   uint32_t pid_;

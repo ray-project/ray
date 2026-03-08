@@ -20,6 +20,7 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@
 #include "mock/ray/object_manager/plasma/client.h"
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
+#include "ray/common/function_descriptor.h"
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
@@ -1266,6 +1268,42 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
   } else {
     ASSERT_EQ(callback_count, 0);
   }
+}
+
+TEST_F(CoreWorkerTest, TaskBuildingOffloaded) {
+  ASSERT_NE(core_worker_->task_building_executor_, nullptr);
+  std::promise<std::thread::id> build_thread_id;
+  auto build_thread_id_future = build_thread_id.get_future();
+  core_worker_->task_building_hook_ = [&build_thread_id]() {
+    build_thread_id.set_value(std::this_thread::get_id());
+  };
+
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+
+  auto function_descriptor =
+      FunctionDescriptorBuilder::BuildPython("test_module", "", "test_func", "hash");
+  RayFunction ray_function(Language::PYTHON, function_descriptor);
+  std::vector<std::unique_ptr<TaskArg>> args;
+  TaskOptions options;
+  options.num_returns = 1;
+  options.serialized_runtime_env_info =
+      R"({"serialized_runtime_env":"{\"env_vars\":{\"TEST\":\"1\"}}"})";
+
+  auto calling_thread_id = std::this_thread::get_id();
+  auto refs = core_worker_->SubmitTask(ray_function,
+                                       args,
+                                       options,
+                                       0,
+                                       false,
+                                       scheduling_strategy,
+                                       "",
+                                       "",
+                                       "test_call_site",
+                                       TaskID::Nil());
+
+  ASSERT_EQ(refs.size(), 1u);
+  EXPECT_NE(build_thread_id_future.get(), calling_thread_id);
 }
 
 INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
