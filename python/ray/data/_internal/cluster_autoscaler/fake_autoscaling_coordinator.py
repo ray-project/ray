@@ -25,12 +25,24 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
     def __init__(
         self,
         get_time: Callable[[], float] = time.time,
-        remaining: Optional[List[ResourceDict]] = None,
+        initial_cluster_resources: Optional[List[ResourceDict]] = None,
     ):
-        if remaining is None:
-            remaining = []
+        """Initialize the coordinator.
+
+        Args:
+            get_time: A function that returns the current time in seconds. This is a
+                seam for testing.
+            initial_cluster_resources: If the requester sends an empty request and
+                ``request_remaining`` is True, the coordinator allocates these resources
+                to the requester. Otherwise, the coordinator allocates the requested
+                resources.
+        """
+        if initial_cluster_resources is None:
+            initial_cluster_resources = []
+
         self._get_time = get_time
-        self._remaining = remaining
+        self._initial_cluster_resources = initial_cluster_resources
+
         self._allocations: Dict[str, FakeAutoscalingCoordinator.Allocation] = {}
 
     def request_resources(
@@ -46,6 +58,9 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
                 "This fake implementation doesn't support the `priority` parameter."
             )
 
+        if not resources and request_remaining:
+            resources = self._initial_cluster_resources
+
         # Always accept the request and record it.
         self._allocations[requester_id] = self.Allocation(
             resources=resources,
@@ -60,17 +75,14 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Return the allocated resources if they haven't expired."""
         allocation = self._allocations.get(requester_id)
+
         # Case 1: no allocation.
         if allocation is None:
             return []
+
         # Case 2: request expired.
         if allocation.expiration_time_s < self._get_time():
             del self._allocations[requester_id]
             return []
-        # Case 3: allocation still valid.
-        allocated_resources = list(allocation.resources)
-        if allocation.request_remaining:
-            # Unlike DefaultAutoscalingCoordinator, this fake returns all remaining
-            # resources to each requester to keep tests simple.
-            allocated_resources.extend(self._remaining)
-        return allocated_resources
+
+        return allocation.resources
