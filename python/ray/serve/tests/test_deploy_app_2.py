@@ -78,7 +78,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "encoding": encoding_type,
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -109,7 +109,7 @@ class TestDeploywithLoggingConfig:
                 },
             },
         ]
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -128,7 +128,7 @@ class TestDeploywithLoggingConfig:
         """Deploy application with deployment logging config inside the code"""
         client = serve_instance
         config_dict = self.get_deploy_config(model_within_logging_config=True)
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -140,7 +140,7 @@ class TestDeploywithLoggingConfig:
         """Overwrite the default logging config with application logging config"""
         client = serve_instance
         config_dict = self.get_deploy_config()
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
 
         wait_for_condition(
@@ -172,7 +172,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "DEBUG",
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
 
         wait_for_condition(
@@ -212,7 +212,7 @@ class TestDeploywithLoggingConfig:
             "log_level": "INFO",
         }
 
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -230,7 +230,7 @@ class TestDeploywithLoggingConfig:
             "log_level": "INFO",
         }
 
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -244,7 +244,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "log_level": "DEBUG",
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -261,7 +261,7 @@ class TestDeploywithLoggingConfig:
             "log_level": "DEBUG",
             "logs_dir": new_log_dir,
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -278,7 +278,7 @@ class TestDeploywithLoggingConfig:
         config_dict["applications"][0]["logging_config"] = {
             "enable_access_log": enable_access_log,
         }
-        config = ServeDeploySchema.parse_obj(config_dict)
+        config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
             lambda: httpx.post("http://localhost:8000/app1").status_code == 200
@@ -296,11 +296,11 @@ class TestDeploywithLoggingConfig:
 def test_deploy_with_no_applications(serve_instance):
     """Deploy an empty list of applications, serve should just be started."""
     client = serve_instance
-    config = ServeDeploySchema.parse_obj({"applications": []})
+    config = ServeDeploySchema.model_validate({"applications": []})
     client.deploy_apps(config)
 
     def serve_running():
-        ServeInstanceDetails.parse_obj(
+        ServeInstanceDetails.model_validate(
             ray.get(client._controller.get_serve_instance_details.remote())
         )
         actors = list_actors(
@@ -572,7 +572,9 @@ def test_num_replicas_auto_api(serve_instance):
         "deployments": [{"name": "f", "num_replicas": "auto"}],
     }
 
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     print("Application is RUNNING.")
     check_num_replicas_eq("f", 1)
@@ -628,7 +630,9 @@ def test_num_replicas_auto_basic(serve_instance):
     }
 
     print(time.ctime(), "Deploying pid application.")
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     print(time.ctime(), "Application is RUNNING.")
     check_num_replicas_eq("A", 1)
@@ -794,7 +798,9 @@ def test_update_config_graceful_shutdown_timeout(serve_instance):
     }
 
     # Deploy first time
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
@@ -805,7 +811,9 @@ def test_update_config_graceful_shutdown_timeout(serve_instance):
 
     # Redeploy with shutdown timeout set to 5 seconds
     config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
-    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    client.deploy_apps(
+        ServeDeploySchema.model_validate({"applications": [config_template]})
+    )
     wait_for_condition(check_running, timeout=15)
 
     pid2 = handle.remote().result()[0]

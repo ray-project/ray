@@ -56,7 +56,6 @@ from ray.core.generated.gcs_service_pb2 import (
     FilterPredicate,
     GcsStatus,
     GetAllActorInfoReply,
-    GetAllNodeInfoReply,
     GetAllPlacementGroupReply,
     GetAllWorkerInfoReply,
     GetTaskEventsReply,
@@ -751,10 +750,14 @@ async def test_api_manager_list_pgs(state_api_manager):
 async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id), generate_node_data(b"12345")],
-        total=2,
-        num_filtered=0,
+    node_1 = generate_node_data(id)
+    node_2 = generate_node_data(b"12345")
+    data_source_client.get_all_node_info.return_value = (
+        {
+            node_1.node_id: node_1,
+            node_2.node_id: node_2,
+        },
+        0,
     )
     result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
@@ -774,10 +777,11 @@ async def test_api_manager_list_nodes(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id)],
-        total=2,
-        num_filtered=1,
+    data_source_client.get_all_node_info.return_value = (
+        {
+            node_1.node_id: node_1,
+        },
+        1,
     )
     result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
@@ -792,10 +796,11 @@ async def test_api_manager_list_nodes(state_api_manager):
         result = await state_api_manager.list_nodes(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id)],
-        total=2,
-        num_filtered=1,
+    data_source_client.get_all_node_info.return_value = (
+        {
+            node_1.node_id: node_1,
+        },
+        1,
     )
     result = await state_api_manager.list_nodes(
         option=create_api_options(filters=[("node_id", "=", bytearray(id).hex())])
@@ -1325,21 +1330,22 @@ async def test_api_manager_list_objects(state_api_manager):
     obj_1_id = b"1" * 28
     obj_2_id = b"2" * 28
     data_source_client.get_all_node_info = AsyncMock()
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[
-            GcsNodeInfo(
+    data_source_client.get_all_node_info.return_value = (
+        {
+            NodeID.from_binary(b"1" * 28): GcsNodeInfo(
                 node_id=b"1" * 28,
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 node_manager_address="192.168.1.1",
                 node_manager_port=10001,
             ),
-            GcsNodeInfo(
+            NodeID.from_binary(b"2" * 28): GcsNodeInfo(
                 node_id=b"2" * 28,
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 node_manager_address="192.168.1.2",
                 node_manager_port=10002,
             ),
-        ]
+        },
+        0,
     )
 
     data_source_client.get_object_info = AsyncMock()
@@ -1446,27 +1452,28 @@ async def test_api_manager_list_objects(state_api_manager):
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     data_source_client.get_all_node_info = AsyncMock()
-    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[
-            GcsNodeInfo(
+    data_source_client.get_all_node_info.return_value = (
+        {
+            NodeID.from_binary(b"1" * 28): GcsNodeInfo(
                 node_id=b"1" * 28,
                 node_manager_address="192.168.1.1",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10000,
             ),
-            GcsNodeInfo(
+            NodeID.from_binary(b"2" * 28): GcsNodeInfo(
                 node_id=b"2" * 28,
                 node_manager_address="192.168.1.2",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10001,
             ),
-            GcsNodeInfo(
+            NodeID.from_binary(b"3" * 28): GcsNodeInfo(
                 node_id=b"3" * 28,
                 node_manager_address="192.168.1.3",
                 state=GcsNodeInfo.GcsNodeState.ALIVE,
                 runtime_env_agent_port=10002,
             ),
-        ]
+        },
+        0,
     )
 
     data_source_client.get_runtime_envs_info = AsyncMock()
@@ -1676,7 +1683,10 @@ async def test_state_data_source_client(ray_start_cluster):
     Test node
     """
     result = await client.get_all_node_info()
-    assert isinstance(result, GetAllNodeInfoReply)
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert isinstance(result[0], dict)  # node_infos
+    assert isinstance(result[1], int)  # num_filtered
 
     """
     Test worker info
@@ -2265,10 +2275,9 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
     client = state_source_client(cluster.address)
 
     async def verify():
-        reply = await client.get_all_node_info()
-        print(reply)
-        assert len(reply.node_info_list) == 2
-        for node_info in reply.node_info_list:
+        node_infos, _ = await client.get_all_node_info()
+        assert len(node_infos) == 2
+        for node_info in node_infos.values():
             if node_info.node_name == "worker_node":
                 assert node_info.instance_id == "test_cloud_id"
                 assert node_info.node_type_name == "test-node-type"
@@ -2279,6 +2288,77 @@ async def test_cloud_envs(ray_start_cluster, monkeypatch):
         return True
 
     await async_wait_for_condition(verify)
+
+
+@pytest.mark.asyncio
+async def test_get_all_node_info_with_filters(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    cluster.add_node(
+        num_cpus=0,  # no cpus to avoid scheduling failure. We are not running
+        # any workloads so this should be safe.
+        node_name="worker_node_1",
+        dashboard_agent_listen_port=find_free_port(),
+    )
+    cluster.add_node(
+        num_cpus=0,
+        node_name="worker_node_2",
+        dashboard_agent_listen_port=find_free_port(),
+    )
+
+    client = state_source_client(cluster.address)
+
+    # Get all nodes' info
+    result = {}
+
+    async def verify_all_nodes():
+        node_infos, num_filtered = await client.get_all_node_info()
+        assert len(node_infos) == 3
+        assert len(node_infos) + num_filtered == 3
+        assert num_filtered == 0
+        node_names = {node.node_name for node in node_infos.values()}
+        assert node_names == {"head_node", "worker_node_1", "worker_node_2"}
+        result["all_node_infos"] = node_infos
+        return True
+
+    await async_wait_for_condition(
+        verify_all_nodes, timeout=ray_constants.GCS_SERVER_REQUEST_TIMEOUT_SECONDS
+    )
+
+    node_name_to_id = {
+        node.node_name: node.node_id.hex() for node in result["all_node_infos"].values()
+    }
+
+    # Get a specific node using node_id filter
+    head_node_id = node_name_to_id["head_node"]
+
+    async def verify_single_node():
+        node_infos, _ = await client.get_all_node_info(
+            filters=[("node_id", "=", head_node_id)]
+        )
+        assert len(node_infos) == 1
+        node_info = list(node_infos.values())[0]
+        assert node_info.node_name == "head_node"
+        assert node_info.node_id.hex() == head_node_id
+        return True
+
+    await async_wait_for_condition(verify_single_node)
+
+    # Get multiple nodes using node_name filters
+    async def verify_multi_node():
+        node_infos, _ = await client.get_all_node_info(
+            filters=[
+                ("node_name", "=", "worker_node_1"),
+                ("node_name", "=", "worker_node_2"),
+            ]
+        )
+        assert len(node_infos) == 2
+        returned_names = {node.node_name for node in node_infos.values()}
+        assert returned_names == {"worker_node_1", "worker_node_2"}
+        return True
+
+    await async_wait_for_condition(verify_multi_node)
 
 
 @pytest.mark.skipif(
@@ -2441,7 +2521,11 @@ def test_list_get_workers(shutdown_only):
     os.kill(workers[-1]["pid"], signal.SIGKILL)
 
     def verify():
-        workers = list_workers(detail=True, filters=[("is_alive", "=", "False")])
+        workers = list_workers(
+            detail=True,
+            filters=[("is_alive", "=", "False")],
+            raise_on_missing_output=False,
+        )
         assert len(workers) == 1
         assert workers[0]["end_time_ms"] != 0
         return True
@@ -2779,7 +2863,9 @@ def test_pg_worker_id_tasks(shutdown_only):
 
     def verify():
         tasks = list_tasks(detail=True)
-        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        workers = list_workers(
+            filters=[("worker_type", "=", "WORKER")], raise_on_missing_output=False
+        )
         assert len(tasks) == 1
         assert len(workers) == 1
 
@@ -2799,7 +2885,9 @@ def test_pg_worker_id_tasks(shutdown_only):
 
     def verify():
         actors = list_actors(detail=True)
-        workers = list_workers(detail=True, filters=[("pid", "=", pid)])
+        workers = list_workers(
+            detail=True, filters=[("pid", "=", pid)], raise_on_missing_output=False
+        )
         assert len(actors) == 1
         assert len(workers) == 1
 
@@ -3342,16 +3430,28 @@ def test_filter(shutdown_only):
 
     def verify():
         workers = list_workers()
-        live_workers = list_workers(filters=[("is_alive", "=", "true")])
-        non_alive_workers = list_workers(filters=[("is_alive", "!=", "true")])
+        live_workers = list_workers(
+            filters=[("is_alive", "=", "true")], raise_on_missing_output=False
+        )
+        non_alive_workers = list_workers(
+            filters=[("is_alive", "!=", "true")], raise_on_missing_output=False
+        )
         assert len(live_workers) + len(non_alive_workers) == len(workers)
 
-        live_workers = list_workers(filters=[("is_alive", "=", "1")])
-        non_alive_workers = list_workers(filters=[("is_alive", "!=", "1")])
+        live_workers = list_workers(
+            filters=[("is_alive", "=", "1")], raise_on_missing_output=False
+        )
+        non_alive_workers = list_workers(
+            filters=[("is_alive", "!=", "1")], raise_on_missing_output=False
+        )
         assert len(live_workers) + len(non_alive_workers) == len(workers)
 
-        live_workers = list_workers(filters=[("is_alive", "=", "True")])
-        non_alive_workers = list_workers(filters=[("is_alive", "!=", "True")])
+        live_workers = list_workers(
+            filters=[("is_alive", "=", "True")], raise_on_missing_output=False
+        )
+        non_alive_workers = list_workers(
+            filters=[("is_alive", "!=", "True")], raise_on_missing_output=False
+        )
         assert len(live_workers) + len(non_alive_workers) == len(workers)
 
         return True

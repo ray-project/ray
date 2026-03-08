@@ -153,6 +153,22 @@ def test_groupby_with_column_expression_udf(
     ]
 
 
+def test_arrow_nan_element(ray_start_regular_shared_2_cpus):
+    ds = ray.data.from_items(
+        [
+            1.0,
+            1.0,
+            2.0,
+            np.nan,
+            np.nan,
+        ]
+    )
+    ds = ds.groupby("item").count()
+    ds = ds.filter(lambda v: np.isnan(v["item"]))
+    result = ds.take_all()
+    assert result[0]["count()"] == 2
+
+
 def test_groupby_with_column_expression_arithmetic(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
