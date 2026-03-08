@@ -1994,6 +1994,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        : task_options.name;
   int64_t depth = worker_context_->GetTaskDepth() + 1;
   auto reference_call_site = CurrentCallSite();
+  auto parent_task_id = current_task_id != TaskID::Nil()
+                            ? current_task_id
+                            : worker_context_->GetCurrentTaskID();
+  auto caller_id = GetCallerId();
 
   TaskSpecification task_spec;
   if (task_building_executor_) {
@@ -2004,7 +2008,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
         [self = shared_from_this(),
          task_id,
          task_name = std::move(task_name),
-         current_task_id,
+         parent_task_id,
          next_task_index,
          constrained_resources = std::move(constrained_resources),
          function,
@@ -2024,6 +2028,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
          retry_exceptions,
          serialized_retry_exception_allowlist,
          scheduling_strategy,
+         caller_id,
          promise,
          task_building_hook]() mutable {
           if (task_building_hook) {
@@ -2035,11 +2040,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
               self->worker_context_->GetCurrentJobID(),
               task_id,
               task_name,
-              current_task_id != TaskID::Nil()
-                  ? current_task_id
-                  : self->worker_context_->GetCurrentTaskID(),
+              parent_task_id,
               next_task_index,
-              self->GetCallerId(),
+              caller_id,
               self->rpc_address_,
               function,
               *args,
@@ -2076,11 +2079,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                         worker_context_->GetCurrentJobID(),
                         task_id,
                         task_name,
-                        current_task_id != TaskID::Nil()
-                            ? current_task_id
-                            : worker_context_->GetCurrentTaskID(),
+                        parent_task_id,
                         next_task_index,
-                        GetCallerId(),
+                        caller_id,
                         rpc_address_,
                         function,
                         args,
