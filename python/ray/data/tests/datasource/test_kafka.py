@@ -60,16 +60,16 @@ def kafka_producer(bootstrap_server):
 
 @pytest.fixture(scope="session")
 def kafka_consumer(bootstrap_server):
-    from kafka import KafkaConsumer
+    from confluent_kafka import Consumer
 
     print(f"Creating shared Kafka consumer for {bootstrap_server}")
-    consumer = KafkaConsumer(
-        bootstrap_servers=[bootstrap_server],
-        auto_offset_reset="earliest",
-        enable_auto_commit=False,
-        value_deserializer=lambda v: v,  # Keep as bytes for flexibility
-        key_deserializer=lambda k: k,  # Keep as bytes for flexibility
-        consumer_timeout_ms=5000,
+    consumer = Consumer(
+        {
+            "bootstrap.servers": bootstrap_server,
+            "group.id": "ray-test-consumer",
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+        }
     )
     yield consumer
     print("Closing shared Kafka consumer")
@@ -78,30 +78,34 @@ def kafka_consumer(bootstrap_server):
 
 def consume_messages(consumer, topic, expected_count, timeout=10):
     """Helper function to consume messages from a topic."""
-    from kafka import TopicPartition
+    from confluent_kafka import KafkaError, TopicPartition
 
-    # Subscribe and get partitions
-    consumer.subscribe([topic])
-    time.sleep(1)  # Wait for subscription
-
-    # Get all partitions for the topic
-    partitions = consumer.partitions_for_topic(topic)
-    if partitions is None:
+    # Discover partitions for the topic
+    metadata = consumer.list_topics(timeout=10)
+    topic_meta = metadata.topics.get(topic)
+    if topic_meta is None or not topic_meta.partitions:
         time.sleep(2)  # Wait a bit more for topic to be created
-        partitions = consumer.partitions_for_topic(topic)
+        metadata = consumer.list_topics(timeout=10)
+        topic_meta = metadata.topics.get(topic)
 
-    if partitions:
-        topic_partitions = [TopicPartition(topic, p) for p in partitions]
+    if topic_meta and topic_meta.partitions:
+        topic_partitions = [
+            TopicPartition(topic, p, 0) for p in topic_meta.partitions.keys()
+        ]
         consumer.assign(topic_partitions)
-        consumer.seek_to_beginning(*topic_partitions)
 
     messages = []
     start_time = time.time()
 
     while len(messages) < expected_count and (time.time() - start_time) < timeout:
-        records = consumer.poll(timeout_ms=1000)
-        for topic_partition, records_list in records.items():
-            messages.extend(records_list)
+        msg = consumer.poll(timeout=1.0)
+        if msg is None:
+            continue
+        if msg.error():
+            if msg.error().code() == KafkaError._PARTITION_EOF:
+                continue
+            break
+        messages.append(msg)
 
     return messages
 
@@ -834,84 +838,97 @@ def test_kafka_datasink_extract_key_uses_serializer():
     assert key == b"raw-bytes"
 
 
-def test_flush_futures_all_success():
-    """Test _flush_futures returns (0, None) when all futures succeed."""
-    from unittest.mock import MagicMock
-
-    sink = KafkaDatasink(topic="test", bootstrap_servers="localhost:9092")
-    mock_producer = MagicMock()
-
-    futures = [MagicMock() for _ in range(5)]
-    for f in futures:
-        f.get.return_value = MagicMock()  # Simulate successful metadata
-
-    failed, first_exc = sink._flush_futures(futures, mock_producer)
-
-    assert failed == 0
-    assert first_exc is None
-    mock_producer.flush.assert_called_once_with(timeout=30.0)
-    for f in futures:
-        f.get.assert_called_once_with(timeout=0)
-
-
-def test_flush_futures_preserves_first_exception():
-    """Test _flush_futures captures the first exception, not the last."""
-    from unittest.mock import MagicMock
-
-    sink = KafkaDatasink(topic="test", bootstrap_servers="localhost:9092")
-    mock_producer = MagicMock()
-
-    error_a = Exception("Error A")
-    error_b = Exception("Error B")
-
-    futures = [MagicMock(), MagicMock(), MagicMock()]
-    futures[0].get.side_effect = error_a
-    futures[1].get.side_effect = error_b
-    futures[2].get.return_value = MagicMock()  # Success
-
-    failed, first_exc = sink._flush_futures(futures, mock_producer)
-
-    assert failed == 2
-    assert first_exc is error_a  # First exception, not error_b
-
-
-def test_write_raises_with_chained_exception():
-    """Test write() chains the first Kafka error into the RuntimeError."""
+@pytest.fixture
+def mock_write_env():
+    from types import SimpleNamespace
     from unittest.mock import MagicMock, patch
 
     sink = KafkaDatasink(topic="test-topic", bootstrap_servers="localhost:9092")
-
-    # Create a mock future whose .get() raises
-    kafka_error = Exception("TopicAuthorizationFailedError")
-    mock_future = MagicMock()
-    mock_future.get.side_effect = kafka_error
-
-    # Mock KafkaProducer so write() doesn't need a real broker
     mock_producer = MagicMock()
-    mock_producer.send.return_value = mock_future
+    mock_producer.flush.return_value = 0
 
-    # Build a minimal block that yields one row
     mock_block = MagicMock()
     mock_accessor = MagicMock()
     mock_accessor.iter_rows.return_value = [{"id": 1}]
 
     with (
-        patch(
-            "ray.data._internal.datasource.kafka_datasink.KafkaProducer",
-            return_value=mock_producer,
-        ),
+        patch("confluent_kafka.Producer", return_value=mock_producer),
         patch(
             "ray.data._internal.datasource.kafka_datasink.BlockAccessor.for_block",
             return_value=mock_accessor,
         ),
     ):
-        with pytest.raises(
-            RuntimeError, match="Failed to write 1 out of 1"
-        ) as exc_info:
-            sink.write([mock_block], ctx=MagicMock())
+        yield SimpleNamespace(
+            sink=sink,
+            producer=mock_producer,
+            block=mock_block,
+            accessor=mock_accessor,
+            ctx=MagicMock(),
+        )
 
-        # Verify exception chaining: __cause__ should be the original Kafka error
-        assert exc_info.value.__cause__ is kafka_error
+
+def test_write_delivery_failure_raises(mock_write_env):
+    """Test that any delivery failure raises RuntimeError."""
+    from unittest.mock import MagicMock
+
+    from confluent_kafka import KafkaError
+
+    env = mock_write_env
+    mock_kafka_error = MagicMock(spec=KafkaError)
+    mock_kafka_error.str.return_value = "MSG_SIZE_TOO_LARGE"
+
+    def fake_produce(topic, value, key, on_delivery):
+        on_delivery(mock_kafka_error, None)
+
+    env.producer.produce.side_effect = fake_produce
+
+    with pytest.raises(RuntimeError, match="Failed to write 1 out of 1"):
+        env.sink.write([env.block], ctx=env.ctx)
+
+
+def test_write_in_flight_after_flush_raises(mock_write_env):
+    """Test that messages stuck in-flight after flush raises RuntimeError."""
+    env = mock_write_env
+    env.producer.produce.return_value = None
+    env.producer.flush.return_value = 1  # 1 message still in-flight
+
+    with pytest.raises(
+        RuntimeError,
+        match="1 out of 1 messages were still in-flight after flush timeout",
+    ):
+        env.sink.write([env.block], ctx=env.ctx)
+
+
+def test_write_buffer_error_retry(mock_write_env):
+    """Test that BufferError triggers poll and retry, then succeeds."""
+    env = mock_write_env
+    # First produce() raises BufferError, retry succeeds
+    env.producer.produce.side_effect = [BufferError("queue full"), None]
+
+    result = env.sink.write([env.block], ctx=env.ctx)
+
+    assert result["total_records"] == 1
+    assert result["failed_messages"] == 0
+
+
+def test_write_buffer_error_persistent_raises(mock_write_env):
+    """Test that persistent BufferError (retry also fails) raises RuntimeError."""
+    env = mock_write_env
+    env.producer.produce.side_effect = BufferError("queue full")
+
+    with pytest.raises(RuntimeError, match="producer queue is still full"):
+        env.sink.write([env.block], ctx=env.ctx)
+
+
+def test_write_success_returns_stats(mock_write_env):
+    """Test successful write returns correct stats."""
+    env = mock_write_env
+    env.producer.produce.return_value = None
+    env.accessor.iter_rows.return_value = [{"id": i} for i in range(3)]
+
+    result = env.sink.write([env.block], ctx=env.ctx)
+
+    assert result == {"total_records": 3, "failed_messages": 0}
 
 
 # Kafka Datasink Integration Tests (require Kafka container)
@@ -933,11 +950,11 @@ def test_write_kafka_basic(bootstrap_server, kafka_consumer, ray_start_regular_s
 
     # Verify message structure
     first_msg = messages[0]
-    assert first_msg.topic == topic
-    assert first_msg.key is None  # No key field specified
+    assert first_msg.topic() == topic
+    assert first_msg.key() is None  # No key field specified
 
     # Verify value is JSON encoded
-    value = json.loads(first_msg.value.decode("utf-8"))
+    value = json.loads(first_msg.value().decode("utf-8"))
     assert "id" in value
     assert isinstance(value["id"], int)
 
@@ -966,12 +983,12 @@ def test_write_kafka_with_keys(
 
     # Verify keys
     for msg in messages:
-        assert msg.key is not None
-        key_str = msg.key.decode("utf-8")
+        assert msg.key() is not None
+        key_str = msg.key().decode("utf-8")
         assert key_str.isdigit()
 
         # Verify value
-        value = json.loads(msg.value.decode("utf-8"))
+        value = json.loads(msg.value().decode("utf-8"))
         assert value["id"] == int(key_str)
 
 
@@ -1015,18 +1032,18 @@ def test_write_kafka_serializers(
     first_msg = messages[0]
 
     if key_serializer == "json":
-        key_data = json.loads(first_msg.key.decode("utf-8"))
+        key_data = json.loads(first_msg.key().decode("utf-8"))
         assert isinstance(key_data, int)
     else:  # string
-        key_str = first_msg.key.decode("utf-8")
+        key_str = first_msg.key().decode("utf-8")
         assert key_str.isdigit()
 
     if value_serializer == "json":
-        value_data = json.loads(first_msg.value.decode("utf-8"))
+        value_data = json.loads(first_msg.value().decode("utf-8"))
         assert "id" in value_data
         assert "message" in value_data
     else:  # string
-        value_str = first_msg.value.decode("utf-8")
+        value_str = first_msg.value().decode("utf-8")
         assert "id" in value_str
         assert "message" in value_str
 
@@ -1050,7 +1067,7 @@ def test_write_kafka_multiple_blocks(
     # Verify all ids are present
     ids = set()
     for msg in messages:
-        value = json.loads(msg.value.decode("utf-8"))
+        value = json.loads(msg.value().decode("utf-8"))
         ids.add(value["id"])
 
     assert len(ids) == 200
@@ -1083,54 +1100,20 @@ def test_write_kafka_with_producer_config(
     # Create dataset
     ds = ray.data.range(30)
 
-    # Write with custom producer config
+    # Write with custom producer config (confluent-kafka/librdkafka format)
     ds.write_kafka(
         topic=topic,
         bootstrap_servers=bootstrap_server,
         producer_config={
             "acks": "all",
             "retries": 3,
-            "max_in_flight_requests_per_connection": 1,
+            "max.in.flight.requests.per.connection": 1,
         },
     )
 
     # Consume and verify
     messages = consume_messages(kafka_consumer, topic, expected_count=30)
     assert len(messages) == 30
-
-
-def test_write_kafka_with_delivery_callback(
-    bootstrap_server, kafka_consumer, ray_start_regular_shared
-):
-    """Test writing with a delivery callback."""
-    topic = "test-write-callback"
-
-    # Track callback invocations
-    callback_results = {"success": 0, "error": 0}
-
-    def delivery_callback(metadata=None, exception=None):
-        if exception:
-            callback_results["error"] += 1
-        else:
-            callback_results["success"] += 1
-
-    # Create dataset
-    ds = ray.data.range(25)
-
-    # Write with callback
-    ds.write_kafka(
-        topic=topic,
-        bootstrap_servers=bootstrap_server,
-        delivery_callback=delivery_callback,
-    )
-
-    # Consume and verify
-    messages = consume_messages(kafka_consumer, topic, expected_count=25)
-    assert len(messages) == 25
-
-    # Note: Callbacks are invoked asynchronously, so we may or may not
-    # have callback results by the time we get here. We just verify
-    # that no exceptions were raised during write.
 
 
 def test_write_kafka_with_complex_data(
@@ -1159,7 +1142,7 @@ def test_write_kafka_with_complex_data(
     assert len(messages) == 15
 
     # Verify nested structure is preserved
-    first_value = json.loads(messages[0].value.decode("utf-8"))
+    first_value = json.loads(messages[0].value().decode("utf-8"))
     assert "user" in first_value
     assert "name" in first_value["user"]
     assert "tags" in first_value
@@ -1173,9 +1156,14 @@ def test_write_kafka_invalid_bootstrap_server(ray_start_regular_shared):
 
     ds = ray.data.range(10)
 
-    # Should raise an error when trying to connect
-    with pytest.raises(Exception):  # Will raise a Kafka-related error
-        ds.write_kafka(topic=topic, bootstrap_servers="invalid-server:9999")
+    # Use a short message.timeout.ms so librdkafka gives up quickly
+    # instead of waiting the full 30s flush timeout.
+    with pytest.raises(Exception):
+        ds.write_kafka(
+            topic=topic,
+            bootstrap_servers="invalid-server:9999",
+            producer_config={"message.timeout.ms": 3000},
+        )
 
 
 def test_write_kafka_dataset_with_nulls(
@@ -1197,7 +1185,7 @@ def test_write_kafka_dataset_with_nulls(
 
     # Verify None values are serialized
     for msg in messages:
-        value = json.loads(msg.value.decode("utf-8"))
+        value = json.loads(msg.value().decode("utf-8"))
         assert "id" in value
         # value["value"] should be either a string or null
 

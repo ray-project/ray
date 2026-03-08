@@ -3,16 +3,13 @@
 This module provides a Kafka datasink implementation for Ray Data.
 
 Requires:
-    - kafka-python: https://kafka-python.readthedocs.io/
+    - confluent-kafka: https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/
 """
 
 import json
 import logging
-from collections.abc import Callable, Iterable, Mapping
-from typing import TYPE_CHECKING, Any, Optional
-
-if TYPE_CHECKING:
-    from kafka import KafkaProducer
+from collections.abc import Iterable, Mapping
+from typing import Any, Optional
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_import
@@ -21,13 +18,17 @@ from ray.data.datasource.datasink import Datasink
 
 logger = logging.getLogger(__name__)
 
-# Number of futures to accumulate before flushing to avoid memory exhaustion
-_FLUSH_INTERVAL = 10000
+# Number of messages to produce before polling for delivery reports
+_POLL_BATCH_SIZE = 10000
+# Timeout (seconds) for the final flush that waits for all in-flight messages
+_FLUSH_TIMEOUT_S = 30
+# Timeout (seconds) when polling to drain the queue after a BufferError
+_BUFFER_FULL_POLL_TIMEOUT_S = 10
 
 
 class KafkaDatasink(Datasink):
     """
-    Ray Data sink for writing to Apache Kafka topics using kafka-python.
+    Ray Data sink for writing to Apache Kafka topics using confluent-kafka.
 
     Writes blocks of data to Kafka with configurable serialization
     and producer settings.
@@ -41,7 +42,6 @@ class KafkaDatasink(Datasink):
         key_serializer: str = "string",
         value_serializer: str = "json",
         producer_config: Optional[dict[str, Any]] = None,
-        delivery_callback: Optional[Callable] = None,
     ):
         """
         Initialize Kafka sink.
@@ -52,10 +52,12 @@ class KafkaDatasink(Datasink):
             key_field: Optional field name to use as message key
             key_serializer: Key serialization format ('json', 'string', or 'bytes')
             value_serializer: Value serialization format ('json', 'string', or 'bytes')
-            producer_config: Additional Kafka producer configuration (kafka-python format)
-            delivery_callback: Optional callback for delivery reports (called with metadata or exception)
+            producer_config: Additional Kafka producer configuration
+                (confluent-kafka/librdkafka format, e.g., ``{"linger.ms": 5}``).
+                The ``bootstrap.servers`` option is derived from ``bootstrap_servers``
+                and cannot be overridden here.
         """
-        _check_import(self, module="kafka", package="kafka-python")
+        _check_import(self, module="confluent_kafka", package="confluent-kafka")
 
         VALID_SERIALIZERS = {"json", "string", "bytes"}
         if key_serializer not in VALID_SERIALIZERS:
@@ -75,7 +77,6 @@ class KafkaDatasink(Datasink):
         self.key_serializer = key_serializer
         self.value_serializer = value_serializer
         self.producer_config = producer_config or {}
-        self.delivery_callback = delivery_callback
 
     def _row_to_dict(self, row: Any) -> Any:
         """Convert row to dict if possible, otherwise return as-is."""
@@ -126,31 +127,6 @@ class KafkaDatasink(Datasink):
                 key = self._serialize_key(key_value)
         return key
 
-    def _flush_futures(
-        self, futures: list, producer: "KafkaProducer"
-    ) -> tuple[int, Optional[Exception]]:
-        """Flush producer and check futures for failures.
-
-        Args:
-            futures: List of send futures to check.
-            producer: KafkaProducer instance to flush.
-
-        Returns:
-            Tuple of (failure_count, first_exception). first_exception is None
-            if all futures succeeded.
-        """
-        failed = 0
-        first_exception = None
-        producer.flush(timeout=30.0)
-        for future in futures:
-            try:
-                future.get(timeout=0)
-            except Exception as e:
-                failed += 1
-                if first_exception is None:
-                    first_exception = e
-        return failed, first_exception
-
     def write(
         self,
         blocks: Iterable[Block],
@@ -164,20 +140,34 @@ class KafkaDatasink(Datasink):
             ctx: Ray data context
 
         Returns:
-            Write statistics (total records written)
+            Dict with ``total_records`` and ``failed_messages`` counts.
         """
-        from kafka import KafkaProducer
-        from kafka.errors import KafkaError, KafkaTimeoutError
+        from confluent_kafka import KafkaException, Producer
 
-        # Create producer with config
-        producer = KafkaProducer(
-            bootstrap_servers=self.bootstrap_servers,
-            **self.producer_config,
-        )
+        # Build confluent config
+        config: dict[str, Any] = {
+            "bootstrap.servers": self.bootstrap_servers,
+        }
+        for k, v in self.producer_config.items():
+            if k == "bootstrap.servers":
+                logger.warning(
+                    "Ignoring 'bootstrap.servers' from producer_config; "
+                    "use bootstrap_servers parameter instead."
+                )
+                continue
+            config[k] = v
+
+        producer = Producer(config)
         total_records = 0
-        failed_messages = 0
-        first_exception = None
-        futures = []
+        remaining = 0
+        # Mutable container so on_delivery callback can update without nonlocal
+        delivery_state = {"failed": 0, "first_exception": None}
+
+        def on_delivery(err, msg):
+            if err is not None:
+                delivery_state["failed"] += 1
+                if delivery_state["first_exception"] is None:
+                    delivery_state["first_exception"] = KafkaException(err)
 
         try:
             for block in blocks:
@@ -195,57 +185,73 @@ class KafkaDatasink(Datasink):
                     value = self._serialize_value(row_dict)
 
                     # Produce to Kafka
+                    # TODO: Consider using produce_batch() to reduce per-message Python->C overhead.
                     try:
-                        future = producer.send(self.topic, value=value, key=key)
+                        producer.produce(
+                            self.topic,
+                            value=value,
+                            key=key,
+                            on_delivery=on_delivery,
+                        )
                     except BufferError:
-                        # Queue is full, flush and retry
-                        producer.flush(timeout=10.0)
-                        future = producer.send(self.topic, value=value, key=key)
+                        # Internal queue is full, poll to serve callbacks
+                        # and free space, then retry
+                        producer.poll(_BUFFER_FULL_POLL_TIMEOUT_S)
+                        try:
+                            producer.produce(
+                                self.topic,
+                                value=value,
+                                key=key,
+                                on_delivery=on_delivery,
+                            )
+                        except BufferError:
+                            raise RuntimeError(
+                                f"Kafka producer queue is still full after "
+                                f"{_BUFFER_FULL_POLL_TIMEOUT_S}s of polling "
+                                f"for topic '{self.topic}'. "
+                                f"Consider increasing queue.buffering.max.messages "
+                                f"in producer_config."
+                            )
 
-                    # Add callback if provided
-                    if self.delivery_callback:
-                        future.add_callback(
-                            lambda m: self.delivery_callback(metadata=m)
-                        )
-                        future.add_errback(
-                            lambda e: self.delivery_callback(exception=e)
-                        )
-                    futures.append(future)
                     total_records += 1
 
-                    # Periodically flush to avoid unbounded memory usage
-                    if len(futures) >= _FLUSH_INTERVAL:
-                        batch_failed, batch_exc = self._flush_futures(futures, producer)
-                        failed_messages += batch_failed
-                        if first_exception is None:
-                            first_exception = batch_exc
-                        futures.clear()
+                    # Periodically poll to serve delivery report callbacks
+                    # and avoid unbounded internal queue growth
+                    if total_records % _POLL_BATCH_SIZE == 0:
+                        producer.poll(0)
 
-            # Final flush to ensure all remaining messages are sent
-            batch_failed, batch_exc = self._flush_futures(futures, producer)
-            failed_messages += batch_failed
-            if first_exception is None:
-                first_exception = batch_exc
+            # Final flush to ensure all remaining messages are delivered.
+            # flush() blocks until all in-flight messages are delivered or the
+            # timeout is reached.  It returns the number of messages still in
+            # the internal queue (0 means everything was delivered).  It does
+            # NOT raise on timeout — we check `remaining` below instead.
+            remaining = producer.flush(timeout=_FLUSH_TIMEOUT_S)
 
-        except KafkaTimeoutError as e:
-            raise RuntimeError(f"Failed to write to Kafka: {e}") from e
-        except KafkaError as e:
+        except KafkaException as e:
             raise RuntimeError(f"Failed to write to Kafka: {e}") from e
         finally:
-            # Close the producer
-            producer.close(timeout=5.0)
+            producer.close()
 
-        logger.info(
-            "Wrote %d records to Kafka topic '%s', %d failed.",
-            total_records,
-            self.topic,
-            failed_messages,
-        )
+        # messages stuck in-flight after flush timeout
+        if remaining > 0:
+            raise RuntimeError(
+                f"{remaining} out of {total_records} messages were still "
+                f"in-flight after flush timeout for topic '{self.topic}'. "
+                f"This usually means the broker is unreachable."
+            )
 
+        # Delivery failures: fail the task so Ray can retry
+        failed_messages = delivery_state["failed"]
         if failed_messages > 0:
             raise RuntimeError(
                 f"Failed to write {failed_messages} out of {total_records} "
                 f"messages to Kafka topic '{self.topic}'."
-            ) from first_exception
+            ) from delivery_state["first_exception"]
+
+        logger.info(
+            "Wrote %d records to Kafka topic '%s'.",
+            total_records,
+            self.topic,
+        )
 
         return {"total_records": total_records, "failed_messages": failed_messages}

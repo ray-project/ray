@@ -5518,7 +5518,6 @@ class Dataset:
         key_serializer: str = "string",
         value_serializer: str = "json",
         producer_config: Optional[Dict[str, Any]] = None,
-        delivery_callback: Optional[Callable] = None,
         *,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
@@ -5536,8 +5535,7 @@ class Dataset:
             key_field: Optional field name to use as message key
             key_serializer: Key serialization format ('json', 'string', or 'bytes')
             value_serializer: Value serialization format ('json', 'string', or 'bytes')
-            producer_config: Additional Kafka producer configuration (kafka-python format)
-            delivery_callback: Optional callback for delivery reports
+            producer_config: Additional Kafka producer configuration (confluent-kafka/librdkafka format)
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5551,7 +5549,6 @@ class Dataset:
             key_serializer=key_serializer,
             value_serializer=value_serializer,
             producer_config=producer_config,
-            delivery_callback=delivery_callback,
         )
         self.write_datasink(
             sink,
