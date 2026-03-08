@@ -180,6 +180,11 @@ def _doassert_expr() -> Optional[str]:
             i += 1
             continue
 
+        if ch == "#":
+            while i < len(source) and source[i] != "\n":
+                i += 1
+            continue
+
         if source.startswith("'''", i) or source.startswith('"""', i):
             quote = source[i]
             triple = True
