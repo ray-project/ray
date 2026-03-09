@@ -76,6 +76,8 @@ class LanceDatasource(Datasource):
         if ds_fragments is None:
             ds_fragments = self.lance_ds.get_fragments()
 
+        # Lance scanner's filter attr accepts only a string (SQL).
+        # See: https://github.com/lance-format/lance/blob/aac74b441cdb6df7d78700dbba33c521e6379ca5/python/python/lance/lance/__init__.pyi#L230
         filter_expr = (
             str(self._predicate_expr.to_pyarrow())
             if self._predicate_expr is not None
