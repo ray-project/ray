@@ -78,44 +78,43 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
         **kwargs,
     ) -> Any:
 
-        # Determine which standard columns still need to be filled (skip any that a
-        # custom upstream connector has already populated).
-        need_actions = Columns.ACTIONS not in batch
-        need_rewards = Columns.REWARDS not in batch
-        need_terminateds = Columns.TERMINATEDS not in batch
-        need_truncateds = Columns.TRUNCATEDS not in batch
-
-        # Extra model outputs (except for STATE_OUT, which will be handled by another
-        # default connector piece). Also, like with all the fields above, skip
-        # those that the user already seemed to have populated via custom connector
-        # pieces.
-        skip_columns = set(batch.keys()) | {Columns.STATE_IN, Columns.STATE_OUT}
-
-        # Single pass over all episodes: compute len(sa_episode) once and
-        # reuse it for every column.
-        for sa_episode in self.single_agent_episode_iterator(
-            episodes,
-            agents_that_stepped_only=False,
-        ):
-            n = len(sa_episode)
-
-            if need_actions:
+        # Actions.
+        if Columns.ACTIONS not in batch:
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 self.add_n_batch_items(
                     batch,
                     Columns.ACTIONS,
-                    items_to_add=sa_episode.get_actions(slice(0, n)),
-                    num_items=n,
+                    # Bulk extraction: get all actions at once instead of per-timestep.
+                    items_to_add=sa_episode.get_actions(slice(0, len(sa_episode))),
+                    num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
-            if need_rewards:
+
+        # Rewards.
+        if Columns.REWARDS not in batch:
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
                 self.add_n_batch_items(
                     batch,
                     Columns.REWARDS,
-                    items_to_add=sa_episode.get_rewards(slice(0, n)),
-                    num_items=n,
+                    # Bulk extraction: get all rewards at once instead of per-timestep.
+                    items_to_add=sa_episode.get_rewards(slice(0, len(sa_episode))),
+                    num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
-            if need_terminateds:
+
+        # Terminateds.
+        if Columns.TERMINATEDS not in batch:
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
+                n = len(sa_episode)
                 terminateds = np.zeros(n, dtype=np.bool_)
                 if n > 0:
                     terminateds[-1] = sa_episode.is_terminated
@@ -126,7 +125,14 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     num_items=n,
                     single_agent_episode=sa_episode,
                 )
-            if need_truncateds:
+
+        # Truncateds.
+        if Columns.TRUNCATEDS not in batch:
+            for sa_episode in self.single_agent_episode_iterator(
+                episodes,
+                agents_that_stepped_only=False,
+            ):
+                n = len(sa_episode)
                 truncateds = np.zeros(n, dtype=np.bool_)
                 if n > 0:
                     truncateds[-1] = sa_episode.is_truncated
@@ -137,15 +143,26 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     num_items=n,
                     single_agent_episode=sa_episode,
                 )
+
+        # Extra model outputs (except for STATE_OUT, which will be handled by another
+        # default connector piece). Also, like with all the fields above, skip
+        # those that the user already seemed to have populated via custom connector
+        # pieces.
+        skip_columns = set(batch.keys()) | {Columns.STATE_IN, Columns.STATE_OUT}
+        for sa_episode in self.single_agent_episode_iterator(
+            episodes,
+            agents_that_stepped_only=False,
+        ):
             for column in sa_episode.extra_model_outputs.keys():
                 if column not in skip_columns:
                     self.add_n_batch_items(
                         batch,
                         column,
+                        # Bulk extraction: get all extra outputs at once.
                         items_to_add=sa_episode.get_extra_model_outputs(
-                            key=column, indices=slice(0, n)
+                            key=column, indices=slice(0, len(sa_episode))
                         ),
-                        num_items=n,
+                        num_items=len(sa_episode),
                         single_agent_episode=sa_episode,
                     )
 
