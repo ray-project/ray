@@ -96,9 +96,12 @@ def test_output_backpressure_shared_pool_leak(restore_data_context):
     # The fixed formula computes:
     #   res = max(budget(375) + reserved_for_outputs(125) - usage(5000), 0)
     #   res = max(500 - 5000, 0) = 0  <-- correctly backpressured
+    allocator._should_unblock_streaming_output_backpressure = MagicMock(
+        return_value=False
+    )
     result = allocator.max_task_output_bytes_to_read(o2)
-    assert result == 0 or result == 1, (
-        f"Expected 0 (or 1 for liveness unblock), got {result}. "
+    assert result == 0, (
+        f"Expected 0, got {result}. "
         "Shared pool budget is leaking through output backpressure."
     )
 
