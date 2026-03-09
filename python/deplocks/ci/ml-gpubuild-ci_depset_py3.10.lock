@@ -17,6 +17,8 @@
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+--find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
+--find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 absl-py==1.4.0 \
     --hash=sha256:0d3fe606adfa4f7db64792dd4c7aee4ee0c38ab75dfd353b7a83ed3e957fcb47 \

@@ -9,6 +9,7 @@
 --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 --find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
+--find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html
 
 absl-py==1.4.0 \
     --hash=sha256:0d3fe606adfa4f7db64792dd4c7aee4ee0c38ab75dfd353b7a83ed3e957fcb47 \
