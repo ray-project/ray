@@ -2965,13 +2965,55 @@ class UserCallableWrapper:
                 },
             )
 
+            # Two-phase init: the thread waits for init work to be prepared,
+            # runs __init__ with the loop NOT running (so run_until_complete
+            # works), then starts run_forever for serving.
+            self._init_submit_event = threading.Event()
+            self._init_complete_future: concurrent.futures.Future = (
+                concurrent.futures.Future()
+            )
+            self._init_coro = None
+            self._sync_init_fn = None
+            self._sync_init_args: tuple = ()
+            self._sync_init_kwargs: dict = {}
+
             def _run_user_code_event_loop():
-                # Required so that calls to get the current running event loop work
-                # properly in user code.
                 asyncio.set_event_loop(self._user_code_event_loop)
                 self._configure_user_code_threadpool()
-                # Start monitoring before run_forever so the task is scheduled.
+
+                # Phase 1: Wait for initialize_callable to prepare init work.
+                self._init_submit_event.wait()
+
+                try:
+                    # Phase 1a: Call sync __init__ directly on this thread.
+                    # Event loop is set but NOT running, so
+                    # loop.run_until_complete() works inside user code.
+                    if self._sync_init_fn is not None:
+                        self._sync_init_fn(
+                            *self._sync_init_args, **self._sync_init_kwargs
+                        )
+                        self._sync_init_fn = None
+
+                    # Phase 1b: Run async post-init (ASGI lifespan, etc.)
+                    # via run_until_complete (loop still not in run_forever).
+                    result = None
+                    if self._init_coro is not None:
+                        result = self._user_code_event_loop.run_until_complete(
+                            self._init_coro
+                        )
+                        self._init_coro = None
+                except BaseException as e:
+                    self._init_complete_future.set_exception(e)
+                    return
+
+                # Phase 2: Start monitoring + run_forever.
+                # call_soon(set_result) resolves the future from INSIDE
+                # run_forever, guaranteeing the loop is running before any
+                # run_coroutine_threadsafe() call.
                 self._user_code_loop_monitor.start(self._user_code_event_loop)
+                self._user_code_event_loop.call_soon(
+                    self._init_complete_future.set_result, result
+                )
                 self._user_code_event_loop.run_forever()
 
             self._user_code_event_loop_thread = threading.Thread(
@@ -3189,24 +3231,33 @@ class UserCallableWrapper:
 
         await self._callable._run_asgi_lifespan_startup()
 
-    @_run_user_code
-    async def initialize_callable(self) -> Optional[ASGIApp]:
+    def initialize_callable(self):
         """Initialize the user callable.
 
         If the callable is an ASGI app wrapper (e.g., using @serve.ingress), returns
         the ASGI app object, which may be used *read only* by the caller.
+
+        When running user code in a separate thread, this uses a two-phase
+        approach: __init__ runs with the event loop set but NOT running (so
+        libraries that call loop.run_until_complete() in __init__ work), then
+        run_forever() starts for serving.
         """
         if self._callable is not None:
             raise RuntimeError("initialize_callable should only be called once.")
 
-        # This closure initializes user code and finalizes replica
-        # startup. By splitting the initialization step like this,
-        # we can already access this actor before the user code
-        # has finished initializing.
-        # The supervising state manager can then wait
-        # for allocation of this replica by using the `is_allocated`
-        # method. After that, it calls `reconfigure` to trigger
-        # user code initialization.
+        if not self._run_user_code_in_separate_thread:
+            return self._do_initialize_callable()
+
+        self._prepare_init_for_user_thread()
+        self._init_submit_event.set()
+
+        if self._local_testing_mode:
+            return self._init_complete_future
+
+        return asyncio.wrap_future(self._init_complete_future)
+
+    async def _do_initialize_callable(self) -> Optional[ASGIApp]:
+        """Initialize callable on the current event loop (non-threaded path)."""
         logger.info(
             "Started initializing replica.",
             extra={"log_to_stderr": False},
@@ -3215,17 +3266,50 @@ class UserCallableWrapper:
         if self._is_function:
             self._callable = self._deployment_def
         else:
-            # This allows deployments to define an async __init__
-            # method (mostly used for testing).
             self._callable = self._deployment_def.__new__(self._deployment_def)
             await self._call_func_or_gen(
                 self._callable.__init__,
                 args=self._init_args,
                 kwargs=self._init_kwargs,
-                # Always run the constructor on the main user code thread.
                 run_sync_methods_in_threadpool_override=False,
             )
 
+        return await self._async_post_init_setup()
+
+    def _prepare_init_for_user_thread(self):
+        """Prepare init work for the user code thread (two-phase init)."""
+        logger.info(
+            "Started initializing replica.",
+            extra={"log_to_stderr": False},
+        )
+
+        if self._is_function:
+            self._callable = self._deployment_def
+            self._init_coro = self._async_post_init_setup()
+        else:
+            self._callable = self._deployment_def.__new__(self._deployment_def)
+            init_method = self._callable.__init__
+
+            if inspect.iscoroutinefunction(init_method):
+                async def _async_init_and_setup():
+                    await self._call_func_or_gen(
+                        init_method,
+                        args=self._init_args,
+                        kwargs=self._init_kwargs,
+                        run_sync_methods_in_threadpool_override=False,
+                    )
+                    return await self._async_post_init_setup()
+
+                self._init_coro = _async_init_and_setup()
+            else:
+                self._sync_init_fn = init_method
+                self._sync_init_args = self._init_args or ()
+                self._sync_init_kwargs = self._init_kwargs or {}
+                self._init_coro = self._async_post_init_setup()
+
+    async def _async_post_init_setup(self) -> Optional[ASGIApp]:
+        """Post-__init__ setup: ASGI lifespan, health checks, etc."""
+        if not self._is_function:
             if isinstance(self._callable, ASGIAppReplicaWrapper):
                 await self._initialize_asgi_callable()
 
