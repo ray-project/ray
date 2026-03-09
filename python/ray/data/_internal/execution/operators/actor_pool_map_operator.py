@@ -1127,10 +1127,11 @@ class _ActorPool(AutoscalingActorPool):
             is_restarting: Whether running actor is restarting or alive.
         """
         assert actor in self._running_actors
-        if self._running_actors[actor].is_restarting == is_restarting:
+        state = self._running_actors[actor]
+        if state.is_restarting == is_restarting:
             return
 
-        self._running_actors[actor].is_restarting = is_restarting
+        state.is_restarting = is_restarting
         if is_restarting:
             self._num_restarting_actors += 1
         else:
