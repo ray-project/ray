@@ -100,23 +100,22 @@ class KafkaDatasink(Datasink):
         # 5. Fallback: return as-is (e.g. primitives, strings, bytes)
         return row
 
+    def _serialize(self, data: Any, serializer: str) -> bytes:
+        """Serialize data based on configured format."""
+        if serializer == "json":
+            return json.dumps(data).encode("utf-8")
+        elif serializer == "string":
+            return str(data).encode("utf-8")
+        else:  # bytes
+            return data if isinstance(data, bytes) else str(data).encode("utf-8")
+
     def _serialize_value(self, value: Any) -> bytes:
         """Serialize value based on configured format."""
-        if self.value_serializer == "json":
-            return json.dumps(value).encode("utf-8")
-        elif self.value_serializer == "string":
-            return str(value).encode("utf-8")
-        else:  # bytes
-            return value if isinstance(value, bytes) else str(value).encode("utf-8")
+        return self._serialize(value, self.value_serializer)
 
     def _serialize_key(self, key: Any) -> bytes:
         """Serialize key based on configured format."""
-        if self.key_serializer == "json":
-            return json.dumps(key).encode("utf-8")
-        elif self.key_serializer == "string":
-            return str(key).encode("utf-8")
-        else:  # bytes
-            return key if isinstance(key, bytes) else str(key).encode("utf-8")
+        return self._serialize(key, self.key_serializer)
 
     def _extract_key(self, row_dict: Any) -> Optional[bytes]:
         """Extract and encode message key from row dict."""

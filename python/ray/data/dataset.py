@@ -5526,8 +5526,13 @@ class Dataset:
         Convenience method to write Ray Dataset to Kafka.
 
         Examples:
-            >>> ds = ray.data.range(100)
-            >>> ds.write_kafka("my-topic", "localhost:9092")
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_kafka("my-topic", "localhost:9092")
 
         Args:
             topic: Kafka topic name
