@@ -1,7 +1,5 @@
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -60,10 +58,6 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
     their own data and store it in `data` under those keys. In this case, the default
     connector will not change the data under these keys and simply act as a
     pass-through.
-
-
-    We expect that `episodes` are numpy'ized.
-    In standard training flows, episodes have already been numpy'ized before they enter this connector via EnvRunners, ReplayBuffers or offline sampling.
     """
 
     @override(ConnectorV2)
@@ -114,15 +108,15 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                 episodes,
                 agents_that_stepped_only=False,
             ):
-                n = len(sa_episode)
-                terminateds = np.zeros(n, dtype=np.bool_)
-                if n > 0:
-                    terminateds[-1] = sa_episode.is_terminated
                 self.add_n_batch_items(
                     batch,
                     Columns.TERMINATEDS,
-                    items_to_add=terminateds,
-                    num_items=n,
+                    items_to_add=(
+                        [False] * (len(sa_episode) - 1) + [sa_episode.is_terminated]
+                        if len(sa_episode) > 0
+                        else []
+                    ),
+                    num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
 
@@ -132,15 +126,15 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                 episodes,
                 agents_that_stepped_only=False,
             ):
-                n = len(sa_episode)
-                truncateds = np.zeros(n, dtype=np.bool_)
-                if n > 0:
-                    truncateds[-1] = sa_episode.is_truncated
                 self.add_n_batch_items(
                     batch,
                     Columns.TRUNCATEDS,
-                    items_to_add=truncateds,
-                    num_items=n,
+                    items_to_add=(
+                        [False] * (len(sa_episode) - 1) + [sa_episode.is_truncated]
+                        if len(sa_episode) > 0
+                        else []
+                    ),
+                    num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
                 )
 
