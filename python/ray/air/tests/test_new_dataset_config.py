@@ -137,26 +137,6 @@ def test_split(ray_start_4_cpus):
     test.fit()
 
 
-@pytest.mark.skip(
-    reason="Incomplete implementation of _validate_dag causes other errors, so we "
-    "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
-)
-def test_configure_execution_options(ray_start_4_cpus):
-    ds = ray.data.range(10)
-    # Resource limit is too low and will trigger an error.
-    options = DataConfig.default_ingest_options()
-    options.resource_limits = options.resource_limits.copy(cpu=0)
-    test = TestBasic(
-        1,
-        True,
-        {"train": 10, "test": 10},
-        datasets={"train": ds, "test": ds},
-        dataset_config=DataConfig(execution_options=options),
-    )
-    with pytest.raises(ray.train.base_trainer.TrainingFailedError):
-        test.fit()
-
-
 def test_configure_execution_options_carryover_context(ray_start_4_cpus):
     """Tests that execution options in DataContext are carried over to DatConfig
     automatically."""
