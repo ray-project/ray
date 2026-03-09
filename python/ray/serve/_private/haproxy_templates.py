@@ -45,6 +45,10 @@ defaults
     log global
     option httplog
     option abortonclose
+    {%- if config.tcp_nodelay %}
+    # Set TCP_NODELAY on all connections
+    option http-no-delay
+    {%- endif %}
     {%- if config.enable_hap_optimization %}
     option idle-close-on-response
     {%- endif %}

@@ -2297,7 +2297,7 @@
     script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb --enable_nixl
 
 # TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
-# - name: gpu_object_GPU_multinode
+# - name: rdt_GPU_multinode
 #   python: "3.10"
 #   group: core-daily-test
 #   team: core
@@ -2311,7 +2311,7 @@
 
 #   run:
 #     timeout: 1800
-#     script: python experimental/gpu_object_microbenchmark.py --distributed
+#     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   python: "3.10"
@@ -4707,6 +4707,31 @@
   group: ray-examples
   team: ml
   working_dir: //doc/source/train/examples/pytorch/deepspeed_finetune
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+
+- name: tensor_parallel_autotp  # do not use dashes (regex sensitive)
+  python: "3.10"
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/pytorch/tensor_parallel_autotp
 
   cluster:
     byod:
