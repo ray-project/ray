@@ -2,6 +2,18 @@ import dataclasses
 from typing import Iterable
 
 
+def _validate_allowed_keys_exist(
+    dataclass_name: str, data_dict: dict, allowed_keys: set
+):
+    keys_not_in_dict = allowed_keys.difference(data_dict)
+    if keys_not_in_dict:
+        raise ValueError(
+            f"Key(s) {sorted(keys_not_in_dict)} are not present in {dataclass_name}. "
+            "Remove them from `allowed_keys`. "
+            f"Valid keys: {sorted(data_dict.keys())}"
+        )
+
+
 def ensure_only_allowed_dataclass_keys_updated(
     dataclass: dataclasses.dataclass,
     allowed_keys: Iterable[str],
@@ -19,26 +31,19 @@ def ensure_only_allowed_dataclass_keys_updated(
             the default one.
     """
     default_data = dataclass.__class__()
+    default_data_dict = default_data.__dict__
 
     allowed_keys = set(allowed_keys)
-
-    # TODO: split keys_not_in_dict validation to a separate function.
-    keys_not_in_dict = [key for key in allowed_keys if key not in default_data.__dict__]
-    if keys_not_in_dict:
-        raise ValueError(
-            f"Key(s) {keys_not_in_dict} are not present in "
-            f"{dataclass.__class__.__name__}. "
-            "Remove them from `allowed_keys`. "
-            f"Valid keys: {list(default_data.__dict__.keys())}"
-        )
+    _validate_allowed_keys_exist(dataclass.__class__.__name__, default_data_dict, allowed_keys)
 
     # These keys should not have been updated in the `dataclass` object
-    prohibited_keys = set(default_data.__dict__) - allowed_keys
+    prohibited_keys = set(default_data_dict) - allowed_keys
+    dataclass_dict = dataclass.__dict__
 
     bad_keys = [
         key
         for key in prohibited_keys
-        if dataclass.__dict__[key] != default_data.__dict__[key]
+        if dataclass_dict[key] != default_data_dict[key]
     ]
     if bad_keys:
         raise ValueError(
