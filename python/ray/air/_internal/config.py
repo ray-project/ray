@@ -34,16 +34,16 @@ def ensure_only_allowed_dataclass_keys_updated(
     default_data_dict = default_data.__dict__
 
     allowed_keys = set(allowed_keys)
-    _validate_allowed_keys_exist(dataclass.__class__.__name__, default_data_dict, allowed_keys)
+    _validate_allowed_keys_exist(
+        dataclass.__class__.__name__, default_data_dict, allowed_keys
+    )
 
     # These keys should not have been updated in the `dataclass` object
     prohibited_keys = set(default_data_dict) - allowed_keys
     dataclass_dict = dataclass.__dict__
 
     bad_keys = [
-        key
-        for key in prohibited_keys
-        if dataclass_dict[key] != default_data_dict[key]
+        key for key in prohibited_keys if dataclass_dict[key] != default_data_dict[key]
     ]
     if bad_keys:
         raise ValueError(
