@@ -39,6 +39,6 @@ class GangSchedulingAutoscalingPolicy:
                 )
             else:
                 # Scaling down: round down to release complete gangs
-                num_replicas = (num_replicas // self._gang_size) * self._gang_size
+                num_replicas = (num_replicas // self._gang_size) * self._gang_size  
 
         return num_replicas, policy_state

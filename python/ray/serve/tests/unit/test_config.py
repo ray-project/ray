@@ -815,6 +815,21 @@ class TestGangSchedulingConfig:
             def f():
                 return "test"
 
+    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+        """Test that min_replicas=0 is rejected with gang_scheduling_config."""
+        with pytest.raises(
+            ValueError,
+            match="Scale to zero isn't supported for gang-scheduled deployments",
+        ):
+
+            @serve.deployment(
+                num_replicas="auto",
+                gang_scheduling_config=GangSchedulingConfig(gang_size=3),
+                autoscaling_config={"min_replicas": 0, "max_replicas": 9},
+            )
+            def f():
+                return "test"
+
     def test_gang_scheduling_config_auto_num_replicas(self):
         """Test that num_replicas='auto' is allowed with gang_scheduling_config."""
 

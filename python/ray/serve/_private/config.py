@@ -263,6 +263,13 @@ class DeploymentConfig(BaseModel):
     def validate_gang_scheduling_config(self):
         if self.gang_scheduling_config is None:
             return self
+        if (
+            self.autoscaling_config is not None
+            and self.autoscaling_config.min_replicas == 0
+        ):
+            raise ValueError(
+                "Scale to zero isn't supported for gang-scheduled deployments."
+            )
         # Skip the num_replicas alignment check when autoscaling is enabled
         if (
             self.autoscaling_config is None

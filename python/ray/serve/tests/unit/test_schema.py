@@ -490,6 +490,20 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
+    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
+        deployment_schema["autoscaling_config"] = {
+            "min_replicas": 0,
+            "max_replicas": 9,
+        }
+        with pytest.raises(
+            ValueError,
+            match="Scale to zero isn't supported for gang-scheduled deployments",
+        ):
+            DeploymentSchema.model_validate(deployment_schema)
+
     def test_gang_scheduling_config_invalid_num_replicas(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = 5

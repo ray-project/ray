@@ -6,6 +6,9 @@ import pytest
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve._private.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
@@ -15,9 +18,6 @@ from ray.serve.autoscaling_policy import (
     replica_queue_length_autoscaling_policy,
 )
 from ray.serve.config import AutoscalingConfig, AutoscalingContext, GangSchedulingConfig
-from ray.serve.gang_scheduling_autoscaling_policy import (
-    GangSchedulingAutoscalingPolicy,
-)
 
 wrapped_replica_queue_length_autoscaling_policy = _apply_autoscaling_config(
     replica_queue_length_autoscaling_policy

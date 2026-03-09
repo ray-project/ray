@@ -26,6 +26,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
@@ -37,9 +40,6 @@ from ray.serve.autoscaling_policy import (
     _apply_autoscaling_config,
 )
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
-from ray.serve.gang_scheduling_autoscaling_policy import (
-    GangSchedulingAutoscalingPolicy,
-)
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

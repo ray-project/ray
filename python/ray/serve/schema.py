@@ -494,6 +494,11 @@ class DeploymentSchema(BaseModel):
             # Validate autoscaling bounds are multiples of gang_size
             autoscaling_config = values.get("autoscaling_config", None)
             if autoscaling_config not in [None, DEFAULT.VALUE]:
+                min_replicas = autoscaling_config.get("min_replicas")
+                if min_replicas is not None and min_replicas == 0:
+                    raise ValueError(
+                        "Scale to zero isn't supported for gang scheduling."
+                    )
                 for field in ["min_replicas", "max_replicas", "initial_replicas"]:
                     val = autoscaling_config.get(field)
                     if val is not None and val % gang_config.gang_size != 0:
