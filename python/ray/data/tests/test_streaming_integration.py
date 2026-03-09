@@ -429,6 +429,26 @@ def test_streaming_split_schema_during_execution(ray_start_10_cpus_shared):
     ray.get(refs)
 
 
+def test_streaming_split_context(ray_start_10_cpus_shared):
+    """Test that get_context() returns a valid DataContext from the coordinator."""
+    ds = ray.data.range(10)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    ctx = i1.get_context()
+    assert isinstance(ctx, ray.data.DataContext)
+
+
+def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
+    """Test that _get_dataset_tag() returns correct tags from the coordinator."""
+    ds = ray.data.range(10)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    tag1 = i1._get_dataset_tag()
+    tag2 = i2._get_dataset_tag()
+    assert "_split_0" in tag1
+    assert "_split_1" in tag2
+
+
 @pytest.mark.skip(
     reason="Incomplete implementation of _validate_dag causes other errors, so we "
     "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
