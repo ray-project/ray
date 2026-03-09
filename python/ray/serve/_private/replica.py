@@ -2994,6 +2994,7 @@ class UserCallableWrapper:
                 # Phase 1: Wait for initialize_callable to prepare init work.
                 self._init_submit_event.wait()
 
+                result = None
                 try:
                     # Phase 1a: Call sync __init__ directly on this thread.
                     # Event loop is set but NOT running, so
@@ -3002,28 +3003,32 @@ class UserCallableWrapper:
                         self._sync_init_fn(
                             *self._sync_init_args, **self._sync_init_kwargs
                         )
-                        self._sync_init_fn = None
 
                     # Phase 1b: Run async post-init (ASGI lifespan, etc.)
                     # via run_until_complete (loop still not in run_forever).
-                    result = None
                     if self._init_coro is not None:
                         result = self._user_code_event_loop.run_until_complete(
                             self._init_coro
                         )
-                        self._init_coro = None
                 except BaseException as e:
                     self._init_complete_future.set_exception(e)
-                    return
+                    # Fall through to start run_forever anyway so that
+                    # subsequent @_run_user_code calls (e.g. call_destructor
+                    # during shutdown) don't hang on a dead loop.
+                finally:
+                    # Avoid holding references to user code.
+                    self._sync_init_fn = None
+                    self._init_coro = None
 
                 # Phase 2: Start monitoring + run_forever.
                 # call_soon(set_result) resolves the future from INSIDE
                 # run_forever, guaranteeing the loop is running before any
                 # run_coroutine_threadsafe() call.
                 self._user_code_loop_monitor.start(self._user_code_event_loop)
-                self._user_code_event_loop.call_soon(
-                    self._init_complete_future.set_result, result
-                )
+                if not self._init_complete_future.done():
+                    self._user_code_event_loop.call_soon(
+                        self._init_complete_future.set_result, result
+                    )
                 self._user_code_event_loop.run_forever()
 
             self._user_code_event_loop_thread = threading.Thread(
