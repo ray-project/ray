@@ -66,6 +66,10 @@ from ray.util.common import INT32_MAX
 
 logger = logging.getLogger(__name__)
 
+_ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
+_ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
+_ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
+
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
@@ -1101,16 +1105,14 @@ class _ActorPool(AutoscalingActorPool):
     def refresh_actor_state(self):
         for actor in self.get_running_actor_refs():
             actor_state = actor._get_local_state()
-            if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
+            if actor_state in (None, _ACTOR_STATE_DEAD):
                 # actor._get_local_state can return None if the state is Unknown
                 # If actor_state is None or dead, there is nothing to do.
                 continue
-            elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+            elif actor_state != _ACTOR_STATE_ALIVE:
                 # The actors can be either ALIVE or RESTARTING here because they will
                 # be restarted indefinitely until execution finishes.
-                assert (
-                    actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
-                ), actor_state
+                assert actor_state == _ACTOR_STATE_RESTARTING, actor_state
                 self._update_running_actor_state(actor, True)
             else:
                 self._update_running_actor_state(actor, False)
