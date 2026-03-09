@@ -19,10 +19,10 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     _extension_array_concat_supported,
+    create_arrow_fixed_shape_tensor_type,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
     ArrowPythonObjectArray,
@@ -194,8 +194,8 @@ def test_arrow_concat_tensor_extension_uniform(
 
     # Check content.
     content = uniform_tensor_expected["content"]
-    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), content[0])
-    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), content[1])
+    np.testing.assert_array_equal(out["a"].chunk(0).to_numpy_ndarray(), content[0])
+    np.testing.assert_array_equal(out["a"].chunk(1).to_numpy_ndarray(), content[1])
 
     # Check equivalence.
     expected = pa.concat_tables(ts, promote=True)
@@ -1587,7 +1587,7 @@ def test_align_struct_fields_deep_nesting(deep_nesting_blocks, deep_nesting_sche
 
 # Test fixtures for tensor-related tests
 @pytest.fixture
-def uniform_tensor_blocks():
+def uniform_tensor_blocks(tensor_format_context):
     """Fixture for uniform tensor blocks with same shape."""
     # Block 1: Fixed shape tensors (2x2)
     a1 = np.arange(12).reshape((3, 2, 2))
@@ -1601,14 +1601,10 @@ def uniform_tensor_blocks():
 
 
 @pytest.fixture
-def uniform_tensor_expected():
+def uniform_tensor_expected(tensor_format_context):
     """Fixture for expected results from uniform tensor concatenation."""
-    if DataContext.get_current().use_arrow_tensor_v2:
-        tensor_type = ArrowTensorTypeV2
-    else:
-        tensor_type = ArrowTensorType
-
-    expected_schema = pa.schema([("a", tensor_type((2, 2), pa.int64()))])
+    t = create_arrow_fixed_shape_tensor_type((2, 2), pa.int64())
+    expected_schema = pa.schema([("a", t)])
     expected_length = 6
     expected_chunks = 2
 

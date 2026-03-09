@@ -3,7 +3,6 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from pydantic import BaseModel
 from starlette.types import Scope
 
 import ray
@@ -921,74 +920,6 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Use handle.options(_by_reference=True) to enable it."
 )
 
-
-class AutoscalingStatus(str, Enum):
-    UPSCALE = "AUTOSCALING_UPSCALE"
-    DOWNSCALE = "AUTOSCALING_DOWNSCALE"
-    STABLE = "AUTOSCALING_STABLE"
-
-    @staticmethod
-    def format_scaling_status(trigger: "AutoscalingStatus") -> str:
-        mapping = {
-            AutoscalingStatus.UPSCALE: "scaling up",
-            AutoscalingStatus.DOWNSCALE: "scaling down",
-            AutoscalingStatus.STABLE: "stable",
-        }
-        return mapping.get(trigger, str(trigger).lower())
-
-
-class DeploymentSnapshot(BaseModel):
-    snapshot_type: str = "deployment"
-    timestamp_str: str
-    app: str
-    deployment: str
-    current_replicas: int
-    target_replicas: int
-    min_replicas: Optional[int]
-    max_replicas: Optional[int]
-    scaling_status: str
-    policy_name: str
-    look_back_period_s: Optional[float]
-    queued_requests: Optional[float]
-    ongoing_requests: float
-    metrics_health: str
-    errors: List[str]
-
-    @staticmethod
-    def format_metrics_health_text(
-        *,
-        time_since_last_collected_metrics_s: Optional[float],
-        look_back_period_s: Optional[float],
-    ) -> str:
-        """
-        - < 1s  -> integer milliseconds
-        - >= 1s -> seconds with two decimals
-        """
-        if time_since_last_collected_metrics_s is None:
-            return "unknown"
-        val = time_since_last_collected_metrics_s
-        if val < 1.0:
-            return f"{val * 1000:.0f}ms"
-        return f"{val:.2f}s"
-
-    def is_scaling_equivalent(self, other: "DeploymentSnapshot") -> bool:
-        """Return True if scaling-related fields are equal.
-
-        Used for autoscaling snapshot log deduplication. Compares only:
-        target_replicas, min_replicas, max_replicas, scaling_status
-        """
-        if not isinstance(other, DeploymentSnapshot):
-            return False
-        return (
-            self.app == other.app
-            and self.deployment == other.deployment
-            and self.target_replicas == other.target_replicas
-            and self.min_replicas == other.min_replicas
-            and self.max_replicas == other.max_replicas
-            and self.scaling_status == other.scaling_status
-        )
-
-
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
 QUEUED_REQUESTS_KEY = "queued_requests"
@@ -1022,10 +953,11 @@ class HandleMetricReport:
             handle over the past look_back_period_s seconds. This is a list because
             we take multiple measurements over time.
         aggregated_metrics: A map of metric name to the aggregated value over the past
-            look_back_period_s seconds at the handle for each replica.
+            look_back_period_s seconds at the handle for each replica. Replica keys
+            use ReplicaID.to_full_id_str() for efficient controller-side lookups.
         metrics: A map of metric name to the list of values running at that handle for each replica
-            over the past look_back_period_s seconds. This is a list because
-            we take multiple measurements over time.
+            over the past look_back_period_s seconds. Replica keys use to_full_id_str().
+            This is a list because we take multiple measurements over time.
         timestamp: The time at which this report was created.
     """
 
@@ -1035,8 +967,12 @@ class HandleMetricReport:
     handle_source: DeploymentHandleSource
     aggregated_queued_requests: float
     queued_requests: TimeSeries
-    aggregated_metrics: Dict[str, Dict[ReplicaID, float]]
-    metrics: Dict[str, Dict[ReplicaID, TimeSeries]]
+    aggregated_metrics: Dict[
+        str, Dict[str, float]
+    ]  # replica key = ReplicaID.to_full_id_str()
+    metrics: Dict[
+        str, Dict[str, TimeSeries]
+    ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
 
     @property
@@ -1094,7 +1030,3 @@ class AsyncInferenceTaskQueueMetricReport:
     deployment_id: DeploymentID
     queue_length: int
     timestamp_s: float
-
-
-class AutoscalingSnapshotError(str, Enum):
-    METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"
