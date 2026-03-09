@@ -1,5 +1,6 @@
 import copy
 import os
+import pathlib
 import posixpath
 import time
 from collections import defaultdict
@@ -755,3 +756,92 @@ def assert_blocks_expected_in_plasma(
 @pytest.fixture(autouse=True, scope="function")
 def log_internal_stack_trace_to_stdout(restore_data_context):
     ray.data.context.DataContext.get_current().log_internal_stack_trace_to_stdout = True
+
+
+# Files opted into the unit-test placement warning.
+# TODO: Once all integration test files have been added, this set can be removed.
+MIGRATED_FILES = {
+    "test_arrow_block.py",
+    "test_transform_pyarrow.py",
+}
+
+
+# Developers should manually add the markers to their tests
+def pytest_configure(config):
+    """
+    Register custom markers for test categorization.
+
+    `unit_for_integration`: Marks tests that are unit tests but are
+    intentionally kept in the integration test directory.
+
+    `integration_test`: Marks tests that are integration tests requiring a Ray cluster.
+    """
+    config.addinivalue_line(
+        "markers",
+        "unit_for_integration: mark a test as intentionally kept in the integration directory despite having no Ray cluster dependency",
+    )
+    config.addinivalue_line(
+        "markers",
+        "integration_test: mark a test as an integration test that requires a Ray cluster",
+    )
+
+
+_INTEGRATION_TEST_DIR = pathlib.Path(__file__).parent
+
+
+@pytest.fixture(autouse=True)
+def check_if_unit_in_integration(request):
+    """raise an exception if a test in the integration test directory is not categorized.
+
+    This fixture checks tests in files that have been opted-in via `MIGRATED_FILES`.
+    It raises an exception if a test:
+    - Appears to be an integration test (uses a `ray_start` fixture) but is not
+      marked with `@pytest.mark.integration_test`.
+    - Appears to be a unit test (no `ray_start` fixture) but is not marked with
+      `@pytest.mark.unit_for_integration` or moved to the `tests/unit` directory.
+    """
+
+    # Skip if the test is not in the integration test directory
+    if pathlib.Path(str(request.fspath)).parent != _INTEGRATION_TEST_DIR:
+        yield
+        return
+
+    # Skip if the test file is not been migrated yet (i.e. not in the set of migrated files)
+    if request.fspath.basename not in MIGRATED_FILES:
+        yield
+        return
+
+    # Skip if the test is marked as an integration test
+    if request.node.get_closest_marker("integration_test"):
+        yield
+        return
+
+    # Skip if the test file is in the set of migrated files that are known to be unit tests
+    if request.node.get_closest_marker("unit_for_integration"):
+        if any("ray_start" in name for name in request.fixturenames):
+            yield
+            raise Exception(
+                f"{request.node.nodeid} is marked with @pytest.mark.unit_for_integration but uses a Ray cluster fixture. "
+                "Mark it with @pytest.mark.integration_test instead."
+            )
+        else:
+            yield
+            return
+
+    # raise an exception if the test has a direct Ray cluster dependency but is not marked as an integration test
+    if any("ray_start" in name for name in request.fixturenames):
+        yield
+        raise Exception(
+            f"{request.node.nodeid} uses a Ray cluster fixture but is missing "
+            "@pytest.mark.integration_test. Consider adding it to document intent."
+        )
+
+    # raise an exception if the test is a unit test but not marked as unit_for_integration
+    yield
+    raise Exception(
+        f"{request.node.nodeid} has no Ray cluster dependency and no intent marker.\n"
+        "Please do one of the following:\n"
+        "  1) Add @pytest.mark.integration_test if this test requires a Ray cluster.\n"
+        "  2) Add @pytest.mark.unit_for_integration if this is a unit test kept here intentionally.\n"
+        "  3) Move it to tests/unit/ if it has no Ray dependency."
+    )

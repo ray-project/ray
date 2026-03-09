@@ -23,6 +23,7 @@ from ray.data.context import DataContext
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
+@pytest.mark.unit_for_integration
 def test_combine_chunked_fixed_width_array_large():
     """Verifies `combine_chunked_array` on fixed-width arrays > 2 GiB, produces
     single contiguous PA Array"""
@@ -45,6 +46,7 @@ def test_combine_chunked_fixed_width_array_large():
     assert isinstance(result, pa.Int32Array)
 
 
+@pytest.mark.unit_for_integration
 @pytest.mark.parametrize(
     "array_type,input_factory",
     [
@@ -93,6 +95,7 @@ def test_combine_chunked_variable_width_array_large(array_type, input_factory):
     assert num_bytes == expected_num_bytes
 
 
+@pytest.mark.integration_test
 def test_add_rows_with_different_column_names(ray_start_regular_shared):
     builder = ArrowBlockBuilder()
 
@@ -135,6 +138,7 @@ def binary_dataset_single_file_gt_2gb():
         print(f">>> Cleaning up dataset: {dataset_path}")
 
 
+@pytest.mark.integration_test
 @pytest.mark.parametrize(
     "col_name",
     [
@@ -169,6 +173,7 @@ def test_single_row_gt_2gb(
     assert total == 1
 
 
+@pytest.mark.integration_test
 def test_random_shuffle(ray_start_regular_shared):
     TOTAL_ROWS = 10000
     table = pa.table({"id": pa.array(range(TOTAL_ROWS))})
@@ -194,6 +199,7 @@ def test_random_shuffle(ray_start_regular_shared):
     ), "The shuffled data should contain all the original values"
 
 
+@pytest.mark.integration_test
 def test_register_arrow_types(ray_start_regular_shared, tmp_path):
     # Test that our custom arrow extension types are registered on initialization.
     ds = ray.data.from_items(np.zeros((8, 8, 8), dtype=np.int64))
@@ -215,6 +221,7 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
+@pytest.mark.integration_test
 @pytest.mark.skipif(
     not _object_extension_type_allowed(), reason="Object extension type not supported."
 )
@@ -251,6 +258,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
 
 # Test for https://github.com/ray-project/ray/issues/49338.
+@pytest.mark.integration_test
 def test_build_block_with_null_column(ray_start_regular_shared):
     # The blocks need to contain a tensor column to trigger the bug.
     block1 = BlockAccessor.batch_to_block(
@@ -273,6 +281,7 @@ def test_build_block_with_null_column(ray_start_regular_shared):
     assert np.array_equal(rows[1]["array"], np.zeros((2, 2)))
 
 
+@pytest.mark.integration_test
 def test_arrow_block_timestamp_ns(ray_start_regular_shared):
     # Input data with nanosecond precision timestamps
     data_rows = [
