@@ -263,6 +263,9 @@ class ResourceManager:
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
+        assert (
+            self._global_usage.is_non_negative()
+        ), f"Global usage should be non-negative, got {self._global_usage}"
         return self._global_usage
 
     def get_global_running_usage(self) -> ExecutionResources:
@@ -296,6 +299,9 @@ class ResourceManager:
             * default_mem_fraction
         )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
+        assert (
+            self._global_limits.is_non_negative()
+        ), f"Global limits should be non-negative, got {self._global_limits}"
         return self._global_limits
 
     def get_op_usage(

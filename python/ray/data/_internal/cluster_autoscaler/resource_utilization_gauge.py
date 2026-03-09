@@ -17,10 +17,12 @@ class ClusterUtil:
 
     def __post_init__(self):
         # If we overcommit tasks, the logical utilization can exceed 1.0.
-        assert math.isfinite(self.cpu) and 0 <= self.cpu
-        assert math.isfinite(self.gpu) and 0 <= self.gpu
-        assert math.isfinite(self.memory) and 0 <= self.memory
-        assert math.isfinite(self.object_store_memory) and 0 <= self.object_store_memory
+        assert math.isfinite(self.cpu) and 0 <= self.cpu, self.cpu
+        assert math.isfinite(self.gpu) and 0 <= self.gpu, self.gpu
+        assert math.isfinite(self.memory) and 0 <= self.memory, self.memory
+        assert (
+            math.isfinite(self.object_store_memory) and 0 <= self.object_store_memory
+        ), self.object_store_memory
 
 
 class ResourceUtilizationGauge(abc.ABC):
