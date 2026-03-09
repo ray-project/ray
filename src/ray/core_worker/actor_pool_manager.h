@@ -90,6 +90,9 @@ struct ActorPoolConfig {
   /// Ordering mode
   PoolOrderingMode ordering_mode = PoolOrderingMode::UNORDERED;
 
+  /// Max concurrent tasks per actor (controls admission in SelectActorFromPool).
+  int32_t max_tasks_in_flight_per_actor = 1;
+
   /// Autoscaling configuration
   int32_t min_size = 1;
   int32_t max_size = -1;  // -1 = unbounded

@@ -119,6 +119,7 @@ cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" no
         int32_t max_retry_backoff_ms
         c_bool retry_on_system_errors
         CPoolOrderingMode ordering_mode
+        int32_t max_tasks_in_flight_per_actor
         int32_t min_size
         int32_t max_size
         int32_t initial_size
@@ -210,6 +211,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_string call_site,
             c_vector[CObjectReference] &task_returns,
             const CTaskID current_task_id)
+        c_vector[CObjectReference] SubmitTaskToActorPool(
+            const CActorPoolID &pool_id,
+            const CRayFunction &function,
+            c_vector[unique_ptr[CTaskArg]] args,
+            const CTaskOptions &task_options,
+            const c_string &key)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)

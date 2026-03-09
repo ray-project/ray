@@ -127,9 +127,12 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
 
   auto &pool_info = pool_it->second;
 
-  // Check if actor already in pool
-  if (pool_info.actor_states.find(actor_id) != pool_info.actor_states.end()) {
-    RAY_LOG(WARNING) << "Actor " << actor_id << " already in pool " << pool_id;
+  // If actor already in pool, update location if provided.
+  auto state_it = pool_info.actor_states.find(actor_id);
+  if (state_it != pool_info.actor_states.end()) {
+    if (!location.IsNil()) {
+      state_it->second.location = location;
+    }
     return;
   }
 
@@ -329,9 +332,7 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     }
 
     const auto &state = state_it->second;
-    // TODO(codope): Get actual max_concurrency from actor handle
-    // For now, assume max_concurrency = 1 (single-threaded actors)
-    const int32_t max_concurrency = 1;
+    const int32_t max_concurrency = pool_info.config.max_tasks_in_flight_per_actor;
 
     if (state.is_alive && state.num_tasks_in_flight < max_concurrency) {
       candidates.push_back(actor_id);

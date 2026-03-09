@@ -88,6 +88,7 @@ class ActorPool:
         actor_options: Options to pass to ray.remote() for actor creation.
         retry: Retry policy for failed tasks.
         ordering: Task ordering mode.
+        max_tasks_in_flight_per_actor: Max concurrent tasks per actor in C++ pool.
         logical_id_label_key: Label key for logical actor IDs.
         logical_id_kwarg_name: Kwarg name to inject logical_id into actor constructor.
         static_labels: Static labels to apply to all actors in the pool.
@@ -116,6 +117,7 @@ class ActorPool:
         actor_options: Optional[Dict[str, Any]] = None,
         retry: Optional[RetryPolicy] = None,
         ordering: OrderingMode = OrderingMode.UNORDERED,
+        max_tasks_in_flight_per_actor: int = 1,
         # Label support for Ray Data integration
         logical_id_label_key: Optional[str] = None,
         logical_id_kwarg_name: Optional[str] = None,
@@ -138,7 +140,7 @@ class ActorPool:
         else:
             min_size = min_size or 1
             max_size = max_size or -1
-            initial_size = initial_size or min_size
+            initial_size = initial_size if initial_size is not None else min_size
 
         self._actor_cls = actor_cls
         self._actor_args = actor_args
@@ -179,6 +181,7 @@ class ActorPool:
             max_retry_backoff_ms=retry.max_backoff_ms,
             retry_on_system_errors=retry.retry_on_system_errors,
             ordering_mode=int(ordering),
+            max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
             min_size=min_size,
             max_size=max_size,
             initial_size=initial_size,
@@ -286,6 +289,7 @@ class ActorPool:
         method_name: str,
         *args,
         key: Optional[str] = None,
+        num_returns: int = 1,
         **kwargs,
     ) -> ray.ObjectRef:
         """Submit a task to the pool.
@@ -294,34 +298,47 @@ class ActorPool:
         If the task fails, it will be automatically retried on a different actor
         (up to max_retry_attempts).
 
-        Note: In Phase 1, this uses a simple round-robin approach via direct
-        actor method calls. Full C++ task submission will be implemented in
-        a future phase.
-
         Args:
             method_name: Name of the actor method to call.
             *args: Positional arguments for the method.
             key: Optional key for per-key ordering (only used with PER_KEY_FIFO).
+            num_returns: Number of return values (-2 for streaming generator).
             **kwargs: Keyword arguments for the method.
 
         Returns:
             ObjectRef for the task result.
         """
-        # Phase 1: Simple round-robin via direct actor calls
-        # Full C++ SubmitTaskToPool integration will come in a later phase
         if not self._actor_handles:
             raise RuntimeError("No actors in pool")
 
-        # Simple round-robin based on task count
-        actor_idx = self._tasks_submitted % len(self._actor_handles)
-        actor = self._actor_handles[actor_idx]
+        actor = self._actor_handles[0]
+        language = actor._ray_actor_language
+        fn_signature = actor._ray_method_signatures[method_name]
+        fn_descriptor = actor._ray_function_descriptor[method_name]
 
-        # Increment counter before calling (for consistent stats)
+        from ray._common.signature import flatten_args
+
+        list_args = flatten_args(fn_signature, args, kwargs)
+
         self._tasks_submitted += 1
 
-        # Call the method on the selected actor
-        method = getattr(actor, method_name)
-        return method.remote(*args, **kwargs)
+        object_refs = self._core_worker.submit_task_to_pool(
+            self._pool_id,
+            language,
+            fn_descriptor,
+            list_args,
+            name=fn_descriptor.function_name.encode(),
+            num_returns=num_returns,
+            num_method_cpus=0,
+            concurrency_group_name=b"",
+            generator_backpressure_num_objects=-1,
+            enable_task_events=True,
+            key=key.encode() if key else b"",
+        )
+
+        if len(object_refs) == 1:
+            return object_refs[0]
+        return object_refs
 
     def map(
         self,

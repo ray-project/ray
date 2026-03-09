@@ -4826,6 +4826,7 @@ cdef class CoreWorker:
             int32_t max_retry_backoff_ms=60000,
             c_bool retry_on_system_errors=True,
             int ordering_mode=0,  # 0=UNORDERED, 1=PER_KEY_FIFO, 2=GLOBAL_FIFO
+            int32_t max_tasks_in_flight_per_actor=1,
             int32_t min_size=1,
             int32_t max_size=-1,
             int32_t initial_size=1,
@@ -4858,6 +4859,7 @@ cdef class CoreWorker:
         config.max_retry_backoff_ms = max_retry_backoff_ms
         config.retry_on_system_errors = retry_on_system_errors
         config.ordering_mode = <CPoolOrderingMode>ordering_mode
+        config.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         config.min_size = min_size
         config.max_size = max_size
         config.initial_size = initial_size
@@ -4992,6 +4994,73 @@ cdef class CoreWorker:
                 ).HasPool(c_pool_id)
 
         return exists
+
+    def submit_task_to_pool(
+            self,
+            ActorPoolID pool_id,
+            Language language,
+            FunctionDescriptor function_descriptor,
+            list args,
+            c_string name,
+            int num_returns,
+            double num_method_cpus,
+            c_string concurrency_group_name,
+            int64_t generator_backpressure_num_objects,
+            c_bool enable_task_events,
+            c_string key=b""):
+        """Submit a task to an actor pool.
+
+        The C++ ActorPoolManager selects an actor based on load and locality.
+
+        Returns:
+            List of ObjectRefs for the task's return values.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            unordered_map[c_string, double] c_resources
+            CRayFunction ray_function
+            c_vector[unique_ptr[CTaskArg]] args_vector
+            c_vector[CObjectReference] return_refs
+            c_vector[CObjectID] incremented_put_arg_ids
+            c_string serialized_runtime_env = b"{}"
+            unordered_map[c_string, c_string] c_labels
+            CLabelSelector c_label_selector
+            c_vector[CFallbackOption] c_fallback_strategy
+            optional[c_string] c_tensor_transport = NULL_TENSOR_TRANSPORT
+
+        if num_method_cpus > 0:
+            c_resources[b"CPU"] = num_method_cpus
+        ray_function = CRayFunction(
+            language.lang, function_descriptor.descriptor)
+        prepare_args_and_increment_put_refs(
+            language, args, &args_vector, function_descriptor,
+            &incremented_put_arg_ids)
+
+        with nogil:
+            return_refs = (
+                CCoreWorkerProcess.GetCoreWorker().SubmitTaskToActorPool(
+                    c_pool_id,
+                    ray_function,
+                    move(args_vector),
+                    CTaskOptions(
+                        name,
+                        num_returns,
+                        c_resources,
+                        concurrency_group_name,
+                        generator_backpressure_num_objects,
+                        serialized_runtime_env,
+                        enable_task_events,
+                        c_labels,
+                        c_label_selector,
+                        c_tensor_transport,
+                        c_fallback_strategy),
+                    key))
+
+        for put_arg_id in incremented_put_arg_ids:
+            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                put_arg_id)
+
+        return VectorToObjectRefs(return_refs, skip_adding_local_ref=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

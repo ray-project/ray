@@ -341,6 +341,8 @@ class ActorPoolMapOperator(MapOperator):
             should be able to launch a task.
 
         """
+        if getattr(self._actor_pool, "supports_pool_submission", False):
+            return self._actor_pool.num_free_task_slots() > 0
         return self._actor_task_selector.can_schedule_task()
 
     def _start_actor(
@@ -399,7 +401,6 @@ class ActorPoolMapOperator(MapOperator):
                 has_actor = self._actor_pool.pending_to_running(ref)
                 if not has_actor:
                     return
-                self._dispatch_tasks()
 
             self._submit_metadata_task(
                 res_ref,
@@ -430,6 +431,9 @@ class ActorPoolMapOperator(MapOperator):
 
     def _try_schedule_tasks_internal(self, strict: bool) -> int:
         """Try to dispatch tasks from the internal queue"""
+
+        if getattr(self._actor_pool, "supports_pool_submission", False):
+            return self._try_schedule_via_pool()
 
         num_submitted_tasks = 0
 
@@ -481,6 +485,47 @@ class ActorPoolMapOperator(MapOperator):
                 self._locality_misses += 1
 
         return num_submitted_tasks
+
+    def _try_schedule_via_pool(self) -> int:
+        """Submit tasks through the C++ ActorPoolManager.
+
+        Actor selection, load balancing, and fault tolerance are handled by C++.
+        """
+        num_submitted = 0
+
+        while self._bundle_queue and self._actor_pool.num_free_task_slots() > 0:
+            bundle = self._bundle_queue.get_next()
+            self._metrics.on_input_dequeued(bundle, input_index=0)
+            input_blocks = [block for block, _ in bundle.blocks]
+
+            ctx = TaskContext(
+                task_idx=self._next_data_task_idx,
+                op_name=self.name,
+                target_max_block_size_override=self.target_max_block_size_override,
+            )
+
+            gen, _ = self._actor_pool.submit_task(
+                method_name="submit",
+                args=(
+                    self.data_context,
+                    ctx,
+                    *input_blocks,
+                ),
+                kwargs=dict(
+                    slices=bundle.slices,
+                    **self.get_map_task_kwargs(),
+                ),
+                num_returns="streaming",
+                remote_args=self._ray_actor_task_remote_args,
+            )
+
+            def _task_done_callback():
+                self._actor_pool.on_task_completed()
+
+            self._submit_data_task(gen, bundle, _task_done_callback)
+            num_submitted += 1
+
+        return num_submitted
 
     def _refresh_actor_cls(self):
         """When `self._ray_remote_args_fn` is specified, this method should

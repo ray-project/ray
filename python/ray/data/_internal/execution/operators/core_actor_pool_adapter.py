@@ -115,8 +115,8 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
             initial_size=0,  # Don't create actors yet
             actor_kwargs=actor_kwargs or {},
             actor_options=actor_options or {},
+            max_tasks_in_flight_per_actor=self._max_tasks_in_flight,
             logical_id_label_key=self._LOGICAL_ACTOR_ID_LABEL_KEY,
-            # Inject logical_actor_id into actor kwargs for _MapWorker
             logical_id_kwarg_name="logical_actor_id",
             static_labels=static_labels,
         )
@@ -275,7 +275,6 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         try:
             actor_location = ray.get(ready_ref)
         except Exception:
-            # Actor init failed - will be handled by Ray Data's error handling
             raise
 
         self._running_actors[actor] = _ActorState(
@@ -283,6 +282,23 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
             actor_location=actor_location,
             is_restarting=False,
         )
+
+        # Update the C++ pool with the actor's node location for
+        # locality-aware scheduling. The actor was already added during
+        # scale() without a location; this call updates it in-place.
+        if actor_location:
+            from ray._raylet import NodeID
+
+            node_id = NodeID.from_hex(actor_location)
+            import ray._private.worker as worker_module
+
+            worker = worker_module.global_worker
+            worker.core_worker.add_actor_to_pool(
+                self._pool.pool_id,
+                actor._actor_id,
+                location=node_id,
+            )
+
         return True
 
     def running_actors(self) -> Dict[ActorHandle, _ActorState]:
@@ -306,6 +322,83 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         return self._LOGICAL_ACTOR_ID_LABEL_KEY
 
     # =========================================================================
+    # C++ Pool Task Submission
+    # =========================================================================
+
+    def submit_task(
+        self,
+        method_name: str,
+        args: tuple,
+        kwargs: dict,
+        num_returns,
+        remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        """Submit a task via the C++ ActorPoolManager.
+
+        The C++ pool handles actor selection, load balancing, and fault tolerance.
+        Returns (ObjectRefGenerator or ObjectRef list, None) — the actor is unknown
+        to Python since C++ chose it.
+        """
+        import ray._private.worker as worker_module
+        from ray._common.signature import flatten_args
+        from ray._raylet import STREAMING_GENERATOR_RETURN, ObjectRefGenerator
+
+        worker = worker_module.global_worker
+        remote_args = remote_args or {}
+
+        actor = next(iter(self._running_actors))
+        language = actor._ray_actor_language
+        fn_signature = actor._ray_method_signatures[method_name]
+        fn_descriptor = actor._ray_function_descriptor[method_name]
+        list_args = flatten_args(fn_signature, args, kwargs)
+
+        actual_num_returns = num_returns
+        if num_returns == "streaming":
+            actual_num_returns = STREAMING_GENERATOR_RETURN
+        elif num_returns == "dynamic":
+            actual_num_returns = -1
+
+        num_cpus = remote_args.get("num_cpus", 0)
+        concurrency_group = remote_args.get("concurrency_group_name", b"")
+        if isinstance(concurrency_group, str):
+            concurrency_group = concurrency_group.encode()
+        backpressure = remote_args.get("_generator_backpressure_num_objects", -1)
+
+        object_refs = worker.core_worker.submit_task_to_pool(
+            self._pool.pool_id,
+            language,
+            fn_descriptor,
+            list_args,
+            name=fn_descriptor.function_name.encode(),
+            num_returns=actual_num_returns,
+            num_method_cpus=num_cpus,
+            concurrency_group_name=concurrency_group,
+            generator_backpressure_num_objects=backpressure,
+            enable_task_events=True,
+        )
+
+        if not object_refs:
+            self._total_num_tasks_in_flight -= 0  # nothing submitted
+            raise RuntimeError(
+                "C++ ActorPoolManager returned no refs — pool has no actors "
+                "with available capacity. This indicates a mismatch between "
+                "Python num_free_task_slots() and C++ max_tasks_in_flight_per_actor."
+            )
+
+        self._total_num_tasks_in_flight += 1
+
+        if actual_num_returns == STREAMING_GENERATOR_RETURN:
+            return ObjectRefGenerator(object_refs[0], worker), None
+
+        if len(object_refs) == 1:
+            return object_refs[0], None
+        return object_refs, None
+
+    @property
+    def supports_pool_submission(self) -> bool:
+        return True
+
+    # =========================================================================
     # Task Tracking (Python-side for Ray Data compatibility)
     # =========================================================================
 
@@ -317,20 +410,38 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         if self._running_actors[actor].num_tasks_in_flight == 1:
             self._num_active_actors += 1
 
-    def on_task_completed(self, actor: ActorHandle):
-        """Called when a task completes on an actor."""
-        assert actor in self._running_actors
-        assert self._running_actors[actor].num_tasks_in_flight > 0
+    def on_task_completed(self, actor: Optional[ActorHandle] = None):
+        """Called when a task completes.
 
-        self._running_actors[actor].num_tasks_in_flight -= 1
+        Args:
+            actor: The actor that ran the task. None for pool-submitted tasks
+                   where C++ selected the actor.
+        """
+        if actor is not None and actor in self._running_actors:
+            assert self._running_actors[actor].num_tasks_in_flight > 0
+            self._running_actors[actor].num_tasks_in_flight -= 1
+            if self._running_actors[actor].num_tasks_in_flight == 0:
+                self._num_active_actors -= 1
+
         self._total_num_tasks_in_flight -= 1
 
-        if self._running_actors[actor].num_tasks_in_flight == 0:
-            self._num_active_actors -= 1
+    def refresh_actor_state(self):
+        """Refresh actor states from GCS (alive vs restarting)."""
+        from ray.core.generated import gcs_pb2
+
+        for actor in self.get_running_actor_refs():
+            actor_state = actor._get_local_state()
+            if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
+                continue
+            elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+                self.update_running_actor_state(actor, is_restarting=True)
+            else:
+                self.update_running_actor_state(actor, is_restarting=False)
 
     def update_running_actor_state(self, actor: ActorHandle, is_restarting: bool):
         """Update actor's restarting state."""
-        assert actor in self._running_actors
+        if actor not in self._running_actors:
+            return
         if self._running_actors[actor].is_restarting == is_restarting:
             return
 
