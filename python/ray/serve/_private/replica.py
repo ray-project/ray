@@ -1479,7 +1479,9 @@ class ReplicaBase(ABC):
                 try:
                     if request_metadata.is_http_request:
                         scope, receive = request_args
-                        async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                        async for (
+                            msgs
+                        ) in self._user_callable_wrapper.call_http_entrypoint(
                             request_metadata,
                             status_code_callback,
                             scope,
@@ -1487,7 +1489,9 @@ class ReplicaBase(ABC):
                         ):
                             yield pickle.dumps(msgs)
                     else:
-                        async for result in self._user_callable_wrapper.call_user_generator(
+                        async for (
+                            result
+                        ) in self._user_callable_wrapper.call_user_generator(
                             request_metadata,
                             request_args,
                             request_kwargs,
@@ -1547,7 +1551,9 @@ class ReplicaBase(ABC):
                 try:
                     if request_metadata.is_http_request:
                         scope, receive = request_args
-                        async for msgs in self._user_callable_wrapper.call_http_entrypoint(
+                        async for (
+                            msgs
+                        ) in self._user_callable_wrapper.call_http_entrypoint(
                             request_metadata,
                             status_code_callback,
                             scope,
@@ -1555,7 +1561,9 @@ class ReplicaBase(ABC):
                         ):
                             yield pickle.dumps(msgs)
                     elif request_metadata.is_streaming:
-                        async for result in self._user_callable_wrapper.call_user_generator(
+                        async for (
+                            result
+                        ) in self._user_callable_wrapper.call_user_generator(
                             request_metadata,
                             request_args,
                             request_kwargs,
@@ -2586,7 +2594,9 @@ class Replica(ReplicaBase):
                             user_method_info, scope, receive_proxy, send_user_message
                         )
                     else:
-                        async for asgi_messages in self._user_callable_wrapper.call_http_entrypoint(
+                        async for (
+                            asgi_messages
+                        ) in self._user_callable_wrapper.call_http_entrypoint(
                             request_metadata, status_code_callback, scope, receive_proxy
                         ):
                             for message in asgi_messages:
@@ -2941,9 +2951,9 @@ class UserCallableWrapper:
         self._callable = None
         self._deployment_config = deployment_config
         self._ray_actor_options = ray_actor_options or {}
-        self._user_code_threadpool: Optional[
-            concurrent.futures.ThreadPoolExecutor
-        ] = None
+        self._user_code_threadpool: Optional[concurrent.futures.ThreadPoolExecutor] = (
+            None
+        )
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
@@ -3291,6 +3301,7 @@ class UserCallableWrapper:
             init_method = self._callable.__init__
 
             if inspect.iscoroutinefunction(init_method):
+
                 async def _async_init_and_setup():
                     await self._call_func_or_gen(
                         init_method,

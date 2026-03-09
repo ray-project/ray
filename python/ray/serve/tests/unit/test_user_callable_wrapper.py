@@ -734,7 +734,6 @@ class TestSeparateThread:
         sync_event.set()
         assert await blocked_future == "Sorry I got stuck!"
 
-
     @pytest.mark.asyncio
     async def test_sync_init_can_use_run_until_complete(self):
         """Sync __init__ can call loop.run_until_complete() because
@@ -806,9 +805,7 @@ class TestSeparateThread:
         await user_callable_wrapper.initialize_callable()
 
         request_metadata = _make_request_metadata()
-        await user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        )
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
         assert "task_ran" in results
 
     @pytest.mark.asyncio
