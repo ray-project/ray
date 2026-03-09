@@ -4,11 +4,6 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
     import torch
-else:
-    try:
-        import torch
-    except ImportError:
-        torch = None
 
 
 class MemoryBlock:
@@ -39,6 +34,8 @@ class MemoryPoolManager:
             pool_size: Size of the memory pool in bytes.
             device: Device to allocate the pool on.
         """
+        import torch
+
         self.pool_size = pool_size
         self.device = device
 

@@ -543,10 +543,13 @@ class NixlTensorTransport(TensorTransportManager):
                 f"Memory pool allocation failed: {e}. "
                 "Falling back to traditional mode."
             )
-            if allocations is not None:
-                pool.free_multiple(
-                    [a[0] for a in allocations],
-                    [a[1] for a in allocations],
-                )
+            try:
+                if allocations is not None:
+                    pool.free_multiple(
+                        [a[0] for a in allocations],
+                        [a[1] for a in allocations],
+                    )
+            except Exception as e:
+                logger.error(f"Memory pool free failed: {e}.")
 
         return None, None, None
