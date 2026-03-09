@@ -160,7 +160,6 @@ To run this training function on a worker node, we can use a Ray task:
 def run_single_gpu_job() -> None:
     train_func_single_gpu()
 
-ray.init(ignore_reinit_error=True)  # Initialize Ray; no-op if already initialized
 ray.get(run_single_gpu_job.remote())
 ```
 
