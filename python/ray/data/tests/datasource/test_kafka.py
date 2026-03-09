@@ -361,9 +361,8 @@ def test_read_kafka_with_message_headers(
 
 
 @pytest.mark.parametrize(
-    "start_offset,end_offset,expected_count, test_id",
+    "start_offset,end_offset,expected_count,test_id",
     [
-        (150, 200, 0, "start-offset-exceeds-available-messages"),
         (0, 150, 100, "end-offset-exceeds-available-messages"),
         (
             "earliest",
@@ -382,8 +381,6 @@ def test_read_kafka_offset_exceeds_available_messages(
     expected_count,
     test_id,
 ):
-    import time
-
     topic = f"test-offset-timeout-{test_id}"
 
     for i in range(100):
@@ -392,26 +389,44 @@ def test_read_kafka_offset_exceeds_available_messages(
     kafka_producer.flush()
     time.sleep(0.3)
 
-    # Try to read up to offset 200 (way beyond available messages)
-    # This should timeout and only return the 50 available messages
-
-    start_time = time.time()
+    # end_offset exceeds available messages, but it gets clamped to the high
+    # watermark during offset resolution, so the read completes without
+    # hanging.
     ds = ray.data.read_kafka(
         topics=[topic],
         bootstrap_servers=[bootstrap_server],
         start_offset=start_offset,
         end_offset=end_offset,
-        timeout_ms=3000,  # 3 second timeout
     )
 
     records = ds.take_all()
 
-    elapsed_time = time.time() - start_time
-
-    # Should get all 50 available messages
     assert len(records) == expected_count
 
-    assert elapsed_time >= 3, f"Expected timeout wait, but only took {elapsed_time}s"
+
+def test_read_kafka_default_no_timeout(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    topic = "test-default-no-timeout"
+
+    for i in range(50):
+        message = {"id": i, "value": f"message-{i}"}
+        kafka_producer.produce(topic, value=message)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # timeout_ms is intentionally omitted (defaults to None).
+    # Verifies the no-timeout code path works correctly.
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset=0,
+        end_offset=50,
+    )
+
+    records = ds.take_all()
+
+    assert len(records) == 50
 
 
 def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
@@ -434,6 +449,12 @@ def test_read_kafka_invalid_topic(bootstrap_server, ray_start_regular_shared):
             "latest",
             r"start_offset \(150\) > end_offset \(latest \(resolved to 100\)\) for partition 0 in topic test-invalid-offsets-3",
             "test-invalid-offsets-3",
+        ),
+        (
+            150,
+            200,
+            r"start_offset \(150\) > end_offset \(200 \(resolved to 100\)\) for partition 0 in topic test-invalid-offsets-4",
+            "test-invalid-offsets-4",
         ),
     ],
 )
