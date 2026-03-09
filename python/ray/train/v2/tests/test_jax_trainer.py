@@ -32,7 +32,7 @@ def ray_tpu_single_host():
         ray.shutdown()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def ray_tpu_multi_host():
     """
     Simulates a Ray cluster with two multi-host TPU v4-16 slices.
@@ -439,6 +439,300 @@ def test_tpu_multi_slice_uneven_workers(ray_tpu_multi_host, tmp_path):
             resources_per_worker={"TPU": 1},
             num_workers=6,  # Expect a multiple of 4.
         )
+
+
+def train_func_with_data_multi_host():
+    import unittest.mock
+
+    import jax
+
+    import ray
+    from ray import train
+
+    train_ctx = train.get_context()
+    rank = train_ctx.get_world_rank()
+
+    devices = jax.devices()
+    local_devices = jax.local_devices()
+    node_labels = ray.get_runtime_context().get_node_labels()
+    slice_name = node_labels.get("ray.io/tpu-slice-name")
+
+    ds_shard = train.get_dataset_shard("train")
+
+    batches = []
+    # Mock process_allgather because the JAX CPU backend does not support multiprocess communication.
+    # Since our mock test distributes exact same data lengths uniformly, all workers report the identical
+    # array `[has_batch, local_batch_size]`. We simulate the gather by stacking the local array identically.
+    def mock_process_allgather(arr):
+        import jax.numpy as jnp
+
+        return jnp.stack([arr] * jax.process_count())
+
+    with unittest.mock.patch(
+        "jax.experimental.multihost_utils.process_allgather",
+        side_effect=mock_process_allgather,
+    ):
+        # Each batch has 4 rows. iter_jax_batches should combine the batches from all workers and return a batch of size 4 * num_workers.
+        for batch in ds_shard.iter_jax_batches(batch_size=4):
+            batches.append(batch["id"].shape)
+
+    train.report(
+        {
+            "worker_id": rank,
+            "slice_name": slice_name,
+            "devices": len(devices),
+            "local_devices": len(local_devices),
+            "batches": batches,
+        }
+    )
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_multi_host_data_iterator(ray_tpu_multi_host, tmp_path):
+    actor_name = "test_multi_host_data_iterator"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    import ray
+
+    # Create 32 rows, batch size 4.
+    # We have 4 workers. Each custom shard will have 8 rows (2 batches).
+    ds = ray.data.range(32)
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_with_data_multi_host,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x2",
+            num_workers=4,
+        ),
+        datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
+                }
+            },
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    # Fetch metrics result from each worker using the verification actor.
+    reports = ray.get(verify_actor.get_reports.remote())
+
+    # Verify execution of all 4 TPU workers across both slices.
+    assert (
+        len(reports) == 4
+    ), f"Expected 4 workers to report metrics, got {len(reports)}"
+
+    worker_ids = {r["worker_id"] for r in reports}
+    assert worker_ids == {0, 1, 2, 3}, "Expected unique worker IDs from 0 to N-1."
+
+    for r in reports:
+        # With batch_size=4 and 8 rows per shard, each worker sees 2 batches.
+        # jax.devices() will return 16 global devices (CPU).
+        assert r["devices"] == 16
+        assert r["local_devices"] == 4
+        assert len(r["batches"]) == 2
+
+        # Each batch should have global batch size of 16.
+        for batch_shape in r["batches"]:
+            assert batch_shape == (16,)
+
+
+def train_func_with_data_single_host(config):
+    import jax
+    import numpy as np
+    from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+
+    from ray import train
+
+    devices = jax.devices()
+    local_devices = jax.local_devices()
+
+    # We requested 8 TPU resources per worker, so XLA_FLAGS should expose 8 mock local devices
+    assert len(devices) == 8
+    assert len(local_devices) == 8
+
+    # 8 local devices across a 2x4 mesh
+    mesh = Mesh(np.array(local_devices).reshape(2, 4), ("x", "y"))
+    named_sharding = NamedSharding(mesh, P("x", "y"))
+
+    ds_shard = train.get_dataset_shard("train")
+
+    batches = []
+    drop_last = config.get("drop_last", False) if config else False
+    # Local batch size must be evenly divisible by 8 (num_local_devices)
+    for batch in ds_shard.iter_jax_batches(
+        named_sharding=named_sharding, batch_size=16, drop_last=drop_last
+    ):
+        arr = batch["features"]
+        assert arr.sharding == named_sharding
+        batches.append(arr.shape)
+
+    train.report(
+        {
+            "devices": len(devices),
+            "local_devices": len(local_devices),
+            "batches": batches,
+        }
+    )
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_single_host_data_iterator_2d(ray_tpu_single_host, tmp_path):
+    actor_name = "test_single_host_data_iterator_2d"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    import numpy as np
+
+    import ray
+
+    # Create 56 rows. Each row is {"features": np.ones((8,))}
+    # We have 1 worker. The worker processes 56 rows in batches of 16.
+    # The first 3 batches are (16, 8) in shape, and the last batch is (8, 8) in shape.
+    ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(56)])
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_with_data_single_host,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            accelerator_type="TPU-V6E",
+        ),
+        datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            # Mock 8 local CPU devices exclusively for this worker process.
+            # This enables jax.device_put to successfully execute local 2D resharding
+            # completely in-memory because jax.process_count() defaults to 1.
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    "XLA_FLAGS": "--xla_force_host_platform_device_count=8",
+                }
+            },
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    reports = ray.get(verify_actor.get_reports.remote())
+    assert len(reports) == 1
+
+    for r in reports:
+        assert r["devices"] == 8
+        assert r["local_devices"] == 8
+        assert len(r["batches"]) == 4
+
+        for batch_shape in r["batches"]:
+            assert batch_shape == (16, 8) or batch_shape == (8, 8)
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_single_host_data_iterator_2d_truncation(ray_tpu_single_host, tmp_path):
+    actor_name = "test_single_host_data_iterator_2d_truncation"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    import numpy as np
+
+    import ray
+
+    # Create 60 rows. Each row is {"features": np.ones((8,))}
+    # 60 is not divisible by 16, so the last 12 rows should be truncated.
+    # Thus, each local batch is (16, 8) in shape and we expect exactly 3 batches.
+    ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(60)])
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_with_data_single_host,
+        train_loop_config={"drop_last": True},
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            accelerator_type="TPU-V6E",
+        ),
+        datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            # Mock 8 local CPU devices exclusively for this worker process.
+            # This enables jax.device_put to successfully execute local 2D resharding
+            # completely in-memory because jax.process_count() defaults to 1.
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    "XLA_FLAGS": "--xla_force_host_platform_device_count=8",
+                }
+            },
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    reports = ray.get(verify_actor.get_reports.remote())
+    assert len(reports) == 1
+
+    for r in reports:
+        assert r["devices"] == 8
+        assert r["local_devices"] == 8
+        assert len(r["batches"]) == 3
+
+        for batch_shape in r["batches"]:
+            assert batch_shape == (16, 8)
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Current jax version (0.4.13) is not supported in python 3.12+",
+)
+def test_single_host_data_iterator_2d_truncation_failure(ray_tpu_single_host, tmp_path):
+    import numpy as np
+
+    import ray
+
+    # Create 60 rows. Each row is {"features": np.ones((8,))}
+    # 60 is not divisible by 16. So if drop_last=False (the default), it should raise a ValueError.
+    ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(60)])
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func_with_data_single_host,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            num_workers=1,
+            resources_per_worker={"TPU": 8},
+            accelerator_type="TPU-V6E",
+        ),
+        datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    "XLA_FLAGS": "--xla_force_host_platform_device_count=8",
+                }
+            },
+        ),
+    )
+    with pytest.raises(
+        Exception, match="must be evenly divisible by the number of local JAX devices"
+    ):
+        trainer.fit()
 
 
 def test_scaling_config_validation():
