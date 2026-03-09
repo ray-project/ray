@@ -1,7 +1,7 @@
 """
 A2A (Agent-to-Agent) deployment utilities for Ray Serve.
 
-This module provides a factory function to wrap any LangGraph agent with A2A
+This module provides a factory function to wrap any LangChain agent with A2A
 protocol endpoints:
 - GET  /.well-known/agent-card.json  (discovery)
 - POST /v1/message:send              (blocking call)
@@ -91,7 +91,7 @@ def _to_pascal_case(name: str) -> str:
     return "".join(parts) or "Agent"
 
 
-async def run_langgraph_agent_once(
+async def run_langchain_agent_once(
     agent: Any,
     *,
     user_request: str,
@@ -99,7 +99,7 @@ async def run_langgraph_agent_once(
     max_updates: int = 200,
 ) -> str:
     """
-    Run a LangGraph agent using stream_mode="updates" and return the last assistant text.
+    Run a LangChain agent using stream_mode="updates" and return the last assistant text.
 
     This matches how the repo's /chat endpoints stream, providing consistency
     across SSE and A2A interfaces.
@@ -108,7 +108,7 @@ async def run_langgraph_agent_once(
     inputs = {"messages": [{"role": "user", "content": user_request}]}
 
     def _extract_text(obj: Any) -> str:
-        """Best-effort extraction of assistant text from various LangGraph shapes."""
+        """Best-effort extraction of assistant text from various LangChain shapes."""
         try:
             if isinstance(obj, str):
                 return obj.strip()
@@ -181,10 +181,10 @@ def create_a2a_app(
     card: AgentCard,
 ) -> FastAPI:
     """
-    Create a FastAPI app that wraps a LangGraph agent with A2A protocol endpoints.
+    Create a FastAPI app that wraps a LangChain agent with A2A protocol endpoints.
 
     Args:
-        build_agent_fn: Function that returns a LangGraph agent (sync or async)
+        build_agent_fn: Function that returns a LangChain agent (sync or async)
         card: Agent discovery card with name, description, version, skills
 
     Returns:
@@ -223,8 +223,8 @@ def create_a2a_app(
                 detail = agent_init_error or "Agent initialization failed."
                 raise HTTPException(status_code=503, detail=detail)
 
-    class LangGraphAgentExecutor(AgentExecutor):
-        """A2A AgentExecutor adapter for a LangGraph agent."""
+    class LangChainAgentExecutor(AgentExecutor):
+        """A2A AgentExecutor adapter for a LangChain agent."""
 
         async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
             a = await _ensure_agent()
@@ -240,7 +240,7 @@ def create_a2a_app(
             await updater.start_work()
 
             try:
-                text = await run_langgraph_agent_once(
+                text = await run_langchain_agent_once(
                     a,
                     user_request=user_text,
                     thread_id=context_id,
@@ -285,7 +285,7 @@ def create_a2a_app(
 
     # Build official A2A REST app (HTTP+JSON), and then attach repo-specific endpoints.
     task_store = InMemoryTaskStore()
-    http_handler = DefaultRequestHandler(agent_executor=LangGraphAgentExecutor(), task_store=task_store)
+    http_handler = DefaultRequestHandler(agent_executor=LangChainAgentExecutor(), task_store=task_store)
     a2a_app = A2ARESTFastAPIApplication(agent_card=card, http_handler=http_handler).build(
         title=card.name,
         description=card.description,
@@ -320,7 +320,7 @@ def create_a2a_deployment(
     Create a Ray Serve deployment with A2A protocol endpoints.
 
     Args:
-        build_agent_fn: Function that returns a LangGraph agent
+        build_agent_fn: Function that returns a LangChain agent
         card: Agent discovery card
         num_cpus: Number of CPUs for the Ray actor
 

@@ -2444,7 +2444,7 @@ Status CoreWorker::SubmitActorTask(
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
-                      /*labels=*/{},
+                      /*labels=*/task_options.labels,
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
@@ -2455,6 +2455,7 @@ Status CoreWorker::SubmitActorTask(
                                  max_retries,
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist,
+                                 task_options.concurrency_group_name,
                                  task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
