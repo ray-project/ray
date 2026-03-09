@@ -3,32 +3,18 @@
 --extra-index-url https://download.pytorch.org/whl/cu121
 --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
---find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
+about-time==4.2.1 \
+    --hash=sha256:6a538862d33ce67d997429d14998310e1dbfda6cb7d9bbfbf799c4709847fece \
+    --hash=sha256:8bbf4c75fe13cbd3d72f49a03b02c5c7dca32169b6d49117c257e7eb3eaee341
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   alive-progress
 absl-py==1.4.0 \
     --hash=sha256:0d3fe606adfa4f7db64792dd4c7aee4ee0c38ab75dfd353b7a83ed3e957fcb47 \
     --hash=sha256:d2c244d01048ba476e7c080bd2c6df5e141d211de80223460d5b3b8a2a58433d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   array-record
     #   dm-tree
     #   keras
     #   ml-collections
@@ -36,21 +22,17 @@ absl-py==1.4.0 \
     #   open-spiel
     #   tensorboard
     #   tensorflow
-    #   tensorflow-datasets
-    #   tensorflow-metadata
 accelerate==0.28.0 \
     --hash=sha256:32019a49f4b3a85cc179ac4e38e9e2971f1a997dee026be0512816499464c4d5 \
     --hash=sha256:8ae25f8a8dc4cf12283842c469113836300545fb0dfa46fef331fb0a2ac8b421
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-requirements.txt
 adagio==0.2.4 \
     --hash=sha256:c6c4d812f629fc3141284a0b3cfe483731b28da3a1b18f3d5498695ff87dcc12 \
     --hash=sha256:e58abc4539184a65faf9956957d3787616bedeb1303ac5c9b1a201d8af6b87d7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fugue
     #   qpd
 aiohappyeyeballs==2.6.1 \
@@ -58,7 +40,6 @@ aiohappyeyeballs==2.6.1 \
     --hash=sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp
 aiohttp==3.13.3 \
     --hash=sha256:01ad2529d4b5035578f5081606a465f3b814c542882804e2e8cda61adf5c71bf \
@@ -183,8 +164,8 @@ aiohttp==3.13.3 \
     --hash=sha256:fee0c6bc7db1de362252affec009707a17478a00ec69f797d23ca256e36d5940
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp-cors
+    #   fsspec
     #   ray
     #   taskiq
     #   torch-geometric
@@ -193,14 +174,12 @@ aiohttp-cors==0.7.0 \
     --hash=sha256:4d39c6d7100fd9764ed1caf8cebf0eb01bf5e3f24e2e073fda6234bc48b19f5d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
     --hash=sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp
 ale-py==0.10.1 \
     --hash=sha256:076a44a61c2518b844f765692a91d0a6b383c6592b5fdabd94fd24d4c62a54ef \
@@ -230,42 +209,42 @@ ale-py==0.10.1 \
     --hash=sha256:f6f91ab4b2a18e24c82a33fd1d616f32d121fcd6429f9045d515960df8cdc580
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 alembic==1.12.1 \
     --hash=sha256:47d52e3dfb03666ed945becb723d6482e52190917fdb47071440cfdba05d92cb \
     --hash=sha256:bca5877e9678b454706347bc10b97cb7d67f300320fa5c3a94423e8266e2823f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   optuna
+alive-progress==3.3.0 \
+    --hash=sha256:457dd2428b48dacd49854022a46448d236a48f1b7277874071c39395307e830c \
+    --hash=sha256:63dd33bb94cde15ad9e5b666dbba8fedf71b72a4935d6fb9a92931e69402c9ff
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pymoo
 amqp==5.3.1 \
     --hash=sha256:43b3319e1b4e7d1251833a93d672b4af1e40f3d632d479b98661a95f117880a2 \
     --hash=sha256:cddc00c725449522023bad949f70fff7b48f0b1ade74d170a6f10ab044739432
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   kombu
 annotated-doc==0.0.4 \
     --hash=sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320 \
     --hash=sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fastapi
 annotated-types==0.6.0 \
     --hash=sha256:0641064de18ba7a25dee8f96403ebc39113d0cb953a01429249d5c7564666a43 \
     --hash=sha256:563339e807e53ffd9c267e99fc6d9ea23eb8443c08f112651963e24e22f84a5d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pydantic
 antlr4-python3-runtime==4.11.1 \
     --hash=sha256:a53de701312f9bdacc5258a6872cd6c62b90d3a90ae25e494026f76267333b60 \
     --hash=sha256:ff1954eda1ca9072c02bf500387d0c86cb549bef4dbb3b64f39468b547ec5f6b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fugue-sql-antlr
     #   qpd
 anyio==4.5.0 \
@@ -273,7 +252,6 @@ anyio==4.5.0 \
     --hash=sha256:fdeb095b7cc5a5563175eedd926ec4ae55413bb4be5770c424af0ba46ccb4a78
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   httpx
     #   jupyter-server
     #   starlette
@@ -284,14 +262,12 @@ appdirs==1.4.4 \
     --hash=sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fs
 argon2-cffi==23.1.0 \
     --hash=sha256:879c3e79a2729ce768ebb7d36d4609e3a78a4ca2ec3a9f12286ca057e3d0db08 \
     --hash=sha256:c670642b78ba29641818ab2e68bd4e6a78ba53b7eff7b4c3815ae16abf91c7ea
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
 argon2-cffi-bindings==21.2.0 \
     --hash=sha256:20ef543a89dee4db46a1a6e206cd015360e5a75822f76df533845c3cbaf72670 \
@@ -317,83 +293,70 @@ argon2-cffi-bindings==21.2.0 \
     --hash=sha256:f9f8b450ed0547e3d473fdc8612083fd08dd2120d6ac8f73828df9b7d45bb351
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   argon2-cffi
-array-record==0.8.3 \
-    --hash=sha256:06b17a0a90bc74a80c4ebad0b99f0e039adb01746b673db3d7a5632d8b138ddd \
-    --hash=sha256:13df1aec9b38afe98973bf5fe3cf523f83ca904b0423d85319930877145b8f28 \
-    --hash=sha256:14facb713fc55ea612cf853c0abbc602032ae619eb85037af3aa41dc4e27eed6 \
-    --hash=sha256:458f6658de86c9369b23ffe64dcb31393a919b91ae2f15147ee2beb2010b122a \
-    --hash=sha256:718403dc9a364519a5fc440ed9e2784077e965489d5a44c96970d3101101e1cd \
-    --hash=sha256:89d2cf5f4709be3c6c2b30c0d366005223375633ffce66dcb13d927a0bdc5228 \
-    --hash=sha256:8a0caee17d2583638391fb9f90c9c12a43f9665576f18ec3604ba49d62bd2dcc \
-    --hash=sha256:9f91636366038afea55061cc539601e353d04ebf32608ae8717df4a4edbd31df \
-    --hash=sha256:adfe6c92918363747539c0caa579f568f75aac079ad7bbd4ebcf7fdb02e5461b \
-    --hash=sha256:dada305fa0dfa3fd6f5f263c43ed37546f815e4f33ce30b066175384dead752e \
-    --hash=sha256:f4004fcceb7961a2cc0090028e68a3eeb91d3f5b38c00d60b533f7004d1d3f7b \
-    --hash=sha256:fa94fa053c1afaecc183a1c31463fd89d1b7b148cc526095bfc50ab58967e47c
+arrow==1.3.0 \
+    --hash=sha256:c728b120ebc00eb84e01882a6f5e7927a53960aa990ce7dd2b10f39005a67f80 \
+    --hash=sha256:d4540617648cb5f895730f1ad8c82a65f2dad0166f57b75f3ca54759c4d67a85
     # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   tensorflow-datasets
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   isoduration
 asttokens==2.4.1 \
     --hash=sha256:051ed49c3dcae8913ea7cd08e46a606dba30b79993209636c4875bc1d637bc24 \
     --hash=sha256:b03869718ba9a6eb027e134bfdf69f38a236d681c83c160d510768af11254ba0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   stack-data
 astunparse==1.6.3 \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorflow
 async-lru==2.0.5 \
     --hash=sha256:481d52ccdd27275f42c43a928b4a50c3bfb2d67af4e78b170e3e0bb39c66e5bb \
     --hash=sha256:ab95404d8d2605310d345932697371a5f40def0487c03d6d0ad9138de52c9943
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp
     #   dm-tree
     #   jsonschema
     #   open-spiel
     #   referencing
+autograd==1.8.0 \
+    --hash=sha256:107374ded5b09fc8643ac925348c0369e7b0e73bbed9565ffd61b8fd04425683 \
+    --hash=sha256:4ab9084294f814cf56c280adbe19612546a35574d67c574b04933c7d2ecb7d78
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pymoo
 ax-platform==1.2.1 \
     --hash=sha256:6c55801bcd0ea420917ed1842c1d6e29191261216ae507c9b27d2ddb7104d536 \
     --hash=sha256:8b4af64477008ffa5108312a024498cfde5e3d1f419afac45f5a9741a1e23543
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-requirements.txt
 babel==2.13.1 \
     --hash=sha256:33e0952d7dd6374af8dbf6768cc4ddf3ccfefc244f9986d4074704f2fbd18900 \
     --hash=sha256:7077a4984b02b6727ac10f1f7294484f737443d7e2e66c5e4380e41a3ae0b4ed
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab-server
 backcall==0.2.0 \
     --hash=sha256:5cbdbf27be5e7cfadb448baf0aa95508f91f2bbc6c6437cd9cd06e2a4c215e1e \
     --hash=sha256:fbbce6a29f263178a1f7915c1940bde0ec2b2a967566fe1c65c1dfb7422bd255
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipython
 bayesian-optimization==1.4.0 \
     --hash=sha256:0984cfcbc9472284778962416f0d4892286da3f54e1df2767ef89263b6e22263 \
     --hash=sha256:5e7b5ada7826a8a342932d67f8ae5e638ade588a12b7f7df058fb7a2defe5866
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-requirements.txt
     #   nevergrad
 beautifulsoup4==4.11.1 \
@@ -401,49 +364,42 @@ beautifulsoup4==4.11.1 \
     --hash=sha256:ad9aa55b65ef2808eb405f46cf74df7fcb7044d5cbc26487f96eb2ef2e436693
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 billiard==4.2.1 \
     --hash=sha256:12b641b0c539073fc8d3f5b8b7be998956665c4233c7c1fcd66a7e677c4fb36f \
     --hash=sha256:40b59a4ac8806ba2c2369ea98d876bc6108b051c227baffd928c644d15d8f3cb
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   celery
 bleach==6.1.0 \
     --hash=sha256:0a31f1837963c41d46bbf1331b8778e1308ea0791db03cc4e7357b97cf42a8fe \
     --hash=sha256:3225f354cfc436b9789c66c4ee030194bee0568fbf9cbdad3bc8b5c26c5f12b6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 botorch==0.16.1 \
     --hash=sha256:1c06d4af942120be6cbface266e01422c33f27e8d44b565d0c7e308589a1937b \
     --hash=sha256:2a9ec7e43f1acddcf0c170ba084443e128696bc02f0ef9a48cc720f13f71713b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
 cachetools==5.5.2 \
     --hash=sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   google-auth
 celery==5.5.3 \
     --hash=sha256:0b5761a07057acee94694464ca482416b959568904c9dfa41ce8413a7d65d525 \
     --hash=sha256:6c972ae7968c2b5281227f01c3a3f984037d21c5129d07bf3550cc2afc6b10a5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 certifi==2025.1.31 \
     --hash=sha256:3d5da6925056f6f18f119200434a4780a94263f10d1c21d032a6f6b2baa20651 \
     --hash=sha256:ca78db4565a652026a4db2bcdf68f2fb589ea80d0be70e03929ed730746b84fe
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   httpcore
     #   httpx
     #   requests
@@ -517,11 +473,10 @@ cffi==1.17.1 \
     --hash=sha256:fc48c783f9c87e60831201f2cce7f3b2e4846bf4d8728eabe54d60700b318a0b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   argon2-cffi-bindings
     #   cryptography
+    #   moocore
     #   pymunk
-    #   pyzmq
 charset-normalizer==3.3.2 \
     --hash=sha256:06435b539f889b1f6f4ac1758871aae42dc3a8c0e24ac9e60c2384973ad73027 \
     --hash=sha256:06a81e93cd441c56a9b65d8e1d043daeb97a3d0856d177d5c90ba85acb3db087 \
@@ -615,48 +570,41 @@ charset-normalizer==3.3.2 \
     --hash=sha256:ff8fa367d09b717b2a17a052544193ad76cd49979c805768879cb63d9ca50561
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   requests
 click==8.1.7 \
     --hash=sha256:ae74fb96c20a0277a1d615f1e4d73c8414f5a98db8b799a7931d1582f3390c28 \
     --hash=sha256:ca9853ad459e787e2192211578cc907e7594e294c7ccc834310722b41b9ca6de
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   celery
     #   click-didyoumean
     #   click-plugins
     #   click-repl
     #   ray
-    #   tensorflow-datasets
     #   uvicorn
 click-didyoumean==0.3.1 \
     --hash=sha256:4f82fdff0dbe64ef8ab2279bd6aa3f6a99c3b28c05aa09cbfc07c9d7fbb5a463 \
     --hash=sha256:5c4bb6007cfea5f2fd6583a2fb6701a22a41eb98957e63d0fac41c10e7c3117c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   celery
 click-plugins==1.1.1.2 \
     --hash=sha256:008d65743833ffc1f5417bf0e78e8d2c23aab04d9745ba817bd3e71b0feb6aa6 \
     --hash=sha256:d7af3984a99d243c131aa1a828331e7630f4a88a9741fd05c927b204bcf92261
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   celery
 click-repl==0.3.0 \
     --hash=sha256:17849c23dba3d667247dc4defe1757fff98694e90fe37474f3feebb69ced26a9 \
     --hash=sha256:fb7e06deb8da8de86180a33a9da97ac316751c094c6899382da7feeeeb51b812
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   celery
 cloudpickle==3.1.1 \
     --hash=sha256:b216fa8ae4019d5482a8ac3c95d8f6346115d8835911fd4aefd1a445e4242c64 \
     --hash=sha256:c8c5a44295039331ee9dad40ba100a9c7297b6f988e50e87ccdf3765a668350e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   gymnasium
     #   hyperopt
     #   statsforecast
@@ -665,42 +613,37 @@ cma==3.2.2 \
     --hash=sha256:47ac71ddd2b9a922daa601516064a585a1a3dbbae7802bca935db25e525547eb
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nevergrad
+    #   pymoo
 cmdstanpy==1.2.0 \
     --hash=sha256:bbfe7b5fd64be0f559ca6496c3302b696497c1477dd73f106c1c601ea7e0550d \
     --hash=sha256:bdf55ab76f9eea01763b8990a56ff55d03e69ec31d9613fdbbe4c452126ff1bb
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   prophet
 coloredlogs==15.0.1 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934 \
     --hash=sha256:7c991aa71a4577af2f82600d8f8f3a89f936baeaf9b50a9c197da014e5bf16b0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   onnxruntime
 colorful==0.5.5 \
     --hash=sha256:62c187e27c1433db9463ff93b1451898d1e7e23a7e553583fd9daeb6325182e4 \
     --hash=sha256:66f8c1264b2a26f7293b96a03bb7a76c4bc8b9634369a0bffdcd12d618056a1d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 colorlog==6.7.0 \
     --hash=sha256:0d33ca236784a1ba3ff9c532d4964126d8a2c44f1f0cb1d2b0728196f512f662 \
     --hash=sha256:bd94bd21c1e13fac7bd3153f4bc3a7dc0eb0974b8bc2fdf1a989e474f6e582e5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   optuna
 comm==0.2.0 \
     --hash=sha256:2da8d9ebb8dd7bfc247adaff99f24dce705638a8042b85cb995066793e391001 \
     --hash=sha256:a517ea2ca28931c7007a7a99c562a0fa5883cfb48963140cf642c41c948498be
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   ipywidgets
 contextlib2==21.6.0 \
@@ -708,7 +651,6 @@ contextlib2==21.6.0 \
     --hash=sha256:ab1e2bfe1d01d968e1b7e8d9023bc51ef3509bba217bb730cee3827e1ee82869
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ml-collections
 contourpy==1.3.2 \
     --hash=sha256:0475b1f6604896bc7c53bb070e355e9321e1bc0d381735421a2d2068ec56531f \
@@ -770,7 +712,6 @@ contourpy==1.3.2 \
     --hash=sha256:fd93cc7f3139b6dd7aab2f26a90dde0aa9fc264dbf70f6740d498a70b860b82c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   matplotlib
 cryptography==44.0.3 \
     --hash=sha256:02f55fb4f8b79c1221b0961488eaae21015b69b210e18c386b69de182ebb1259 \
@@ -812,7 +753,6 @@ cryptography==44.0.3 \
     --hash=sha256:fe19d8bc5536a91a24a8133328880a41831b6c5df54599a8417b62fe015d3053
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pyopenssl
 cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
@@ -832,7 +772,6 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   ray
 cycler==0.12.1 \
@@ -840,14 +779,12 @@ cycler==0.12.1 \
     --hash=sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   matplotlib
 datasets==3.6.0 \
     --hash=sha256:1b2bf43b19776e2787e181cfd329cb0ca1a358ea014780c3581e0f276375e041 \
     --hash=sha256:25000c4a2c0873a710df127d08a202a06eab7bf42441a6bc278b499c2f72cd1b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-requirements.txt
     #   evaluate
 debugpy==1.8.0 \
@@ -871,35 +808,36 @@ debugpy==1.8.0 \
     --hash=sha256:ef9ab7df0b9a42ed9c878afd3eaaff471fce3fa73df96022e1f5c9f8f8c87ada
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
 decorator==5.1.1 \
     --hash=sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330 \
     --hash=sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipython
     #   moviepy
 deepspeed==0.17.2 \
     --hash=sha256:d9b636e5c7b7b3cb6d0694d145cdbb6cc97665ec8faf0180e6f7dcc4987a5251
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-requirements.txt
 defusedxml==0.7.1 \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
     --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
+deprecated==1.3.1 \
+    --hash=sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f \
+    --hash=sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pymoo
 dill==0.3.7 \
     --hash=sha256:76b122c08ef4ce2eedcd4d1abd8e641114bfc6c2867f49f3c41facf65bf19f5e \
     --hash=sha256:cc1c8b182eb3013e24bd475ff2e9295af86c1a38eb1aff128dac8962a9ce3c03
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   datasets
     #   evaluate
     #   multiprocess
@@ -907,14 +845,12 @@ directsearch==1.0 \
     --hash=sha256:8093ecc401a3d5eff28f053d4ef1b726f5a9c577bd33d6a8b2413a5ba753c734
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nevergrad
 distlib==0.3.7 \
     --hash=sha256:2e24928bc811348f0feb63014e97aaae3037f2cf48712d51ae61df7fd6075057 \
     --hash=sha256:9dafe54b34a028eafd95039d5e5d4851a13734540f1331060d31c9916e7147a8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   virtualenv
 dm-tree==0.1.9 \
     --hash=sha256:12f4cc6cd52a39aa38ff31577b6d79b6136a9a89273a876bf62335c9f65c27bf \
@@ -939,71 +875,57 @@ dm-tree==0.1.9 \
     --hash=sha256:f68b0efad76703dd4648586c75618a48cdd671b68c3266fe980e323c15423607
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
-    #   tensorflow-datasets
 einops==0.8.1 \
     --hash=sha256:919387eb55330f5757c6bea9165c5ff5cfe63a642682ea788a6d472576d81737 \
     --hash=sha256:de5d960a7a761225532e0f1959e5315ebeafc0cd43394732f103ca44b9837e84
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   deepspeed
 entrypoints==0.4 \
     --hash=sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4 \
     --hash=sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 etils==1.13.0 \
     --hash=sha256:a5b60c71f95bcd2d43d4e9fb3dc3879120c1f60472bb5ce19f7a860b1d44f607 \
     --hash=sha256:d9cd4f40fbe77ad6613b7348a18132cc511237b6c076dbb89105c0b520a4c6bb
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   array-record
-    #   mujoco
-    #   tensorflow-datasets
+    # via mujoco
 evaluate==0.4.3 \
     --hash=sha256:3a5700cf83aabee9549264e1e5666f116367c61dbd4d38352015e859a5e2098d \
     --hash=sha256:47d8770bdea76e2c2ed0d40189273027d1a41ccea861bcc7ba12d30ec5d1e517
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-test-requirements.txt
 executing==2.0.1 \
     --hash=sha256:35afe2ce3affba8ee97f2d69927fa823b08b472b7b994e36a52a964b93d16147 \
     --hash=sha256:eac49ca94516ccc753f9fb5ce82603156e590b27525a8bc32cce8ae302eb61bc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   stack-data
 fairscale==0.4.6 \
     --hash=sha256:9e8548ddb26b331d89340ed76ae9a0a51e50cc419d2b339bcbff62ca1a7712fc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 farama-notifications==0.0.4 \
     --hash=sha256:13fceff2d14314cf80703c8266462ebf3733c7d165336eee998fc58e545efd18 \
     --hash=sha256:14de931035a41961f7c056361dc7f980762a143d05791ef5794a751a2caf05ae
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   gymnasium
 fastapi==0.121.0 \
     --hash=sha256:06663356a0b1ee93e875bbf05a31fb22314f5bed455afaaad2b2dad7f26e98fa \
     --hash=sha256:8bdf1b15a55f4e4b0d6201033da9109ea15632cb76cf156e7b8b4019f2172106
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 fastjsonschema==2.19.0 \
     --hash=sha256:b9fd1a2dd6971dbc7fee280a95bd199ae0dd9ce22beb91cc75e9c1c528a5170e \
     --hash=sha256:e25df6647e1bc4a26070b700897b07b542ec898dd4f1f6ea013e7f6a88417225
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbformat
 fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
@@ -1077,14 +999,12 @@ fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:fcb50e195ec981c92d0211a201704aecbd9e4f9451aea3a6f71ac5b1ec2c98cf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   cupy-cuda12x
 filelock==3.17.0 \
     --hash=sha256:533dc2f7ba78dc2f0f531fc6c4940addf7b70a481e269a5a3b93be94ffbe8338 \
     --hash=sha256:ee4e77401ef576ebb38cd7f13b9b28893194acc20a8e68e18730ba9c0e54660e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   datasets
     #   huggingface-hub
     #   ray
@@ -1096,7 +1016,6 @@ flatbuffers==25.9.23 \
     --hash=sha256:676f9fa62750bb50cf531b42a0a2a118ad8f7f797a511eda12881c016f093b12
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   onnxruntime
     #   tensorflow
 fonttools==4.45.1 \
@@ -1144,8 +1063,13 @@ fonttools==4.45.1 \
     --hash=sha256:ff6a698bdd435d24c379f6e8a54908cd9bb7dda23719084d56bf8c87709bf3bd
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   matplotlib
+fqdn==1.5.1 \
+    --hash=sha256:105ed3677e767fb5ca086a0c1f4bb66ebc3c100be518f0e0d755d9eae164d89f \
+    --hash=sha256:3a179af3761e4df6eb2e026ff9e1a3033d3587bf980a0b1b2e1e5d08d7358014
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jsonschema
 frozenlist==1.4.1 \
     --hash=sha256:04ced3e6a46b4cfffe20f9ae482818e34eba9b5fb0ce4056e4cc9b6e212d09b7 \
     --hash=sha256:0633c8d5337cb5c77acbccc6357ac49a1770b8c487e5b3505c57b949b4b82e98 \
@@ -1226,7 +1150,6 @@ frozenlist==1.4.1 \
     --hash=sha256:fe1a06da377e3a1062ae5fe0926e12b84eceb8a50b350ddca72dc85015873f74
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp
     #   aiosignal
 fs==2.4.16 \
@@ -1234,15 +1157,14 @@ fs==2.4.16 \
     --hash=sha256:ae97c7d51213f4b70b6a958292530289090de3a7e15841e108fbe144f069d313
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   triad
 fsspec==2023.12.1 \
     --hash=sha256:6271f1d3075a378bfe432f6f42bf7e1d2a6ba74f78dd9b512385474c579146a0 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   datasets
+    #   etils
     #   evaluate
     #   huggingface-hub
     #   pytorch-lightning
@@ -1255,27 +1177,23 @@ fugue==0.8.7 \
     --hash=sha256:d4dc16bac9850024109b999cd163a6ca4976bd0bf190a85730d91ff74737c3f2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   statsforecast
 fugue-sql-antlr==0.2.0 \
     --hash=sha256:e15433aaf09502c5b0423019d9fa93e161172ceb08e7bd27af0175dadf3cf552
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fugue
 future==1.0.0 \
     --hash=sha256:929292d34f5872e70396626ef385ec22355a1fae8ad29e1a734c3e43f9fbc216 \
     --hash=sha256:bd2968309307861edae1458a4f8a4f3598c03be43b97521076aebf5d94c07b05
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-requirements.txt
 gast==0.6.0 \
     --hash=sha256:52b182313f7330389f72b069ba00f174cfe2a06411099547288839c6cbafbd54 \
     --hash=sha256:88fc5300d32c7ac6ca7b515310862f71e6fdf2c029bbec7c66c0f5dd47b6b1fb
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorflow
 glfw==2.6.3 \
     --hash=sha256:5dc26b55554ac6758d064b343be7d3689f7bab7be90cdf8cf5df128dac63859b \
@@ -1289,21 +1207,18 @@ glfw==2.6.3 \
     --hash=sha256:ed3845261e6160383ff19615bcd1d355411cef2dfc2c2477f1eb9e8cbd8b00f1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   mujoco
 google-api-core==2.24.2 \
     --hash=sha256:810a63ac95f3c441b7c0e43d344e372887f62ce9071ba972eacf32672e072de9 \
     --hash=sha256:81718493daf06d96d6bc76a91c23874dbf2fac0adbbf542831b805ee6e974696
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   opencensus
 google-auth==2.23.4 \
     --hash=sha256:79905d6b1652187def79d491d6e23d0cbb3a21d3c7ba0dbaa9c8a01906b13ff3 \
     --hash=sha256:d4bbc92fe4b8bfd2f3e8d88e5ba7085935da208ee38a134fc280e7ce682a05f2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   google-api-core
 google-pasta==0.2.0 \
     --hash=sha256:4612951da876b1a10fe3960d7226f0c7682cf901e16ac06e473b267a5afa8954 \
@@ -1311,23 +1226,25 @@ google-pasta==0.2.0 \
     --hash=sha256:c9f2c8dfc8f96d0d5808299920721be30c9eec37f2389f28904f454565c8a16e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorflow
 googleapis-common-protos==1.72.0 \
     --hash=sha256:4299c5a82d5ae1a9702ada957347726b167f9f8d1fc352477702a1e851ff4038 \
     --hash=sha256:e55a601c1b32b52d7a3e65f43563e2aa61bcd737998ee672ac9b951cd49319f5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   google-api-core
-    #   tensorflow-metadata
 gpytorch==1.14.3 \
     --hash=sha256:3341b6fd71b67b8df1c6e59229e1d675775929125cf72d391dacdb7f98bbeab5 \
     --hash=sha256:7f52f6bdf20c24e13aac95744853986a8d440a138fa8d7fec6e1084ae50c6bf7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   botorch
+graphemeu==0.7.2 \
+    --hash=sha256:1444520f6899fd30114fc2a39f297d86d10fa0f23bf7579f772f8bc7efaa2542 \
+    --hash=sha256:42bbe373d7c146160f286cd5f76b1a8ad29172d7333ce10705c5cc282462a4f8
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   alive-progress
 greenlet==3.0.1 ; (python_full_version < '3.13' and platform_machine == 'AMD64') or (python_full_version < '3.13' and platform_machine == 'WIN32') or (python_full_version < '3.13' and platform_machine == 'aarch64') or (python_full_version < '3.13' and platform_machine == 'amd64') or (python_full_version < '3.13' and platform_machine == 'ppc64le') or (python_full_version < '3.13' and platform_machine == 'win32') or (python_full_version < '3.13' and platform_machine == 'x86_64') \
     --hash=sha256:0a02d259510b3630f330c86557331a3b0e0c79dac3d166e449a39363beaae174 \
     --hash=sha256:0b6f9f8ca7093fd4433472fd99b5650f8a26dcd8ba410e14094c1e44cd3ceddd \
@@ -1388,7 +1305,6 @@ greenlet==3.0.1 ; (python_full_version < '3.13' and platform_machine == 'AMD64')
     --hash=sha256:fa24255ae3c0ab67e613556375a4341af04a084bd58764731972bcbc8baeba36
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   sqlalchemy
 grpcio==1.76.0 \
     --hash=sha256:035d90bc79eaa4bed83f524331d55e35820725c9fbb00ffa1904d5550ed7ede3 \
@@ -1454,7 +1370,6 @@ grpcio==1.76.0 \
     --hash=sha256:ff8a59ea85a1f2191a0ffcc61298c571bc566332f82e5f5be1b83c9d8e668a62
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
     #   tensorboard
     #   tensorflow
@@ -1463,7 +1378,6 @@ gymnasium==1.2.2 \
     --hash=sha256:f04ec362b1fdf73a8b327db5ef89384a3f2ba411e05d3521513414fbbb2199c8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   minigrid
     #   pettingzoo
     #   ray
@@ -1474,7 +1388,6 @@ h11==0.16.0 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   httpcore
     #   uvicorn
 h5py==3.12.1 \
@@ -1506,7 +1419,6 @@ h5py==3.12.1 \
     --hash=sha256:e4d51919110a030913201422fb07987db4338eba5ec8c5a15d6fab8e03d443fc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   keras
     #   tensorflow
@@ -1535,21 +1447,18 @@ hf-xet==1.2.0 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or 
     --hash=sha256:f182f264ed2acd566c514e45da9f2119110e48a87a327ca271027904c70c5832
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   huggingface-hub
 hjson==3.1.0 \
     --hash=sha256:55af475a27cf83a7969c808399d7bccdec8fb836a07ddbd574587593b9cdcf75 \
     --hash=sha256:65713cdcf13214fb554eb8b4ef803419733f4f5e551047c9b711098ab7186b89
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   deepspeed
 holidays==0.39 \
     --hash=sha256:8303ccf2662241001d18ae4cfe44874872b999c827ec0f63d8022ab092b39ea3 \
     --hash=sha256:b629b2d12b433eb313aacf903ee9431c0fbd77c58900d51e85e124704f7c41b6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
     #   prophet
 httpcore==1.0.9 \
@@ -1557,21 +1466,63 @@ httpcore==1.0.9 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   httpx
+httptools==0.7.1 \
+    --hash=sha256:04c6c0e6c5fb0739c5b8a9eb046d298650a0ff38cf42537fc372b28dc7e4472c \
+    --hash=sha256:0d92b10dbf0b3da4823cde6a96d18e6ae358a9daa741c71448975f6a2c339cad \
+    --hash=sha256:0e68b8582f4ea9166be62926077a3334064d422cf08ab87d8b74664f8e9058e1 \
+    --hash=sha256:11d01b0ff1fe02c4c32d60af61a4d613b74fad069e47e06e9067758c01e9ac78 \
+    --hash=sha256:135fbe974b3718eada677229312e97f3b31f8a9c8ffa3ae6f565bf808d5b6bcb \
+    --hash=sha256:2c15f37ef679ab9ecc06bfc4e6e8628c32a8e4b305459de7cf6785acd57e4d03 \
+    --hash=sha256:322d00c2068d125bd570f7bf78b2d367dad02b919d8581d7476d8b75b294e3e6 \
+    --hash=sha256:379b479408b8747f47f3b253326183d7c009a3936518cdb70db58cffd369d9df \
+    --hash=sha256:38e0c83a2ea9746ebbd643bdfb521b9aa4a91703e2cd705c20443405d2fd16a5 \
+    --hash=sha256:3e14f530fefa7499334a79b0cf7e7cd2992870eb893526fb097d51b4f2d0f321 \
+    --hash=sha256:44c8f4347d4b31269c8a9205d8a5ee2df5322b09bbbd30f8f862185bb6b05346 \
+    --hash=sha256:465275d76db4d554918aba40bf1cbebe324670f3dfc979eaffaa5d108e2ed650 \
+    --hash=sha256:474d3b7ab469fefcca3697a10d11a32ee2b9573250206ba1e50d5980910da657 \
+    --hash=sha256:49794f9250188a57fa73c706b46cb21a313edb00d337ca4ce1a011fe3c760b28 \
+    --hash=sha256:5ddbd045cfcb073db2449563dd479057f2c2b681ebc232380e63ef15edc9c023 \
+    --hash=sha256:601b7628de7504077dd3dcb3791c6b8694bbd967148a6d1f01806509254fb1ca \
+    --hash=sha256:654968cb6b6c77e37b832a9be3d3ecabb243bbe7a0b8f65fbc5b6b04c8fcabed \
+    --hash=sha256:69d4f9705c405ae3ee83d6a12283dc9feba8cc6aaec671b412917e644ab4fa66 \
+    --hash=sha256:6babce6cfa2a99545c60bfef8bee0cc0545413cb0018f617c8059a30ad985de3 \
+    --hash=sha256:7347714368fb2b335e9063bc2b96f2f87a9ceffcd9758ac295f8bbcd3ffbc0ca \
+    --hash=sha256:7aea2e3c3953521c3c51106ee11487a910d45586e351202474d45472db7d72d3 \
+    --hash=sha256:7fe6e96090df46b36ccfaf746f03034e5ab723162bc51b0a4cf58305324036f2 \
+    --hash=sha256:84d86c1e5afdc479a6fdabf570be0d3eb791df0ae727e8dbc0259ed1249998d4 \
+    --hash=sha256:a3c3b7366bb6c7b96bd72d0dbe7f7d5eead261361f013be5f6d9590465ea1c70 \
+    --hash=sha256:abd72556974f8e7c74a259655924a717a2365b236c882c3f6f8a45fe94703ac9 \
+    --hash=sha256:ac50afa68945df63ec7a2707c506bd02239272288add34539a2ef527254626a4 \
+    --hash=sha256:aeefa0648362bb97a7d6b5ff770bfb774930a327d7f65f8208394856862de517 \
+    --hash=sha256:b580968316348b474b020edf3988eecd5d6eec4634ee6561e72ae3a2a0e00a8a \
+    --hash=sha256:c08fe65728b8d70b6923ce31e3956f859d5e1e8548e6f22ec520a962c6757270 \
+    --hash=sha256:c8c751014e13d88d2be5f5f14fc8b89612fcfa92a9cc480f2bc1598357a23a05 \
+    --hash=sha256:cad6b591a682dcc6cf1397c3900527f9affef1e55a06c4547264796bbd17cf5e \
+    --hash=sha256:cbf8317bfccf0fed3b5680c559d3459cccf1abe9039bfa159e62e391c7270568 \
+    --hash=sha256:cfabda2a5bb85aa2a904ce06d974a3f30fb36cc63d7feaddec05d2050acede96 \
+    --hash=sha256:d169162803a24425eb5e4d51d79cbf429fd7a491b9e570a55f495ea55b26f0bf \
+    --hash=sha256:d496e2f5245319da9d764296e86c5bb6fcf0cf7a8806d3d000717a889c8c0b7b \
+    --hash=sha256:de987bb4e7ac95b99b805b99e0aae0ad51ae61df4263459d36e07cf4052d8b3a \
+    --hash=sha256:df091cf961a3be783d6aebae963cc9b71e00d57fa6f149025075217bc6a55a7b \
+    --hash=sha256:e99c7b90a29fd82fea9ef57943d501a16f3404d7b9ee81799d41639bdaae412c \
+    --hash=sha256:eb844698d11433d2139bbeeb56499102143beb582bd6c194e3ba69c22f25c274 \
+    --hash=sha256:f084813239e1eb403ddacd06a30de3d3e09a9b76e7894dcda2b22f8a726e9c60 \
+    --hash=sha256:f25bbaf1235e27704f1a7b86cd3304eabc04f569c828101d94a0e605ef7205a5 \
+    --hash=sha256:f65744d7a8bdb4bda5e1fa23e4ba16832860606fcc09d674d56e425e991539ec \
+    --hash=sha256:f72fdbae2dbc6e68b8239defb48e6a5937b12218e6ffc2c7846cc37befa84362
+    # via uvicorn
 httpx==0.28.1 \
     --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
     --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab
 huggingface-hub==0.36.0 \
     --hash=sha256:47b3f0e2539c39bf5cde015d63b72ec49baff67b6931c3d97f3f84532e2b8d25 \
     --hash=sha256:7bcc9ad17d5b3f07b57c78e79d527102d08313caa278a641993acddcb894548d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-requirements.txt
     #   accelerate
     #   datasets
@@ -1584,21 +1535,19 @@ humanfriendly==10.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   coloredlogs
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-requirements.txt
 idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   anyio
     #   httpx
+    #   jsonschema
     #   requests
     #   yarl
 imageio==2.34.2 \
@@ -1606,7 +1555,6 @@ imageio==2.34.2 \
     --hash=sha256:a0bb27ec9d5bab36a9f4835e51b21d2cb099e1f78451441f94687ff3404b79f8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   moviepy
 imageio-ffmpeg==0.4.5 \
@@ -1618,59 +1566,37 @@ imageio-ffmpeg==0.4.5 \
     --hash=sha256:f2ea4245a2adad25dedf98d343159579167e549ac8c4691cef5eff980e20c139
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
 importlib-metadata==6.11.0 \
     --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
     --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   ale-py
-    #   alembic
-    #   click
-    #   evaluate
-    #   jupyter-client
-    #   jupyter-lsp
-    #   jupyterlab
-    #   jupyterlab-server
-    #   lightning-utilities
-    #   markdown
     #   opentelemetry-api
-    #   pytest
-    #   sqlalchemy
-    #   virtualenv
 importlib-resources==5.13.0 \
     --hash=sha256:82d5c6cca930697dbbd86c93333bb2c2e72861d4789a11c2662b933e5ad2b528 \
     --hash=sha256:9f7bd0c97b79972a6cce36a366356d16d5e13b09679c11a58f1014bfdf8e64b2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   ale-py
-    #   alembic
-    #   jsonschema
+    #   etils
     #   prophet
-    #   tensorflow-datasets
 iniconfig==2.0.0 \
     --hash=sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3 \
     --hash=sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pytest
 ipykernel==6.27.1 \
     --hash=sha256:7d5d594b6690654b4d299edba5e872dc17bb7396a8d0609c97cb7b8a1c605de6 \
     --hash=sha256:dab88b47f112f9f7df62236511023c9bdeef67abc73af7c652e4ce4441601686
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab
 ipython==8.12.3 \
     --hash=sha256:3910c4b54543c2ad73d06579aa771041b7d5707b033bd488669b4cf544e3b363 \
     --hash=sha256:b0340d46a933d27c657b211a329d0be23793c36595acf9e6ef4164bc01a1804c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   ipywidgets
 ipywidgets==8.1.3 \
@@ -1678,20 +1604,22 @@ ipywidgets==8.1.3 \
     --hash=sha256:f5f9eeaae082b1823ce9eac2575272952f40d748893972956dc09700a6392d9c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
+isoduration==20.11.0 \
+    --hash=sha256:ac2f9015137935279eac671f94f89eb00584f940f5dc49462a0c4ee692ba1bd9 \
+    --hash=sha256:b2904c2a4228c3d44f409c8ae8e2370eb21a26f7ac2ec5446df141dde3452042
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jsonschema
 izulu==0.50.0 \
     --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
     --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   taskiq
+    # via taskiq
 jaxtyping==0.3.4 \
     --hash=sha256:70e438db2f361575d04cccea50f77f9c8fe92f8b2086dc0ce89e5f1658bebaab \
     --hash=sha256:b4aac576a1b6c62a363f76f543f21c7cd4c7bb8714816c2c875f28b7abcdb770
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   gpytorch
     #   linear-operator
 jedi==0.19.1 \
@@ -1699,13 +1627,11 @@ jedi==0.19.1 \
     --hash=sha256:e983c654fe5c02867aef4cdfce5a2fbb4a50adc0af145f70504238f18ef5e7e0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipython
 jinja2==3.1.6 \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
     #   fugue
     #   fugue-sql-antlr
@@ -1721,21 +1647,24 @@ joblib==1.2.0 \
     --hash=sha256:e1cee4a79e4af22881164f218d4311f60074197fb707e082e803b61f6d137018
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   scikit-learn
 json5==0.9.14 \
     --hash=sha256:740c7f1b9e584a468dbb2939d8d458db3427f2c93ae2139d05f47e453eae964f \
     --hash=sha256:9ed66c3a6ca3510a976a9ef9b8c0787de24802724ab1860bc0153c7fdd589b02
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab-server
+jsonpointer==2.4 \
+    --hash=sha256:15d51bba20eea3165644553647711d150376234112651b4f1811022aecad7d7a \
+    --hash=sha256:585cee82b70211fa9e6043b7bb89db6e1aa49524340dde8ad6b63206ea689d88
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jsonschema
 jsonschema==4.23.0 \
     --hash=sha256:d71497fef26351a33265337fa77ffeb82423f3ea21283cd9467bb03999266bc4 \
     --hash=sha256:fbadb6f8b144a8f8cf9f0b89ba94501d143e50411a1278633f56a7acf7fd5566
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-events
     #   jupyterlab-server
     #   nbformat
@@ -1745,14 +1674,12 @@ jsonschema-specifications==2024.10.1 \
     --hash=sha256:a09a0680616357d9a0ecf05c12ad234479f549239d0f5b55f3deea67475da9bf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jsonschema
 jupyter-client==8.6.3 \
     --hash=sha256:35b3a0947c4a6e9d589eb97d7d4cd5e90f910ee73101611f01283732bd6d9419 \
     --hash=sha256:e8a19cc986cc45905ac3362915f410f3af85424b4c0905e94fa5f2cb08e8f23f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   jupyter-server
     #   nbclient
@@ -1761,7 +1688,6 @@ jupyter-core==5.5.0 \
     --hash=sha256:e11e02cd8ae0a9de5c6c44abf5727df9f2581055afe00b22183f621ba3585805
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
@@ -1773,21 +1699,18 @@ jupyter-events==0.6.3 \
     --hash=sha256:9a6e9995f75d1b7146b436ea24d696ce3a35bfa8bfe45e0c33c334c79464d0b3
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
 jupyter-lsp==2.3.0 \
     --hash=sha256:458aa59339dc868fb784d73364f17dbce8836e906cd75fd471a325cba02e0245 \
     --hash=sha256:e914a3cb2addf48b1c7710914771aaf1819d46b2e5a79b0f917b5478ec93f34f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab
 jupyter-server==2.10.0 \
     --hash=sha256:47b8f5e63440125cb1bb8957bf12b18453ee5ed9efe42d2f7b2ca66a7019a278 \
     --hash=sha256:dde56c9bc3cb52d7b72cc0f696d15d7163603526f1a758eb4a27405b73eab2a5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-lsp
     #   jupyterlab
     #   jupyterlab-server
@@ -1797,49 +1720,42 @@ jupyter-server-terminals==0.5.3 \
     --hash=sha256:5ae0295167220e9ace0edcfdb212afd2b01ee8d179fe6f23c899590e9b8a5269
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
 jupyterlab==4.5.0 \
     --hash=sha256:88e157c75c1afff64c7dc4b801ec471450b922a4eae4305211ddd40da8201c8a \
     --hash=sha256:aec33d6d8f1225b495ee2cf20f0514f45e6df8e360bdd7ac9bace0b7ac5177ea
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 jupyterlab-pygments==0.3.0 \
     --hash=sha256:721aca4d9029252b11cfa9d185e5b5af4d54772bb8072f9b7036f4170054d35d \
     --hash=sha256:841a89020971da1d8693f1a99997aefc5dc424bb1b251fd6322462a1b8842780
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 jupyterlab-server==2.28.0 \
     --hash=sha256:35baa81898b15f93573e2deca50d11ac0ae407ebb688299d3a5213265033712c \
     --hash=sha256:e4355b148fdcf34d312bbbc80f22467d6d20460e8b8736bf235577dd18506968
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab
 jupyterlab-widgets==3.0.11 \
     --hash=sha256:78287fd86d20744ace330a61625024cf5521e1c012a352ddc0a3cdc2348becd0 \
     --hash=sha256:dd5ac679593c969af29c9bed054c24f26842baa51352114736756bc035deee27
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipywidgets
 jupytext==1.16.3 \
     --hash=sha256:1ebac990461dd9f477ff7feec9e3003fa1acc89f3c16ba01b73f79fd76f01a98 \
     --hash=sha256:870e0d7a716dcb1303df6ad1cec65e3315a20daedd808a55cb3dae2d56e4ed20
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-test-requirements.txt
 keras==3.12.0 \
     --hash=sha256:02b69e007d5df8042286c3bcc2a888539e3e487590ffb08f6be1b4354df50aa8 \
     --hash=sha256:536e3f8385a05ae04e82e08715a1a59988578087e187b04cb0a6fad11743f07f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorflow
 kiwisolver==1.4.7 \
     --hash=sha256:073a36c8273647592ea332e816e75ef8da5c303236ec0167196793eb1e34657a \
@@ -1958,14 +1874,12 @@ kiwisolver==1.4.7 \
     --hash=sha256:f9a9e8a507420fe35992ee9ecb302dab68550dedc0da9e2880dd88071c5fb052
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   matplotlib
 kombu==5.5.4 \
     --hash=sha256:886600168275ebeada93b888e831352fe578168342f0d1d5833d88ba0d847363 \
     --hash=sha256:a12ed0557c238897d8e518f1d1fdf84bd1516c5e305af2dacd85c2015115feb8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   celery
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
@@ -1980,23 +1894,26 @@ libclang==18.1.1 \
     --hash=sha256:cf4a99b05376513717ab5d82a0db832c56ccea4fd61a69dbb7bccf2dfb207dbe
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorflow
 lightning-utilities==0.11.2 \
     --hash=sha256:541f471ed94e18a28d72879338c8c52e873bb46f4c47644d89228faeb6751159 \
     --hash=sha256:adf4cf9c5d912fe505db4729e51d1369c6927f3a8ac55a9dff895ce5c0da08d9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pytorch-lightning
 linear-operator==0.6 \
     --hash=sha256:a9e2663879f1a2b28631bf7ef34892c4e5749893e711c8ef0ab0a39aff70a654 \
     --hash=sha256:b7c30ce0f6599e19c1cb970e00811828df98783b20c1dd2f765928415012f41c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   botorch
     #   gpytorch
+linkify-it-py==2.0.3 ; sys_platform != 'win32' \
+    --hash=sha256:68cda27e162e9215c17d786649d1da0021a451bdc436ef9e0fa0ba5234b9b048 \
+    --hash=sha256:6bcbc417b0ac14323382aef5c5192c0075bf8a9d6b41820a2b66371eac6b6d79
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   markdown-it-py
 llvmlite==0.45.1 \
     --hash=sha256:02a164db2d79088bbd6e0d9633b4fe4021d6379d7e4ac7cc85ed5f44b06a30c5 \
     --hash=sha256:080e6f8d0778a8239cd47686d402cb66eb165e421efa9391366a9b7e5810a38b \
@@ -2021,7 +1938,6 @@ llvmlite==0.45.1 \
     --hash=sha256:f9c272682d91e0d57f2a76c6d9ebdfccc603a01828cdbe3d15273bdca0c3363a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   numba
 lxml==6.0.2 \
     --hash=sha256:058027e261afed589eddcfe530fcc6f3402d7fd7e89bfd0532df82ebc1563dba \
@@ -2166,7 +2082,6 @@ lxml==6.0.2 \
     --hash=sha256:fe659f6b5d10fb5a17f00a50eb903eb277a71ee35df4615db573c069bcf967ac
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 lz4==4.4.5 \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
@@ -2228,21 +2143,18 @@ lz4==4.4.5 \
     --hash=sha256:ff1b50aeeec64df5603f17984e4b5be6166058dcf8f1e26a3da40d7a0f6ab547
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 mako==1.3.0 \
     --hash=sha256:57d4e997349f1a92035aa25c17ace371a4213f2ca42f99bee9a602500cfd54d9 \
     --hash=sha256:e3a9d388fd00e87043edbe8792f45880ac0114e9c4adc69f6e9bfb2c55e3b11b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   alembic
 markdown==3.5.1 \
     --hash=sha256:5874b47d4ee3f0b14d764324d2c94c03ea66bee56f2d929da9f2508d65e722dc \
     --hash=sha256:b65d7beb248dc22f2e8a31fb706d93798093c308dc1aba295aedeb9d41a813bd
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
     #   tensorboard
 markdown-it-py==2.2.0 \
@@ -2250,7 +2162,6 @@ markdown-it-py==2.2.0 \
     --hash=sha256:7c9a5e412688bc771c67432cbfebcdd686c93ce6484913dccf06cb5a0bea35a1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupytext
     #   mdit-py-plugins
     #   rich
@@ -2319,7 +2230,6 @@ markupsafe==3.0.0 \
     --hash=sha256:f846fd7c241e5bd4161e2a483663eb66e4d8e12130fcdc052f310f388f1d61c6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jinja2
     #   mako
     #   nbconvert
@@ -2382,16 +2292,15 @@ matplotlib==3.10.7 \
     --hash=sha256:fba2974df0bf8ce3c995fa84b79cde38326e0f7b5409e7a3a481c1141340bcf7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
     #   prophet
+    #   pymoo
     #   zoopt
 matplotlib-inline==0.1.6 \
     --hash=sha256:f1f41aab5328aa5aaea9b16d083b128102f8712542f819fe7e6a420ff581b311 \
     --hash=sha256:f887e5f10ba98e8d2b150ddcf4702c1e5f8b3a20005eb0f74bfdbd360ee6f304
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   ipython
 mdit-py-plugins==0.3.5 \
@@ -2399,14 +2308,13 @@ mdit-py-plugins==0.3.5 \
     --hash=sha256:eee0adc7195e5827e17e02d2a258a2ba159944a0748f59c5099a4a27f78fcf6a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupytext
+    #   markdown-it-py
 mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   markdown-it-py
 memray==1.19.1 ; sys_platform != 'win32' \
     --hash=sha256:004588fbf0ac91fb15d58e09b16c5fc28644ee48893b04dfcd28338ae56e378d \
@@ -2460,27 +2368,23 @@ memray==1.19.1 ; sys_platform != 'win32' \
     --hash=sha256:ff5cabd4ca6672c09e1f22ab95b95b845e94f41fbd4b17021a30603705636dbc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 minigrid==2.3.1 \
     --hash=sha256:6e841a9f95378abe1fdb053d4dfaead1613ceb2fa1e9548a8525882fbdb4f6f3 \
     --hash=sha256:9b08ccd1a99754eb8d26a3bde59b35c016861da20aae7fff559769b329c26b67
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 mistune==0.8.4 \
     --hash=sha256:59a3429db53c50b5c6bcc8a07f8848cb00d7dc8bdb431a4ab41920d201d4756e \
     --hash=sha256:88a1051873018da288eee8538d476dffe1262495144b33ecb586c4ab266bb8d4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 ml-collections==0.1.1 \
     --hash=sha256:3fefcc72ec433aa1e5d32307a3e474bbb67f405be814ea52a2166bfc9dbe68cc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   open-spiel
 ml-dtypes==0.5.4 \
     --hash=sha256:0d2ffd05a2575b1519dc928c0b93c06339eb67173ff53acb00724502cda231cf \
@@ -2524,22 +2428,31 @@ ml-dtypes==0.5.4 \
     --hash=sha256:f21c9219ef48ca5ee78402d5cc831bd58ea27ce89beda894428bc67a52da5328
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   keras
     #   tensorflow
+moocore==0.1.10 \
+    --hash=sha256:21986e15b8e216121c6c84b1a90765d93ae96e0d7ab6be95943f5f4c61d46bb4 \
+    --hash=sha256:234bf15418cf347e9492971d75405f27fa0dd15389f4432b400d5a878d403613 \
+    --hash=sha256:515241875ffa4e5083ec66554e580613971f2191777a76f9ffaab1b9f641ce95 \
+    --hash=sha256:65f7babf9fd5f70b8c5d3e8512c375e70c785c6eb225bcc54e6602ecf1554a93 \
+    --hash=sha256:d4428aeec0b5979b5719af1215c549b1727992ad691b54efdf3ee06cc05b9286 \
+    --hash=sha256:e7236d01723ef30d68aa717c28d0b843b404cbd900d4d5ea58093b17e5bc9595 \
+    --hash=sha256:e894e3cd2070cf48587ac1382316dff4da4629614b23f13454f0aeba23e94e57 \
+    --hash=sha256:fc46072e17efd78799000e0e5d38e02b5c66e8a285806e301f10751920be5a11
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pymoo
 moviepy==0.2.3.1 \
     --hash=sha256:5188c506d43a881d606f0757df42ed73402d43ba1107c6a6b0550f8db8bc97fd \
     --hash=sha256:c56165ec07315dfb94f23ed541b9099f6e1ffe7ff980f254ea2fe37355ee2b95
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 mpmath==1.3.0 \
     --hash=sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f \
     --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   gpytorch
     #   linear-operator
     #   sympy
@@ -2608,7 +2521,6 @@ msgpack==1.1.2 \
     --hash=sha256:fffee09044073e69f2bad787071aeec727183e7580443dfeb8556cbf1978d162
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
     #   deepspeed
     #   msgpack-numpy
@@ -2618,7 +2530,6 @@ msgpack-numpy==0.4.8 \
     --hash=sha256:c667d3180513422f9c7545be5eec5d296dcbb357e06f72ed39cc683797556e69
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
 mujoco==3.2.4 \
     --hash=sha256:0b7b64dd1d43e380eeb0d47312ee81a1378f6bc6b93fa0c2f6ddf0bc888f8127 \
@@ -2644,7 +2555,6 @@ mujoco==3.2.4 \
     --hash=sha256:fbe919154c4bd1c6b4bb9f99d7659bc2b81c9cf6c7db71b83665afc4b042e9c6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 multidict==6.0.5 \
     --hash=sha256:01265f5e40f5a17f8241d52656ed27192be03bfa8764d88e8220141d1e4b3556 \
@@ -2739,7 +2649,6 @@ multidict==6.0.5 \
     --hash=sha256:fe5d7785250541f7f5019ab9cba2c71169dc7d74d0f45253f8313f436458a4ef
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp
     #   yarl
 multipledispatch==1.0.0 \
@@ -2747,7 +2656,6 @@ multipledispatch==1.0.0 \
     --hash=sha256:5c839915465c68206c3e9c473357908216c28383b425361e5d144594bf85a7e0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   botorch
 multiprocess==0.70.15 \
     --hash=sha256:0eac53214d664c49a34695e5824872db4006b1a465edd7459a251809c3773370 \
@@ -2768,42 +2676,36 @@ multiprocess==0.70.15 \
     --hash=sha256:f7d4a1629bccb433114c3b4885f69eccc200994323c80f6feee73b0edc9199c5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   datasets
     #   evaluate
 mypy-extensions==1.0.0 \
     --hash=sha256:4392f6c0eb8a5668a69e23d168ffa70f0be9ccfd32b5cc2d26a34ae5b844552d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   typing-inspect
 namex==0.1.0 \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   keras
 nbclient==0.5.13 \
     --hash=sha256:40c52c9b5e3c31faecaee69f202b3f53e38d7c1c563de0fadde9d7eda0fdafe8 \
     --hash=sha256:47ac905af59379913c1f8f541098d2550153cf8dc58553cbe18c702b181518b0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 nbconvert==6.5.4 \
     --hash=sha256:9e3c7c6d491374cbdd5f35d268c05809357716d346f4573186bbeab32ee50bc1 \
     --hash=sha256:d679a947f849a966cbbd0bf6e7fedcfdb64be3b20ce7cef11ad55c13f5820e19
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
 nbformat==5.9.2 \
     --hash=sha256:1c5172d786a41b82bcfd0c23f9e6b6f072e8fb49c39250219e4acfff1efe89e9 \
     --hash=sha256:5f98b5ba1997dff175e77e0c17d5c10a96eaed2cbd1de3533d1fc35d5e111192
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
     #   jupytext
     #   nbclient
@@ -2813,7 +2715,6 @@ nest-asyncio==1.5.8 \
     --hash=sha256:accda7a339a70599cb08f9dd09a67e0c2ef8d8d6f4c07f96ab203f2ae254e48d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   nbclient
 networkx==3.2.1 \
@@ -2821,7 +2722,6 @@ networkx==3.2.1 \
     --hash=sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   hyperopt
     #   torch
 nevergrad==1.0.12 \
@@ -2829,7 +2729,6 @@ nevergrad==1.0.12 \
     --hash=sha256:ade90dacbb676f6dfc9fee3d4f9c628ec29eec9e3d995a31026ae8a61988b803
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-requirements.txt
 ninja==1.11.1.1 \
     --hash=sha256:18302d96a5467ea98b68e1cae1ae4b4fb2b2a56a82b955193c637557c7273dbd \
@@ -2849,22 +2748,18 @@ ninja==1.11.1.1 \
     --hash=sha256:fa2ba9d74acfdfbfbcf06fad1b8282de8a7a8c481d9dee45c859a8c93fcc1082
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   deepspeed
 nixl==0.4.0 ; sys_platform != 'darwin' \
     --hash=sha256:2e28bb82708f92c1eef7766a054aeae228ccf3f9d154ee10c9516839d9d8555e \
     --hash=sha256:435d15686c9901c1fd6132041f54ff350fa72bf0a5a6b9d3d3e4498366516a24 \
     --hash=sha256:9a6c831bd8863ab2e2bb242f3cc916f330801836e7461820db9d01d7c6735ef0 \
     --hash=sha256:ef19355b74e2bd5460fca897b8a6559725784694fdd20b0f254b1172d63c2460
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+    # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
 notebook-shim==0.2.3 \
     --hash=sha256:a83496a43341c1674b093bfcebf0fe8e74cbe7eda5fd2bbc56f8e39e1486c0c7 \
     --hash=sha256:f69388ac283ae008cd506dda10d0288b09a017d822d5e8c7129a152cbd3ce7e9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyterlab
 numba==0.62.1 \
     --hash=sha256:03de6d691d6b6e2b76660ba0f38f37b81ece8b2cc524a62f2a0cfae2bfb6f9da \
@@ -2890,7 +2785,6 @@ numba==0.62.1 \
     --hash=sha256:f43e24b057714e480fe44bc6031de499e7cf8150c63eb461192caa6cc8530bc8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   statsforecast
 numexpr==2.14.1 \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
@@ -2952,7 +2846,6 @@ numexpr==2.14.1 \
     --hash=sha256:fdd886f4b7dbaf167633ee396478f0d0aa58ea2f9e7ccc3c6431019623e8d68f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-requirements.txt
 numpy==2.2.6 \
     --hash=sha256:038613e9fb8c72b0a41f025a7e4c3f0b7a1b5d768ece4796b674c8f3fe13efff \
@@ -3012,9 +2905,9 @@ numpy==2.2.6 \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   accelerate
     #   ale-py
+    #   autograd
     #   bayesian-optimization
     #   cma
     #   cmdstanpy
@@ -3033,6 +2926,7 @@ numpy==2.2.6 \
     #   matplotlib
     #   minigrid
     #   ml-dtypes
+    #   moocore
     #   moviepy
     #   msgpack-numpy
     #   mujoco
@@ -3050,6 +2944,7 @@ numpy==2.2.6 \
     #   patsy
     #   pettingzoo
     #   prophet
+    #   pymoo
     #   pyro-ppl
     #   ray
     #   scikit-learn
@@ -3062,7 +2957,6 @@ numpy==2.2.6 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
-    #   tensorflow-datasets
     #   tinyscaler
     #   torch-geometric
     #   torchmetrics
@@ -3075,56 +2969,40 @@ nvidia-cublas-cu12==12.1.3.1 ; platform_machine == 'x86_64' and sys_platform == 
     --hash=sha256:2b964d60e8cf11b5e1073d179d85fa340c120e99b3067558f3cf98dd69d02906 \
     --hash=sha256:ee53ccca76a6fc08fb9701aa95b6ceb242cdaab118c3bb152af4e579af792728
     # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nvidia-cudnn-cu12
     #   nvidia-cusolver-cu12
     #   torch
 nvidia-cuda-cupti-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:bea8236d13a0ac7190bd2919c3e8e6ce1e402104276e6f9694479e48bb0eb2a4 \
     --hash=sha256:e54fde3983165c624cb79254ae9818a456eb6e87a7fd4d56a2352c24ee542d7e
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 nvidia-cuda-nvrtc-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:0a98a522d9ff138b96c010a65e145dc1b4850e9ecb75a0172371793752fd46ed \
     --hash=sha256:339b385f50c309763ca65456ec75e17bbefcbbf2893f462cb8b90584cd27a1c2
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 nvidia-cuda-runtime-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:6e258468ddf5796e25f1dc591a31029fa317d97a0a94ed93468fc86301d61e40 \
     --hash=sha256:dfb46ef84d73fababab44cf03e3b83f80700d27ca300e537f85f636fac474344
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 nvidia-cudnn-cu12==8.9.2.26 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:5ccb288774fdfb07a7e7025ffec286971c06d8d7b4fb162525334616d7629ff9
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 nvidia-cufft-cu12==11.0.2.54 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:794e3948a1aa71fd817c3775866943936774d1c14e7628c74f6f7417224cdf56 \
     --hash=sha256:d9ac353f78ff89951da4af698f80870b1534ed69993f10a4cf1d96f21357e253
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 nvidia-curand-cu12==10.3.2.106 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:75b6b0c574c0037839121317e17fd01f8a69fd2ef8e25853d826fec30bdba74a \
     --hash=sha256:9d264c5036dde4e64f1de8c50ae753237c12e0b1348738169cd0f8a536c0e1e0
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 nvidia-cusolver-cu12==11.4.5.107 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:74e0c3a24c78612192a74fcd90dd117f1cf21dea4822e66d89e8ea80e3cd2da5 \
     --hash=sha256:8a7ec542f0412294b15072fa7dab71d31334014a69f953004ea7a118206fe0dd
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 nvidia-cusparse-cu12==12.1.0.106 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:b798237e81b9719373e8fae8d4f091b70a0cf09d9d85c95a557e11df2d8e9a5a \
     --hash=sha256:f3b50f42cf363f86ab21f720998517a659a48131e8d538dc02f8768237bd884c
     # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nvidia-cusolver-cu12
     #   torch
 nvidia-nccl-cu12==2.20.5 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
@@ -3132,22 +3010,18 @@ nvidia-nccl-cu12==2.20.5 ; platform_machine == 'x86_64' and sys_platform == 'lin
     --hash=sha256:1fc150d5c3250b170b29410ba682384b14581db722b2531b0d8d33c595f33d01
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   torch
 nvidia-nvjitlink-cu12==12.9.86 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:994a05ef08ef4b0b299829cde613a424382aff7efb08a7172c1fa616cc3af2ca \
     --hash=sha256:cc6fcec260ca843c10e34c936921a1c426b351753587fdd638e8cff7b16bb9db \
     --hash=sha256:e3f1171dbdc83c5932a45f0f4c99180a70de9bd2718c1ab77d14104f6d7147f9
     # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nvidia-cusolver-cu12
     #   nvidia-cusparse-cu12
 nvidia-nvtx-cu12==12.1.105 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:65f4d98982b31b60026e0e6de73fbdfc09d08a96f4656dd3665ca616a11e1e82 \
     --hash=sha256:dc21cf308ca5691e7c04d962e213f8a4aa9bbfa23d95412f452254c2caeb09e5
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   torch
+    # via torch
 onnx==1.15.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:0aee26b6f7f7da7e840de75ad9195a77a147d0662c94eaa6483be13ba468ffc1 \
     --hash=sha256:17dcfb86a8c6bdc3971443c29b023dd9c90ff1d15d8baecee0747a6b7f74e650 \
@@ -3176,7 +3050,6 @@ onnx==1.15.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:f277d4861729f5253a51fa41ce91bfec1c4574ee41b5637056b43500917295ce
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
 onnxruntime==1.19.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:0eb0f8dbe596fd0f4737fe511fdbb17603853a7d204c5b2ca38d3c7808fc556b \
@@ -3206,7 +3079,6 @@ onnxruntime==1.19.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:f6dcad8a4db908fbe70b98c79cea1c8b6ac3316adf4ce93453136e33a524ac59
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
 open-spiel==1.4 \
     --hash=sha256:044ee55b5bd4fdd6652616ed3c1d26146d89eb6a2a74391dd2e5788ea49e923c \
@@ -3226,21 +3098,18 @@ open-spiel==1.4 \
     --hash=sha256:f1cf142ed3c85b6c3035c8144504d5ea97bce6cdf1a2b0730b64e3c1174d6725
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 opencensus==0.11.4 \
     --hash=sha256:a18487ce68bc19900336e0ff4655c5a116daf10c1b3685ece8d971bddad6a864 \
     --hash=sha256:cbef87d8b8773064ab60e5c2a1ced58bbaa38a6d052c41aec224958ce544eff2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 opencensus-context==0.1.3 \
     --hash=sha256:073bb0590007af276853009fac7e4bab1d523c3f03baf4cb4511ca38967c6039 \
     --hash=sha256:a03108c3c10d8c80bb5ddf5c8a1f033161fa61972a9917f9b9b3a18517f0088c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   opencensus
 opencv-python-headless==4.10.0.84 \
     --hash=sha256:377d08a7e48a1405b5e84afcbe4798464ce7ee17081c1c23619c8b398ff18295 \
@@ -3252,14 +3121,12 @@ opencv-python-headless==4.10.0.84 \
     --hash=sha256:f2017c6101d7c2ef8d7bc3b414c37ff7f54d64413a1847d89970b6b7069b4e1a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 opentelemetry-api==1.34.1 \
     --hash=sha256:64f0bd06d42824843731d05beea88d4d4b6ae59f9fe347ff7dfa2cc14233bbb3 \
     --hash=sha256:b7df4cb0830d5a6c29ad0c0691dbae874d8daefa934b8b1d642de48323d32a8c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
@@ -3268,21 +3135,18 @@ opentelemetry-exporter-prometheus==0.55b1 \
     --hash=sha256:f364fbbff9e5de37a112ff104d1185fb1d7e2046c5ab5911e5afebc7ab3ddf0e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 opentelemetry-proto==1.39.0 \
     --hash=sha256:1e086552ac79acb501485ff0ce75533f70f3382d43d0a30728eeee594f7bf818 \
     --hash=sha256:c1fa48678ad1a1624258698e59be73f990b7fc1f39e73e16a9d08eef65dd838c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 opentelemetry-sdk==1.34.1 \
     --hash=sha256:308effad4059562f1d92163c61c8141df649da24ce361827812c40abb2a1e96e \
     --hash=sha256:8091db0d763fcd6098d4781bbc80ff0971f94e260739aa6afe6fd379cdf3aa4d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   opentelemetry-exporter-prometheus
     #   ray
 opentelemetry-semantic-conventions==0.55b1 \
@@ -3290,14 +3154,12 @@ opentelemetry-semantic-conventions==0.55b1 \
     --hash=sha256:ef95b1f009159c28d7a7849f5cbc71c4c34c845bb514d66adfdf1b3fff3598b3
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   opentelemetry-sdk
 opt-einsum==3.3.0 \
     --hash=sha256:2455e59e3947d3c275477df7f5205b30635e266fe6dc300e3d9f9646bfcea147 \
     --hash=sha256:59f6475f77bbc37dcf7cd748519c0ec60722e91e63ca114e68821c0c54a46549
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pyro-ppl
     #   tensorflow
 optree==0.18.0 \
@@ -3403,14 +3265,12 @@ optree==0.18.0 \
     --hash=sha256:ff7326f36ed70d84c3fd62fb39bc6858f699640b8ab238c3cb8dafe1e200af59
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   keras
 optuna==4.1.0 \
     --hash=sha256:1763856b01c9238594d9d21db92611aac9980e9a6300bd658a7c6464712c704e \
     --hash=sha256:b364e87a2038f9946c5e2770c130597538aac528b4a82c1cab5267f337ea7679
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-requirements.txt
 ormsgpack==1.7.0 \
     --hash=sha256:0d88307ab45d95416ce4071b1b99326ca31362af01c3d206f15a0551a7a874bd \
@@ -3441,7 +3301,6 @@ ormsgpack==1.7.0 \
     --hash=sha256:f9967a7f3647ad118751abf090f8397fda3e4bca6833340cab95a3f2bec598cd
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
     #   ray
 overrides==7.7.0 \
@@ -3449,14 +3308,12 @@ overrides==7.7.0 \
     --hash=sha256:c7ed9d062f78b8e4c1a7b70bd8796b35ead4d9f510227ef9c5dc7626c60d7e49
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
 packaging==24.2 \
     --hash=sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759 \
     --hash=sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   accelerate
     #   datasets
     #   deepspeed
@@ -3545,7 +3402,6 @@ pandas==2.3.3 \
     --hash=sha256:f8bfc0e12dc78f777f323f55c58649591b2cd0c43534e8355c51d3fede5f4dee
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
     #   cmdstanpy
     #   datasets
@@ -3563,42 +3419,36 @@ pandocfilters==1.5.0 \
     --hash=sha256:33aae3f25fd1a026079f5d27bdd52496f0e0803b3469282162bafdcbdf6ef14f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 parso==0.8.3 \
     --hash=sha256:8c07be290bb59f03588915921e29e8a50002acaf2cdc5fa0e0114f91709fafa0 \
     --hash=sha256:c001d4636cd3aecdaf33cbb40aebb59b094be2a74c556778ef5576c175e19e75
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jedi
 patsy==1.0.2 \
     --hash=sha256:37bfddbc58fcf0362febb5f54f10743f8b21dd2aa73dec7e7ef59d1b02ae668a \
     --hash=sha256:cdc995455f6233e90e22de72c37fcadb344e7586fb83f06696f54d92f8ce74c0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   statsmodels
 pettingzoo==1.24.3 \
     --hash=sha256:23ed90517d2e8a7098bdaf5e31234b3a7f7b73ca578d70d1ca7b9d0cb0e37982 \
     --hash=sha256:91f9094f18e06fb74b98f4099cd22e8ae4396125e51719d50b30c9f1c7ab07e6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 pexpect==4.8.0 ; sys_platform != 'win32' \
     --hash=sha256:0b48a55dcb3c05f3329815901ea4fc1537514d6ba867a152b581d69ae3710937 \
     --hash=sha256:fc65a43959d153d0114afe13997d439c22823a27cefceb5ff35c2178c6784c0c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipython
 pickleshare==0.7.5 \
     --hash=sha256:87683d47965c1da65cdacaf31c8441d12b8044cdec9aca500cd78fc2c683afca \
     --hash=sha256:9649af414d74d4df115d5d718f82acb59c9d418196b7b4290ed47a12ce62df56
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipython
 pillow==10.4.0 \
     --hash=sha256:02a2be69f9c9b8c1e97cf2713e789d4e398c751ecfd9967c18d0ce304efbf885 \
@@ -3683,7 +3533,6 @@ pillow==10.4.0 \
     --hash=sha256:ff337c552345e95702c5fde3158acb0625111017d0e5f24bf3acdb9cc16b90d1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   imageio
     #   matplotlib
     #   tensorboard
@@ -3693,8 +3542,8 @@ platformdirs==3.11.0 \
     --hash=sha256:e9d171d00af68be50e9202731309c4e658fd8bc76f55c11c7dd760d023bda68e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-core
+    #   moocore
     #   textual
     #   virtualenv
 plotly==5.23.0 \
@@ -3702,35 +3551,26 @@ plotly==5.23.0 \
     --hash=sha256:89e57d003a116303a34de6700862391367dd564222ab71f8531df70279fc0193
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
 pluggy==1.3.0 \
     --hash=sha256:cf61ae8f126ac6f7c451172cf30e3e43d3ca77615509771b3a984a0730651e12 \
     --hash=sha256:d89c696a773f8bd377d18e5ecda92b7a3793cbe66c87060a6fb58c7b6e1061f7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pytest
 prometheus-client==0.19.0 \
     --hash=sha256:4585b0d1223148c27a225b10dbec5ae9bc4c81a99a3fa80774fa6209935324e1 \
     --hash=sha256:c88b1e6ecf6b41cd8fb5731c7ae919bf66df6ec6fafa555cd6c0e16ca169ae92
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
     #   opentelemetry-exporter-prometheus
     #   ray
-promise==2.3 \
-    --hash=sha256:dfd18337c523ba4b6a58801c164c1904a9d4d1b1747c7d5dbf45b693a49d93d0
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   tensorflow-datasets
 prompt-toolkit==3.0.41 \
     --hash=sha256:941367d97fc815548822aa26c2a269fdc4eb21e9ec05fc5d447cf09bad5d75f0 \
     --hash=sha256:f36fe301fafb7470e86aaf90f036eef600a3210be4decf461a5b1ca8403d3cb2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   click-repl
     #   ipython
 propcache==0.3.0 \
@@ -3834,7 +3674,6 @@ propcache==0.3.0 \
     --hash=sha256:fddb8870bdb83456a489ab67c6b3040a8d5a55069aa6f72f9d872235fbc52f54
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp
     #   yarl
 prophet==1.1.5 \
@@ -3846,14 +3685,12 @@ prophet==1.1.5 \
     --hash=sha256:cd5991a86dc0a86e09da550fb072ade8714dc17741da0231907d972429476a54
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 proto-plus==1.26.1 \
     --hash=sha256:13285478c2dcf2abb829db158e1047e2f1e8d63a077d94263c2b88b043c75a66 \
     --hash=sha256:21a515a4c4c0088a773899e23c7bbade3d18f9c66c73edd4c7ee3816bc96a012
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   google-api-core
 protobuf==5.29.5 \
     --hash=sha256:3f1c6468a2cfd102ff4703976138844f78ebd1fb45f49011afc5139e9e283079 \
@@ -3869,7 +3706,6 @@ protobuf==5.29.5 \
     --hash=sha256:fa18533a299d7ab6c55a238bf8629311439995f2e7eca5caaff08663606e9015
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   google-api-core
     #   googleapis-common-protos
     #   onnx
@@ -3880,8 +3716,6 @@ protobuf==5.29.5 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
-    #   tensorflow-datasets
-    #   tensorflow-metadata
 psutil==5.9.6 \
     --hash=sha256:10e8c17b4f898d64b121149afb136c53ea8b68c7531155147867b7b1ac9e7e28 \
     --hash=sha256:18cd22c5db486f33998f37e2bb054cc62fd06646995285e02a51b1e08da97017 \
@@ -3901,18 +3735,15 @@ psutil==5.9.6 \
     --hash=sha256:ff18b8d1a784b810df0b0fff3bcb50ab941c3b8e2c8de5726f9c71c601c611aa
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   accelerate
     #   deepspeed
     #   ipykernel
-    #   tensorflow-datasets
     #   torch-geometric
 ptyprocess==0.7.0 ; os_name != 'nt' or sys_platform != 'win32' \
     --hash=sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35 \
     --hash=sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pexpect
     #   terminado
 pure-eval==0.2.2 \
@@ -3920,14 +3751,12 @@ pure-eval==0.2.2 \
     --hash=sha256:2b45320af6dfaa1750f543d714b6d1c520a1688dec6fd24d339063ce0aaa9ac3
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   stack-data
 py-cpuinfo==9.0.0 \
     --hash=sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690 \
     --hash=sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   deepspeed
 py-spy==0.4.1 \
     --hash=sha256:1fb8bf71ab8df95a95cc387deed6552934c50feef2cf6456bc06692a5508fd0c \
@@ -3938,9 +3767,7 @@ py-spy==0.4.1 \
     --hash=sha256:d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc \
     --hash=sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4 \
     --hash=sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   ray
+    # via ray
 pyarrow==19.0.1 \
     --hash=sha256:008a4009efdb4ea3d2e18f05cd31f9d43c388aad29c636112c2966605ba33466 \
     --hash=sha256:0148bb4fc158bfbc3d6dfe5001d93ebeed253793fff4435167f6ce1dc4bddeae \
@@ -3986,7 +3813,6 @@ pyarrow==19.0.1 \
     --hash=sha256:fd44d66093a239358d07c42a91eebf5015aa54fccba959db899f932218ac9cc8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   datasets
     #   ray
     #   triad
@@ -3995,7 +3821,6 @@ pyasn1==0.5.1 \
     --hash=sha256:6d391a96e59b23130a5cfa74d6fd7f388dbbe26cc8f1edf39fdddf08d9d6676c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pyasn1-modules
     #   rsa
 pyasn1-modules==0.3.0 \
@@ -4003,27 +3828,22 @@ pyasn1-modules==0.3.0 \
     --hash=sha256:d3ccd6ed470d9ffbc716be08bd90efbd44d0734bc9303818f7336070984a162d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   google-auth
 pycparser==2.21 \
     --hash=sha256:8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9 \
     --hash=sha256:e644fdec12f7872f86c58ff790da456218b10f863970249516d60a5eaca77206
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   cffi
 pycron==3.2.0 \
     --hash=sha256:6d2349746270bd642b71b9f7187cf13f4d9ee2412b4710396a507b5fe4f60dac \
     --hash=sha256:e125a28aca0295769541a40633f70b602579df48c9cb357c36c28d2628ba2b13
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   taskiq
+    # via taskiq
 pydantic==2.12.3 \
     --hash=sha256:1da1c82b0fc140bb0103bc1441ffe062154c8d38491189751ee00fd8ca65ce74 \
     --hash=sha256:6986454a854bc3bc6e5443e1369e06a3a456af9d339eda45510f517d9ea5c6bf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   deepspeed
     #   fastapi
     #   ray
@@ -4148,7 +3968,6 @@ pydantic-core==2.41.4 \
     --hash=sha256:fc3b4cc4539e055cfa39a3763c939f9d409eb40e85813257dcd761985a108554
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pydantic
 pygame==2.5.2 \
     --hash=sha256:03879ec299c9f4ba23901b2649a96b2143f0a5d787f0b6c39469989e2320caf1 \
@@ -4210,24 +4029,61 @@ pygame==2.5.2 \
     --hash=sha256:fe0228501ec616779a0b9c4299e837877783e18df294dd690b9ab0eed3d8aaab
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   minigrid
 pyglet==1.5.15 \
     --hash=sha256:4401cc176580e4e17e2df8bbf7536f27e691327dc3f38f209a12f1859c70aed2 \
     --hash=sha256:da9d8337388cedabf1f1c5dc21a45bb2b0e5327fba47f996c8573818c3dfa478
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
 pygments==2.18.0 \
     --hash=sha256:786ff802f32e91311bff3889f6e9a86e81505fe99f2735bb6d60ae0c5004f199 \
     --hash=sha256:b8e6aca0523f3ab76fee51799c488e38782ac06eafcf95e7ba832985c8e7b13a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipython
     #   nbconvert
     #   rich
+pymoo==0.6.1.6 \
+    --hash=sha256:007bdabe638d5cc1ff98d1df096e7cea42f266ecc7b84fc0aac695a20b6f02f6 \
+    --hash=sha256:01e848762e04d183e8dcc12e1cfb1e2cdd2c5efeda47961dbcf6c86c09751e30 \
+    --hash=sha256:2a2e9524b07baef135a7143700cc65a504c2123c717a6924fa939947b4fdba73 \
+    --hash=sha256:38fa5bf507cd7c07eae0286948db79f761b5b4c5d5956a31fd0e5a771c83fa47 \
+    --hash=sha256:3b9dcb6959cf2b12c0f1d4ac971fa53074430eb976367b2e7eec0d0301423f31 \
+    --hash=sha256:466f88073c9f498bcf75334a2e47279968003d91b7fe01df1b056b5a6c3434d8 \
+    --hash=sha256:49a9cde6ff7cc8497458166e2c14734bf4879c76256412cce0de2af86d2b71a8 \
+    --hash=sha256:50472dfb93b90b4801c63070a4afc786c52f7f56b345f345024b39cd35ff06c4 \
+    --hash=sha256:5086f46020aa1a13a0e3142ef87b6487e91ea5d25b7b69467039f0d3f5a57cb2 \
+    --hash=sha256:533de86c284bf3b7b6da871e2ae07a914eaa5d3a51f5c4e6d7c055d3471c4467 \
+    --hash=sha256:5607e0359c96691158192bd3e2b939beab6d4ed25032ef4cb79edf588c2bb475 \
+    --hash=sha256:56ecb6f9f5ac0559829e183a23ea3672eae8c1eb9d745305bef98da8d1614d28 \
+    --hash=sha256:62599637724f74820e16d813e6ca86af1733add4251e22b5a6c677df75dec06b \
+    --hash=sha256:642308eae98c5b8aee96272e10c6409dd97289ef214ec7383b39425f01549b5f \
+    --hash=sha256:718b9e971e436c2ded520c4a6fe8c83b7f305da1fcc539d6386d025c6e9bfe66 \
+    --hash=sha256:791188677b42e104c41cd1c65370a94fbbec756d8894947863f42a1f76352c90 \
+    --hash=sha256:798e5af41527324303e56ac806f9ec34c65f31c2df9e904daeca68027bf91266 \
+    --hash=sha256:7c042120df86240c1451e2a1afb0f76b64acb8d736fb7687bc5e4aec40f7ff9e \
+    --hash=sha256:7d13e14434f0555fbeda20764d34be4dc94f53ae7040a337928d7bfe42d3422a \
+    --hash=sha256:819a27ff19c146a64853a86ebab02bc6bbf28fb9fcf119e93cfc855ec6314f72 \
+    --hash=sha256:981bd5b8581e959814a0e51982be1a964945fb7f599cfe7857a63cbc1ad97d58 \
+    --hash=sha256:a4f590fc62021d2583afdc88a2eb5ec878699786585f9ca82edf1fc32557ac96 \
+    --hash=sha256:a68fb9d807c1cb6f36e13c24731c496b1e98b9c8810125072f19bd56baa6a4d5 \
+    --hash=sha256:b3e990dea0ad84fa2f89462215e34960579dbb9fef4d880aecb09f50cc18e713 \
+    --hash=sha256:b9dd7da8b18bffac6b09c75b4a4a645232994d91fc0cdfe39baffdc08fa5d252 \
+    --hash=sha256:c16e05b36e081d0ea6aee499346f65466811f63f5837f0d09de866624cb7355b \
+    --hash=sha256:c8cfd085b74b3f673378109d8d0734d0cab460e3e78c09f691120ac0c2698aad \
+    --hash=sha256:cd2b0fb19ce3e71a177ed3b965ce2d4334ffb6aad8f621c124de6dafa09b7758 \
+    --hash=sha256:d48077c7b612b149e7db5351459bf96a0950e84ebcd5b7b953bf46b3dcf1ac28 \
+    --hash=sha256:df9520fd7fab0761d5698dd36eabcfb18b5eb970ddf01e10eb30b764e4bb72af \
+    --hash=sha256:e0a42b6f3c26b2725b1edb1d4cfb98e5640bb0638813080ba1aa0daf23b2fd05 \
+    --hash=sha256:ecf1ce515e72d59b78c909aa142d2369cc3c6d771ac7c9162831c0b62a869c8f \
+    --hash=sha256:f2d48fa7f8f8ea314405ad49a6b7f3dcf8f12c2024e319e2d47ede0937f8b39b \
+    --hash=sha256:f41b359d6de6c9d99ab7da94f115c5aea4d21e74a252bef7c8debec8f20f0b9f \
+    --hash=sha256:f62fb1e2ba15f22ff5569c6d364dbf9dfe8b3722a114e6bc1df3cc10f8dd5044 \
+    --hash=sha256:fd4715b4015b10ad3cf02e5eb9abb57fe4bfa4d3378f9076b76d60c1ddfa46d6
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   botorch
 pymunk==6.2.1 \
     --hash=sha256:02adec146811918e6e2c69157d67a8e71a23d355f3448f2d585ee5198423ebbf \
     --hash=sha256:0303eae52578038e1692b746b4cfe625e284445340363645f1c04bd2b5e1b6fc \
@@ -4274,28 +4130,24 @@ pymunk==6.2.1 \
     --hash=sha256:fc21e0ffac12c86acb9eca61093fd5f51d3fb473dc079c36f39d2527648560f8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 pyopengl==3.1.7 \
     --hash=sha256:a6ab19cf290df6101aaf7470843a9c46207789855746399d0af92521a0a92b7a \
     --hash=sha256:eef31a3888e6984fd4d8e6c9961b184c9813ca82604d37fe3da80eb000a76c86
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   mujoco
 pyopenssl==25.0.0 \
     --hash=sha256:424c247065e46e76a37411b9ab1782541c23bb658bf003772c3405fbaa128e90 \
     --hash=sha256:cd2cef799efa3936bb08e8ccb9433a575722b9dd986023f1cabc4ae64e9dac16
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 pyparsing==3.1.1 \
     --hash=sha256:32c7c0b711493c72ff18a981d24f28aaf9c1fb7ed5e9667c9e84e3db623bdbfb \
     --hash=sha256:ede28a1a32462f5a9705e07aea48001a08f7cf81a021585011deba701581a0db
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   matplotlib
     #   torch-geometric
 pyre-extensions==0.0.32 \
@@ -4303,7 +4155,6 @@ pyre-extensions==0.0.32 \
     --hash=sha256:a63ba6883ab02f4b1a9f372ed4eb4a2f4c6f3d74879aa2725186fdfcfe3e5c68
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
     #   botorch
 pyro-api==0.1.2 \
@@ -4311,61 +4162,59 @@ pyro-api==0.1.2 \
     --hash=sha256:a1b900d9580aa1c2fab3b123ab7ff33413744da7c5f440bd4aadc4d40d14d920
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pyro-ppl
 pyro-ppl==1.9.1 \
     --hash=sha256:5e1596de276c038a3f77d2580a90d0a97126e0104900444a088eee620bb0d65e \
     --hash=sha256:91fb2c8740d9d3bd548180ac5ecfa04552ed8c471a1ab66870180663b8f09852
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   botorch
 pytest==7.4.4 \
     --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pytest-remotedata
 pytest-remotedata==0.3.2 \
     --hash=sha256:3be58f09116f3ce80cff9e5076cda528a84ae36d21ca9645abf782e112c281bc \
     --hash=sha256:e20c58d4b7c359c4975dc3c3d3d67be0905180d2368be0be3ae09b15a136cfc0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 python-dateutil==2.8.2 \
     --hash=sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
+    #   arrow
     #   celery
     #   holidays
     #   jupyter-client
     #   matplotlib
     #   pandas
+python-dotenv==1.2.1 \
+    --hash=sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6 \
+    --hash=sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   uvicorn
 python-json-logger==2.0.7 \
     --hash=sha256:23e7ec02d34237c5aa1e29a070193a4ea87583bb4e7f8fd06d3de8264c4b2e1c \
     --hash=sha256:f380b826a991ebbe3de4d897aeec42760035ac760345e57b812938dc8b35e2bd
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-events
 pytorch-lightning==2.4.0 \
     --hash=sha256:6aa897fd9d6dfa7b7b49f37c2f04e13592861831d08deae584dfda423fdb71c8 \
     --hash=sha256:9ac7935229ac022ef06994c928217ed37f525ac6700f7d4fc57009624570e655
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 pytz==2022.7.1 \
     --hash=sha256:01a0681c4b9684a28304615eba55d1ab31ae00bf68ec157ec3708a8182dbbcd0 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   babel
     #   pandas
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
@@ -4443,7 +4292,6 @@ pyyaml==6.0.3 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   accelerate
     #   datasets
     #   huggingface-hub
@@ -4455,6 +4303,7 @@ pyyaml==6.0.3 \
     #   ray
     #   timm
     #   transformers
+    #   uvicorn
 pyzmq==27.1.0 \
     --hash=sha256:01c0e07d558b06a60773744ea6251f769cd79a41a97d11b8bf4ab8f034b0424d \
     --hash=sha256:01f9437501886d3a1dd4b02ef59fb8cc384fa718ce066d52f175ee49dd5b7ed8 \
@@ -4550,7 +4399,6 @@ pyzmq==27.1.0 \
     --hash=sha256:ff8d114d14ac671d88c89b9224c63d6c4e5a613fe8acd5594ce53d752a3aafe9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
@@ -4559,14 +4407,12 @@ qpd==0.4.4 \
     --hash=sha256:fc02b53d990f505353ec495682fbc107dfc06c59e66d2206b5d2db2b5700b629
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fugue
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jsonschema
     #   jsonschema-specifications
 regex==2024.5.15 \
@@ -4651,22 +4497,20 @@ regex==2024.5.15 \
     --hash=sha256:f9ebd0a36102fcad2f03696e8af4ae682793a5d30b46c647eaf280d6cfb32796
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   transformers
 requests==2.32.5 \
     --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6 \
     --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   datasets
     #   evaluate
+    #   fsspec
     #   google-api-core
     #   huggingface-hub
     #   jupyterlab-server
     #   ray
     #   tensorflow
-    #   tensorflow-datasets
     #   torch-geometric
     #   transformers
 rfc3339-validator==0.1.4 \
@@ -4674,21 +4518,20 @@ rfc3339-validator==0.1.4 \
     --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
+    #   jsonschema
     #   jupyter-events
 rfc3986-validator==0.1.1 \
     --hash=sha256:2f235c432ef459970b4306369336b9d5dbdda31b510ca1e327636e01f528bfa9 \
     --hash=sha256:3d44bde7921b3b9ec3ae4e3adca370438eccebc676456449b145d533b240d055
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
+    #   jsonschema
     #   jupyter-events
 rich==13.7.1 \
     --hash=sha256:4edbae314f59eb482f54e9e30bf00d33350aaa94f4bfcd4e9e3110e64d0d7222 \
     --hash=sha256:9be308cb1fe2f1f57d67ce99e95af38a1e2bc71ad9813b0e247cf7ffbcc3a432
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-requirements.txt
     #   keras
     #   memray
@@ -4799,7 +4642,6 @@ rpds-py==0.22.3 \
     --hash=sha256:feea821ee2a9273771bae61194004ee2fc33f8ec7db08117ef9147d4bbcbca8e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jsonschema
     #   referencing
 rsa==4.7.2 \
@@ -4807,13 +4649,11 @@ rsa==4.7.2 \
     --hash=sha256:9d689e6ca1b3038bc82bf8d23e944b6b6037bc02301a574935b2dd946e0353b9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   google-auth
 s3torchconnector==1.4.3 \
     --hash=sha256:a7288d1446905663d15b3a0debb819a86ced3c3f4a0c29055e3d205741bff2a2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-test-requirements.txt
 s3torchconnectorclient==1.4.3 \
     --hash=sha256:0c997613b3d424be40abd915dbcd498291150a9d08ec67d0fa4916f4d0ba6493 \
@@ -4842,7 +4682,6 @@ s3torchconnectorclient==1.4.3 \
     --hash=sha256:eb31fb473ec3cd70a674901407eee2a5a7732c4a32268dfda2818ba04201e61e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   s3torchconnector
 safetensors==0.4.3 \
     --hash=sha256:018b691383026a2436a22b648873ed11444a364324e7088b99cd2503dd828400 \
@@ -4947,7 +4786,6 @@ safetensors==0.4.3 \
     --hash=sha256:fef5d70683643618244a4f5221053567ca3e77c2531e42ad48ae05fae909f542
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   accelerate
     #   timm
     #   transformers
@@ -4980,7 +4818,6 @@ scikit-learn==1.5.2 \
     --hash=sha256:f932a02c3f4956dfb981391ab24bda1dbd90fe3d628e4b42caef3e041c67707a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
     #   bayesian-optimization
     #   gpytorch
@@ -5021,7 +4858,6 @@ scipy==1.14.1 \
     --hash=sha256:fef8c87f8abfb884dac04e97824b61299880c43f4ce675dd2cbeadd3c9b466d2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
     #   bayesian-optimization
     #   botorch
@@ -5030,6 +4866,7 @@ scipy==1.14.1 \
     #   hyperopt
     #   linear-operator
     #   open-spiel
+    #   pymoo
     #   ray
     #   scikit-learn
     #   statsforecast
@@ -5042,7 +4879,6 @@ send2trash==1.8.3 \
     --hash=sha256:b18e7a3966d99871aefeb00cfbcfdced55ce4871194810fc71f4aa484b953abf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
 sentencepiece==0.1.96 \
     --hash=sha256:1dac8c2ad02b5ebc1179c0a14cbc7d7c6f4fd73d4dd51820626402d0aefc974e \
@@ -5091,28 +4927,24 @@ sentencepiece==0.1.96 \
     --hash=sha256:ff7d752a7f82d87711ec1a95c2262cb74f98be5b457f0300d81a1aefe5be2a95
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-test-requirements.txt
 shimmy==2.0.0 \
     --hash=sha256:4244e693b0ff28bd5ce55e73c636cab953df2a1fafe639718158ee6510613dfe \
     --hash=sha256:a42d07806fc1ca5460439cb4799f32d4855a9e1138b39a39031e72fb8460a508
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 shortuuid==1.0.1 \
     --hash=sha256:3c11d2007b915c43bee3e10625f068d8a349e04f0d81f08f5fa08507427ebf1f \
     --hash=sha256:492c7402ff91beb1342a5898bd61ea953985bf24a41cd9f247409aa2e03c8f77
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   asttokens
     #   astunparse
     #   bleach
@@ -5120,7 +4952,6 @@ six==1.16.0 \
     #   google-pasta
     #   ml-collections
     #   opencensus
-    #   promise
     #   pytest-remotedata
     #   python-dateutil
     #   rfc3339-validator
@@ -5131,21 +4962,18 @@ smart-open==6.2.0 \
     --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 sniffio==1.3.1 \
     --hash=sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2 \
     --hash=sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   anyio
 soupsieve==2.5 \
     --hash=sha256:5663d5a7b3bfaeee0bc4372e7fc48f9cff4940b3eec54a6451cc5299f1097690 \
     --hash=sha256:eaa337ff55a1579b6549dc679565eac1e3d000563bcb1c8ab0d0fefbc0c2cdc7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   beautifulsoup4
 sqlalchemy==2.0.32 \
     --hash=sha256:01438ebcdc566d58c93af0171c74ec28efe6a29184b773e378a385e6215389da \
@@ -5199,7 +5027,6 @@ sqlalchemy==2.0.32 \
     --hash=sha256:e567a8793a692451f706b363ccf3c45e056b67d90ead58c3bc9471af5d212202
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   alembic
     #   optuna
 sqlglot==25.6.1 \
@@ -5207,28 +5034,24 @@ sqlglot==25.6.1 \
     --hash=sha256:ea40f3bf8452e2c1a696fe120163190bd67e49b346336e7db6d34400b57b7601
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fugue
 stack-data==0.6.3 \
     --hash=sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9 \
     --hash=sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipython
 stanio==0.3.0 \
     --hash=sha256:0c504ae671b8d526a1da71185ac02a2775508ffe6d3db91f242eac85bcf6046f \
     --hash=sha256:2d34b5ebe9ad8fcd137437209bf4b53846d88dbe933441aca5d83fd32f9b0c7e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   cmdstanpy
 starlette==0.49.1 \
     --hash=sha256:481a43b71e24ed8c43b11ea02f5353d77840e01480881b8cb5a26b8cae64a8cb \
     --hash=sha256:d92ce9f07e4a3caa3ac13a79523bd18e3bc0042bb8ff2d759a8e7dd0e1859875
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   fastapi
     #   ray
 statsforecast==1.7.0 \
@@ -5236,7 +5059,6 @@ statsforecast==1.7.0 \
     --hash=sha256:ac63de8095242eb0f362045a232174666f0fa24a43ee8c3d3cc0bb61f15b7316
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 statsmodels==0.14.3 \
     --hash=sha256:197bcb1aeaaa5c7e9ba4ad87c2369f9600c6cd69d6e2db829eb46d3d9fe534c9 \
@@ -5271,55 +5093,45 @@ statsmodels==0.14.3 \
     --hash=sha256:f12d74743936323165dae648f75193ee4a47381a85610be661d34de56c7634e0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   statsforecast
 supersuit==3.9.3 \
     --hash=sha256:10f5d0ed208ddb92fba767a7889ada9f46894519077527d6af799a7767a13159 \
     --hash=sha256:f30ab6fd9fe720ea7fa73d45a96935b6321c4ea1aa45d7997684c09f39aa10de
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 sympy==1.13.1 \
     --hash=sha256:9cebf7e04ff162015ce31c9c6c9144daa34a93bd082f54fd8f12deca4f47515f \
     --hash=sha256:db36cdc64bf61b9b24578b6f7bab1ecdd2452cf008f34faa33776680c26d66f8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ax-platform
     #   onnxruntime
     #   torch
 taskiq==0.12.1 \
     --hash=sha256:338dcf58eaca327e511a9380b2185bfa6a415dd79a5cf144546a2dbb95459298 \
     --hash=sha256:a8ade45e2e23edbadb972a88dec44e68c7daef83383d01fa3af48594a24a712a
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   ray
+    # via ray
 taskiq-dependencies==1.5.7 \
     --hash=sha256:0d3b240872ef152b719153b9526d866d2be978aeeaea6600e878414babc2dcb4 \
     --hash=sha256:6fcee5d159bdb035ef915d4d848826169b6f06fe57cc2297a39b62ea3e76036f
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   taskiq
+    # via taskiq
 tblib==3.0.0 \
     --hash=sha256:80a6c77e59b55e83911e1e607c649836a69c103963c5f28a46cbeef44acf8129 \
     --hash=sha256:93622790a0a29e04f0346458face1e144dc4d32f493714c6c3dff82a4adb77e6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-test-requirements.txt
 tenacity==8.5.0 \
     --hash=sha256:8bc6c0c8a09b31e6cad13c47afbed1a567518250a9a171418582ed8d9c20ca78 \
     --hash=sha256:b594c2a5945830c267ce6b79a166228323ed52718f30302c1359836112346687
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   plotly
 tensorboard==2.20.0 \
     --hash=sha256:9dc9f978cb84c0723acf9a345d96c184f0293d18f166bb8d59ee098e6cfaaba6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorflow
 tensorboard-data-server==0.7.2 \
     --hash=sha256:7e0610d205889588983836ec05dc098e80f97b7e7bbff7e994ebb78f578d0ddb \
@@ -5327,14 +5139,12 @@ tensorboard-data-server==0.7.2 \
     --hash=sha256:ef687163c24185ae9754ed5650eb5bc4d84ff257aabdc33f0cc6f74d8ba54530
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorboard
 tensorboardx==2.6.2.2 \
     --hash=sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8 \
     --hash=sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 tensorflow==2.20.0 \
     --hash=sha256:02a0293d94f5c8b7125b66abf622cc4854a33ae9d618a0d41309f95e091bbaea \
@@ -5357,38 +5167,23 @@ tensorflow==2.20.0 \
     --hash=sha256:c25edad45e8cb9e76366f7a8c835279f9169028d610f3b52ce92d332a1b05438 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   tf-keras
-tensorflow-datasets==4.9.3 \
-    --hash=sha256:09cd60eccab0d5a9d15f53e76ee0f1b530ee5aa3665e42be621a4810d9fa5db6 \
-    --hash=sha256:90390077dde2c9e4e240754ddfc5bb50b482946d421c8a34677c3afdb0463427
-    # via --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
+    # via tf-keras
 tensorflow-estimator==2.15.0 \
     --hash=sha256:aedf21eec7fb2dc91150fc91a1ce12bc44dbb72278a08b58e79ff87c9e28f153
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
-tensorflow-metadata==1.17.3 \
-    --hash=sha256:452912e6398b3cb7302f0de6139dea794b3be1bd0eb40e6765eb3a04e51ea991
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   tensorflow-datasets
 termcolor==2.4.0 \
     --hash=sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63 \
     --hash=sha256:aab9e56047c8ac41ed798fa36d892a37aca6b3e9159f3e0c24bc64a9b3ac7b7a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorflow
-    #   tensorflow-datasets
 terminado==0.18.1 \
     --hash=sha256:a4468e1b37bb318f8a86514f65814e1afc977cf29b3992a4500d9dd305dcceb0 \
     --hash=sha256:de09f2c4b85de4765f7714688fff57d3e75bad1f909b589fde880460c753fd2e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
     #   jupyter-server-terminals
 textual==4.0.0 ; sys_platform != 'win32' \
@@ -5396,21 +5191,18 @@ textual==4.0.0 ; sys_platform != 'win32' \
     --hash=sha256:214051640f890676a670aa7d29cd2a37d27cfe6b2cf866e9d5abc3b6c89c5800
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   memray
 tf-keras==2.20.0 \
     --hash=sha256:080d1cda2c71be55b3cff03970b0e5fa50754946c5491db0cc8d4fef4d9ebc6c \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/ml-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   botorch
     #   scikit-learn
 timm==0.9.2 \
@@ -5418,14 +5210,12 @@ timm==0.9.2 \
     --hash=sha256:d0977cc5e02c69bda979fca8b52aa315a5f2cb64ebf8ad2c4631b1e452762c14
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 tinycss2==1.3.0 \
     --hash=sha256:152f9acabd296a8375fbca5b84c961ff95971fcfc32e79550c8df8e29118c54d \
     --hash=sha256:54a8dbdffb334d536851be0226030e9505965bb2f30f21a4a82c55fb2a80fae7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   nbconvert
 tinyscaler==1.2.8 \
     --hash=sha256:0ce3b77562f1db74b2035ccaf62807af043333ce655e71effd6ec85fbf8ded06 \
@@ -5446,7 +5236,6 @@ tinyscaler==1.2.8 \
     --hash=sha256:fcafd6a8b7ac8c8eabc560f99f987e3e9c00b32a5f3472b28ee865db9bf264b2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   supersuit
 tokenizers==0.15.2 \
@@ -5562,14 +5351,7 @@ tokenizers==0.15.2 \
     --hash=sha256:fb16ba563d59003028b678d2361a27f7e4ae0ab29c7a80690efa20d829c81fdb
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   transformers
-toml==0.10.2 \
-    --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
-    --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
-    # via
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
-    #   tensorflow-datasets
 torch==2.3.0+cu121 \
     --hash=sha256:002027d18a9c054f08fe9cf7a729e041229e783e065a71349015dcccc9a7137e \
     --hash=sha256:0a12aa9aa6bc442dff8823ac8b48d991fd0771562eaa38593f9c8196d65f7007 \
@@ -5583,7 +5365,6 @@ torch==2.3.0+cu121 \
     --hash=sha256:f7876ec20b42dd569e7a11c5af36febccc03830f63dfdedbd4026506e086cab6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   accelerate
     #   botorch
@@ -5601,39 +5382,33 @@ torch-cluster==1.6.3+pt23cu121 \
     --hash=sha256:572f6ba91cf9a3b02c2e5640d467d4b1b25b7351182d2412d452e8e564ed0cb7
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-scatter==2.1.2+pt23cu121 \
     --hash=sha256:8b2aeb75905fcccf06d79ea02759b786952cadf86e24b0dc1def86c2e321d384
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-sparse==0.6.18+pt23cu121 \
     --hash=sha256:84901dfad8e44dd070b0c2ab905f43c58888ef24fdadf778184d9829385612e3
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-spline-conv==1.2.2+pt23cu121 \
     --hash=sha256:965517230344323c8962976d815e2698931eb77e5f3075084bebd5d18b2f5863
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pytorch-lightning
 torchvision==0.18.0+cu121 \
     --hash=sha256:13e1b48dc5ce41ccb8100ab3dd26fdf31d8f1e904ecf2865ac524493013d0df5 \
@@ -5648,7 +5423,6 @@ torchvision==0.18.0+cu121 \
     --hash=sha256:e09966baf7945085d7725ac7c944172c632516643d603bde5855f6b3cf68efcf
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   timm
 tornado==6.5.2 \
@@ -5666,7 +5440,6 @@ tornado==6.5.2 \
     --hash=sha256:e792706668c87709709c18b353da1f7662317b563ff69f00bab83595940c7108
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipykernel
     #   jupyter-client
     #   jupyter-server
@@ -5677,7 +5450,6 @@ tqdm==4.67.1 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   cmdstanpy
     #   datasets
     #   deepspeed
@@ -5690,7 +5462,6 @@ tqdm==4.67.1 \
     #   pyro-ppl
     #   pytorch-lightning
     #   statsforecast
-    #   tensorflow-datasets
     #   torch-geometric
     #   transformers
 traitlets==5.14.3 \
@@ -5698,7 +5469,6 @@ traitlets==5.14.3 \
     --hash=sha256:b74e89e397b1ed28cc831db7aea759ba6640cb3de13090ca145426688ff1ac4f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   comm
     #   ipykernel
     #   ipython
@@ -5717,112 +5487,147 @@ transformers==4.36.2 \
     --hash=sha256:d8068e897e47793281501e547d2bbdfc5b8556409c2cb6c3d9e2ca77d4c0b4ec
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/ml-requirements.txt
 triad==0.9.8 \
     --hash=sha256:2c0ba7d83977c6d4e7b59e3cc70727f858014ef7676c62d184aa8e63f7bef5de \
     --hash=sha256:5b67673124891981daf8afbab44b2e6358932ca35ef3ff38a25bc3e0f6f03f17
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   adagio
     #   fugue
     #   fugue-sql-antlr
     #   qpd
+types-python-dateutil==2.9.0.20240316 \
+    --hash=sha256:5d2f2e240b86905e40944dd787db6da9263f0deabef1076ddaed797351ec0202 \
+    --hash=sha256:6b8cb66d960771ce5ff974e9dd45e38facb81718cc1e208b10b1baccbfdbee3b
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   arrow
 typing-extensions==4.15.0 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiosignal
-    #   ale-py
     #   alembic
-    #   annotated-types
-    #   anyio
-    #   argon2-cffi
-    #   async-lru
     #   botorch
+    #   etils
     #   fastapi
     #   grpcio
     #   gymnasium
     #   huggingface-hub
-    #   importlib-metadata
-    #   ipython
     #   lightning-utilities
-    #   markdown-it-py
-    #   memray
     #   nevergrad
     #   opentelemetry-api
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
     #   optree
-    #   platformdirs
     #   pydantic
     #   pydantic-core
     #   pyopenssl
     #   pyre-extensions
     #   pytorch-lightning
     #   referencing
-    #   rich
     #   sqlalchemy
     #   starlette
-    #   taskiq
-    #   taskiq-dependencies
     #   tensorflow
     #   textual
     #   torch
-    #   torchmetrics
     #   typing-inspect
     #   typing-inspection
-    #   uvicorn
 typing-inspect==0.9.0 \
     --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pyre-extensions
 typing-inspection==0.4.2 \
     --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   pydantic
 tzdata==2025.2 \
     --hash=sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8 \
     --hash=sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   kombu
     #   pandas
+uc-micro-py==1.0.3 ; sys_platform != 'win32' \
+    --hash=sha256:d321b92cff673ec58027c04015fcaa8bb1e005478643ff4a500882eaab88c48a \
+    --hash=sha256:db1dffff340817673d7b466ec86114a9dc0e9d4d9b5ba229d9d60e5c12600cd5
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   linkify-it-py
+uri-template==1.3.0 \
+    --hash=sha256:0e00f8eb65e18c7de20d595a14336e9f337ead580c70934141624b6d1ffdacc7 \
+    --hash=sha256:a44a133ea12d44a0c0f06d7d42a52d71282e77e2f937d8abd5655b8d56fc1363
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jsonschema
 urllib3==1.26.19 \
     --hash=sha256:37a0344459b199fce0e80b0d3569837ec6b6937435c5244e7fd73fa6006830f3 \
     --hash=sha256:3e3d753a8618b86d7de333b4223005f68720bcd6a7d2bcb9fbd2229ec7c1e429
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   requests
 utilsforecast==0.2.0 \
     --hash=sha256:3db4245da4e361f26c8eaeef216c2d1206b20defbb033bf11d3e66ce2b1d6ef8 \
     --hash=sha256:a4825bf8da547e3dc552f9b9a7a8159341a118c3a5d122191f09bc3683cba433
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   statsforecast
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
     --hash=sha256:e9434d3bbf05f310e762147f769c9f21235ee118ba2d2bf1155a7196448bd996
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
+uvloop==0.21.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32' \
+    --hash=sha256:0878c2640cf341b269b7e128b1a5fed890adc4455513ca710d77d5e93aa6d6a0 \
+    --hash=sha256:10d66943def5fcb6e7b37310eb6b5639fd2ccbc38df1177262b0640c3ca68c1f \
+    --hash=sha256:10da8046cc4a8f12c91a1c39d1dd1585c41162a15caaef165c2174db9ef18bdc \
+    --hash=sha256:17df489689befc72c39a08359efac29bbee8eee5209650d4b9f34df73d22e414 \
+    --hash=sha256:183aef7c8730e54c9a3ee3227464daed66e37ba13040bb3f350bc2ddc040f22f \
+    --hash=sha256:196274f2adb9689a289ad7d65700d37df0c0930fd8e4e743fa4834e850d7719d \
+    --hash=sha256:221f4f2a1f46032b403bf3be628011caf75428ee3cc204a22addf96f586b19fd \
+    --hash=sha256:2d1f581393673ce119355d56da84fe1dd9d2bb8b3d13ce792524e1607139feff \
+    --hash=sha256:359ec2c888397b9e592a889c4d72ba3d6befba8b2bb01743f72fffbde663b59c \
+    --hash=sha256:3bf12b0fda68447806a7ad847bfa591613177275d35b6724b1ee573faa3704e3 \
+    --hash=sha256:4509360fcc4c3bd2c70d87573ad472de40c13387f5fda8cb58350a1d7475e58d \
+    --hash=sha256:460def4412e473896ef179a1671b40c039c7012184b627898eea5072ef6f017a \
+    --hash=sha256:461d9ae6660fbbafedd07559c6a2e57cd553b34b0065b6550685f6653a98c1cb \
+    --hash=sha256:46923b0b5ee7fc0020bef24afe7836cb068f5050ca04caf6b487c513dc1a20b2 \
+    --hash=sha256:53e420a3afe22cdcf2a0f4846e377d16e718bc70103d7088a4f7623567ba5fb0 \
+    --hash=sha256:5ee4d4ef48036ff6e5cfffb09dd192c7a5027153948d85b8da7ff705065bacc6 \
+    --hash=sha256:67dd654b8ca23aed0a8e99010b4c34aca62f4b7fce88f39d452ed7622c94845c \
+    --hash=sha256:787ae31ad8a2856fc4e7c095341cccc7209bd657d0e71ad0dc2ea83c4a6fa8af \
+    --hash=sha256:86975dca1c773a2c9864f4c52c5a55631038e387b47eaf56210f873887b6c8dc \
+    --hash=sha256:87c43e0f13022b998eb9b973b5e97200c8b90823454d4bc06ab33829e09fb9bb \
+    --hash=sha256:88cb67cdbc0e483da00af0b2c3cdad4b7c61ceb1ee0f33fe00e09c81e3a6cb75 \
+    --hash=sha256:8a375441696e2eda1c43c44ccb66e04d61ceeffcd76e4929e527b7fa401b90fb \
+    --hash=sha256:a5c39f217ab3c663dc699c04cbd50c13813e31d917642d459fdcec07555cc553 \
+    --hash=sha256:b9fb766bb57b7388745d8bcc53a359b116b8a04c83a2288069809d2b3466c37e \
+    --hash=sha256:baa0e6291d91649c6ba4ed4b2f982f9fa165b5bbd50a9e203c416a2797bab3c6 \
+    --hash=sha256:baa4dcdbd9ae0a372f2167a207cd98c9f9a1ea1188a8a526431eef2f8116cc8d \
+    --hash=sha256:bc09f0ff191e61c2d592a752423c767b4ebb2986daa9ed62908e2b1b9a9ae206 \
+    --hash=sha256:bd53ecc9a0f3d87ab847503c2e1552b690362e005ab54e8a48ba97da3924c0dc \
+    --hash=sha256:bfd55dfcc2a512316e65f16e503e9e450cab148ef11df4e4e679b5e8253a5281 \
+    --hash=sha256:c097078b8031190c934ed0ebfee8cc5f9ba9642e6eb88322b9958b649750f72b \
+    --hash=sha256:c0f3fa6200b3108919f8bdabb9a7f87f20e7097ea3c543754cabc7d717d95cf8 \
+    --hash=sha256:e678ad6fe52af2c58d2ae3c73dc85524ba8abe637f134bf3564ed07f555c5e79 \
+    --hash=sha256:ec7e6b09a6fdded42403182ab6b832b71f4edaf7f37a9a0e371a01db5f0cb45f \
+    --hash=sha256:f0ce1b49560b1d2d8a2977e3ba4afb2414fb46b86a1b64056bc4ab929efdafbe \
+    --hash=sha256:f38b2e090258d051d68a5b14d1da7203a3c3677321cf32a95a6f4db4dd8b6f26 \
+    --hash=sha256:f3df876acd7ec037a3d005b3ab85a7e4110422e4d9c1571d4fc89b0fc41b6816 \
+    --hash=sha256:f7089d2dc73179ce5ac255bdf37c236a9f914b264825fdaacaded6990a7fb4c2
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   uvicorn
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
     --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   amqp
     #   celery
     #   kombu
@@ -5831,14 +5636,12 @@ virtualenv==20.29.1 \
     --hash=sha256:b8b8970138d32fb606192cb97f6cd4bb644fa486be9308fb9b63f81091b5dc35
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
 wadler-lindig==0.1.7 \
     --hash=sha256:81d14d3fe77d441acf3ebd7f4aefac20c74128bf460e84b512806dccf7b2cd55 \
     --hash=sha256:e3ec83835570fd0a9509f969162aeb9c65618f998b1f42918cfc8d45122fe953
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jaxtyping
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \
@@ -5865,21 +5668,25 @@ watchfiles==0.19.0 \
     --hash=sha256:fac19dc9cbc34052394dbe81e149411a62e71999c0a19e1e09ce537867f95ae0
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ray
+    #   uvicorn
 wcwidth==0.2.13 \
     --hash=sha256:3da69048e4540d84af32131829ff948f1e022c1c6bdb8d6102117aac784f6859 \
     --hash=sha256:72ea0c06399eb286d978fdedb6923a9eb47e1c486ce63e9b4e64fc18303972b5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   prompt-toolkit
+webcolors==24.6.0 \
+    --hash=sha256:1d160d1de46b3e81e58d0a280d0c78b467dc80f47294b91b1ad8029d2cedb55b \
+    --hash=sha256:8cf5bc7e28defd1d48b9e83d5fc30741328305a8195c29a8e668fa45586568a1
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jsonschema
 webencodings==0.5.1 \
     --hash=sha256:a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78 \
     --hash=sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   bleach
     #   tinycss2
 websocket-client==1.8.0 \
@@ -5887,28 +5694,97 @@ websocket-client==1.8.0 \
     --hash=sha256:3239df9f44da632f96012472805d40a23281a991027ce11d2f45a6f24ac4c3da
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   jupyter-server
+websockets==15.0.1 \
+    --hash=sha256:0701bc3cfcb9164d04a14b149fd74be7347a530ad3bbf15ab2c678a2cd3dd9a2 \
+    --hash=sha256:0a34631031a8f05657e8e90903e656959234f3a04552259458aac0b0f9ae6fd9 \
+    --hash=sha256:0af68c55afbd5f07986df82831c7bff04846928ea8d1fd7f30052638788bc9b5 \
+    --hash=sha256:0c9e74d766f2818bb95f84c25be4dea09841ac0f734d1966f415e4edfc4ef1c3 \
+    --hash=sha256:0f3c1e2ab208db911594ae5b4f79addeb3501604a165019dd221c0bdcabe4db8 \
+    --hash=sha256:0fdfe3e2a29e4db3659dbd5bbf04560cea53dd9610273917799f1cde46aa725e \
+    --hash=sha256:1009ee0c7739c08a0cd59de430d6de452a55e42d6b522de7aa15e6f67db0b8e1 \
+    --hash=sha256:1234d4ef35db82f5446dca8e35a7da7964d02c127b095e172e54397fb6a6c256 \
+    --hash=sha256:16b6c1b3e57799b9d38427dda63edcbe4926352c47cf88588c0be4ace18dac85 \
+    --hash=sha256:2034693ad3097d5355bfdacfffcbd3ef5694f9718ab7f29c29689a9eae841880 \
+    --hash=sha256:21c1fa28a6a7e3cbdc171c694398b6df4744613ce9b36b1a498e816787e28123 \
+    --hash=sha256:229cf1d3ca6c1804400b0a9790dc66528e08a6a1feec0d5040e8b9eb14422375 \
+    --hash=sha256:27ccee0071a0e75d22cb35849b1db43f2ecd3e161041ac1ee9d2352ddf72f065 \
+    --hash=sha256:363c6f671b761efcb30608d24925a382497c12c506b51661883c3e22337265ed \
+    --hash=sha256:39c1fec2c11dc8d89bba6b2bf1556af381611a173ac2b511cf7231622058af41 \
+    --hash=sha256:3b1ac0d3e594bf121308112697cf4b32be538fb1444468fb0a6ae4feebc83411 \
+    --hash=sha256:3be571a8b5afed347da347bfcf27ba12b069d9d7f42cb8c7028b5e98bbb12597 \
+    --hash=sha256:3c714d2fc58b5ca3e285461a4cc0c9a66bd0e24c5da9911e30158286c9b5be7f \
+    --hash=sha256:3d00075aa65772e7ce9e990cab3ff1de702aa09be3940d1dc88d5abf1ab8a09c \
+    --hash=sha256:3e90baa811a5d73f3ca0bcbf32064d663ed81318ab225ee4f427ad4e26e5aff3 \
+    --hash=sha256:47819cea040f31d670cc8d324bb6435c6f133b8c7a19ec3d61634e62f8d8f9eb \
+    --hash=sha256:47b099e1f4fbc95b701b6e85768e1fcdaf1630f3cbe4765fa216596f12310e2e \
+    --hash=sha256:4a9fac8e469d04ce6c25bb2610dc535235bd4aa14996b4e6dbebf5e007eba5ee \
+    --hash=sha256:4b826973a4a2ae47ba357e4e82fa44a463b8f168e1ca775ac64521442b19e87f \
+    --hash=sha256:4c2529b320eb9e35af0fa3016c187dffb84a3ecc572bcee7c3ce302bfeba52bf \
+    --hash=sha256:54479983bd5fb469c38f2f5c7e3a24f9a4e70594cd68cd1fa6b9340dadaff7cf \
+    --hash=sha256:558d023b3df0bffe50a04e710bc87742de35060580a293c2a984299ed83bc4e4 \
+    --hash=sha256:5756779642579d902eed757b21b0164cd6fe338506a8083eb58af5c372e39d9a \
+    --hash=sha256:592f1a9fe869c778694f0aa806ba0374e97648ab57936f092fd9d87f8bc03665 \
+    --hash=sha256:595b6c3969023ecf9041b2936ac3827e4623bfa3ccf007575f04c5a6aa318c22 \
+    --hash=sha256:5a939de6b7b4e18ca683218320fc67ea886038265fd1ed30173f5ce3f8e85675 \
+    --hash=sha256:5d54b09eba2bada6011aea5375542a157637b91029687eb4fdb2dab11059c1b4 \
+    --hash=sha256:5df592cd503496351d6dc14f7cdad49f268d8e618f80dce0cd5a36b93c3fc08d \
+    --hash=sha256:5f4c04ead5aed67c8a1a20491d54cdfba5884507a48dd798ecaf13c74c4489f5 \
+    --hash=sha256:64dee438fed052b52e4f98f76c5790513235efaa1ef7f3f2192c392cd7c91b65 \
+    --hash=sha256:66dd88c918e3287efc22409d426c8f729688d89a0c587c88971a0faa2c2f3792 \
+    --hash=sha256:678999709e68425ae2593acf2e3ebcbcf2e69885a5ee78f9eb80e6e371f1bf57 \
+    --hash=sha256:67f2b6de947f8c757db2db9c71527933ad0019737ec374a8a6be9a956786aaf9 \
+    --hash=sha256:693f0192126df6c2327cce3baa7c06f2a117575e32ab2308f7f8216c29d9e2e3 \
+    --hash=sha256:746ee8dba912cd6fc889a8147168991d50ed70447bf18bcda7039f7d2e3d9151 \
+    --hash=sha256:756c56e867a90fb00177d530dca4b097dd753cde348448a1012ed6c5131f8b7d \
+    --hash=sha256:76d1f20b1c7a2fa82367e04982e708723ba0e7b8d43aa643d3dcd404d74f1475 \
+    --hash=sha256:7f493881579c90fc262d9cdbaa05a6b54b3811c2f300766748db79f098db9940 \
+    --hash=sha256:823c248b690b2fd9303ba00c4f66cd5e2d8c3ba4aa968b2779be9532a4dad431 \
+    --hash=sha256:82544de02076bafba038ce055ee6412d68da13ab47f0c60cab827346de828dee \
+    --hash=sha256:8dd8327c795b3e3f219760fa603dcae1dcc148172290a8ab15158cf85a953413 \
+    --hash=sha256:8fdc51055e6ff4adeb88d58a11042ec9a5eae317a0a53d12c062c8a8865909e8 \
+    --hash=sha256:a625e06551975f4b7ea7102bc43895b90742746797e2e14b70ed61c43a90f09b \
+    --hash=sha256:abdc0c6c8c648b4805c5eacd131910d2a7f6455dfd3becab248ef108e89ab16a \
+    --hash=sha256:ac017dd64572e5c3bd01939121e4d16cf30e5d7e110a119399cf3133b63ad054 \
+    --hash=sha256:ac1e5c9054fe23226fb11e05a6e630837f074174c4c2f0fe442996112a6de4fb \
+    --hash=sha256:ac60e3b188ec7574cb761b08d50fcedf9d77f1530352db4eef1707fe9dee7205 \
+    --hash=sha256:b359ed09954d7c18bbc1680f380c7301f92c60bf924171629c5db97febb12f04 \
+    --hash=sha256:b7643a03db5c95c799b89b31c036d5f27eeb4d259c798e878d6937d71832b1e4 \
+    --hash=sha256:ba9e56e8ceeeedb2e080147ba85ffcd5cd0711b89576b83784d8605a7df455fa \
+    --hash=sha256:c338ffa0520bdb12fbc527265235639fb76e7bc7faafbb93f6ba80d9c06578a9 \
+    --hash=sha256:cad21560da69f4ce7658ca2cb83138fb4cf695a2ba3e475e0559e05991aa8122 \
+    --hash=sha256:d08eb4c2b7d6c41da6ca0600c077e93f5adcfd979cd777d747e9ee624556da4b \
+    --hash=sha256:d50fd1ee42388dcfb2b3676132c78116490976f1300da28eb629272d5d93e905 \
+    --hash=sha256:d591f8de75824cbb7acad4e05d2d710484f15f29d4a915092675ad3456f11770 \
+    --hash=sha256:d5f6b181bb38171a8ad1d6aa58a67a6aa9d4b38d0f8c5f496b9e42561dfc62fe \
+    --hash=sha256:d63efaa0cd96cf0c5fe4d581521d9fa87744540d4bc999ae6e08595a1014b45b \
+    --hash=sha256:d99e5546bf73dbad5bf3547174cd6cb8ba7273062a23808ffea025ecb1cf8562 \
+    --hash=sha256:e09473f095a819042ecb2ab9465aee615bd9c2028e4ef7d933600a8401c79561 \
+    --hash=sha256:e8b56bdcdb4505c8078cb6c7157d9811a85790f2f2b3632c7d1462ab5783d215 \
+    --hash=sha256:ee443ef070bb3b6ed74514f5efaa37a252af57c90eb33b956d35c8e9c10a1931 \
+    --hash=sha256:f29d80eb9a9263b8d109135351caf568cc3f80b9928bccde535c235de55c22d9 \
+    --hash=sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f \
+    --hash=sha256:fcd5cf9e305d7b8338754470cf69cf81f420459dbae8a3b40cee57417f4614a7
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   uvicorn
 werkzeug==2.3.8 \
     --hash=sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03 \
     --hash=sha256:bba1f19f8ec89d4d607a3bd62f1904bd2e609472d93cd85e9d4e178f472c3748
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   tensorboard
 wheel==0.45.1 \
     --hash=sha256:661e1abd9198507b1409a20c02106d9670b2576e916d58f520316666abca6729 \
     --hash=sha256:708e7481cc80179af0e556bbf0cc00b8444c7321e2700b8d8580231d13017248
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   astunparse
 widgetsnbextension==4.0.11 \
     --hash=sha256:55d4d6949d100e0d08b94948a42efc3ed6dfdc0e9468b2c4b128c9a2ce3a7a36 \
     --hash=sha256:8b22a8f1910bfd188e596fe7fc05dcbd87e810c8a4ba010bdb3da86637398474
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   ipywidgets
 wrapt==1.14.1 \
     --hash=sha256:00b6d4ea20a906c0ca56d84f93065b398ab74b927a7a3dbd470f6fc503f95dc3 \
@@ -5987,16 +5863,14 @@ wrapt==1.14.1 \
     --hash=sha256:ef3f72c9666bba2bab70d2a8b79f2c6d2c1a42a7f7e2b0ec83bb2f9e383950af
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
+    #   deprecated
     #   dm-tree
     #   tensorflow
-    #   tensorflow-datasets
 xmltodict==0.13.0 \
     --hash=sha256:341595a488e3e01a85a9d8911d8912fd922ede5fecc4dce437eb4b6c8d037e56 \
     --hash=sha256:aa89e8fd76320154a40d19a0df04a4695fb9dc5ba977cbb68ab3e4eb225e7852
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/train-test-requirements.txt
 xxhash==3.4.1 \
     --hash=sha256:00f2fdef6b41c9db3d2fc0e7f94cb3db86693e5c45d6de09625caad9a469635b \
@@ -6109,7 +5983,6 @@ xxhash==3.4.1 \
     --hash=sha256:fe0a98d990e433013f41827b62be9ab43e3cf18e08b1483fcc343bda0d691182
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   datasets
     #   evaluate
 yarl==1.18.3 \
@@ -6197,21 +6070,18 @@ yarl==1.18.3 \
     --hash=sha256:fea09ca13323376a2fdfb353a5fa2e59f90cd18d7ca4eaa1fd31f0a8b4f91e62
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   aiohttp
 zipp==3.19.2 \
     --hash=sha256:f091755f667055f2d02b32c53771a7a6c8b47e1fdbc4b72a8b9072b3eef8015c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
+    #   etils
     #   importlib-metadata
-    #   importlib-resources
 zoopt==0.4.1 \
     --hash=sha256:3e6b73e04f43608c22cab108f9fc7cc9c6c5eeb9071fc12b145b46e61dd3227f \
     --hash=sha256:4a83cb33df64d862f72964aff49c046502e0a6e58159085b559afc8c0bb328a4
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   --override python/deplocks/ci/ml-gpubuild-ci_depset_py3.12.lock
     #   -r python/requirements/ml/py313/tune-test-requirements.txt
 
 # The following packages were excluded from the output:
