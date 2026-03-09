@@ -273,6 +273,53 @@ class MockDeploymentHandle:
         self._running_replicas_populated = val
 
 
+class MockDeploymentActorWrapper:
+    """Mock for DeploymentActorWrapper with per-instance setters."""
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        config,
+        code_version: str,
+    ):
+        self._deployment_id = deployment_id
+        self._config = config
+        self._code_version = code_version
+        self._ready = False
+        self._start_error_msg: Optional[str] = None
+        self._check_ready_error_msg: Optional[str] = None
+        self.killed = False
+        self.pending_killed = False
+
+    def set_ready(self):
+        self._ready = True
+
+    def set_start_error(self, error_msg: str):
+        self._start_error_msg = error_msg
+
+    def set_check_ready_error(self, error_msg: str):
+        self._check_ready_error_msg = error_msg
+
+    def start(self, deployment_runtime_env=None):
+        if self._start_error_msg is not None:
+            return False, self._start_error_msg
+        # Match real behavior: created actor starts as pending until ready.
+        return True, None
+
+    def check_ready(self):
+        if self._check_ready_error_msg is not None:
+            return False, self._check_ready_error_msg
+        if self._ready:
+            return True, None
+        return False, None
+
+    def kill_pending(self) -> None:
+        self.pending_killed = True
+
+    def kill(self) -> None:
+        self.killed = True
+
+
 class MockReplicaActorWrapper:
     def __init__(
         self,
