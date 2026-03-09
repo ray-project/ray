@@ -3,8 +3,8 @@ import logging
 import struct
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
-import lz4.block
 import pyarrow as pa
+from psycopg import sql
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -95,11 +95,13 @@ class HologresDatasource(Datasource):
         self._read_mode = read_mode
         self._is_compressed = is_compressed
 
+        # Generate and validate the query before connecting to DB
+        self._query = self._generate_query()
+        self._validate_select_query(self._query.as_string())
+
         # Validate that the table exists
         if not self._table_exists():
             raise ValueError(f"Table {schema}.{table} does not exist in the database.")
-
-        self._query = self._generate_query()
 
     def _init_client(self):
         _check_import(self, module="psycopg", package="psycopg[binary]")
@@ -136,50 +138,65 @@ class HologresDatasource(Datasource):
         finally:
             conn.close()
 
-    def _quote_identifier(self, identifier: str) -> str:
-        """Quote a SQL identifier to handle special characters."""
-        if not identifier:
-            return None
+    @staticmethod
+    def _validate_select_query(query_str: str) -> None:
+        """Validate that the query is a single SELECT statement.
 
-        # Double quotes inside the identifier need to be escaped by doubling them
-        escaped = identifier.replace('"', '""')
-        return f'"{escaped}"'
+        Uses sqlparse to parse the full query and verify it is a single,
+        safe SELECT statement without dangerous SQL constructs.
 
-    def _generate_query(self) -> str:
+        Args:
+            query_str: The SQL query string to validate.
+
+        Raises:
+            ValueError: If the query is not a valid single SELECT statement.
+        """
+        import sqlparse
+
+        parsed = sqlparse.parse(query_str)
+
+        if len(parsed) != 1:
+            raise ValueError(
+                "Query must be a single SQL statement; "
+                "multiple statements are not allowed."
+            )
+
+        stmt = parsed[0]
+        stmt_type = stmt.get_type()
+
+        if stmt_type != "SELECT":
+            raise ValueError(f"Only SELECT statements are allowed, got: {stmt_type}")
+
+    def _generate_query(self) -> sql.Composed:
         select_clause = (
-            ", ".join(self._quote_identifier(col) for col in self._columns)
+            sql.SQL(", ").join(map(sql.Identifier, self._columns))
             if self._columns
-            else "*"
+            else sql.SQL("*")
         )
-        quoted_table = f"{self._quote_identifier(self._schema)}.{self._quote_identifier(self._table)}"
-        query = f"SELECT {select_clause} FROM {quoted_table}"
-
-        # Add WHERE clause if where_filter is provided
+        query = sql.SQL("SELECT {0} FROM {1}.{2}").format(
+            select_clause, sql.Identifier(self._schema), sql.Identifier(self._table)
+        )
         if self._where_filter:
-            query += f" WHERE {self._where_filter}"
-
+            query = sql.SQL("{0} WHERE {1}").format(query, sql.SQL(self._where_filter))
         return query
 
-    def _build_read_sql(self, shard_list: List[int], original_query: str) -> str:
+    def _build_read_sql(
+        self, shard_list: List[int], original_query: sql.Composed
+    ) -> sql.Composed:
         """
         Build a query that targets specific shards using Hologres-specific WHERE clause.
         """
-        # Create a WHERE clause to filter by specific shard IDs using hg_shard_id IN clause
-        # If the original query already has a WHERE clause, append to it with AND, otherwise add WHERE
-
         if shard_list is None or len(shard_list) == 0:
             return original_query
-        # Build the hg_shard_id IN clause from the list of integers
-        in_clause = f"hg_shard_id IN ({', '.join(map(str, shard_list))})"
 
-        if "WHERE" in original_query.upper():
-            # If original query already has WHERE clause, append with AND
-            modified_query = original_query + f" AND {in_clause}"
+        in_clause = sql.SQL("hg_shard_id IN ({0})").format(
+            sql.SQL(", ").join(sql.Literal(s) for s in shard_list)
+        )
+
+        if self._where_filter:
+            return sql.SQL("{0} AND {1}").format(original_query, in_clause)
         else:
-            # If no WHERE clause exists, add one
-            modified_query = original_query + f" WHERE {in_clause}"
-
-        return modified_query
+            return sql.SQL("{0} WHERE {1}").format(original_query, in_clause)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
@@ -313,16 +330,19 @@ class HologresDatasource(Datasource):
         # Rest is the LZ4 block
         payload = compressed_data[4:]
         # lz4.block.decompress expects the raw block and the uncompressed size
+        import lz4.block
+
         return lz4.block.decompress(payload, uncompressed_size=decompressed_size)
 
-    def _execute_copy_to(self, query: str) -> Block:
+    def _execute_copy_to(self, query) -> Block:
         """
         Execute a query using PostgreSQL copy protocol with Arrow format.
         """
 
         # Generate the COPY command to get Arrow data
-        format = "ARROW_LZ4" if self._is_compressed else "ARROW"
-        copy_query = f"COPY ({query}) TO STDOUT WITH (FORMAT {format})"
+        copy_query = sql.SQL("COPY ({0}) TO STDOUT WITH (FORMAT {1})").format(
+            query, sql.SQL("ARROW_LZ4" if self._is_compressed else "ARROW")
+        )
 
         conn = self._init_client()
         try:

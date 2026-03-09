@@ -2,6 +2,7 @@ from unittest import mock
 
 import pyarrow as pa
 import pytest
+from psycopg import sql
 
 from ray.data._internal.datasource.hologres_datasource import HologresDatasource
 from ray.data.read_api import read_hologres
@@ -33,7 +34,7 @@ class TestHologresDatasource:
     def test_init(self, datasource):
         # Test query generation with columns
         expected_query = 'SELECT "column1", "column2" FROM "public"."table_name"'
-        assert datasource._query == expected_query
+        assert datasource._query.as_string() == expected_query
         assert datasource._schema == "public"
         assert datasource._table == "table_name"
 
@@ -53,7 +54,7 @@ class TestHologresDatasource:
             connection_uri="postgresql://user:password@localhost:5432/testdb",
         )
         expected_query = 'SELECT * FROM "public"."my_table"'
-        assert datasource._query == expected_query
+        assert datasource._query.as_string() == expected_query
         assert datasource._schema == "public"
         assert datasource._table == "my_table"
 
@@ -74,7 +75,7 @@ class TestHologresDatasource:
             connection_uri="postgresql://user:password@localhost:5432/testdb",
         )
         expected_query = 'SELECT * FROM "myschema"."my_table"'
-        assert datasource._query == expected_query
+        assert datasource._query.as_string() == expected_query
         assert datasource._schema == "myschema"
         assert datasource._table == "my_table"
 
@@ -84,27 +85,27 @@ class TestHologresDatasource:
             connection_uri="postgresql://user:password@localhost:5432/testdb",
         )
         expected_query = 'SELECT * FROM "MYSCHEMA"."TABL""E"'
-        assert datasource._query == expected_query
+        assert datasource._query.as_string() == expected_query
         assert datasource._schema == "MYSCHEMA"
         assert datasource._table == 'TABL"E'
 
     def test_generate_query_columns(self, datasource):
         # Test with specific columns
         datasource._columns = ["field1"]
-        query = datasource._generate_query()
+        query = datasource._generate_query().as_string()
         assert 'SELECT "field1" FROM' in query
 
         datasource._columns = ["field1", "field2"]
-        query = datasource._generate_query()
+        query = datasource._generate_query().as_string()
         assert 'SELECT "field1", "field2" FROM' in query
 
         datasource._columns = ["field1", "FIELD2"]
-        query = datasource._generate_query()
+        query = datasource._generate_query().as_string()
         assert 'SELECT "field1", "FIELD2" FROM' in query
 
         # Test with no columns (should select *)
         datasource._columns = None
-        query = datasource._generate_query()
+        query = datasource._generate_query().as_string()
         assert "SELECT * FROM" in query
 
     def test_generate_query_with_where_filter(self):
@@ -125,42 +126,95 @@ class TestHologresDatasource:
                 where_filter="status = 'active'",
             )
 
-            query = datasource._generate_query()
+            query = datasource._generate_query().as_string()
             expected_query = 'SELECT "column1", "column2" FROM "public"."table_name" WHERE status = \'active\''
             assert query == expected_query
 
             # Test with no where filter
             datasource._where_filter = None
-            query = datasource._generate_query()
+            query = datasource._generate_query().as_string()
             expected_query = 'SELECT "column1", "column2" FROM "public"."table_name"'
             assert query == expected_query
 
             # Test with wildcard selection and where filter
             datasource._columns = None
             datasource._where_filter = '"AGE" > 18'
-            query = datasource._generate_query()
+            query = datasource._generate_query().as_string()
             expected_query = 'SELECT * FROM "public"."table_name" WHERE "AGE" > 18'
             assert query == expected_query
 
+    def test_validate_select_query_accepts_valid_queries(self):
+        valid_queries = [
+            'SELECT * FROM "public"."table"',
+            'SELECT "col1", "col2" FROM "public"."table"',
+            'SELECT * FROM "public"."table" WHERE age > 18',
+            'SELECT * FROM "public"."table" WHERE status = \'active\'',
+            'SELECT * FROM "public"."table" WHERE age > 18 AND status = \'active\'',
+            'SELECT * FROM "public"."table" WHERE id IN (1, 2, 3)',
+            'SELECT * FROM "public"."table" WHERE id BETWEEN 1 AND 100',
+            'SELECT * FROM "public"."table" WHERE value IS NOT NULL',
+            # Subqueries are fine
+            'SELECT * FROM "public"."table" WHERE id IN (SELECT id FROM other)',
+            'SELECT * FROM "public"."table" WHERE EXISTS (SELECT 1 FROM other)',
+            # String literal containing a dangerous keyword is fine
+            'SELECT * FROM "public"."table" WHERE status = \'DROP\'',
+        ]
+        for q in valid_queries:
+            HologresDatasource._validate_select_query(q)
+
+    def test_validate_select_query_rejects_multiple_statements(self):
+        with pytest.raises(ValueError, match="multiple statements"):
+            HologresDatasource._validate_select_query(
+                'SELECT * FROM "public"."t" WHERE 1=1; DROP TABLE users'
+            )
+
+    def test_validate_select_query_rejects_non_select(self):
+        with pytest.raises(ValueError, match="Only SELECT"):
+            HologresDatasource._validate_select_query(
+                'DELETE FROM "public"."users" WHERE 1=1'
+            )
+        with pytest.raises(ValueError, match="Only SELECT"):
+            HologresDatasource._validate_select_query('DROP TABLE "public"."users"')
+        with pytest.raises(ValueError, match="Only SELECT"):
+            HologresDatasource._validate_select_query(
+                'INSERT INTO "public"."users" VALUES (1)'
+            )
+        with pytest.raises(ValueError, match="Only SELECT"):
+            HologresDatasource._validate_select_query(
+                'UPDATE "public"."users" SET admin = true'
+            )
+
+    def test_init_rejects_malicious_where_filter(self):
+        # Validation runs before _table_exists(), so no DB mock needed
+        with pytest.raises(ValueError):
+            HologresDatasource(
+                table="test",
+                connection_uri="postgresql://user:pass@host/db",
+                where_filter="1=1; DROP TABLE users",
+            )
+
     def test_build_read_sql_with_shard_list(self, datasource):
-        original_query = 'SELECT * FROM "public"."table_name"'
+        original_query = sql.SQL('SELECT * FROM "public"."table_name"')
         result = datasource._build_read_sql([0, 1, 2], original_query)
+        result_str = result.as_string()
 
         # Check that it adds hg_shard_id IN clause and includes the original query
-        assert "hg_shard_id IN (0, 1, 2)" in result
-        assert 'SELECT * FROM "public"."table_name"' in result
+        assert "hg_shard_id IN (0, 1, 2)" in result_str
+        assert 'SELECT * FROM "public"."table_name"' in result_str
         # Verify that the WHERE clause was added
-        assert "WHERE" in result
+        assert "WHERE" in result_str
 
     def test_build_read_sql_with_existing_where_clause(self, datasource):
-        original_query = 'SELECT * FROM "public"."table_name" WHERE age > 18'
+        original_query = sql.SQL('SELECT * FROM "public"."table_name" WHERE age > 18')
+        datasource._where_filter = "age > 18"
         result = datasource._build_read_sql([0, 1, 2], original_query)
+        result_str = result.as_string()
 
         # Check that it appends to existing WHERE clause with AND
-        assert "hg_shard_id IN (0, 1, 2)" in result
+        assert "hg_shard_id IN (0, 1, 2)" in result_str
         assert (
             'SELECT * FROM "public"."table_name" WHERE age > 18 AND hg_shard_id IN (0, 1, 2)'
-            in result
+            in result_str
         )
 
     @mock.patch("psycopg.connect")
@@ -234,10 +288,13 @@ class TestHologresDatasource:
         datasource = HologresDatasource(
             table="test_table",
             connection_uri="postgresql://user:password@localhost:5432/testdb",
+            read_mode="select",
         )
 
         # Test basic query execution
-        result = datasource._execute_read_sql("SELECT * FROM public.test_table")
+        result = datasource._execute_read_sql(
+            sql.SQL("SELECT * FROM public.test_table")
+        )
 
         # Verify the query was executed
         mock_cursor.execute.assert_called()
@@ -338,8 +395,8 @@ class TestHologresDatasource:
             called_query = captured_queries[0]
 
             # The query should be the original query without hg_shard_id filter
-            assert "hg_shard_id" not in called_query
-            assert datasource._query == called_query
+            assert "hg_shard_id" not in called_query.as_string()
+            assert datasource._query.as_string() == called_query.as_string()
 
 
 class TestHologresReadApi:
