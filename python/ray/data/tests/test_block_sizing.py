@@ -375,3 +375,9 @@ def test_read_target_max_block_rows(ray_start_regular_shared, tmp_path, restore_
     for block_ref in ds_read.get_internal_block_refs():
         block = ray.get(block_ref)
         assert BlockAccessor.for_block(block).num_rows() <= rows_per_block
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-sv", __file__]))

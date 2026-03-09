@@ -6,9 +6,9 @@ import pytest
 from PIL import Image
 
 import ray
-from ray.data.expressions import DownloadExpr, col, download
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
+from ray.data.expressions import DownloadExpr, col, download
 
 
 class TestDownloadExpressionStructure:
