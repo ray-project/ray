@@ -11,7 +11,7 @@ import pytest
 import ray
 from ray import cloudpickle
 from ray._common.test_utils import wait_for_condition
-from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -387,24 +387,46 @@ def test_streaming_split_error_propagation(
     assert res == ["ok"] * num_splits
 
 
-@pytest.mark.skip(
-    reason="Incomplete implementation of _validate_dag causes other errors, so we "
-    "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
-)
-def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
-    def run():
-        ray.data.range(5, override_num_blocks=5).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
-        ).take_all()
+def test_streaming_split_schema_before_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval from splits before execution starts."""
+    ds = ray.data.range(20, override_num_blocks=20)
+    i1, i2 = ds.streaming_split(2, equal=True)
 
-    DataContext.get_current().execution_options.resource_limits = ExecutionResources()
-    run()
+    import concurrent.futures
 
-    DataContext.get_current().execution_options.resource_limits = (
-        DataContext.get_current().execution_options.resource_limits.copy(cpu=1)
-    )
-    with pytest.raises(ValueError):
-        run()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(i1.schema)
+        f2 = executor.submit(i2.schema)
+        schema1 = f1.result()
+        schema2 = f2.result()
+
+    assert schema1 is not None
+    assert "id" in schema1.names
+    assert schema1 == schema2
+
+
+def test_streaming_split_schema_during_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval from splits during execution."""
+    ds = ray.data.range(20, override_num_blocks=20)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x):
+        for _ in x.iter_rows():
+            pass
+
+    # Start iteration on both splits.
+    refs = [consume.remote(i1), consume.remote(i2)]
+
+    # Give iteration time to start and create the executor.
+    time.sleep(2)
+
+    # schema() should raise because execution is active.
+    with pytest.raises(ray.exceptions.RayTaskError, match="Cannot call schema()"):
+        i1.schema()
+
+    # Let consumers finish.
+    ray.get(refs)
 
 
 def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):

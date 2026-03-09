@@ -110,7 +110,7 @@ class StreamSplitDataIterator(DataIterator):
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
-        return self._base_dataset.schema()
+        return ray.get(self._coord_actor.get_dataset_schema.remote())
 
     def get_context(self) -> DataContext:
         return self._base_dataset.context
@@ -152,6 +152,8 @@ class SplitCoordinator:
         self._n = n
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
+        self._dataset_state_lock = threading.Lock()
+        self._schema = None
         self._executor = None
 
         # Guarded by self._lock.
@@ -174,6 +176,18 @@ class SplitCoordinator:
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
+
+    def get_dataset_schema(self):
+        with self._dataset_state_lock:
+            if self._executor is not None:
+                raise RuntimeError(
+                    "Cannot call schema() during active dataset execution. "
+                    "Call schema() before iterating over the dataset, or call "
+                    "schema() directly on the source Dataset object."
+                )
+            if self._schema is None:
+                self._schema = self._base_dataset.schema()
+            return self._schema
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
