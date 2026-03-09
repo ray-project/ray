@@ -500,7 +500,7 @@ class TestDeploymentSchema:
         }
         with pytest.raises(
             ValueError,
-            match="Scale to zero isn't supported for gang-scheduled deployments",
+            match="Scale to zero isn't supported for gang scheduling",
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
