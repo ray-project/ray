@@ -1,4 +1,5 @@
 import pickle
+from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -65,29 +66,6 @@ def _write_fragment(
     import pandas as pd
     from lance.fragment import DEFAULT_MAX_BYTES_PER_FILE, write_fragments
 
-    stream = list(stream)
-    if not stream:
-        return []
-
-    if schema is None:
-        first = stream[0]
-        if isinstance(first, pd.DataFrame):
-            schema = pa.Schema.from_pandas(first).remove_metadata()
-        else:
-            schema = first.schema
-        if len(schema.names) == 0:
-            # Empty table.
-            schema = None
-
-    def record_batch_converter():
-        for block in stream:
-            tbl = BlockAccessor.for_block(block).to_arrow()
-            yield from tbl.to_batches()
-
-    max_bytes_per_file = (
-        DEFAULT_MAX_BYTES_PER_FILE if max_bytes_per_file is None else max_bytes_per_file
-    )
-
     if retry_params is None:
         retry_params = {
             "description": "write lance fragments",
@@ -96,6 +74,45 @@ def _write_fragment(
             "max_backoff_s": 0,
         }
 
+    max_attempts = retry_params.get("max_attempts", 1)
+    if max_attempts > 1:
+        # Retries need a replayable input stream, so materialize blocks only when
+        # the write may be attempted more than once.
+        replayable_stream = list(stream)
+        if not replayable_stream:
+            return []
+        first = replayable_stream[0]
+
+        def stream_factory():
+            return iter(replayable_stream)
+
+    else:
+        stream = iter(stream)
+        first = next(stream, None)
+        if first is None:
+            return []
+
+        def stream_factory():
+            return chain([first], stream)
+
+    if schema is None:
+        if isinstance(first, pd.DataFrame):
+            schema = pa.Schema.from_pandas(first).remove_metadata()
+        else:
+            schema = first.schema
+        if len(schema.names) == 0:
+            # Empty table.
+            schema = None
+
+    def record_batch_converter(block_stream):
+        for block in block_stream:
+            tbl = BlockAccessor.for_block(block).to_arrow()
+            yield from tbl.to_batches()
+
+    max_bytes_per_file = (
+        DEFAULT_MAX_BYTES_PER_FILE if max_bytes_per_file is None else max_bytes_per_file
+    )
+
     storage_options_provider = create_storage_options_provider(
         namespace_impl,
         namespace_properties,
@@ -103,7 +120,9 @@ def _write_fragment(
     )
 
     def _write_once():
-        reader = pa.RecordBatchReader.from_batches(schema, record_batch_converter())
+        reader = pa.RecordBatchReader.from_batches(
+            schema, record_batch_converter(stream_factory())
+        )
         return write_fragments(
             reader,
             uri,
@@ -286,7 +305,8 @@ class LanceDatasink(_BaseLanceDatasink):
         uri: The base URI of the dataset.
         schema: The schema of the dataset.
         mode: The write mode. Default is SaveMode.CREATE. Choices are
-            SaveMode.CREATE, SaveMode.APPEND, SaveMode.OVERWRITE.
+            SaveMode.CREATE, SaveMode.APPEND, SaveMode.OVERWRITE. Namespace-backed
+            writes currently support only SaveMode.CREATE.
         min_rows_per_file: The minimum number of rows per file. Default is 1024 * 1024.
         max_rows_per_file: The maximum number of rows per file. Default is 64 * 1024 * 1024.
         data_storage_version: The version of the data storage format to use. Newer versions are more
@@ -298,6 +318,8 @@ class LanceDatasink(_BaseLanceDatasink):
             Used together with namespace_properties and table_id for credentials vending.
         namespace_properties: Properties for connecting to the namespace.
             Used together with namespace_impl and table_id for credentials vending.
+            When namespace params are provided, only SaveMode.CREATE is currently
+            supported.
         *args: Additional positional arguments forwarded to the base class.
         **kwargs: Additional keyword arguments forwarded to the base class.
     """

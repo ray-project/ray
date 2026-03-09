@@ -9,6 +9,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data import Schema
+from ray.data._internal.datasource.lance_datasink import LanceDatasink, _write_fragment
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -283,6 +284,61 @@ def test_write_lance_passes_namespace_args(mock_lance_write):
     assert captured["kwargs"]["namespace_impl"] == namespace_impl
     assert captured["kwargs"]["namespace_properties"] == namespace_properties
     assert isinstance(captured["datasink"], fake_lance_datasink_cls)
+
+
+@pytest.mark.parametrize("mode", [SaveMode.APPEND, SaveMode.OVERWRITE])
+def test_lance_namespace_write_rejects_non_create_mode(monkeypatch, mode):
+    class _FakeNamespace:
+        pass
+
+    monkeypatch.setattr(
+        "ray.data._internal.datasource.lance_datasink.get_or_create_namespace",
+        lambda namespace_impl, namespace_properties: _FakeNamespace(),
+    )
+
+    with pytest.raises(ValueError, match="Namespace writes currently only support"):
+        LanceDatasink(
+            uri="/tmp/lance-namespace-test",
+            mode=mode,
+            table_id=["db", "table"],
+            namespace_impl="dir",
+            namespace_properties={"path": "/tmp/ns"},
+        )
+
+
+@pytest.mark.parametrize(
+    "max_attempts,expected_blocks_consumed_before_write",
+    [(1, 1), (2, 3)],
+)
+def test_write_fragment_only_materializes_stream_when_retrying(
+    monkeypatch, max_attempts, expected_blocks_consumed_before_write
+):
+    import lance.fragment
+
+    consumed = {"count": 0}
+    blocks = [pa.table({"id": [i]}) for i in range(3)]
+
+    def block_stream():
+        for block in blocks:
+            consumed["count"] += 1
+            yield block
+
+    def fake_write_fragments(reader, uri, **kwargs):
+        assert consumed["count"] == expected_blocks_consumed_before_write
+        return []
+
+    monkeypatch.setattr(lance.fragment, "write_fragments", fake_write_fragments)
+
+    _write_fragment(
+        block_stream(),
+        "/tmp/lance-materialization-test",
+        retry_params={
+            "description": "write lance fragments",
+            "match": [],
+            "max_attempts": max_attempts,
+            "max_backoff_s": 0,
+        },
+    )
 
 
 if __name__ == "__main__":
