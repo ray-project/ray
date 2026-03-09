@@ -209,6 +209,35 @@ def test_parquet_read_basic(
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+)
+def test_parquet_read_with_success_file(ray_start_regular_shared, fs, data_path):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df)
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.parquet")
+    pq.write_table(table, path, filesystem=fs)
+
+    # Add _SUCCESS file to ensure it's ignored
+    success_path = os.path.join(setup_data_path, "_SUCCESS")
+    if fs is None:
+        open(success_path, "wb").close()
+    else:
+        with fs.open_output_stream(success_path):
+            pass
+
+    ds = ray.data.read_parquet(data_path, filesystem=fs)
+    assert ds.count() == 3
+    values = [s["one"] for s in ds.take_all()]
+    assert sorted(values) == [1, 2, 3]
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
