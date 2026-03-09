@@ -120,7 +120,14 @@ class NodeStateCache:
         Generates a deterministic signature of the node's scheduling capacity.
         Returns True if this exact state has already been seen, otherwise adds it
         to the cache and returns False.
+
+        We intentionally skip caching for running nodes because their resource states
+        may be highly fragmented and they contain unique injected resources like node ID.
         """
+        # Evaluate online nodes individually since they may contain dummy resources.
+        if node.im_instance_status == Instance.RAY_RUNNING:
+            return False
+
         avail_res = node.get_available_resources(self.source)
         state_key = (
             node.node_type,
