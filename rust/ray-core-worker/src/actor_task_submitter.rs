@@ -15,6 +15,7 @@
 //! in order. Handles actor death, reconnection, and task cancellation.
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 
@@ -25,8 +26,9 @@ use crate::error::{CoreWorkerError, CoreWorkerResult};
 
 /// Callback for sending a task to an actor worker.
 /// Receives the task spec and the actor's worker address.
+/// Wrapped in `Arc` so it can be shared across lock scopes.
 pub type ActorTaskSendCallback =
-    Box<dyn Fn(&TaskSpec, &rpc::Address) -> CoreWorkerResult<()> + Send + Sync>;
+    Arc<dyn Fn(&TaskSpec, &rpc::Address) -> CoreWorkerResult<()> + Send + Sync>;
 
 /// State of an actor as tracked by the submitter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,40 +106,88 @@ impl ActorTaskSubmitter {
     /// The task is assigned a sequence number and enqueued. If the actor
     /// is alive with a known address and a send callback is set, the task
     /// is delivered immediately. Otherwise it waits in the queue.
+    ///
+    /// IMPORTANT: The queues lock is released before calling the send
+    /// callback. This allows concurrent submissions to different actors
+    /// even when a callback blocks (e.g., NCCL collective ops that wait
+    /// for all ranks to participate).
     pub async fn submit_task(
         &self,
         actor_id: &ActorID,
         task_spec: TaskSpec,
     ) -> CoreWorkerResult<()> {
-        let mut queues = self.queues.lock();
-        let queue = queues
-            .get_mut(actor_id)
-            .ok_or_else(|| CoreWorkerError::ActorNotFound(actor_id.hex()))?;
+        // Phase 1: enqueue the task while holding the lock.
+        let tasks_to_send = {
+            let mut queues = self.queues.lock();
+            let queue = queues
+                .get_mut(actor_id)
+                .ok_or_else(|| CoreWorkerError::ActorNotFound(actor_id.hex()))?;
 
-        if queue.state == ActorState::Dead {
-            return Err(CoreWorkerError::Internal(format!(
-                "actor {} is dead, cannot submit tasks",
-                actor_id.hex()
-            )));
-        }
+            if queue.state == ActorState::Dead {
+                return Err(CoreWorkerError::Internal(format!(
+                    "actor {} is dead, cannot submit tasks",
+                    actor_id.hex()
+                )));
+            }
 
-        let seq = queue.next_sequence_number;
-        queue.next_sequence_number += 1;
-        queue.pending_tasks.push_back(task_spec);
+            let seq = queue.next_sequence_number;
+            queue.next_sequence_number += 1;
+            queue.pending_tasks.push_back(task_spec);
 
-        tracing::debug!(
-            actor_id = %actor_id.hex(),
-            seq,
-            state = ?queue.state,
-            "Actor task enqueued"
-        );
+            tracing::debug!(
+                actor_id = %actor_id.hex(),
+                seq,
+                state = ?queue.state,
+                "Actor task enqueued"
+            );
 
-        // Try to send pending tasks if actor is alive with a known address
-        if queue.state == ActorState::Alive {
-            if let Some(ref addr) = queue.worker_address.clone() {
-                let callback = self.send_callback.lock();
-                if let Some(ref cb) = *callback {
-                    self.send_pending_tasks(queue, addr, cb);
+            // Drain pending tasks if actor is alive with a known address
+            if queue.state == ActorState::Alive {
+                if let Some(ref addr) = queue.worker_address {
+                    let tasks: Vec<TaskSpec> = queue.pending_tasks.drain(..).collect();
+                    Some((tasks, addr.clone()))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }; // queues lock released here
+
+        // Phase 2: send tasks outside the lock so other actors can be submitted concurrently.
+        if let Some((tasks, address)) = tasks_to_send {
+            let callback: Option<ActorTaskSendCallback> = self.send_callback.lock().clone();
+            if let Some(ref cb) = callback {
+                let mut failed_from = None;
+                for (i, task) in tasks.iter().enumerate() {
+                    match cb(task, &address) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to send actor task, will retry");
+                            failed_from = Some(i);
+                            break;
+                        }
+                    }
+                }
+                // Update queue state: record sent tasks and re-queue failures
+                let mut queues = self.queues.lock();
+                if let Some(queue) = queues.get_mut(actor_id) {
+                    let sent_count = failed_from.unwrap_or(tasks.len());
+                    queue.num_tasks_sent += sent_count as u64;
+                    // Re-queue failed tasks at the front
+                    if let Some(fail_idx) = failed_from {
+                        for task in tasks[fail_idx..].iter().rev() {
+                            queue.pending_tasks.push_front(task.clone());
+                        }
+                    }
+                }
+            } else {
+                // No callback — put tasks back
+                let mut queues = self.queues.lock();
+                if let Some(queue) = queues.get_mut(actor_id) {
+                    for task in tasks {
+                        queue.pending_tasks.push_back(task);
+                    }
                 }
             }
         }
@@ -146,6 +196,7 @@ impl ActorTaskSubmitter {
     }
 
     /// Try to send all pending tasks for an actor queue.
+    /// NOTE: This is called while the queues lock is held (from flush_actor_tasks).
     fn send_pending_tasks(
         &self,
         queue: &mut ActorQueue,
@@ -438,7 +489,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -461,7 +512,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -547,7 +598,7 @@ mod tests {
         // Reconnect and flush
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -601,7 +652,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -643,7 +694,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -688,7 +739,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -711,7 +762,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -748,7 +799,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -792,7 +843,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -896,7 +947,7 @@ mod tests {
         submitter.connect_actor(&actor_id, make_address());
 
         // Set a callback that always fails.
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             Err(CoreWorkerError::Internal("network error".into()))
         }));
 
@@ -971,7 +1022,7 @@ mod tests {
 
         let sent_tasks = Arc::new(Mutex::new(Vec::new()));
         let tasks_clone = sent_tasks.clone();
-        submitter.set_send_callback(Box::new(move |spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |spec, _addr| {
             tasks_clone.lock().push(spec.name.clone());
             Ok(())
         }));
@@ -1008,7 +1059,7 @@ mod tests {
 
         let order = Arc::new(Mutex::new(Vec::new()));
         let order_clone = order.clone();
-        submitter.set_send_callback(Box::new(move |spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |spec, _addr| {
             order_clone.lock().push(spec.name.clone());
             Ok(())
         }));
@@ -1036,7 +1087,7 @@ mod tests {
 
         let sent_count = Arc::new(AtomicU32::new(0));
         let count_clone = sent_count.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             count_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -1130,7 +1181,7 @@ mod tests {
 
         let sent = Arc::new(AtomicU32::new(0));
         let sent_clone = sent.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             sent_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));
@@ -1182,7 +1233,7 @@ mod tests {
         // Connect and flush remaining.
         let sent = Arc::new(AtomicU32::new(0));
         let sent_clone = sent.clone();
-        submitter.set_send_callback(Box::new(move |_spec, _addr| {
+        submitter.set_send_callback(Arc::new(move |_spec, _addr| {
             sent_clone.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }));

@@ -671,7 +671,7 @@ mod tests {
         // Set a callback that records invocation.
         let called = Arc::new(AtomicBool::new(false));
         let called_clone = called.clone();
-        worker.set_actor_task_send_callback(Box::new(move |_spec, _addr| {
+        worker.set_actor_task_send_callback(Arc::new(move |_spec, _addr| {
             called_clone.store(true, Ordering::Relaxed);
             Ok(())
         }));

@@ -204,7 +204,7 @@ async fn main() {
     // Wire the actor task send callback to dispatch via gRPC PushTask.
     let actor_endpoint = format!("http://{}", actor_addr);
     let wid = actor_worker_id;
-    driver.set_actor_task_send_callback(Box::new(move |spec, _addr| {
+    driver.set_actor_task_send_callback(Arc::new(move |spec, _addr| {
         let endpoint = actor_endpoint.clone();
         let spec_clone = spec.clone();
         let worker_id_bytes = wid.binary();

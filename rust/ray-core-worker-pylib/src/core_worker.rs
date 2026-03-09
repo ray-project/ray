@@ -489,7 +489,7 @@ impl PyCoreWorker {
         // blocks the calling thread (which is inside runtime.block_on).
         let driver_store = Arc::clone(self.inner.memory_store());
         self.inner
-            .set_actor_task_send_callback(Box::new(move |spec, addr| {
+            .set_actor_task_send_callback(Arc::new(move |spec, addr| {
                 let endpoint = format!("http://{}:{}", addr.ip_address, addr.port);
                 let spec_clone = spec.clone();
                 let wid_bytes = addr.worker_id.clone();
