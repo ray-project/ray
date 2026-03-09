@@ -60,6 +60,9 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
+from ray.data._internal.execution.operators.schema_helpers import (
+    _get_arrow_schema_from_block,
+)
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler
@@ -76,23 +79,6 @@ from ray.data.block import (
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
-
-
-@ray.remote(num_cpus=0)
-def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
-    """Extract PyArrow schema from a block by converting a 1-row sample.
-
-    This runs on a worker to avoid fetching block data to the driver.
-    Uses num_cpus=0 since it's a lightweight metadata operation.
-
-    Slices to 1 row before converting to Arrow to minimize conversion overhead
-    for large Pandas blocks. This ensures schema is consistent with actual
-    block conversion logic (e.g., pa.Table.from_pandas).
-    """
-    accessor = BlockAccessor.for_block(block)
-    sample_block = accessor.slice(0, 1)
-    sample_accessor = BlockAccessor.for_block(sample_block)
-    return sample_accessor.to_arrow().schema
 
 
 def _get_schema_from_bundle(bundle: RefBundle) -> Optional["pa.Schema"]:
