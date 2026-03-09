@@ -952,7 +952,7 @@ class ApplicationState:
                 and deploy_info.deployment_config.logging_config is None
             ):
                 deploy_info.deployment_config.logging_config = (
-                    self._target_state.config.logging_config
+                    self._target_state.config.logging_config.model_dump()
                 )
             target_state_changed = (
                 self.apply_deployment_info(deployment_name, deploy_info)
@@ -1639,7 +1639,7 @@ def override_deployment_info(
     if override_config is None:
         return deployment_infos
 
-    config_dict = override_config.dict(exclude_unset=True)
+    config_dict = override_config.model_dump(exclude_unset=True)
     deployment_override_options = config_dict.get("deployments", [])
 
     # Override options for each deployment listed in the config.
@@ -1655,7 +1655,7 @@ def override_deployment_info(
             )
 
         info = deployment_infos[deployment_name]
-        original_options = info.deployment_config.dict()
+        original_options = info.deployment_config.model_dump()
         original_options["user_configured_option_names"].update(set(options))
 
         # Override `max_ongoing_requests` and `autoscaling_config` if
@@ -1663,7 +1663,7 @@ def override_deployment_info(
         if options.get("num_replicas") == "auto":
             options["num_replicas"] = None
 
-            new_config = AutoscalingConfig.default().dict()
+            new_config = AutoscalingConfig.default().model_dump()
             # If `autoscaling_config` is specified, its values override
             # the default `num_replicas="auto"` configuration
             autoscaling_config = (

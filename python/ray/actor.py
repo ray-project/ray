@@ -704,7 +704,7 @@ def method(*args, **kwargs):
             method.__ray_enable_task_events__ = kwargs["enable_task_events"]
         if "tensor_transport" in kwargs:
             tensor_transport = kwargs["tensor_transport"]
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 
@@ -925,7 +925,7 @@ class ActorMethod:
 
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
-            from ray.experimental.gpu_object_manager.util import (
+            from ray.experimental.rdt.util import (
                 normalize_and_validate_tensor_transport,
             )
 
@@ -1065,8 +1065,8 @@ class ActorMethod:
                     f'Currently, methods with .options(tensor_transport="{tensor_transport}") are not supported when enable_tensor_transport=False. '
                     "Please set @ray.remote(enable_tensor_transport=True) on the actor class definition."
                 )
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            if not gpu_object_manager.actor_has_tensor_transport(
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            if not rdt_manager.actor_has_tensor_transport(
                 self._actor, tensor_transport
             ):
                 raise ValueError(
@@ -1076,7 +1076,7 @@ class ActorMethod:
                 )
 
             # Wait for source actor to have the transport registered.
-            gpu_object_manager.wait_until_custom_transports_registered(self._actor)
+            rdt_manager.wait_until_custom_transports_registered(self._actor)
 
         args = args or []
         kwargs = kwargs or {}
@@ -1089,10 +1089,8 @@ class ActorMethod:
                     "Lost reference to actor. Actor handles must be stored as variables, e.g. `actor = MyActor.remote()` before calling methods."
                 )
 
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.queue_or_trigger_out_of_band_tensor_transfer(
-                dst_actor, args
-            )
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.queue_or_trigger_out_of_band_tensor_transfer(dst_actor, args)
 
             return dst_actor._actor_method_call(
                 self._method_name,
@@ -1119,10 +1117,8 @@ class ActorMethod:
             # Currently, we only support RDT when num_returns is 1.
             assert isinstance(object_refs, ObjectRef)
             object_ref = object_refs
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.add_gpu_object_ref(
-                object_ref, self._actor, tensor_transport
-            )
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.add_rdt_ref(object_ref, self._actor, tensor_transport)
 
         return object_refs
 
@@ -2090,8 +2086,8 @@ class ActorClass(Generic[T]):
         )
 
         if meta.enable_tensor_transport:
-            gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-            gpu_object_manager.register_custom_transports_on_actor(actor_handle)
+            rdt_manager = ray._private.worker.global_worker.rdt_manager
+            rdt_manager.register_custom_transports_on_actor(actor_handle)
 
         return actor_handle
 

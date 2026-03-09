@@ -294,9 +294,12 @@ def ingress(app: Union[ASGIApp, Callable]) -> Callable:
             )
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
-            def __init__(self, *args, **kwargs):
+            async def __init__(self, *args, **kwargs):
                 # Call user-defined constructor.
-                cls.__init__(self, *args, **kwargs)
+                if inspect.iscoroutinefunction(cls.__init__):
+                    await cls.__init__(self, *args, **kwargs)
+                else:
+                    cls.__init__(self, *args, **kwargs)
 
                 ServeUsageTag.FASTAPI_USED.record("1")
                 ASGIAppReplicaWrapper.__init__(self, frozen_app_or_func)
@@ -434,6 +437,24 @@ def deployment(
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
 
+    if gang_scheduling_config not in [
+        DEFAULT.VALUE,
+        None,
+    ] and max_replicas_per_node not in [DEFAULT.VALUE, None]:
+        raise ValueError(
+            "Setting max_replicas_per_node is not allowed when "
+            "gang_scheduling_config is provided. Please set max_replicas_per_node "
+            "to None."
+        )
+    if gang_scheduling_config not in [
+        DEFAULT.VALUE,
+        None,
+    ] and placement_group_strategy not in [DEFAULT.VALUE, None]:
+        raise ValueError(
+            "Setting placement_group_strategy is not allowed when "
+            "gang_scheduling_config is provided. Use "
+            "gang_scheduling_config.gang_placement_strategy instead."
+        )
     if num_replicas == "auto":
         if (
             gang_scheduling_config is not DEFAULT.VALUE
@@ -482,7 +503,7 @@ def deployment(
         )
 
     if isinstance(logging_config, LoggingConfig):
-        logging_config = logging_config.dict()
+        logging_config = logging_config.model_dump()
 
     deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,

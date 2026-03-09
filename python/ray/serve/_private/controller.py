@@ -215,6 +215,7 @@ class ServeController:
             logging_config=self.global_logging_config,
             grpc_options=set_proxy_default_grpc_options(grpc_options),
             proxy_actor_class=get_proxy_actor_class(),
+            running_native_proxies=self._ha_proxy_enabled,
         )
         # We modify the HTTP and gRPC options above, so delete them to avoid
         del http_options, grpc_options
@@ -293,6 +294,8 @@ class ServeController:
         # Initialize to None (not []) to ensure the first broadcast always happens,
         # even if target_groups is empty (e.g., route_prefix=None deployments).
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
+
+        self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -546,7 +549,7 @@ class ServeController:
             if last is not None and last.is_scaling_equivalent(deployment_snapshot):
                 continue
 
-            snapshots_to_log.append(deployment_snapshot.dict(exclude_none=True))
+            snapshots_to_log.append(deployment_snapshot.model_dump(exclude_none=True))
             self._last_autoscaling_snapshots[dep_id] = deployment_snapshot
 
         if snapshots_to_log:
@@ -687,6 +690,29 @@ class ServeController:
                 | self.proxy_state_manager.get_alive_proxy_actor_ids()
             )
 
+        self._maybe_update_ingress_ports()
+
+        # HAProxy handling
+        if self._ha_proxy_enabled:
+            # Right after a controller restart, the replica details may be incomplete,
+            # so we wait until recovery is finished before sending any updated target
+            # groups to HAProxy.
+            if self.done_recovering_event.is_set():
+                self.broadcast_target_groups_if_changed()
+
+            # Wait until the fallback proxy has transitioned out of STARTING at
+            # least once before broadcasting. After a controller restart, the proxy
+            # starts as STARTING even if it's already healthy. If we broadcast
+            # before the first health check, the fallback target will be None and
+            # HAProxy will remove the fallback server from its config.
+            if (
+                self.proxy_state_manager
+                and self.proxy_state_manager.started_fallback_proxy_at_least_once()
+            ):
+                self.broadcast_fallback_targets_if_changed()
+
+    def _maybe_update_ingress_ports(self) -> None:
+        """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
         if self._direct_ingress_enabled:
             # Update port values for ingress replicas.
@@ -700,10 +726,6 @@ class ServeController:
             # Clean up stale ports
             # get all alive replica ids and their node ids.
             NodePortManager.prune(self._get_node_id_to_alive_replica_ids())
-
-        # HAProxy target group broadcasting
-        if self._ha_proxy_enabled:
-            self.broadcast_target_groups_if_changed()
 
     def broadcast_target_groups_if_changed(self) -> None:
         """Broadcast target groups over long poll if they have changed.
@@ -723,6 +745,18 @@ class ServeController:
             {LongPollNamespace.TARGET_GROUPS: target_groups}
         )
         self._last_broadcasted_target_groups = target_groups
+
+    def broadcast_fallback_targets_if_changed(self) -> None:
+        """Broadcast the fallback targets over long poll if they have changed."""
+        fallback_targets = self.proxy_state_manager.get_fallback_proxy_targets()
+
+        if self._last_broadcasted_fallback_targets == fallback_targets:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.FALLBACK_TARGETS: fallback_targets}
+        )
+        self._last_broadcasted_fallback_targets = fallback_targets
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -872,7 +906,7 @@ class ServeController:
             - Memory usage
         """
         try:
-            return self._health_metrics_tracker.collect_metrics().dict()
+            return self._health_metrics_tracker.collect_metrics().model_dump()
         except Exception:
             logger.exception("Exception collecting controller health metrics.")
             raise
@@ -1156,7 +1190,7 @@ class ServeController:
             if app_config.logging_config is None and config.logging_config:
                 app_config.logging_config = config.logging_config
 
-            app_config_dict = app_config.dict(exclude_unset=True)
+            app_config_dict = app_config.model_dump(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 
         self.kv_store.put(
@@ -1330,8 +1364,12 @@ class ServeController:
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
         # fill in all info that should be shown to users.
-        http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
-        grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
+        http_options = HTTPOptionsSchema.model_validate(
+            http_config.model_dump(exclude_unset=True)
+        )
+        grpc_options = gRPCOptionsSchema.model_validate(
+            grpc_config.model_dump(exclude_unset=True)
+        )
 
         return ServeInstanceDetails(
             target_capacity=self._target_capacity,
@@ -1665,7 +1703,7 @@ class ServeController:
 
         _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
         return {
-            app: ServeApplicationSchema.parse_obj(config)
+            app: ServeApplicationSchema.model_validate(config)
             for app, config in config_checkpoints_dict.items()
         }
 

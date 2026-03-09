@@ -219,10 +219,7 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":worker_interface",
-        ":worker_pool",
-        "//src/ray/common:lease",
         "//src/ray/common:memory_monitor_interface",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -236,13 +233,9 @@ ray_cc_library(
     ],
     visibility = [":__subpackages__"],
     deps = [
-        ":worker_interface",
         ":worker_killing_policy_interface",
-        ":worker_pool",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_interface",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_prod",
     ],
 )
 
@@ -336,6 +329,10 @@ ray_cc_library(
 ray_cc_binary(
     name = "raylet",
     srcs = ["main.cc"],
+    features = select({
+        "@platforms//os:windows": ["compiler_param_file"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":local_object_manager",

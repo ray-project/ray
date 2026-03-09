@@ -404,9 +404,12 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     gcs_client_->Nodes().AsyncGetAll(
-        [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
+        [&nodes, &promise](
+            Status status,
+            const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                &results) {
           assert(!result.empty());
-          nodes = std::move(result);
+          nodes = std::move(results->first);
           promise.set_value(status.ok());
         },
         rpc::GetGcsTimeoutMs());
