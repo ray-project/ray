@@ -54,7 +54,6 @@ depsets:
       - py310
       - py312
 
-# needs to use constraints file once relax operation is supported (conflict on pyarrow version)
   - name: data_pyarrow_latest_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
@@ -71,7 +70,6 @@ depsets:
       - py310
       - py312
 
-# needs to use constraints file once relax operation is supported (conflict on pyarrow version)
   - name: data_v9_pyarrow_depset_${PYTHON_SHORT}
     operation: expand
     depsets:

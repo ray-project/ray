@@ -2530,6 +2530,7 @@ numpy==1.26.4 \
     #   opt-einsum
     #   pandas
     #   pyarrow
+    #   pylance
     #   pymars
     #   raydp
     #   scikit-learn
@@ -2843,6 +2844,7 @@ pandas==1.5.3 \
     #   datasets
     #   delta-sharing
     #   modin
+    #   pylance
     #   pymars
     #   raydp
 partd==1.4.1 \
@@ -2935,6 +2937,7 @@ pillow==10.4.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   bokeh
+    #   pylance
     #   tensorboard
     #   torchvision
 platformdirs==3.11.0 \
@@ -3179,6 +3182,7 @@ pyarrow==9.0.0 \
     #   delta-sharing
     #   deltalake
     #   getdaft
+    #   pylance
     #   raydp
 pyarrow-hotfix==0.7 \
     --hash=sha256:3236f3b5f1260f0e2ac070a55c1a7b339c4bb7267839bd2015e283234e758100 \
@@ -3591,6 +3595,17 @@ pyjwt==2.8.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   snowflake-connector-python
+pylance==0.2.0 \
+    --hash=sha256:049660e4f91deb14a5afb7a599d7808c9f893f4ffcb461a2f18815b64254c7eb \
+    --hash=sha256:1472c14c5e210f49849030903e98f05c496932fa9aef85f7257b87dc9cc9f17c \
+    --hash=sha256:148465de9e85d3b0f9ccebe369c8ac42d7e805c44c433c1bbf330ba4a01f0a41 \
+    --hash=sha256:566a3919d696d5f733048ebaf5e411af3bf7c6d6d7f65a5e0c9ae70be5336314 \
+    --hash=sha256:6199c82150be3dbd24f7547121258329901514a51cc599145e0cf08170b0dd11 \
+    --hash=sha256:85f3be856bdc51764bc2a0645152dc82a0bd703d2e221bb49494269650a17856 \
+    --hash=sha256:9eb90cd31976dcc8bdf4908fb18239ee4b8a5cfff92301e21cf313be18459bcd \
+    --hash=sha256:c0782a99d64de05efa2fa76c7b6c87077a7c42003adff03bb4509dd5a769ab40 \
+    --hash=sha256:efc813a2b101fced44cd4e71ad7bf3b03cc5ec113130f4a03c12e89604780ed1
+    # via -r python/requirements/data/pyarrow-v9.txt
 pymars==0.10.0 ; python_full_version < '3.12' \
     --hash=sha256:00457464432670a76e0691242f58ee6d7287bcb9051556565d222534a41860e1 \
     --hash=sha256:017f8fffbc33a1323d20e1c975a479789bfe08970e532d7d2ab49f83d90c1542 \
@@ -3872,6 +3887,7 @@ requests==2.32.5 \
     #   google-cloud-bigquery
     #   huggingface-hub
     #   pyiceberg
+    #   pylance
     #   ray
     #   responses
     #   snowflake-connector-python
