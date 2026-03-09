@@ -1,14 +1,11 @@
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-import tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -94,140 +91,62 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
         # pieces.
         skip_columns = set(batch.keys()) | {Columns.STATE_IN, Columns.STATE_OUT}
 
-        # Single pass over all episodes: compute len(sa_episode) and sub_key once and
-        # reuse them for every column.
+        # Single pass over all episodes: compute len(sa_episode) once and
+        # reuse it for every column.
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
             agents_that_stepped_only=False,
         ):
             n = len(sa_episode)
 
-            # For single-agent episodes, we can use a fast path to extend the batch.
-            if isinstance(sa_episode, SingleAgentEpisode):
-                # Fast path: inline the dict operations, skipping the function call
-                # overhead of add_n_batch_items / add_batch_item and the repeated
-                # sub_key computation those would do per column.
-                sub_key = (sa_episode.id_,)
-
-                if need_actions:
-                    # Actions may be a composite action space, so we need to map the structure.
-                    data = sa_episode.get_actions(slice(0, n))
-                    # Check if we have to call tree.map_structure to convert the data to a BatchedNdArray.
-                    if isinstance(data, np.ndarray):
-                        data = data.view(BatchedNdArray)
-                    else:
-                        data = tree.map_structure(BatchedNdArray, data)
-                    col = batch.get(Columns.ACTIONS)
-                    if col is None:
-                        batch[Columns.ACTIONS] = {sub_key: [data]}
-                    elif sub_key in col:
-                        col[sub_key].append(data)
-                    else:
-                        col[sub_key] = [data]
-
-                if need_rewards:
-                    data = sa_episode.get_rewards(slice(0, n)).view(BatchedNdArray)
-                    col = batch.get(Columns.REWARDS)
-                    if col is None:
-                        batch[Columns.REWARDS] = {sub_key: [data]}
-                    elif sub_key in col:
-                        col[sub_key].append(data)
-                    else:
-                        col[sub_key] = [data]
-
-                if need_terminateds:
-                    terminateds = np.zeros(n, dtype=np.bool_)
-                    if n > 0:
-                        terminateds[-1] = sa_episode.is_terminated
-                    data = terminateds.view(BatchedNdArray)
-                    col = batch.get(Columns.TERMINATEDS)
-                    if col is None:
-                        batch[Columns.TERMINATEDS] = {sub_key: [data]}
-                    elif sub_key in col:
-                        col[sub_key].append(data)
-                    else:
-                        col[sub_key] = [data]
-
-                if need_truncateds:
-                    truncateds = np.zeros(n, dtype=np.bool_)
-                    if n > 0:
-                        truncateds[-1] = sa_episode.is_truncated
-                    data = truncateds.view(BatchedNdArray)
-                    col = batch.get(Columns.TRUNCATEDS)
-                    if col is None:
-                        batch[Columns.TRUNCATEDS] = {sub_key: [data]}
-                    elif sub_key in col:
-                        col[sub_key].append(data)
-                    else:
-                        col[sub_key] = [data]
-
-                for column in sa_episode.extra_model_outputs.keys():
-                    if column not in skip_columns:
-                        # Extra model outputs may be a composite space, so we need to map the structure.
-                        data = tree.map_structure(
-                            BatchedNdArray,
-                            sa_episode.get_extra_model_outputs(
-                                key=column, indices=slice(0, n)
-                            ),
-                        )
-                        col = batch.get(column)
-                        if col is None:
-                            batch[column] = {sub_key: [data]}
-                        elif sub_key in col:
-                            col[sub_key].append(data)
-                        else:
-                            col[sub_key] = [data]
-
-            else:  # episode will be MultiAgentEpisode.
-                # For multi-agent episodes, we need to use the add_n_batch_items path.
-                if need_actions:
+            if need_actions:
+                self.add_n_batch_items(
+                    batch,
+                    Columns.ACTIONS,
+                    items_to_add=sa_episode.get_actions(slice(0, n)),
+                    num_items=n,
+                    single_agent_episode=sa_episode,
+                )
+            if need_rewards:
+                self.add_n_batch_items(
+                    batch,
+                    Columns.REWARDS,
+                    items_to_add=sa_episode.get_rewards(slice(0, n)),
+                    num_items=n,
+                    single_agent_episode=sa_episode,
+                )
+            if need_terminateds:
+                terminateds = np.zeros(n, dtype=np.bool_)
+                if n > 0:
+                    terminateds[-1] = sa_episode.is_terminated
+                self.add_n_batch_items(
+                    batch,
+                    Columns.TERMINATEDS,
+                    items_to_add=terminateds,
+                    num_items=n,
+                    single_agent_episode=sa_episode,
+                )
+            if need_truncateds:
+                truncateds = np.zeros(n, dtype=np.bool_)
+                if n > 0:
+                    truncateds[-1] = sa_episode.is_truncated
+                self.add_n_batch_items(
+                    batch,
+                    Columns.TRUNCATEDS,
+                    items_to_add=truncateds,
+                    num_items=n,
+                    single_agent_episode=sa_episode,
+                )
+            for column in sa_episode.extra_model_outputs.keys():
+                if column not in skip_columns:
                     self.add_n_batch_items(
                         batch,
-                        Columns.ACTIONS,
-                        items_to_add=sa_episode.get_actions(slice(0, n)),
+                        column,
+                        items_to_add=sa_episode.get_extra_model_outputs(
+                            key=column, indices=slice(0, n)
+                        ),
                         num_items=n,
                         single_agent_episode=sa_episode,
                     )
-                if need_rewards:
-                    self.add_n_batch_items(
-                        batch,
-                        Columns.REWARDS,
-                        items_to_add=sa_episode.get_rewards(slice(0, n)),
-                        num_items=n,
-                        single_agent_episode=sa_episode,
-                    )
-                if need_terminateds:
-                    terminateds = np.zeros(n, dtype=np.bool_)
-                    if n > 0:
-                        terminateds[-1] = sa_episode.is_terminated
-                    self.add_n_batch_items(
-                        batch,
-                        Columns.TERMINATEDS,
-                        items_to_add=terminateds,
-                        num_items=n,
-                        single_agent_episode=sa_episode,
-                    )
-                if need_truncateds:
-                    truncateds = np.zeros(n, dtype=np.bool_)
-                    if n > 0:
-                        truncateds[-1] = sa_episode.is_truncated
-                    self.add_n_batch_items(
-                        batch,
-                        Columns.TRUNCATEDS,
-                        items_to_add=truncateds,
-                        num_items=n,
-                        single_agent_episode=sa_episode,
-                    )
-                for column in sa_episode.extra_model_outputs.keys():
-                    if column not in skip_columns:
-                        self.add_n_batch_items(
-                            batch,
-                            column,
-                            items_to_add=sa_episode.get_extra_model_outputs(
-                                key=column, indices=slice(0, n)
-                            ),
-                            num_items=n,
-                            single_agent_episode=sa_episode,
-                        )
 
         return batch
