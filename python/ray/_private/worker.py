@@ -457,12 +457,12 @@ class Worker:
         self.node = None
         self.mode = None
         self.actors = {}
-        # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
-        # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
-        # We create the GPU object manager lazily, if a user specifies a
-        # non-default tensor_transport, to avoid circular import and because it
-        # imports third-party dependencies like PyTorch.
-        self._gpu_object_manager = None
+        # RDT manager to manage RDT object lifecycles, including coordinating out-of-band
+        # tensor transfers between actors, storing and retrieving RDT objects, and garbage collection.
+        # We create the RDT manager lazily, if a user specifies a non-default
+        # tensor_transport, to avoid circular import and because it imports
+        # third-party dependencies like PyTorch.
+        self._rdt_manager = None
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
@@ -513,15 +513,15 @@ class Worker:
         self._is_connected: bool = False
 
     @property
-    def gpu_object_manager(self) -> "ray.experimental.GPUObjectManager":
-        if self._gpu_object_manager is None:
-            # We create the GPU object manager lazily, if a user specifies a
-            # non-default tensor_transport, to avoid circular import and because it
-            # imports third-party dependencies like PyTorch.
-            from ray.experimental import GPUObjectManager
+    def rdt_manager(self) -> "ray.experimental.RDTManager":
+        if self._rdt_manager is None:
+            # We create the RDT manager lazily, if a user specifies a
+            # non-default tensor_transport, to avoid circular import and because
+            # it imports third-party dependencies like PyTorch.
+            from ray.experimental import RDTManager
 
-            self._gpu_object_manager = GPUObjectManager()
-        return self._gpu_object_manager
+            self._rdt_manager = RDTManager()
+        return self._rdt_manager
 
     @property
     def connected(self):
@@ -843,7 +843,7 @@ class Worker:
                 "ray.ObjectRef in a list and call 'put' on it."
             )
         tensors = None
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             normalize_and_validate_tensor_transport,
             validate_one_sided,
         )
@@ -859,7 +859,9 @@ class Worker:
                 (
                     serialized_value,
                     tensors,
-                ) = self.get_serialization_context().serialize_gpu_objects(value)
+                ) = self.get_serialization_context().serialize_rdt_objects(
+                    value, tensor_transport
+                )
             else:
                 serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
@@ -891,7 +893,7 @@ class Worker:
             tensor_transport=tensor_transport,
         )
         if tensors:
-            self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
+            self.rdt_manager.put_object(ret, tensor_transport, tensors)
         return ret
 
     def raise_errors(self, serialized_objects, object_refs):
@@ -907,20 +909,20 @@ class Worker:
         object_refs,
         use_object_store: bool = False,
     ):
-        gpu_objects: Dict[str, List["torch.Tensor"]] = {}
+        rdt_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
             if tensor_transport is None:
-                # The object is not a gpu object, so we cannot use other external transport to
+                # The object is not an RDT object, so we cannot use other external transport to
                 # fetch it.
                 continue
 
             object_id = obj_ref.hex()
-            if object_id not in gpu_objects:
+            if object_id not in rdt_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
                 # The user can set use_object_store to fetch the RDT object
                 # through the object store.
-                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
+                rdt_objects[object_id] = self.rdt_manager.get_rdt_object(
                     object_id, use_object_store
                 )
 
@@ -931,7 +933,7 @@ class Worker:
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
             return context.deserialize_objects(
-                serialized_objects, object_refs, gpu_objects
+                serialized_objects, object_refs, rdt_objects
             )
 
     def get_objects(
@@ -1115,9 +1117,9 @@ class Worker:
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
         return list(assigned_ids)
 
-    def shutdown_gpu_object_manager(self):
-        if self._gpu_object_manager:
-            self._gpu_object_manager.shutdown()
+    def shutdown_rdt_manager(self):
+        if self._rdt_manager:
+            self._rdt_manager.shutdown()
 
 
 _connect_or_shutdown_lock = threading.RLock()
@@ -2101,7 +2103,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
-    global_worker.shutdown_gpu_object_manager()
+    global_worker.shutdown_rdt_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
@@ -2418,6 +2420,9 @@ def listen_error_messages(worker, threads_stopped):
             error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
+        expected_job_ids = frozenset(
+            [worker.current_job_id.binary(), JobID.nil().binary()]
+        )
         while True:
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
@@ -2426,10 +2431,10 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] is not None and error_data["job_id"] not in [
-                worker.current_job_id.binary(),
-                JobID.nil().binary(),
-            ]:
+            if (
+                error_data["job_id"] is not None
+                and error_data["job_id"] not in expected_job_ids
+            ):
                 continue
 
             error_message = error_data["error_message"]
