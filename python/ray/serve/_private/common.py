@@ -6,7 +6,6 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from starlette.types import Scope
 
 import ray
-from ray._common.pydantic_compat import BaseModel
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
@@ -20,6 +19,7 @@ from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
+GANG_PG_NAME_PREFIX = "SERVE_GANG::"
 
 
 @dataclass(frozen=True)
@@ -884,9 +884,21 @@ class GangPlacementGroupRequest:
     gang_placement_strategy: str
     num_replicas_to_add: int
     replica_resource_dict: Dict[str, float]
-    """Resource requirements for a single replica, used as the bundle
-    template for every bundle in the gang placement group.
-    Example: ``{"CPU": 4, "GPU": 1}``."""
+    """Actor-level resource requirements derived from ray_actor_options.
+    Used as the bundle template for every bundle in the gang placement group
+    when per-replica placement group bundle is not set.
+    Example: {"CPU": 4, "GPU": 1}."""
+
+    replica_placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    """Per-replica placement group bundles.  When set, each replica occupies
+    len(bundles) consecutive bundles in the gang placement group instead
+    of a single flat bundle derived from replica_resource_dict."""
+
+    replica_pg_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    """Label selector for per-replica placement group bundles."""
+
+    replica_pg_fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    """Fallback strategy for per-replica placement group bundles."""
 
 
 @dataclass
@@ -897,6 +909,8 @@ class GangReservationResult:
     """True when all gang PGs were created successfully."""
     error_message: Optional[str] = None
     gang_pgs: Optional[List[PlacementGroup]] = None
+    gang_ids: Optional[List[str]] = None
+    gang_pg_names: Optional[List[str]] = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
@@ -905,74 +919,6 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
     "Use handle.options(_by_reference=True) to enable it."
 )
-
-
-class AutoscalingStatus(str, Enum):
-    UPSCALE = "AUTOSCALING_UPSCALE"
-    DOWNSCALE = "AUTOSCALING_DOWNSCALE"
-    STABLE = "AUTOSCALING_STABLE"
-
-    @staticmethod
-    def format_scaling_status(trigger: "AutoscalingStatus") -> str:
-        mapping = {
-            AutoscalingStatus.UPSCALE: "scaling up",
-            AutoscalingStatus.DOWNSCALE: "scaling down",
-            AutoscalingStatus.STABLE: "stable",
-        }
-        return mapping.get(trigger, str(trigger).lower())
-
-
-class DeploymentSnapshot(BaseModel):
-    snapshot_type: str = "deployment"
-    timestamp_str: str
-    app: str
-    deployment: str
-    current_replicas: int
-    target_replicas: int
-    min_replicas: Optional[int]
-    max_replicas: Optional[int]
-    scaling_status: str
-    policy_name: str
-    look_back_period_s: Optional[float]
-    queued_requests: Optional[float]
-    ongoing_requests: float
-    metrics_health: str
-    errors: List[str]
-
-    @staticmethod
-    def format_metrics_health_text(
-        *,
-        time_since_last_collected_metrics_s: Optional[float],
-        look_back_period_s: Optional[float],
-    ) -> str:
-        """
-        - < 1s  -> integer milliseconds
-        - >= 1s -> seconds with two decimals
-        """
-        if time_since_last_collected_metrics_s is None:
-            return "unknown"
-        val = time_since_last_collected_metrics_s
-        if val < 1.0:
-            return f"{val * 1000:.0f}ms"
-        return f"{val:.2f}s"
-
-    def is_scaling_equivalent(self, other: "DeploymentSnapshot") -> bool:
-        """Return True if scaling-related fields are equal.
-
-        Used for autoscaling snapshot log deduplication. Compares only:
-        target_replicas, min_replicas, max_replicas, scaling_status
-        """
-        if not isinstance(other, DeploymentSnapshot):
-            return False
-        return (
-            self.app == other.app
-            and self.deployment == other.deployment
-            and self.target_replicas == other.target_replicas
-            and self.min_replicas == other.min_replicas
-            and self.max_replicas == other.max_replicas
-            and self.scaling_status == other.scaling_status
-        )
-
 
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
@@ -1079,7 +1025,3 @@ class AsyncInferenceTaskQueueMetricReport:
     deployment_id: DeploymentID
     queue_length: int
     timestamp_s: float
-
-
-class AutoscalingSnapshotError(str, Enum):
-    METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"
