@@ -6001,13 +6001,79 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(stability="alpha")
+    def iter_jax_batches(
+        self,
+        *,
+        named_sharding: "jax.sharding.NamedSharding" = None,  # noqa: F821
+        prefetch_batches: int = 1,
+        batch_size: Optional[int] = 256,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterable[Union["jax.Array", Dict[str, "jax.Array"]]]:  # noqa: F821
+        """Return an iterable over batches of data represented as JAX arrays.
+
+        This iterable yields batches of type ``Union["jax.Array", Dict[str, "jax.Array"]]``.
+        For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
+        your data to JAX arrays.
+
+        Examples:
+
+            .. testcode::
+
+                import ray
+
+                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+                jax_dataset = ds.iter_jax_batches(batch_size=2)
+                for batch in jax_dataset:
+                    print(batch["sepal length (cm)"], batch["target"])
+                    break
+
+            .. testoutput::
+                :options: +MOCK
+
+                [5.1 4.9] [0 0]
+
+        Args:
+            named_sharding: The JAX NamedSharding object defining the global
+                mesh and partition layout. Default is ``None``, in which case
+                the data is sharded along the batch dimension across all devices.
+            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            batch_size: The number of rows in each batch. Defaults to 256.
+            drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
+            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
+                using a local in-memory shuffle buffer, and this value serves as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer are drained.
+                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+
+        Returns:
+            An iterable over JAX Array batches.
+
+        """  # noqa: E501
+        return self.iterator().iter_jax_batches(
+            named_sharding=named_sharding,
+            prefetch_batches=prefetch_batches,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+    @ConsumptionAPI
     @Deprecated
     def iter_tf_batches(
         self,
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
-        dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
+        dtypes: Optional[
+            Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]
+        ] = None,  # noqa: F821
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,

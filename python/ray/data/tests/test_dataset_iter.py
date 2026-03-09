@@ -553,6 +553,62 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
         np.testing.assert_array_equal(arr, combined_iterations)
 
 
+def test_iter_jax_batches(ray_start_regular_shared):
+    try:
+        import jax
+        from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+    except ImportError:
+        pytest.skip("JAX not installed")
+
+    df1 = pd.DataFrame(
+        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
+    )
+    df2 = pd.DataFrame(
+        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
+    )
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.data.from_pandas([df1, df2, df3])
+
+    mesh = Mesh(jax.devices(), ("x",))
+    named_sharding = NamedSharding(mesh, P("x"))
+
+    num_epochs = 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_jax_batches(named_sharding=named_sharding, batch_size=3):
+            iterations.append(
+                np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
+            )
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
+    try:
+        import jax
+        from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+    except ImportError:
+        pytest.skip("JAX not installed")
+
+    arr1 = np.arange(12).reshape((3, 2, 2))
+    arr2 = np.arange(12, 24).reshape((3, 2, 2))
+    arr = np.concatenate((arr1, arr2))
+    ds = ray.data.from_numpy([arr1, arr2])
+
+    mesh = Mesh(jax.devices(), ("x",))
+    named_sharding = NamedSharding(mesh, P("x"))
+
+    num_epochs = 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_jax_batches(named_sharding=named_sharding, batch_size=2):
+            iterations.append(batch["data"])
+
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(arr, combined_iterations)
+
+
 def test_get_internal_block_refs(ray_start_regular_shared):
     blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
     assert len(blocks) == 10
