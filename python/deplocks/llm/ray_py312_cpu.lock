@@ -808,6 +808,7 @@ izulu==0.50.0 \
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   taskiq
 jinja2==3.1.6 ; sys_platform != 'win32' \
+    --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
@@ -2105,6 +2106,7 @@ typer==0.15.1 \
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   -r python/requirements.txt
 typing-extensions==4.15.0 \
+    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
@@ -2365,6 +2367,7 @@ yarl==1.18.3 \
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock
     #   aiohttp
 zipp==3.19.2 \
+    --hash=sha256:bf1dcf6450f873a13e952a29504887c89e6de7506209e5b1bcc3460135d4de19 \
     --hash=sha256:f091755f667055f2d02b32c53771a7a6c8b47e1fdbc4b72a8b9072b3eef8015c
     # via
     #   -c python/deplocks/llm/ray_test_py312_cpu.lock

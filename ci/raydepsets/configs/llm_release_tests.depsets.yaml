@@ -14,7 +14,6 @@ build_arg_sets:
     - --python-version=${PYTHON_VERSION_STR}
     - --unsafe-package ray
     - --python-platform=x86_64-manylinux_2_31
-    - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:
     - cu128
     - cu130_py312
