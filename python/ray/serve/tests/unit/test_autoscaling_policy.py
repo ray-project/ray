@@ -4,6 +4,11 @@ import pytest
 
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve._private.metrics_utils import (
+    aggregate_timeseries,
+    merge_instantaneous_total,
+    time_weighted_average,
+)
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
@@ -12,7 +17,7 @@ from ray.serve.autoscaling_policy import (
     _apply_scaling_factors,
     replica_queue_length_autoscaling_policy,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingContext
+from ray.serve.config import AggregationFunction, AutoscalingConfig, AutoscalingContext
 
 wrapped_replica_queue_length_autoscaling_policy = _apply_autoscaling_config(
     replica_queue_length_autoscaling_policy
@@ -57,6 +62,68 @@ def create_context_with_overrides(
     params.update(kwargs)
 
     return AutoscalingContext(**params)
+
+
+def test_exclude_early_partial_period_in_timeseries_aggregation():
+    """Test that time-weighted average excludes the early partial period when
+    series have misaligned start times.
+
+    When merging multiple timeseries (e.g., from different replicas), series
+    that start late are implicitly 0 before their first data point. This
+    undercounts the total and biases the mean downward. The fix excludes
+    the partial period by starting the averaging window when all series
+    have contributed at least one point.
+    """
+    # Two replicas with misaligned starts: r1 starts at 0.2, r2 starts at 0.1
+    # From 0.1 to 0.2, only r2 contributes (total=3); from 0.2 onward both (total=8)
+    base_time = 1000.0  # Use epoch-like timestamps
+    series1 = [
+        TimeStampedValue(base_time + 0.2, 5.0),
+        TimeStampedValue(base_time + 0.8, 7.0),
+        TimeStampedValue(base_time + 1.5, 6.0),
+    ]
+    series2 = [
+        TimeStampedValue(base_time + 0.1, 3.0),
+        TimeStampedValue(base_time + 0.9, 4.0),
+        TimeStampedValue(base_time + 1.4, 8.0),
+    ]
+
+    merged = merge_instantaneous_total([series1, series2])
+    # Merged: (0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.4, 15), (1.5, 14)
+    last_window_s = 0.5  # Extend window to base_time + 2.0
+
+    # Without aligned window: includes partial period [0.1, 0.2) where total=3
+    avg_without_aligned = time_weighted_average(
+        merged,
+        window_start=None,
+        window_end=None,
+        last_window_s=last_window_s,
+    )
+
+    # With aligned window (start at 0.2 when all series have reported): excludes partial
+    aligned_start = base_time + 0.2
+    avg_with_aligned = time_weighted_average(
+        merged,
+        window_start=aligned_start,
+        window_end=None,
+        last_window_s=last_window_s,
+    )
+
+    # The aligned average should be higher because we excluded the period
+    # [0.1, 0.2) where the total was underestimated (3 instead of 8)
+    assert avg_with_aligned > avg_without_aligned, (
+        f"Aligned avg ({avg_with_aligned}) should exceed unaligned ({avg_without_aligned}) "
+        "since we exclude the partial period with underestimated total"
+    )
+
+    # Verify aggregate_timeseries with window_start produces the aligned result
+    result = aggregate_timeseries(
+        merged,
+        AggregationFunction.MEAN,
+        last_window_s=last_window_s,
+        window_start=aligned_start,
+    )
+    assert result == avg_with_aligned
 
 
 def _run_upscale_downscale_flow(
