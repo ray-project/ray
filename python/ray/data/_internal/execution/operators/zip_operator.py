@@ -11,6 +11,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
 )
+from ray.data._internal.execution.operators.schema_helpers import (
+    _get_arrow_schema_from_block,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
@@ -331,9 +334,31 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 "`zip_rows_policy` must be a string, "
                 f"got {type(row_count_policy).__name__}."
             )
-        row_count_policy = str(row_count_policy).lower()
+        row_count_policy = str(row_count_policy).strip().lower()
 
-        if row_count_policy in ("drop", "truncate", "min"):
+        # Normalize/validate policy early so typos get a clear error.
+        truncate_policies = {"drop", "truncate", "min"}
+        pad_policies = {"pad", "max"}
+        strict_policies = {"strict"}
+        valid_policies = truncate_policies | pad_policies | strict_policies
+
+        if row_count_policy not in valid_policies:
+            raise ValueError(
+                f"Unrecognized `zip_rows_policy`: {row_count_policy!r}. "
+                f"Valid values are: {', '.join(sorted(valid_policies))}."
+            )
+
+        # Strict: if row counts differ, error out (this is the intentional default).
+        if row_count_policy in strict_policies:
+            raise ValueError(
+                "Cannot zip datasets with different numbers of rows when "
+                "`zip_rows_policy='strict'`: "
+                f"{total_left_rows} (left) vs {total_right_rows} (right). "
+                "Set `DataContext.get_current().set_config('zip_rows_policy', 'drop')` "
+                "to truncate to the shorter input or `'pad'` to null-pad the shorter input."
+            )
+
+        if row_count_policy in truncate_policies:
             # "drop": keep only the common prefix by row count.
             # This reuses _split_at_indices for fast metadata-aware truncation.
             target_num_rows = min(total_left_rows, total_right_rows)
@@ -355,9 +380,8 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                     right_block_rows,
                     target_num_rows,
                 )
-        elif row_count_policy in ("pad", "max"):
-            # "pad": preserve all rows from the longer side and fill missing rows
-            # in the shorter side with typed null columns.
+        else:
+            # pad/max
             target_num_rows = max(total_left_rows, total_right_rows)
             if total_left_rows < target_num_rows:
                 (
@@ -379,14 +403,6 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                     target_num_rows,
                     right_schema,
                 )
-        else:
-            raise ValueError(
-                "Cannot zip datasets of different number of rows: "
-                f"{total_left_rows}, {total_right_rows}. "
-                "Set `DataContext.get_current().set_config('zip_rows_policy', 'drop')` "
-                "to truncate to the shorter input or `'pad'` to null-pad the shorter "
-                "input."
-            )
 
         left_block_rows, left_block_bytes = self._calculate_blocks_rows_and_bytes(
             left_blocks_with_metadata
@@ -478,8 +494,9 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 return schema
 
         if blocks_with_metadata:
-            get_arrow_schema = cached_remote_fn(_get_arrow_schema_from_block)
-            return ray.get(get_arrow_schema.remote(blocks_with_metadata[0][0]))
+            return ray.get(
+                _get_arrow_schema_from_block.remote(blocks_with_metadata[0][0])
+            )
 
         return None
 
@@ -526,12 +543,6 @@ def _zip_one_block(
     return result, BlockMetadataWithSchema.from_block(
         result, block_exec_stats=stats.build()
     )
-
-
-def _get_arrow_schema_from_block(block: Block) -> "pyarrow.Schema":
-    accessor = BlockAccessor.for_block(block)
-    sample_block = accessor.slice(0, 1)
-    return BlockAccessor.for_block(sample_block).to_arrow().schema
 
 
 def _create_null_block_from_schema(
