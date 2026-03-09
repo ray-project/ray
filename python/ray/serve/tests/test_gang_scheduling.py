@@ -1,6 +1,8 @@
 import os
 import sys
 import tempfile
+import threading
+import time
 
 import pytest
 
@@ -1099,6 +1101,442 @@ class TestGangChildSpawnPlacementGroup:
             assert result["child_pg_id"] is None
 
         serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangControllerRecovery:
+    def test_gang_context_recovery(self, ray_cluster):
+        """Verifies that the controller recovers all app and deployment states
+        after a crash, including gang_context for gang deployments and normal
+        replicas for non-gang deployments.
+        """
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class Gang1:
+            def __call__(self):
+                return "ok"
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class Gang2:
+            def __call__(self):
+                return "ok"
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"num_cpus": 0.1},
+        )
+        class NoGang:
+            def __call__(self):
+                return "ok"
+
+        app_names = ["gang_app1", "gang_app2", "no_gang_app"]
+        serve.run(Gang1.bind(), name="gang_app1", route_prefix="/gang1")
+        serve.run(Gang2.bind(), name="gang_app2", route_prefix="/gang2")
+        serve.run(NoGang.bind(), name="no_gang_app", route_prefix="/no_gang")
+        wait_for_condition(check_apps_running, apps=app_names)
+
+        gang_deployment_ids = [
+            DeploymentID(name="Gang1", app_name="gang_app1"),
+            DeploymentID(name="Gang2", app_name="gang_app2"),
+        ]
+        no_gang_deployment_id = DeploymentID(name="NoGang", app_name="no_gang_app")
+        controller = serve.context._get_global_client()._controller
+
+        # Record controller-side gang_context before crash
+        gang_ctx_before = {}
+        for dep_id in gang_deployment_ids:
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            for r in running:
+                assert r.gang_context is not None
+                gang_ctx_before[r.replica_id.unique_id] = r.gang_context
+
+        # Record non-gang replica count
+        no_gang_replicas = ray.get(
+            controller._dump_replica_states_for_testing.remote(no_gang_deployment_id)
+        )
+        no_gang_count_before = len(no_gang_replicas.get([ReplicaState.RUNNING]))
+        assert no_gang_count_before == 2
+
+        # Kill the controller and wait for recovery of all apps
+        ray.kill(controller, no_restart=False)
+        wait_for_condition(check_apps_running, apps=app_names, timeout=60)
+
+        new_controller = serve.context._get_global_client()._controller
+
+        def all_states_recovered():
+            # Verify gang_context recovered for all gang deployments
+            for dep_id in gang_deployment_ids:
+                replicas = ray.get(
+                    new_controller._dump_replica_states_for_testing.remote(dep_id)
+                )
+                running = replicas.get([ReplicaState.RUNNING])
+                for r in running:
+                    before = gang_ctx_before.get(r.replica_id.unique_id)
+                    if r.gang_context is None or r.gang_context != before:
+                        return False
+
+            # Verify non-gang deployment recovered
+            replicas = ray.get(
+                new_controller._dump_replica_states_for_testing.remote(
+                    no_gang_deployment_id
+                )
+            )
+            if len(replicas.get([ReplicaState.RUNNING])) != no_gang_count_before:
+                return False
+
+            return True
+
+        wait_for_condition(all_states_recovered, timeout=60)
+
+        # Verify application and deployment statuses after recovery
+        status = serve.status()
+        for app_name in app_names:
+            app_status = status.applications[app_name]
+            assert app_status.status == "RUNNING"
+            for dep_name, dep_status in app_status.deployments.items():
+                assert dep_status.status == "HEALTHY"
+
+        for app_name in app_names:
+            serve.delete(app_name)
+        serve.shutdown()
+
+    @pytest.mark.parametrize("same_gang", [True, False])
+    def test_gang_replica_crash_during_controller_downtime(
+        self, ray_cluster, same_gang
+    ):
+        """When gang replicas crash while the controller is down, the controller
+        recovers and reschedules the affected gangs.
+        """
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            health_check_period_s=1,
+        )
+        class GangApp:
+            def __call__(self):
+                return os.getpid()
+
+        app_name = "gang_crash_app"
+        dep_id = DeploymentID(name="GangApp", app_name=app_name)
+        serve.run(GangApp.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        controller = serve.context._get_global_client()._controller
+
+        # Record initial replicas and group by gang.
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(dep_id))
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == 4
+
+        gangs = {}
+        for r in running:
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
+        gang_ids = list(gangs.keys())
+        assert len(gang_ids) == 2
+
+        # Pick 2 victims
+        if same_gang:
+            victims = gangs[gang_ids[0]]
+        else:
+            victims = [gangs[gang_ids[0]][0], gangs[gang_ids[1]][0]]
+
+        victim_ids = {v.replica_id.unique_id for v in victims}
+
+        # Kill the controller, then kill the victims while it is down.
+        ray.kill(controller, no_restart=False)
+        for v in victims:
+            handle = ray.get_actor(v.replica_id.to_full_id_str(), namespace="serve")
+            ray.kill(handle, no_restart=True)
+
+        # Wait for the controller to restart and the app to recover.
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        new_controller = serve.context._get_global_client()._controller
+
+        def fully_recovered():
+            replicas = ray.get(
+                new_controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != 4:
+                return False
+            for r in running:
+                if r.gang_context is None:
+                    return False
+            return True
+
+        wait_for_condition(fully_recovered)
+
+        # The killed replicas should have been replaced by new ones.
+        replicas = ray.get(
+            new_controller._dump_replica_states_for_testing.remote(dep_id)
+        )
+        running = replicas.get([ReplicaState.RUNNING])
+        recovered_ids = {r.replica_id.unique_id for r in running}
+        assert victim_ids.isdisjoint(recovered_ids)
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangNodeFailure:
+    @pytest.mark.parametrize(
+        "strategy", [GangPlacementStrategy.SPREAD, GangPlacementStrategy.PACK]
+    )
+    def test_worker_node_failure_restarts_gang(self, ray_cluster, strategy):
+        """Killing a node restarts the affected gang with no request
+        downtime (surviving gang keeps serving) and no leaked PGs.
+        """
+        cluster = ray_cluster
+        # Head and workers each get 1 CPU. Each PG (2 × 0.5 CPU = 1.0 CPU)
+        # fills exactly one node for PACK, and SPREAD distributes one bundle
+        # per node. At most 1 PG fits on the head, so at least 1 PG must
+        # land on a worker, giving the test a killable target. The extra
+        # nodes provide recovery capacity after one worker is removed.
+        cluster.add_node(num_cpus=1)
+        workers = [cluster.add_node(num_cpus=1) for _ in range(3)]
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        num_replicas = 4
+        gang_size = 2
+
+        @serve.deployment(
+            num_replicas=num_replicas,
+            ray_actor_options={"num_cpus": 0.5},
+            gang_scheduling_config=GangSchedulingConfig(
+                gang_size=gang_size,
+                gang_placement_strategy=strategy,
+            ),
+            health_check_period_s=1,
+        )
+        class GangApp:
+            def __call__(self):
+                return ray.get_runtime_context().get_node_id()
+
+        app_name = "node_kill_app"
+        dep_id = DeploymentID(name="GangApp", app_name=app_name)
+        handle = serve.run(GangApp.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        controller = serve.context._get_global_client()._controller
+        replicas = ray.get(controller._dump_replica_states_for_testing.remote(dep_id))
+        running = replicas.get([ReplicaState.RUNNING])
+        assert len(running) == num_replicas
+
+        # Group replicas by gang
+        gangs = {}
+        for r in running:
+            gangs.setdefault(r.gang_context.gang_id, []).append(r)
+
+        # Pick a worker to kill that (a) hosts at least one gang member and
+        # (b) leaves at least one gang fully intact on the surviving nodes.
+        node_to_kill = None
+        affected_gangs = []
+        for worker in workers:
+            affected_gangs = [
+                gid
+                for gid, members in gangs.items()
+                if any(r.actor_node_id == worker.node_id for r in members)
+            ]
+            surviving = [
+                gid
+                for gid, members in gangs.items()
+                if all(r.actor_node_id != worker.node_id for r in members)
+            ]
+            if affected_gangs and surviving:
+                node_to_kill = worker
+                break
+
+        assert node_to_kill is not None
+        assert len(affected_gangs) > 0
+
+        # Continuously send requests in a background thread.
+        stop = threading.Event()
+        errors = []
+        successes = []
+
+        def send_requests():
+            while not stop.is_set():
+                try:
+                    result = handle.remote().result()
+                    successes.append(result)
+                except Exception as e:
+                    errors.append(e)
+                time.sleep(0.1)
+
+        sender = threading.Thread(target=send_requests, daemon=True)
+        sender.start()
+        time.sleep(1)
+
+        cluster.remove_node(node_to_kill)
+
+        # Wait for full recovery.
+        def fully_recovered():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(dep_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != num_replicas:
+                return False
+            for r in running:
+                if r.gang_context is None:
+                    return False
+            return True
+
+        wait_for_condition(fully_recovered, timeout=60)
+
+        time.sleep(1)
+        stop.set()
+        sender.join(timeout=5)
+
+        assert len(errors) == 0
+        assert len(successes) > 0
+
+        # Verify no leaked PGs.
+        gang_pg_names = [
+            n
+            for n in get_all_live_placement_group_names()
+            if n.startswith(GANG_PG_NAME_PREFIX)
+        ]
+        assert len(gang_pg_names) == num_replicas // gang_size
+
+        wait_for_condition(check_apps_running, apps=[app_name])
+
+        serve.delete(app_name)
+        serve.shutdown()
+
+
+class TestGangScaling:
+    @staticmethod
+    def _send_requests_background(handle, stop_event, errors, successes):
+        """Continuously send requests until *stop_event* is set.
+
+        Any request that raises an exception is recorded in *errors*.
+        """
+        while not stop_event.is_set():
+            try:
+                handle.remote().result(timeout_s=10)
+                successes.append(1)
+            except Exception as e:
+                errors.append(str(e))
+            time.sleep(0.05)
+
+    @pytest.mark.parametrize(
+        "initial_num_replicas, final_num_replicas",
+        [
+            (4, 2),  # Manual downscale: serve deploy num_replicas=4 -> 2
+            (8, 4),  # Downscaling
+            (4, 8),  # Upscaling
+        ],
+    )
+    def test_scale_gang_boundary(
+        self, ray_cluster, initial_num_replicas, final_num_replicas
+    ):
+        """Validates that scaling preserves complete gangs."""
+        GANG_SIZE = 2
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            name="D",
+            version="v1",
+            num_replicas=initial_num_replicas,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+        )
+        class D:
+            def __call__(self):
+                ctx = ray.serve.context._get_internal_replica_context()
+                gc = ctx.gang_context
+                return {"pid": os.getpid(), "gang_id": gc.gang_id if gc else None}
+
+        handle = serve.run(D.bind(), name="app")
+        wait_for_condition(check_apps_running, apps=["app"])
+
+        initial_num_gangs = initial_num_replicas // GANG_SIZE
+
+        # Collect the initial gang_ids.
+        initial_gang_ids = set()
+        # Hit the deployment with enough requests to collect all initial gang_ids
+        for _ in range(initial_num_replicas * 10):
+            resp = handle.remote().result()
+            if resp["gang_id"] is not None:
+                initial_gang_ids.add(resp["gang_id"])
+        assert len(initial_gang_ids) == initial_num_gangs
+
+        # Monitor the deployment's replica states to ensure no downtime.
+        errors, successes = [], []
+        stop_event = threading.Event()
+        t = threading.Thread(
+            target=self._send_requests_background,
+            args=(handle, stop_event, errors, successes),
+            daemon=True,
+        )
+        t.start()
+
+        # Scale to the final replica count.
+        handle = serve.run(
+            D.options(num_replicas=final_num_replicas).bind(), name="app"
+        )
+        wait_for_condition(check_apps_running, apps=["app"])
+
+        deployment = list(serve.status().applications["app"].deployments.values())[0]
+        assert deployment.replica_states.get("RUNNING", 0) == final_num_replicas
+
+        stop_event.set()
+        t.join(timeout=5)
+
+        assert len(errors) == 0
+        assert len(successes) > 0
+
+        final_num_gangs = final_num_replicas // GANG_SIZE
+
+        # Verify that the final replicas form complete gangs and the
+        # preserved gangs are a subset relationship
+        final_gang_ids = set()
+        seen_pids = set()
+        for _ in range(final_num_replicas * 10):
+            resp = handle.remote().result()
+            if resp["gang_id"] is not None:
+                final_gang_ids.add(resp["gang_id"])
+            seen_pids.add(resp["pid"])
+            if len(seen_pids) >= final_num_replicas:
+                break
+        assert len(final_gang_ids) == final_num_gangs
+
+        smaller, larger = sorted([initial_gang_ids, final_gang_ids], key=len)
+        assert smaller.issubset(larger)
+
+        serve.delete("app")
         serve.shutdown()
 
 

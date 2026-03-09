@@ -44,7 +44,6 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
     _debug_dump_topology,
-    _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     OpBufferQueue,
@@ -686,28 +685,6 @@ def test_debug_dump_topology(ray_start_regular_shared):
     _debug_dump_topology(topo, resource_manager)
 
 
-def test_validate_dag(ray_start_regular_shared):
-    inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(DataContext.get_current(), inputs)
-    o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]),
-        o1,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=8),
-    )
-    o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]),
-        o2,
-        DataContext.get_current(),
-        compute_strategy=ray.data.ActorPoolStrategy(size=4),
-    )
-    _validate_dag(o3, ExecutionResources.for_limits())
-    _validate_dag(o3, ExecutionResources.for_limits(cpu=20))
-    _validate_dag(o3, ExecutionResources.for_limits(gpu=0))
-    with pytest.raises(ValueError):
-        _validate_dag(o3, ExecutionResources.for_limits(cpu=10))
-
-
 def test_configure_output_locality_is_deprecated_noop(restore_data_context):
     data_context = ray.data.DataContext.get_current()
 
@@ -1240,6 +1217,15 @@ class TestDataOpTask:
             while not data_op_task.has_finished:
                 ray.wait([streaming_gen], fetch_local=False)
                 data_op_task.on_data_ready(None)
+
+    def test_operator_name_parameter(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[1])
+        task = DataOpTask(0, streaming_gen, operator_name="MapBatches(fn)")
+        assert task._operator_name == "MapBatches(fn)"
+
+        streaming_gen2 = create_stub_streaming_gen(block_nbytes=[1])
+        task_default = DataOpTask(1, streaming_gen2)
+        assert task_default._operator_name == "Unknown"
 
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
