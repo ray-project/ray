@@ -48,20 +48,20 @@ class SharedMemoryTransport(TensorTransportManager):
     def extract_tensor_transport_metadata(
         self,
         obj_id: str,
-        gpu_object: List[numpy.ndarray],
+        rdt_object: List[numpy.ndarray],
     ) -> TensorTransportMetadata:
 
         tensor_meta = []
-        if gpu_object:
-            for tensor in gpu_object:
+        if rdt_object:
+            for tensor in rdt_object:
                 tensor_meta.append((tensor.shape, tensor.dtype))
 
-        serialized_gpu_object = pickle.dumps(gpu_object)
-        size = len(serialized_gpu_object)
+        serialized_rdt_object = pickle.dumps(rdt_object)
+        size = len(serialized_rdt_object)
         # Shm name can't be as long as the obj_id, so we truncate it.
         name = obj_id[:20]
         shm_obj = shm.SharedMemory(name=name, create=True, size=size)
-        shm_obj.buf[:size] = serialized_gpu_object
+        shm_obj.buf[:size] = serialized_rdt_object
         self.shared_memory_objects[obj_id] = shm_obj
 
         return ShmTransportMetadata(
