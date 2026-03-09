@@ -47,6 +47,7 @@ from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORI
 from ray.rllib.algorithms.utils import (
     AggregatorActor,
     _get_env_runner_bundles,
+    _get_inference_actors_bundles,
     _get_learner_bundles,
     _get_main_process_bundle,
     _get_offline_eval_runner_bundles,
@@ -82,6 +83,7 @@ from ray.rllib.evaluation.metrics import (
     summarize_episodes,
 )
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.inference.inference_actor import InferenceActor
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
     DirectMethod,
@@ -484,6 +486,9 @@ class Algorithm(Checkpointable, Trainable):
 
         # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
         self.learner_group: Optional["LearnerGroup"] = None
+
+        # Placeholder for an Inference Actor
+        self.inference_actors: Optional[InferenceActor] = None
 
         # The Algorithm's `MetricsLogger` object to collect stats from all its
         # components (including timers, counters and other stats in its own
@@ -1183,6 +1188,20 @@ class Algorithm(Checkpointable, Trainable):
 
         # Ray metrics
         self._set_up_metrics()
+
+        # Set up inference actors
+        if config.use_inference_actors:
+            inference_actor = ray.remote(
+                num_cpus=config.inference_num_cpus_per_actor,
+                num_gpus=config.inference_num_gpus_per_actor,
+            )(InferenceActor).remote(config=self.config)
+
+            self.env_runner_group.foreach_env_runner(
+                func=lambda er: er.register_inference_actor(
+                    inference_actor_handle=inference_actor
+                ),
+                local_env_runner=False,
+            )
 
         # Run `on_algorithm_init` callback after initialization is done.
         make_callback(
@@ -3423,12 +3442,17 @@ class Algorithm(Checkpointable, Trainable):
         if config.enable_rl_module_and_learner:
             learner_bundles = _get_learner_bundles(config)
 
+        inference_bundles = []
+        if config.use_inference_actors:
+            inference_bundles = _get_inference_actors_bundles(config)
+
         bundles = (
             [main_process]
             + env_runner_bundles
             + eval_env_runner_bundles
             + offline_eval_runner_bundles
             + learner_bundles
+            + inference_bundles
         )
 
         return PlacementGroupFactory(

@@ -74,6 +74,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             root=False,
         )
 
+        self.inference_actors = None
+
         super().__init__()
 
         # This eager check is necessary for certain all-framework tests
@@ -322,3 +324,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         # We just reset the env. Don't have to force this again in the next
         # call to `self._sample_timesteps()`.
         self._needs_initial_reset = False
+
+    def register_inference_actor(self, inference_actor_handle: ray.actor.ActorHandle):
+        if self.config.use_inference_actors:
+            self.inference_actors = inference_actor_handle

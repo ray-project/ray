@@ -204,6 +204,19 @@ def _get_learner_bundles(config):
     return bundles
 
 
+def _get_inference_actors_bundles(config):
+    if config.use_inference_actors:
+        return [
+            {
+                "CPU": config.inference_num_cpus_per_actor,
+                "GPU": config.inference_num_gpus_per_actor,
+            }
+            for _ in range(config.num_inference_actors)
+        ]
+    else:
+        return []
+
+
 def _get_main_process_bundle(config):
     if config.num_learners == 0:
         if config.num_cpus_per_learner != "auto":

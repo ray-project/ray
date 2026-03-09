@@ -106,6 +106,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._env_to_module = self.config.build_env_to_module_connector(
             env=self.env, spaces=self.spaces, device=self._device
         )
+
+        # Run NumpyToTensor on InferenceActor (cpu -> gpu)
+        if self.config.use_inference_actors:
+            self._env_to_module.remove("NumpyToTensor")
+
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
         # processed (and maybe postprocessed and re-stored into the episode).
@@ -124,6 +129,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._module_to_env = self.config.build_module_to_env_connector(
             env=self.env, spaces=self.spaces
         )
+
+        # Run GetActions and TensorToNumpy on InferenceActor (gpu -> cpu)
+        if self.config.use_inference_actors:
+            self._module_to_env.remove("GetActions")
+            self._module_to_env.remove("TensorToNumpy")
 
         self._needs_initial_reset: bool = True
         self._ongoing_episodes: List[Optional[SingleAgentEpisode]] = [
@@ -318,12 +328,28 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                         + ts
                     ) * (self.config.num_env_runners or 1)
                     with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
-                        to_env = self.module.forward_exploration(
-                            to_module, t=global_env_steps_lifetime
-                        )
+                        if self.config.use_inference_actors:
+                            to_env = ray.get(
+                                self.inference_actors.forward_exploration.remote(
+                                    batch=to_module,
+                                    t=global_env_steps_lifetime,
+                                )
+                            )
+                        else:
+                            to_env = self.module.forward_exploration(
+                                batch=to_module,
+                                t=global_env_steps_lifetime,
+                            )
                 else:
                     with self.metrics.log_time(RLMODULE_INFERENCE_TIMER):
-                        to_env = self.module.forward_inference(to_module)
+                        if self.config.use_inference_actors:
+                            to_env = ray.get(
+                                self.inference_actors.forward_inference.remote(
+                                    batch=to_module,
+                                )
+                            )
+                        else:
+                            to_env = self.module.forward_inference(batch=to_module)
 
                 # Module-to-env connector.
                 to_env = self._module_to_env(
