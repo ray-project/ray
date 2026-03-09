@@ -760,7 +760,6 @@ def _map_task(
     ctx.kwargs.update(kwargs)
 
     with (DataContext.current(data_context), TaskContext.current(ctx)):
-        stats = BlockExecStats.builder()
         map_transformer.override_target_block_size(
             target_max_block_size=ctx.target_max_block_size_override,
             target_num_rows_per_block=ctx.target_num_rows_per_block_override,
