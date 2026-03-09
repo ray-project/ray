@@ -34,7 +34,6 @@ To use it, modify the attributes in the current :class:`~ray.data.DataContext` o
   * If you're using Ray Data with Ray Train, training resources are automatically excluded. Otherwise, off by default.
   * For each resource type, you can't set both ``resource_limits`` and ``exclude_resources``.
 
-* `locality_with_output`: Set this to prefer running tasks on the same node as the output node (node driving the execution). It can also be set to a list of node ids to spread the outputs across those nodes. This parameter applies to both :meth:`~ray.data.Dataset.map` and :meth:`~ray.data.Dataset.streaming_split` operations. This setting is useful if you know you are consuming the output data directly on the consumer node (such as for ML training ingest). However, other use cases can incur a performance penalty with this setting. Off by default.
 * `preserve_order`: Set this to preserve the ordering between blocks processed by operators under the streaming executor. Off by default.
 * `actor_locality_enabled`: Whether to enable locality-aware task dispatch to actors. This parameter applies to stateful :meth:`~ray.data.Dataset.map` operations. This setting is useful if you know you are consuming the output data directly on the consumer node (such as for ML batch inference). However, other use cases can incur a performance penalty with this setting. Off by default.
 * `verbose_progress`: Whether to report progress individually per operator. By default, only AllToAll operators and global progress is reported. This option is useful for performance debugging. On by default.
@@ -67,3 +66,29 @@ and most users shouldn't need to modify them. However, some of the most importan
 * `raise_original_map_exception`: Whether to raise the original exception encountered in map UDF instead of wrapping it in a `UserCodeException`.
 
 For more details on each of the preceding options, see :class:`~ray.data.DataContext`.
+
+Job-level Checkpointing
+-----------------------
+
+Ray Data supports job-level checkpointing to improve fault tolerance for
+long-running batch pipelines. When enabled, Ray Data can resume a failed job
+by skipping rows that were successfully processed in a previous run, instead
+of restarting from the beginning.
+
+To configure job-level checkpointing, specify a
+:class:`~ray.data.checkpoint.CheckpointConfig` on the current
+:class:`~ray.data.DataContext`.
+
+**Example configuration:**
+
+.. code-block:: python
+
+    import ray
+    from ray.data.checkpoint import CheckpointConfig
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path="s3://my-bucket/ray-data-checkpoints",  # Must be accessible by all nodes
+        delete_checkpoint_on_success=False,  # Preserves checkpoints after successful runs
+    ) 

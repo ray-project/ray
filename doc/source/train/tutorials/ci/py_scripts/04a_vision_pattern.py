@@ -83,7 +83,7 @@ DataContext.get_current().use_streaming_executor = False
 
 
 # 02. Load 10% of food101 (~7,500 images)
-ds = load_dataset("food101", split="train[:10%]")
+ds = load_dataset("ethz/food101", split="train[:10%]")
 
 # 03. Resize and encode as JPEG bytes
 transform = Compose([Resize(256), CenterCrop(224)])
@@ -473,7 +473,7 @@ print(inference_row)   # {"predicted_label": ..., "label": ...}
 
 
 # Load label map from Hugging Face (for pretty titles)
-ds_tmp = load_dataset("food101", split="train[:1%]")  # just to get label names
+ds_tmp = load_dataset("ethz/food101", split="train[:1%]")  # just to get label names
 label_names = ds_tmp.features["label"].names
 
 # Load the raw image locally for visualization

@@ -112,15 +112,6 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
   return refs;
 }
 
-void ReferenceCounter::ReferenceTableToProto(ReferenceProtoTable &table,
-                                             ReferenceTableProto *proto) {
-  for (auto &[id, ref] : table) {
-    auto *proto_ref = proto->Add();
-    *proto_ref = std::move(ref);
-    proto_ref->mutable_reference()->set_object_id(id.Binary());
-  }
-}
-
 bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const ObjectID &outer_id,
                                          const rpc::Address &owner_address,
@@ -1039,7 +1030,8 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     ReferenceTableProto *proto,
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  ReferenceProtoTable borrowed_refs;
+  // Reuse the `encountered_ids` set to deduplicate object IDs across loop iterations.
+  absl::flat_hash_set<ObjectID> encountered_ids;
   for (const auto &borrowed_id : borrowed_ids) {
     // Setting `deduct_local_ref` to true to decrease the ref count for each of the
     // borrowed IDs. This is because we artificially increment each borrowed ID to
@@ -1048,10 +1040,10 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id,
                                                 /*for_ref_removed=*/false,
                                                 /*deduct_local_ref=*/true,
-                                                &borrowed_refs))
+                                                proto,
+                                                encountered_ids))
         << borrowed_id;
   }
-  ReferenceTableToProto(borrowed_refs, proto);
 
   for (const auto &borrowed_id : borrowed_ids) {
     RAY_LOG(DEBUG).WithField(borrowed_id) << "Remove local reference to borrowed object.";
@@ -1079,7 +1071,18 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     const ObjectID &object_id,
     bool for_ref_removed,
     bool deduct_local_ref,
-    ReferenceProtoTable *borrowed_refs) {
+    ReferenceTableProto *borrowed_refs) {
+  absl::flat_hash_set<ObjectID> encountered_ids;
+  return GetAndClearLocalBorrowersInternal(
+      object_id, for_ref_removed, deduct_local_ref, borrowed_refs, encountered_ids);
+}
+
+bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
+    const ObjectID &object_id,
+    bool for_ref_removed,
+    bool deduct_local_ref,
+    ReferenceTableProto *borrowed_refs,
+    absl::flat_hash_set<ObjectID> &encountered_ids) {
   RAY_LOG(DEBUG).WithField(object_id) << "Pop object for_ref_removed " << for_ref_removed;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1098,9 +1101,16 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
   }
 
   if (for_ref_removed || !ref.foreign_owner_already_monitoring) {
-    auto [borrowed_ref_it, inserted] = borrowed_refs->try_emplace(object_id);
-    if (inserted) {
-      ref.ToProto(&borrowed_ref_it->second, deduct_local_ref);
+    // If this object_id has not been encountered yet, add it to borrowed_refs.
+    if (encountered_ids.insert(object_id).second) {
+      RAY_LOG(DEBUG).WithField(object_id)
+          << "Object has " << ref.borrow().borrowers.size() << " borrowers, stored in "
+          << ref.borrow().stored_in_objects.size();
+
+      auto *proto_ref = borrowed_refs->Add();
+      bool has_local_ref = ref.RefCount() > (deduct_local_ref ? 1 : 0);
+      ref.ToProto(proto_ref, object_id, has_local_ref);
+
       // Clear the local list of borrowers that we have accumulated. The receiver
       // of the returned borrowed_refs must merge this list into their own list
       // until all active borrowers are merged into the owner.
@@ -1111,10 +1121,14 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
       ref.borrow_info.reset();
     }
   }
+
   // Attempt to pop children.
   for (const auto &contained_id : it->second.nested().contains) {
-    GetAndClearLocalBorrowersInternal(
-        contained_id, for_ref_removed, /*deduct_local_ref=*/false, borrowed_refs);
+    GetAndClearLocalBorrowersInternal(contained_id,
+                                      for_ref_removed,
+                                      /*deduct_local_ref=*/false,
+                                      borrowed_refs,
+                                      encountered_ids);
   }
   // We've reported our nested refs.
   ref.has_nested_refs_to_report = false;
@@ -1355,25 +1369,19 @@ void ReferenceCounter::PublishRefRemovedInternal(const ObjectID &object_id) {
   if (it != object_id_refs_.end()) {
     PRINT_REF_COUNT(it);
   }
-  ReferenceProtoTable borrowed_refs;
-  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id,
-                                               /*for_ref_removed=*/true,
-                                               /*deduct_local_ref=*/false,
-                                               &borrowed_refs));
-  for (const auto &[id, ref] : borrowed_refs) {
-    RAY_LOG(DEBUG).WithField(id)
-        << "Object has " << ref.borrowers().size() << " borrowers, stored in "
-        << ref.stored_in_objects().size();
-  }
 
-  // Send the owner information about any new borrowers.
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL);
   auto *worker_ref_removed_message = pub_message.mutable_worker_ref_removed_message();
-  ReferenceTableToProto(borrowed_refs,
-                        worker_ref_removed_message->mutable_borrowed_refs());
 
+  RAY_UNUSED(GetAndClearLocalBorrowersInternal(
+      object_id,
+      /*for_ref_removed=*/true,
+      /*deduct_local_ref=*/false,
+      worker_ref_removed_message->mutable_borrowed_refs()));
+
+  // Send the owner information about any new borrowers.
   RAY_LOG(DEBUG).WithField(object_id)
       << "Publishing WaitForRefRemoved message for object, message has "
       << worker_ref_removed_message->borrowed_refs().size() << " borrowed references.";
@@ -1795,11 +1803,13 @@ ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(
 }
 
 void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
-                                          bool deduct_local_ref) const {
+                                          const ObjectID &object_id,
+                                          bool has_local_ref) const {
+  ref->mutable_reference()->set_object_id(object_id.Binary());
   if (owner_address_) {
     ref->mutable_reference()->mutable_owner_address()->CopyFrom(*owner_address_);
   }
-  ref->set_has_local_ref(RefCount() > (deduct_local_ref ? 1 : 0));
+  ref->set_has_local_ref(has_local_ref);
   for (const auto &borrower : borrow().borrowers) {
     ref->add_borrowers()->CopyFrom(borrower);
   }

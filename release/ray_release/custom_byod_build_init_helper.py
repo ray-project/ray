@@ -23,33 +23,48 @@ def generate_custom_build_step_key(image: str) -> str:
 
 def get_images_from_tests(
     tests: List[Test], build_id: str
-) -> Tuple[List[Tuple[str, str, str, str]], Dict[str, List[str]]]:
+) -> Tuple[
+    List[Tuple[str, str, Optional[str], Optional[str], Optional[Dict[str, str]]]],
+    Dict[str, List[str]],
+]:
     """Get a list of custom BYOD images to build from a list of tests."""
-    custom_byod_images = set()
+    custom_byod_images = {}
     custom_image_test_names_map = {}
     for test in tests:
         if not test.require_custom_byod_image():
             continue
-        custom_byod_image_build = (
-            test.get_anyscale_byod_image(build_id),
-            test.get_anyscale_base_byod_image(build_id),
-            test.get_byod_post_build_script(),
-            test.get_byod_python_depset(),
-        )
-        custom_byod_images.add(custom_byod_image_build)
-        image_tag = custom_byod_image_build[0]
+        image_tag = test.get_anyscale_byod_image(build_id)
+        if image_tag not in custom_byod_images:
+            runtime_env = test.get_byod_runtime_env() or None
+            custom_byod_images[image_tag] = (
+                image_tag,
+                test.get_anyscale_base_byod_image(build_id),
+                test.get_byod_post_build_script(),
+                test.get_byod_python_depset(),
+                runtime_env,
+            )
         logger.info(f"To be built: {image_tag}")
         if image_tag not in custom_image_test_names_map:
             custom_image_test_names_map[image_tag] = []
         custom_image_test_names_map[image_tag].append(test.get_name())
-    return list(custom_byod_images), custom_image_test_names_map
+    return list(custom_byod_images.values()), custom_image_test_names_map
 
 
 def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     """Create a yaml file for building custom BYOD images"""
     config = get_global_config()
-    if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
-        raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
+    if (
+        not config
+        or not config.get("byod_ecr_region")
+        or not config.get("byod_ecr")
+        or not config.get("aws2gce_credentials")
+    ):
+        raise ValueError(
+            "byod_ecr_region, byod_ecr, and aws2gce_credentials must be set in the config"
+        )
+    byod_ecr_region = config.get("byod_ecr_region")
+    byod_ecr = config.get("byod_ecr")
+    aws2gce_credentials = config.get("aws2gce_credentials")
     custom_byod_images, custom_image_test_names_map = get_images_from_tests(
         tests, "$$RAYCI_BUILD_ID"
     )
@@ -57,14 +72,38 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
         return
     build_config = {"group": "Custom images build", "steps": []}
     ray_want_commit = os.getenv("RAY_WANT_COMMIT_IN_IMAGE", "")
-    for image, base_image, post_build_script, python_depset in custom_byod_images:
+    for (
+        image,
+        base_image,
+        post_build_script,
+        python_depset,
+        runtime_env,
+    ) in custom_byod_images:
         logger.info(
-            f"Building custom BYOD image: {image}, base image: {base_image}, post build script: {post_build_script}"
+            f"Building custom BYOD image: {image}, base image: {base_image}, "
+            f"post build script: {post_build_script}, runtime_env: {runtime_env}"
         )
-        if not post_build_script and not python_depset:
+        if not post_build_script and not python_depset and not runtime_env:
             continue
         step_key = generate_custom_build_step_key(image)
         step_name = _get_step_name(image, step_key, custom_image_test_names_map[image])
+        env_args = ""
+        if runtime_env:
+            env_args = " ".join(
+                f"--env {k}={v}" for k, v in sorted(runtime_env.items())
+            )
+        build_cmd_parts = [
+            "bazelisk run //release:custom_byod_build --",
+            f"--image-name {image}",
+            f"--base-image {base_image}",
+        ]
+        if post_build_script:
+            build_cmd_parts.append(f"--post-build-script {post_build_script}")
+        if python_depset:
+            build_cmd_parts.append(f"--python-depset {python_depset}")
+        if env_args:
+            build_cmd_parts.append(env_args)
+        build_cmd = " ".join(build_cmd_parts)
         step = {
             "label": step_name,
             "key": step_key,
@@ -72,12 +111,12 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             "mount_buildkite_agent": True,
             "commands": [
                 f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
-                "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
+                f"bash release/gcloud_docker_login.sh {aws2gce_credentials}",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 "bash release/azure_docker_login.sh",
                 f"az acr login --name {AZURE_REGISTRY_NAME}",
-                f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
-                f"bazelisk run //release:custom_byod_build -- --image-name {image} --base-image {base_image} {f'--post-build-script {post_build_script}' if post_build_script else ''} {f'--python-depset {python_depset}' if python_depset else ''}",
+                f"aws ecr get-login-password --region {byod_ecr_region} | docker login --username AWS --password-stdin {byod_ecr}",
+                build_cmd,
             ],
         }
         step["depends_on"] = get_prerequisite_step(image, base_image)

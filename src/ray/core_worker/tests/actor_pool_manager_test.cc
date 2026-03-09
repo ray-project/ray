@@ -23,7 +23,7 @@
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/accessors/actor_info_accessor.h"
 #include "ray/common/test_utils.h"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/fake_metric.h"

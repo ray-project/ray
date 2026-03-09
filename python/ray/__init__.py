@@ -113,7 +113,6 @@ from ray._private.state import (  # noqa: E402,F401
     available_resources,
 )
 from ray._private.worker import (  # noqa: E402,F401
-    LOCAL_MODE,
     SCRIPT_MODE,
     WORKER_MODE,
     RESTORE_WORKER_MODE,
@@ -201,7 +200,6 @@ __all__ = [
     "shutdown",
     "timeline",
     "wait",
-    "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
     "LoggingConfig",
@@ -222,7 +220,6 @@ AUTO_INIT_APIS = {
 # Public APIs that should not automatically trigger ray.init().
 NON_AUTO_INIT_APIS = {
     "ClientBuilder",
-    "LOCAL_MODE",
     "Language",
     "SCRIPT_MODE",
     "WORKER_MODE",

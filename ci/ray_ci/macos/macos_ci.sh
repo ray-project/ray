@@ -43,6 +43,11 @@ run_flaky_tests() {
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
 }
 
+run_smoke_test() {
+  # 42 is the universal rayci exit code for test failures
+  (run_tests //python/ray/tests:test_basic) || exit 42
+}
+
 run_small_test() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures

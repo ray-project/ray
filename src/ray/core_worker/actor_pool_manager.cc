@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "boost/asio/steady_timer.hpp"
-#include "ray/core_worker/actor_manager.h"
+#include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/util/logging.h"
 

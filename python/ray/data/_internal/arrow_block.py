@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import shuffle
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
@@ -37,7 +37,6 @@ from ray.data.block import (
     BlockType,
     U,
 )
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.expressions import Expr
 
@@ -249,9 +248,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return cls(reader.read_all())
 
     @staticmethod
-    def _build_tensor_row(
-        row: ArrowRow, row_idx: int, col_name: str = TENSOR_COLUMN_NAME
-    ) -> np.ndarray:
+    def _build_tensor_row(row: ArrowRow, row_idx: int, col_name: str) -> np.ndarray:
 
         element = row[col_name][row_idx]
         arr = element.as_py()
@@ -453,7 +450,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, BlockType.ARROW)
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key, promote_types=True)
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW

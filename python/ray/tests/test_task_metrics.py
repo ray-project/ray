@@ -6,12 +6,14 @@ from collections import defaultdict
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    PrometheusTimeseries,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.metrics_agent import RAY_WORKER_TIMEOUT_S
 from ray._private.test_utils import (
-    PrometheusTimeseries,
     raw_metric_timeseries,
-    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_assertion,
     wait_for_dashboard_agent_available,

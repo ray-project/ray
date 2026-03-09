@@ -5,12 +5,13 @@ import pytest
 
 import ray
 from ray._common.network_utils import build_address
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     MetricSamplePattern,
     PrometheusTimeseries,
-    get_metric_check_condition,
+    SignalActor,
+    wait_for_condition,
 )
+from ray._private.test_utils import get_metric_check_condition
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
