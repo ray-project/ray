@@ -291,10 +291,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             force_reset or num_episodes is not None or self._needs_initial_reset
         )
 
-        if self._cached_to_module is None and not reset_required:
-            # This can happen if we error out in a previous sample call.
-            # Primarily, because a connector fails.
-            # In this case, we need to reset the envs and episodes to start over.
+        if (
+            self._cached_to_module is None
+            and self.module is not None
+            and not reset_required
+        ):
+            # Cached module connector outputs can be none if a connector fails.
+            # self._cached_to_module is always None if the module is None.
             if log_once("sample_error_reset_envs"):
                 logger.warning(
                     "Error in sample call detected. Resetting envs and episodes to start over. You can ignore this warning if a connector is expectedly unstable."
