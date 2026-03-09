@@ -21,8 +21,6 @@ watchfiles
 # Python version-specific requirements
 grpcio>=1.42.0
 
-numpy>=1.20
-
 pyarrow >= 9.0.0
 
 # ray[all]
