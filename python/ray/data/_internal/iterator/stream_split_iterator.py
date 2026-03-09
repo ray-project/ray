@@ -53,18 +53,14 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(_DatasetWrapper(base_dataset), n, locality_hints)
 
-        return [
-            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
-        ]
+        return [StreamSplitDataIterator(coord_actor, i, n) for i in range(n)]
 
     def __init__(
         self,
-        base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
         world_size: int,
     ):
-        self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
@@ -113,14 +109,14 @@ class StreamSplitDataIterator(DataIterator):
         return ray.get(self._coord_actor.get_dataset_schema.remote())
 
     def get_context(self) -> DataContext:
-        return self._base_dataset.context
+        return ray.get(self._coord_actor.get_dataset_context.remote())
 
     def world_size(self) -> int:
         """Returns the number of splits total."""
         return self._world_size
 
     def _get_dataset_tag(self):
-        return f"{self._base_dataset.get_dataset_id()}_split_{self._output_split_idx}"
+        return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
 
 
 @ray.remote(num_cpus=0)
@@ -176,6 +172,12 @@ class SplitCoordinator:
         self._output_iterator = None
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
+
+    def get_dataset_context(self) -> DataContext:
+        return self._data_context
+
+    def get_dataset_tag(self, output_split_idx: int) -> str:
+        return f"{self._base_dataset.get_dataset_id()}_split_{output_split_idx}"
 
     def get_dataset_schema(self):
         with self._dataset_state_lock:
