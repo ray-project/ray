@@ -81,8 +81,9 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
       server->Shutdown();
     }
 
-    // Allow gRPC to cleanup.
-    boost::this_thread::sleep_for(boost::chrono::seconds(2));
+    // Allow the async callback in the
+    // GcsHealthCheckManager::HealthCheckContext::StartHealthCheck to fire.
+    boost::this_thread::sleep_for(boost::chrono::seconds(5));
   }
 
   NodeID AddServer(bool alive = true) {
