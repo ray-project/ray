@@ -81,12 +81,23 @@ def validate_ssl_config(
         )
 
 
-def get_deployment_actor_name(deployment_id: DeploymentID, actor_name: str) -> str:
-    """Return the deterministic Ray actor name for a deployment-scoped actor."""
-    return (
+def get_deployment_actor_name(
+    deployment_id: DeploymentID,
+    actor_name: str,
+    code_version: str,
+) -> str:
+    """Return the deterministic Ray actor name for a deployment-scoped actor.
+
+    The name is versioned by code_version to allow old and new replicas to
+    coexist during rollout (each uses its version's actors). Actors serve as
+    central state for replicas, so we version by code_version to ensure fresh
+    actors when a new code version is deployed.
+    """
+    base = (
         f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{deployment_id.app_name}"
-        f"::{deployment_id.name}::{actor_name}"
+        f"::{deployment_id.name}"
     )
+    return f"{base}::{code_version}::{actor_name}"
 
 
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(

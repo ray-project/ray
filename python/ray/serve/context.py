@@ -54,6 +54,7 @@ class ReplicaContext:
     _deployment_config: DeploymentConfig
     rank: ReplicaRank
     world_size: int
+    code_version: str
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
     gang_context: Optional[GangContext] = None
 
@@ -141,7 +142,11 @@ def get_deployment_actor(actor_name: str):
         )
     deployment_id = internal_context.replica_id.deployment_id
     return ray.get_actor(
-        get_deployment_actor_name(deployment_id, actor_name),
+        get_deployment_actor_name(
+            deployment_id,
+            actor_name,
+            code_version=internal_context.code_version,
+        ),
         namespace=SERVE_NAMESPACE,
     )
 
@@ -155,6 +160,7 @@ def _set_internal_replica_context(
     world_size: int,
     handle_registration_callback: Optional[Callable[[str, str], None]] = None,
     gang_context: Optional[GangContext] = None,
+    code_version: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -165,6 +171,7 @@ def _set_internal_replica_context(
         world_size=world_size,
         _handle_registration_callback=handle_registration_callback,
         gang_context=gang_context,
+        code_version=code_version,
     )
 
 

@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Union
 import pytest
 from pydantic import ValidationError
 
+import ray
 from ray import serve
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import get_app_code_version
@@ -34,6 +35,7 @@ from ray.serve.tests.common.remote_uris import (
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_P4, NVIDIA_TESLA_V100
 
 
+@ray.remote
 class _SchemaTestDummyActor:
     """Dummy actor class for deployment_actors schema tests."""
 
@@ -1158,7 +1160,7 @@ def test_deployment_actors_deployment_schema_roundtrip():
     assert len(actors) == 1
     assert actors[0].name == "prefix_tree"
     assert actors[0].init_kwargs == {"max_depth": 100}
-    assert actors[0].actor_class is _SchemaTestDummyActor
+    assert actors[0].get_actor_class().__name__ == _SchemaTestDummyActor.__name__
 
 
 def test_schema_to_deployment_deployment_actors_from_dict():

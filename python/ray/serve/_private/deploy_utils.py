@@ -24,6 +24,7 @@ def get_deploy_args(
     route_prefix: Optional[str] = None,
     serialized_autoscaling_policy_def: Optional[bytes] = None,
     serialized_request_router_cls: Optional[bytes] = None,
+    serialized_deployment_actors: Optional[Dict[str, bytes]] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -48,6 +49,7 @@ def get_deploy_args(
         "ingress": ingress,
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
+        "serialized_deployment_actors": serialized_deployment_actors,
     }
 
     return controller_deploy_args

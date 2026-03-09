@@ -22,6 +22,7 @@ ray.serve.context._set_internal_replica_context(
     _deployment_config=default_deployment_config,
     rank=0,
     world_size=1,
+    code_version="test",
 )
 
 

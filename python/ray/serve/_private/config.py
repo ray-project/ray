@@ -19,7 +19,7 @@ from pydantic import (
 from ray import cloudpickle
 from ray._common import ray_option_utils
 from ray._common.serialization import pickle_dumps
-from ray._common.utils import import_attr, resources_from_ray_options
+from ray._common.utils import resources_from_ray_options
 from ray.serve._private.constants import (
     DEFAULT_CONSTRUCTOR_RETRY_COUNT,
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -372,13 +372,13 @@ class DeploymentConfig(BaseModel):
         if self.deployment_actors:
             deployment_actors_proto = []
             for cfg in self.deployment_actors:
-                actor_class = cfg.actor_class
-                if isinstance(actor_class, str):
-                    actor_class = import_attr(actor_class)
+                if not cfg._serialized_actor_class:
+                    cfg._serialize_actor_class()
                 deployment_actors_proto.append(
                     DeploymentActorConfigProto(
                         name=cfg.name,
-                        _serialized_actor_class=cloudpickle.dumps(actor_class),
+                        actor_class_name=cfg.actor_class,
+                        _serialized_actor_class=cfg._serialized_actor_class,
                         serialized_init_args=cloudpickle.dumps(cfg.init_args or ()),
                         serialized_init_kwargs=cloudpickle.dumps(cfg.init_kwargs or {}),
                         serialized_actor_options=cloudpickle.dumps(
@@ -501,10 +501,12 @@ class DeploymentConfig(BaseModel):
                 serialized_args = proto_dict.get("serialized_init_args")
                 serialized_kwargs = proto_dict.get("serialized_init_kwargs")
                 serialized_opts = proto_dict.get("serialized_actor_options")
+                actor_class_name = proto_dict.get("actor_class_name", "")
                 deployment_actors.append(
                     DeploymentActorConfig(
                         name=proto_dict.get("name", ""),
-                        actor_class=_loads(serialized_cls),
+                        actor_class=actor_class_name,
+                        _serialized_actor_class=serialized_cls,
                         init_args=_loads(serialized_args) or (),
                         init_kwargs=_loads(serialized_kwargs) or {},
                         actor_options=_loads(serialized_opts) or {},

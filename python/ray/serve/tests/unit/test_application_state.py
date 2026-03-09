@@ -3,6 +3,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
+import cloudpickle
 import pytest
 from pydantic import ValidationError
 
@@ -37,7 +38,11 @@ from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
-from ray.serve.config import AutoscalingConfig, GangSchedulingConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentActorConfig,
+    GangSchedulingConfig,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -1615,6 +1620,234 @@ class TestOverrideDeploymentInfo:
 
         with pytest.raises(ValidationError, match="must be a multiple of gang_size"):
             override_deployment_info({"A": initial_info}, config)
+
+    def test_override_deployment_info_injects_serialized_deployment_actors(self):
+        """Config-only deployment actors: serialized bytes from build task are
+        injected into deployment config via override_deployment_info.
+        """
+        # Minimal actor class for serialization (must be at module level for pickle)
+        class _TestActorForSerialization:
+            pass
+
+        serialized = cloudpickle.dumps(_TestActorForSerialization)
+        deployment_to_serialized = {"A": {"counter": serialized}}
+
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    deployment_actors=[
+                        {
+                            "name": "counter",
+                            "actor_class": "test.module:SomeActor",
+                            "init_kwargs": {"start": 0},
+                        },
+                    ],
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=deployment_to_serialized,
+        )
+        updated_info = updated_infos["A"]
+        assert updated_info.deployment_config.deployment_actors is not None
+        assert len(updated_info.deployment_config.deployment_actors) == 1
+        actor_cfg = updated_info.deployment_config.deployment_actors[0]
+        assert actor_cfg.name == "counter"
+        assert actor_cfg._serialized_actor_class == serialized
+        # Can deserialize and get the class
+        resolved = actor_cfg.get_actor_class()
+        assert resolved.__name__ == "_TestActorForSerialization"
+
+    def test_override_deployment_info_deployment_actors_no_serialized_provided(self):
+        """When deployment has deployment_actors but no serialized bytes provided,
+        override still succeeds (actor_class stays as import path string).
+        """
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="counter",
+                        actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+                        init_kwargs={"start": 0},
+                    ),
+                ],
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=2,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=None,
+        )
+        updated_info = updated_infos["A"]
+        assert updated_info.deployment_config.deployment_actors is not None
+        assert len(updated_info.deployment_config.deployment_actors) == 1
+        assert updated_info.deployment_config.deployment_actors[0].name == "counter"
+        assert updated_info.deployment_config.num_replicas == 2
+
+    def test_override_deployment_info_deployment_actors_partial_match(self):
+        """Only actor names present in serialized map get _serialized_actor_class."""
+
+        class _Actor1:
+            pass
+
+        class _Actor2:
+            pass
+
+        serialized_1 = cloudpickle.dumps(_Actor1)
+        deployment_to_serialized = {"A": {"actor1": serialized_1}}
+
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="actor1",
+                        actor_class="test:Actor1",
+                        init_kwargs={},
+                    ),
+                    DeploymentActorConfig(
+                        name="actor2",
+                        actor_class="test:Actor2",
+                        init_kwargs={},
+                    ),
+                ],
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    deployment_actors=[
+                        {
+                            "name": "actor1",
+                            "actor_class": "test:Actor1",
+                            "init_kwargs": {},
+                        },
+                        {
+                            "name": "actor2",
+                            "actor_class": "test:Actor2",
+                            "init_kwargs": {},
+                        },
+                    ],
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info(
+            {"A": initial_info},
+            config,
+            deployment_to_serialized_deployment_actors=deployment_to_serialized,
+        )
+        updated_info = updated_infos["A"]
+        actors = updated_info.deployment_config.deployment_actors
+        assert actors[0]._serialized_actor_class == serialized_1
+        assert actors[1]._serialized_actor_class == b""  # Not in map, stays empty
+
+
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_config_extracts_deployment_actor_classes(check_obj_ref_ready_nowait):
+    """When config has deployment_actors (dict format), they are extracted and
+    passed to build_serve_application as deployment_to_deployment_actor_classes.
+    """
+    with patch(
+        "ray.serve._private.application_state.build_serve_application"
+    ) as mock_build:
+        mock_build.options.return_value.remote.return_value = Mock()
+
+        kv_store = MockKVStore()
+        deployment_state_manager = MockDeploymentStateManager(kv_store)
+        app_state_manager = ApplicationStateManager(
+            deployment_state_manager,
+            AutoscalingStateManager(),
+            MockEndpointState(),
+            kv_store,
+            LoggingConfig(),
+        )
+
+        app_config = ServeApplicationSchema(
+            name="test_app",
+            import_path="test.import.path",
+            route_prefix="/",
+            deployments=[
+                DeploymentSchema(
+                    name="MyDeployment",
+                    deployment_actors=[
+                        {
+                            "name": "counter",
+                            "actor_class": "ray.serve.tests.test_deployment_actors:SharedCounter",
+                            "init_kwargs": {"start": 0},
+                        },
+                        {
+                            "name": "cache",
+                            "actor_class": "ray.serve.tests.test_deployment_actors:SharedCache",
+                            "init_kwargs": {},
+                        },
+                    ],
+                ),
+            ],
+        )
+        app_state_manager.apply_app_configs([app_config])
+        app_state = app_state_manager._application_states["test_app"]
+        assert app_state.status == ApplicationStatus.DEPLOYING
+
+        check_obj_ref_ready_nowait.return_value = False
+        app_state.update()
+
+        mock_build.options.return_value.remote.assert_called_once()
+        call_kwargs = mock_build.options.return_value.remote.call_args
+        # deployment_to_deployment_actor_classes is the 9th positional arg (index 8)
+        deployment_to_deployment_actor_classes = call_kwargs[0][8]
+        assert deployment_to_deployment_actor_classes == {
+            "MyDeployment": {
+                "counter": "ray.serve.tests.test_deployment_actors:SharedCounter",
+                "cache": "ray.serve.tests.test_deployment_actors:SharedCache",
+            },
+        }
 
 
 class TestAutoscale:
