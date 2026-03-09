@@ -5498,6 +5498,7 @@ class Dataset:
             schema: The schema of the dataset. If not provided, it is inferred from the data.
             mode: The write mode using SaveMode enum:
                 SaveMode.CREATE, SaveMode.APPEND, or SaveMode.OVERWRITE.
+                Namespace-backed writes currently support only SaveMode.CREATE.
             min_rows_per_file: The minimum number of rows per file.
             max_rows_per_file: The maximum number of rows per file.
             data_storage_version: The version of the data storage format to use. Newer versions are more
@@ -5508,6 +5509,8 @@ class Dataset:
             table_id: The table identifier as a list of strings, used with namespace params.
             namespace_impl: The namespace implementation type (e.g., "rest", "dir").
             namespace_properties: Properties for connecting to the namespace.
+                When namespace params are provided, only SaveMode.CREATE is
+                currently supported.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
