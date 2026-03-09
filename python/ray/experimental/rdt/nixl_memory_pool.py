@@ -28,18 +28,16 @@ class MemoryBlock:
 class MemoryPoolManager:
     """Manages a pre-allocated memory pool for NIXL RDT transfers.
 
-    This class provides a memory allocator interface over a pre-allocated GPU memory pool,
-    allowing reuse of registered NIXL memory descriptors across multiple transfers.
+    This class provides a memory allocator interface over a pre-allocated memory pool,
+    allowing reuse of registered memory descriptors across multiple transfers.
     """
 
-    def __init__(
-        self, pool_size: int, device: Optional["torch.device"] = torch.device("cpu")
-    ):
+    def __init__(self, pool_size: int, device: "torch.device"):
         """Initialize the memory pool manager.
 
         Args:
             pool_size: Size of the memory pool in bytes.
-            device: Device to allocate the pool on. If None, uses CPU.
+            device: Device to allocate the pool on.
         """
         self.pool_size = pool_size
         self.device = device
@@ -50,14 +48,11 @@ class MemoryPoolManager:
             pool_size, dtype=torch.uint8, device=self.device
         )
 
-        # Track free blocks using a simple first-fit allocator
+        # Track free blocks using a first-fit allocator
         # List of (offset, size) tuples for free blocks, sorted by offset
         self._free_blocks: List[MemoryBlock] = [
             MemoryBlock(offset=0, size=pool_size, is_free=True)
         ]
-
-        # Track allocated blocks for debugging and validation
-        self._allocated_blocks: List[MemoryBlock] = []
 
     def get_pool_tensor(self) -> "torch.Tensor":
         """Get the underlying pool tensor.
@@ -70,9 +65,7 @@ class MemoryPoolManager:
     def allocate_multiple(self, sizes: List[int]) -> Optional[List[Tuple[int, int]]]:
         """Allocate multiple memory blocks from the pool atomically.
 
-        Either all allocations succeed, or none of them do. This ensures consistency
-        - if we can't allocate space for all tensors, we fall back to traditional mode
-        for all of them.
+        Either all allocations succeed, or none of them do.
 
         Args:
             sizes: List of sizes to allocate in bytes.
@@ -92,7 +85,6 @@ class MemoryPoolManager:
         temp_free_blocks = [
             MemoryBlock(b.offset, b.size, b.is_free) for b in self._free_blocks
         ]
-        temp_allocated_blocks = list(self._allocated_blocks)
 
         for size in sorted_sizes:
             allocated = False
@@ -103,31 +95,14 @@ class MemoryPoolManager:
                 if block.size >= size:
                     # Allocate at the start of the current free block
                     offset = block.offset
-
-                    # Update / delete the current free block
                     remaining_after = block.size - size
-                    temp_free_blocks.pop(i)
-                    if remaining_after > 0:
-                        new_free = MemoryBlock(
-                            offset=offset + size,
-                            size=remaining_after,
-                            is_free=True,
-                        )
-                        # Keep sorted insertion by offset
-                        inserted = False
-                        for j, free_block in enumerate(temp_free_blocks):
-                            if free_block.offset > new_free.offset:
-                                temp_free_blocks.insert(j, new_free)
-                                inserted = True
-                                break
-                        if not inserted:
-                            temp_free_blocks.append(new_free)
 
-                    # Record the allocated block
-                    allocated_block = MemoryBlock(
-                        offset=offset, size=size, is_free=False
-                    )
-                    temp_allocated_blocks.append(allocated_block)
+                    if remaining_after == 0:
+                        temp_free_blocks.pop(i)
+                    else:
+                        block.offset = offset + size
+                        block.size = remaining_after
+
                     allocations.append((offset, size))
                     allocated = True
                     break
@@ -144,40 +119,26 @@ class MemoryPoolManager:
         # All successful, submit modifications
         temp_free_blocks.sort(key=lambda b: b.offset)
         self._free_blocks = temp_free_blocks
-        self._allocated_blocks = temp_allocated_blocks
 
         return result
 
-    def free(self, offset: int, size: int):
-        """Free a memory block back to the pool.
+    def free_multiple(self, offsets: List[int], sizes: List[int]) -> None:
+        """Free multiple memory blocks back to the pool.
 
         Args:
-            offset: Offset of the memory block to free.
-            size: Size of the memory block to free.
+            offsets: Offsets of the memory blocks to free.
+            sizes: Sizes of the memory blocks to free (same length as offsets).
 
         Returns:
             None.
         """
-        # Find and remove the allocated block
-        for i, block in enumerate(self._allocated_blocks):
-            if block.offset == offset and block.size == size and not block.is_free:
-                self._allocated_blocks.pop(i)
-                break
-        else:
-            # Block not found, might be a double-free or invalid free
+        for offset, size in zip(offsets, sizes):
+            self._free_blocks.append(
+                MemoryBlock(offset=offset, size=size, is_free=True)
+            )
+
+        if not offsets:
             return
-
-        # Insert new free block in sorted order by offset
-        new_free = MemoryBlock(offset=offset, size=size, is_free=True)
-        inserted = False
-        for i, free_block in enumerate(self._free_blocks):
-            if free_block.offset > new_free.offset:
-                self._free_blocks.insert(i, new_free)
-                inserted = True
-                break
-        if not inserted:
-            self._free_blocks.append(new_free)
-
         # Single pass: merge all adjacent free blocks
         self._free_blocks.sort(key=lambda b: b.offset)
         i = 0
@@ -190,26 +151,17 @@ class MemoryPoolManager:
             else:
                 i += 1
 
-    def copy_to_pool(
-        self, tensor: "torch.Tensor", offset: int, tensor_offset: int = 0
-    ) -> int:
+    def copy_to_pool(self, tensor: "torch.Tensor", offset: int) -> int:
         """Copy tensor data to the memory pool at the specified offset.
 
         Args:
             tensor: Source tensor to copy from.
             offset: Destination offset in the memory pool (bytes).
-            tensor_offset: Offset in the source tensor (elements, default: 0).
 
         Returns:
             Number of bytes copied.
         """
-        if tensor.device != self.device:
-            raise ValueError(
-                f"Tensor device {tensor.device} does not match pool device {self.device}"
-            )
-
-        # Calculate number of elements to copy
-        num_elements = tensor.numel() - tensor_offset
+        num_elements = tensor.numel()
         if num_elements <= 0:
             return 0
 
@@ -220,27 +172,18 @@ class MemoryPoolManager:
             bytes_to_copy = self.pool_size - offset
             if bytes_to_copy <= 0:
                 return 0
-            # Recalculate elements based on available space
             num_elements = bytes_to_copy // tensor.element_size()
             if num_elements == 0:
                 return 0
             bytes_to_copy = num_elements * tensor.element_size()
 
-        # Flatten the tensor
         flat_tensor = tensor.flatten()
-        if tensor_offset > 0:
-            flat_tensor = flat_tensor[tensor_offset : tensor_offset + num_elements]
-
-        # View the pool memory as the tensor's dtype and copy
-        # Calculate how many elements we can fit
         pool_bytes = self._pool_tensor[offset : offset + bytes_to_copy]
         pool_elements = len(pool_bytes) // tensor.element_size()
         if pool_elements == 0:
             return 0
 
-        # Create a view of the pool as the tensor dtype
         pool_view = pool_bytes.view(tensor.dtype)
-        # Copy the data
         pool_view[:pool_elements].copy_(
             flat_tensor[:pool_elements].to(dtype=tensor.dtype)
         )
