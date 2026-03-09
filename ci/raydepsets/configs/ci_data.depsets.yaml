@@ -70,7 +70,7 @@ depsets:
       - py310
       - py312
 
-  - name: data_v9_pyarrow_depset_${PYTHON_SHORT}
+  - name: data_pyarrow_v9_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - relaxed_data_ci_depset_${PYTHON_SHORT}
