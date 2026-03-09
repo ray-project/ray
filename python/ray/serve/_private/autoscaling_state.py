@@ -459,8 +459,7 @@ class DeploymentAutoscalingState:
 
         for handle_metric in self._handle_requests.values():
             running_reqs = handle_metric.metrics.get(RUNNING_REQUESTS_KEY, {})
-            for replica_id in self._running_replicas:
-                replica_str = replica_id.to_full_id_str()
+            for replica_str in self._cached_running_replica_strs:
                 if replica_str not in running_reqs:
                     continue
                 timeseries_list.append(running_reqs[replica_str])
@@ -668,6 +667,7 @@ class DeploymentAutoscalingState:
         # Iterate over _replica_metrics but only count running replicas. Stale metrics from
         # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
         for report in self._replica_metrics.values():
+            # TODO(abrar): Store replica_id as string in report to avoid this conversion.
             if report.replica_id.to_full_id_str() in self._cached_running_replica_strs:
                 total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
 
