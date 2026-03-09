@@ -856,22 +856,22 @@ class _ActorTaskSelectorImpl(_ActorTaskSelector):
             else {}
         )
 
+        running = self._actor_pool.running_actors()
+        locs_get = locs_priorities.get
+
         # NOTE: Ranks are ordered in descending order (ie rank[0] is the highest
         #       and rank[-1] is the lowest)
-        ranks = [
+        return [
             (
                 # Priority/rank of the location (based on the object size).
                 # Defaults to int32 max value (ie no rank)
-                locs_priorities.get(
-                    self._actor_pool.running_actors()[actor].actor_location, INT32_MAX
-                ),
+                locs_get(state.actor_location, INT32_MAX),
                 # Number of tasks currently in flight at the given actor
-                self._actor_pool.running_actors()[actor].num_tasks_in_flight,
+                state.num_tasks_in_flight,
             )
             for actor in actors
+            for state in (running[actor],)
         ]
-
-        return ranks
 
 
 class _ActorPool(AutoscalingActorPool):
