@@ -516,9 +516,6 @@ class NixlTensorTransport(TensorTransportManager):
                 for i, tensor in enumerate(tensors):
                     offset, allocated_size = allocations[i]
                     tensor_size = tensor_sizes[i]
-                    print(
-                        f"Allocated {allocated_size/1024/1024} MB for {tensor_size/1024/1024} MB tensor {i} from memory pool at offset {offset}"
-                    )
 
                     # Copy tensor to memory pool
                     pool.copy_to_pool(tensor, offset)

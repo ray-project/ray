@@ -1,5 +1,4 @@
 import sys
-import time
 
 import pytest
 import torch
@@ -8,6 +7,7 @@ import ray
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.experimental import set_target_for_ref
 from ray.experimental.rdt.util import get_tensor_transport_manager
+
 
 @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
 class GPUTestActor:
@@ -116,8 +116,8 @@ class GPUTestActor:
     def block_main_thread(self, signal_actor):
         ray.get(signal_actor.wait.remote())
 
-    def get_nixl_transport_metadata(self, ref):
-        return get_tensor_transport_manager("NIXL")._get_meta(ref.hex())
+    def get_nixl_transport_metadata(self, obj_id: str):
+        return get_tensor_transport_manager("NIXL")._get_meta(obj_id)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
@@ -521,6 +521,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
     result = actors[1].get_with_wrong_buffers.remote([ref])
     assert ray.get(result)
 
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_register_nixl_memory(ray_start_regular):
     """
@@ -559,8 +560,8 @@ def test_nixl_memory_pool(ray_start_regular, device):
     runtime_env = {
         "env_vars": {
             "RAY_NIXL_MEMORY_POOL_ENABLED": "1",
-            "RAY_NIXL_CPU_MEMORY_POOL_SIZE": 48 if device == "cpu" else 0,
-            "RAY_NIXL_GPU_MEMORY_POOL_SIZE": 48 if device == "cuda" else 0,
+            "RAY_NIXL_CPU_MEMORY_POOL_SIZE": "48" if device == "cpu" else "0",
+            "RAY_NIXL_GPU_MEMORY_POOL_SIZE": "48" if device == "cuda" else "0",
         }
     }
     src_actor = GPUTestActor.options(runtime_env=runtime_env).remote()
@@ -569,17 +570,26 @@ def test_nixl_memory_pool(ray_start_regular, device):
     # Transfer the first small tensor (using memory pool internally).
     ref1 = src_actor.echo.remote(torch.tensor([1, 2, 3]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref1, device)) == 6
-    assert src_actor.get_nixl_transport_metadata(ref1).pool_offsets is not None
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref1.hex())).pool_offsets
+        is not None
+    )
 
     # Transfer the second small tensor (using memory pool internally).
     ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref2, device)) == 15
-    assert src_actor.get_nixl_transport_metadata(ref2).pool_offsets is not None
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref2.hex())).pool_offsets
+        is not None
+    )
 
     # Transfer the third small tensor (falling back to traditional mode).
     ref3 = src_actor.echo.remote(torch.tensor([7, 8, 9]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref3, device)) == 24
-    assert src_actor.get_nixl_transport_metadata(ref3).pool_offsets is None
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref3.hex())).pool_offsets
+        is None
+    )
 
     del ref1, ref2
 
@@ -591,9 +601,12 @@ def test_nixl_memory_pool(ray_start_regular, device):
     )
 
     # Transfer the fourth tensor (after GC,using memory pool internally).
-    ref4 = src_actor.echo.remote(torch.tensor([1,2,3,4,5,6]).to(device), device)
+    ref4 = src_actor.echo.remote(torch.tensor([1, 2, 3, 4, 5, 6]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref4, device)) == 21
-    assert src_actor.get_nixl_transport_metadata(ref4).pool_offsets is not None
+    assert (
+        ray.get(src_actor.get_nixl_transport_metadata.remote(ref4.hex())).pool_offsets
+        is not None
+    )
 
 
 if __name__ == "__main__":
