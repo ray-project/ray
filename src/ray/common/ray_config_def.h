@@ -1076,3 +1076,7 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+// Delay in milliseconds before re-enqueuing a pool task for reconstruction when
+// no healthy actors are available in the pool.
+RAY_CONFIG(int64_t, actor_pool_retry_delay_ms, 1000)

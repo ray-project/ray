@@ -431,6 +431,9 @@ void TaskManager::SetupTaskEntryForResubmit(TaskEntry &task_entry) {
 
   if (task_entry.num_retries_left_ > 0) {
     task_entry.num_retries_left_--;
+  } else if (!task_entry.spec_.GetMessage().actor_pool_id().empty()) {
+    // Pool tasks use pool-bound reconstruction; retries are managed by
+    // ActorPoolManager, so num_retries_left_ stays at 0.
   } else {
     RAY_CHECK(task_entry.num_retries_left_ == -1);
   }
@@ -1056,8 +1059,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
-    // stored in plasma.
-    bool task_retryable = it->second.num_retries_left_ != 0 &&
+    // stored in plasma. Pool tasks are always retryable via pool-bound
+    // reconstruction regardless of num_retries_left_.
+    bool is_pool_task = !it->second.spec_.GetMessage().actor_pool_id().empty();
+    bool task_retryable = (it->second.num_retries_left_ != 0 || is_pool_task) &&
                           !it->second.reconstructable_return_ids_.empty();
     if (task_retryable) {
       // Pin the task spec if it may be retried again.

@@ -405,14 +405,20 @@ CoreWorker::CoreWorker(
       *actor_task_submitter_,
       *task_manager_,
       io_service_,
-      // Submit callback - delegates TaskSpec building to CoreWorker
       [this](const ActorID &actor_id,
              const RayFunction &function,
              std::vector<std::unique_ptr<TaskArg>> args,
              const TaskOptions &task_options,
-             TaskCompletionCallback on_complete) {
-        return this->SubmitActorTaskForPool(
-            actor_id, function, std::move(args), task_options, std::move(on_complete));
+             TaskCompletionCallback on_complete,
+             const ActorPoolID &pool_id,
+             const TaskID &work_item_id) {
+        return this->SubmitActorTaskForPool(actor_id,
+                                            function,
+                                            std::move(args),
+                                            task_options,
+                                            std::move(on_complete),
+                                            pool_id,
+                                            work_item_id);
       });
 
   // Wire pool task completion callback from ActorTaskSubmitter to ActorPoolManager.
@@ -842,6 +848,29 @@ void CoreWorker::InternalHeartbeat() {
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
+      // Pool tasks: redirect to a healthy actor chosen by the pool.
+      const auto &pool_id_bin = spec.GetMessage().actor_pool_id();
+      if (!pool_id_bin.empty()) {
+        ActorPoolID pool_id = ActorPoolID::FromBinary(pool_id_bin);
+        if (actor_pool_manager_->HasPool(pool_id)) {
+          ActorID new_actor_id = actor_pool_manager_->SelectActorForTask(pool_id);
+          if (new_actor_id.IsNil()) {
+            // No healthy actors — re-enqueue with a short delay.
+            absl::MutexLock lock(&mutex_);
+            task_to_retry.execution_time_ms =
+                current_time_ms() + RayConfig::instance().actor_pool_retry_delay_ms();
+            to_resubmit_.push(task_to_retry);
+            continue;
+          }
+          // Redirect the task to the selected actor.
+          auto *mutable_actor_spec = spec.GetMutableMessage().mutable_actor_task_spec();
+          mutable_actor_spec->set_actor_id(new_actor_id.Binary());
+          const TaskID creation_task_id = TaskID::ForActorCreationTask(new_actor_id);
+          const ObjectID dummy_obj_id =
+              ObjectID::FromIndex(creation_task_id, /*index=*/1);
+          mutable_actor_spec->set_actor_creation_dummy_object_id(dummy_obj_id.Binary());
+        }
+      }
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
       actor_handle->SetResubmittedActorTaskSpec(spec);
       actor_task_submitter_->SubmitTask(spec);
@@ -2744,7 +2773,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
     const RayFunction &function,
     std::vector<std::unique_ptr<TaskArg>> args,
     const TaskOptions &task_options,
-    TaskCompletionCallback on_complete) {
+    TaskCompletionCallback on_complete,
+    const ActorPoolID &pool_id,
+    const TaskID &work_item_id) {
   // This method is called by ActorPoolManager to submit tasks.
   // We set max_retries=0 because the pool handles cross-actor retries.
 
@@ -2815,6 +2846,15 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
                                  task_options.tensor_transport);
 
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
+
+  // Tag the task with pool metadata so downstream components (TaskManager,
+  // ActorTaskSubmitter) can identify it as a pool task for lineage pinning
+  // and cross-actor retry routing.
+  if (!pool_id.IsNil()) {
+    task_spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
+    task_spec.GetMutableMessage().set_actor_pool_work_item_id(work_item_id.Binary());
+  }
+
   RAY_LOG(DEBUG) << "Submitting pool actor task " << task_spec.DebugString();
 
   // Add pending task and get return refs

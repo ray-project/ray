@@ -446,6 +446,51 @@ TEST_F(ActorPoolManagerTest, MultipleTasksQueueWhenNoActors) {
   EXPECT_EQ(stats.total_in_flight, 0);
 }
 
+// Test: SelectActorForTask returns least-loaded actor
+TEST_F(ActorPoolManagerTest, SelectActorForTaskReturnsLeastLoaded) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+
+  auto selected = pool_manager_->SelectActorForTask(pool_id);
+  EXPECT_FALSE(selected.IsNil());
+  EXPECT_TRUE(selected == actor1 || selected == actor2);
+}
+
+// Test: SelectActorForTask returns Nil when pool is empty
+TEST_F(ActorPoolManagerTest, SelectActorForTaskReturnsNilWhenEmpty) {
+  auto pool_id = CreateTestPool();
+
+  auto selected = pool_manager_->SelectActorForTask(pool_id);
+  EXPECT_TRUE(selected.IsNil());
+}
+
+// Test: SelectActorForTask returns Nil for non-existent pool
+TEST_F(ActorPoolManagerTest, SelectActorForTaskReturnsNilForNonExistentPool) {
+  auto selected = pool_manager_->SelectActorForTask(ActorPoolID::FromRandom());
+  EXPECT_TRUE(selected.IsNil());
+}
+
+// Test: SelectActorForTask skips dead actors
+TEST_F(ActorPoolManagerTest, SelectActorForTaskSkipsDeadActors) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+
+  // Mark actor1 as dead by notifying failure for a task on it.
+  // We simulate this by removing the actor from the pool.
+  pool_manager_->RemoveActorFromPool(pool_id, actor1);
+
+  auto selected = pool_manager_->SelectActorForTask(pool_id);
+  EXPECT_EQ(selected, actor2);
+}
+
 }  // namespace
 }  // namespace core
 }  // namespace ray

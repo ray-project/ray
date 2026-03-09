@@ -267,6 +267,12 @@ bool ActorPoolManager::HasPool(const ActorPoolID &pool_id) const {
   return pools_.find(pool_id) != pools_.end();
 }
 
+ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
+                                             const std::vector<ObjectID> &arg_ids) {
+  absl::MutexLock lock(&mu_);
+  return SelectActorFromPool(pool_id, arg_ids);
+}
+
 void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
                                           const TaskID &work_item_id,
                                           const TaskID &task_id,
@@ -412,8 +418,13 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
   // This avoids duplicate completion handling.
 
   // Submit via CoreWorker callback (which builds TaskSpec properly)
-  return submit_actor_task_fn_(
-      actor_id, function, std::move(args_for_submit), options, nullptr);
+  return submit_actor_task_fn_(actor_id,
+                               function,
+                               std::move(args_for_submit),
+                               options,
+                               nullptr,
+                               pool_id,
+                               work_item_id);
 }
 
 void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,

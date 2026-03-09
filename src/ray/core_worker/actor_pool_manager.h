@@ -56,13 +56,17 @@ using TaskCompletionCallback =
 /// \param args The task arguments.
 /// \param task_options Task options.
 /// \param on_complete Callback to invoke when the task completes.
+/// \param pool_id The actor pool this task belongs to.
+/// \param work_item_id The work item ID for pool-level tracking.
 /// \return Object references for the task's return values.
 using SubmitActorTaskCallback = std::function<std::vector<rpc::ObjectReference>(
     const ActorID &actor_id,
     const RayFunction &function,
     std::vector<std::unique_ptr<TaskArg>> args,
     const TaskOptions &task_options,
-    TaskCompletionCallback on_complete)>;
+    TaskCompletionCallback on_complete,
+    const ActorPoolID &pool_id,
+    const TaskID &work_item_id)>;
 
 /// Ordering mode for actor pool work queue.
 enum class PoolOrderingMode {
@@ -259,6 +263,15 @@ class ActorPoolManager {
   /// \param pool_id The ID of the pool to check.
   /// \return True if the pool exists.
   bool HasPool(const ActorPoolID &pool_id) const;
+
+  /// Select an actor from the pool for task execution or reconstruction.
+  /// Thread-safe wrapper around SelectActorFromPool.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \param arg_ids Object IDs of task arguments (for locality).
+  /// \return The selected actor ID, or Nil if no actors are available.
+  ActorID SelectActorForTask(const ActorPoolID &pool_id,
+                             const std::vector<ObjectID> &arg_ids = {});
 
   /// Called when a pool task completes (success or failure).
   /// This is the main entry point for the cross-actor retry mechanism.
