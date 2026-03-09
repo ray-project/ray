@@ -2498,10 +2498,17 @@ class ActorHandle(Generic[T]):
         )
 
     def __hash__(self):
-        return hash(self._actor_id)
+        try:
+            return self._cached_hash
+        except AttributeError:
+            h = hash(self._actor_id)
+            self._cached_hash = h
+            return h
 
-    def __eq__(self, __value):
-        return hash(self) == hash(__value)
+    def __eq__(self, other):
+        if not isinstance(other, ActorHandle):
+            return NotImplemented
+        return self._ray_actor_id == other._ray_actor_id
 
     @property
     def _actor_id(self):
