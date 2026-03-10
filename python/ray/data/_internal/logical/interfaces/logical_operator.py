@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data.block import Schema
 
 
-class LogicalOperator(Operator):
+class LogicalOperator(Operator, ABC):
     """Abstract class for logical operators.
 
     A logical operator describes transformation, and later is converted into
@@ -19,10 +19,13 @@ class LogicalOperator(Operator):
 
     def __init__(
         self,
-        name: str,
         input_dependencies: List["LogicalOperator"],
         num_outputs: Optional[int] = None,
+        *,
+        name: Optional[str] = None,
     ):
+        if name is None:
+            name = self.__class__.__name__
         super().__init__(
             name,
             input_dependencies,
@@ -30,7 +33,13 @@ class LogicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, LogicalOperator), x
 
-        self.num_outputs: Optional[int] = num_outputs
+        self._num_outputs: Optional[int] = num_outputs
+
+    @property
+    @abstractmethod
+    def num_outputs(self) -> Optional[int]:
+        """Expected number of output blocks, if known."""
+        ...
 
     def estimated_num_outputs(self) -> Optional[int]:
         """Returns the estimated number of blocks that
@@ -77,6 +86,23 @@ class LogicalOperator(Operator):
         # Preserve legacy export shape even though output deps are no longer tracked.
         args["_output_dependencies"] = []
         return args
+
+    @property
+    def dag_str(self) -> str:
+        """String representation of the whole DAG."""
+        if self.input_dependencies:
+            out_str = ", ".join([x.dag_str for x in self.input_dependencies])
+            out_str += " -> "
+        else:
+            out_str = ""
+        out_str += f"{self.__class__.__name__}[{self.name}]"
+        return out_str
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}[{self.name}]"
+
+    def __str__(self) -> str:
+        return repr(self)
 
     def infer_schema(self) -> Optional["Schema"]:
         """Returns the inferred schema of the output blocks."""

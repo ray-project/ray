@@ -6,11 +6,11 @@ import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional
 
+from pydantic import BaseModel, Field
 from taskiq import AsyncTaskiqTask
 from taskiq.message import TaskiqMessage
 from taskiq.receiver.receiver import Receiver
 
-from ray._common.pydantic_compat import BaseModel, Field
 from ray._common.utils import import_attr
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,

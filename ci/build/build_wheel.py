@@ -9,10 +9,7 @@ Build Ray manylinux wheels locally using raymake.
 from __future__ import annotations
 
 import argparse
-import logging
 import os
-import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -20,29 +17,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from ci.build.build_common import (
+    BuildError,
+    detect_host_arch,
+    find_ray_root,
+    get_git_commit,
+    log,
+    parse_file,
+)
+
 # Configuration Constants
 SUPPORTED_PYTHON_VERSIONS = ("3.10", "3.11", "3.12", "3.13")
 RAYMAKE_SPEC = "ci/docker/ray-wheel.wanda.yaml"
-
-
-class _ColorFormatter(logging.Formatter):
-    BLUE, RED, RESET = "\033[34m", "\033[31m", "\033[0m"
-    COLORS = {logging.INFO: BLUE, logging.ERROR: RED}
-
-    def format(self, record: logging.LogRecord) -> str:
-        color = self.COLORS.get(record.levelno, "")
-        return f"{color}[{record.levelname}]{self.RESET} {record.getMessage()}"
-
-
-_handler = logging.StreamHandler()
-_handler.setFormatter(_ColorFormatter())
-log = logging.getLogger("raybuild")
-log.addHandler(_handler)
-log.setLevel(logging.INFO)
-
-
-class BuildError(Exception):
-    """Raised when a build operation fails."""
 
 
 @dataclass(frozen=True)
@@ -69,18 +55,17 @@ class BuildConfig:
 
     @classmethod
     def from_env(cls, python_version: str, output_dir: str) -> BuildConfig:
-        root = cls._find_ray_root()
+        root = find_ray_root()
         host, suffix = cls._detect_platform()
 
-        # Extract metadata
         rayciversion_path = root / ".rayciversion"
         if not rayciversion_path.exists():
             raise BuildError(f"Missing {rayciversion_path}")
         raymake_version = rayciversion_path.read_text().strip()
-        manylinux_version = cls._parse_file(
+        manylinux_version = parse_file(
             root / "rayci.env", r'MANYLINUX_VERSION=["\']?([^"\'\s]+)'
         )
-        commit = cls._get_git_commit(root)
+        commit = get_git_commit(root)
 
         return cls(
             python_version=python_version,
@@ -94,57 +79,11 @@ class BuildConfig:
         )
 
     @staticmethod
-    def _find_ray_root() -> Path:
-        start = Path(__file__).resolve()
-        for parent in [start, *start.parents]:
-            if (parent / ".rayciversion").exists():
-                return parent
-        if (Path.cwd() / ".rayciversion").exists():
-            return Path.cwd()
-        raise BuildError("Could not find Ray root (missing .rayciversion).")
-
-    @staticmethod
     def _detect_platform() -> tuple[str, str]:
         """Return (hosttype, arch_suffix) for current platform."""
-        sys_os = platform.system()
-        m = platform.machine().lower()
-        arch = (
-            "x86_64"
-            if m in ("amd64", "x86_64")
-            else "aarch64"
-            if m in ("arm64", "aarch64")
-            else m
-        )
-
-        mapping = {
-            ("Darwin", "aarch64"): ("aarch64", "-aarch64"),
-            ("Linux", "x86_64"): ("x86_64", ""),
-            ("Linux", "aarch64"): ("aarch64", "-aarch64"),
-        }
-        if (sys_os, arch) not in mapping:
-            raise BuildError(f"Unsupported platform: {sys_os}-{m}")
-        return mapping[(sys_os, arch)]
-
-    @staticmethod
-    def _parse_file(path: Path, pattern: str) -> str:
-        if not path.exists():
-            raise BuildError(f"Missing {path}")
-        match = re.search(pattern, path.read_text(), re.M)
-        if not match:
-            raise BuildError(f"Pattern {pattern} not found in {path}")
-        return match.group(1).strip()
-
-    @staticmethod
-    def _get_git_commit(root: Path) -> str:
-        try:
-            return subprocess.check_output(
-                ["git", "rev-parse", "HEAD"],
-                cwd=root,
-                text=True,
-                stderr=subprocess.DEVNULL,
-            ).strip()
-        except Exception:
-            return "unknown"
+        arch = detect_host_arch()
+        suffix = "" if arch == "x86_64" else f"-{arch}"
+        return arch, suffix
 
 
 class WheelBuilder:

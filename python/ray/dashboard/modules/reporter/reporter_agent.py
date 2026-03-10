@@ -27,7 +27,6 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import (
     get_or_create_event_loop,
-    get_user_temp_dir,
 )
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -47,6 +46,8 @@ from ray._raylet import (
     WorkerID,
     persist_port,
 )
+from ray.autoscaler.v2.sdk import get_cluster_status
+from ray.autoscaler.v2.utils import _count_by, is_autoscaler_v2
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
 from ray.dashboard.consts import (
@@ -365,6 +366,13 @@ METRICS_GAUGES = {
         "count",
         CLUSTER_TAG_KEYS,
     ),
+    # cluster_idle_nodes is only available for v2 autoscaler
+    "cluster_idle_nodes": Gauge(
+        "cluster_idle_nodes",
+        "Idle nodes on the cluster",
+        "count",
+        CLUSTER_TAG_KEYS,
+    ),
     "cluster_failed_nodes": Gauge(
         "cluster_failed_nodes",
         "Failed nodes on the cluster",
@@ -391,15 +399,19 @@ METRICS_GAUGES = {
     ),
 }
 
-PSUTIL_PROCESS_ATTRS = [
-    "pid",
-    "create_time",
-    "cpu_percent",
-    "cpu_times",
-    "cmdline",
-    "memory_info",
-    "memory_full_info",
-] + (["num_fds"] if sys.platform != "win32" else [])
+PSUTIL_PROCESS_ATTRS = (
+    [
+        "pid",
+        "create_time",
+        "cpu_percent",
+        "cpu_times",
+        "cmdline",
+        "memory_info",
+    ]
+    + (["num_fds"] if sys.platform != "win32" else [])
+    # Only collect memory_full_info in Mac OS X
+    + (["memory_full_info"] if sys.platform == "darwin" else [])
+)
 
 
 class ReporterAgent(
@@ -882,7 +894,7 @@ class ReporterAgent(
         return total, available, percent, used
 
     @staticmethod
-    def _get_disk_usage():
+    def _get_disk_usage(temp_dir: str):
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
             sdiskusage = namedtuple("sdiskusage", ["total", "used", "free", "percent"])
@@ -892,10 +904,9 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
-            tmp: psutil.disk_usage(tmp),
+            temp_dir: psutil.disk_usage(temp_dir),
         }
 
     @staticmethod
@@ -1138,7 +1149,7 @@ class ReporterAgent(
             "agent": self._get_agent(),
             "bootTime": self._get_boot_time(),
             "loadAvg": self._get_load_avg(),
-            "disk": self._get_disk_usage(),
+            "disk": self._get_disk_usage(self._dashboard_agent.temp_dir),
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
@@ -1234,13 +1245,21 @@ class ReporterAgent(
 
             memory_info = stat.get("memory_info")
             if memory_info:
-                mem = stat["memory_info"]
-                total_rss += float(mem.rss) / 1.0e6
-                if hasattr(mem, "shared"):
-                    total_shm += float(mem.shared)
+                total_rss += float(memory_info.rss) / 1.0e6
+                if hasattr(memory_info, "shared"):
+                    total_shm += float(memory_info.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
+                # For Mac OS X, directly get USS metric from memory_full_info
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            elif memory_info is not None:
+                # For linux or windows, memory_full_info is not collected. Approximated USS from memory_info
+                if hasattr(memory_info, "shared"):
+                    # Linux: USS ≈ RSS - shared
+                    total_uss += float(memory_info.rss - memory_info.shared) / 1.0e6
+                elif hasattr(memory_info, "private"):
+                    # Windows: private IS USS
+                    total_uss += float(memory_info.private) / 1.0e6
             total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
@@ -1412,6 +1431,18 @@ class ReporterAgent(
                         tags={"node_type": node_type},
                     )
                 )
+
+            # Emit cluster_idle_nodes only for autoscaler v2 (v1 has no "idle" state).
+            idle_nodes = cluster_stats.get("autoscaler_report", {}).get("idle_nodes")
+            if idle_nodes is not None:
+                for node_type, idle_node_count in idle_nodes.items():
+                    records_reported.append(
+                        Record(
+                            gauge=METRICS_GAUGES["cluster_idle_nodes"],
+                            value=idle_node_count,
+                            tags={"node_type": node_type},
+                        )
+                    )
 
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
             failed_nodes_dict = {}
@@ -1774,14 +1805,23 @@ class ReporterAgent(
             try:
                 # Fetch autoscaler debug status
                 autoscaler_status_json_bytes: Optional[bytes] = None
+                autoscaler_v2_enabled = False
                 if self._is_head_node:
-                    autoscaler_status_json_bytes = (
-                        await self._gcs_client.async_internal_kv_get(
-                            DEBUG_AUTOSCALING_STATUS.encode(),
-                            None,
-                            timeout=GCS_RPC_TIMEOUT_SECONDS,
-                        )
+                    # Check autoscaler version once
+                    autoscaler_v2_enabled = is_autoscaler_v2(
+                        gcs_client=self._gcs_client
                     )
+
+                    # Autoscaler v1 writes DEBUG_AUTOSCALING_STATUS to the internal KV; v2 does not.
+                    if not autoscaler_v2_enabled:
+                        autoscaler_status_json_bytes = (
+                            await self._gcs_client.async_internal_kv_get(
+                                DEBUG_AUTOSCALING_STATUS.encode(),
+                                None,
+                                timeout=GCS_RPC_TIMEOUT_SECONDS,
+                            )
+                        )
+
                     self._gcs_pid = await self._gcs_client.async_internal_kv_get(
                         GCS_PID_KEY.encode(),
                         None,
@@ -1797,6 +1837,7 @@ class ReporterAgent(
                     self._executor,
                     self._run_in_executor,
                     autoscaler_status_json_bytes,
+                    autoscaler_v2_enabled,
                 )
 
                 await self._gcs_client.async_publish_node_resource_usage(
@@ -1808,13 +1849,22 @@ class ReporterAgent(
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
-    def _run_in_executor(self, cluster_autoscaling_stats_json: Optional[bytes]) -> str:
+    def _run_in_executor(
+        self,
+        cluster_autoscaling_stats_json: Optional[bytes],
+        autoscaler_v2_enabled: bool,
+    ) -> str:
         return asyncio.run(
-            self._async_compose_stats_payload(cluster_autoscaling_stats_json)
+            self._async_compose_stats_payload(
+                cluster_autoscaling_stats_json,
+                autoscaler_v2_enabled,
+            )
         )
 
     async def _async_compose_stats_payload(
-        self, cluster_autoscaling_stats_json: Optional[bytes]
+        self,
+        cluster_autoscaling_stats_json: Optional[bytes],
+        autoscaler_v2_enabled: bool,
     ) -> str:
         stats = await self._async_collect_stats()
 
@@ -1825,6 +1875,10 @@ class ReporterAgent(
                 if cluster_autoscaling_stats_json
                 else {}
             )
+
+            # Autoscaler v2 only - get cluster_status from gcs via RPC(get_cluster_status())
+            if self._is_head_node and autoscaler_v2_enabled:
+                cluster_stats = self._get_cluster_stats_v2()
 
             records = self._to_records(stats, cluster_stats)
 
@@ -1848,6 +1902,32 @@ class ReporterAgent(
             self._metrics_agent.clean_all_dead_worker_metrics()
 
         return self._generate_stats_payload(stats)
+
+    def _get_cluster_stats_v2(self) -> dict:
+        # Get cluster_status from gcs via RPC(get_cluster_status())
+        cluster_status = get_cluster_status(self.gcs_address)
+
+        # Aggregate node counts by ray_node_type_name
+        active_nodes = _count_by(cluster_status.active_nodes, "ray_node_type_name")
+        idle_nodes = _count_by(cluster_status.idle_nodes, "ray_node_type_name")
+
+        # Keep tuple schemas expected by _to_records()
+        pending_nodes = [
+            (n.ip_address, n.ray_node_type_name, str(n.details or "PENDING"))
+            for n in cluster_status.pending_nodes
+        ]
+        failed_nodes = [
+            (n.ip_address, n.ray_node_type_name) for n in cluster_status.failed_nodes
+        ]
+
+        return {
+            "autoscaler_report": {
+                "active_nodes": dict(active_nodes),
+                "idle_nodes": dict(idle_nodes),
+                "pending_nodes": pending_nodes,
+                "failed_nodes": failed_nodes,
+            },
+        }
 
     def _generate_stats_payload(self, stats: dict) -> str:
         # Convert processes_pids back to a list of dictionaries to maintain backwards-compatibility

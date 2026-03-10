@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 from unittest.mock import Mock, PropertyMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
@@ -36,7 +37,7 @@ from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
-from ray.serve.config import AutoscalingConfig
+from ray.serve.config import AutoscalingConfig, GangSchedulingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -1561,6 +1562,60 @@ class TestOverrideDeploymentInfo:
             {"bundles": [{"CPU": 1}]}
         ]
 
+    def test_override_gang_scheduling_config(self, info):
+        """Test gang_scheduling_config dict is converted to GangSchedulingConfig."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=4,
+                    gang_scheduling_config={
+                        "gang_size": 2,
+                        "gang_placement_strategy": "SPREAD",
+                    },
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+        gang_config = updated_info.deployment_config.gang_scheduling_config
+        assert isinstance(gang_config, GangSchedulingConfig)
+        assert gang_config.gang_size == 2
+        assert gang_config.gang_placement_strategy.value == "SPREAD"
+        assert updated_info.deployment_config.num_replicas == 4
+
+    def test_override_num_replicas_rejects_invalid_gang_multiple(self):
+        """Test that changing num_replicas to a value not divisible by the
+        existing gang_size is rejected."""
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=4,
+                gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=5,
+                )
+            ],
+        )
+
+        with pytest.raises(ValidationError, match="must be a multiple of gang_size"):
+            override_deployment_info({"A": initial_info}, config)
+
 
 class TestAutoscale:
     def test_autoscale(self, mocked_application_state_manager):
@@ -1902,6 +1957,8 @@ class TestAutoscale:
         timestamp_offset = current_time - 0.1
 
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+            r1 = ReplicaID(unique_id="replica_1", deployment_id=d1_id)
+            r2 = ReplicaID(unique_id="replica_2", deployment_id=d1_id)
             d1_handle_report = HandleMetricReport(
                 deployment_id=d1_id,
                 handle_id="random",
@@ -1911,18 +1968,14 @@ class TestAutoscale:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        ReplicaID(unique_id="replica_1", deployment_id=d1_id): 3,
-                        ReplicaID(unique_id="replica_2", deployment_id=d1_id): 3,
+                        r1.to_full_id_str(): 3,
+                        r2.to_full_id_str(): 3,
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        ReplicaID(unique_id="replica_1", deployment_id=d1_id): [
-                            TimeStampedValue(timestamp_offset, 3)
-                        ],
-                        ReplicaID(unique_id="replica_2", deployment_id=d1_id): [
-                            TimeStampedValue(timestamp_offset, 3)
-                        ],
+                        r1.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
+                        r2.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
                     }
                 },
                 timestamp=time.time(),
@@ -2547,6 +2600,8 @@ class TestAutoscale:
     ):
         """Record metrics using handle-based reporting."""
         # d1: Load based on d1_load parameter
+        d1_r1 = ReplicaID(unique_id="replica_1", deployment_id=d1_id)
+        d1_r2 = ReplicaID(unique_id="replica_2", deployment_id=d1_id)
         d1_handle_report = HandleMetricReport(
             deployment_id=d1_id,
             handle_id="random",
@@ -2556,16 +2611,16 @@ class TestAutoscale:
             aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_1", deployment_id=d1_id): d1_load,
-                    ReplicaID(unique_id="replica_2", deployment_id=d1_id): d1_load,
+                    d1_r1.to_full_id_str(): d1_load,
+                    d1_r2.to_full_id_str(): d1_load,
                 }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_1", deployment_id=d1_id): [
+                    d1_r1.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d1_load)
                     ],
-                    ReplicaID(unique_id="replica_2", deployment_id=d1_id): [
+                    d1_r2.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d1_load)
                     ],
                 }
@@ -2575,6 +2630,8 @@ class TestAutoscale:
         asm.record_request_metrics_for_handle(d1_handle_report)
 
         # d2: Load based on d2_load parameter
+        d2_r3 = ReplicaID(unique_id="replica_3", deployment_id=d2_id)
+        d2_r4 = ReplicaID(unique_id="replica_4", deployment_id=d2_id)
         d2_handle_report = HandleMetricReport(
             deployment_id=d2_id,
             handle_id="random",
@@ -2584,16 +2641,16 @@ class TestAutoscale:
             aggregated_queued_requests=0,
             aggregated_metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_3", deployment_id=d2_id): d2_load,
-                    ReplicaID(unique_id="replica_4", deployment_id=d2_id): d2_load,
+                    d2_r3.to_full_id_str(): d2_load,
+                    d2_r4.to_full_id_str(): d2_load,
                 }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ReplicaID(unique_id="replica_3", deployment_id=d2_id): [
+                    d2_r3.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d2_load)
                     ],
-                    ReplicaID(unique_id="replica_4", deployment_id=d2_id): [
+                    d2_r4.to_full_id_str(): [
                         TimeStampedValue(timestamp_offset, d2_load)
                     ],
                 }
