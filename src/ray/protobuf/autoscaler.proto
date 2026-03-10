@@ -86,7 +86,8 @@ message LocalityConstraint {
 // Specifies the locality requirements for a set of bundles. The
 // locality_constraint defines the desired placement behavior (e.g. STRICT_PACK
 // on a rack), while label_selectors filters down the pool of overall nodes
-// (e.g. reschedule a bundle on a specific gpu domain, or only schedule on nodes with A100 GPUs)
+// (e.g. reschedule a bundle on a specific gpu domain, or only schedule on
+// nodes with A100 GPUs)
 message LocalityRequirement {
   // The locality constraint to apply
   LocalityConstraint locality_constraint = 1;
