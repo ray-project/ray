@@ -581,9 +581,6 @@ class Test(dict):
             return global_config["byod_gcp_cr"]
         if self.is_azure():
             return global_config["byod_azure_cr"]
-        byod_ecr = global_config["byod_aws_cr"]
-        if byod_ecr:
-            return byod_ecr
         return global_config["byod_ecr"]
 
     def get_anyscale_base_byod_image(self, build_id: Optional[str] = None) -> str:
@@ -599,7 +596,7 @@ class Test(dict):
                 tag_suffix = "cu121"
             return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
         global_config = get_global_config()
-        base_ecr = global_config["byod_aws_cr"]
+        base_ecr = global_config["byod_ecr"]
         return (
             f"{base_ecr}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag(build_id)}"
