@@ -23,6 +23,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -38,8 +39,10 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
-logger = logging.getLogger(__name__)
+PartitionOffsets = Dict[int, Union[int, str]]
+PerPartitionOffsets = Dict[str, PartitionOffsets]
 
+logger = logging.getLogger(__name__)
 
 # Mapping from kafka-python style KafkaAuthConfig fields to Confluent/librdkafka config.
 # TODO(youcheng): Remove this mapping and use consumer_config directly.
@@ -296,6 +299,65 @@ def _datetime_to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def _validate_per_partition_offsets(
+    offsets: PerPartitionOffsets,
+    param_name: str,
+    disallowed_value: str,
+) -> None:
+    """Validate a per-partition offset dict at init time.
+
+    Args:
+        offsets: The per-partition offset dict to validate.
+        param_name: Name of the parameter (for error messages).
+        disallowed_value: The string offset value that is not allowed
+            (e.g. "latest" for start_offset, "earliest" for end_offset).
+    """
+    for topic, partition_map in offsets.items():
+        if not isinstance(partition_map, dict):
+            raise ValueError(
+                f"{param_name}[{topic!r}] must be a dict mapping "
+                f"partition_id (int) to offset (int or str)."
+            )
+        for partition_id, offset in partition_map.items():
+            if not isinstance(partition_id, int):
+                raise ValueError(
+                    f"{param_name}[{topic!r}] keys must be integers "
+                    f"(partition IDs), got {type(partition_id).__name__!r}."
+                )
+            if isinstance(offset, str) and offset == disallowed_value:
+                raise ValueError(
+                    f"{param_name}[{topic!r}][{partition_id}] "
+                    f"cannot be {disallowed_value!r}."
+                )
+
+
+def _get_offset_for_partition(
+    offset: Union[int, str, datetime, PerPartitionOffsets],
+    topic: str,
+    partition_id: int,
+    default: Union[int, str, datetime],
+) -> Union[int, str, datetime]:
+    """Get the effective offset for a specific topic/partition.
+
+    If offset is a per-partition dict, looks up the value for
+    (topic, partition_id), falling back to default if not found.
+    If offset is a scalar, returns it as-is.
+
+    Args:
+        offset: Global scalar offset or per-partition dict.
+        topic: Kafka topic name.
+        partition_id: Kafka partition ID.
+        default: Fallback offset when offset is a dict and the
+            partition is not listed.
+
+    Returns:
+        Resolved offset for the given topic/partition.
+    """
+    if isinstance(offset, dict):
+        return offset.get(topic, {}).get(partition_id, default)
+    return offset
+
+
 def _resolve_datetime_to_offset(
     consumer: "Consumer",
     topic_partition: "TopicPartition",
@@ -403,8 +465,12 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
-        end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+        start_offset: Union[
+            int, datetime, Literal["earliest"], PerPartitionOffsets
+        ] = "earliest",
+        end_offset: Union[
+            int, datetime, Literal["latest"], PerPartitionOffsets
+        ] = "latest",
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
         consumer_config: Optional[Dict[str, Any]] = None,
         timeout_ms: Optional[int] = None,
@@ -449,18 +515,25 @@ class KafkaDatasource(Datasource):
         if timeout_ms is not None and timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
 
-        if isinstance(start_offset, int) and isinstance(end_offset, int):
-            if start_offset > end_offset:
-                raise ValueError("start_offset must be less than end_offset")
+        if isinstance(start_offset, dict):
+            _validate_per_partition_offsets(start_offset, "start_offset", "latest")
+        else:
+            if isinstance(start_offset, int) and isinstance(end_offset, int):
+                if start_offset > end_offset:
+                    raise ValueError("start_offset must be less than end_offset")
 
-        if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
-            if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
-                raise ValueError("start_offset must be less than end_offset")
+            if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
+                if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
+                    raise ValueError("start_offset must be less than end_offset")
 
-        if isinstance(start_offset, str) and start_offset == "latest":
-            raise ValueError("start_offset cannot be 'latest'")
-        if isinstance(end_offset, str) and end_offset == "earliest":
-            raise ValueError("end_offset cannot be 'earliest'")
+            if isinstance(start_offset, str) and start_offset == "latest":
+                raise ValueError("start_offset cannot be 'latest'")
+
+        if isinstance(end_offset, dict):
+            _validate_per_partition_offsets(end_offset, "end_offset", "earliest")
+        else:
+            if isinstance(end_offset, str) and end_offset == "earliest":
+                raise ValueError("end_offset cannot be 'earliest'")
 
         # Validate bootstrap_servers format
         if isinstance(bootstrap_servers, str):
@@ -553,6 +626,25 @@ class KafkaDatasource(Datasource):
         end_offset = self._end_offset
         timeout_ms = self._timeout_ms
         target_max_block_size = self._target_max_block_size
+
+        # Validate that any partitions referenced in a per-partition dict
+        # actually exist on the broker. Check once per topic before the loop.
+        actual_partition_ids: Dict[str, Set[int]] = {}
+        for topic_name, partition_id in topic_partitions:
+            actual_partition_ids.setdefault(topic_name, set()).add(partition_id)
+
+        for param_name, offset in (
+            ("start_offset", start_offset),
+            ("end_offset", end_offset),
+        ):
+            if isinstance(offset, dict):
+                for topic, partition_map in offset.items():
+                    for pid in partition_map:
+                        if pid not in actual_partition_ids.get(topic, set()):
+                            raise ValueError(
+                                f"{param_name} references partition {pid} in topic "
+                                f"{topic!r}, but that partition does not exist."
+                            )
 
         tasks = []
         for topic_name, partition_id in topic_partitions:
@@ -716,7 +808,19 @@ class KafkaDatasource(Datasource):
                 exec_stats=None,
             )
 
-            kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
+            effective_start = _get_offset_for_partition(
+                start_offset, topic_name, partition_id, default="earliest"
+            )
+            effective_end = _get_offset_for_partition(
+                end_offset, topic_name, partition_id, default="latest"
+            )
+            kafka_read_fn = create_kafka_read_fn(
+                topic_name,
+                partition_id,
+                start_offset=effective_start,
+                end_offset=effective_end,
+            )
+
             # Create read task
             task = ReadTask(
                 read_fn=kafka_read_fn,
