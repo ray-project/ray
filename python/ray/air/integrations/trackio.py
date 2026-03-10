@@ -85,7 +85,7 @@ def setup_trackio(
                     loss = train_step()
                     trackio.log({"loss": loss}, step=step)
 
-                run.finish()
+                run and run.finish()
     """
 
     if trackio is None:
@@ -283,8 +283,8 @@ class TrackioLoggerCallback(LoggerCallback):
             try:
                 path = checkpoint.path
                 trackio.log({"checkpoint_path": path})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"trackio: Failed to log checkpoint path: {e}")
 
     # --------------------------------------------------------
 
@@ -314,5 +314,5 @@ class TrackioLoggerCallback(LoggerCallback):
 
         try:
             trackio.finish()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"trackio: `trackio.finish()` failed: {e}")
