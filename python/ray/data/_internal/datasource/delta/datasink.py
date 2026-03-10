@@ -96,7 +96,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     """Datasink for writing to Delta Lake tables.
 
     Uses two-phase commit: write Parquet files, then commit to transaction log.
-    PR 3: Supports APPEND, OVERWRITE, ERROR, and IGNORE modes with partitioning.
+    Supports APPEND, OVERWRITE, ERROR, and IGNORE modes with partitioning.
 
     Delta Lake: https://delta.io/
     deltalake Python library: https://delta-io.github.io/delta-rs/python/
@@ -116,8 +116,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         Args:
             path: Path to Delta table (local or cloud storage).
-            mode: Write mode - PR 3: APPEND, OVERWRITE, ERROR, or IGNORE.
-            partition_cols: Columns to partition by (Hive-style). PR 3: Supported.
+            mode: Write mode - APPEND, OVERWRITE, ERROR, or IGNORE.
+            partition_cols: Columns to partition by (Hive-style).
             filesystem: Optional PyArrow filesystem.
                 PyArrow filesystems: https://arrow.apache.org/docs/python/api/filesystems.html
                 Note: For distributed writes, filesystem must be reconstructible from
@@ -186,7 +186,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             }
             if mode not in valid_modes:
                 raise ValueError(
-                    f"PR 3: Mode {mode} not supported. "
+                    f"Mode {mode} not supported. "
                     "Supported: APPEND, OVERWRITE, ERROR, IGNORE"
                 )
             return mode
@@ -200,8 +200,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             }
             if m not in mp:
                 raise ValueError(
-                    f"PR 3: Invalid mode '{mode}'. Supported: {list(mp.keys())}. "
-                    "UPSERT will be added in PR 6."
+                    f"Invalid mode '{mode}'. Supported: {list(mp.keys())}. "
+                    "UPSERT is not supported."
                 )
             return mp[m]
         raise ValueError(f"Invalid mode type: {type(mode).__name__}")
@@ -227,7 +227,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             else:
                 validate_partition_columns_match_existing(existing, self.partition_cols)
 
-            # PR 3: Basic schema validation (no schema evolution)
+            # Basic schema validation (no schema evolution)
             if self.schema is not None:
                 existing_schema = to_pyarrow_schema(existing.schema())
                 validate_schema_type_compatibility(existing_schema, self.schema)
@@ -313,7 +313,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         write_kwargs_for_commit = dict(self.write_kwargs)
         write_kwargs_for_commit["commit_properties"] = commit_props
 
-        # PR 3: Basic schema reconciliation - use first schema
+        # Basic schema reconciliation - use first schema
         if schemas:
             if self.schema is None:
                 self.schema = schemas[0]
