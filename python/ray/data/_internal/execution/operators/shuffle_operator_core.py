@@ -211,8 +211,8 @@ class ShuffleOperatorCore(PhysicalOperator, SubProgressBarMixin):
     # ------------------------------------------------------------------
 
     def _do_shutdown(self, force: bool = False) -> None:
-        self._engine.shutdown(force=True)
-        super()._do_shutdown(force)
+        self._engine.shutdown(force=force)
+        super()._do_shutdown(force=force)
 
     # ------------------------------------------------------------------
     # Resource accounting
