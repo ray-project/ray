@@ -19,12 +19,19 @@ logger = logging.getLogger(__name__)
 @PublicAPI(stability="alpha")
 class JaxTrainer(DataParallelTrainer):
     """A Trainer for Single-Program Multi-Data (SPMD) JAX training.
-    Currently only supports TPUs. GPUs will be supported in a future version.
 
-    This Trainer runs the function ``train_loop_per_worker`` on multiple Ray
-    Actors. These actors are expected to be scheduled on TPU VMs within the same
-    TPU slice, connected via inter-chip interconnects (ICI). The ``train_loop_per_worker``
-    function is expected to take in either 0 or 1 arguments:
+    At a high level, this Trainer does the following:
+
+    1. Launches multiple workers as defined by the ``scaling_config``.
+    2. Sets up a distributed JAX environment for TPUs or GPUs
+       on these workers as defined by the ``jax_config``.
+    3. Ingests the input ``datasets`` based on the ``dataset_config``.
+    4. Runs the input ``train_loop_per_worker(train_loop_config)``
+       on all workers.
+
+    For more details, see:
+
+    * :ref:`Jax Guide <train-jax>`
 
     .. testcode::
         :skipif: True
@@ -46,26 +53,35 @@ class JaxTrainer(DataParallelTrainer):
         def main(argv: Sequence[str]):
             ray.init()
 
+            # If you want to use TPUs, specify the TPU topology and accelerator type.
+            tpu_scaling_config = ScalingConfig(
+                use_tpu=True,
+                num_workers=4,
+                topology="4x4",
+                accelerator_type="TPU-V6E",
+                placement_strategy="SPREAD",
+                resources_per_worker={"TPU": 4},
+            )
+
+            # If you want to use GPUs, specify the GPU scaling config like below.
+            # gpu_scaling_config = ScalingConfig(
+            #     use_gpu=True,
+            #     num_workers=4,
+            #     resources_per_worker={"GPU": 1},
+            # )
+
+
             trainer = JaxTrainer(
                 train_loop_per_worker=train_loop_per_worker,
                 train_loop_config={"argv": absolute_argv},
-                scaling_config=ScalingConfig(
-                    use_tpu=True,
-                    num_workers=4,
-                    accelerator_type="TPU-V6E",
-                    resources_per_worker={"TPU": 4},
-                    placement_strategy="SPREAD",
-                    topology="4x4",
-                ),
+                scaling_config=tpu_scaling_config,
                 run_config=RunConfig(
                     name="maxtext_jaxtrainer",
                     worker_runtime_env={
                         "env_vars": {
                             "JAX_PLATFORMS": "tpu",
-                            "ENABLE_PJRT_COMPATIBILITY": "true",
-                            "TPU_SLICE_BUILDER_DUMP_CHIP_FORCE": "true",
-                            "TPU_SLICE_BUILDER_DUMP_ICI": "true",
-                            "XLA_FLAGS": "--xla_dump_to=/tmp/xla_dump_file --xla_dump_hlo_as_proto",
+                            # If you want to use GPUs, set the JAX_PLATFORMS to "cuda".
+                            # "JAX_PLATFORMS": "cuda",
                         }
                     },
                 ),
@@ -73,20 +89,11 @@ class JaxTrainer(DataParallelTrainer):
 
             result = trainer.fit()
 
-    If ``train_loop_per_worker`` accepts an argument, then
-    ``train_loop_config`` will be passed in as the argument.
-
-    If the ``datasets`` dict contains a training dataset (denoted by
-    the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``session.get_dataset_shard("train")``.
+    If the ``datasets`` dict contains datasets (e.g. "train" and "val"), then it will be split into multiple dataset
+    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` and ``ray.train.get_dataset_shard("val")``.
 
     Note:
-        * Only TPU-based distributed training is supported.
-        * Each worker must be assigned one TPU device via
-          ``resources_per_worker={"TPU": 1}``.
-        * Placement strategy is automatically set to ``SPREAD`` to ensure
-          TPU workers are placed on separate VMs.
-        * Importing `jax` should occur within `train_loop_per_worker` to
+        * If you are using TPUs, importing `jax` should occur within `train_loop_per_worker` to
           avoid driver-side TPU lock issues.
 
     Args:
@@ -101,10 +108,10 @@ class JaxTrainer(DataParallelTrainer):
             datasets via `train_loop_config` is not recommended and may introduce
             large overhead and unknown issues with serialization and deserialization.
         jax_config: The configuration for setting up the JAX backend.
-            If set to None, a default configuration with TPUs will be used.
+            If set to None, a default configuration will be used based on the ``scaling_config`` and ``JAX_PLATFORMS`` environment variable.
         scaling_config: Configuration for how to scale data parallel training
-            with SPMD. ``num_workers`` should be set to the number of TPU hosts
-            and ``topology`` should be set to the TPU topology.
+            with SPMD. ``num_workers`` should be set to the number of TPU hosts or GPU workers.
+            If using TPUs, ``topology`` should be set to the TPU topology.
             See :class:`~ray.train.ScalingConfig` for more info.
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default, all the Ray Dataset are split equally across workers.

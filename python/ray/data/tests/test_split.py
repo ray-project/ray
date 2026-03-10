@@ -11,7 +11,6 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -510,16 +509,6 @@ def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetada
     return (ray.put(block), metadata)
 
 
-def _create_blocklist(blocks):
-    block_refs = []
-    meta = []
-    for block in blocks:
-        block_ref, block_meta = _create_block_and_metadata(block)
-        block_refs.append(block_ref)
-        meta.append(block_meta)
-    return BlockList(block_refs, meta, owned_by_consumer=True)
-
-
 def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
     schema = BlockAccessor.for_block(pd.DataFrame({"id": []})).schema()
     return RefBundle(
@@ -530,7 +519,8 @@ def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
 
 
 def _create_blocks_with_metadata(blocks):
-    return _create_blocklist(blocks).get_blocks_with_metadata()
+    bundle = _create_bundle(blocks)
+    return list(bundle.blocks)
 
 
 def test_split_single_block(ray_start_regular_shared_2_cpus):

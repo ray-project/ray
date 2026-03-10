@@ -90,7 +90,7 @@ antlr4-python3-runtime==4.11.1
     # via
     #   fugue-sql-antlr
     #   qpd
-anyio==3.7.1
+anyio==4.5.0
     # via
     #   gradio
     #   httpx
@@ -1001,7 +1001,7 @@ jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
     # via -r python/requirements/test-requirements.txt
-kafka-python==2.2.15
+confluent-kafka==2.13.0
     # via -r python/requirements/ml/data-test-requirements.txt
 keras==3.12.0
     # via tensorflow
@@ -1581,7 +1581,7 @@ proto-plus==1.26.1
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
-protobuf==5.29.5
+protobuf==5.29.6
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1699,7 +1699,7 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
-pyiceberg==0.10.0
+pyiceberg==0.11.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via

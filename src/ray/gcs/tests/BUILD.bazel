@@ -243,7 +243,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_store_client_kv",
         "//src/ray/gcs:gcs_worker_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
-        "//src/ray/util:process",
+        "//src/ray/util:process_interface",
         "@com_google_googletest//:gtest_main",
     ],
 )

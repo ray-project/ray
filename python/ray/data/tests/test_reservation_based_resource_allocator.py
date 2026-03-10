@@ -27,6 +27,85 @@ from ray.data.tests.test_resource_manager import (
 )
 
 
+@patch(
+    "ray.data._internal.execution.DEFAULT_USE_OP_RESOURCE_ALLOCATOR_VERSION",
+    new="V1",
+)
+def test_output_backpressure_shared_pool_leak(restore_data_context):
+    """Regression test: shared pool budget should not leak through output backpressure.
+
+    Previously, max_task_output_bytes_to_read used:
+        res = budget + max(reserved_for_outputs - op_outputs_usage, 0)
+
+    When op_outputs_usage far exceeds reserved_for_outputs, the max(...) term
+    becomes 0, but the shared pool budget (in `budget`) still allows reading
+    more outputs. The fix treats budget + reserved_for_outputs as a combined
+    ceiling:
+        res = max(budget + reserved_for_outputs - op_outputs_usage, 0)
+    """
+    DataContext.get_current().op_resource_reservation_enabled = True
+    DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+    o1 = InputDataBuffer(DataContext.get_current(), [])
+    o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+    o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
+    o4 = LimitOperator(1, o3, DataContext.get_current())
+
+    for op in [o2, o3]:
+        op.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+        )
+
+    op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+    op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+    op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+
+    topo = build_streaming_topology(o4, ExecutionOptions())
+
+    global_limits = ExecutionResources(cpu=16, gpu=0, object_store_memory=1000)
+
+    resource_manager = ResourceManager(
+        topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+    )
+    resource_manager.get_op_usage = MagicMock(
+        side_effect=lambda op, **kwargs: op_usages[op]
+    )
+    resource_manager._mem_op_internal = op_internal_usage
+    resource_manager._mem_op_outputs = op_outputs_usages
+    resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+    assert resource_manager.op_resource_allocator_enabled()
+    allocator = resource_manager._op_resource_allocator
+    assert isinstance(allocator, ReservationOpResourceAllocator)
+
+    # With 2 eligible ops, 50% reservation ratio:
+    #   reserved_for_outputs[o2] = 125
+    #   shared pool per op = 250
+    #   budget[o2].object_store_memory = 125 (reserved) + 250 (shared) = 375
+    allocator.update_budgets(limits=global_limits)
+    assert allocator._reserved_for_op_outputs[o2] == 125
+
+    # Now simulate o2 having massive output usage (5000 bytes) that far
+    # exceeds the reserved_for_outputs (125) AND the total budget (375 + 125 = 500).
+    op_outputs_usages[o2] = 5000
+
+    # The old formula would compute:
+    #   res = budget(375) + max(reserved_for_outputs(125) - usage(5000), 0)
+    #   res = 375 + 0 = 375  <-- shared pool leaks through!
+    #
+    # The fixed formula computes:
+    #   res = max(budget(375) + reserved_for_outputs(125) - usage(5000), 0)
+    #   res = max(500 - 5000, 0) = 0  <-- correctly backpressured
+    allocator._should_unblock_streaming_output_backpressure = MagicMock(
+        return_value=False
+    )
+    result = allocator.max_task_output_bytes_to_read(o2)
+    assert result == 0, (
+        f"Expected 0, got {result}. "
+        "Shared pool budget is leaking through output backpressure."
+    )
+
+
 class TestReservationOpResourceAllocator:
     """Tests for ReservationOpResourceAllocator."""
 
@@ -44,8 +123,9 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
-        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        # Use ray_remote_args to set CPU requirements instead of mocking
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
         o4 = LimitOperator(1, o3, DataContext.get_current())
 
         # Mock min_max_resource_requirements to return default unbounded behavior
@@ -201,26 +281,27 @@ class TestReservationOpResourceAllocator:
         assert allocator.get_allocation(o2) == ExecutionResources(7.5, 0, 550)
         assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 245)
 
-    def test_reserve_incremental_resource_usage(self, restore_data_context):
-        """Test that we'll reserve at least incremental_resource_usage()
+    def test_reserve_min_resource_requirements(self, restore_data_context):
+        """Test that we'll reserve at least min_resource_requirements
         for each operator."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         global_limits = ExecutionResources(cpu=7, gpu=0, object_store_memory=800)
-        incremental_usage = ExecutionResources(cpu=3, gpu=0, object_store_memory=500)
+        min_resources = ExecutionResources(cpu=3, gpu=0, object_store_memory=500)
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=incremental_usage)
-        o3 = mock_map_op(o2, incremental_resource_usage=incremental_usage)
-        o4 = mock_map_op(o3, incremental_resource_usage=incremental_usage)
-        o5 = mock_map_op(o4, incremental_resource_usage=incremental_usage)
+        # Use ray_remote_args to set CPU requirements
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 3})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 3})
+        o4 = mock_map_op(o3, ray_remote_args={"num_cpus": 3})
+        o5 = mock_map_op(o4, ray_remote_args={"num_cpus": 3})
 
-        # Set min_max_resource_requirements to use incremental_resource_usage as minimum
+        # Set min_max_resource_requirements to specify minimum resources
         for op in [o2, o3, o4, o5]:
             op.min_max_resource_requirements = MagicMock(
                 return_value=(
-                    incremental_usage,
+                    min_resources,
                     ExecutionResources(cpu=100, gpu=0, object_store_memory=10000),
                 )
             )
@@ -241,23 +322,23 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(
             limits=global_limits,
         )
-        # incremental_usage should be reserved for o2.
-        assert allocator._op_reserved[o2] == incremental_usage
+        # min_resources should be reserved for o2.
+        assert allocator._op_reserved[o2] == min_resources
         # Remaining resources are CPU = 7 - 3 = 4, object_store_memory = 800 - 500 = 300.
-        # We have enough CPUs for o3's incremental_usage, but not enough
-        # object_store_memory. We'll still reserve the incremental_usage by
+        # We have enough CPUs for o3's min_resources, but not enough
+        # object_store_memory. We'll still reserve the min_resources by
         # oversubscribing object_store_memory.
-        assert allocator._op_reserved[o3] == incremental_usage
+        assert allocator._op_reserved[o3] == min_resources
         # Now the remaining resources are CPU = 4 - 3 = 1,
         # object_store_memory = 300 - 500 = -200.
-        # We don't oversubscribing CPUs, we'll only reserve
-        # incremental_usage.object_store_memory.
+        # We don't oversubscribe CPUs, we'll only reserve
+        # min_resources.object_store_memory.
         assert allocator._op_reserved[o4] == ExecutionResources(
-            0, 0, incremental_usage.object_store_memory
+            0, 0, min_resources.object_store_memory
         )
         # Same for o5
         assert allocator._op_reserved[o5] == ExecutionResources(
-            0, 0, incremental_usage.object_store_memory
+            0, 0, min_resources.object_store_memory
         )
         assert allocator._total_shared == ExecutionResources(1, 0, 0)
         for op in [o2, o3, o4]:
@@ -351,8 +432,8 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 10))
-        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
 
         # o2 has a small max CPU, so its CPU shared allocation will be capped.
         # o3 has unlimited max_resource_usage.
@@ -426,8 +507,8 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 10))
-        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
 
         # Both operators are capped.
         o2.min_max_resource_requirements = MagicMock(
@@ -692,6 +773,76 @@ class TestReservationOpResourceAllocator:
             f"but got {allocator._op_budgets[o2].gpu}"
         )
 
+    def test_actor_pool_gpu_operator_gets_gpu_budget_in_cpu_pipeline(
+        self, restore_data_context
+    ):
+        """Test GPU ActorPool gets budget in a pipeline with multiple CPU operators.
+
+        Regression test for a following pipeline:
+            Input -> ListFiles -> ReadFiles -> Preprocess -> Infer(GPU) -> Write
+
+        The GPU inference operator (ActorPool with GPUs) was stuck at 1 actor
+        because it had gpu_budget=0, preventing autoscaling.
+
+        Root cause: The borrowing logic used incremental_resource_usage() which
+        returns gpu=0 for ActorPoolMapOperator (since submitting tasks to existing
+        actors doesn't need new GPUs). The fix uses min_scheduling_resources()
+        which returns the per-actor GPU requirement.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        # Build pipeline: Input -> Read -> Preprocess -> Infer(GPU) -> Write
+        # This mirrors the production pipeline structure
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1}, name="ReadFiles")
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1}, name="Preprocess")
+        o4 = mock_map_op(
+            o3,
+            ray_remote_args={"num_cpus": 0, "num_gpus": 1},
+            compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=4),
+            name="Infer",
+        )
+        o5 = mock_map_op(o4, ray_remote_args={"num_cpus": 1}, name="Write")
+
+        topo = build_streaming_topology(o5, ExecutionOptions())
+
+        # Cluster with 2 GPUs available
+        global_limits = ExecutionResources(
+            cpu=16, gpu=2, object_store_memory=10_000_000
+        )
+
+        # Simulate state where GPU operator has 1 actor running
+        op_usages = {
+            o1: ExecutionResources.zero(),
+            o2: ExecutionResources.zero(),
+            o3: ExecutionResources.zero(),
+            o4: ExecutionResources(gpu=1),  # 1 GPU actor running
+            o5: ExecutionResources.zero(),
+        }
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3, o4, o5], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3, o4, o5], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=global_limits)
+
+        # Verify the GPU operator gets GPU budget to scale up.
+        # With 2 GPUs total, 1 used, the operator should have budget for 1 more.
+        # Before the fix: budget.gpu=0 (couldn't scale)
+        # After the fix: budget.gpu=1 (can scale to 1 more actor)
+        assert allocator.get_budget(o4) == ExecutionResources(
+            cpu=0, gpu=1, object_store_memory=625000
+        )
+        assert allocator.get_allocation(o4) == ExecutionResources(
+            cpu=0, gpu=2, object_store_memory=625000
+        )
+
     def test_gpu_bounded_vs_unbounded_operators(self, restore_data_context):
         """Test GPU allocation when one operator is bounded and one is unbounded.
 
@@ -840,9 +991,9 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 10))
-        o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
-        o4 = mock_map_op(o3, incremental_resource_usage=ExecutionResources(1, 0, 10))
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
+        o4 = mock_map_op(o3, ray_remote_args={"num_cpus": 1})
 
         # Mock min_max_resource_requirements to return default unbounded behavior
         for op in [o2, o3, o4]:
@@ -925,17 +1076,13 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
-        o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
         o3 = LimitOperator(1, o2, DataContext.get_current())
         o4 = InputDataBuffer(DataContext.get_current(), [])
-        o5 = mock_map_op(o4, incremental_resource_usage=ExecutionResources(1, 0, 10))
-        o6 = mock_union_op(
-            [o3, o5], incremental_resource_usage=ExecutionResources(1, 0, 20)
-        )
+        o5 = mock_map_op(o4, ray_remote_args={"num_cpus": 1})
+        o6 = mock_union_op([o3, o5])
         o7 = InputDataBuffer(DataContext.get_current(), [])
-        o8 = mock_join_op(
-            o7, o6, incremental_resource_usage=ExecutionResources(1, 0, 30)
-        )
+        o8 = mock_join_op(o7, o6)
 
         o1.mark_execution_finished()
         o2.mark_execution_finished()

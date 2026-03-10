@@ -48,7 +48,12 @@ from ray.serve._private.utils import (
     validate_route_prefix,
 )
 from ray.serve.api import ASGIAppReplicaWrapper
-from ray.serve.config import AutoscalingConfig, AutoscalingPolicy, RequestRouterConfig
+from ray.serve.config import (
+    AutoscalingConfig,
+    AutoscalingPolicy,
+    GangSchedulingConfig,
+    RequestRouterConfig,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import (
     ApplicationArgs as ApplicationArgsProto,
@@ -947,7 +952,7 @@ class ApplicationState:
                 and deploy_info.deployment_config.logging_config is None
             ):
                 deploy_info.deployment_config.logging_config = (
-                    self._target_state.config.logging_config
+                    self._target_state.config.logging_config.model_dump()
                 )
             target_state_changed = (
                 self.apply_deployment_info(deployment_name, deploy_info)
@@ -1386,10 +1391,6 @@ class ApplicationStateManager:
                 if self.get_app_source(name) is source
             }
 
-    def list_app_names(self) -> List[str]:
-        """Return app names without instantiating status objects."""
-        return list(self._application_states.keys())
-
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
         if name not in self._application_states:
@@ -1410,13 +1411,8 @@ class ApplicationStateManager:
             return None
         return self._application_states[app_name].get_deployment_topology()
 
-    def update(self) -> bool:
-        """
-        Update each application state.
-
-        Returns:
-            bool: True if any application's target state changed during this update.
-        """
+    def update(self):
+        """Update each application state."""
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
@@ -1446,7 +1442,6 @@ class ApplicationStateManager:
         if any_target_state_changed:
             self.save_checkpoint()
             self._deployment_state_manager.save_checkpoint()
-        return any_target_state_changed
 
     def shutdown(self) -> None:
         self._shutting_down = True
@@ -1634,7 +1629,7 @@ def override_deployment_info(
     if override_config is None:
         return deployment_infos
 
-    config_dict = override_config.dict(exclude_unset=True)
+    config_dict = override_config.model_dump(exclude_unset=True)
     deployment_override_options = config_dict.get("deployments", [])
 
     # Override options for each deployment listed in the config.
@@ -1650,7 +1645,7 @@ def override_deployment_info(
             )
 
         info = deployment_infos[deployment_name]
-        original_options = info.deployment_config.dict()
+        original_options = info.deployment_config.model_dump()
         original_options["user_configured_option_names"].update(set(options))
 
         # Override `max_ongoing_requests` and `autoscaling_config` if
@@ -1658,7 +1653,7 @@ def override_deployment_info(
         if options.get("num_replicas") == "auto":
             options["num_replicas"] = None
 
-            new_config = AutoscalingConfig.default().dict()
+            new_config = AutoscalingConfig.default().model_dump()
             # If `autoscaling_config` is specified, its values override
             # the default `num_replicas="auto"` configuration
             autoscaling_config = (
@@ -1737,6 +1732,13 @@ def override_deployment_info(
             placement_group_fallback_strategy=override_fallback_strategy,
         )
         override_options["replica_config"] = replica_config
+
+        if "gang_scheduling_config" in options:
+            gang_scheduling_config = options.get("gang_scheduling_config")
+            if gang_scheduling_config and isinstance(gang_scheduling_config, dict):
+                options["gang_scheduling_config"] = GangSchedulingConfig(
+                    **gang_scheduling_config
+                )
 
         if "request_router_config" in options:
             request_router_config = options.get("request_router_config")

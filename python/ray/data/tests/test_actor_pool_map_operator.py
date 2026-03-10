@@ -1,6 +1,8 @@
 import asyncio
 import collections
 import datetime
+import logging
+import re
 import threading
 import time
 import unittest
@@ -49,6 +51,8 @@ from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
     DataContext,
 )
+from ray.data.tests.test_executor_resource_management import SMALL_STR
+from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import (
     create_map_transformer_from_block_fn,
     run_one_op_task,
@@ -85,21 +89,26 @@ class TestActorPool(unittest.TestCase):
     def _create_task_selector(self, pool: _ActorPool) -> _ActorTaskSelector:
         return ActorPoolMapOperator._create_task_selector(pool)
 
-    def _pick_actor(
+    def _assign_actor(
         self,
         pool: _ActorPool,
         bundle: Optional[RefBundle] = None,
         actor_locality_enabled: bool = False,
-    ) -> ActorHandle:
+    ) -> Optional[ActorHandle]:
         if bundle is None:
             bundles = make_ref_bundles([[0]])
         else:
             bundles = [bundle]
+
         queue = HashLinkedQueue()
         for bundle in bundles:
             queue.add(bundle)
-        actor_task_selector = self._create_task_selector(pool)
-        it = actor_task_selector.select_actors(queue, actor_locality_enabled)
+
+        selector = self._create_task_selector(pool)
+        if not selector.can_schedule_task():
+            return None
+
+        it = selector.select_actors(queue, actor_locality_enabled, strict=True)
         try:
             actor = next(it)[1]
             pool.on_task_submitted(actor)
@@ -213,7 +222,7 @@ class TestActorPool(unittest.TestCase):
         _, ready_ref = self._add_pending_actor(pool)
 
         # Check that the pending actor is not pickable.
-        assert self._pick_actor(pool) is None
+        assert self._assign_actor(pool) is None
 
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 1
@@ -230,7 +239,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor = self._add_ready_actor(pool)
         # Check that the actor is pickable.
-        picked_actor = self._pick_actor(pool)
+        picked_actor = self._assign_actor(pool)
         assert picked_actor == actor
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 1
@@ -246,8 +255,8 @@ class TestActorPool(unittest.TestCase):
         actor = self._add_ready_actor(pool)
 
         # Mark the actor as restarting and test pick_actor fails
-        pool.update_running_actor_state(actor, True)
-        assert self._pick_actor(pool) is None
+        pool._update_running_actor_state(actor, True)
+        assert self._assign_actor(pool) is None
         assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
@@ -261,8 +270,8 @@ class TestActorPool(unittest.TestCase):
         )
 
         # Mark the actor as alive and test pick_actor succeeds
-        pool.update_running_actor_state(actor, False)
-        picked_actor = self._pick_actor(pool)
+        pool._update_running_actor_state(actor, False)
+        picked_actor = self._assign_actor(pool)
         assert picked_actor == actor
         assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
@@ -295,7 +304,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool(max_tasks_in_flight=999)
         actor = self._add_ready_actor(pool)
         for _ in range(10):
-            picked_actor = self._pick_actor(pool)
+            picked_actor = self._assign_actor(pool)
             assert picked_actor == actor
 
     def test_return_actor(self):
@@ -303,7 +312,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool(max_tasks_in_flight=999)
         self._add_ready_actor(pool)
         for _ in range(10):
-            picked_actor = self._pick_actor(pool)
+            picked_actor = self._assign_actor(pool)
         # Return the actor as many times as it was picked.
         for _ in range(10):
             pool.on_task_completed(picked_actor)
@@ -325,23 +334,23 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
         actor = self._add_ready_actor(pool)
         assert pool.num_free_task_slots() == 2
-        assert self._pick_actor(pool) == actor
+        assert self._assign_actor(pool) == actor
         assert pool.num_free_task_slots() == 1
-        assert self._pick_actor(pool) == actor
+        assert self._assign_actor(pool) == actor
         assert pool.num_free_task_slots() == 0
         # Check that the 3rd pick doesn't return the actor.
-        assert self._pick_actor(pool) is None
+        assert self._assign_actor(pool) is None
 
     def test_pick_ordering_lone_idle(self):
         # Test that a lone idle actor is the one that's picked.
         pool = self._create_actor_pool()
         self._add_ready_actor(pool)
         # Ensure that actor has been picked once.
-        self._pick_actor(pool)
+        self._assign_actor(pool)
         # Add a new, idle actor.
         actor2 = self._add_ready_actor(pool)
         # Check that picked actor is the idle newly added actor.
-        picked_actor = self._pick_actor(pool)
+        picked_actor = self._assign_actor(pool)
         assert picked_actor == actor2
 
     def test_pick_ordering_full_order(self):
@@ -350,7 +359,7 @@ class TestActorPool(unittest.TestCase):
         # Add 4 actors to the pool.
         actors = [self._add_ready_actor(pool) for _ in range(4)]
         # Pick 4 actors.
-        picked_actors = [self._pick_actor(pool) for _ in range(4)]
+        picked_actors = [self._assign_actor(pool) for _ in range(4)]
         # Check that the 4 distinct actors that were added to the pool were all
         # returned.
         assert set(picked_actors) == set(actors)
@@ -366,7 +375,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
         # Add 4 actors to the pool.
         actors = [self._add_ready_actor(pool) for _ in range(4)]
-        picked_actors = [self._pick_actor(pool) for _ in range(8)]
+        picked_actors = [self._assign_actor(pool) for _ in range(8)]
         pick_counts = collections.Counter(picked_actors)
         # Check that picks were evenly distributed over the pool.
         assert len(pick_counts) == 4
@@ -374,20 +383,20 @@ class TestActorPool(unittest.TestCase):
             assert actor in actors
             assert count == 2
         # Check that the next pick doesn't return an actor.
-        assert self._pick_actor(pool) is None
+        assert self._assign_actor(pool) is None
 
     def test_pick_ordering_with_returns(self):
         # Test that pick ordering works with returns.
         pool = self._create_actor_pool()
         actor1 = self._add_ready_actor(pool)
         actor2 = self._add_ready_actor(pool)
-        picked_actors = [self._pick_actor(pool) for _ in range(2)]
+        picked_actors = [self._assign_actor(pool) for _ in range(2)]
         # Double-check that both actors were picked.
         assert set(picked_actors) == {actor1, actor2}
         # Return actor 2, implying that it's now idle.
         pool.on_task_completed(actor2)
         # Check that actor 2 is the next actor that's picked.
-        picked_actor = self._pick_actor(pool)
+        picked_actor = self._assign_actor(pool)
         assert picked_actor == actor2
 
     def test_kill_inactive_pending_actor(self):
@@ -421,7 +430,7 @@ class TestActorPool(unittest.TestCase):
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
-        assert self._pick_actor(pool) is None
+        assert self._assign_actor(pool) is None
         # Check that actor is dead.
         actor_id = actor._actor_id.hex()
         del actor
@@ -439,14 +448,14 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         actor = self._add_ready_actor(pool)
         # Pick actor (and double-check that the actor was picked).
-        picked_actor = self._pick_actor(pool)
+        picked_actor = self._assign_actor(pool)
         assert picked_actor == actor
         # Kill inactive actor.
         killed = pool._remove_inactive_actor()
         # Check that an actor was NOT killed.
         assert not killed
         # Check that the active actor is still in the pool.
-        picked_actor = self._pick_actor(pool)
+        picked_actor = self._assign_actor(pool)
         assert picked_actor == actor
 
     def test_kill_inactive_pending_over_idle(self):
@@ -462,7 +471,7 @@ class TestActorPool(unittest.TestCase):
         # Check that an actor was killed.
         assert killed
         # Check that the idle actor is still in the pool.
-        picked_actor = self._pick_actor(pool)
+        picked_actor = self._assign_actor(pool)
         assert picked_actor == idle_actor
         pool.on_task_completed(idle_actor)
         # Check that the pending actor is not in pool.
@@ -484,12 +493,12 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool()
         active_actor = self._add_ready_actor(pool)
         # Pick actor (and double-check that the actor was picked).
-        assert self._pick_actor(pool) == active_actor
+        assert self._assign_actor(pool) == active_actor
         idle_actor = self._add_ready_actor(pool)
         # Kill all actors, including active actors.
         pool.shutdown()
         # Check that the pool is empty.
-        assert self._pick_actor(pool) is None
+        assert self._assign_actor(pool) is None
 
         # Check that both actors are dead
         actor_id = active_actor._actor_id.hex()
@@ -507,7 +516,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert pool.num_free_task_slots() == 0
 
-    def test_locality_based_actor_ranking(self):
+    def test_selector_locality_based_actor_ranking(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
@@ -533,7 +542,9 @@ class TestActorPool(unittest.TestCase):
 
         # Create the mock task actor selector iterator
         task_selector = self._create_task_selector(pool)
-        it = task_selector.select_actors(bundle_queue, actor_locality_enabled=True)
+        it = task_selector.select_actors(
+            bundle_queue, actor_locality_enabled=True, strict=True
+        )
 
         # Actors on node1 should be preferred
         res1 = next(it)[1]
@@ -562,7 +573,7 @@ class TestActorPool(unittest.TestCase):
             res5 = None
         assert res5 is None
 
-    def test_locality_based_actor_ranking_no_locations(self):
+    def test_selector_locality_based_actor_ranking_no_locations(self):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks
@@ -583,7 +594,9 @@ class TestActorPool(unittest.TestCase):
 
         # Create the mock task actor selector iterator
         task_selector = self._create_task_selector(pool)
-        it = task_selector.select_actors(bundle_queue, actor_locality_enabled=True)
+        it = task_selector.select_actors(
+            bundle_queue, actor_locality_enabled=True, strict=True
+        )
 
         # Select one actor to schedule it on actor1
         res1 = next(it)[1]
@@ -595,7 +608,9 @@ class TestActorPool(unittest.TestCase):
 
         # Re-create the mock task actor selector iterator
         task_selector = self._create_task_selector(pool)
-        it = task_selector.select_actors(bundle_queue, actor_locality_enabled=True)
+        it = task_selector.select_actors(
+            bundle_queue, actor_locality_enabled=True, strict=True
+        )
 
         # Select and actor, it should be scheudled on actor2
         res2 = next(it)[1]
@@ -621,10 +636,151 @@ class TestActorPool(unittest.TestCase):
             res5 = None
         assert res5 is None
 
+    def test_selector_select_actors_strict(self):
+        """Tests that `select_actors` enforces strict input handling protocol correctly.
+
+         - When strict=True, select_actors() asserts that can_schedule_task() returns
+        True. This assures that calling select_actors() when no actors are available.
+
+        - When strict=False, select_actors() allows the call even when no actors
+        are available, returning an empty iterator instead of raising an error.
+        """
+        pool = self._create_actor_pool(max_tasks_in_flight=2)
+
+        # Add a 1 actor
+        actor = self._add_ready_actor(pool)
+
+        # Assign it 1 task
+        picked = self._assign_actor(pool)
+        assert picked == actor
+
+        # Verify 1 slot remaining
+        assert pool.num_free_task_slots() == 1
+
+        selector = self._create_task_selector(pool)
+
+        # Verify still can schedule
+        assert selector.can_schedule_task()
+
+        # Assign another task
+        picked = self._assign_actor(pool)
+        assert picked == actor
+
+        # Verify 0 slots remaining
+        assert pool.num_free_task_slots() == 0
+
+        # Verify can_schedule_task() returns False when actor is busy
+        assert not selector.can_schedule_task()
+
+        # Create a bundle queue with items to process
+        queue = HashLinkedQueue()
+        for bundle in make_ref_bundles([[0]]):
+            queue.add(bundle)
+
+        # strict=True should raise AssertionError when can_schedule_task() is False
+        with pytest.raises(AssertionError):
+            list(
+                selector.select_actors(queue, actor_locality_enabled=False, strict=True)
+            )
+
+        # strict=False should NOT raise, just return empty iterator
+        result = list(
+            selector.select_actors(queue, actor_locality_enabled=False, strict=False)
+        )
+
+        assert result == []
+
+    def test_selector_can_schedule_task_basic(self):
+        pool = self._create_actor_pool(max_tasks_in_flight=2)
+        selector = self._create_task_selector(pool)
+
+        # Case 1: Empty pool - no actors at all
+        assert pool.current_size() == 0
+        assert not selector.can_schedule_task()
+
+        # Case 2: Only pending actors (not yet ready)
+        _, ready_ref = self._add_pending_actor(pool)
+        assert pool.num_pending_actors() == 1
+        assert pool.num_running_actors() == 0
+        assert not selector.can_schedule_task()
+
+        # Case 3: Actor becomes ready - should be schedulable
+        self._wait_for_actor_ready(pool, ready_ref)
+        assert pool.num_running_actors() == 1
+        assert pool.num_free_task_slots() == 2
+        assert selector.can_schedule_task()
+
+        # Case 4: Actor partially busy (1 of 2 slots used) - still schedulable
+        actor = self._assign_actor(pool)
+        assert actor is not None
+        assert pool.num_free_task_slots() == 1
+        assert selector.can_schedule_task()
+
+        # Case 5: Actor fully busy (2 of 2 slots used) - not schedulable
+        actor2 = self._assign_actor(pool)
+        assert actor2 == actor
+        assert pool.num_free_task_slots() == 0
+        assert not selector.can_schedule_task()
+
+        # Case 6: Task completes, slot freed - schedulable again
+        pool.on_task_completed(actor)
+        assert pool.num_free_task_slots() == 1
+        assert selector.can_schedule_task()
+
+        # Case 7: Actor restarting - not schedulable
+        pool._update_running_actor_state(actor, is_restarting=True)
+        assert pool.num_restarting_actors() == 1
+        assert not selector.can_schedule_task()
+
+        # Case 8: Actor recovered from restart - schedulable again
+        pool._update_running_actor_state(actor, is_restarting=False)
+        assert pool.num_restarting_actors() == 0
+        assert selector.can_schedule_task()
+
+    def test_selector_can_schedule_task_multi_actor(self):
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+        selector = self._create_task_selector(pool)
+
+        # Add two actors
+        actor1 = self._add_ready_actor(pool)
+        actor2 = self._add_ready_actor(pool)
+        assert pool.num_running_actors() == 2
+        assert selector.can_schedule_task()
+
+        # Make actor1 busy
+        assigned = self._assign_actor(pool)
+        assert assigned in (actor1, actor2)
+        busy_actor = assigned
+        idle_actor = actor2 if busy_actor == actor1 else actor1
+
+        # Still schedulable (actor2 or actor1 is free)
+        assert selector.can_schedule_task()
+
+        # Make both busy
+        assigned2 = self._assign_actor(pool)
+        assert assigned2 == idle_actor
+        assert pool.num_free_task_slots() == 0
+        assert not selector.can_schedule_task()
+
+        # Free one actor
+        pool.on_task_completed(busy_actor)
+        assert pool.num_free_task_slots() == 1
+        assert selector.can_schedule_task()
+
+        # Make one actor restarting, but other is still available
+        pool._update_running_actor_state(assigned, is_restarting=True)
+        # assigned now has 0 tasks but is restarting
+        # assigned2 still has 1 task (at max)
+        assert not selector.can_schedule_task()
+
+        # Free the non-restarting actor
+        pool.on_task_completed(assigned2)
+        assert selector.can_schedule_task()
+
 
 def test_setting_initial_size_for_actor_pool():
     data_context = ray.data.DataContext.get_current()
-    op = ActorPoolMapOperator(
+    op = MapOperator.create(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
@@ -642,6 +798,50 @@ def test_setting_initial_size_for_actor_pool():
     ray.shutdown()
 
 
+def test_actor_pool_scale_logs_include_map_worker_cls_name(
+    ray_start_regular_shared, caplog, propagate_logs
+):
+    """Test that scale-up and scale-down debug logs include the map worker class name."""
+    logger_name = "ray.data._internal.execution.operators.actor_pool_map_operator"
+
+    def create_actor_fn(
+        labels: Dict[str, Any],
+        logical_actor_id: str = "Actor1",
+    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+        actor = PoolWorker.options(_labels=labels).remote("node1")
+        return actor, actor.get_location.remote()
+
+    pool = _ActorPool(
+        create_actor_fn,
+        ExecutionResources(cpu=1),
+        min_size=1,
+        max_size=1,
+        initial_size=1,
+        max_actor_concurrency=1,
+        max_tasks_in_flight_per_actor=1,
+        map_worker_cls_name="MapWorker(TestOp)",
+        debounce_period_s=0,
+    )
+
+    with caplog.at_level(logging.DEBUG, logger=logger_name):
+        caplog.clear()
+        pool.scale(ActorPoolScalingRequest(delta=1, reason="scale up test"))
+        assert re.search(
+            r"Scaling up MapWorker\(TestOp\) actor pool by 1 \(reason=scale up test",
+            caplog.text,
+        ), f"Expected scale-up log with map worker name; got: {caplog.text}"
+
+        caplog.clear()
+        pool.scale(
+            ActorPoolScalingRequest.downscale(delta=-1, reason="scale down test")
+        )
+        assert re.search(
+            r"Scaled down MapWorker\(TestOp\) actor pool by \d+ "
+            r"\(reason=scale down test",
+            caplog.text,
+        ), f"Expected scale-down log with map worker name; got: {caplog.text}"
+
+
 def _create_bundle_with_single_row(row):
     block = pa.Table.from_pylist([row])
     block_ref = ray.put(block)
@@ -652,17 +852,29 @@ def _create_bundle_with_single_row(row):
 
 @pytest.mark.parametrize("min_rows_per_bundle", [2, None])
 def test_internal_input_queue_is_empty_after_early_completion(
-    ray_start_regular_shared, min_rows_per_bundle
+    ray_start_regular_shared, min_rows_per_bundle, restore_data_context
 ):
     data_context = ray.data.DataContext.get_current()
-    op = ActorPoolMapOperator(
+    # Block until actors are ready so we can schedule tasks
+    data_context.wait_for_min_actors_s = 60
+
+    op = MapOperator.create(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
         compute_strategy=ray.data.ActorPoolStrategy(size=1),
         min_rows_per_bundle=min_rows_per_bundle,
     )
+
+    # NOTE: This is blocking, until actor pool is fully started up
     op.start(ExecutionOptions())
+    # Complete init sequence by completing pending metadata tasks (performed
+    # by the executor)
+    run_op_tasks_sync(op)
+
+    assert (
+        op.can_add_input()
+    ), "After actor start up adding to the queue should be available"
 
     ref_bundle = _create_bundle_with_single_row({"id": 0})
     op.add_input(ref_bundle, 0)
@@ -674,9 +886,134 @@ def test_internal_input_queue_is_empty_after_early_completion(
     ), op.internal_input_queue_num_blocks()
 
 
+def test_actor_pool_input_queue_draining(
+    ray_start_regular_shared, restore_data_context
+):
+    """Test that `all_inputs_done()` and `has_next()` handle busy actors gracefully.
+
+    This test verifies:
+    1. When `all_inputs_done()` is called with a partial bundle in the bundler
+       while all actors are busy, the operator does not crash.
+    2. When `has_next()` is called after inputs are complete and there are blocks
+       in the bundle queue but actors are busy, it handles this gracefully.
+    3. Once actors become available, `has_next()` drains the queue.
+
+    The bug: `select_actors()` has an assertion `assert self.can_schedule_task()`
+    which crashes when called with no available actors. Both `all_inputs_done()`
+    (via `_try_schedule_task(strict=False)`) and `has_next()` call
+    `_try_schedule_tasks_internal()` which invokes `select_actors()`. When
+    `strict=False`, the code explicitly expects that actors may be busy and task
+    scheduling may not succeed, but the assertion contradicts this design intent.
+    """
+    ctx = ray.data.DataContext.get_current()
+    ctx._max_num_blocks_in_streaming_gen_buffer = 1
+
+    MIN_ROWS_PER_BUNDLE = 5
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(),
+        make_ref_bundles([[SMALL_STR] for _ in range(100)]),
+    )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=ActorPoolStrategy(
+            min_size=1, max_size=1, max_tasks_in_flight_per_actor=1
+        ),
+        min_rows_per_bundle=MIN_ROWS_PER_BUNDLE,
+    )
+
+    # NOTE: This is blocking, until actor pool is fully started up
+    op.start(ExecutionOptions())
+
+    # Finalize operator initialization sequence and make it schedulable
+    run_op_tasks_sync(op, only_existing=True)
+
+    # Assert actor is running
+    assert op._actor_pool.num_pending_actors() == 0
+    assert len(op._actor_pool.running_actors()) == 1
+
+    # Add inputs to fill a bundle and launch a task (saturating the single actor)
+    for _ in range(MIN_ROWS_PER_BUNDLE):
+        op.add_input(input_op.get_next(), 0)
+
+    # 1 task should be running now (actor is busy)
+    assert op.num_active_tasks() == 1
+
+    # Add more inputs that don't complete a bundle (stays in bundler)
+    for _ in range(MIN_ROWS_PER_BUNDLE - 1):
+        op.add_input(input_op.get_next(), 0)
+
+    # 1 task should be running now
+    assert op.num_active_tasks() == 1
+
+    # - Partial bundle (4 blocks) should be still in the bundler
+    # - Bundle queue is empty
+    assert op._block_ref_bundler.num_blocks() == MIN_ROWS_PER_BUNDLE - 1
+    assert op.internal_input_queue_num_blocks() == MIN_ROWS_PER_BUNDLE - 1
+
+    assert op._bundle_queue.num_bundles() == 0
+
+    # KEY TEST PART 1: Calling all_inputs_done() while actor is busy should NOT crash.
+    # This drains the bundler to the queue (task can't be dispatched since actor is busy)
+    op.all_inputs_done()
+
+    # Now:
+    #   - Bundler should be drained
+    #   - Partial bundle should now be in the queue (exactly 1 bundle)
+    assert op._block_ref_bundler.num_blocks() == 0
+
+    assert op._bundle_queue.num_bundles() == 1
+    assert op._bundle_queue.num_blocks() == MIN_ROWS_PER_BUNDLE - 1
+
+    assert op.internal_input_queue_num_blocks() == MIN_ROWS_PER_BUNDLE - 1
+
+    # Actor is still busy
+    assert op.num_active_tasks() == 1
+    assert not op.can_add_input(), "Actor should be busy, cannot accept input"
+
+    # Task produced no inputs yet
+    #
+    # NOTE: `has_next` will also attempt to schedule any of the pending bundles,
+    #       but won't be able to, since actor is busy (at max_tasks_in_flight_per_actor already)
+    assert not op.has_next()
+
+    # Actor is still busy
+    assert op.num_active_tasks() == 1
+    assert not op.can_add_input(), "Actor should be busy, cannot accept input"
+    # The bundle should still be in the queue since actor was busy
+    assert (
+        op._bundle_queue.num_bundles() == 1
+    ), "Bundle should remain in queue since actor was busy"
+
+    # Now complete the running task to free up the actor
+    run_op_tasks_sync(op, only_existing=True)
+
+    # Now has_next() should dispatch the remaining bundle
+    assert op.has_next()
+
+    # The queue should be drained (task dispatched)
+    assert op._bundle_queue.num_bundles() == 0
+    assert op._bundle_queue.num_blocks() == 0
+    assert op.internal_input_queue_num_blocks() == 0
+    assert op.num_active_tasks() == 1
+
+    # Complete remaining work
+    run_op_tasks_sync(op)
+
+    # Consume outputs
+    while op.has_next():
+        op.get_next()
+
+    assert op.internal_input_queue_num_blocks() == 0
+    assert op.num_active_tasks() == 0
+
+
 def test_min_max_resource_requirements(restore_data_context):
     data_context = ray.data.DataContext.get_current()
-    op = ActorPoolMapOperator(
+    op = MapOperator.create(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
@@ -705,7 +1042,7 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
     """Test that unbounded actor pools return infinite max resources."""
     data_context = ray.data.DataContext.get_current()
     # ActorPoolStrategy() with no max_size defaults to unbounded (max_size=inf)
-    op = ActorPoolMapOperator(
+    op = MapOperator.create(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
         data_context=data_context,
@@ -802,7 +1139,7 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     upstream_op = IdentityOperator(
         "Upstream", input_dependencies=[], data_context=data_context
     )
-    actor_pool_map_op = ActorPoolMapOperator(
+    actor_pool_map_op = MapOperator.create(
         map_transformer=make_map_transformer(lambda block: block),
         input_op=upstream_op,
         data_context=data_context,
@@ -1099,15 +1436,15 @@ def test_actor_pool_map_operator_should_add_input(
     op.start(ExecutionOptions())
 
     # Cannot add input until actor has started.
-    assert not op.should_add_input()
+    assert not op.can_add_input()
     run_op_tasks_sync(op)
-    assert op.should_add_input()
+    assert op.can_add_input()
 
     # Assert that single actor can accept up to N tasks
     for _ in range(expected_max_tasks_in_flight):
-        assert op.should_add_input()
+        assert op.can_add_input()
         op.add_input(input_op.get_next(), 0)
-    assert not op.should_add_input()
+    assert not op.can_add_input()
 
 
 def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
@@ -1152,7 +1489,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
 
     # Add inputs.
     for _ in range(num_actors):
-        assert op.should_add_input()
+        assert op.can_add_input()
         op.add_input(input_op.get_next(), 0)
     # Still `num_active_tasks` should only include data tasks.
     assert op.num_active_tasks() == num_actors

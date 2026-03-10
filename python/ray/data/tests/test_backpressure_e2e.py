@@ -236,6 +236,7 @@ def test_no_deadlock_with_preserve_order(
 def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F811
     # Tests that backpressure applies even when reading directly from the input
     # datasource. This relies on datasource metadata size estimation.
+
     @ray.remote
     class Counter:
         def __init__(self):
@@ -254,25 +255,25 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
         def __init__(self):
             self.counter = Counter.remote()
 
-        def prepare_read(self, parallelism, n):
+        def prepare_read(self, parallelism):
+            # Use 50 MiB blocks to exceed the 25 MiB output reservation
+            # and trigger object store backpressure
+            num_bytes = 50 * MiB
+
             def range_(i):
                 print(f">>> Read task: {i=}")
 
                 ray.get(self.counter.increment.remote())
-                return [
-                    pd.DataFrame({"data": np.ones((n // parallelism * 1024 * 1024,))})
-                ]
+                return [pd.DataFrame({"data": np.ones((num_bytes,), dtype=np.uint8)})]
 
-            sz = (n // parallelism) * 1024 * 1024 * 8
-
-            print(f">>> Block size: {sz}")
+            print(f">>> Block size: {num_bytes}")
 
             return [
                 ReadTask(
                     lambda i=i: range_(i),
                     BlockMetadata(
                         num_rows=1,
-                        size_bytes=sz,
+                        size_bytes=num_bytes,
                         input_files=None,
                         exec_stats=None,
                     ),
@@ -281,14 +282,16 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
             ]
 
     source = CountingRangeDatasource()
+
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
         object_store_memory=100 * MiB,
         cpu=1,
     )
+    ctx.target_max_block_size = 50 * MiB
 
-    # Create 10 GiB dataset
-    ds = ray.data.read_datasource(source, n=10000, override_num_blocks=1000)
+    # Create dataset with many blocks
+    ds = ray.data.read_datasource(source, override_num_blocks=1000)
     it = iter(ds.iter_internal_ref_bundles())
     # Dequeue 1 block
     next(it)
@@ -297,12 +300,11 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):  # noqa: F
 
     launched = ray.get(source.counter.get.remote())
 
-    # We'd launch exactly 3 tasks
-    #   - (Budget=100Mb) First task scheduled (produces first output)
-    #   - (Budget=20Mb) Second task scheduled (produces second output)
-    #   - (Budget=0Mb) First output dequed
-    #   - (Budget=20Mb) Third task scheduled
-    assert launched == 3, launched
+    # Clean up
+    del it
+    # With 50 MiB blocks and 100 MiB limit, backpressure should limit to ~2 tasks
+    # because after 2 outputs (100 MiB), the budget is depleted
+    assert launched == 2, launched
 
 
 def test_streaming_backpressure_e2e(

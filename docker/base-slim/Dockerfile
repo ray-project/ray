@@ -31,6 +31,10 @@ APT_PKGS=(
     gdb
     vim-tiny
     less
+
+    # For HAProxy
+    socat
+    liblua5.3-0
 )
 
 apt-get update
@@ -177,13 +181,8 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-apt-get update -y
-apt-get install -y --no-install-recommends socat liblua5.3-0
-
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 chown -R ray:"$(id -gn ray)" /run/haproxy
-
-rm -rf /var/lib/apt/lists/*
 
 EOF
 

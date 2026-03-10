@@ -130,19 +130,14 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             along with processing metadata.
         """
         try:
-            from vllm.entrypoints.chat_utils import parse_chat_messages_futures
+            from vllm.entrypoints.chat_utils import parse_chat_messages_async
         except ImportError as e:
             raise ImportError(
                 "vLLM is not installed or failed to import. Please run "
                 "`pip install ray[llm]` to install required dependencies."
             ) from e
 
-        async def _get_mm_data(row: Dict[str, Any], conversation, fut, uuid):
-            multimodal_data = await fut
-            return row, conversation, uuid, multimodal_data
-
-        tasks = []
-        for row in batch:
+        async def _process_row(row: Dict[str, Any]):
             # Extract system messages to keep them as strings (not converted to list format)
             # This avoids issues with chat templates that expect string system messages.
             system_messages = []
@@ -155,7 +150,7 @@ class PrepareMultimodalUDF(StatefulStageUDF):
 
             # Users can provide stable IDs for each multimodal item from messages to
             # enable engine to cache and reuse work across requests.
-            conversation, mm_data_future, mm_uuids = parse_chat_messages_futures(
+            conversation, mm_data, mm_uuids = await parse_chat_messages_async(
                 messages_to_parse,
                 self.model_config,
                 content_format=self.chat_template_content_format,
@@ -164,11 +159,9 @@ class PrepareMultimodalUDF(StatefulStageUDF):
             if system_messages:
                 conversation = system_messages + conversation
 
-            tasks.append(
-                asyncio.create_task(
-                    _get_mm_data(row, conversation, mm_data_future, mm_uuids)
-                )
-            )
+            return row, conversation, mm_uuids, mm_data
+
+        tasks = [asyncio.create_task(_process_row(row)) for row in batch]
 
         for task in asyncio.as_completed(tasks):
             row, conversation, uuid, multimodal_data = await task

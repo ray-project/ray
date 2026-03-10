@@ -50,6 +50,7 @@ class TempCgroupDirectory {
 class TempDirectory {
  public:
   static ray::StatusOr<std::unique_ptr<TempDirectory>> Create();
+  static ray::StatusOr<std::unique_ptr<TempDirectory>> Create(std::string &&path);
   explicit TempDirectory(std::string &&path) : path_(path) {}
 
   TempDirectory(const TempDirectory &) = delete;

@@ -386,6 +386,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # Env-to-module connector pass cache results as we will do the RLModule
             # forward pass only in the next `while`-iteration.
             if self.module is not None:
+                kwargs = {
+                    Columns.OBS: observations,
+                    Columns.ACTIONS: actions,
+                    Columns.REWARDS: rewards,
+                    Columns.INFOS: infos,
+                    Columns.TERMINATEDS: terminateds,
+                    Columns.TRUNCATEDS: truncateds,
+                }
                 self._cached_to_module = self._env_to_module(
                     episodes=self._ongoing_episodes,
                     batch={},
@@ -394,6 +402,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=self._shared_data,
                     metrics=self.metrics,
                     metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+                    # Also pass in data as kwargs so that connectors have easy access to batched data
+                    **kwargs,
                 )
 
             for env_index in range(self.num_envs):
@@ -433,6 +443,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     # Create a new episode object with no data in it and execute
                     # `on_episode_created` callback (before the `env.reset()` call).
                     self._new_episode(env_index, self._ongoing_episodes)
+
+                    # Stop processing more envs if we've collected enough episodes.
+                    if num_episodes is not None and eps >= num_episodes:
+                        break
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -776,6 +790,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # properly been processed (if applicable).
         self._cached_to_module = None
         if self.module:
+            kwargs = {
+                Columns.OBS: observations,
+                Columns.INFOS: infos,
+            }
             self._cached_to_module = self._env_to_module(
                 rl_module=self.module,
                 episodes=episodes,
@@ -783,6 +801,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 shared_data=shared_data,
                 metrics=self.metrics,
                 metrics_prefix_key=(ENV_TO_MODULE_CONNECTOR,),
+                **kwargs,
             )
 
         # Call `on_episode_start()` callbacks (always after reset).
