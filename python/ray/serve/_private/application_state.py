@@ -1395,6 +1395,12 @@ class ApplicationStateManager:
         """Return app names without instantiating status objects."""
         return list(self._application_states.keys())
 
+    def get_app_target_deployments(self, name: str) -> List[str]:
+        """Return deployment names for an app without constructing status objects."""
+        if name not in self._application_states:
+            return []
+        return self._application_states[name].target_deployments
+
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
         if name not in self._application_states:
