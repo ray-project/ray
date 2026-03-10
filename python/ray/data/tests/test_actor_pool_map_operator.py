@@ -1,6 +1,8 @@
 import asyncio
 import collections
 import datetime
+import logging
+import re
 import threading
 import time
 import unittest
@@ -794,6 +796,50 @@ def test_setting_initial_size_for_actor_pool():
         running=0, pending=2, restarting=0
     )
     ray.shutdown()
+
+
+def test_actor_pool_scale_logs_include_map_worker_cls_name(
+    ray_start_regular_shared, caplog, propagate_logs
+):
+    """Test that scale-up and scale-down debug logs include the map worker class name."""
+    logger_name = "ray.data._internal.execution.operators.actor_pool_map_operator"
+
+    def create_actor_fn(
+        labels: Dict[str, Any],
+        logical_actor_id: str = "Actor1",
+    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+        actor = PoolWorker.options(_labels=labels).remote("node1")
+        return actor, actor.get_location.remote()
+
+    pool = _ActorPool(
+        create_actor_fn,
+        ExecutionResources(cpu=1),
+        min_size=1,
+        max_size=1,
+        initial_size=1,
+        max_actor_concurrency=1,
+        max_tasks_in_flight_per_actor=1,
+        map_worker_cls_name="MapWorker(TestOp)",
+        debounce_period_s=0,
+    )
+
+    with caplog.at_level(logging.DEBUG, logger=logger_name):
+        caplog.clear()
+        pool.scale(ActorPoolScalingRequest(delta=1, reason="scale up test"))
+        assert re.search(
+            r"Scaling up MapWorker\(TestOp\) actor pool by 1 \(reason=scale up test",
+            caplog.text,
+        ), f"Expected scale-up log with map worker name; got: {caplog.text}"
+
+        caplog.clear()
+        pool.scale(
+            ActorPoolScalingRequest.downscale(delta=-1, reason="scale down test")
+        )
+        assert re.search(
+            r"Scaled down MapWorker\(TestOp\) actor pool by \d+ "
+            r"\(reason=scale down test",
+            caplog.text,
+        ), f"Expected scale-down log with map worker name; got: {caplog.text}"
 
 
 def _create_bundle_with_single_row(row):

@@ -385,25 +385,37 @@ class Deployment:
 
         if logging_config is not DEFAULT.VALUE:
             if isinstance(logging_config, LoggingConfig):
-                logging_config = logging_config.dict()
+                logging_config = logging_config.model_dump()
             new_deployment_config.logging_config = logging_config
 
         if gang_scheduling_config is not DEFAULT.VALUE:
             new_deployment_config.gang_scheduling_config = gang_scheduling_config
 
         gc = new_deployment_config.gang_scheduling_config
-        if gc is not None and num_replicas == "auto":
-            raise ValueError(
-                'num_replicas="auto" is not allowed when '
-                "gang_scheduling_config is provided. Set "
-                "num_replicas to a fixed multiple of gang_size."
-            )
-        if gc is not None and isinstance(new_deployment_config.num_replicas, int):
+        if (
+            gc is not None
+            and isinstance(new_deployment_config.num_replicas, int)
+            and new_deployment_config.autoscaling_config is None
+        ):
+            # When autoscaling is enabled, num_replicas defaults to 1
             if new_deployment_config.num_replicas % gc.gang_size != 0:
                 raise ValueError(
                     f"num_replicas ({new_deployment_config.num_replicas}) must "
                     f"be a multiple of gang_size ({gc.gang_size})."
                 )
+
+        if gc is not None and max_replicas_per_node is not None:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        if gc is not None and placement_group_strategy is not None:
+            raise ValueError(
+                "Setting placement_group_strategy is not allowed when "
+                "gang_scheduling_config is provided. Use "
+                "gang_scheduling_config.gang_placement_strategy instead."
+            )
 
         new_replica_config = ReplicaConfig.create(
             func_or_class,
@@ -453,7 +465,9 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     """
 
     if d.ray_actor_options is not None:
-        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+        ray_actor_options_schema = RayActorOptionsSchema.model_validate(
+            d.ray_actor_options
+        )
     else:
         ray_actor_options_schema = None
 
@@ -509,7 +523,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     if s.ray_actor_options is DEFAULT.VALUE:
         ray_actor_options = None
     else:
-        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
+        ray_actor_options = s.ray_actor_options.model_dump(exclude_unset=True)
 
     if s.placement_group_bundles is DEFAULT.VALUE:
         placement_group_bundles = None

@@ -3,7 +3,7 @@ import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, AsyncIterator, List, Tuple, Union
+from typing import Any, AsyncIterator, List, Optional, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
@@ -11,6 +11,11 @@ from starlette.types import Receive, Scope, Send
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import format_grpc_peer_address
+from ray.serve._private.tracing_utils import (
+    extract_propagated_context,
+    is_tracing_enabled,
+    set_trace_context,
+)
 from ray.serve._private.utils import DEFAULT
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -63,6 +68,12 @@ class ProxyRequest(ABC):
     @property
     def client(self) -> str:
         return ""
+
+    @abstractmethod
+    def populate_tracing_context(self):
+        """Implement this method to populate tracing context so the parent and
+        child spans will be connected into a single trace."""
+        raise NotImplementedError
 
 
 class ASGIProxyRequest(ProxyRequest):
@@ -126,6 +137,22 @@ class ASGIProxyRequest(ProxyRequest):
             )
         )
 
+    def populate_tracing_context(self):
+        """Populate tracing context for ASGI requests.
+
+        This method extracts the "traceparent" header from the request headers and sets
+        the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        for key, value in self.headers:
+            if key.decode() == "traceparent":
+                trace_context = extract_propagated_context(
+                    {key.decode(): value.decode()}
+                )
+                set_trace_context(trace_context)
+
 
 class gRPCProxyRequest(ProxyRequest):
     """ProxyRequest implementation to wrap gRPC request protobuf and metadata."""
@@ -136,11 +163,32 @@ class gRPCProxyRequest(ProxyRequest):
         context: grpc._cython.cygrpc._ServicerContext,
         service_method: str,
         stream: bool,
+        *,
+        streaming_type: gRPCStreamingType = None,
+        request_iterator: Optional[AsyncIterator[Any]] = None,
     ):
         self._request_proto = request_proto
+        self._request_iterator = request_iterator
         self.context = context
         self.service_method = service_method
         self.stream = stream
+        # Determine streaming type based on parameters
+        if streaming_type is not None:
+            self.streaming_type = streaming_type
+        elif request_iterator is not None:
+            # Has input stream
+            self.streaming_type = (
+                gRPCStreamingType.STREAM_STREAM
+                if stream
+                else gRPCStreamingType.STREAM_UNARY
+            )
+        else:
+            # No input stream
+            self.streaming_type = (
+                gRPCStreamingType.UNARY_STREAM
+                if stream
+                else gRPCStreamingType.UNARY_UNARY
+            )
         self.app_name = ""
         self.request_id = None
         self.method_name = "__call__"
@@ -186,6 +234,18 @@ class gRPCProxyRequest(ProxyRequest):
     def client(self) -> str:
         return format_grpc_peer_address(self.context.peer())
 
+    def has_input_stream(self) -> bool:
+        """Returns True if this request has a streaming input (client/bidi streaming)."""
+        return self.streaming_type in (
+            gRPCStreamingType.STREAM_UNARY,
+            gRPCStreamingType.STREAM_STREAM,
+        )
+
+    @property
+    def request_iterator(self) -> Optional[AsyncIterator[Any]]:
+        """Returns the request iterator for client/bidi streaming, or None."""
+        return self._request_iterator
+
     def send_request_id(self, request_id: str):
         # Setting the trailing metadata on the ray_serve_grpc_context object, so it's
         # not overriding the ones set from the user and will be sent back to the
@@ -196,6 +256,20 @@ class gRPCProxyRequest(ProxyRequest):
         # NOTE(edoakes): it's important that the request is sent as raw bytes to
         # skip the Ray cloudpickle serialization codepath for performance.
         return pickle.dumps(gRPCRequest(user_request_proto=self._request_proto))
+
+    def populate_tracing_context(self):
+        """Populate tracing context for gRPC requests.
+
+        This method extracts the "traceparent" metadata from the request headers and
+        sets the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        for key, value in self.context.invocation_metadata():
+            if key == "traceparent":
+                trace_context = extract_propagated_context({key: value})
+                set_trace_context(trace_context)
 
 
 @dataclass(frozen=True)

@@ -20,6 +20,11 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
+exports_files([
+    ".rayciversion",
+    "ray-images.yaml",
+])
+
 # C/C++ toolchain constraint configs.
 
 config_setting(

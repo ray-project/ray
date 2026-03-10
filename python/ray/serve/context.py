@@ -22,6 +22,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.exceptions import RayServeException
+from ray.serve.gang import GangContext
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
@@ -30,24 +31,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
-
-
-@DeveloperAPI
-@dataclass
-class GangContext:
-    """Context information for a replica that is part of a gang."""
-
-    gang_id: str
-    """Unique identifier for this gang."""
-
-    rank: int
-    """This replica's rank within the gang (0-indexed)."""
-
-    world_size: int
-    """Total number of replicas in this gang."""
-
-    member_replica_ids: List[str]
-    """List of replica IDs in this gang, ordered by rank."""
 
 
 @DeveloperAPI
