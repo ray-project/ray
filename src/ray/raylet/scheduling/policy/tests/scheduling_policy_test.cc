@@ -733,8 +733,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
 
   // FilterCandidateNodes should return SUCCESS with one candidate and the nodes in
   // rack-1
-  auto label_domain_policy =
-      LabelDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
+  auto label_domain_policy = LabelDomainStrictPackSchedulingPolicy();
   auto options = SchedulingOptions::BundlePack();
   options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
   options.target_label_domain_.first = kDomainLabelKey;
@@ -832,8 +831,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  auto label_domain_policy =
-      LabelDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
+  auto label_domain_policy = LabelDomainStrictPackSchedulingPolicy();
   auto options = SchedulingOptions::BundlePack();
   options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
   options.target_label_domain_.first = kDomainLabelKey;

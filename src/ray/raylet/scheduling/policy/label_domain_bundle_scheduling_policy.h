@@ -17,7 +17,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
 
 namespace ray {
@@ -56,9 +55,6 @@ struct LabelDomainFilterResult {
  */
 class LabelDomainSchedulingPolicyInterface {
  public:
-  explicit LabelDomainSchedulingPolicyInterface(
-      ClusterResourceManager &cluster_resource_manager)
-      : cluster_resource_manager_(cluster_resource_manager) {}
   virtual ~LabelDomainSchedulingPolicyInterface() = default;
 
   /**
@@ -95,8 +91,6 @@ class LabelDomainSchedulingPolicyInterface {
   bool IsRequestFeasible(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;
-
-  ClusterResourceManager &cluster_resource_manager_;
 };
 
 /**
@@ -107,8 +101,6 @@ class LabelDomainSchedulingPolicyInterface {
 class LabelDomainStrictPackSchedulingPolicy
     : public LabelDomainSchedulingPolicyInterface {
  public:
-  using LabelDomainSchedulingPolicyInterface::LabelDomainSchedulingPolicyInterface;
-
   LabelDomainFilterResult FilterCandidateNodes(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const SchedulingOptions &options,

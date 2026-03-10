@@ -37,7 +37,7 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
     aggregate_demand += request->GetResourceSet();
   }
   for (auto resource_id : aggregate_demand.ResourceIds()) {
-    FixedPoint total_capacity(0);
+    FixedPoint total_capacity;
     for (const auto &[node_id, node] : candidate_nodes) {
       total_capacity += node->GetLocalView().total.Get(resource_id);
     }

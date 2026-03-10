@@ -89,14 +89,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                               strategy,
                               placement_group->GetSoftTargetNodeID());
   if (label_domain.has_value()) {
-    const auto &label_key = label_domain.value();
+    const auto &label_domain_key = label_domain.value();
     scheduling_options.label_domain_scheduling_strategy_ =
         raylet_scheduling_policy::LabelDomainSchedulingStrategy::STRICT_PACK;
-    scheduling_options.target_label_domain_.first = label_key;
+    scheduling_options.target_label_domain_.first = label_domain_key;
     auto pg_it =
         placement_group_label_domains_.find(placement_group->GetPlacementGroupID());
     if (pg_it != placement_group_label_domains_.end()) {
-      auto key_it = pg_it->second.find(label_key);
+      auto key_it = pg_it->second.find(label_domain_key);
       // If the label domain value is already selected for this pg, it means
       // the bundles are being rescheduled and must be on the same domain.
       if (key_it != pg_it->second.end()) {
@@ -131,11 +131,13 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
   if (scheduling_result.selected_label_domain.has_value()) {
-    const auto &[label_key, domain_value] = *scheduling_result.selected_label_domain;
-    placement_group_label_domains_[placement_group->GetPlacementGroupID()][label_key] =
-        domain_value;
+    const auto &[label_domain_key, label_domain_value] =
+        *scheduling_result.selected_label_domain;
+    placement_group_label_domains_[placement_group->GetPlacementGroupID()]
+                                  [label_domain_key] = label_domain_value;
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
-                  << " assigned to label domain " << label_key << ": " << domain_value;
+                  << " assigned to label domain " << label_domain_key << ": "
+                  << label_domain_value;
   }
 
   // Covert to a map of bundle to node.

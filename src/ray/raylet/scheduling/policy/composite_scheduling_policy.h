@@ -73,8 +73,7 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
       : bundle_pack_policy_(cluster_resource_manager),
         bundle_spread_policy_(cluster_resource_manager),
         bundle_strict_spread_policy_(cluster_resource_manager),
-        bundle_strict_pack_policy_(cluster_resource_manager),
-        label_domain_strict_pack_policy_(cluster_resource_manager) {}
+        bundle_strict_pack_policy_(cluster_resource_manager) {}
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
@@ -84,13 +83,13 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
  private:
   /**
    * @brief Routes to the appropriate label-domain-level policy (tier 1) and
-   * returns candidate domains.
+   * returns candidate groups.
    *
    * @param resource_request_list The resource requirements for each bundle.
-   * @param options Scheduling options including the label key and optional
-   *   target domain value in target_label_domain_.
+   * @param options Scheduling options including the label domain key and optional
+   *   target label domain value.
    * @param candidate_nodes All available candidate nodes.
-   * @return A LabelDomainFilterResult with feasible domains or an error status.
+   * @return A LabelDomainFilterResult with feasible groups or an error status.
    */
   LabelDomainFilterResult ScheduleLabelDomainLevel(
       const std::vector<const ResourceRequest *> &resource_request_list,
