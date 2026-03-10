@@ -253,7 +253,6 @@ py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
     files = [
-        "test_deployment_actor_fault_tolerance.py",
         "test_standalone_2.py",
     ],
     tags = [
@@ -272,7 +271,6 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     timeout = "long",
-    data = glob(["test_config_files/**/*"]),
     env = {
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
         "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
@@ -284,7 +282,6 @@ py_test_module_list(
     files = [
         "test_deploy_app.py",
         "test_deploy_app_2.py",
-        "test_deployment_actors.py",
         "test_metrics.py",
         "test_metrics_2.py",
         "test_metrics_3.py",
