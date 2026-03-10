@@ -573,7 +573,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return std::nullopt;
       },
       io_service_,
-      *scheduler_placement_time_ms_histogram_,
+      *scheduler_placement_time_percentile_ms_,
       *task_total_submitter_preprocessing_time_ms_histogram_,
       *task_dependency_resolution_time_ms_histogram_,
       *task_push_time_ms_histogram_);
@@ -829,8 +829,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetOwnedObjectsByStateGaugeMetric()));
   owned_objects_size_counter_ = std::unique_ptr<ray::stats::Gauge>(
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
-  scheduler_placement_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetSchedulerPlacementTimeMsHistogramMetric()));
+  scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
   task_total_submitter_preprocessing_time_ms_histogram_ =
       std::unique_ptr<ray::stats::Histogram>(new ray::stats::Histogram(
           GetTaskTotalSubmitterPreprocessingTimeMsHistogramMetric()));
