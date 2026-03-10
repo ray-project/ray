@@ -739,31 +739,32 @@ class TestPyArrowComputeUDFPushdown:
         return ray.data.read_parquet("example://iris.parquet")
 
     @pytest.mark.parametrize(
-        "build_filter,verify",
+        "build_filter,equivalent_fn",
         [
             pytest.param(
                 lambda: ~col("variety").str.match_regex("Set.*"),
-                lambda rows: all(not r["variety"].startswith("Set") for r in rows),
+                lambda r: not r["variety"].startswith("Set"),
                 id="negated_match_regex",
             ),
             pytest.param(
                 lambda: col("variety").str.starts_with("Vir"),
-                lambda rows: all(r["variety"].startswith("Vir") for r in rows),
+                lambda r: r["variety"].startswith("Vir"),
                 id="starts_with",
             ),
             pytest.param(
                 lambda: col("variety").str.contains("set"),
-                lambda rows: all("set" in r["variety"] for r in rows),
+                lambda r: "set" in r["variety"],
                 id="contains",
             ),
         ],
     )
-    def test_string_udf_pushdown_into_parquet(self, parquet_ds, build_filter, verify):
+    def test_string_udf_pushdown_into_parquet(
+        self, parquet_ds, build_filter, equivalent_fn
+    ):
         """String UDF predicates should be pushed into the Parquet reader."""
         ds = parquet_ds.filter(expr=build_filter())
-        result = ds.take_all()
-        assert len(result) > 0
-        assert verify(result)
+        expected = parquet_ds.filter(fn=equivalent_fn)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
         assert not plan_has_operator(
@@ -775,11 +776,10 @@ class TestPyArrowComputeUDFPushdown:
         ds = parquet_ds.filter(
             expr=col("variety").str.starts_with("Vir") & (col("sepal.length") > 6.0)
         )
-        result = ds.take_all()
-        assert len(result) > 0
-        assert all(
-            r["variety"].startswith("Vir") and r["sepal.length"] > 6.0 for r in result
+        expected = parquet_ds.filter(
+            fn=lambda r: r["variety"].startswith("Vir") and r["sepal.length"] > 6.0
         )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
         assert not plan_has_operator(
@@ -791,9 +791,10 @@ class TestPyArrowComputeUDFPushdown:
         ds = parquet_ds.filter(expr=col("variety").str.contains("set")).filter(
             expr=col("sepal.length") > 5.0
         )
-        result = ds.take_all()
-        assert len(result) > 0
-        assert all("set" in r["variety"] and r["sepal.length"] > 5.0 for r in result)
+        expected = parquet_ds.filter(
+            fn=lambda r: "set" in r["variety"] and r["sepal.length"] > 5.0
+        )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
         assert not plan_has_operator(
