@@ -137,11 +137,28 @@ class RebundleQueue(BaseBundleQueue):
         self._strategy = strategy
         self._pending_bundles: Deque[RefBundle] = deque()
         self._ready_bundles: Deque[RefBundle] = deque()
+        self._empty_ready_bundles: Optional[RefBundle] = None
 
         self._curr_consumed_bundles: List[RefBundle] = []
         # The original bundles that formed a ready bundle
         self._consumed_bundles_list: Deque[List[RefBundle]] = deque()
         self._total_pending_rows: int = 0
+
+    def _merge_empty_bundle(self, bundle: "RefBundle"):
+        """Merge an incoming empty bundle into the accumulated empty ready bundle.
+        We have special logic for this because empty bundle can accumulate unbounded,
+        causing large driver usage.
+        """
+        from ray.data._internal.execution.interfaces import RefBundle
+
+        if self._empty_ready_bundles is None:
+            self._empty_ready_bundles = bundle
+        else:
+            self._on_dequeue_bundle(self._empty_ready_bundles)
+            self._empty_ready_bundles = RefBundle.merge_ref_bundles(
+                [self._empty_ready_bundles, bundle]
+            )
+        self._on_enqueue_bundle(self._empty_ready_bundles)
 
     def _merge_bundles(self):
         """Combine *ALL* pending_bundles into a single, ready bundle."""
@@ -214,7 +231,11 @@ class RebundleQueue(BaseBundleQueue):
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):
-        self._total_pending_rows += bundle.num_rows() or 0
+        num_rows = bundle.num_rows() or 0
+        if num_rows == 0:
+            self._merge_empty_bundle(bundle)
+            return
+        self._total_pending_rows += num_rows
         self._pending_bundles.append(bundle)
         self._on_enqueue_bundle(bundle)
         self._curr_consumed_bundles.append(bundle)
@@ -251,6 +272,10 @@ class RebundleQueue(BaseBundleQueue):
 
     @override
     def finalize(self, **kwargs: Any):
+        if self._empty_ready_bundles is not None:
+            self._ready_bundles.append(self._empty_ready_bundles)
+            self._consumed_bundles_list.append([])
+            self._empty_ready_bundles = None
         if len(self._pending_bundles) > 0:
             assert self._try_build_ready_bundle(flush_remaining=True)
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
@@ -261,6 +286,7 @@ class RebundleQueue(BaseBundleQueue):
         self._reset_metrics()
         self._pending_bundles.clear()
         self._ready_bundles.clear()
+        self._empty_ready_bundles = None
         self._curr_consumed_bundles.clear()
         self._consumed_bundles_list.clear()
         self._total_pending_rows = 0
