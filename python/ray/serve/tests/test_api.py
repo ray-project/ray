@@ -28,22 +28,10 @@ from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
 from ray.serve._private.test_utils import get_application_url
-from ray.serve.config import (
-    DeploymentActorConfig,
-    GangSchedulingConfig,
-    RequestRouterConfig,
-)
+from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
-
-
-@ray.remote
-class _CounterActor:
-    """Dummy actor class for deployment_actors integration tests."""
-
-    def __init__(self, start: int = 0):
-        self.count = start
 
 
 @pytest.fixture
@@ -1166,50 +1154,6 @@ def test_get_app_handle_dne(serve_instance):
         serve.get_app_handle("random")
 
     assert "Application 'random' does not exist" in str(e.value)
-
-
-def test_get_deployment_actor_outside_replica():
-    """Test that get_deployment_actor raises when not called from within a replica."""
-
-    with pytest.raises(RayServeException) as e:
-        serve.get_deployment_actor("some_actor")
-
-    assert "may only be called from within" in str(e.value)
-
-
-@pytest.mark.parametrize(
-    "actors_config",
-    [
-        [
-            {
-                "name": "shared_counter",
-                "actor_class": "ray.serve.tests.test_api:_CounterActor",
-                "init_kwargs": {"start": 0},
-            },
-        ],
-        [
-            DeploymentActorConfig(
-                name="shared_counter",
-                actor_class="ray.serve.tests.test_api:_CounterActor",
-                init_kwargs={"start": 0},
-            ),
-        ],
-    ],
-    ids=["dict", "DeploymentActorConfig"],
-)
-def test_deployment_with_deployment_actors_config(serve_instance, actors_config):
-    """Test that a deployment configured with deployment_actors comes up and serves."""
-
-    @serve.deployment(deployment_actors=actors_config)
-    class MyDeployment:
-        def __call__(self):
-            return "ok"
-
-    serve.run(MyDeployment.bind())
-    url = f"{get_application_url()}/"
-    resp = httpx.get(url)
-    assert resp.status_code == 200
-    assert resp.text == "ok"
 
 
 def test_get_app_handle_within_deployment_async(serve_instance):
