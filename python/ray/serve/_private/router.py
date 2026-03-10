@@ -1228,7 +1228,12 @@ class CurrentLoopRouter(Router):
             "event_loop" not in passthrough_kwargs
         ), "CurrentLoopRouter uses the current event loop."
 
-        self._asyncio_loop = asyncio.get_running_loop()
+        # Support two-phase replica init where the event loop is set on the
+        # thread (via set_event_loop) but not yet running (run_forever).
+        try:
+            self._asyncio_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._asyncio_loop = asyncio.get_event_loop()
         self._asyncio_router = AsyncioRouter(
             event_loop=self._asyncio_loop,
             _request_router_initialized_event=asyncio.Event(),
