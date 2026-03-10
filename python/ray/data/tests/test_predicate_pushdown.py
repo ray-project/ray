@@ -2,9 +2,11 @@ import re
 from typing import Any, List
 
 import pandas as pd
-import pyarrow
+import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
+from packaging.version import parse as version_parse
 
 import ray
 from ray.data import Dataset
@@ -760,7 +762,7 @@ class TestPyArrowComputeUDFPushdown:
         ],
     )
     @pytest.mark.skipif(
-        pyarrow.__version__ < "15",
+        version_parse(pa.__version__) < version_parse("15.0.0"),
         reason="Requires PyArrow >= 15 for string compute UDF pushdown",
     )
     def test_string_udf_pushdown_into_parquet(
@@ -805,6 +807,62 @@ class TestPyArrowComputeUDFPushdown:
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "Chained UDF filters should fuse and push into Read"
+
+    @pytest.mark.parametrize(
+        "table,build_filter,equivalent_fn",
+        [
+            pytest.param(
+                pa.table(
+                    {
+                        "tags": [[1, 2, 3], [4, 5], [6], [7, 8, 9, 10]],
+                        "value": [10, 20, 30, 40],
+                    }
+                ),
+                lambda: col("tags").list.len() > 2,
+                lambda r: len(r["tags"]) > 2,
+                id="list_len",
+            ),
+            pytest.param(
+                pa.table(
+                    {
+                        "info": pa.array(
+                            [
+                                {"name": "Alice", "age": 30},
+                                {"name": "Bob", "age": 25},
+                                {"name": "Carol", "age": 35},
+                                {"name": "Dave", "age": 20},
+                            ],
+                            type=pa.struct(
+                                [
+                                    pa.field("name", pa.string()),
+                                    pa.field("age", pa.int64()),
+                                ]
+                            ),
+                        ),
+                        "id": [1, 2, 3, 4],
+                    }
+                ),
+                lambda: col("info").struct.field("age") > 25,
+                lambda r: r["info"]["age"] > 25,
+                id="struct_field",
+            ),
+        ],
+    )
+    def test_complex_type_udf_pushdown(
+        self, ray_start_regular_shared, tmp_path, table, build_filter, equivalent_fn
+    ):
+        """List/struct UDF predicates should be pushed into the Parquet reader."""
+        path = str(tmp_path / "data.parquet")
+        pq.write_table(table, path)
+
+        ds = ray.data.read_parquet(path).filter(expr=build_filter())
+        expected = ray.data.read_parquet(path).filter(fn=equivalent_fn)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Complex-type UDF filter should be pushed into Read"
 
 
 class TestPushIntoBranchesBehavior:
