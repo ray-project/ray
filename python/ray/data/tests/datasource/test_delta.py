@@ -212,8 +212,7 @@ def test_read_delta_column_projection(ray_start_regular_shared, temp_delta_path)
 
 
 # =============================================================================
-# Time Travel Tests (PR 5)
-# =============================================================================
+# Time Travel Tests # =============================================================================
 
 
 def test_read_delta_time_travel_version(ray_start_regular_shared, temp_delta_path):
@@ -240,8 +239,7 @@ def test_write_delta_invalid_mode(ray_start_regular_shared, temp_delta_path):
 
 
 # =============================================================================
-# Upsert Mode Tests (PR 6)
-# =============================================================================
+# Upsert Mode Tests # =============================================================================
 
 
 def test_write_delta_upsert_basic(ray_start_regular_shared, temp_delta_path):
@@ -315,8 +313,7 @@ def test_write_delta_upsert_kwargs_validation(
 
 
 # =============================================================================
-# Schema Evolution Tests (PR 4)
-# =============================================================================
+# Schema Evolution Tests # =============================================================================
 
 
 def test_write_delta_invalid_schema_mode(ray_start_regular_shared, temp_delta_path):
