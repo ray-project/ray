@@ -2954,7 +2954,6 @@ class UserCallableWrapper:
         self._user_code_threadpool: Optional[
             concurrent.futures.ThreadPoolExecutor
         ] = None
-        
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
