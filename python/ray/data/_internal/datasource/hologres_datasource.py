@@ -177,7 +177,9 @@ class HologresDatasource(Datasource):
             select_clause, sql.Identifier(self._schema), sql.Identifier(self._table)
         )
         if self._where_filter:
-            query = sql.SQL("{0} WHERE {1}").format(query, sql.SQL(self._where_filter))
+            query = sql.SQL("{0} WHERE ({1})").format(
+                query, sql.SQL(self._where_filter)
+            )
         return query
 
     def _build_read_sql(

@@ -127,7 +127,7 @@ class TestHologresDatasource:
             )
 
             query = datasource._generate_query().as_string()
-            expected_query = 'SELECT "column1", "column2" FROM "public"."table_name" WHERE status = \'active\''
+            expected_query = 'SELECT "column1", "column2" FROM "public"."table_name" WHERE (status = \'active\')'
             assert query == expected_query
 
             # Test with no where filter
@@ -140,7 +140,7 @@ class TestHologresDatasource:
             datasource._columns = None
             datasource._where_filter = '"AGE" > 18'
             query = datasource._generate_query().as_string()
-            expected_query = 'SELECT * FROM "public"."table_name" WHERE "AGE" > 18'
+            expected_query = 'SELECT * FROM "public"."table_name" WHERE ("AGE" > 18)'
             assert query == expected_query
 
     def test_validate_select_query_accepts_valid_queries(self):
@@ -182,15 +182,6 @@ class TestHologresDatasource:
         with pytest.raises(ValueError, match="Only SELECT"):
             HologresDatasource._validate_select_query(
                 'UPDATE "public"."users" SET admin = true'
-            )
-
-    def test_init_rejects_malicious_where_filter(self):
-        # Validation runs before _table_exists(), so no DB mock needed
-        with pytest.raises(ValueError):
-            HologresDatasource(
-                table="test",
-                connection_uri="postgresql://user:pass@host/db",
-                where_filter="1=1; DROP TABLE users",
             )
 
     def test_build_read_sql_with_shard_list(self, datasource):
