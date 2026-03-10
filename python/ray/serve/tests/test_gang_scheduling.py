@@ -11,7 +11,11 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.test_utils import check_apps_running
+from ray.serve._private.test_utils import (
+    check_apps_running,
+    check_num_replicas_eq,
+    check_num_replicas_gte,
+)
 from ray.serve._private.utils import get_all_live_placement_group_names
 from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
 from ray.tests.conftest import *  # noqa
@@ -1537,6 +1541,235 @@ class TestGangScaling:
         assert smaller.issubset(larger)
 
         serve.delete("app")
+        serve.shutdown()
+
+
+class TestGangAutoscaling:
+    def test_gang_autoscaling(self, ray_cluster):
+        """Verifies that autoscaling with gang scheduling scales in complete gangs."""
+        GANG_SIZE = 2
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            num_replicas="auto",
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+            autoscaling_config={
+                "min_replicas": 2,
+                "max_replicas": 8,
+                # Lower delays/windows so the test observes scaling within seconds
+                "upscale_delay_s": 0.1,
+                "downscale_delay_s": 0.1,
+                "look_back_period_s": 0.1,
+                "target_ongoing_requests": 1,
+            },
+            max_ongoing_requests=20,
+        )
+        class GangAutoscale:
+            async def __call__(self):
+                await signal.wait.remote()
+                return os.getpid()
+
+        handle = serve.run(GangAutoscale.bind(), name="gang_autoscale_app")
+        wait_for_condition(check_apps_running, apps=["gang_autoscale_app"])
+
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscale",
+            target=2,
+            app_name="gang_autoscale_app",
+        )
+
+        # Send enough requests to trigger upscaling
+        results = [handle.remote() for _ in range(20)]
+
+        # Wait for scale-up to 8 replicas (4 complete gangs).
+        wait_for_condition(
+            check_num_replicas_gte,
+            name="GangAutoscale",
+            target=8,
+            app_name="gang_autoscale_app",
+            timeout=60,
+        )
+
+        # Replica count should always be a multiple of gang_size
+        deployment = (
+            serve.status()
+            .applications["gang_autoscale_app"]
+            .deployments["GangAutoscale"]
+        )
+        running = deployment.replica_states.get("RUNNING")
+        assert running % GANG_SIZE == 0
+
+        # Release all requests to allow traffic to drain
+        signal.send.remote()
+        for res in results:
+            res.result()
+
+        # As the queue is drained, we should scale back down
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="GangAutoscale",
+            target=2,
+            app_name="gang_autoscale_app",
+            timeout=60,
+        )
+
+        deployment = (
+            serve.status()
+            .applications["gang_autoscale_app"]
+            .deployments["GangAutoscale"]
+        )
+        running = deployment.replica_states.get("RUNNING")
+        assert running % GANG_SIZE == 0
+
+        serve.delete("gang_autoscale_app")
+        serve.shutdown()
+
+    def test_gang_autoscaling_unaligned_upscale(self, ray_cluster):
+        GANG_SIZE = 3
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            num_replicas="auto",
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+            autoscaling_config={
+                "min_replicas": 3,
+                "max_replicas": 9,
+                "metrics_interval_s": 0.5,
+                "upscale_delay_s": 0.1,
+                "downscale_delay_s": 0.1,
+                "look_back_period_s": 1,
+                "target_ongoing_requests": 2,
+            },
+            max_ongoing_requests=50,
+        )
+        class UnalignedUpscale:
+            async def __call__(self):
+                await signal.wait.remote()
+                return os.getpid()
+
+        handle = serve.run(UnalignedUpscale.bind(), name="unaligned_upscale_app")
+        wait_for_condition(check_apps_running, apps=["unaligned_upscale_app"])
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="UnalignedUpscale",
+            target=3,
+            app_name="unaligned_upscale_app",
+        )
+
+        # Send 9 blocking requests. With target_ongoing_requests=2:
+        # desired = ceil(9/2) = 5 (unaligned).
+        # Gang policy rounds up: ceil(5/3)*3 = 6.
+        results = [handle.remote() for _ in range(9)]
+
+        def upscaled_and_aligned():
+            deployment = (
+                serve.status()
+                .applications["unaligned_upscale_app"]
+                .deployments["UnalignedUpscale"]
+            )
+            running = deployment.replica_states.get("RUNNING", 0)
+            assert running == 6
+            return True
+
+        wait_for_condition(upscaled_and_aligned, timeout=60)
+
+        # Release all requests so the queue drains.
+        signal.send.remote()
+        for res in results:
+            res.result()
+
+        # The autoscaler should scale back down to min_replicas=3.
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="UnalignedUpscale",
+            target=3,
+            app_name="unaligned_upscale_app",
+            timeout=60,
+        )
+
+        serve.delete("unaligned_upscale_app")
+        serve.shutdown()
+
+    def test_gang_autoscaling_unaligned_downscale(self, ray_cluster):
+        GANG_SIZE = 3
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            num_replicas="auto",
+            ray_actor_options={"num_cpus": 0.1},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=GANG_SIZE),
+            autoscaling_config={
+                "min_replicas": 6,
+                "max_replicas": 9,
+                "initial_replicas": 9,
+                "metrics_interval_s": 0.5,
+                "upscale_delay_s": 5,
+                "downscale_delay_s": 3,
+                "look_back_period_s": 1,
+                "target_ongoing_requests": 2,
+            },
+            max_ongoing_requests=50,
+        )
+        class UnalignedDownscale:
+            async def __call__(self):
+                await signal.wait.remote()
+                return os.getpid()
+
+        handle = serve.run(UnalignedDownscale.bind(), name="unaligned_downscale_app")
+        wait_for_condition(check_apps_running, apps=["unaligned_downscale_app"])
+        wait_for_condition(
+            check_num_replicas_eq,
+            name="UnalignedDownscale",
+            target=9,
+            app_name="unaligned_downscale_app",
+            timeout=60,
+        )
+
+        # Send 13 blocking requests. With target_ongoing_requests=2:
+        # desired = ceil(13/2) = 7 (unaligned).
+        # Gang policy rounds down: 7 // 3 * 3 = 6.
+        results = [handle.remote() for _ in range(13)]
+
+        # Wait for downscale from 9 to 6.
+        def downscaled_and_aligned():
+            deployment = (
+                serve.status()
+                .applications["unaligned_downscale_app"]
+                .deployments["UnalignedDownscale"]
+            )
+            running = deployment.replica_states.get("RUNNING", 0)
+            assert running == 6
+            return True
+
+        wait_for_condition(downscaled_and_aligned, timeout=30)
+
+        # Release all requests so the queue drains.
+        signal.send.remote()
+        for res in results:
+            res.result()
+
+        serve.delete("unaligned_downscale_app")
         serve.shutdown()
 
 
