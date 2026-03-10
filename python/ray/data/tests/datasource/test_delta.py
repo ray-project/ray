@@ -117,6 +117,43 @@ def test_write_delta_various_types(ray_start_regular_shared, temp_delta_path):
     assert ray.data.read_delta(temp_delta_path).count() == 2
 
 
+def test_write_delta_timestamp_data(ray_start_regular_shared, temp_delta_path):
+    import datetime
+
+    data = [
+        {"id": 1, "ts": datetime.datetime(2024, 1, 15, 10, 30, 0)},
+        {"id": 2, "ts": datetime.datetime(2024, 2, 20, 14, 45, 0)},
+    ]
+    ray.data.from_items(data).write_delta(temp_delta_path)
+    assert ray.data.read_delta(temp_delta_path).count() == 2
+
+
+def test_write_delta_decimal_data(ray_start_regular_shared, temp_delta_path):
+    from decimal import Decimal
+
+    schema = pa.schema([("id", pa.int64()), ("amount", pa.decimal128(10, 2))])
+    tbl = pa.table(
+        {"id": [1, 2], "amount": [Decimal("123.45"), Decimal("678.90")]}, schema=schema
+    )
+    ray.data.from_arrow(tbl).write_delta(temp_delta_path)
+    assert ray.data.read_delta(temp_delta_path).count() == 2
+
+
+def test_write_delta_string_data(ray_start_regular_shared, temp_delta_path):
+    data = [
+        {"id": 1, "text": "hello world"},
+        {"id": 2, "text": "special chars: @#$%^&*()"},
+        {"id": 3, "text": "unicode: café"},
+    ]
+    ray.data.from_items(data).write_delta(temp_delta_path)
+    rows = ray.data.read_delta(temp_delta_path).take_all()
+    assert len(rows) == 3
+    texts = {r["text"] for r in rows}
+    assert "hello world" in texts
+    assert "special chars: @#$%^&*()" in texts
+    assert "unicode: café" in texts
+
+
 # =============================================================================
 # Read Tests
 # =============================================================================
@@ -144,6 +181,41 @@ def test_write_delta_large_dataset(ray_start_regular_shared, temp_delta_path):
 def test_write_delta_multiple_blocks(ray_start_regular_shared, temp_delta_path):
     ray.data.range(100, override_num_blocks=10).write_delta(temp_delta_path)
     assert ray.data.read_delta(temp_delta_path).count() == 100
+
+
+def test_write_delta_compression(ray_start_regular_shared, temp_delta_path):
+    ray.data.range(10).write_delta(temp_delta_path, compression="zstd")
+    assert ray.data.read_delta(temp_delta_path).count() == 10
+
+
+def test_read_delta_empty_table(ray_start_regular_shared, temp_delta_path):
+    """Reading an empty Delta table should return a dataset with correct schema."""
+    schema = pa.schema([("name", pa.string()), ("age", pa.int64())])
+    empty = pa.table({"name": [], "age": []}, schema=schema)
+    ray.data.from_arrow(empty).write_delta(temp_delta_path, schema=schema)
+
+    ds = ray.data.read_delta(temp_delta_path)
+    assert ds.count() == 0
+
+
+def test_write_delta_empty_without_schema_infers_from_data(
+    ray_start_regular_shared, tmp_path
+):
+    """Writing empty dataset without schema= succeeds via schema inference from data."""
+    path = os.path.join(str(tmp_path), "no_schema_table")
+    schema = pa.schema([("id", pa.int64())])
+    empty = pa.table({"id": []}, schema=schema)
+    # No schema= provided, but schema is inferred from the Arrow table metadata.
+    # PyArrow tables always carry schema even with 0 rows.
+    ray.data.from_arrow(empty).write_delta(path)
+    assert _delta_log_exists(path)
+
+
+def test_read_delta_nonexistent_table(ray_start_regular_shared, tmp_path):
+    """Reading a non-existent table should raise an error."""
+    path = os.path.join(str(tmp_path), "nonexistent")
+    with pytest.raises(Exception):
+        ray.data.read_delta(path).take_all()
 
 
 if __name__ == "__main__":

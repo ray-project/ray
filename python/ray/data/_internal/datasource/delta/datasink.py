@@ -92,7 +92,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     """Datasink for writing to Delta Lake tables.
 
     Uses two-phase commit: write Parquet files, then commit to transaction log.
-    PR 2: Supports APPEND, OVERWRITE, ERROR, and IGNORE modes.
+    Supports APPEND, OVERWRITE, ERROR, and IGNORE modes.
 
     Delta Lake: https://delta.io/
     deltalake Python library: https://delta-io.github.io/delta-rs/python/
@@ -177,7 +177,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             valid_modes = {SaveMode.APPEND, SaveMode.OVERWRITE, SaveMode.ERROR, SaveMode.IGNORE}
             if mode not in valid_modes:
                 raise ValueError(
-                    f"PR 2: Mode {mode} not supported. Supported: APPEND, OVERWRITE, ERROR, IGNORE"
+                    f"Mode {mode} not supported. Supported: APPEND, OVERWRITE, ERROR, IGNORE"
                 )
             return mode
         if isinstance(mode, str):
@@ -190,8 +190,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             }
             if m not in mp:
                 raise ValueError(
-                    f"PR 2: Invalid mode '{mode}'. Supported: {list(mp.keys())}. "
-                    "UPSERT will be added in PR 6."
+                    f"Invalid mode '{mode}'. Supported: {list(mp.keys())}. "
+                    "UPSERT is not supported."
                 )
             return mp[m]
         raise ValueError(f"Invalid mode type: {type(mode).__name__}")
@@ -210,7 +210,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
                 f"Delta table already exists at {self.table_uri}. Use APPEND or OVERWRITE."
             )
 
-        # PR 2: Basic schema validation (no schema evolution)
+        # Basic schema validation (no schema evolution)
         if existing and self.schema is not None:
             existing_schema = to_pyarrow_schema(existing.schema())
             validate_schema_type_compatibility(existing_schema, self.schema)
@@ -290,7 +290,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         write_kwargs_for_commit = dict(self.write_kwargs)
         write_kwargs_for_commit["commit_properties"] = commit_props
 
-        # PR 2: Basic schema reconciliation - use first schema
+        # Basic schema reconciliation - use first schema
         if schemas:
             if self.schema is None:
                 self.schema = schemas[0]
@@ -308,7 +308,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         )
 
         try:
-            # PR 2: Only append, overwrite, ignore, error modes
+            # Only append, overwrite, ignore, error modes
             if self._table_existed_at_start:
                 commit_to_existing_table(
                     inputs, existing, actions, self.schema, self._driver_fs()
@@ -435,7 +435,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             self._cleanup_files_driver(written_files)
             return None
 
-        # PR 2: Handle race conditions for supported modes
+        # Handle race conditions for supported modes
         if self._table_existed_at_start and existing is None:
             if self.mode == SaveMode.OVERWRITE:
                 # For OVERWRITE, table deletion is expected - create new table
@@ -449,7 +449,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             )
 
         if not self._table_existed_at_start and existing is not None:
-            # PR 2: No partition validation needed (no partitioning support)
+            # No partition validation needed (no partitioning support)
             self._table_existed_at_start = True
             return existing
 
@@ -457,7 +457,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
     def _handle_empty(self, existing, write_uuid: Optional[str]):
         """Handle empty writes (no files written)."""
-        # PR 2: For OVERWRITE mode with empty writes, delete all data
+        # For OVERWRITE mode with empty writes, delete all data
         if (
             self._table_existed_at_start
             and existing
@@ -477,7 +477,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             )
             return
 
-        # PR 2: For other modes, empty writes are idempotent
+        # For other modes, empty writes are idempotent
         return
 
     def _cleanup_files_driver(self, file_paths: List[str]) -> None:
