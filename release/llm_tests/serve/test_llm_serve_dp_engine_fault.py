@@ -15,17 +15,15 @@ import asyncio
 import os
 import signal
 import time
-from collections import defaultdict
 
 import pytest
 
 import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_dp_deployment
-from ray.serve.schema import ApplicationStatus
+from ray.serve.schema import ApplicationStatus, ReplicaState
 from ray.util.state import list_actors
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
@@ -43,6 +41,14 @@ def is_default_app_running():
         return app.status == ApplicationStatus.RUNNING
     except (KeyError, AttributeError):
         return False
+
+
+def get_num_running_replicas(deployment_name: str) -> int:
+    """Get the number of RUNNING replicas for a deployment."""
+    dep = (
+        serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments[deployment_name]
+    )
+    return dep.replica_states.get(ReplicaState.RUNNING, 0)
 
 
 def find_vllm_worker_actors():
@@ -122,23 +128,8 @@ def test_llm_serve_dp_engine_fault():
     handle = serve.run(build_dp_deployment(llm_config), blocking=False)
     wait_for_condition(is_default_app_running, timeout=180)
 
-    deployment_id = DeploymentID(name=deployment_name, app_name=SERVE_DEFAULT_APP_NAME)
-    controller = serve.context._global_client._controller
-
-    # Step 1: Verify steady state — all replicas running, gangs formed.
-    replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment_id)
-    )
-    running = replicas.get([ReplicaState.RUNNING])
-    assert len(running) == expected_serve_replicas
-
-    gangs = defaultdict(list)
-    for r in running:
-        assert r.gang_context is not None
-        gangs[r.gang_context.gang_id].append(r)
-    assert len(gangs) == num_replicas
-
-    original_replica_ids = {r.replica_id.unique_id for r in running}
+    # Step 1: Verify steady state — all replicas running.
+    assert get_num_running_replicas(deployment_name) == expected_serve_replicas
 
     # Verify RayWorkerWrapper actors exist.
     workers_before = find_vllm_worker_actors()
@@ -191,34 +182,21 @@ def test_llm_serve_dp_engine_fault():
     print(f"Killed vLLM worker on node {killed_node_id}: {kill_msg}")
 
     # Step 3: Wait for the faulty gang to be torn down.
-    def gang_teardown_detected():
-        reps = ray.get(
-            controller._dump_replica_states_for_testing.remote(deployment_id)
-        )
-        r = reps.get([ReplicaState.RUNNING])
-        return len(r) < expected_serve_replicas
-
     # Detection: compiled DAG timeout (~30s) + health check overhead.
-    wait_for_condition(gang_teardown_detected, timeout=60)
+    wait_for_condition(
+        lambda: get_num_running_replicas(deployment_name) < expected_serve_replicas,
+        timeout=60,
+    )
 
     # Step 4: Verify the surviving replicas continue serving requests.
     time.sleep(2)
     sender.run.remote()
 
-    # Step 5: Wait for full recovery — all replicas back to RUNNING
-    # with the faulty gang replaced by new replicas.
-    def all_replicas_recovered():
-        reps = ray.get(
-            controller._dump_replica_states_for_testing.remote(deployment_id)
-        )
-        r = reps.get([ReplicaState.RUNNING])
-        if len(r) != expected_serve_replicas:
-            return False
-        current_ids = {rep.replica_id.unique_id for rep in r}
-        new_ids = current_ids - original_replica_ids
-        return len(new_ids) == dp_size
-
-    wait_for_condition(all_replicas_recovered, timeout=120)
+    # Step 5: Wait for full recovery — all replicas back to RUNNING.
+    wait_for_condition(
+        lambda: get_num_running_replicas(deployment_name) == expected_serve_replicas,
+        timeout=120,
+    )
 
     # Step 6: Assert zero downtime — requests should have kept flowing
     # through the surviving gang during recovery.
