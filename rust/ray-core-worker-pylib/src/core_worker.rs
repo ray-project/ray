@@ -437,7 +437,9 @@ impl PyCoreWorker {
             tokio::spawn(async move {
                 tonic::transport::Server::builder()
                     .add_service(
-                        grpc_rpc::core_worker_service_server::CoreWorkerServiceServer::new(svc),
+                        grpc_rpc::core_worker_service_server::CoreWorkerServiceServer::new(svc)
+                            .max_decoding_message_size(512 * 1024 * 1024)
+                            .max_encoding_message_size(512 * 1024 * 1024),
                     )
                     .serve_with_incoming(incoming)
                     .await
@@ -505,7 +507,9 @@ impl PyCoreWorker {
                         let mut client =
                             actor_rpc::core_worker_service_client::CoreWorkerServiceClient::new(
                                 channel,
-                            );
+                            )
+                            .max_decoding_message_size(512 * 1024 * 1024)
+                            .max_encoding_message_size(512 * 1024 * 1024);
                         let response = client
                             .push_task(actor_rpc::PushTaskRequest {
                                 intended_worker_id: wid_bytes,
@@ -654,7 +658,9 @@ impl PyCoreWorker {
                     let mut client =
                         dispatch_rpc::core_worker_service_client::CoreWorkerServiceClient::new(
                             channel,
-                        );
+                        )
+                        .max_decoding_message_size(512 * 1024 * 1024)
+                        .max_encoding_message_size(512 * 1024 * 1024);
                     let response = client
                         .push_task(dispatch_rpc::PushTaskRequest {
                             intended_worker_id: wid_bytes,
@@ -754,7 +760,9 @@ impl PyCoreWorker {
                     let mut client =
                         dispatch_rpc::core_worker_service_client::CoreWorkerServiceClient::new(
                             channel,
-                        );
+                        )
+                        .max_decoding_message_size(512 * 1024 * 1024)
+                        .max_encoding_message_size(512 * 1024 * 1024);
                     let response = client
                         .push_task(dispatch_rpc::PushTaskRequest {
                             intended_worker_id: wid_bytes,
