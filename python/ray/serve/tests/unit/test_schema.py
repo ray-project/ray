@@ -1160,7 +1160,9 @@ def test_deployment_actors_deployment_schema_roundtrip():
     assert len(actors) == 1
     assert actors[0].name == "prefix_tree"
     assert actors[0].init_kwargs == {"max_depth": 100}
-    assert actors[0].get_actor_class().__name__ == _SchemaTestDummyActor.__name__
+    resolved = actors[0].get_actor_class()
+    resolved_name = resolved.__ray_actor_class__.__name__
+    assert resolved_name == "_SchemaTestDummyActor"
 
 
 def test_schema_to_deployment_deployment_actors_from_dict():
