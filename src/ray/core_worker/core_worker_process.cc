@@ -831,12 +831,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       new ray::stats::Gauge(GetSizeOfOwnedObjectsByStateGaugeMetric()));
   scheduler_placement_time_percentile_ms_ = GetSchedulerPlacementTimePercentileMsMetric();
   task_total_submitter_preprocessing_time_ms_histogram_ =
-      std::unique_ptr<ray::stats::Histogram>(new ray::stats::Histogram(
-          GetTaskTotalSubmitterPreprocessingTimeMsHistogramMetric()));
-  task_dependency_resolution_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetTaskDependencyResolutionTimeMsHistogramMetric()));
-  task_push_time_ms_histogram_ = std::unique_ptr<ray::stats::Histogram>(
-      new ray::stats::Histogram(GetTaskPushTimeMsHistogramMetric()));
+      GetTaskTotalSubmitterPreprocessingTimeMsPercentileMetric();
+  task_dependency_resolution_time_ms_histogram_ =
+      GetTaskDependencyResolutionTimeMsPercentileMetric();
+  task_push_time_ms_histogram_ = GetTaskPushTimeMsPercentileMetric();
 
   // Initialize event framework before starting up worker.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
