@@ -1,22 +1,19 @@
-"""Test DP deployment fault tolerance when a vLLM engine worker hangs.
+"""Test DP deployment fault tolerance when a vLLM GPU worker process is killed.
 
-Uses a vLLM plugin that monkey-patches the MoE expert-parallel all-to-all
-primitives (AgRsAll2AllManager.dispatch/combine) to simulate a NCCL hang.
-A Ray named actor (``fault_signal``) coordinates which worker hangs:
+Finds a RayWorkerWrapper actor (the GPU worker process spun up by vLLM's
+ray distributed backend) and kills it to simulate a DP replica failure:
 
-    worker hang → compiled DAG timeout → EngineCore fatal error
+    worker killed → compiled DAG error → EngineCore fatal error
     → engine_dead flag set → check_health() raises
     → Serve RESTART_GANG tears down the gang
 
-The test sets RAY_CGRAPH_get_timeout to a short value so the compiled DAG
-detects the hung worker quickly.
+The test verifies that the surviving DP replicas continue serving requests
+and the faulty gang is fully replaced.
 """
 
 import asyncio
-import pathlib
-import subprocess
-import sys
-import tempfile
+import os
+import signal
 import time
 from collections import defaultdict
 
@@ -29,116 +26,13 @@ from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_dp_deployment
 from ray.serve.schema import ApplicationStatus
+from ray.util.state import list_actors
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
-
-PLUGIN_DIR = pathlib.Path(__file__).parent / "plugins" / "vllm_fault"
-
-
-@ray.remote(num_cpus=0)
-class FaultSignal:
-    """Coordinates fault injection across worker processes."""
-
-    def __init__(self):
-        self._armed = False
-        self._target_node_id = None
-        self._claimed = False
-
-    def arm(self, target_node_id: str):
-        """Arm the fault for workers on target_node_id."""
-        self._armed = True
-        self._target_node_id = target_node_id
-        self._claimed = False
-
-    def check_and_claim(self, worker_node_id: str):
-        """Check whether worker_node_id should hang.
-
-        Args:
-            worker_node_id: The node ID of the worker to check.
-
-        Returns:
-            A tuple containing:
-            - should_hang (bool): True for the first caller on the armed node.
-            - stop_checking (bool): True once the caller can skip future checks.
-        """
-        if not self._armed:
-            return False, False
-        if worker_node_id != self._target_node_id:
-            return False, True
-        if self._claimed:
-            return False, True
-        self._claimed = True
-        return True, True
-
-    def disarm(self):
-        """Disarm the fault and reset the claim."""
-        self._armed = False
-        self._target_node_id = None
-        self._claimed = False
-
-
-@pytest.fixture(scope="session", autouse=True)
-def install_fault_plugin():
-    """Install the vLLM fault-injection plugin on every node."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        subprocess.check_call(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "wheel",
-                "--no-deps",
-                "-w",
-                tmpdir,
-                str(PLUGIN_DIR),
-            ],
-        )
-        whl_files = list(pathlib.Path(tmpdir).glob("*.whl"))
-        assert len(whl_files) == 1
-        whl_bytes = whl_files[0].read_bytes()
-        whl_name = whl_files[0].name
-
-    ray.init()
-    whl_ref = ray.put(whl_bytes)
-    node_ids = [n["NodeID"] for n in ray.nodes() if n["Alive"]]
-
-    @ray.remote(num_cpus=0)
-    def install_plugin(whl_data, filename):
-        with tempfile.TemporaryDirectory() as d:
-            whl_path = pathlib.Path(d) / filename
-            whl_path.write_bytes(whl_data)
-            subprocess.check_call(
-                [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    "--force-reinstall",
-                    str(whl_path),
-                ],
-            )
-
-    ray.get(
-        [
-            install_plugin.options(
-                scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                    node_id=node_id, soft=False
-                ),
-            ).remote(whl_ref, whl_name)
-            for node_id in node_ids
-        ]
-    )
-    ray.shutdown()
 
 
 @pytest.fixture(autouse=True)
 def cleanup():
     yield
-    try:
-        signal = ray.get_actor("fault_signal", namespace="fault_test")
-        ray.kill(signal)
-    except (ValueError, Exception):
-        pass
-
     serve.shutdown()
     ray.shutdown()
 
@@ -151,13 +45,46 @@ def is_default_app_running():
         return False
 
 
-def test_llm_serve_dp_engine_fault():
-    """DP deployment recovers from an engine-level A2A communication hang.
+def find_vllm_worker_actors():
+    """Find all alive RayWorkerWrapper actors created by vLLM's ray distributed executor backend."""
+    actors = list_actors(
+        filters=[
+            ("class_name", "=", "RayWorkerWrapper"),
+            ("state", "=", "ALIVE"),
+        ]
+    )
+    return actors
 
-    The plugin hangs one worker's all-to-all op. The compiled DAG times
-    out (RAY_CGRAPH_get_timeout), causing EngineCore to die and Serve to
-    tear down and replace the faulty gang.
+
+def kill_one_vllm_worker():
+    """Kill one RayWorkerWrapper actor by sending SIGKILL to its process.
+
+    Returns the node_id of the killed worker so we can verify which gang gets torn down.
     """
+    actors = find_vllm_worker_actors()
+    assert len(actors) > 0, "No alive RayWorkerWrapper actors found"
+
+    target = actors[0]
+    target_pid = target.pid
+    target_node_id = target.node_id
+
+    @ray.remote(num_cpus=0)
+    def kill_pid(pid):
+        os.kill(pid, signal.SIGKILL)
+        return f"Killed pid {pid}"
+
+    result = ray.get(
+        kill_pid.options(
+            scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=target_node_id, soft=False
+            ),
+        ).remote(target_pid)
+    )
+    return target_node_id, result
+
+
+def test_llm_serve_dp_engine_fault():
+    """DP deployment recovers when a vLLM GPU worker process is killed."""
     deployment_name = "DPServer:microsoft--Phi-tiny-MoE-instruct"
     dp_size = 2
     num_replicas = 2
@@ -186,7 +113,7 @@ def test_llm_serve_dp_engine_fault():
         runtime_env={
             "env_vars": {
                 "VLLM_DISABLE_COMPILE_CACHE": "1",
-                # Shorter compiled graph timeout so the hang is detected earlier.
+                # Shorter compiled graph timeout so the dead worker is detected quickly.
                 "RAY_CGRAPH_get_timeout": "30",
             },
         },
@@ -198,7 +125,7 @@ def test_llm_serve_dp_engine_fault():
     deployment_id = DeploymentID(name=deployment_name, app_name=SERVE_DEFAULT_APP_NAME)
     controller = serve.context._global_client._controller
 
-    # Phase 1: Verify steady state
+    # Step 1: Verify steady state — all replicas running, gangs formed.
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_id)
     )
@@ -213,15 +140,11 @@ def test_llm_serve_dp_engine_fault():
 
     original_replica_ids = {r.replica_id.unique_id for r in running}
 
-    # Phase 2: Arm the fault only on one gang's node
-    target_gang_id = next(iter(gangs))
-    target_node_id = gangs[target_gang_id][0].actor_node_id
+    # Verify RayWorkerWrapper actors exist.
+    workers_before = find_vllm_worker_actors()
+    assert len(workers_before) > 0
 
-    signal = FaultSignal.options(name="fault_signal", namespace="fault_test").remote()
-    ray.get(signal.arm.remote(target_node_id))
-
-    # Send requests until one routes to the armed gang.
-    # MoE dispatch/combine hits the patched function and hangs the worker.
+    # Step 2: Start continuous request sending, then kill a GPU worker.
     @ray.remote
     class RequestSender:
         def __init__(self, h):
@@ -257,11 +180,17 @@ def test_llm_serve_dp_engine_fault():
             return self.total, self.errors
 
     sender = RequestSender.remote(handle)
+
+    # Send a few warm-up requests to confirm the deployment works.
     for _ in range(5):
         sender.send.remote(ignore_errors=True)
         time.sleep(0.5)
 
-    # Phase 3: Wait for the faulty gang to be torn down
+    # Kill one RayWorkerWrapper GPU worker process.
+    killed_node_id, kill_msg = kill_one_vllm_worker()
+    print(f"Killed vLLM worker on node {killed_node_id}: {kill_msg}")
+
+    # Step 3: Wait for the faulty gang to be torn down.
     def gang_teardown_detected():
         reps = ray.get(
             controller._dump_replica_states_for_testing.remote(deployment_id)
@@ -269,18 +198,15 @@ def test_llm_serve_dp_engine_fault():
         r = reps.get([ReplicaState.RUNNING])
         return len(r) < expected_serve_replicas
 
-    # Detection takes ~30s (compiled graph timeout) + health check overhead.
+    # Detection: compiled DAG timeout (~30s) + health check overhead.
     wait_for_condition(gang_teardown_detected, timeout=60)
 
-    # Disarm so replacement replicas start healthy.
-    ray.get(signal.disarm.remote())
-
-    # Phase 4: Verify the surviving gang serves with zero errors
-    # Brief pause so the router finishes draining the dying replicas.
+    # Step 4: Verify the surviving replicas continue serving requests.
     time.sleep(2)
     sender.run.remote()
 
-    # Phase 5: Wait for full recovery
+    # Step 5: Wait for full recovery — all replicas back to RUNNING
+    # with the faulty gang replaced by new replicas.
     def all_replicas_recovered():
         reps = ray.get(
             controller._dump_replica_states_for_testing.remote(deployment_id)
@@ -294,7 +220,8 @@ def test_llm_serve_dp_engine_fault():
 
     wait_for_condition(all_replicas_recovered, timeout=120)
 
-    # Phase 6: Assert zero downtime
+    # Step 6: Assert zero downtime — requests should have kept flowing
+    # through the surviving gang during recovery.
     ray.get(sender.stop.remote())
     total, errors = ray.get(sender.get_results.remote())
     assert total > 0, "Expected at least one successful request"

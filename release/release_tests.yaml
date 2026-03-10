@@ -4008,7 +4008,6 @@
   run:
     timeout: 3600
     script: >
-      pip install -e plugins/vllm_fault &&
       pytest -sv test_llm_serve_dp_engine_fault.py
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
