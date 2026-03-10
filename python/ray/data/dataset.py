@@ -4350,6 +4350,7 @@ class Dataset:
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
+        schema_mode: str = "merge",
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         **write_kwargs,
@@ -4539,11 +4540,10 @@ class Dataset:
             )
         write_kwargs["partition_overwrite_mode"] = partition_overwrite_mode
 
-        # File buffering not yet supported (PR 8)
+        # File buffering not yet supported
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "target_file_size_bytes not supported yet. "
-                "File buffering will be added in PR 8."
+                "target_file_size_bytes is not supported."
             )
 
         datasink = DeltaDatasink(

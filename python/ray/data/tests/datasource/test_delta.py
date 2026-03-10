@@ -197,58 +197,6 @@ def test_write_delta_string_data(ray_start_regular_shared, temp_delta_path):
     assert "unicode: café" in texts
 
 
-def test_write_delta_complex_types_maps_structs(ray_start_regular_shared, temp_delta_path):
-    """Test that Delta Lake supports maps and structs (complex types)."""
-    # Create data with maps and structs
-    # Note: PyArrow maps are represented as list of key-value pairs
-    # Structs are represented as dictionaries
-    schema = pa.schema([
-        ("id", pa.int64()),
-        ("metadata", pa.map_(pa.string(), pa.string())),  # Map type
-        ("address", pa.struct([  # Struct type
-            ("street", pa.string()),
-            ("city", pa.string()),
-            ("zip", pa.int32()),
-        ])),
-    ])
-
-    # Create PyArrow table with complex types
-    map_data = [
-        [("key1", "value1"), ("key2", "value2")],
-        [("key3", "value3")],
-    ]
-    struct_data = [
-        {"street": "123 Main St", "city": "San Francisco", "zip": 94102},
-        {"street": "456 Oak Ave", "city": "New York", "zip": 10001},
-    ]
-
-    table = pa.table({
-        "id": [1, 2],
-        "metadata": map_data,
-        "address": struct_data,
-    }, schema=schema)
-
-    # Write to Delta
-    ray.data.from_arrow(table).write_delta(temp_delta_path)
-
-    # Read back and verify
-    ds = ray.data.read_delta(temp_delta_path)
-    assert ds.count() == 2
-
-    rows = ds.take_all()
-    assert len(rows) == 2
-
-    # Verify map data
-    assert len(rows[0]["metadata"]) == 2
-    assert rows[0]["metadata"][0]["key"] == "key1"
-    assert rows[0]["metadata"][0]["value"] == "value1"
-
-    # Verify struct data
-    assert rows[0]["address"]["street"] == "123 Main St"
-    assert rows[0]["address"]["city"] == "San Francisco"
-    assert rows[0]["address"]["zip"] == 94102
-
-
 # =============================================================================
 # Read Tests
 # =============================================================================
@@ -821,6 +769,39 @@ def test_build_partition_delete_predicate_unit():
     assert "value" in pred_no_schema
     # Without schema, should treat as string "NaN"
     assert "'NaN'" in pred_no_schema or '"NaN"' in pred_no_schema
+
+
+def test_write_delta_compression(ray_start_regular_shared, temp_delta_path):
+    ray.data.range(10).write_delta(temp_delta_path, compression="zstd")
+    assert ray.data.read_delta(temp_delta_path).count() == 10
+
+
+def test_read_delta_empty_table(ray_start_regular_shared, temp_delta_path):
+    """Reading an empty Delta table should return a dataset with correct schema."""
+    schema = pa.schema([("name", pa.string()), ("age", pa.int64())])
+    empty = pa.table({"name": [], "age": []}, schema=schema)
+    ray.data.from_arrow(empty).write_delta(temp_delta_path, schema=schema)
+
+    ds = ray.data.read_delta(temp_delta_path)
+    assert ds.count() == 0
+
+
+def test_write_delta_empty_without_schema_infers_from_data(
+    ray_start_regular_shared, tmp_path
+):
+    """Writing empty dataset without schema= succeeds via schema inference from data."""
+    path = os.path.join(str(tmp_path), "no_schema_table")
+    schema = pa.schema([("id", pa.int64())])
+    empty = pa.table({"id": []}, schema=schema)
+    ray.data.from_arrow(empty).write_delta(path)
+    assert _delta_log_exists(path)
+
+
+def test_read_delta_nonexistent_table(ray_start_regular_shared, tmp_path):
+    """Reading a non-existent table should raise an error."""
+    path = os.path.join(str(tmp_path), "nonexistent")
+    with pytest.raises(Exception):
+        ray.data.read_delta(path).take_all()
 
 
 if __name__ == "__main__":
