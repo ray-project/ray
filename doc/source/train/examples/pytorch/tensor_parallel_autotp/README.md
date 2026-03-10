@@ -726,7 +726,7 @@ train_loop_config = {
 
 # Create experiment name
 experiment_name = f"tp_autotp_{uuid.uuid4().hex[:8]}"
-storage_path = "/tmp/ray_train_tp_autotp"  # Use persistent/shared storage in production
+storage_path = "/mnt/cluster_storage/ray_train_tp_autotp"  # Use persistent/shared storage in production
 
 # Configure run settings
 run_config = RunConfig(
