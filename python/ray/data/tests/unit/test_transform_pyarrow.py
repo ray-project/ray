@@ -227,28 +227,40 @@ def test_arrow_concat_tensor_extension_variable_shaped(
     # fails for this case.
 
 
+@pytest.mark.parametrize("preserve_order", [True, False])
 def test_arrow_concat_tensor_extension_uniform_and_variable_shaped(
-    mixed_tensor_blocks, mixed_tensor_expected
+    mixed_tensor_blocks, mixed_tensor_expected, preserve_order
 ):
     # Test concatenating a homogeneous-shaped tensor column with a variable-shaped
     # tensor column.
     t1, t2 = mixed_tensor_blocks
     ts = [t1, t2]
-    out = concat(ts)
+    out = concat(ts, preserve_order=preserve_order)
     # Check length.
     assert len(out) == mixed_tensor_expected["length"]
     # Check schema.
     assert out.column_names == ["a"]
     assert out.schema == mixed_tensor_expected["schema"]
+
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == mixed_tensor_expected["chunks"]
-    # Check content.
-    content = mixed_tensor_expected["content"]
-    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0]):
-        np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1]):
-        np.testing.assert_array_equal(o, e)
+
+    # Collect all arrays from output and expected.
+    actual = [
+        arr
+        for chunk_idx in range(out["a"].num_chunks)
+        for arr in out["a"].chunk(chunk_idx).to_numpy()
+    ]
+    expected = [arr for chunk in mixed_tensor_expected["content"] for arr in chunk]
+    assert len(actual) == len(expected)
+
+    if not preserve_order:
+        actual = sorted(actual, key=lambda arr: arr.tobytes())
+        expected = sorted(expected, key=lambda arr: arr.tobytes())
+
+    for a, e in zip(actual, expected):
+        np.testing.assert_array_equal(a, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
 
@@ -279,14 +291,27 @@ def test_arrow_concat_tensor_extension_uniform_but_different(
     # fails for this case.
 
 
-def test_arrow_concat_with_objects(object_concat_blocks, object_concat_expected):
-    t3 = concat(object_concat_blocks)
+@pytest.mark.parametrize("preserve_order", [True, False])
+def test_arrow_concat_with_objects(
+    object_concat_blocks, object_concat_expected, preserve_order
+):
+    t3 = concat(object_concat_blocks, preserve_order=preserve_order)
     assert isinstance(t3, pa.Table)
     assert len(t3) == object_concat_expected["length"]
     assert isinstance(t3.schema.field("a").type, object_concat_expected["a_type"])
     assert object_concat_expected["b_type"](t3.schema.field("b").type)
-    assert t3.column("a").to_pylist() == object_concat_expected["content"]["a"]
-    assert t3.column("b").to_pylist() == object_concat_expected["content"]["b"]
+
+    actual_a = t3.column("a").to_pylist()
+    actual_b = t3.column("b").to_pylist()
+    expected_a = object_concat_expected["content"]["a"]
+    expected_b = object_concat_expected["content"]["b"]
+
+    if preserve_order:
+        assert actual_a == expected_a
+        assert actual_b == expected_b
+    else:
+        assert sorted(actual_a, key=str) == sorted(expected_a, key=str)
+        assert sorted(actual_b, key=str) == sorted(expected_b, key=str)
 
 
 def test_struct_with_different_field_names(
@@ -823,14 +848,17 @@ def test_arrow_block_slice_copy_empty(block_slice_data):
     assert table2.num_rows == 0
 
 
+@pytest.mark.parametrize("preserve_order", [True, False])
 def test_mixed_tensor_types_same_dtype(
-    mixed_tensor_types_same_dtype_blocks, mixed_tensor_types_same_dtype_expected
+    mixed_tensor_types_same_dtype_blocks,
+    mixed_tensor_types_same_dtype_expected,
+    preserve_order,
 ):
     """Test mixed tensor types with same data type but different shapes."""
 
     t1, t2 = mixed_tensor_types_same_dtype_blocks
 
-    t3 = concat([t1, t2])
+    t3 = concat([t1, t2], preserve_order=preserve_order)
     assert isinstance(t3, pa.Table)
     assert len(t3) == mixed_tensor_types_same_dtype_expected["length"]
 
@@ -845,10 +873,11 @@ def test_mixed_tensor_types_same_dtype(
 
     expected_tensors = mixed_tensor_types_same_dtype_expected["tensor_values"]
 
-    # Verify each tensor
-    for i, (result_tensor, expected_tensor) in enumerate(
-        zip(result_tensors, expected_tensors)
-    ):
+    if not preserve_order:
+        result_tensors = sorted(result_tensors, key=lambda arr: arr.tobytes())
+        expected_tensors = sorted(expected_tensors, key=lambda arr: arr.tobytes())
+
+    for result_tensor, expected_tensor in zip(result_tensors, expected_tensors):
         assert isinstance(result_tensor, np.ndarray)
         assert result_tensor.shape == expected_tensor.shape
         assert result_tensor.dtype == expected_tensor.dtype
@@ -924,15 +953,17 @@ def test_mixed_tensor_types_variable_shaped(
     not _extension_array_concat_supported(),
     reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
+@pytest.mark.parametrize("preserve_order", [True, False])
 def test_mixed_tensor_types_in_struct(
-    struct_with_mixed_tensor_types_blocks, struct_with_mixed_tensor_types_expected
+    struct_with_mixed_tensor_types_blocks,
+    struct_with_mixed_tensor_types_expected,
+    preserve_order,
 ):
     """Test that the fix works for mixed tensor types in structs."""
 
     t1, t2 = struct_with_mixed_tensor_types_blocks
 
-    # This should work with our fix
-    t3 = concat([t1, t2])
+    t3 = concat([t1, t2], preserve_order=preserve_order)
     assert isinstance(t3, pa.Table)
     assert len(t3) == struct_with_mixed_tensor_types_expected["length"]
 
@@ -946,6 +977,12 @@ def test_mixed_tensor_types_in_struct(
     assert len(struct_data) == struct_with_mixed_tensor_types_expected["length"]
 
     expected_struct_values = struct_with_mixed_tensor_types_expected["struct_values"]
+
+    if not preserve_order:
+        # Sort both by the "id" column so we can compare element-by-element.
+        ids = t3.column("id").to_pylist()
+        order = sorted(range(len(ids)), key=lambda i: ids[i])
+        struct_data = [struct_data[i] for i in order]
 
     # Verify struct values
     for i, (struct_row, expected_values) in enumerate(
@@ -1055,14 +1092,17 @@ def test_struct_with_incompatible_tensor_dtypes_fails():
     not _extension_array_concat_supported(),
     reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
 )
+@pytest.mark.parametrize("preserve_order", [True, False])
 def test_struct_with_additional_fields(
-    struct_with_additional_fields_blocks, struct_with_additional_fields_expected
+    struct_with_additional_fields_blocks,
+    struct_with_additional_fields_expected,
+    preserve_order,
 ):
     """Test structs where some blocks have additional fields."""
 
     t1, t2 = struct_with_additional_fields_blocks
 
-    t3 = concat([t1, t2])
+    t3 = concat([t1, t2], preserve_order=preserve_order)
     assert isinstance(t3, pa.Table)
     assert len(t3) == struct_with_additional_fields_expected["length"]
 
@@ -1072,11 +1112,16 @@ def test_struct_with_additional_fields(
     assert "struct" in t3.column_names
 
     # Verify struct field contains both types of tensors
+    ids = t3.column("id").to_pylist()
     struct_data = t3.column("struct").to_pylist()
     assert len(struct_data) == struct_with_additional_fields_expected["length"]
 
     field_presence = struct_with_additional_fields_expected["field_presence"]
     extra_values = struct_with_additional_fields_expected["extra_values"]
+
+    if not preserve_order:
+        order = sorted(range(len(ids)), key=lambda i: ids[i])
+        struct_data = [struct_data[i] for i in order]
 
     # Check field presence and values
     for i, row in enumerate(struct_data):
