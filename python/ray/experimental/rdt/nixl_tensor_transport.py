@@ -11,6 +11,7 @@ from ray.experimental.rdt.tensor_transport_manager import (
     CommunicatorMetadata,
     TensorTransportManager,
     TensorTransportMetadata,
+    TransferMetadata,
 )
 
 if TYPE_CHECKING:
@@ -49,14 +50,21 @@ class TensorDesc:
 
 
 @dataclass
-class InFlightTransfer:
-    """State for an in-flight NIXL transfer."""
+class NixlTransferMetadata(TransferMetadata):
+    """NIXL-specific transfer metadata for in-flight transfers.
 
-    tensors: List["torch.Tensor"]
-    xfer_handle: Any
-    nixl_agent: Any
-    remote_name: Optional[str]
-    added_tensor_descs: bool
+    Args:
+        tensors: The tensors being transferred.
+        xfer_handle: NIXL transfer request handle.
+        nixl_agent: Reference to the NIXL agent.
+        remote_name: Name of the remote NIXL agent.
+        added_tensor_descs: Whether tensor descriptors were added to the cache.
+    """
+
+    xfer_handle: Any = None
+    nixl_agent: Any = None
+    remote_name: Optional[str] = None
+    added_tensor_descs: bool = False
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -80,7 +88,7 @@ class NixlTensorTransport(TensorTransportManager):
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         # Mapping from object ID to in-flight transfer state for async fetch/wait pattern.
-        self._in_flight_transfers: Dict[str, InFlightTransfer] = {}
+        self._in_flight_transfers: Dict[str, NixlTransferMetadata] = {}
         # In-flight transfers can be read/written by both main thread (ray.get) and the
         # background ray system concurrency group (fetch task args).
         self._in_flight_transfers_lock = threading.Lock()
@@ -252,7 +260,7 @@ class NixlTensorTransport(TensorTransportManager):
                 return
             if not tensors:
                 # Reserve the slot with a placeholder to prevent concurrent fetches.
-                self._in_flight_transfers[obj_id] = InFlightTransfer(
+                self._in_flight_transfers[obj_id] = NixlTransferMetadata(
                     tensors=tensors,
                     xfer_handle=xfer_handle,
                     nixl_agent=None,
@@ -306,7 +314,7 @@ class NixlTensorTransport(TensorTransportManager):
                 if state == "ERR":
                     raise RuntimeError("NIXL transfer got to Error state.")
 
-                self._in_flight_transfers[obj_id] = InFlightTransfer(
+                self._in_flight_transfers[obj_id] = NixlTransferMetadata(
                     tensors=tensors,
                     xfer_handle=xfer_handle,
                     nixl_agent=nixl_agent,
