@@ -459,7 +459,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # The ref bundler combines one or more `RefBundle`s into a new
             # `RefBundle`. To update metrics appropriately, we need to deque
             # original input bundles.
-            (bundled_input, input_refs) = self._block_ref_bundler.get_next()
+            (
+                bundled_input,
+                input_refs,
+            ) = self._block_ref_bundler.get_next_with_original()
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle, input_index=0)
 
@@ -603,10 +606,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         return list(self._metadata_tasks.values()) + list(self._data_tasks.values())
 
     def all_inputs_done(self):
-        self._block_ref_bundler.done_adding_bundles()
+        self._block_ref_bundler.finalize()
 
         # Handle any bundles still in the bundler
-        while self._block_ref_bundler.has_bundle():
+        while self._block_ref_bundler.has_next():
             # The ref bundler combines one or more `RefBundle`s into a new
             # `RefBundle`. To update metrics appropriately, we need to deque
             # original input bundles.
@@ -622,7 +625,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._try_schedule_task(bundled_input, strict=False)
 
         assert (
-            self._block_ref_bundler.size_bytes() == 0
+            self._block_ref_bundler.estimate_size_bytes() == 0
         ), f"Bundler in {self} must be empty (got {self._block_ref_bundler.num_blocks()} blocks)"
 
         super().all_inputs_done()

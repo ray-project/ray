@@ -512,7 +512,7 @@ class FuseOperators(Rule):
         ):
             ref_bundler = up_op._block_ref_bundler
         elif isinstance(down_op._block_ref_bundler, RebundleQueue) and isinstance(
-            up_op._block_ref_bundler._strategy, ExactMultipleSize
+            down_op._block_ref_bundler._strategy, ExactMultipleSize
         ):
             ref_bundler = down_op._block_ref_bundler
 
