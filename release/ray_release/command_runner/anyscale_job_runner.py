@@ -18,8 +18,6 @@ from ray_release.exception import (
     JobBrokenError,
     JobNoLogsError,
     JobOutOfRetriesError,
-    JobTerminatedBeforeStartError,
-    JobTerminatedError,
     LogsError,
     PrepareCommandError,
     PrepareCommandTimeout,
@@ -27,7 +25,11 @@ from ray_release.exception import (
     TestCommandTimeout,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.job_manager.anyscale_job_manager import AnyscaleJobManager
+from ray_release.job_manager.anyscale_job_manager import (
+    JOB_FAILED,
+    JOB_STATE_UNKNOWN,
+    AnyscaleJobManager,
+)
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 from ray_release.util import (
@@ -159,25 +161,16 @@ class AnyscaleJobRunner(CommandRunner):
         )
 
     def _handle_command_output(
-        self, job_status_code: int, error: str, raise_on_timeout: bool = True
+        self, job_return_code: int, raise_on_timeout: bool = True
     ):
-        if job_status_code == -2:
-            raise JobBrokenError(f"Job state is 'BROKEN' with error:\n{error}\n")
-
-        if job_status_code == -3:
-            raise JobTerminatedError(
-                "Job entered 'TERMINATED' state (it was terminated "
-                "manually or Ray was stopped):"
-                f"\n{error}\n"
+        if job_return_code == JOB_FAILED:
+            raise JobOutOfRetriesError(
+                "Job returned non-success state: 'FAILED' "
+                "(command has not been ran or no logs could have been obtained)."
             )
 
-        if job_status_code == -4:
-            raise JobTerminatedBeforeStartError(
-                "Job entered 'TERMINATED' state before it started "
-                "(most likely due to inability to provision required nodes; "
-                "otherwise it was terminated manually or Ray was stopped):"
-                f"\n{error}\n"
-            )
+        if job_return_code == JOB_STATE_UNKNOWN:
+            raise JobBrokenError("Job state is 'UNKNOWN'.")
 
         # First try to obtain the output.json from S3.
         # If that fails, try logs.
@@ -214,8 +207,7 @@ class AnyscaleJobRunner(CommandRunner):
                     )
                 raise PrepareCommandError(
                     f"Prepare command '{self.prepare_commands[-1]}' returned "
-                    f"non-success status: {prepare_return_codes[-1]} with error:"
-                    f"\n{error}\n"
+                    f"non-success status: {prepare_return_codes[-1]}."
                 )
         else:
             raise JobNoLogsError("Could not obtain logs for the job.")
@@ -231,15 +223,7 @@ class AnyscaleJobRunner(CommandRunner):
 
         if workload_status_code is not None and workload_status_code != 0:
             raise TestCommandError(
-                f"Command returned non-success status: {workload_status_code} with "
-                f"error:\n{error}\n"
-            )
-
-        if job_status_code == -1:
-            raise JobOutOfRetriesError(
-                "Job returned non-success state: 'OUT_OF_RETRIES' "
-                "(command has not been ran or no logs could have been obtained) "
-                f"with error:\n{error}\n"
+                f"Command returned non-success status: {workload_status_code}."
             )
 
     def _get_full_command_env(self, env: Optional[Dict[str, str]] = None):
@@ -348,18 +332,14 @@ class AnyscaleJobRunner(CommandRunner):
             working_dir = azure_file_path
             logger.info(f"Working dir uploaded to {working_dir}")
 
-        job_status_code, time_taken = self.job_manager.run_and_wait(
+        job_return_code, time_taken = self.job_manager.run_and_wait(
             full_command,
             full_env,
             working_dir=working_dir,
             upload_path=self.upload_path,
             timeout=int(timeout),
         )
-        error_message = self.job_manager.job_error_message()
-
-        self._handle_command_output(
-            job_status_code, error_message, raise_on_timeout=raise_on_timeout
-        )
+        self._handle_command_output(job_return_code, raise_on_timeout=raise_on_timeout)
 
         return time_taken
 

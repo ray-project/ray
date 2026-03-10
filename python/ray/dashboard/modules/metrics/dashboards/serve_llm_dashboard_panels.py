@@ -453,11 +453,11 @@ SERVE_LLM_GRAFANA_PANELS = [
         unit="short",
         targets=[
             Target(
-                expr='delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
+                expr='sum by (model_name) (delta(ray_vllm_prompt_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h]))',
                 legend="Input: {{model_name}}",
             ),
             Target(
-                expr='delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h])',
+                expr='sum by (model_name) (delta(ray_vllm_generation_tokens_total{{WorkerId=~"$workerid", {global_filters}}}[1h]))',
                 legend="Generated: {{model_name}}",
             ),
         ],

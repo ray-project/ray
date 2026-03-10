@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 import numpy as np
 from packaging.version import parse as parse_version
 
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray._private.utils import INT32_MAX
 from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
@@ -432,7 +432,11 @@ def _backfill_missing_fields(
     import pyarrow as pa
 
     from ray.data._internal.tensor_extensions.arrow import (
+        ArrowVariableShapedTensorArray,
         ArrowVariableShapedTensorType,
+    )
+    from ray.data._internal.utils.transform_pyarrow import (
+        _is_native_tensor_type,
     )
 
     # Flatten chunked arrays into a single array if necessary
@@ -477,9 +481,14 @@ def _backfill_missing_fields(
                 current_array.type, get_arrow_extension_fixed_shape_tensor_types()
             ):
                 # Convert to variable-shaped if needed
-                current_array = current_array.to_var_shaped_tensor_array(
-                    ndim=field_type.ndim
-                )
+                if _is_native_tensor_type(current_array.type):
+                    current_array = ArrowVariableShapedTensorArray.from_numpy(
+                        current_array.to_numpy_ndarray()
+                    )
+                else:
+                    current_array = current_array.to_var_shaped_tensor_array(
+                        ndim=field_type.ndim
+                    )
 
             # Handle type mismatches for primitive types
             # The schema should already be unified by unify_schemas, but
@@ -528,52 +537,53 @@ def _align_struct_fields(
     # Extract all struct column types from the provided schema
     unified_struct_types = _extract_unified_struct_types(schema)
 
-    # If there are no struct columns in the schema, return blocks as is
-    if not unified_struct_types:
-        return blocks
-
     aligned_blocks = []
 
     # Iterate over each block (table) in the list
     for block in blocks:
-        # Store aligned struct columns
-        aligned_columns = {}
+        # Fast path: if schema matches exactly, skip
+        if block.schema.equals(schema):
+            aligned_blocks.append(block)
+            continue
 
         # Get the number of rows in the block
         block_length = len(block)
+        block_schema_field_names = set(block.schema.names)
 
-        # Process each struct column defined in the unified schema
+        # Process struct columns that need alignment
         for column_name, unified_struct_type in unified_struct_types.items():
-            # If the column exists in the block, align its fields
-            if column_name in block.schema.names:
+            if column_name in block_schema_field_names:
                 column = block[column_name]
 
                 # Check if the column type matches a struct type
-                if isinstance(column.type, pa.StructType):
-                    aligned_columns[column_name] = _backfill_missing_fields(
+                if (
+                    isinstance(column.type, pa.StructType)
+                    and column.type != unified_struct_type
+                ):
+                    # Align struct fields
+                    aligned_column = _backfill_missing_fields(
                         column, unified_struct_type, block_length
                     )
-                else:
-                    # If the column is not a struct, simply keep the original column
-                    aligned_columns[column_name] = column
-            else:
-                # If the column is missing, create a null-filled column with the same
-                # length as the block
-                aligned_columns[column_name] = pa.array(
-                    [None] * block_length, type=unified_struct_type
-                )
+                    # Replace the column with the aligned version
+                    block = block.set_column(
+                        block.schema.get_field_index(column_name),
+                        column_name,
+                        aligned_column,
+                    )
 
-        # Create a new aligned block with the updated columns and the unified schema.
-        new_columns = []
-        for column_name in schema.names:
-            if column_name in aligned_columns:
-                # Use the aligned column if available
-                new_columns.append(aligned_columns[column_name])
-            else:
-                # Use the original column if not aligned
-                assert column_name in block.schema.names
-                new_columns.append(block[column_name])
-        aligned_blocks.append(pa.table(new_columns, schema=schema))
+        # Find all missing columns (struct and non-struct)
+        missing_fields = [f for f in schema if f.name not in block_schema_field_names]
+
+        # Append missing columns with null values
+        for field in missing_fields:
+            # pa.nulls creates a null array of the correct length and type efficiently
+            null_col = pa.nulls(block_length, type=field.type)
+            block = block.append_column(field.name, null_col)
+
+        # Reorder columns to match the target schema
+        # select() is a zero-copy operation for column reordering
+        block = block.select(schema.names)
+        aligned_blocks.append(block)
 
     # Return the list of aligned blocks
     return aligned_blocks
@@ -600,25 +610,25 @@ def _concat_cols_with_null_list(
     # For each opaque list column, iterate through all schemas until
     # we find a valid value_type that can be used to override the
     # column types in the following for-loop.
-    scalar_type = None
+    value_type = None
     for arr in col_chunked_arrays:
         if not pa.types.is_list(arr.type) or not pa.types.is_null(arr.type.value_type):
-            scalar_type = arr.type
+            value_type = arr.type
             break
 
-    if scalar_type is not None:
+    if value_type is not None:
         for c_idx in range(len(col_chunked_arrays)):
             c = col_chunked_arrays[c_idx]
             if pa.types.is_list(c.type) and pa.types.is_null(c.type.value_type):
-                if pa.types.is_list(scalar_type):
+                if pa.types.is_list(value_type):
                     # If we are dealing with a list input,
-                    # cast the array to the scalar_type found above.
-                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
+                    # cast the array to the value_type found above.
+                    col_chunked_arrays[c_idx] = c.cast(value_type)
                 else:
                     # If we are dealing with a single value, construct
                     # a new array with null values filled.
                     col_chunked_arrays[c_idx] = pa.chunked_array(
-                        [pa.nulls(c.length(), type=scalar_type)]
+                        [pa.nulls(c.length(), type=value_type)]
                     )
 
     return _concatenate_chunked_arrays(col_chunked_arrays)
@@ -744,12 +754,8 @@ def concat(
     for col_name in schema.names:
         col_type = schema.field(col_name).type
 
-        col_chunked_arrays = []
-        for block in blocks:
-            if col_name in block.schema.names:
-                col_chunked_arrays.append(block.column(col_name))
-            else:
-                col_chunked_arrays.append(pa.nulls(block.num_rows, type=col_type))
+        # _align_struct_fields guarantees the existence of the column
+        col_chunked_arrays = [block.column(col_name) for block in blocks]
 
         if col_name in cols_with_null_list:
             concatenated_cols[col_name] = _concat_cols_with_null_list(
@@ -833,13 +839,25 @@ def to_numpy(
 
     import pyarrow as pa
 
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # This is zero-copy. We use to_numpy_ndarray() because to_numpy
+            # will flatten n-dim array into 1d.
+            return array.to_numpy_ndarray()
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # Convert each chunk to numpy, then stack them
+            numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
+            if len(numpy_chunks) == 0:
+                return np.empty((0,) + tuple(array.type.shape))
+            return np.vstack(numpy_chunks)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
         else:

@@ -65,6 +65,13 @@ if TYPE_CHECKING:
     import pyarrow
     from pyarrow.dataset import ParquetFileFragment
 
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+# Type aliases for tensor column schema
+ColumnName = str
+# Shape of the tensor
+Shape = Tuple[int, ...]
+TensorColumnSchema = Dict[ColumnName, Tuple[np.dtype, Shape]]
 
 logger = logging.getLogger(__name__)
 
@@ -304,9 +311,9 @@ class ParquetDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
         meta_provider: Optional[FileMetadataProvider] = None,
-        partition_filter: PathPartitionFilter = None,
+        partition_filter: Optional[PathPartitionFilter] = None,
         partitioning: Optional[Partitioning] = Partitioning("hive"),
-        shuffle: Union[Literal["files"], None] = None,
+        shuffle: Union["FileShuffleConfig", Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -786,8 +793,9 @@ class ParquetDatasource(Datasource):
 
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
-            dummy_table = target_schema.empty_table()
             try:
+                # An empty table with extensions will fail for pyarrow==9.0.0
+                dummy_table = target_schema.empty_table()
                 target_schema = _block_udf(dummy_table).schema.with_metadata(
                     target_schema.metadata
                 )

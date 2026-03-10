@@ -115,6 +115,7 @@ ray_cc_library(
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "//src/ray/util:process_utils",
         "//src/ray/util:time",
         "@com_google_absl//absl/base:core_headers",
     ],

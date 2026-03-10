@@ -51,13 +51,15 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
     from vllm.engine.protocol import EngineClient
-    from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
-    from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
-    from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
-    from vllm.entrypoints.openai.serving_models import OpenAIServingModels
-    from vllm.entrypoints.openai.serving_score import ServingScores
-    from vllm.entrypoints.openai.serving_tokenization import OpenAIServingTokenization
-    from vllm.entrypoints.openai.serving_transcription import OpenAIServingTranscription
+    from vllm.entrypoints.openai.chat_completion.serving import OpenAIServingChat
+    from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
+    from vllm.entrypoints.openai.models.serving import OpenAIServingModels
+    from vllm.entrypoints.openai.speech_to_text.serving import (
+        OpenAIServingTranscription,
+    )
+    from vllm.entrypoints.pooling.embed.serving import OpenAIServingEmbedding
+    from vllm.entrypoints.pooling.score.serving import ServingScores
+    from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -308,19 +310,21 @@ class VLLMEngine(LLMEngine):
 
         args = _dict_to_namespace(merged)
 
+        # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
+        # Without this, vLLM falls back to 'generate' only.
+        init_kwargs: dict[str, Any] = dict(
+            state=state,
+            args=args,
+        )
+        if "supported_tasks" in inspect.signature(init_app_state).parameters:
+            if hasattr(self._engine_client, "get_supported_tasks"):
+                supported_tasks = await self._engine_client.get_supported_tasks()
+                init_kwargs["supported_tasks"] = supported_tasks
+
         if "vllm_config" in inspect.signature(init_app_state).parameters:
-            await init_app_state(
-                self._engine_client,
-                vllm_config=vllm_engine_config,
-                state=state,
-                args=args,
-            )
-        else:
-            await init_app_state(
-                self._engine_client,
-                state=state,
-                args=args,
-            )
+            init_kwargs["vllm_config"] = vllm_engine_config
+
+        await init_app_state(self._engine_client, **init_kwargs)
 
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
@@ -475,6 +479,7 @@ class VLLMEngine(LLMEngine):
         engine_client = AsyncLLM(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,
+            log_requests=vllm_engine_args.enable_log_requests,
             log_stats=not vllm_engine_args.disable_log_stats,
             stat_loggers=custom_stat_loggers,
         )
