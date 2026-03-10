@@ -67,61 +67,51 @@ class TestToPyArrow:
     # ── Basic Expressions ──
 
     @pytest.mark.parametrize(
-        "ray_expr,equivalent_pyarrow_expr,description",
+        "ray_expr,equivalent_pyarrow_expr",
         [
-            (col("age"), lambda: pc.field("age"), "column reference"),
-            (lit(42), lambda: pc.scalar(42), "integer literal"),
-            (lit("hello"), lambda: pc.scalar("hello"), "string literal"),
+            (col("age"), lambda: pc.field("age")),
+            (lit(42), lambda: pc.scalar(42)),
+            (lit("hello"), lambda: pc.scalar("hello")),
         ],
         ids=["col", "int_lit", "str_lit"],
     )
-    def test_basic_expressions(
-        self, test_table, ray_expr, equivalent_pyarrow_expr, description
-    ):
+    def test_basic_expressions(self, test_table, ray_expr, equivalent_pyarrow_expr):
         """Test conversion of basic expressions."""
         converted = ray_expr.to_pyarrow()
         expected = equivalent_pyarrow_expr()
-
-        assert isinstance(converted, pc.Expression)
-        assert isinstance(expected, pc.Expression)
+        assert converted.equals(expected)
 
     # ── Arithmetic Expressions ──
 
     @pytest.mark.parametrize(
-        "ray_expr,equivalent_pyarrow_expr,description",
+        "ray_expr,equivalent_pyarrow_expr",
         [
             (
                 col("x") + 5,
                 lambda: pc.add(pc.field("x"), pc.scalar(5)),
-                "addition",
             ),
             (
                 col("x") - 3,
                 lambda: pc.subtract(pc.field("x"), pc.scalar(3)),
-                "subtraction",
             ),
             (
                 col("x") * 2,
                 lambda: pc.multiply(pc.field("x"), pc.scalar(2)),
-                "multiplication",
             ),
             (
                 col("x") / 2,
                 lambda: pc.divide(pc.field("x"), pc.scalar(2)),
-                "division",
             ),
         ],
         ids=["add", "sub", "mul", "div"],
     )
     def test_arithmetic_expressions(
-        self, test_table, ray_expr, equivalent_pyarrow_expr, description
+        self, test_table, ray_expr, equivalent_pyarrow_expr
     ):
         """Test conversion of arithmetic expressions."""
         converted = ray_expr.to_pyarrow()
         expected = equivalent_pyarrow_expr()
-
-        assert isinstance(converted, pc.Expression)
-        assert isinstance(expected, pc.Expression)
+        assert converted.equals(expected)
 
     # ── Comparison Expressions ──
 
@@ -278,60 +268,52 @@ class TestToPyArrow:
     # ── PyArrow Compute UDF Expressions ──
 
     @pytest.mark.parametrize(
-        "ray_expr,equivalent_pyarrow_expr,description",
+        "ray_expr,equivalent_pyarrow_expr",
         [
             pytest.param(
                 col("name").str.match_regex("foo.*bar"),
                 lambda: pc.match_substring_regex(pc.field("name"), "foo.*bar"),
-                "match_regex",
                 id="match_regex",
             ),
             pytest.param(
                 col("name").str.starts_with("foo"),
                 lambda: pc.starts_with(pc.field("name"), "foo"),
-                "starts_with",
                 id="starts_with",
             ),
             pytest.param(
                 col("name").str.ends_with("bar"),
                 lambda: pc.ends_with(pc.field("name"), "bar"),
-                "ends_with",
                 id="ends_with",
             ),
             pytest.param(
                 col("name").str.contains("baz"),
                 lambda: pc.match_substring(pc.field("name"), "baz"),
-                "contains",
                 id="contains",
             ),
             pytest.param(
                 col("name").str.upper(),
                 lambda: pc.utf8_upper(pc.field("name")),
-                "upper",
                 id="upper",
             ),
             pytest.param(
                 col("x").ceil(),
                 lambda: pc.ceil(pc.field("x")),
-                "ceil",
                 id="ceil",
             ),
             pytest.param(
                 col("x").abs(),
                 lambda: pc.abs_checked(pc.field("x")),
-                "abs",
                 id="abs",
             ),
         ],
     )
     def test_pyarrow_compute_udf_expressions(
-        self, test_table, ray_expr, equivalent_pyarrow_expr, description
+        self, test_table, ray_expr, equivalent_pyarrow_expr
     ):
         """Test that PyArrow-compute-backed UDFs convert to PyArrow expressions."""
         converted = ray_expr.to_pyarrow()
         expected = equivalent_pyarrow_expr()
-        assert isinstance(converted, pc.Expression)
-        assert isinstance(expected, pc.Expression)
+        assert converted.equals(expected)
 
     def test_negated_pyarrow_compute_udf(self, test_table):
         """Test that negated PyArrow compute UDF expressions convert correctly."""
