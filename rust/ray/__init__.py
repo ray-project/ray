@@ -301,7 +301,7 @@ _ref_id_to_binary_lock = _threading.Lock()
 
 # Shared thread pool for async actor method dispatch
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
-_dispatch_pool = _ThreadPoolExecutor(max_workers=32, thread_name_prefix="ray-dispatch")
+_dispatch_pool = _ThreadPoolExecutor(max_workers=256, thread_name_prefix="ray-dispatch")
 
 # Track pending metadata resolutions per actor for kill() signaling
 _pending_nixl_refs: dict = {}  # actor_id_key -> list of (event, ref_weakref)
@@ -681,15 +681,19 @@ class _ActorMethodHandle:
                 t.start()
 
             elif transport and transport == "NCCL":
-                # Legacy NCCL path (still blocking)
+                # Legacy NCCL path — wait for async submit to complete,
+                # then fetch NCCL metadata from the result
                 from ray.rdt import _is_rdt_meta
-                data = driver.get([oid.binary()], 60000)
-                if data and data[0] is not None:
-                    result = _pickle.loads(bytes(data[0][0]))
-                    if _is_rdt_meta(result):
-                        ref._rdt_source = self._handle
-                        ref._rdt_transport = transport
-                        ref._rdt_meta = result
+                if ref._rdt_pending is not None:
+                    ref._rdt_pending.wait(timeout=60)
+                if ref._binary is not None:
+                    data = driver.get([ref._binary], 60000)
+                    if data and data[0] is not None:
+                        result = _pickle.loads(bytes(data[0][0]))
+                        if _is_rdt_meta(result):
+                            ref._rdt_source = self._handle
+                            ref._rdt_transport = transport
+                            ref._rdt_meta = result
         return ref
 
     def _remote_rdt_nixl_deferred(self, args, rdt_refs, driver):
@@ -1247,9 +1251,17 @@ class _RayRuntime:
             _pending_nixl_refs.clear()
         with _ref_id_to_binary_lock:
             _ref_id_to_binary.clear()
-        # Give daemon threads a moment to detect shutdown and exit
+        # Shut down the dispatch pool to release accumulated threads,
+        # then recreate it fresh for the next ray.init() session.
+        # Use wait=False so stuck driver.get() threads don't block teardown.
+        # cancel_futures=True prevents queued-but-not-started work from running.
+        global _dispatch_pool
+        old_pool = _dispatch_pool
+        _dispatch_pool = _ThreadPoolExecutor(max_workers=256, thread_name_prefix="ray-dispatch")
+        old_pool.shutdown(wait=False, cancel_futures=True)
+        # Brief pause lets idle pool threads notice the shutdown sentinel and exit.
         import time as _time
-        _time.sleep(0.1)
+        _time.sleep(0.3)
 
     def is_initialized(self) -> bool:
         return self._initialized
