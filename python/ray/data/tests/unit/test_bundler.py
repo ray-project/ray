@@ -82,11 +82,10 @@ def _get_bundle_values(bundle: RefBundle, block_data_map: dict) -> List[List[Any
             [5, 5, 2],  # Expected: [1-5], [6-10], [11-12]
         ),
         (
-            # Test with empty blocks (empty bundles are accumulated separately
-            # and flushed before the pending tail in finalize)
+            # Test with empty blocks
             3,
             [[[1]], [[]], [[2, 3]], [[]], [[4, 5]]],
-            [3, 0, 2],
+            [3, 2],  # Expected: [1,2,3] and [4,5]
         ),
         (
             # Test with last block smaller than target num rows per block
@@ -331,7 +330,7 @@ def test_add_updates_metrics():
             ],
         ),
         (
-            # Empty bundles are accumulated separately and flushed at finalize
+            # Proper handling of empty blocks
             2,
             [
                 # Input bundles
@@ -343,9 +342,9 @@ def test_add_updates_metrics():
                 [[]],
             ],
             [
-                # Output bundles (non-empty merged, then accumulated empties)
-                [[1], [2, 3]],
-                [[], [], [], []],
+                # Output bundles
+                [[1], [], [], [2, 3]],
+                [[], []],
             ],
         ),
         (
@@ -536,54 +535,56 @@ def test_estimate_size_add_updates_metrics():
     assert bundler.estimate_size_bytes() == expected_bytes
 
 
-def test_empty_bundle_accumulation():
-    """Test that empty bundles (num_rows==0) are accumulated separately and
-    flushed as a single merged bundle during finalize."""
-    bundler = RebundleQueue(EstimateSize(2))
+def test_empty_bundle_merges_with_previous_pending():
+    """Test that empty bundles merge into the last pending bundle
+    rather than accumulating separately."""
+    bundler = RebundleQueue(EstimateSize(3))
+    bundles, _ = _make_ref_bundles_for_unit_test([[[1, 2]], [[]], [[]], [[3]]])
 
-    # Create empty and non-empty bundles
-    bundles, block_data_map = _make_ref_bundles_for_unit_test(
-        [[[]], [[]], [[1, 2]], [[]]]
-    )
-
-    # Add all bundles, draining ready bundles after each add
-    out_bundles = []
     for bundle in bundles:
         bundler.add(bundle)
-        while bundler.has_next():
-            out_bundles.append(bundler.get_next())
 
-    # Only the non-empty bundle should have triggered a ready bundle
-    assert len(out_bundles) == 1
-    assert out_bundles[0].num_rows() == 2
-
-    # Empty bundles are not yet available
-    assert not bundler.has_next()
-    assert bundler._empty_ready_bundles is not None
-
-    # Finalize flushes the accumulated empty bundle
-    bundler.finalize()
+    # The two empty bundles merged into the [1,2] pending bundle,
+    # then [3] arrived pushing total to 3 → ready bundle built.
     assert bundler.has_next()
+    out = bundler.get_next()
+    assert out.num_rows() == 3
+    # Should have 4 blocks: [1,2], [], [], [3]
+    assert len(out.block_refs) == 4
 
-    empty_bundle = bundler.get_next()
-    assert empty_bundle.num_rows() == 0
-    assert len(empty_bundle.block_refs) == 3
-
-    # All metrics should be zeroed out after full consumption
     assert bundler.num_rows() == 0
-    assert bundler.num_blocks() == 0
     assert len(bundler) == 0
-    assert bundler.estimate_size_bytes() == 0
+
+
+def test_empty_bundle_no_previous_pending():
+    """Test that empty bundles with no previous pending just go to pending
+    and merge with subsequent empties."""
+    bundler = RebundleQueue(EstimateSize(2))
+    bundles, _ = _make_ref_bundles_for_unit_test([[[]], [[]], [[1, 2]]])
+
+    for bundle in bundles:
+        bundler.add(bundle)
+
+    # Two empties merged together in pending, then [1,2] triggers ready.
+    assert bundler.has_next()
+    out = bundler.get_next()
+    assert out.num_rows() == 2
+    # 3 blocks: [], [], [1,2]
+    assert len(out.block_refs) == 3
+
+    assert bundler.num_rows() == 0
+    assert len(bundler) == 0
 
 
 def test_empty_bundle_only():
-    """Test that a queue receiving only empty bundles works correctly."""
+    """Test that a queue receiving only empty bundles flushes at finalize."""
     bundler = RebundleQueue(EstimateSize(2))
     bundles, _ = _make_ref_bundles_for_unit_test([[[]], [[]]])
 
     for bundle in bundles:
         bundler.add(bundle)
 
+    # Empties sit in pending (merged together), can't trigger a ready bundle
     assert not bundler.has_next()
 
     bundler.finalize()
@@ -596,24 +597,6 @@ def test_empty_bundle_only():
     assert not bundler.has_next()
     assert bundler.num_rows() == 0
     assert len(bundler) == 0
-
-
-def test_empty_bundle_clear():
-    """Test that clear resets the accumulated empty bundles."""
-    bundler = RebundleQueue(EstimateSize(2))
-    bundles, _ = _make_ref_bundles_for_unit_test([[[]], [[]]])
-
-    for bundle in bundles:
-        bundler.add(bundle)
-
-    assert bundler._empty_ready_bundles is not None
-
-    bundler.clear()
-    assert bundler._empty_ready_bundles is None
-    assert not bundler.has_next()
-    assert bundler.num_rows() == 0
-    assert len(bundler) == 0
-    assert bundler.estimate_size_bytes() == 0
 
 
 if __name__ == "__main__":
