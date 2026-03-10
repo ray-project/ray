@@ -95,7 +95,7 @@ from concurrent.futures import ThreadPoolExecutor
 @serve.deployment
 class CustomThreadPool:
     def __init__(self):
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
         loop.set_default_executor(ThreadPoolExecutor(max_workers=16))
 
     async def __call__(self, request):
