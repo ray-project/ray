@@ -53,7 +53,7 @@ def test_write_delta_append_mode(ray_start_regular_shared, temp_delta_path):
 
 
 # =============================================================================
-# Write Mode Tests (PR 2)
+# Write Mode Tests
 # =============================================================================
 
 
