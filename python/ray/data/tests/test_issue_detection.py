@@ -129,7 +129,7 @@ class TestHangingExecutionIssueDetector:
 
         # # test hanging does log hanging warning
         def f2(x):
-            time.sleep(600.0)  # Increase from 1.1 to 5.0 seconds to exceed new threshold
+            time.sleep(5.0)  # Increase from 1.1 to 5.0 seconds to exceed new threshold
             return x
 
         _ = ray.data.range(1).map(f2).materialize()
