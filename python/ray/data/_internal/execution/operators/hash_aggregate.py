@@ -130,11 +130,14 @@ class HashAggregateOperator(ShuffleOperatorCore):
             ),
         )
 
+        op_name = (
+            f"HashAggregate(key_columns={key_columns}, "
+            f"num_partitions={engine.num_partitions})"
+        )
+        engine._operator_name = op_name
+
         super().__init__(
-            name=(
-                f"HashAggregate(key_columns={key_columns}, "
-                f"num_partitions={engine.num_partitions})"
-            ),
+            name=op_name,
             input_ops=[input_op],
             data_context=data_context,
             engine=engine,
@@ -167,7 +170,7 @@ class HashAggregateOperator(ShuffleOperatorCore):
         # (inside Object Store)
         output_object_store_memory_required = partition_byte_size_estimate
 
-        aggregator_total_memory_required = (
+        aggregator_total_memory_required: int = (
             # Inputs (object store)
             aggregator_shuffle_object_store_memory_required
             +

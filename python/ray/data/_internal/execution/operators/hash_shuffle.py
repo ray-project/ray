@@ -6,7 +6,6 @@ import queue
 import random
 import threading
 import time
-import typing
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import (
@@ -77,9 +76,6 @@ from ray.data.context import (
     DEFAULT_TARGET_MAX_BLOCK_SIZE,
     DataContext,
 )
-
-if typing.TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -689,7 +685,9 @@ class CpuShuffleEngine(ShuffleEngine):
             #
             # TODO HSA needs to be idempotent for _shuffle_block to be retriable
             #      https://anyscale1.atlassian.net/browse/DATA-1763
-            input_block_partition_shards_metadata_tuple_ref = _shuffle_block.options(
+            input_block_partition_shards_metadata_tuple_ref: ObjectRef[
+                Tuple[BlockMetadata, Dict[int, _PartitionStats]]
+            ] = _shuffle_block.options(
                 **shuffle_task_resource_bundle,
                 num_returns=1,
             ).remote(
@@ -806,6 +804,7 @@ class CpuShuffleEngine(ShuffleEngine):
             hooks.on_output_estimated(num_outputs, num_rows)
             hooks.on_reduce_progress(
                 increment=bundle.num_rows() or 0,
+                total=num_rows,
             )
 
         def _on_aggregation_done(

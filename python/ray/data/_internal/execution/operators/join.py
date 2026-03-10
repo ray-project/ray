@@ -399,8 +399,11 @@ class JoinOperator(ShuffleOperatorCore):
             estimate_aggregator_memory=self._estimate_aggregator_memory_allocation,
         )
 
+        op_name = f"Join(num_partitions={engine.num_partitions})"
+        engine._operator_name = op_name
+
         super().__init__(
-            name=f"Join(num_partitions={engine.num_partitions})",
+            name=op_name,
             input_ops=input_ops,
             data_context=data_context,
             engine=engine,
