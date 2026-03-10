@@ -6,7 +6,6 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from zlib import crc32
 
-from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -17,6 +16,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
