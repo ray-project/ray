@@ -37,3 +37,13 @@ cdef extern from "ray/stats/metric.h" nogil:
                    const c_string &unit,
                    const c_vector[double] &boundaries,
                    const c_vector[c_string] &tag_keys)
+
+cdef extern from "ray/stats/percentile_metric.h" nogil:
+    cdef cppclass CPercentileMetric "ray::stats::PercentileMetric":
+        CPercentileMetric(const c_string &name,
+                          const c_string &description,
+                          const c_string &unit,
+                          double max_expected_value,
+                          int num_buckets)
+        void Record(double value)
+        void StartAutoFlush(int64_t interval_ms)

@@ -18,8 +18,12 @@
 
 #pragma once
 
+#include <condition_variable>
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -95,6 +99,8 @@ class PercentileMetric : public ray::observability::MetricInterface {
         max_gauge_(name + "_max", description + " (Max)", unit),
         mean_gauge_(name + "_mean", description + " (Mean)", unit) {}
 
+  ~PercentileMetric();
+
   /**
     Record a latency value.
 
@@ -123,6 +129,12 @@ class PercentileMetric : public ray::observability::MetricInterface {
   void Flush() override;
 
   /**
+    Start a background thread that calls Flush() every interval_ms milliseconds.
+    Should be called at most once. The thread is stopped and joined in the destructor.
+   */
+  void StartAutoFlush(int64_t interval_ms);
+
+  /**
     Clear all recorded values.
    */
   void Clear();
@@ -137,6 +149,12 @@ class PercentileMetric : public ray::observability::MetricInterface {
   Gauge p99_gauge_;
   Gauge max_gauge_;
   Gauge mean_gauge_;
+
+  // Auto-flush thread
+  std::mutex auto_flush_mutex_;
+  std::condition_variable auto_flush_cv_;
+  bool auto_flush_stop_ = false;
+  std::thread auto_flush_thread_;
 };
 
 }  // namespace stats

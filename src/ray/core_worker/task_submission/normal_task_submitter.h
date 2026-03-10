@@ -132,7 +132,12 @@ class NormalTaskSubmitter {
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
 
-  void FlushMetrics() { scheduler_placement_time_ms_histogram_.Flush(); }
+  void FlushMetrics() {
+    scheduler_placement_time_ms_histogram_.Flush();
+    task_total_submitter_preprocessing_time_ms_histogram_.Flush();
+    task_dependency_resolution_time_ms_histogram_.Flush();
+    task_push_time_ms_histogram_.Flush();
+  }
 
   /// Either remove a pending task or send an RPC to kill a running task
   ///

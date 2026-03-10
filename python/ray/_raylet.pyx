@@ -2861,11 +2861,15 @@ cdef class CoreWorker:
         # TODO(zac): Remove the driver-only condition once worker metric
         # aggregation is enabled by default in Ray.
         if self.is_driver:
-            self._task_prepare_time_ms_histogram = Histogram(
+            self._task_prepare_time_ms_histogram = PercentileMetric(
                 "task_prepare_time_ms",
-                "Time spent in Python preparing a task before C++ submission in ms.",
-                [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000],
-                [])
+                "Time spent in Python preparing a task before C++ submission "
+                "(pickling the function and arguments, and other preprocessing). "
+                "Does not include any I/O (network or disk) and should be very fast.",
+                "ms",
+                1000.0,
+                128)
+            self._task_prepare_time_ms_histogram.start()
         else:
             self._task_prepare_time_ms_histogram = None
 
