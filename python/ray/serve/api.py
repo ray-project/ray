@@ -50,10 +50,10 @@ from ray.serve.config import (
 )
 from ray.serve.context import (
     ReplicaContext,
+    _get_deployment_actor,
     _get_global_client,
     _get_internal_replica_context,
     _set_global_client,
-    get_deployment_actor as _get_deployment_actor,
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -181,7 +181,7 @@ def get_replica_context() -> ReplicaContext:
     return internal_replica_context
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def get_deployment_actor(actor_name: str):
     """Get a handle to a deployment-scoped actor by name.
 

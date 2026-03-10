@@ -26,7 +26,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.gang import GangContext
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import ReplicaRank
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -114,8 +114,7 @@ def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
 
 
-@PublicAPI(stability="alpha")
-def get_deployment_actor(actor_name: str):
+def _get_deployment_actor(actor_name: str):
     """Get a handle to a deployment-scoped actor by name.
 
     Must be called from within a running Serve replica. The actor must be
