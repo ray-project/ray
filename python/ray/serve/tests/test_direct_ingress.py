@@ -1318,8 +1318,9 @@ class TestDirectIngressBackpressure:
                 # Submit `max_ongoing_requests` blocking requests.
                 futures = [tpe.submit(_do_request, url) for _ in range(num_requests)]
                 wait_for_condition(
-                    lambda: ray.get(wait_signal.cur_num_waiters.remote())
-                    == num_requests
+                    lambda: (
+                        ray.get(wait_signal.cur_num_waiters.remote()) == num_requests
+                    )
                 )
                 assert all(not f.done() for f in futures)
 
@@ -1328,8 +1329,9 @@ class TestDirectIngressBackpressure:
                     tpe.submit(_do_request, url) for _ in range(num_requests + 5)
                 ]
                 wait_for_condition(
-                    lambda: ray.get(wait_signal.cur_num_waiters.remote())
-                    == num_requests
+                    lambda: (
+                        ray.get(wait_signal.cur_num_waiters.remote()) == num_requests
+                    )
                 )
                 assert all(not f.done() for f in queued_requests)
 
