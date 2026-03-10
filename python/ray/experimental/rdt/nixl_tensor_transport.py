@@ -216,11 +216,7 @@ class NixlTensorTransport(TensorTransportManager):
 
                 nixl_agent = self.get_nixl_agent()
                 xfer_descs, pool_offsets, pool_sizes = None, None, None
-                pool = (
-                    self._cpu_memory_pool
-                    if device.type == "cpu"
-                    else self._gpu_memory_pool
-                )
+                pool = self._get_memory_pool(device.type)
                 # Try allocating from memory pool.
                 if pool is not None:
                     (
@@ -409,11 +405,7 @@ class NixlTensorTransport(TensorTransportManager):
 
             # If memory pool was used, free the memory blocks.
             if tensor_transport_meta.pool_offsets is not None:
-                pool = (
-                    self._cpu_memory_pool
-                    if tensor_transport_meta.tensor_device == "cpu"
-                    else self._gpu_memory_pool
-                )
+                pool = self._get_memory_pool(tensor_transport_meta.tensor_device)
                 pool.free_multiple(
                     tensor_transport_meta.pool_offsets,
                     tensor_transport_meta.pool_sizes,
@@ -553,3 +545,10 @@ class NixlTensorTransport(TensorTransportManager):
                 logger.error(f"Memory pool free failed: {e}.")
 
         return None, None, None
+
+    def _get_memory_pool(self, device_type: str) -> Optional[MemoryPoolManager]:
+        if device_type == "cpu":
+            return self._cpu_memory_pool
+        if device_type == "cuda":
+            return self._gpu_memory_pool
+        return None

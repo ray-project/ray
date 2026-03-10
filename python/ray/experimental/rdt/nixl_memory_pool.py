@@ -9,15 +9,12 @@ if TYPE_CHECKING:
 class MemoryBlock:
     """Represents a memory block in the pool."""
 
-    def __init__(self, offset: int, size: int, is_free: bool = True):
+    def __init__(self, offset: int, size: int):
         self.offset = offset
         self.size = size
-        self.is_free = is_free
 
     def __repr__(self):
-        return (
-            f"MemoryBlock(offset={self.offset}, size={self.size}, free={self.is_free})"
-        )
+        return f"MemoryBlock(offset={self.offset}, size={self.size})"
 
 
 class MemoryPoolManager:
@@ -47,9 +44,7 @@ class MemoryPoolManager:
 
         # Track free blocks using a first-fit allocator
         # List of (offset, size) tuples for free blocks, sorted by offset
-        self._free_blocks: List[MemoryBlock] = [
-            MemoryBlock(offset=0, size=pool_size, is_free=True)
-        ]
+        self._free_blocks: List[MemoryBlock] = [MemoryBlock(offset=0, size=pool_size)]
 
     def get_pool_tensor(self) -> "torch.Tensor":
         """Get the underlying pool tensor.
@@ -79,16 +74,11 @@ class MemoryPoolManager:
 
         # Try to allocate all blocks atomically.
         allocations: List[Tuple[int, int]] = []
-        temp_free_blocks = [
-            MemoryBlock(b.offset, b.size, b.is_free) for b in self._free_blocks
-        ]
+        temp_free_blocks = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
 
         for size in sorted_sizes:
             allocated = False
             for i, block in enumerate(temp_free_blocks):
-                if not block.is_free:
-                    continue
-
                 if block.size >= size:
                     # Allocate at the start of the current free block
                     offset = block.offset
@@ -130,9 +120,7 @@ class MemoryPoolManager:
             None.
         """
         for offset, size in zip(offsets, sizes):
-            self._free_blocks.append(
-                MemoryBlock(offset=offset, size=size, is_free=True)
-            )
+            self._free_blocks.append(MemoryBlock(offset=offset, size=size))
 
         if not offsets:
             return
@@ -148,7 +136,7 @@ class MemoryPoolManager:
             else:
                 i += 1
 
-    def copy_to_pool(self, tensor: "torch.Tensor", offset: int) -> int:
+    def copy_to_pool(self, tensor: "torch.Tensor", offset: int) -> None:
         """Copy tensor data to the memory pool at the specified offset.
 
         Args:
@@ -156,33 +144,11 @@ class MemoryPoolManager:
             offset: Destination offset in the memory pool (bytes).
 
         Returns:
-            Number of bytes copied.
+            None.
         """
-        num_elements = tensor.numel()
-        if num_elements <= 0:
-            return 0
+        bytes_to_copy = tensor.numel() * tensor.element_size()
 
-        bytes_to_copy = num_elements * tensor.element_size()
-
-        # Ensure we don't overflow the pool
-        if offset + bytes_to_copy > self.pool_size:
-            bytes_to_copy = self.pool_size - offset
-            if bytes_to_copy <= 0:
-                return 0
-            num_elements = bytes_to_copy // tensor.element_size()
-            if num_elements == 0:
-                return 0
-            bytes_to_copy = num_elements * tensor.element_size()
-
-        flat_tensor = tensor.flatten()
+        flat_tensor = tensor.contiguous().view(-1)
         pool_bytes = self._pool_tensor[offset : offset + bytes_to_copy]
-        pool_elements = len(pool_bytes) // tensor.element_size()
-        if pool_elements == 0:
-            return 0
-
         pool_view = pool_bytes.view(tensor.dtype)
-        pool_view[:pool_elements].copy_(
-            flat_tensor[:pool_elements].to(dtype=tensor.dtype)
-        )
-
-        return pool_elements * tensor.element_size()
+        pool_view.copy_(flat_tensor.to(dtype=tensor.dtype))
