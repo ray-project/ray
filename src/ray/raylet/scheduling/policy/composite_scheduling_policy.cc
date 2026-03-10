@@ -47,13 +47,13 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options,
     absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
-  if (options.gpu_domain_scheduling_strategy_ == GpuDomainSchedulingStrategy::NONE) {
+  if (options.label_domain_scheduling_strategy_ == LabelDomainSchedulingStrategy::NONE) {
     return ScheduleNodeLevel(resource_request_list, options, std::move(candidate_nodes));
   }
 
-  // Tier 1: Get candidate GPU domains.
-  auto filter_result =
-      ScheduleGpuDomainLevel(resource_request_list, options, std::move(candidate_nodes));
+  // Tier 1: Get candidate label domains.
+  LabelDomainFilterResult filter_result = ScheduleLabelDomainLevel(
+      resource_request_list, options, std::move(candidate_nodes));
   if (!filter_result.status.IsSuccess()) {
     SchedulingResult fail;
     fail.status = filter_result.status;
@@ -62,11 +62,12 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
 
   // Tier 2: Try the node-level policy on each candidate domain.
   bool all_infeasible = true;
-  for (auto &candidate : filter_result.candidates) {
-    auto result = ScheduleNodeLevel(
+  for (LabelDomainCandidate &candidate : filter_result.candidates) {
+    SchedulingResult result = ScheduleNodeLevel(
         resource_request_list, options, std::move(candidate.candidate_nodes));
     if (result.status.IsSuccess()) {
-      result.selected_gpu_domain = std::move(candidate.gpu_domain);
+      result.selected_label_domain = std::make_pair(options.target_label_domain_.first,
+                                                    std::move(candidate.label_domain));
       return result;
     }
     if (!result.status.IsInfeasible()) {
@@ -74,22 +75,22 @@ SchedulingResult CompositeBundleSchedulingPolicy::Schedule(
     }
   }
 
-  RAY_LOG(DEBUG) << "All candidate GPU domains exhausted; scheduling "
+  RAY_LOG(DEBUG) << "All candidate label domains exhausted; scheduling "
                  << (all_infeasible ? "infeasible." : "failed (retryable).");
   return all_infeasible ? SchedulingResult::Infeasible() : SchedulingResult::Failed();
 }
 
-GpuDomainFilterResult CompositeBundleSchedulingPolicy::ScheduleGpuDomainLevel(
+LabelDomainFilterResult CompositeBundleSchedulingPolicy::ScheduleLabelDomainLevel(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const SchedulingOptions &options,
     absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
-  switch (options.gpu_domain_scheduling_strategy_) {
-  case GpuDomainSchedulingStrategy::STRICT_PACK:
-    return gpu_domain_strict_pack_policy_.FilterCandidateNodes(
+  switch (options.label_domain_scheduling_strategy_) {
+  case LabelDomainSchedulingStrategy::STRICT_PACK:
+    return label_domain_strict_pack_policy_.FilterCandidateNodes(
         resource_request_list, options, std::move(candidate_nodes));
   default:
-    RAY_LOG(FATAL) << "Unsupported GPU domain scheduling strategy: "
-                   << static_cast<int>(options.gpu_domain_scheduling_strategy_);
+    RAY_LOG(FATAL) << "Unsupported label domain scheduling strategy: "
+                   << static_cast<int>(options.label_domain_scheduling_strategy_);
   }
   UNREACHABLE;
 }

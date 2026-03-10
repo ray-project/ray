@@ -697,10 +697,12 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   // When requesting 15 bundles of {4 GPU, 2 CPU}, the request is only feasible on rack-1.
   // We then request the remaining 3 bundles of {4 GPU, 2 CPU} on rack-1.
 
+  const std::string kDomainLabelKey = "ray.io/gpu-domain";
+
   absl::flat_hash_map<std::string, std::string> rack1_labels = {
-      {"ray.io/gpu-domain", "rack-1"}, {"ray.io/accelerator-type", "GB300"}};
+      {kDomainLabelKey, "rack-1"}, {"ray.io/accelerator-type", "GB300"}};
   absl::flat_hash_map<std::string, std::string> rack2_labels = {
-      {"ray.io/gpu-domain", "rack-2"}, {"ray.io/accelerator-type", "GB300"}};
+      {kDomainLabelKey, "rack-2"}, {"ray.io/accelerator-type", "GB300"}};
 
   std::vector<scheduling::NodeID> rack1_node_ids;
   for (int i = 0; i < 18; i++) {
@@ -731,16 +733,18 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
 
   // FilterCandidateNodes should return SUCCESS with one candidate and the nodes in
   // rack-1
-  auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
+  auto label_domain_policy =
+      LabelDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
   auto options = SchedulingOptions::BundlePack();
-  options.gpu_domain_scheduling_strategy_ = GpuDomainSchedulingStrategy::STRICT_PACK;
+  options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
+  options.target_label_domain_.first = kDomainLabelKey;
 
-  auto filter_result_1 = gpu_domain_policy.FilterCandidateNodes(
+  auto filter_result_1 = label_domain_policy.FilterCandidateNodes(
       req_list, options, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(filter_result_1.status.IsSuccess());
   ASSERT_EQ(filter_result_1.candidates.size(), 1);
-  ASSERT_EQ(filter_result_1.candidates[0].gpu_domain, "rack-1");
+  ASSERT_EQ(filter_result_1.candidates[0].label_domain, "rack-1");
   ASSERT_EQ(filter_result_1.candidates[0].candidate_nodes.size(), 18);
 
   // Schedule should return SUCCESS with one candidate that contains 15 of the 18 nodes in
@@ -750,15 +754,16 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
       composite.Schedule(req_list, options, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result_1.status.IsSuccess());
-  ASSERT_TRUE(result_1.selected_gpu_domain.has_value());
-  ASSERT_EQ(*result_1.selected_gpu_domain, "rack-1");
+  ASSERT_TRUE(result_1.selected_label_domain.has_value());
+  ASSERT_EQ(result_1.selected_label_domain->first, kDomainLabelKey);
+  ASSERT_EQ(result_1.selected_label_domain->second, "rack-1");
   ASSERT_EQ(result_1.selected_nodes.size(), 15);
 
   for (const auto &node_id : result_1.selected_nodes) {
     const auto &node_resources = cluster_resource_manager->GetNodeResources(node_id);
-    auto it = node_resources.labels.find("ray.io/gpu-domain");
+    auto it = node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
-    ASSERT_EQ(it->second, *result_1.selected_gpu_domain);
+    ASSERT_EQ(it->second, result_1.selected_label_domain->second);
   }
 
   // Subtract the resources from the selected nodes
@@ -770,27 +775,28 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   // Schedule the remaining 3 bundles on the remaining nodes in rack-1
   std::vector<const ResourceRequest *> req_list_2(3, &bundle_req);
 
-  auto filter_result_2 = gpu_domain_policy.FilterCandidateNodes(
+  auto filter_result_2 = label_domain_policy.FilterCandidateNodes(
       req_list_2, options, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(filter_result_2.status.IsSuccess());
   ASSERT_EQ(filter_result_2.candidates.size(), 1);
-  ASSERT_EQ(filter_result_2.candidates[0].gpu_domain, "rack-1");
+  ASSERT_EQ(filter_result_2.candidates[0].label_domain, "rack-1");
   ASSERT_EQ(filter_result_2.candidates[0].candidate_nodes.size(), 18);
 
   auto result_2 = composite.Schedule(
       req_list_2, options, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result_2.status.IsSuccess());
-  ASSERT_TRUE(result_2.selected_gpu_domain.has_value());
-  ASSERT_EQ(*result_2.selected_gpu_domain, "rack-1");
+  ASSERT_TRUE(result_2.selected_label_domain.has_value());
+  ASSERT_EQ(result_2.selected_label_domain->first, kDomainLabelKey);
+  ASSERT_EQ(result_2.selected_label_domain->second, "rack-1");
   ASSERT_EQ(result_2.selected_nodes.size(), 3);
 
   for (const auto &node_id : result_2.selected_nodes) {
     const auto &node_resources = cluster_resource_manager->GetNodeResources(node_id);
-    auto it = node_resources.labels.find("ray.io/gpu-domain");
+    auto it = node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
-    ASSERT_EQ(it->second, *result_2.selected_gpu_domain);
+    ASSERT_EQ(it->second, result_2.selected_label_domain->second);
   }
 
   // Verify the remaining 3 bundles uses nodes that weren't fully consumed by the first 15
@@ -808,8 +814,10 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
   // We have one rack with 2 nodes, each node has 4 GPUs and 2 CPUs.
   // Since we're requesting 16 bundles of {4 GPU, 2 CPU}, the request is infeasible.
 
+  const std::string kDomainLabelKey = "ray.io/gpu-domain";
+
   absl::flat_hash_map<std::string, std::string> rack2_labels = {
-      {"ray.io/gpu-domain", "rack-2"}, {"ray.io/accelerator-type", "GB300"}};
+      {kDomainLabelKey, "rack-2"}, {"ray.io/accelerator-type", "GB300"}};
 
   for (int i = 0; i < 2; i++) {
     auto node_id = scheduling::NodeID(i);
@@ -824,11 +832,13 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  auto gpu_domain_policy = GpuDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
+  auto label_domain_policy =
+      LabelDomainStrictPackSchedulingPolicy(*cluster_resource_manager);
   auto options = SchedulingOptions::BundlePack();
-  options.gpu_domain_scheduling_strategy_ = GpuDomainSchedulingStrategy::STRICT_PACK;
+  options.label_domain_scheduling_strategy_ = LabelDomainSchedulingStrategy::STRICT_PACK;
+  options.target_label_domain_.first = kDomainLabelKey;
 
-  auto filter_result = gpu_domain_policy.FilterCandidateNodes(
+  auto filter_result = label_domain_policy.FilterCandidateNodes(
       req_list, options, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(filter_result.status.IsInfeasible());
@@ -839,7 +849,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       composite.Schedule(req_list, options, GetCandidateNodes(*cluster_resource_manager));
 
   ASSERT_TRUE(result.status.IsInfeasible());
-  ASSERT_FALSE(result.selected_gpu_domain.has_value());
+  ASSERT_FALSE(result.selected_label_domain.has_value());
 }
 
 int main(int argc, char **argv) {

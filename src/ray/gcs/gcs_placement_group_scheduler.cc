@@ -57,19 +57,19 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
-  const bool is_gpu_domain_pg = IsGpuDomainPlacementGroup(*placement_group);
+  std::optional<std::string> label_domain = IsLabelDomainPlacementGroup(*placement_group);
 
-  // For GPU-domain PGs: if ALL bundles are unplaced (total failure), clear the
+  // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
   // domain assignment so a new domain can be selected. If only some bundles are
   // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
-  if (is_gpu_domain_pg) {
+  if (label_domain.has_value()) {
     const auto &all_bundles = placement_group->GetBundles();
     bool is_total_failure = (bundles.size() == all_bundles.size());
     if (is_total_failure) {
       auto pg_id = placement_group->GetPlacementGroupID();
-      if (placement_group_gpu_domains_.erase(pg_id) > 0) {
+      if (placement_group_label_domains_.erase(pg_id) > 0) {
         RAY_LOG(INFO) << "All bundles for pg " << pg_id
-                      << " are unplaced, rescheduling on a new GPU domain";
+                      << " are unplaced, rescheduling on a new label domain";
       }
     }
   }
@@ -88,12 +88,20 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
       CreateSchedulingOptions(placement_group->GetPlacementGroupID(),
                               strategy,
                               placement_group->GetSoftTargetNodeID());
-  if (is_gpu_domain_pg) {
-    scheduling_options.gpu_domain_scheduling_strategy_ =
-        raylet_scheduling_policy::GpuDomainSchedulingStrategy::STRICT_PACK;
-    auto it = placement_group_gpu_domains_.find(placement_group->GetPlacementGroupID());
-    if (it != placement_group_gpu_domains_.end()) {
-      scheduling_options.target_gpu_domain_ = it->second;
+  if (label_domain.has_value()) {
+    const auto &label_key = label_domain.value();
+    scheduling_options.label_domain_scheduling_strategy_ =
+        raylet_scheduling_policy::LabelDomainSchedulingStrategy::STRICT_PACK;
+    scheduling_options.target_label_domain_.first = label_key;
+    auto pg_it =
+        placement_group_label_domains_.find(placement_group->GetPlacementGroupID());
+    if (pg_it != placement_group_label_domains_.end()) {
+      auto key_it = pg_it->second.find(label_key);
+      // If the label domain value is already selected for this pg, it means
+      // the bundles are being rescheduled and must be on the same domain.
+      if (key_it != pg_it->second.end()) {
+        scheduling_options.target_label_domain_.second = key_it->second;
+      }
     }
   }
   auto scheduling_result =
@@ -122,12 +130,12 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   RAY_CHECK(bundles.size() == selected_nodes.size());
 
-  if (is_gpu_domain_pg && scheduling_result.selected_gpu_domain.has_value()) {
-    placement_group_gpu_domains_[placement_group->GetPlacementGroupID()] =
-        *scheduling_result.selected_gpu_domain;
+  if (scheduling_result.selected_label_domain.has_value()) {
+    const auto &[label_key, domain_value] = *scheduling_result.selected_label_domain;
+    placement_group_label_domains_[placement_group->GetPlacementGroupID()][label_key] =
+        domain_value;
     RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
-                  << " assigned to GPU domain: "
-                  << *scheduling_result.selected_gpu_domain;
+                  << " assigned to label domain " << label_key << ": " << domain_value;
   }
 
   // Covert to a map of bundle to node.
@@ -199,7 +207,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     // Return destroyed bundles resources to the cluster resource.
     ReturnBundleResources(bundle_locations.value());
   }
-  placement_group_gpu_domains_.erase(placement_group_id);
+  placement_group_label_domains_.erase(placement_group_id);
 }
 
 void GcsPlacementGroupScheduler::MarkScheduleCancelled(
@@ -697,24 +705,20 @@ absl::flat_hash_map<scheduling::NodeID, ResourceRequest> ToNodeBundleResourcesMa
   return node_bundle_resources_map;
 }
 
-bool GcsPlacementGroupScheduler::IsGpuDomainPlacementGroup(
+std::optional<std::string> GcsPlacementGroupScheduler::IsLabelDomainPlacementGroup(
     const GcsPlacementGroup &pg) const {
-  constexpr std::string_view kAcceleratorTypeKey = "ray.io/accelerator-type";
-  constexpr std::string_view kGB300Value = "GB300";
-
   const auto &all_bundles = pg.GetBundles();
-  // Only checking the first bundle since we've already validated that if the GB300 label
-  // selector is present, it must be present in all bundles in placement_group.py
+  RAY_CHECK(!all_bundles.empty());
   const auto &bundle = all_bundles[0];
   const auto &label_selector = bundle->GetRequiredResources().GetLabelSelector();
   for (const auto &constraint : label_selector.GetConstraints()) {
-    if (constraint.GetLabelKey() == kAcceleratorTypeKey &&
+    if (constraint.GetLabelKey() == "ray.io/accelerator-type" &&
         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
-        constraint.GetLabelValues().contains(kGB300Value)) {
-      return true;
+        constraint.GetLabelValues().contains("GB300")) {
+      return "ray.io/gpu-domain";
     }
   }
-  return false;
+  return std::nullopt;
 }
 
 bool GcsPlacementGroupScheduler::IsPlacementGroupWildcardResource(

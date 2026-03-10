@@ -215,11 +215,11 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "gpu_domain_bundle_scheduling_policy",
-    srcs = ["policy/gpu_domain_bundle_scheduling_policy.cc"],
-    hdrs = ["policy/gpu_domain_bundle_scheduling_policy.h"],
+    name = "label_domain_bundle_scheduling_policy",
+    srcs = ["policy/label_domain_bundle_scheduling_policy.cc"],
+    hdrs = ["policy/label_domain_bundle_scheduling_policy.h"],
     deps = [
-        ":bundle_scheduling_policy",
+        ":cluster_resource_manager",
         ":scheduling_policy",
     ],
 )
@@ -232,8 +232,8 @@ ray_cc_library(
         ":affinity_with_bundle_scheduling_policy",
         ":bundle_scheduling_policy",
         ":cluster_resource_manager",
-        ":gpu_domain_bundle_scheduling_policy",
         ":hybrid_scheduling_policy",
+        ":label_domain_bundle_scheduling_policy",
         ":node_affinity_scheduling_policy",
         ":node_label_scheduling_policy",
         ":random_scheduling_policy",

@@ -40,9 +40,9 @@ enum class SchedulingType {
   NODE_LABEL = 9,
 };
 
-// GPU-domain-level scheduling strategies for placement groups
+// Label-domain-level scheduling strategies for placement groups.
 // Only STRICT_PACK is supported for now.
-enum class GpuDomainSchedulingStrategy {
+enum class LabelDomainSchedulingStrategy {
   NONE = 0,
   PACK = 1,
   SPREAD = 2,
@@ -180,13 +180,15 @@ struct SchedulingOptions {
   bool avoid_local_node_;
   bool require_node_available_;
   bool avoid_gpu_nodes_;
-  // The scheduling strategy for the GPU domain level.
-  // Set to NONE to disable GPU domain level scheduling.
-  GpuDomainSchedulingStrategy gpu_domain_scheduling_strategy_ =
-      GpuDomainSchedulingStrategy::NONE;
-  // If non-empty, constrains GPU-domain-aware scheduling to the specified
-  // domain (bundle rescheduling). If empty, a new domain is selected.
-  std::string target_gpu_domain_;
+  // The scheduling strategy for the label domain level.
+  // Set to NONE to disable label domain level scheduling.
+  LabelDomainSchedulingStrategy label_domain_scheduling_strategy_ =
+      LabelDomainSchedulingStrategy::NONE;
+  // The label domain target for label-domain-aware scheduling.
+  // first: the node label key used to partition nodes into groups.
+  // second: if non-empty, constrains scheduling to this domain value
+  //   (bundle rescheduling). If empty, a new group is selected.
+  std::pair<std::string, std::string> target_label_domain_;
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.

@@ -80,8 +80,8 @@ struct SchedulingResult {
   SchedulingResultStatus status;
   // The nodes successfully scheduled.
   std::vector<scheduling::NodeID> selected_nodes;
-  // The GPU domain selected during placement group scheduling.
-  std::optional<std::string> selected_gpu_domain;
+  // The label domain selected during placement group scheduling.
+  std::optional<std::pair<std::string, std::string>> selected_label_domain;
 };
 
 /// IBundleSchedulingPolicy picks a set of nodes from the cluster, according to the
@@ -101,10 +101,7 @@ class IBundleSchedulingPolicy {
   virtual SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options,
-      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) {
-    RAY_LOG(FATAL) << "Schedule not implemented for this policy.";
-    UNREACHABLE;
-  }
+      absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes) = 0;
 };
 
 /// ISchedulingPolicy picks a node to from the cluster, according to the resource

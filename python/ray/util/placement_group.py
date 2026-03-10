@@ -350,17 +350,6 @@ def validate_placement_group(
             )
         _validate_bundle_label_selector(bundle_label_selector)
 
-        contains_gb300 = any(
-            ls.get("ray.io/accelerator-type") == "GB300" for ls in bundle_label_selector
-        )
-        if contains_gb300:
-            for ls in bundle_label_selector:
-                if ls.get("ray.io/accelerator-type") != "GB300":
-                    raise ValueError(
-                        "GPU-domain scheduling requires all bundles to have "
-                        "'ray.io/accelerator-type: GB300' in their label selector."
-                    )
-
     if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
         raise ValueError(
             f"Invalid placement group strategy {strategy}. "
@@ -452,6 +441,19 @@ def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]])
                 f"Invalid label selector provided in bundle_label_selector list."
                 f" Detailed error: '{error_message}'"
             )
+
+    contains_gb300 = any(
+        label_selector.get("ray.io/accelerator-type") == "GB300"
+        for label_selector in bundle_label_selector
+    )
+    if contains_gb300:
+        for label_selector in bundle_label_selector:
+            if label_selector.get("ray.io/accelerator-type") != "GB300":
+                raise ValueError(
+                    f"Invalid bundle label selector {label_selector}. "
+                    "GPU-domain scheduling requires all bundles to have "
+                    "'ray.io/accelerator-type: GB300' in their label selector."
+                )
 
 
 def _valid_resource_shape(resources, bundle_specs):
