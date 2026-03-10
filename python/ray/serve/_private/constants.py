@@ -429,6 +429,13 @@ RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
     "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S", 10.0
 )
 
+# How often (in seconds) the controller re-records an unchanged application
+# status gauge value. Setting this to 0 disables caching (every control loop
+# iteration records the gauge, matching pre-optimization behavior)
+RAY_SERVE_APPLICATION_STATUS_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_APPLICATION_STATUS_GAUGE_REPORT_INTERVAL_S", 10.0
+)
+
 # Initial deadline for queue length responses in the router.
 RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S = get_env_float(
     "RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 0.1

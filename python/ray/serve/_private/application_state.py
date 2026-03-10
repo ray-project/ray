@@ -27,8 +27,8 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_APPLICATION_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_ENABLE_TASK_EVENTS,
-    RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deploy_utils import (
@@ -1437,7 +1437,8 @@ class ApplicationStateManager:
             if (
                 cached is not None
                 and cached[0] == value
-                and (now - cached[1]) < RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S
+                and (now - cached[1])
+                < RAY_SERVE_APPLICATION_STATUS_GAUGE_REPORT_INTERVAL_S
             ):
                 continue
             self._application_status_gauge.set(value, tags={"application": name})
