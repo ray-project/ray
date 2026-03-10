@@ -9,6 +9,7 @@ import random
 import re
 import time
 import uuid
+import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
@@ -18,6 +19,7 @@ import requests
 
 import ray
 import ray.util.serialization_addons
+from ray import cloudpickle
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import get_random_alphanumeric_string, import_attr
 from ray._raylet import MessagePackSerializer
@@ -415,6 +417,19 @@ def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     """Check if ray object reference is ready without waiting for it."""
     finished, _ = ray.wait([obj_ref], timeout=0)
     return len(finished) == 1
+
+
+def compress_metric_report(report: Any) -> bytes:
+    """Compress a metric report (HandleMetricReport or ReplicaMetricReport) for RPC.
+
+    Uses zlib level 9 (stdlib, no extra deps). ~75KB uncompressed -> ~5KB for 1000 replicas.
+    """
+    return zlib.compress(cloudpickle.dumps(report), level=9)
+
+
+def decompress_metric_report(compressed: bytes) -> Any:
+    """Decompress a metric report from RPC."""
+    return cloudpickle.loads(zlib.decompress(compressed))
 
 
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
