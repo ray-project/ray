@@ -86,6 +86,7 @@ class DeploymentAutoscalingState:
         # content of the dictionary is determined by the user defined policy
         self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: List[ReplicaID] = []
+        self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         # Track timestamps of last scale up and scale down events
@@ -185,6 +186,9 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         self._running_replicas = running_replicas
+        self._cached_running_replica_strs = {
+            r.to_full_id_str() for r in running_replicas
+        }
 
     def record_scale_up(self):
         """Record a scale up event by updating the timestamp."""
@@ -431,15 +435,11 @@ class DeploymentAutoscalingState:
         timeseries_list = []
 
         for handle_metric in self._handle_requests.values():
-            for replica_id in self._running_replicas:
-                if (
-                    RUNNING_REQUESTS_KEY not in handle_metric.metrics
-                    or replica_id not in handle_metric.metrics[RUNNING_REQUESTS_KEY]
-                ):
+            running_reqs = handle_metric.metrics.get(RUNNING_REQUESTS_KEY, {})
+            for replica_str in self._cached_running_replica_strs:
+                if replica_str not in running_reqs:
                     continue
-                timeseries_list.append(
-                    handle_metric.metrics[RUNNING_REQUESTS_KEY][replica_id]
-                )
+                timeseries_list.append(running_reqs[replica_str])
 
         return timeseries_list
 
@@ -641,11 +641,12 @@ class DeploymentAutoscalingState:
         """
         total_requests = 0
 
-        for id in self._running_replicas:
-            if id in self._replica_metrics:
-                total_requests += self._replica_metrics[id].aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY, 0
-                )
+        # Iterate over _replica_metrics but only count running replicas. Stale metrics from
+        # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
+        for report in self._replica_metrics.values():
+            # TODO(abrar): Store replica_id as string in report to avoid this conversion.
+            if report.replica_id.to_full_id_str() in self._cached_running_replica_strs:
+                total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
 
         metrics_collected_on_replicas = total_requests > 0
 
@@ -654,13 +655,12 @@ class DeploymentAutoscalingState:
             total_requests += handle_metric.aggregated_queued_requests
             # Add running requests from handles if not collected on replicas
             if not metrics_collected_on_replicas:
-                for replica_id in self._running_replicas:
-                    if replica_id in handle_metric.aggregated_metrics.get(
-                        RUNNING_REQUESTS_KEY, {}
-                    ):
-                        total_requests += handle_metric.aggregated_metrics.get(
-                            RUNNING_REQUESTS_KEY
-                        ).get(replica_id)
+                running_reqs = handle_metric.aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY, {}
+                )
+                for replica_str, count in running_reqs.items():
+                    if replica_str in self._cached_running_replica_strs:
+                        total_requests += count
         return total_requests
 
     def _should_aggregate_metrics_at_controller(self) -> bool:
