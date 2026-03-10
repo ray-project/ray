@@ -1183,7 +1183,7 @@ class HashShuffleOperator(ShuffleOperatorCore):
         engine = CpuShuffleEngine(
             input_ops=[input_op],
             data_context=data_context,
-            operator_name=f"Shuffle(key_columns={key_columns}, num_partitions={num_partitions})",
+            operator_name="Shuffle",
             key_columns=[key_columns],
             num_input_seqs=1,
             num_partitions=num_partitions,
@@ -1199,6 +1199,7 @@ class HashShuffleOperator(ShuffleOperatorCore):
         )
 
         op_name = f"Shuffle(key_columns={key_columns}, num_partitions={engine.num_partitions})"
+        engine._operator_name = op_name
 
         super().__init__(
             name=op_name,
