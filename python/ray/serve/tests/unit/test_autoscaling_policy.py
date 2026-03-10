@@ -1,9 +1,14 @@
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
+from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve._private.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
@@ -12,7 +17,7 @@ from ray.serve.autoscaling_policy import (
     _apply_scaling_factors,
     replica_queue_length_autoscaling_policy,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingContext
+from ray.serve.config import AutoscalingConfig, AutoscalingContext, GangSchedulingConfig
 
 wrapped_replica_queue_length_autoscaling_policy = _apply_autoscaling_config(
     replica_queue_length_autoscaling_policy
@@ -50,6 +55,7 @@ def create_context_with_overrides(
         "last_scale_up_time": base_ctx.last_scale_up_time,
         "last_scale_down_time": base_ctx.last_scale_down_time,
         "current_time": base_ctx.current_time,
+        "total_pending_async_requests": base_ctx.total_pending_async_requests,
     }
 
     # Override with provided kwargs
@@ -334,6 +340,7 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
 
@@ -390,6 +397,7 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         # Downscaling to 0 first stops at 1
@@ -456,6 +464,7 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
 
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
@@ -503,6 +512,7 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
 
         # new_num_replicas = policy_manager.get_decision_num_replicas(1, 100, 1)
@@ -585,6 +595,7 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
 
         new_num_replicas = None
@@ -651,6 +662,7 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
 
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
@@ -694,6 +706,7 @@ class TestReplicaQueueLengthPolicy:
             last_scale_up_time=None,
             last_scale_down_time=None,
             current_time=None,
+            total_pending_async_requests=0,
         )
 
         # Callables not executed until accessed
@@ -732,6 +745,7 @@ class TestReplicaQueueLengthPolicy:
             last_scale_up_time=None,
             last_scale_down_time=None,
             current_time=None,
+            total_pending_async_requests=0,
         )
 
         assert ctx2.total_num_requests == 100.0
@@ -813,6 +827,7 @@ class TestAutoscalingConfigParameters:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
         upscale_wait_period = int(ctx.config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
         for i in range(upscale_wait_period):
@@ -857,6 +872,7 @@ class TestAutoscalingConfigParameters:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
         downscale_to_zero_wait_period = int(
             ctx.config.downscale_to_zero_delay_s / CONTROL_LOOP_INTERVAL_S
@@ -957,6 +973,7 @@ class TestCustomPolicyWithDefaultParameters:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
+            total_pending_async_requests=0,
         )
 
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
@@ -1026,6 +1043,7 @@ class TestCustomPolicyWithDefaultParameters:
             last_scale_up_time=None,
             last_scale_down_time=None,
             current_time=None,
+            total_pending_async_requests=0,
         )
         ctx = create_context_with_overrides(ctx, total_num_requests=total_requests)
         num_replicas, _ = simple_custom_policy(ctx)
@@ -1065,6 +1083,7 @@ class TestAppLevelPolicyWithDefaultParameters:
                 last_scale_up_time=None,
                 last_scale_down_time=None,
                 current_time=None,
+                total_pending_async_requests=0,
             ),
             d2: AutoscalingContext(
                 config=config,
@@ -1084,12 +1103,137 @@ class TestAppLevelPolicyWithDefaultParameters:
                 last_scale_up_time=None,
                 last_scale_down_time=None,
                 current_time=None,
+                total_pending_async_requests=0,
             ),
         }
 
         decisions, _ = simple_app_level_policy(contexts)
         assert decisions[d1] == 1
         assert decisions[d2] == 1
+
+
+class TestGangSchedulingAutoscalingPolicy:
+    """Tests for GangSchedulingAutoscalingPolicy which aligns replica counts
+    to gang size multiples."""
+
+    def _make_policy(self, gang_size, inner_result):
+        def base_scaling_policy(ctx):
+            return inner_result, {}
+
+        return GangSchedulingAutoscalingPolicy(base_scaling_policy, gang_size)
+
+    def _make_ctx(self, current_num_replicas):
+        return AutoscalingContext(
+            deployment_id=DeploymentID(name="test", app_name="app"),
+            deployment_name="test",
+            app_name=None,
+            current_num_replicas=current_num_replicas,
+            target_num_replicas=0,
+            running_replicas=[],
+            total_num_requests=0,
+            total_queued_requests=0,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            capacity_adjusted_min_replicas=0,
+            capacity_adjusted_max_replicas=0,
+            policy_state={},
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+            current_time=None,
+            config=None,
+            total_pending_async_requests=0,
+        )
+
+    @pytest.mark.parametrize("raw_autoscaling_decision,expected", [(5, 8), (8, 8)])
+    def test_scale_up_rounds_up(self, raw_autoscaling_decision, expected):
+        ctx = self._make_ctx(current_num_replicas=4)
+        policy = self._make_policy(gang_size=4, inner_result=raw_autoscaling_decision)
+        assert policy(ctx)[0] == expected
+
+    @pytest.mark.parametrize("raw_autoscaling_decision,expected", [(10, 8), (8, 8)])
+    def test_scale_down_rounds_down(self, raw_autoscaling_decision, expected):
+        ctx = self._make_ctx(current_num_replicas=12)
+        policy = self._make_policy(gang_size=4, inner_result=raw_autoscaling_decision)
+        assert policy(ctx)[0] == expected
+
+    def test_zero_replicas_unchanged(self):
+        ctx = self._make_ctx(current_num_replicas=4)
+        policy = self._make_policy(gang_size=4, inner_result=0)
+        assert policy(ctx)[0] == 0
+
+    def test_gang_size_one_no_op(self):
+        ctx = self._make_ctx(current_num_replicas=3)
+        policy = self._make_policy(gang_size=1, inner_result=5)
+        assert policy(ctx)[0] == 5
+
+    def _create_state(self, gang_size, min_replicas, max_replicas, running=0):
+        """Create a DeploymentAutoscalingState with gang config registered."""
+        dep_id = DeploymentID(name="test", app_name="app")
+        state = DeploymentAutoscalingState(dep_id)
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=min_replicas,
+            max_replicas=max_replicas,
+        )
+        info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
+            gang_size=gang_size,
+        )
+        info.target_capacity = None
+        info.target_capacity_direction = None
+        info.config_changed.return_value = False
+
+        state.register(info, curr_target_num_replicas=min_replicas)
+        state._running_replicas = list(range(running))
+        return state
+
+    def test_integration_with_deployment_state(self):
+        """Test that gang autoscaling policy is auto-injected when registering with gang config."""
+        state = self._create_state(gang_size=4, min_replicas=4, max_replicas=16)
+        assert isinstance(state._policy, GangSchedulingAutoscalingPolicy)
+        assert state._policy._gang_size == 4
+
+    def test_integration_no_gang(self):
+        """Without gang config, the policy is not wrapped."""
+        dep_id = DeploymentID(name="test", app_name="app")
+        state = DeploymentAutoscalingState(dep_id)
+
+        info = MagicMock()
+        info.deployment_config.autoscaling_config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=10,
+        )
+        info.deployment_config.gang_scheduling_config = None
+        info.target_capacity = None
+        info.target_capacity_direction = None
+        info.config_changed.return_value = False
+
+        state.register(info, curr_target_num_replicas=1)
+        assert not isinstance(state._policy, GangSchedulingAutoscalingPolicy)
+
+    def test_integration_scale_up_respects_max(self):
+        """Gang alignment rounds up, but apply_bounds clips to max_replicas."""
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=8, running=4
+        )
+        # GangSchedulingAutoscalingPolicy rounds up to 12
+        state._policy = GangSchedulingAutoscalingPolicy(
+            lambda ctx: (9, {}), gang_size=4
+        )
+        decision = state.get_decision_num_replicas(curr_target_num_replicas=4)
+        assert decision == 8
+
+    def test_integration_scale_down_respects_min(self):
+        """Gang alignment rounds down, but apply_bounds clips to min_replicas."""
+        state = self._create_state(
+            gang_size=4, min_replicas=4, max_replicas=16, running=8
+        )
+        # GangSchedulingAutoscalingPolicy rounds down to 0
+        state._policy = GangSchedulingAutoscalingPolicy(
+            lambda ctx: (1, {}), gang_size=4
+        )
+        decision = state.get_decision_num_replicas(curr_target_num_replicas=8)
+        assert decision == 4
 
 
 if __name__ == "__main__":

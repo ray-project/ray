@@ -101,7 +101,6 @@ def create_cluster_env_from_image(
                     config_json=dict(
                         docker_image=image,
                         ray_version="nightly",
-                        env_vars=runtime_env,
                     ),
                 )
             )

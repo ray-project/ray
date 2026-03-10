@@ -19,11 +19,12 @@ The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray
 * :ref:`Multimodality <multimodal>` - Batch inference with VLM / omni models on multimodal data
 * :ref:`OpenAI-compatible endpoints <openai_compatible_api_endpoint>` - Query deployed models
 * :ref:`Serve deployments <serve_deployments>` - Share vLLM engines across processors
+* :ref:`Custom tokenizers <custom_tokenizers>` - Use vLLM tokenizers for models not supported by HuggingFace
 
 **Operations:**
 
 * :ref:`Troubleshooting <troubleshooting>` - GPU memory, model loading issues
-* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA
+* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA, batch concurrency
 
 .. _vllm_quickstart:
 
@@ -93,7 +94,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **Detokenize**: Converts output token IDs back to readable text.
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
-Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize, and HttpRequestStage) use autoscaling actor pools (except for ServeDeployment stage), while the GPU stage uses a fixed pool.
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. All stages (CPU and GPU) use autoscaling actor pools by default, except for the ServeDeployment stage which uses a fixed pool.
 
 .. _horizontal_scaling:
 
@@ -108,6 +109,13 @@ Horizontally scale the LLM stage to multiple GPU replicas using the ``concurrenc
     :end-before: __concurrent_config_example_end__
 
 Each replica runs an independent inference engine. Set ``concurrency`` to match the number of available GPUs or GPU nodes.
+
+By default, when you set ``concurrency`` to an integer ``n``, GPU stages autoscale from 1 to ``n`` actors. To use a fixed pool of ``n`` actors, set ``concurrency`` to ``(n, n)``.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_fixed_pool_example_start__
+    :end-before: __concurrent_config_fixed_pool_example_end__
 
 .. _text_generation:
 
@@ -311,6 +319,46 @@ Query deployed models with an OpenAI-compatible API:
     :start-after: __openai_example_start__
     :end-before: __openai_example_end__
 
+.. _custom_tokenizers:
+
+Custom tokenizers
+-----------------
+
+Use this pattern when a model is supported by vLLM but not by HuggingFace ``transformers`` — for example, Mistral Tekken (``mistral``), DeepSeek-V3 (``deepseek_v32``), or Grok-2 (``grok2``).
+The built-in ChatTemplate, Tokenize, and Detokenize stages rely on HuggingFace and will fail for these models. In the following example, we disable the built-in CPU stages and replace them with ``map_batches`` callables.
+
+**Chat template**: Converts OpenAI-format messages into the prompt string the model expects. Required because each model family defines its own chat format:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_chat_template_start__
+    :end-before: __custom_chat_template_end__
+
+**Tokenize**: Converts the prompt string into token IDs for the model.
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenize_start__
+    :end-before: __custom_tokenize_end__
+
+**Detokenize** (optional): Decodes generated token IDs back to text. The vLLM engine already returns ``generated_text``, so this is only needed for custom decoding (e.g. different ``skip_special_tokens`` settings):
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_detokenize_start__
+    :end-before: __custom_detokenize_end__
+
+Build a processor with built-in stages disabled and compose the full pipeline:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenizer_pipeline_start__
+    :end-before: __custom_tokenizer_pipeline_end__
+    :dedent: 4
+
+.. note::
+    This example uses a standard model because models that truly require vLLM's custom tokenizer are too large for Ray CI environments. The pattern is identical — just replace ``MODEL_ID`` and set ``tokenizer_mode`` explicitly.
+
 .. _troubleshooting:
 
 Troubleshooting
@@ -481,6 +529,37 @@ Use `RunAI Model Streamer <https://github.com/run-ai/runai-model-streamer>`_ for
     :start-after: __runai_config_example_start__
     :end-before: __runai_config_example_end__
 
+.. _tuning_concurrent_batches:
+
+Tuning concurrent batch processing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two parameters control concurrent batch processing: ``max_concurrent_batches`` and ``max_tasks_in_flight_per_actor``. Understanding their interaction helps achieve optimal throughput.
+
+Understanding the parameters
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``max_concurrent_batches``, default: 8
+    The number of batches that can execute concurrently within a single vLLM engine actor. This overlaps batch processing to hide tail latency. The optimal batch size depends on the workload.
+
+``max_tasks_in_flight_per_actor``, experimental, default: 16
+    The number of tasks Ray Data can queue per actor before waiting for results. This enables task prefetching so tasks are ready when the actor finishes processing.
+
+How they work together
+^^^^^^^^^^^^^^^^^^^^^^
+
+These parameters control different parts of the pipeline:
+
+- ``max_tasks_in_flight_per_actor`` controls how many tasks Ray Data sends to the actor queue
+- ``max_concurrent_batches`` controls how many batches can execute simultaneously
+
+With ``max_tasks_in_flight_per_actor`` < ``max_concurrent_batches``, Ray Data actors are undersaturated. To maximize throughput, increase ``max_tasks_in_flight_per_actor`` to keep the actor task queue saturated.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_batches_tuning_example_start__
+    :end-before: __concurrent_batches_tuning_example_end__
+
 .. _serve_deployments:
 
 Serve deployments
@@ -496,3 +575,16 @@ For multi-turn conversations or complex agentic workflows, share a vLLM engine a
 ----
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
+
+
+Get Help
+~~~~~~~~~~~~~~~~~
+
+If you encounter issues not covered in this guide:
+
+- `Ray GitHub Issues <https://github.com/ray-project/ray/issues>`_ - Report bugs or request features
+- `Ray Slack <https://ray-distributed.slack.com>`_ - Get help from the community
+- `Ray Discourse Forum <https://discuss.ray.io>`_ - Ask questions and share knowledge
+- `Ray LLM Office Hours <https://docs.google.com/document/d/1n3-Jw_4su8yilo9zdi5OciAduoz6H_VmdL8i9sL4f-E/edit?tab=t.e700ayqsx3v3>`_ - Learn about new features, ask questions, and get guidance from the team
+
+  - `Past Office Hours Recordings <https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN>`_ - View recordings from previous sessions

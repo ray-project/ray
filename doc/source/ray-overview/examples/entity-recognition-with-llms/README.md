@@ -23,7 +23,7 @@ This tutorial uses the [Ray library](https://github.com/ray-project/ray) to impl
 - Zero-copy GPU data transfer
 - Composable with preprocessing and postprocessing steps
 
-[`ray.serve.llm`](https://docs.ray.io/en/latest/serve/llm/serving-llms.html):
+[`ray.serve.llm`](https://docs.ray.io/en/latest/serve/llm/index.html):
 - Automatic scaling and load balancing
 - Unified multi-node multi-model deployment
 - Multi-LoRA support with shared base models
@@ -924,7 +924,7 @@ Observe the individual steps in the batch inference workload through the Anyscal
 </div>
 
 ## Online serving
-[`Overview`](https://docs.ray.io/en/latest/serve/llm/serving-llms.html) | [`API reference`](https://docs.ray.io/en/latest/serve/api/index.html#llm-api)
+[`Overview`](https://docs.ray.io/en/latest/serve/llm/index.html) | [`API reference`](https://docs.ray.io/en/latest/serve/api/index.html#llm-api)
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_serve.png" width=600>
 
@@ -1039,7 +1039,7 @@ And of course, you can observe the running service, the deployments, and metrics
 
 <div class="alert alert-info">
 
-💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/serving-llms.html) and the [API reference](https://docs.ray.io/en/latest/serve/llm/api.html) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.
+💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/examples.html) and the [API reference](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.
 
 </div>
 

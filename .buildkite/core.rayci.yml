@@ -41,6 +41,7 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
     env:
       PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: core
@@ -255,6 +256,7 @@ steps:
       - manylinux-x86_64
       - corebuild-multipy
       - forge
+      - ray-wheel-build
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
@@ -311,9 +313,12 @@ steps:
       - "3.11"
       - "3.12"
       - "3.13"
+      - "3.14"
 
   - label: ":ray: core: cgroup tests"
-    tags: core_cpp
+    tags:
+      - core_cpp
+      - python
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all
@@ -330,6 +335,7 @@ steps:
 
   - label: ":ray: core: cpp tests"
     tags: core_cpp
+
     instance_type: medium
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker --

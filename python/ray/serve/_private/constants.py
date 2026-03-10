@@ -27,16 +27,26 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 SERVE_NAMESPACE = "serve"
 
 #: HTTP Host
-DEFAULT_HTTP_HOST = "127.0.0.1"
+DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
+
+#: Fallback proxy HTTP port
+RAY_SERVE_FALLBACK_PROXY_HTTP_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_HTTP_PORT", 8500
+)
 
 #: Uvicorn timeout_keep_alive Config
 DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
+
+#: Fallback proxy gRPC port
+RAY_SERVE_FALLBACK_PROXY_GRPC_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_GRPC_PORT", 9500
+)
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -163,6 +173,20 @@ BATCH_UTILIZATION_BUCKETS_PERCENT = parse_latency_buckets(
         "",
     ),
     DEFAULT_BATCH_UTILIZATION_BUCKETS_PERCENT,
+)
+
+#: Replica utilization metric configuration.
+#: Rolling window duration for calculating replica utilization (in seconds).
+RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S = float(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S", "600")
+)
+#: Interval for reporting replica utilization metric (in seconds).
+RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S = float(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S", "10")
+)
+#: Number of buckets for the rolling window (determines granularity).
+RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS = int(
+    get_env_str("RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS", "60")
 )
 
 #: Histogram buckets for actual batch size.
@@ -342,9 +366,10 @@ RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
     "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
 )
 
-# How often autoscaling metrics are recorded on Serve replicas.
-RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
+# Factor of look_back_period_s for autoscaling metric record interval.
+# Record interval = look_back_period_s * factor. Used by both router and replica.
+RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
+    "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
 # Replica autoscaling metrics push interval.
@@ -352,16 +377,15 @@ RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
 )
 
-# How often autoscaling metrics are recorded on Serve handles.
-RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
-)
-
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
-    # Legacy env var for RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S
-    get_env_float("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", 10.0),
+    10.0,
+)
+
+# Async inference task queue metrics push interval.
+RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
+    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
 )
 
 # Serve multiplexed matching timeout.
@@ -392,6 +416,13 @@ GRPC_CONTEXT_ARG_NAME = "grpc_context"
 # Whether or not to forcefully kill replicas that fail health checks.
 RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS = get_env_bool(
     "RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS", "0"
+)
+
+# How often (in seconds) the controller re-records an unchanged health-check
+# gauge value for each replica. Setting this to 0 disables caching (every loop
+# iteration records the gauge, matching pre-optimization behavior).
+RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S = get_env_float_non_negative(
+    "RAY_SERVE_REPLICA_HEALTH_GAUGE_REPORT_INTERVAL_S", 10.0
 )
 
 # Initial deadline for queue length responses in the router.
@@ -569,12 +600,119 @@ RAY_SERVE_FAIL_ON_RANK_ERROR = get_env_bool("RAY_SERVE_FAIL_ON_RANK_ERROR", "0")
 
 # The message to return when the replica is healthy.
 HEALTHY_MESSAGE = "success"
+NO_ROUTES_MESSAGE = "Route table is not populated yet."
+NO_REPLICAS_MESSAGE = "No replicas are available yet."
+DRAINING_MESSAGE = "This node is being drained."
 
 # Feature flag to enable a limited form of direct ingress where ingress applications
 # listen on port 8000 (HTTP) and 9000 (gRPC). No proxies will be started.
 RAY_SERVE_ENABLE_DIRECT_INGRESS = (
     os.environ.get("RAY_SERVE_ENABLE_DIRECT_INGRESS", "0") == "1"
 )
+
+# Feature flag to use HAProxy.
+RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
+
+# HAProxy configuration defaults
+# Maximum number of concurrent connections
+RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
+
+# Number of threads for HAProxy
+RAY_SERVE_HAPROXY_NBTHREAD = int(os.environ.get("RAY_SERVE_HAPROXY_NBTHREAD", "4"))
+
+# HAProxy configuration file location
+RAY_SERVE_HAPROXY_CONFIG_FILE_LOC = os.environ.get(
+    "RAY_SERVE_HAPROXY_CONFIG_FILE_LOC", "/tmp/haproxy-serve/haproxy.cfg"
+)
+
+# HAProxy admin socket path
+RAY_SERVE_HAPROXY_SOCKET_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_SOCKET_PATH", "/tmp/haproxy-serve/admin.sock"
+)
+
+# Enable HAProxy optimized configuration (server state persistence, etc.)
+# Disabled by default to prevent test suite interference
+RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG = (
+    os.environ.get("RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG", "1") == "1"
+)
+
+# HAProxy server state path
+RAY_SERVE_HAPROXY_SERVER_STATE_BASE = os.environ.get(
+    "RAY_SERVE_HAPROXY_SERVER_STATE_BASE", "/tmp/haproxy-serve"
+)
+
+# HAProxy server state path
+RAY_SERVE_HAPROXY_SERVER_STATE_FILE = os.environ.get(
+    "RAY_SERVE_HAPROXY_SERVER_STATE_FILE", "/tmp/haproxy-serve/server-state"
+)
+
+# HAProxy hard stop after timeout
+RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S", "120")
+)
+
+# HAProxy metrics export port
+RAY_SERVE_HAPROXY_METRICS_PORT = int(
+    os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
+)
+
+# HAProxy log port
+RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
+    os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "514")
+)
+
+# HAProxy timeout configurations (in seconds, None = no timeout)
+RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S"))
+    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S")
+    else None
+)
+
+RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
+    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))
+    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
+    else None
+)
+
+# When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
+# setting TCP_NODELAY on both client and server connections.
+RAY_SERVE_HAPROXY_TCP_NODELAY = (
+    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "0") == "1"
+)
+
+# HAProxy timeout client
+RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
+    os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
+)
+
+# Number of consecutive failed server health checks that must occur
+# before haproxy marks the server as down.
+RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL = int(
+    os.environ.get("RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL", "2")
+)
+
+# Number of consecutive successful server health checks that must occur
+# before haproxy marks the server as up.
+RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE = int(
+    os.environ.get("RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE", "2")
+)
+
+# Time interval between each haproxy health check attempt. Also the
+# timeout of each health check before being considered as failed.
+RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER = os.environ.get(
+    "RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER", "5s"
+)
+
+# Time interval between each haproxy health check attempt when the server is in any of the transition states: UP - transitionally DOWN or DOWN - transitionally UP
+RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER = os.environ.get(
+    "RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER", "250ms"
+)
+
+# Time interval between each haproxy health check attempt when the server is in the DOWN state
+RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
+    "RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER", "250ms"
+)
+
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
@@ -591,6 +729,8 @@ RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
 )
 # The minimum drain period for a HTTP proxy.
+# If RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS is set to 1,
+# then the minimum draining period is 0.
 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S = float(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "30")
 )
@@ -600,6 +740,18 @@ SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER = "x-request-timeout-seconds"
 
 # HTTP request disconnect disabled
 SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER = "x-request-disconnect-disabled"
+
+# Path to tracing exporter function
+# If empty string (default), then tracing is disabled
+RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH", ""
+)
+DEFAULT_TRACING_EXPORTER_IMPORT_PATH = (
+    "ray.serve._private.tracing_utils:default_tracing_exporter"
+)
+RAY_SERVE_TRACING_SAMPLING_RATIO = float(
+    os.environ.get("RAY_SERVE_TRACING_SAMPLING_RATIO", 0.01)
+)
 
 # If throughput optimized Ray Serve is enabled, set the following constants.
 # This should be at the end.
@@ -615,11 +767,14 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
         "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP", "0"
     )
     RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "0")
+    RAY_SERVE_USE_GRPC_BY_DEFAULT = get_env_bool("RAY_SERVE_USE_GRPC_BY_DEFAULT", "1")
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = get_env_bool(
+        "RAY_SERVE_ENABLE_DIRECT_INGRESS", "1"
+    )
 
-# The maximum allowed RPC latency in milliseconds.
-# This is used to detect and warn about long RPC latencies
-# between the controller and the replicas.
-RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
+# Direct ingress must be enabled if HAProxy is enabled
+if RAY_SERVE_ENABLE_HA_PROXY:
+    RAY_SERVE_ENABLE_DIRECT_INGRESS = True
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(

@@ -59,14 +59,14 @@ class TestConcurrencyConfigPassthrough:
     Test that concurrency config correctly sets ActorPoolStrategy.
 
     This determines blocking behavior when wait_for_min_actors_s > 0:
-    - concurrency=N → min_size=N → blocks for N actors
-    - concurrency=(1, N) → min_size=1 → blocks for 1 actor
+    - concurrency=N → min_size=1, max_size=N → blocks for 1 actor (autoscaling)
+    - concurrency=(m, N) → min_size=m, max_size=N → blocks for m actors
     """
 
     @pytest.mark.parametrize(
         "concurrency,expected_min_size,expected_max_size",
         [
-            (4, 4, 4),  # int: fixed pool
+            (4, 1, 4),  # int: autoscaling pool with min_size=1
             ((1, 4), 1, 4),  # tuple: autoscaling pool
             ((2, 8), 2, 8),  # tuple: custom min
         ],
