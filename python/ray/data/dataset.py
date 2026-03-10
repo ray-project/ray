@@ -6323,7 +6323,7 @@ class Dataset:
             builder.add_block(batch)
         block = builder.build()
 
-        return BlockAccessor.for_block(block).to_pandas()
+        return BlockAccessor.for_block(block).to_pandas(copy=True)
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
