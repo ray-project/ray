@@ -2519,7 +2519,7 @@ class ActorHandle(Generic[T]):
         try:
             return self._cached_hash
         except AttributeError:
-            h = hash(self._actor_id)
+            h = hash(self._ray_actor_id)
             self._cached_hash = h
             return h
 
