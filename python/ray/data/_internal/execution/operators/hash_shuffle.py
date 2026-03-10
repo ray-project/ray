@@ -1207,7 +1207,9 @@ class HashShuffleOperator(ShuffleOperatorCore):
 
     @property
     def _aggregator_pool(self):
-        """Backward-compat accessor used by hash_shuffle_detector."""
+        # TODO: Remove this property once HashShuffleAggregatorIssueDetector and
+        #       tests are refactored to use a ShuffleEngine-level health-check
+        #       interface instead of reaching into internal components.
         return self._engine._aggregator_pool
 
     @staticmethod

@@ -413,7 +413,8 @@ class JoinOperator(ShuffleOperatorCore):
 
     @property
     def _aggregator_pool(self):
-        """Backward-compat accessor used by tests and issue detectors."""
+        # TODO: Remove once tests use a ShuffleEngine-level interface instead
+        #       of reaching into internal components.
         return self._engine._aggregator_pool
 
     @staticmethod
