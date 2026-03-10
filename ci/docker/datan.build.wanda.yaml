@@ -5,7 +5,6 @@ srcs:
   - python/deplocks/ci/data-pyarrow-nightly-ci_depset_py$PYTHON.lock
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
-  - ARROW_VERSION=nightly
   - IMAGE_TYPE=pyarrow-nightly
 tags:
   - cr.ray.io/rayproject/datanbuild-py$PYTHON
