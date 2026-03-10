@@ -1142,6 +1142,7 @@ class UDFExpr(Expr):
         )
 
 
+@DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
 class PyArrowComputeUDFExpr(UDFExpr):
     """A UDFExpr backed by a PyArrow compute function.

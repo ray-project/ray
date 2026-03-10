@@ -2,6 +2,7 @@ import re
 from typing import Any, List
 
 import pandas as pd
+import pyarrow
 import pyarrow.compute as pc
 import pytest
 
@@ -743,7 +744,7 @@ class TestPyArrowComputeUDFPushdown:
         [
             pytest.param(
                 lambda: ~col("variety").str.match_regex("Set.*"),
-                lambda r: not r["variety"].startswith("Set"),
+                lambda r: not bool(re.search("Set.*", r["variety"])),
                 id="negated_match_regex",
             ),
             pytest.param(
@@ -757,6 +758,10 @@ class TestPyArrowComputeUDFPushdown:
                 id="contains",
             ),
         ],
+    )
+    @pytest.mark.skipif(
+        pyarrow.__version__ < "15",
+        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
     )
     def test_string_udf_pushdown_into_parquet(
         self, parquet_ds, build_filter, equivalent_fn
