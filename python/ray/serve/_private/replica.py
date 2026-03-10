@@ -2951,9 +2951,10 @@ class UserCallableWrapper:
         self._callable = None
         self._deployment_config = deployment_config
         self._ray_actor_options = ray_actor_options or {}
-        self._user_code_threadpool: Optional[concurrent.futures.ThreadPoolExecutor] = (
-            None
-        )
+        self._user_code_threadpool: Optional[
+            concurrent.futures.ThreadPoolExecutor
+        ] = None
+        
 
         if self._run_user_code_in_separate_thread:
             # All interactions with user code run on this loop to avoid blocking the
