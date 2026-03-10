@@ -2498,9 +2498,12 @@ class ActorHandle(Generic[T]):
         )
 
     def __hash__(self):
+        # Look up directly in __dict__ to avoid __getattr__, which for
+        # cross-language actors returns an ActorMethod instead of raising
+        # AttributeError.
         try:
-            return self._cached_hash
-        except AttributeError:
+            return self.__dict__["_cached_hash"]
+        except KeyError:
             h = hash(self._ray_actor_id)
             self._cached_hash = h
             return h
