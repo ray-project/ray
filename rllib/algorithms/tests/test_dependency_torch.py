@@ -28,10 +28,11 @@ if __name__ == "__main__":
         .environment("CartPole-v1")
         .framework("tf")
         .env_runners(num_env_runners=0)
-        # Disable the logger due to a sort-import attempt of torch
-        # inside the tensorboardX.SummaryWriter class.
-        .debugging(logger_config={"type": "ray.tune.logger.NoopLogger"})
     )
+
+    # Disable auto-added TBX logger callback to avoid importing torch
+    # via the tensorboardX.SummaryWriter class.
+    os.environ["TUNE_DISABLE_AUTO_CALLBACK_LOGGERS"] = "1"
     algo = config.build()
     algo.train()
 
