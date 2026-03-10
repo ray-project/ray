@@ -9,8 +9,8 @@ from typing import List, Tuple
 import numpy as np
 
 import ray
-from ray._common.network_utils import find_free_port, is_ipv6
 from . import types
+from ray._common.network_utils import find_free_port, is_ipv6
 
 logger = logging.getLogger(__name__)
 
