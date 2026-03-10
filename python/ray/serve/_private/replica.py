@@ -3018,6 +3018,8 @@ class UserCallableWrapper:
                 finally:
                     # Avoid holding references to user code.
                     self._sync_init_fn = None
+                    if self._init_coro is not None:
+                        self._init_coro.close()
                     self._init_coro = None
 
                 # Phase 2: Start monitoring + run_forever.

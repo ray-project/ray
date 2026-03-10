@@ -26,7 +26,7 @@ fastapi_app = FastAPI()
 @serve.ingress(fastapi_app)
 class Textbot:
     def __init__(self, model_id: str):
-        self.loop = asyncio.get_running_loop()
+        self.loop = asyncio.get_event_loop()
 
         self.model_id = model_id
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
@@ -114,7 +114,7 @@ fastapi_app = FastAPI()
 @serve.ingress(fastapi_app)
 class Chatbot:
     def __init__(self, model_id: str):
-        self.loop = asyncio.get_running_loop()
+        self.loop = asyncio.get_event_loop()
 
         self.model_id = model_id
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
@@ -265,7 +265,7 @@ fastapi_app = FastAPI()
 @serve.ingress(fastapi_app)
 class Batchbot:
     def __init__(self, model_id: str):
-        self.loop = asyncio.get_running_loop()
+        self.loop = asyncio.get_event_loop()
 
         self.model_id = model_id
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)

@@ -628,12 +628,14 @@ def _run_many(
                 name=t.name,
                 route_prefix=t.route_prefix,
                 logging_config=t.logging_config,
-                make_deployment_handle=make_local_deployment_handle
-                if _local_testing_mode
-                else None,
-                default_runtime_env=ray.get_runtime_context().runtime_env
-                if not _local_testing_mode
-                else None,
+                make_deployment_handle=(
+                    make_local_deployment_handle if _local_testing_mode else None
+                ),
+                default_runtime_env=(
+                    ray.get_runtime_context().runtime_env
+                    if not _local_testing_mode
+                    else None
+                ),
                 external_scaler_enabled=t.external_scaler_enabled,
             )
         )
