@@ -4350,6 +4350,7 @@ class Dataset:
         partition_cols: Optional[List[str]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional["pyarrow.Schema"] = None,
+        schema_mode: str = "merge",
         ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         **write_kwargs,
@@ -4492,8 +4493,9 @@ class Dataset:
             )
             partition_cols = validate_partition_column_names(partition_cols)
 
-        # schema_mode can be passed as a write_kwarg for flexibility
-        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        # Also allow schema_mode in write_kwargs for backward compatibility
+        if "schema_mode" in write_kwargs:
+            schema_mode = write_kwargs.pop("schema_mode")
         if schema_mode not in ("merge", "error"):
             raise ValueError(
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
