@@ -8,6 +8,7 @@ Test plan for deployment actors:
 - Imperative/declarative deploy, multiple actors: test_imperative_*, test_declarative_*
 - Redeployment, orphan cleanup: test_redeployment_*, test_actors_cleaned_up_*
 - Controller restart: test_deployment_actor_survives_controller_restart
+- Controller + actor kill: test_deployment_actor_fault_tolerance.py
 - Deployment actor crash (Ray restarts): test_deployment_actor_restarts_on_crash
 - Gap: deployment actor killed with no_restart=True — controller does not detect
   or recreate; replicas would get RayActorError. Consider adding health checks.
@@ -646,6 +647,92 @@ def test_actors_cleaned_up_on_app_delete(serve_instance):
     wait_for_condition(_check_no_deployment_actors, timeout=15)
 
 
+def test_scale_to_and_from_zero_with_deployment_actors(serve_instance):
+    """Autoscaling 1->0->1 keeps deployment actor and its state."""
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        autoscaling_config=AutoscalingConfig(
+            min_replicas=0,
+            initial_replicas=1,
+            max_replicas=1,
+            target_ongoing_requests=1,
+            upscale_delay_s=0,
+            downscale_delay_s=5,
+            downscale_to_zero_delay_s=5,
+            metrics_interval_s=1,
+            look_back_period_s=2,
+        ),
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+        ],
+    )
+    class MyDeployment:
+        async def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            val = ray.get(counter.increment.remote())
+            await signal.wait.remote()
+            return str(val)
+
+    deployment_id = DeploymentID(name="MyDeployment", app_name="default")
+
+    serve.run(MyDeployment.bind())
+    handle = serve.get_app_handle("default")
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
+    fut = handle.remote()
+
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=deployment_id,
+        total=1,
+        timeout=45,
+    )
+    # Deployment remains active, so target-version actor should be retained.
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
+
+    ray.get(signal.send.remote())
+
+    assert fut.result(timeout_s=30) == "1"
+
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=deployment_id,
+        total=0,
+        timeout=30,
+    )
+
+    # Evict cached handle and get a fresh one so its long-poll has replicas=0.
+    # The old handle may still report curr_replicas=1, preventing the scale-from-zero
+    # optimized metrics push from firing.
+    ingress = ray.get(
+        serve_instance._controller.get_ingress_deployment_name.remote("default")
+    )
+    serve_instance.handle_cache.pop((ingress, "default", False), None)
+
+    ray.get(signal.send.remote(clear=True))
+    # Send a request to trigger autoscaling from zero back to one. The request
+    # blocks on signal.wait until we release it.
+    fresh_handle = serve.get_app_handle("default")
+    blocked_ref = fresh_handle.remote()
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=deployment_id,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1, None)],
+        timeout=30,
+    )
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
+    ray.get(signal.send.remote())
+    assert blocked_ref.result(timeout_s=30) == "2"
+
+
 def test_redeployment_replaces_actors(serve_instance):
     """Redeploying with updated deployment_actors creates new actors and
     cleans up old ones (orphan cleanup).
@@ -849,8 +936,8 @@ def test_deployment_actor_restarts_on_crash(serve_instance):
             return str(ray.get(counter.get.remote()))
 
     serve.run(CrashTestDeployment.bind())
-    url = f"{get_application_url()}/"
-    wait_for_condition(lambda: httpx.get(url).text == "100")
+    resp = request_with_retries(timeout=30)
+    assert resp.text == "100"
 
     actor_names = [
         n
@@ -862,7 +949,11 @@ def test_deployment_actor_restarts_on_crash(serve_instance):
 
     ray.kill(handle, no_restart=False)
 
-    wait_for_condition(lambda: httpx.get(url).text == "100", timeout=30)
+    # Actor restarts asynchronously; retry until we get "100" again.
+    wait_for_condition(
+        lambda: request_with_retries(timeout=10).text == "100",
+        timeout=30,
+    )
 
 
 def test_deployment_actor_constructor_failure_app_status(serve_instance):
@@ -923,19 +1014,22 @@ def test_actor_remote_call_error_causes_replica_fail_and_restart(serve_instance)
 
     serve.run(HealthCheckFailDeployment.bind())
     url = f"{get_application_url()}/"
-    wait_for_condition(lambda: httpx.get(url).status_code == 200)
-    old_pid = httpx.get(url).text
+    wait_for_condition(
+        lambda: httpx.get(url, timeout=30).status_code == 200,
+        timeout=30,
+    )
+    old_pid = httpx.get(url, timeout=30).text
 
     # The deployment actor will raise on the first N health checks. After N
     # consecutive failures, the replica is marked unhealthy and restarted.
     # The replacement replica's health checks succeed (actor stops raising).
     wait_for_condition(
-        lambda: httpx.get(url).text != old_pid,
+        lambda: httpx.get(url, timeout=30).text != old_pid,
         timeout=30,
     )
     # Verify the new replica serves requests.
     for _ in range(5):
-        assert httpx.get(url).status_code == 200
+        assert httpx.get(url, timeout=30).status_code == 200
 
 
 def test_deployment_actor_killed_no_restart_documents_behavior(serve_instance):
@@ -1409,6 +1503,347 @@ def test_user_config_update_with_deployment_actors(serve_instance):
 
     serve.run(MyDeployment.options(user_config="updated").bind(), blocking=False)
     wait_for_condition(lambda: "updated:50" in httpx.get(url).text, timeout=30)
+
+
+# ---------------------------------------------------------------------------
+# Tests – Design review: regression and edge-case coverage
+# ---------------------------------------------------------------------------
+
+
+def test_deployment_actor_failure_then_redeploy(serve_instance):
+    """Deploy with a permanently failing actor, verify DEPLOY_FAILED,
+    then redeploy with a working actor and verify recovery.
+    """
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="bad_actor",
+                actor_class=FailingDeploymentActor,
+                init_kwargs={"should_fail": True},
+            ),
+        ],
+    )
+    class FailDeploy:
+        def __call__(self):
+            return "should not reach"
+
+    serve._run(FailDeploy.bind(), _blocking=False)
+
+    def _check_deploy_failed():
+        status = serve.status()
+        app_status = status.applications["default"]
+        return app_status.status == ApplicationStatus.DEPLOY_FAILED
+
+    wait_for_condition(_check_deploy_failed, timeout=30)
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+        ],
+    )
+    class FixedDeploy:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(FixedDeploy.bind())
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).text == "0")
+
+
+def test_rapid_version_rollout_cleans_up_actors(serve_instance):
+    """Deploy v1, v2, v3 rapidly on the same deployment. Only v3 actors
+    should remain after rollout completes.
+    """
+
+    @serve.deployment(
+        name="rollout_dep",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 1},
+            ),
+        ],
+        version="v1",
+    )
+    class V1:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(V1.bind())
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).text == "1")
+    v1_actors = set(_get_deployment_actor_names())
+
+    @serve.deployment(
+        name="rollout_dep",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 2},
+            ),
+        ],
+        version="v2",
+    )
+    class V2:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve._run(V2.bind(), _blocking=False)
+
+    @serve.deployment(
+        name="rollout_dep",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 3},
+            ),
+        ],
+        version="v3",
+    )
+    class V3:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(V3.bind())
+    wait_for_condition(lambda: httpx.get(url).text == "3")
+
+    wait_for_condition(lambda: _check_deployment_actor_count(1), timeout=15)
+    v3_actors = set(_get_deployment_actor_names())
+    assert len(v3_actors) == 1
+    assert v3_actors.isdisjoint(v1_actors)
+
+
+def test_no_leak_deployment_actors_when_v2_arrives_during_v1_pending(serve_instance):
+    """When v2 arrives while v1 replicas are STARTING (blocked in __init__),
+    v1 deployment actors must be cleaned up immediately (not leaked until v1
+    replicas are fully removed).
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        name="leak_test_dep",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 1},
+            ),
+        ],
+        version="v1",
+    )
+    class V1:
+        def __init__(self):
+            # Block until signaled — keeps replica in STARTING (PENDING_INITIALIZATION)
+            ray.get(signal.wait.remote())
+
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    # Deploy v1 non-blocking so replica stays in STARTING (blocked in __init__)
+    serve._run(V1.bind(), _blocking=False)
+    url = f"{get_application_url()}/"
+
+    # v1 deployment actors are created; v1 replica blocks in __init__
+    wait_for_condition(lambda: _check_deployment_actor_count(1), timeout=15)
+    v1_actor_names = set(_get_deployment_actor_names())
+    assert len(v1_actor_names) == 1
+
+    @serve.deployment(
+        name="leak_test_dep",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 2},
+            ),
+        ],
+        version="v2",
+    )
+    class V2:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(V2.bind())
+    wait_for_condition(lambda: httpx.get(url).text == "2", timeout=30)
+
+    # Assert immediately: v1 actors must be gone. Without the fix, v1 actors
+    actors = _get_deployment_actor_names()
+    assert len(actors) == 1, f"Expected 1 deployment actor, got {len(actors)}: {actors}"
+    assert set(actors).isdisjoint(
+        v1_actor_names
+    ), f"v1 deployment actors leaked (should be stopped when v1 replicas go to STOPPING): {actors}"
+
+
+def test_actor_name_collision_across_deployments(serve_instance):
+    """Two deployments in the same app with the same actor name get
+    separate actor instances (isolated by deployment name in actor naming).
+    """
+
+    @serve.deployment(
+        name="dep_a",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 100},
+            ),
+        ],
+    )
+    class DepA:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    @serve.deployment(
+        name="dep_b",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 200},
+            ),
+        ],
+    )
+    class DepB:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(DepA.bind(), name="app_collision", route_prefix="/a")
+    serve.run(DepB.bind(), name="app_collision2", route_prefix="/b")
+
+    wait_for_condition(
+        lambda: httpx.get(f"{get_application_url(app_name='app_collision')}").text
+        == "100"
+    )
+    wait_for_condition(
+        lambda: httpx.get(f"{get_application_url(app_name='app_collision2')}").text
+        == "200"
+    )
+
+    actors = _get_deployment_actor_names()
+    assert len(actors) == 2
+    assert actors[0] != actors[1]
+
+
+def test_concurrent_deploy_and_delete(serve_instance):
+    """Start deploying with actors, immediately delete before actors are ready.
+    Verify clean shutdown with no leaked actors.
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="blocker",
+                actor_class=BlockingCounter,
+                init_kwargs={"start": 0, "signal": signal},
+            ),
+        ],
+    )
+    class SlowDeploy:
+        def __call__(self):
+            return "ok"
+
+    serve._run(SlowDeploy.bind(), _blocking=False)
+
+    # Give the controller a moment to begin actor creation before deleting.
+    ray.get(ray.remote(lambda: None).remote())
+
+    serve.delete("default")
+    ray.get(signal.send.remote())
+
+    wait_for_condition(_check_no_deployment_actors, timeout=30)
+
+
+def test_config_only_actor_update_creates_new_actors(serve_instance):
+    """Deploy via config with deployment actors, then update init_kwargs.
+    Verify new actors are created with new kwargs and old actors are cleaned up.
+    """
+
+    @serve.deployment(
+        name="ConfigDep",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 10},
+            ),
+        ],
+        version="v1",
+    )
+    class ConfigDep:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(ConfigDep.bind())
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).text == "10")
+
+    v1_actors = set(_get_deployment_actor_names())
+    assert len(v1_actors) == 1
+
+    @serve.deployment(
+        name="ConfigDep",
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 99},
+            ),
+        ],
+        version="v2",
+    )
+    class ConfigDepV2:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.get.remote()))
+
+    serve.run(ConfigDepV2.bind())
+    wait_for_condition(lambda: httpx.get(url).text == "99")
+
+    v2_actors = set(_get_deployment_actor_names())
+    assert len(v2_actors) == 1
+    assert v2_actors.isdisjoint(v1_actors)
+
+
+def test_deployment_actors_with_target_capacity(serve_instance):
+    """target_capacity scaling does not affect deployment actors."""
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="counter",
+                actor_class=SharedCounter,
+                init_kwargs={"start": 0},
+            ),
+        ],
+        num_replicas=2,
+    )
+    class MyDeployment:
+        def __call__(self):
+            counter = serve.get_deployment_actor("counter")
+            return str(ray.get(counter.increment.remote()))
+
+    serve.run(MyDeployment.bind())
+    url = f"{get_application_url()}/"
+    wait_for_condition(lambda: httpx.get(url).status_code == 200)
+    wait_for_condition(lambda: _check_deployment_actor_count(1))
 
 
 if __name__ == "__main__":

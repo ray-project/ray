@@ -38,6 +38,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
 
+@ray.remote
 class _CounterActor:
     """Dummy actor class for deployment_actors integration tests."""
 

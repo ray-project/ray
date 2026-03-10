@@ -719,9 +719,9 @@ class ApplicationState:
                     actor_classes = {}
                     for actor_cfg in actors:
                         if isinstance(actor_cfg, dict):
-                            name = actor_cfg.get("name", "")
-                            cls_path = actor_cfg.get("actor_class", "")
-                            if name and isinstance(cls_path, str) and cls_path:
+                            name = actor_cfg.get("name")
+                            cls_path = actor_cfg.get("actor_class")
+                            if isinstance(cls_path, str):
                                 actor_classes[name] = cls_path
                     if actor_classes:
                         deployment_to_deployment_actor_classes[
@@ -1846,8 +1846,11 @@ def override_deployment_info(
             if actors_list:
                 for actor_cfg in actors_list:
                     if isinstance(actor_cfg, dict):
-                        actor_name = actor_cfg.get("name", "")
-                        if actor_name in serialized_actors:
+                        actor_name = actor_cfg.get("name")
+                        if (
+                            isinstance(actor_name, str)
+                            and actor_name in serialized_actors
+                        ):
                             actor_cfg["_serialized_actor_class"] = serialized_actors[
                                 actor_name
                             ]
