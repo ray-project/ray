@@ -21,6 +21,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.utils import get_deployment_actor_name
 from ray.serve.exceptions import RayServeException
 from ray.serve.gang import GangContext
 from ray.serve.grpc_util import RayServegRPCContext
@@ -53,6 +54,7 @@ class ReplicaContext:
     _deployment_config: DeploymentConfig
     rank: ReplicaRank
     world_size: int
+    code_version: str
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
     gang_context: Optional[GangContext] = None
 
@@ -112,6 +114,40 @@ def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
 
 
+def _get_deployment_actor(actor_name: str):
+    """Get a handle to a deployment-scoped actor by name.
+
+    Must be called from within a running Serve replica. The actor must be
+    declared in the deployment's deployment_actors config.
+
+    Args:
+        actor_name: Name of the deployment-scoped actor (as specified in
+            deployment_actors list).
+
+    Returns:
+        Ray ActorHandle to the deployment-scoped actor.
+
+    Raises:
+        RayServeException: If not called from within a replica, or if the
+            actor is not found.
+    """
+    internal_context = _get_internal_replica_context()
+    if internal_context is None:
+        raise RayServeException(
+            "`serve.get_deployment_actor()` may only be called from within "
+            "a Ray Serve deployment replica."
+        )
+    deployment_id = internal_context.replica_id.deployment_id
+    return ray.get_actor(
+        get_deployment_actor_name(
+            deployment_id,
+            actor_name,
+            code_version=internal_context.code_version,
+        ),
+        namespace=SERVE_NAMESPACE,
+    )
+
+
 def _set_internal_replica_context(
     *,
     replica_id: ReplicaID,
@@ -121,6 +157,7 @@ def _set_internal_replica_context(
     world_size: int,
     handle_registration_callback: Optional[Callable[[str, str], None]] = None,
     gang_context: Optional[GangContext] = None,
+    code_version: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
@@ -131,6 +168,7 @@ def _set_internal_replica_context(
         world_size=world_size,
         _handle_registration_callback=handle_registration_callback,
         gang_context=gang_context,
+        code_version=code_version,
     )
 
 
