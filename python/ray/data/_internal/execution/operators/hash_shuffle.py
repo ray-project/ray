@@ -1043,18 +1043,16 @@ class CpuShuffleEngine(ShuffleEngine):
     ):
         assert num_partitions >= num_aggregators
 
-        if (
-            estimated_dataset_bytes is not None
-            and estimate_aggregator_memory is not None
-        ):
+        if estimated_dataset_bytes is not None:
+            if estimate_aggregator_memory is None:
+                raise ValueError(
+                    "estimate_aggregator_memory must be provided when "
+                    "estimated_dataset_bytes is available"
+                )
             estimated_aggregator_memory_required = estimate_aggregator_memory(
                 num_aggregators=num_aggregators,
                 num_partitions=num_partitions,
                 estimated_dataset_bytes=estimated_dataset_bytes,
-            )
-        elif estimated_dataset_bytes is not None:
-            estimated_aggregator_memory_required = (
-                DEFAULT_HASH_SHUFFLE_AGGREGATOR_MEMORY_ALLOCATION
             )
         else:
             # NOTE: In cases when we're unable to estimate dataset size,

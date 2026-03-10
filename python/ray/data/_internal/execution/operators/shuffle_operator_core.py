@@ -28,6 +28,119 @@ if typing.TYPE_CHECKING:
 StatsDict = Dict[str, List[BlockStats]]
 
 
+class _BoundShuffleHooks(ShuffleHooks):
+    """Concrete hooks that wire engine callbacks to a ``ShuffleCoreState``
+    and ``PhysicalOperator`` output-estimation fields."""
+
+    def __init__(
+        self,
+        state: ShuffleCoreState,
+        operator: "ShuffleOperatorCore",
+    ):
+        self._state = state
+        self._operator = operator
+
+    def on_shuffle_task_submitted(
+        self,
+        task_index: int,
+        input_bundle: RefBundle,
+        task_id: str,
+    ) -> None:
+        self._state.shuffle_metrics.on_task_submitted(
+            task_index, input_bundle, task_id=task_id
+        )
+
+    def on_shuffle_task_finished(
+        self,
+        task_index: int,
+        exception: Optional[Exception],
+        task_exec_stats: Optional["TaskExecWorkerStats"],
+        task_exec_driver_stats: Optional["TaskExecDriverStats"],
+    ) -> None:
+        self._state.shuffle_metrics.on_task_finished(
+            task_index,
+            exception,
+            task_exec_stats=task_exec_stats,
+            task_exec_driver_stats=task_exec_driver_stats,
+        )
+
+    def on_shuffle_task_output(
+        self,
+        task_index: int,
+        output_bundle: RefBundle,
+    ) -> None:
+        self._state.shuffle_metrics.on_output_taken(output_bundle)
+        self._state.shuffle_metrics.on_task_output_generated(task_index, output_bundle)
+
+    def on_shuffle_progress(
+        self,
+        increment: Optional[int] = None,
+        total: Optional[int] = None,
+    ) -> None:
+        if self._state.shuffle_bar is not None:
+            self._state.shuffle_bar.update(increment=increment or 0, total=total)
+
+    def on_shuffled_block(self, block_stats: BlockStats) -> None:
+        self._state.shuffled_block_stats.append(block_stats)
+
+    def on_output_ready(
+        self,
+        bundle: RefBundle,
+        task_index: int,
+    ) -> None:
+        self._state.output_queue.append(bundle)
+        self._state.reduce_metrics.on_output_queued(bundle)
+        self._state.reduce_metrics.on_task_output_generated(
+            task_index=task_index, output=bundle
+        )
+
+    def on_reduce_task_submitted(
+        self,
+        task_index: int,
+        input_bundle: RefBundle,
+        task_id: str,
+    ) -> None:
+        self._state.reduce_metrics.on_task_submitted(
+            task_index, input_bundle, task_id=task_id
+        )
+
+    def on_reduce_task_finished(
+        self,
+        task_index: int,
+        exception: Optional[Exception],
+        task_exec_stats: Optional["TaskExecWorkerStats"],
+        task_exec_driver_stats: Optional["TaskExecDriverStats"],
+    ) -> None:
+        self._state.reduce_metrics.on_task_finished(
+            task_index,
+            exception,
+            task_exec_stats=task_exec_stats,
+            task_exec_driver_stats=task_exec_driver_stats,
+        )
+
+    def on_reduce_progress(
+        self,
+        increment: Optional[int] = None,
+        total: Optional[int] = None,
+    ) -> None:
+        if self._state.reduce_bar is not None:
+            self._state.reduce_bar.update(increment=increment or 0, total=total)
+
+    def on_output_estimated(
+        self,
+        num_output_bundles: Optional[int],
+        num_output_rows: Optional[int],
+    ) -> None:
+        self._operator._estimated_num_output_bundles = num_output_bundles
+        self._operator._estimated_output_num_rows = num_output_rows
+
+    def _get_shuffle_metrics(self):
+        return self._state.shuffle_metrics
+
+    def _get_reduce_metrics(self):
+        return self._state.reduce_metrics
+
+
 class ShuffleOperatorCore(PhysicalOperator, SubProgressBarMixin):
     """Generic operator shell for hash-shuffle-based operators.
 
@@ -53,122 +166,7 @@ class ShuffleOperatorCore(PhysicalOperator, SubProgressBarMixin):
             shuffle_metrics=OpRuntimeMetrics(self),
             reduce_metrics=OpRuntimeMetrics(self),
         )
-        self._hooks = self._build_hooks()
-
-    # ------------------------------------------------------------------
-    # Hook wiring
-    # ------------------------------------------------------------------
-
-    def _build_hooks(self) -> ShuffleHooks:
-        """Build a ``ShuffleHooks`` instance that closes over ``self._state``
-        and the relevant ``PhysicalOperator`` fields."""
-        state = self._state
-        operator = self
-
-        class _Hooks(ShuffleHooks):
-            def on_shuffle_task_submitted(
-                self_hook,
-                task_index: int,
-                input_bundle: RefBundle,
-                task_id: str,
-            ) -> None:
-                state.shuffle_metrics.on_task_submitted(
-                    task_index, input_bundle, task_id=task_id
-                )
-
-            def on_shuffle_task_finished(
-                self_hook,
-                task_index: int,
-                exception: Optional[Exception],
-                task_exec_stats: Optional["TaskExecWorkerStats"],
-                task_exec_driver_stats: Optional["TaskExecDriverStats"],
-            ) -> None:
-                state.shuffle_metrics.on_task_finished(
-                    task_index,
-                    exception,
-                    task_exec_stats=task_exec_stats,
-                    task_exec_driver_stats=task_exec_driver_stats,
-                )
-
-            def on_shuffle_task_output(
-                self_hook,
-                task_index: int,
-                output_bundle: RefBundle,
-            ) -> None:
-                state.shuffle_metrics.on_output_taken(output_bundle)
-                state.shuffle_metrics.on_task_output_generated(
-                    task_index, output_bundle
-                )
-
-            def on_shuffle_progress(
-                self_hook,
-                increment: Optional[int] = None,
-                total: Optional[int] = None,
-            ) -> None:
-                if state.shuffle_bar is not None:
-                    state.shuffle_bar.update(increment=increment or 0, total=total)
-
-            def on_shuffled_block(self_hook, block_stats: BlockStats) -> None:
-                state.shuffled_block_stats.append(block_stats)
-
-            def on_output_ready(
-                self_hook,
-                bundle: RefBundle,
-                task_index: int,
-            ) -> None:
-                state.output_queue.append(bundle)
-                state.reduce_metrics.on_output_queued(bundle)
-                state.reduce_metrics.on_task_output_generated(
-                    task_index=task_index, output=bundle
-                )
-
-            def on_reduce_task_submitted(
-                self_hook,
-                task_index: int,
-                input_bundle: RefBundle,
-                task_id: str,
-            ) -> None:
-                state.reduce_metrics.on_task_submitted(
-                    task_index, input_bundle, task_id=task_id
-                )
-
-            def on_reduce_task_finished(
-                self_hook,
-                task_index: int,
-                exception: Optional[Exception],
-                task_exec_stats: Optional["TaskExecWorkerStats"],
-                task_exec_driver_stats: Optional["TaskExecDriverStats"],
-            ) -> None:
-                state.reduce_metrics.on_task_finished(
-                    task_index,
-                    exception,
-                    task_exec_stats=task_exec_stats,
-                    task_exec_driver_stats=task_exec_driver_stats,
-                )
-
-            def on_reduce_progress(
-                self_hook,
-                increment: Optional[int] = None,
-                total: Optional[int] = None,
-            ) -> None:
-                if state.reduce_bar is not None:
-                    state.reduce_bar.update(increment=increment or 0, total=total)
-
-            def on_output_estimated(
-                self_hook,
-                num_output_bundles: Optional[int],
-                num_output_rows: Optional[int],
-            ) -> None:
-                operator._estimated_num_output_bundles = num_output_bundles
-                operator._estimated_output_num_rows = num_output_rows
-
-            def _get_shuffle_metrics(self_hook):
-                return state.shuffle_metrics
-
-            def _get_reduce_metrics(self_hook):
-                return state.reduce_metrics
-
-        return _Hooks()
+        self._hooks = _BoundShuffleHooks(self._state, self)
 
     # ------------------------------------------------------------------
     # PhysicalOperator lifecycle
