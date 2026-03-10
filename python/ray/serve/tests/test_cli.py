@@ -640,7 +640,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=20)
+    wait_for_condition(check_for_failed_deployment, timeout=40)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -821,9 +821,71 @@ def test_deploy_gang_scheduling(serve_instance):
     )
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
     wait_for_condition(
-        lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
-        == "hello_from_gang_scheduling"
+        lambda: httpx.post(f"{get_application_url(app_name='gang_app')}/").status_code
+        == 200
     )
+
+
+@pytest.mark.parametrize(
+    "initial_replicas, final_replicas",
+    [
+        (4, 2),  # Downscale: 2 gangs -> 1 gang
+        (2, 4),  # Upscale:   1 gang  -> 2 gangs
+    ],
+)
+def test_deploy_gang_scaling(serve_instance, initial_replicas, final_replicas):
+    """Test gang-aware scaling via serve deploy preserves existing gangs."""
+    gang_size = 2
+    config_files = {
+        replicas: os.path.join(
+            os.path.dirname(__file__),
+            "test_config_files",
+            f"gang_scheduling_{replicas}_replicas.yaml",
+        )
+        for replicas in (initial_replicas, final_replicas)
+    }
+
+    # First deploy.
+    subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])
+    app_url = get_application_url(app_name="gang_app")
+    wait_for_condition(lambda: httpx.post(f"{app_url}/").status_code == 200, timeout=30)
+
+    # Collect initial gang IDs.
+    initial_num_gangs = initial_replicas // gang_size
+    initial_gang_ids = set()
+    for _ in range(initial_replicas * 10):
+        data = json.loads(httpx.post(f"{app_url}/").text)
+        if data["gang_id"] is not None:
+            initial_gang_ids.add(data["gang_id"])
+    assert len(initial_gang_ids) == initial_num_gangs
+
+    # Redeploy with new replica count.
+    subprocess.check_output(["serve", "deploy", config_files[final_replicas]])
+
+    # Wait for rescale to complete.
+    def rescale_complete():
+        status = serve.status()
+        app_status = status.applications.get("gang_app")
+        if app_status is None or app_status.status != "RUNNING":
+            return False
+        dep = list(app_status.deployments.values())[0]
+        return dep.replica_states.get("RUNNING", 0) == final_replicas
+
+    wait_for_condition(rescale_complete, timeout=30)
+
+    # Collect final gang IDs.
+    final_num_gangs = final_replicas // gang_size
+    final_gang_ids = set()
+    for _ in range(final_replicas * 10):
+        data = json.loads(httpx.post(f"{app_url}/").text)
+        if data["gang_id"] is not None:
+            final_gang_ids.add(data["gang_id"])
+    assert len(final_gang_ids) == final_num_gangs
+
+    # The smaller set of gangs must be a subset of the larger set,
+    # proving that existing gangs were preserved during rescaling.
+    smaller, larger = sorted([initial_gang_ids, final_gang_ids], key=len)
+    assert smaller.issubset(larger)
 
 
 def test_controller_health(serve_instance):

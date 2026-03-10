@@ -12,7 +12,7 @@ subprocess.check_call([
     "matplotlib==3.10.6",
     "scikit-learn==1.7.2",
     "pyarrow==14.0.2",    
-    "xgboost==3.0.5",
+    "xgboost-cpu==3.0.5",
     "seaborn==0.13.2",
 ])
 
@@ -154,6 +154,7 @@ xgb_params = {
     "eta": 0.3,
     "max_depth": 8,
     "nthread": CPUS_PER_WORKER,  
+    "device": "cpu",  # use CPU for training
 }
 
 trainer = XGBoostTrainer(

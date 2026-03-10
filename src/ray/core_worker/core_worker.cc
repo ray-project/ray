@@ -398,7 +398,9 @@ CoreWorker::CoreWorker(
 
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  SubscribeToNodeChanges();
+  if (options_.worker_type == WorkerType::DRIVER) {
+    SubscribeToNodeChanges();
+  }
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -843,6 +845,8 @@ void CoreWorker::RecordMetrics() {
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
   reference_counter_->RecordMetrics();
+  // Flush percentile metrics: swap histogram buffers and update exported gauges.
+  normal_task_submitter_->FlushMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -2442,7 +2446,7 @@ Status CoreWorker::SubmitActorTask(
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
-                      /*labels=*/{},
+                      /*labels=*/task_options.labels,
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
@@ -2453,6 +2457,7 @@ Status CoreWorker::SubmitActorTask(
                                  max_retries,
                                  retry_exceptions,
                                  serialized_retry_exception_allowlist,
+                                 task_options.concurrency_group_name,
                                  task_options.tensor_transport);
   // Submit task.
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();

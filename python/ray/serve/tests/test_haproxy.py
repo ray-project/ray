@@ -75,11 +75,11 @@ def test_deploy_with_no_applications(ray_shutdown):
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     client = _get_global_client()
-    config = ServeDeploySchema.parse_obj({"applications": []})
+    config = ServeDeploySchema.model_validate({"applications": []})
     client.deploy_apps(config)
 
     def serve_running():
-        ServeInstanceDetails.parse_obj(
+        ServeInstanceDetails.model_validate(
             ray.get(client._controller.get_serve_instance_details.remote())
         )
         actors = list_actors(
@@ -113,6 +113,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HAProxyManager",
+        "ProxyActor",
         "ServeReplica:app:f",
     }
 
@@ -154,6 +155,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
     actor_names = {
         "ServeController",
         "HAProxyManager",
+        "ProxyActor",
         "ServeReplica:app:f",
     }
 
@@ -317,8 +319,8 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 proxies, 1 controller, 2 replicas, 1 signal actor
-    wait_for_condition(lambda: len(list_actors()) == 7)
+    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
+    wait_for_condition(lambda: len(list_actors()) == 8)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -355,11 +357,10 @@ async def test_drain_and_undrain_haproxy_manager(
             **ray.get(client._controller.get_serve_instance_details.remote())
         )
         proxy_status_list = [proxy.status for _, proxy in serve_details.proxies.items()]
-        print("all proxies!!!", [proxy for _, proxy in serve_details.proxies.items()])
         current_status = {
             status: proxy_status_list.count(status) for status in proxy_status_list
         }
-        return current_status == proxy_status_to_count, current_status
+        return current_status == proxy_status_to_count
 
     wait_for_condition(
         condition_predictor=check_proxy_status,
@@ -908,6 +909,58 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
 
     r = httpx.get("http://localhost:8000/test")
     assert r.status_code == 404
+
+    serve.shutdown()
+
+
+def test_fallback_proxy_starts_with_native_proxy_on_head_node(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """When HAProxy is enabled, verify that two proxy actors run on the head
+    node (the native proxy + the fallback Serve proxy) and only the native
+    proxy runs on worker nodes."""
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    def hello():
+        return "hello"
+
+    serve.run(hello.options(num_replicas=2).bind(), name="app1", route_prefix="/app1")
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+
+    def check_proxies():
+        actors = list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+            ],
+        )
+
+        # Count native proxies (HAProxyManager) and Serve proxies (ProxyActor)
+        haproxy_actors = [a for a in actors if a["class_name"] == "HAProxyManager"]
+        serve_proxy_actors = [a for a in actors if a["class_name"] == "ProxyActor"]
+
+        # There should be one HAProxy manager per node
+        if len(haproxy_actors) != 2:
+            return False
+
+        # The head node should have a fallback Serve proxy,
+        # worker nodes should not.
+        if len(serve_proxy_actors) != 1:
+            return False
+
+        if serve_proxy_actors[0]["node_id"] != head_node_id:
+            return False
+
+        return True
+
+    wait_for_condition(check_proxies, timeout=30)
 
     serve.shutdown()
 

@@ -180,16 +180,13 @@ class ResourceManager:
         #
         # Outputs of this operator used downstream
         used_op_outputs_bytes = sum(
-            [
-                (
-                    # Blocks pending in the downstream (internal) input queue
-                    downstream_op.metrics.obj_store_mem_internal_inqueue
-                    +
-                    # Blocks used as inputs of downstream's active tasks
-                    downstream_op.metrics.obj_store_mem_pending_task_inputs
+            (
+                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
+                    downstream_op.input_dependencies.index(op)
                 )
-                for downstream_op in op.output_dependencies
-            ]
+                + downstream_op.metrics.obj_store_mem_pending_task_inputs
+            )
+            for downstream_op in op.output_dependencies
         )
 
         self._mem_op_internal[op] = mem_op_internal
@@ -266,6 +263,9 @@ class ResourceManager:
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
+        assert (
+            self._global_usage.is_non_negative()
+        ), f"Global usage should be non-negative, got {self._global_usage}"
         return self._global_usage
 
     def get_global_running_usage(self) -> ExecutionResources:
@@ -299,6 +299,9 @@ class ResourceManager:
             * default_mem_fraction
         )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
+        assert (
+            self._global_limits.is_non_negative()
+        ), f"Global limits should be non-negative, got {self._global_limits}"
         return self._global_limits
 
     def get_op_usage(
@@ -897,13 +900,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if op not in self._op_budgets:
             return None
 
-        res = self._op_budgets[op].object_store_memory
-        # Add the remaining of `_reserved_for_op_outputs`.
+        budget_obj_store = self._op_budgets[op].object_store_memory
+        # The total output ceiling is the general budget plus the output reservation.
+        # Subtract current output usage to get how much more can be read.
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
 
-        res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
+        res = max(
+            budget_obj_store + self._reserved_for_op_outputs[op] - op_outputs_usage, 0
+        )
         if math.isinf(res):
             self._output_budgets[op] = res
             return None
