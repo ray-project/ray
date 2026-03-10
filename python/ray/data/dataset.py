@@ -4512,8 +4512,9 @@ class Dataset:
             )
             partition_cols = validate_partition_column_names(partition_cols)
 
-        # Schema evolution mode (allow passing via write_kwargs for backward compat)
-        schema_mode = write_kwargs.pop("schema_mode", "merge")
+        # Also allow schema_mode in write_kwargs for backward compatibility
+        if "schema_mode" in write_kwargs:
+            schema_mode = write_kwargs.pop("schema_mode")
         if schema_mode not in ("merge", "error"):
             raise ValueError(
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
