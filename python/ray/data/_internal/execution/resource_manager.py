@@ -315,41 +315,72 @@ class ResourceManager:
         return own_usage.add(self._get_downstream_ineligible_ops_usage(op))
 
     def _get_downstream_ineligible_ops_usage(
-        self, op: PhysicalOperator
+        self, op: PhysicalOperator, input_index: Optional[int] = None
     ) -> ExecutionResources:
         """Get the total resource usage of downstream ineligible operators,
         attributed to the given upstream operator.
 
         For multi-input ineligible operators (e.g., Union), only the portion
         of the external output queue originating from `op` is attributed,
-        rather than the full output queue.
+        rather than the full output queue. The `input_index` is propagated
+        through the ineligible chain so that downstream single-input operators
+        (e.g., Limit after Union) also attribute only the correct portion.
+
+        Args:
+            op: The operator whose downstream ineligible usage to compute.
+            input_index: If set, only attribute output queue bytes with this
+                input_index tag. This is set when traversing past a multi-input
+                operator (e.g., Union) and propagated to downstream ops.
+
+        Returns:
+            The total resource usage attributed to `op` from downstream
+            ineligible operators.
         """
         total = ExecutionResources.zero()
         for next_op in op.output_dependencies:
             if not self.is_op_eligible(next_op):
-                usage = self._get_ineligible_op_usage_for_input(next_op, op)
-                total = total.add(usage)
-                # Continue down the ineligible chain.
-                total = total.add(self._get_downstream_ineligible_ops_usage(next_op))
+                if len(next_op.input_dependencies) > 1:
+                    # Multi-input op (e.g., Union): determine the input_index
+                    # for this upstream op, and use it for attribution.
+                    idx = next_op.input_dependencies.index(op)
+                    usage = self._get_ineligible_op_usage(next_op, input_index=idx)
+                    total = total.add(usage)
+                    # Propagate this input_index downstream.
+                    total = total.add(
+                        self._get_downstream_ineligible_ops_usage(
+                            next_op, input_index=idx
+                        )
+                    )
+                else:
+                    # Single-input op: propagate the existing input_index tag.
+                    usage = self._get_ineligible_op_usage(
+                        next_op, input_index=input_index
+                    )
+                    total = total.add(usage)
+                    total = total.add(
+                        self._get_downstream_ineligible_ops_usage(
+                            next_op, input_index=input_index
+                        )
+                    )
         return total
 
-    def _get_ineligible_op_usage_for_input(
+    def _get_ineligible_op_usage(
         self,
         ineligible_op: PhysicalOperator,
-        upstream_op: PhysicalOperator,
+        input_index: Optional[int] = None,
     ) -> ExecutionResources:
-        """Get the resource usage of an ineligible op attributed to a specific
-        upstream input.
+        """Get the resource usage of an ineligible op, optionally filtered
+        by input_index for per-input memory attribution.
 
-        For multi-input operators, adjusts the object store memory to only
-        include the portion of the external output queue from `upstream_op`.
+        When `input_index` is set, the object store memory is adjusted to
+        only include the portion of the external output queue tagged with
+        that input_index, rather than the full output queue.
         """
         usage = self.get_op_usage(ineligible_op)
-        if len(ineligible_op.input_dependencies) > 1:
-            input_idx = ineligible_op.input_dependencies.index(upstream_op)
+        if input_index is not None:
             state = self._topology[ineligible_op]
             total_ext_outqueue = state.output_queue_bytes()
-            per_input_ext_outqueue = state.output_queue_bytes(input_index=input_idx)
+            per_input_ext_outqueue = state.output_queue_bytes(input_index=input_index)
             adjustment = per_input_ext_outqueue - total_ext_outqueue
             usage = usage.copy(
                 object_store_memory=max(0, usage.object_store_memory + adjustment)
