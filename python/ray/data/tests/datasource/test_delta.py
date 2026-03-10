@@ -224,7 +224,7 @@ def test_write_delta_invalid_mode(ray_start_regular_shared, temp_delta_path):
 
 
 # =============================================================================
-# Schema Evolution Tests (PR 4)
+# Schema Evolution Tests
 # =============================================================================
 
 
