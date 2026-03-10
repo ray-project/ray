@@ -101,8 +101,8 @@ class HangingExecutionIssueDetector(IssueDetector):
         issues = []
         failed_get_task = False
         for state in hanging_op_tasks:
-            if state.task_idx not in self._hanging_op_tasks[state.operator_id]:
-                if state.task_state is None and not failed_get_task:
+            if state.task_state is None:
+                if not failed_get_task:
                     latest = get_latest_state_for_task(state.task_id)
                     if latest is None:
                         # There exists more sophisticated ways to handle failure across multiple tasks, but for simplicity,
@@ -153,8 +153,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                     )
                 )
                 state.logged_already = True
-                if state.task_state is not None:
-                    self._hanging_op_tasks[state.operator_id].add(state.task_idx)
+                self._hanging_op_tasks[state.operator_id].add(state.task_idx)
 
         return issues
 
