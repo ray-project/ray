@@ -1391,10 +1391,6 @@ class ApplicationStateManager:
                 if self.get_app_source(name) is source
             }
 
-    def list_app_names(self) -> List[str]:
-        """Return app names without instantiating status objects."""
-        return list(self._application_states.keys())
-
     def list_deployment_details(self, name: str) -> Dict[str, DeploymentDetails]:
         """Gets detailed info on all deployments in specified application."""
         if name not in self._application_states:
@@ -1415,13 +1411,8 @@ class ApplicationStateManager:
             return None
         return self._application_states[app_name].get_deployment_topology()
 
-    def update(self) -> bool:
-        """
-        Update each application state.
-
-        Returns:
-            bool: True if any application's target state changed during this update.
-        """
+    def update(self):
+        """Update each application state."""
         apps_to_be_deleted = []
         any_target_state_changed = False
         for name, app in self._application_states.items():
@@ -1451,7 +1442,6 @@ class ApplicationStateManager:
         if any_target_state_changed:
             self.save_checkpoint()
             self._deployment_state_manager.save_checkpoint()
-        return any_target_state_changed
 
     def shutdown(self) -> None:
         self._shutting_down = True

@@ -52,7 +52,10 @@ from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    ParquetDatasource,
+    TensorColumnSchema,
+)
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -938,7 +941,7 @@ def read_parquet(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -4548,7 +4551,7 @@ def _get_datasource_or_legacy_reader(
 
 
 def _resolve_parquet_args(
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     **arrow_parquet_args,
 ) -> Dict[str, Any]:
     if tensor_column_schema is not None:
@@ -4558,15 +4561,22 @@ def _resolve_parquet_args(
             from ray.data.extensions import ArrowTensorArray
 
             for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
-                # NOTE(Clark): We use NumPy to consolidate these potentially
-                # non-contiguous buffers, and to do buffer bookkeeping in
-                # general.
-                np_col = _create_possibly_ragged_ndarray(
-                    [
-                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
-                        for buf in block.column(tensor_col_name)
-                    ]
-                )
+                if block.num_rows == 0:
+                    # Empty tables (e.g., dummy tables for schema inference)
+                    # have no buffers to decode. Construct a properly shaped
+                    # empty ndarray so from_numpy infers the correct tensor
+                    # type (shape + dtype).
+                    np_col = np.empty((0,) + shape, dtype=dtype)
+                else:
+                    # NOTE(Clark): We use NumPy to consolidate these
+                    # potentially non-contiguous buffers, and to do buffer
+                    # bookkeeping in general.
+                    np_col = _create_possibly_ragged_ndarray(
+                        [
+                            np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
+                            for buf in block.column(tensor_col_name)
+                        ]
+                    )
 
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),

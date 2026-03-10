@@ -40,7 +40,7 @@ from ray.serve._private.router import (
     SingletonThreadRouter,
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.utils import decompress_metric_report, get_random_string
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 
@@ -1427,12 +1427,18 @@ class TestRouterMetricsManager:
                 running_requests[r] += 1
                 metrics_manager.inc_num_running_requests_for_replica(r)
 
-            # Check metrics are pushed correctly
+            # Check metrics are pushed correctly (compressed)
             metrics_manager.push_autoscaling_metrics_to_controller()
-            handle_metric_report = metrics_manager._get_metrics_report()
-            mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_with(
-                handle_metric_report
-            )
+            mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_once()
+            (
+                compressed,
+            ) = mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
+                0
+            ]
+            assert isinstance(compressed, bytes)
+            handle_metric_report = decompress_metric_report(compressed)
+            assert handle_metric_report.deployment_id == deployment_id
+            assert handle_metric_report.handle_id == handle_id
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -1440,8 +1446,8 @@ class TestRouterMetricsManager:
     )
     @pytest.mark.asyncio
     @patch(
-        "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S",
-        0.01,
+        "ray.serve._private.router.RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR",
+        0.001,
     )
     async def test_memory_cleared(self):
         deployment_id = DeploymentID(name="a", app_name="b")
