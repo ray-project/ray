@@ -1013,7 +1013,10 @@ py_test(
     name = "test_xgboost_trainer",
     size = "medium",
     srcs = ["tests/test_xgboost_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {
+        "RAY_DATA_CLUSTER_AUTOSCALER": "V1",
+        "RAY_TRAIN_V2_ENABLED": "0",
+    },
     tags = [
         "exclusive",
         "team:ml",
