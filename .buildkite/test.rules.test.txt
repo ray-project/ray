@@ -43,6 +43,7 @@ python/_raylet.pyx: ml tune train data python dashboard linux_wheels macos_wheel
 .buildkite/lint.rayci.yml: tools
 .buildkite/macos.rayci.yml: macos_wheels
 .buildkite/base.rayci.yml: docker linux_wheels tools
+.buildkite/linux_aarch64.rayci.yml: docker linux_wheels tools
 
 # === Min installation ===
 

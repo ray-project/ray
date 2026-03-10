@@ -221,6 +221,7 @@ build-image.sh
 
 .buildkite/base.rayci.yml
 .buildkite/build.rayci.yml
+.buildkite/linux_aarch64.rayci.yml
 .buildkite/pipeline.arm64.yml
 ci/docker/manylinux.Dockerfile
 ci/docker/manylinux.wanda.yaml
