@@ -39,6 +39,39 @@ class ShuffleHooks:
 
     Each hook wraps metrics, progress-bar, and queue updates so the engine
     never imports ``OpRuntimeMetrics`` or ``BaseProgressBar``.
+
+    Dataflow during the **shuffle (map) phase** — ``submit_input()``::
+
+        Engine                              Hooks                       State
+        ──────                              ─────                       ─────
+        submit task to actor
+          ├─ on_shuffle_task_submitted ──► shuffle_metrics.on_task_submitted
+          └─ on_shuffle_progress ────────► shuffle_bar.update(total=…)
+                                            │
+        task completes (callback)           │
+          ├─ on_shuffled_block ──────────► shuffled_block_stats.append
+          ├─ on_shuffle_task_output ─────► shuffle_metrics.on_output_taken
+          │                                 + on_task_output_generated
+          ├─ on_shuffle_task_finished ───► shuffle_metrics.on_task_finished
+          └─ on_shuffle_progress ────────► shuffle_bar.update(increment=…)
+
+    Dataflow during the **reduce (finalize) phase** — ``try_finalize()``::
+
+        Engine                              Hooks                       State
+        ──────                              ─────                       ─────
+        schedule finalization task
+          └─ on_reduce_task_submitted ──► reduce_metrics.on_task_submitted
+                                            │
+        output bundle ready (callback)      │
+          ├─ on_output_ready ────────────► output_queue.append
+          │                                 + reduce_metrics.on_output_queued
+          │                                 + reduce_metrics.on_task_output_generated
+          ├─ on_output_estimated ────────► operator._estimated_num_output_bundles
+          │                                 + operator._estimated_output_num_rows
+          └─ on_reduce_progress ─────────► reduce_bar.update(increment=…, total=…)
+                                            │
+        task completes (callback)           │
+          └─ on_reduce_task_finished ───► reduce_metrics.on_task_finished
     """
 
     def on_shuffle_task_submitted(
@@ -129,6 +162,34 @@ class ShuffleEngine(ABC):
     resource accounting.  They communicate back to the operator shell
     exclusively through :class:`ShuffleHooks` — never by holding a reference
     to the operator or its state.
+
+    Lifecycle driven by ``ShuffleOperatorCore``::
+
+        ShuffleOperatorCore            ShuffleEngine
+        ───────────────────            ─────────────
+        start(options)
+          └─ engine.start() ─────────► create actors / pools
+
+        _add_input_inner(bundle)
+          ├─ metrics.on_input_received
+          └─ engine.submit_input() ──► route blocks to actors
+                                        └─ hooks.on_shuffle_* (callbacks)
+
+        has_next()
+          └─ engine.try_finalize() ──► if inputs_complete and shuffle done:
+                                        schedule reduce / extraction tasks
+                                        └─ hooks.on_reduce_* (callbacks)
+                                        └─ hooks.on_output_ready (→ queue)
+
+        _get_next_inner()
+          └─ pop from output_queue
+
+        _do_shutdown()
+          └─ engine.shutdown() ──────► kill actors, clear tasks
+
+    The engine never reads ``PhysicalOperator`` fields directly.
+    ``_inputs_complete`` and ``upstream_op_num_outputs()`` are passed as
+    method parameters by ``ShuffleOperatorCore``.
     """
 
     @abstractmethod

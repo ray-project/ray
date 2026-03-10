@@ -164,12 +164,12 @@ class HashAggregateOperator(ShuffleOperatorCore):
 
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
-        aggregator_shuffle_object_store_memory_required = math.ceil(
+        aggregator_shuffle_object_store_memory_required: int = math.ceil(
             estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
-        output_object_store_memory_required = partition_byte_size_estimate
+        output_object_store_memory_required: int = partition_byte_size_estimate
 
         aggregator_total_memory_required: int = (
             # Inputs (object store)
