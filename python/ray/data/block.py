@@ -395,12 +395,8 @@ class BlockAccessor:
         raise NotImplementedError
 
     def to_pandas(self, copy: bool = False) -> "pandas.DataFrame":
-        """Convert this block into a Pandas dataframe.
-
-        Args:
-            copy: Whether to ensure the returned DataFrame is a copy
-                (not a zero-copy view).
-        """
+        """Convert this block into a Pandas dataframe. If ``copy=False``, the
+        returned DataFrame may be a zero-copy view of the underlying data."""
         raise NotImplementedError
 
     def to_numpy(
@@ -424,12 +420,8 @@ class BlockAccessor:
         raise NotImplementedError
 
     def to_default(self, copy: bool = False) -> Block:
-        """Return the default data format for this accessor.
-
-        Args:
-            copy: Whether to ensure the returned batch is a copy
-                (not a zero-copy view).
-        """
+        """Return the default data format for this accessor. If ``copy=False``,
+        the returned batch may be a zero-copy view of the underlying data."""
         return self.to_block()
 
     def to_batch_format(
