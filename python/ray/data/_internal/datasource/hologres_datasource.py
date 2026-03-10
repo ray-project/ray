@@ -4,7 +4,6 @@ import struct
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 import pyarrow as pa
-from psycopg import sql
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -12,6 +11,8 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    from psycopg import sql
+
     from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,9 @@ class HologresDatasource(Datasource):
         if stmt_type != "SELECT":
             raise ValueError(f"Only SELECT statements are allowed, got: {stmt_type}")
 
-    def _generate_query(self) -> sql.Composed:
+    def _generate_query(self) -> "sql.Composed":
+        from psycopg import sql
+
         select_clause = (
             sql.SQL(", ").join(map(sql.Identifier, self._columns))
             if self._columns
@@ -183,11 +186,13 @@ class HologresDatasource(Datasource):
         return query
 
     def _build_read_sql(
-        self, shard_list: List[int], original_query: sql.Composed
-    ) -> sql.Composed:
+        self, shard_list: List[int], original_query: "sql.Composed"
+    ) -> "sql.Composed":
         """
         Build a query that targets specific shards using Hologres-specific WHERE clause.
         """
+        from psycopg import sql
+
         if shard_list is None or len(shard_list) == 0:
             return original_query
 
@@ -340,6 +345,7 @@ class HologresDatasource(Datasource):
         """
         Execute a query using PostgreSQL copy protocol with Arrow format.
         """
+        from psycopg import sql
 
         # Generate the COPY command to get Arrow data
         copy_query = sql.SQL("COPY ({0}) TO STDOUT WITH (FORMAT {1})").format(
