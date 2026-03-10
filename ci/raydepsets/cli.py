@@ -410,9 +410,13 @@ class DependencySetManager:
         # handle both depsets and requirements
         depset_req_list = []
         for depset_name in depsets:
-            depset_req_list.extend(
-                self.get_expanded_depset_requirements(depset_name, [])
-            )
+            dep = _get_depset(self.config.depsets, depset_name)
+            if dep.operation == "relax":
+                depset_req_list.append(dep.output)
+            else:
+                depset_req_list.extend(
+                    self.get_expanded_depset_requirements(depset_name, [])
+                )
         if requirements:
             depset_req_list.extend(requirements)
         self.compile(
