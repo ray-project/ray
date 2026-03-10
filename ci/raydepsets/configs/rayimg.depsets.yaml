@@ -66,7 +66,6 @@ depsets:
       - ray_img_depset_${PYTHON_SHORT}
     output: python/deplocks/base_extra_testdeps/ray-llm-base_extra_testdeps_py${PYTHON_VERSION}.lock
     append_flags:
-      - --index https://download.pytorch.org/whl/${CUDA_CODE}
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
