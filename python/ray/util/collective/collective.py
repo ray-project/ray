@@ -2,12 +2,14 @@
 
 import logging
 import os
+import socket
 import threading
-from typing import List
+from typing import List, Tuple
 
 import numpy as np
 
 import ray
+from ray._common.network_utils import find_free_port, is_ipv6
 from . import types
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,13 @@ def gloo_available():
 
 def torch_distributed_available():
     return _TORCH_DISTRIBUTED_AVAILABLE
+
+
+def get_address_and_port() -> Tuple[str, int]:
+    """Returns the IP address and a free port on this node."""
+    addr = ray.util.get_node_ip_address()
+    port = find_free_port(socket.AF_INET6 if is_ipv6(addr) else socket.AF_INET)
+    return addr, port
 
 
 class GroupManager(object):
