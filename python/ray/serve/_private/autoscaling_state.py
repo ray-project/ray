@@ -23,6 +23,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
@@ -144,6 +147,11 @@ class DeploymentAutoscalingState:
         self._policy = _apply_autoscaling_config(
             _resolve_policy_callable(self._config.policy)
         )
+        gang_size = getattr(
+            info.deployment_config.gang_scheduling_config, "gang_size", None
+        )
+        if gang_size is not None and gang_size > 1:
+            self._policy = GangSchedulingAutoscalingPolicy(self._policy, gang_size)
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
