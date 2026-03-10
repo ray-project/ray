@@ -327,6 +327,7 @@ def assert_cgroup_hierarchy_exists_for_node(
 
     # 2) Verify the constraints are applied correctly.
     total_memory = ray._common.utils.get_system_memory()
+
     with open(user_cgroup / "memory.high", "r") as memory_high_file:
         contents = memory_high_file.read().strip()
         assert contents == str(
@@ -334,6 +335,14 @@ def assert_cgroup_hierarchy_exists_for_node(
             - resource_isolation_config.system_reserved_memory
             + resource_isolation_config.object_store_memory
         )
+
+    # user cgroup memory.max is total_memory * user_memory_proportion_max (RayConfig
+    # default 1.0). See linux_cgroup_manager_factory.cc.
+    user_memory_proportion_max = 1.0
+    expected_user_memory_max = int(total_memory * user_memory_proportion_max)
+    with open(user_cgroup / "memory.max", "r") as memory_max_file:
+        contents = memory_max_file.read().strip()
+        assert contents == str(expected_user_memory_max)
     with open(system_cgroup / "memory.low", "r") as memory_low_file:
         contents = memory_low_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_memory)

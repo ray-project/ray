@@ -217,6 +217,10 @@ message DeploymentConfig {
   // Timeout after which a replica is marked unhealthy without a response.
   double health_check_timeout_s = 8;
 
+  // Removed user_health_probe_timeout_s (use health_check_timeout_s and replica-side
+  // health probing). Wire tag 23 reserved for compatibility with old serialized configs.
+  reserved 23;
+
   // Is the construction of deployment is cross language?
   bool is_cross_language = 9;
 
@@ -248,7 +252,7 @@ message DeploymentConfig {
   // Declared `optional` so that unset (e.g. from an older controller during a
   // rolling upgrade) is distinguishable from an explicit value. When unset,
   // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
-  optional double rolling_update_percentage = 23;
+  optional double rolling_update_percentage = 24;
 }
 
 // Deployment language.
