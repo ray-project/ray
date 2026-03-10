@@ -46,7 +46,7 @@ def get_device_free_memory() -> int | None:
         pynvml.nvmlShutdown()
 
 
-def lazy_load() -> type["BulkRapidsMPFShuffler"]:
+def lazy_load() -> type[Any]:
     """Lazy load the BulkRapidsMPFShuffler class to allow for CPU-only environments.
 
     This is necessary because the BulkRapidsMPFShuffler inherits from BaseShufflingActor.
@@ -255,4 +255,13 @@ def lazy_load() -> type["BulkRapidsMPFShuffler"]:
     return BulkRapidsMPFShuffler
 
 
-BulkRapidsMPFShuffler = lazy_load()
+_BulkRapidsMPFShuffler = None
+
+
+def __getattr__(name: str) -> type:
+    global _BulkRapidsMPFShuffler
+    if name == "BulkRapidsMPFShuffler":
+        if _BulkRapidsMPFShuffler is None:
+            _BulkRapidsMPFShuffler = lazy_load()
+        return _BulkRapidsMPFShuffler
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
