@@ -2297,7 +2297,7 @@
     script: python experimental/rdt_single_node_microbenchmark.py --enable_10gb --enable_nixl
 
 # TODO(dayshah): Add multi-node benchmarks with actual hardware RDMA support
-# - name: gpu_object_GPU_multinode
+# - name: rdt_GPU_multinode
 #   python: "3.10"
 #   group: core-daily-test
 #   team: core
@@ -2311,7 +2311,7 @@
 
 #   run:
 #     timeout: 1800
-#     script: python experimental/gpu_object_microbenchmark.py --distributed
+#     script: python experimental/rdt_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   python: "3.10"
@@ -4534,32 +4534,6 @@
       frequency: manual
       cluster:
         cluster_compute: ci/gce.yaml  # relative to working_dir
-
-- name: deployment_serve_llm  # do not use dashes (regex sensitive)
-  frequency: weekly
-  python: "3.11"
-  group: ray-examples
-  team: ml
-  working_dir: //doc/source/serve/tutorials/deployment-serve-llm  # use // to access from repo's root
-
-  cluster:
-    byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
-      post_build_script: byod_deployment_serve_llm.sh  # release/ray_release/byod/
-    cluster_compute: ci/aws.yaml  # relative to working_dir
-
-  run:
-    timeout: 3600
-    script: bash ci/tests.sh  # relative to working_dir
-
-  variations:
-    - __suffix__: aws  # uses default specs above
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: ci/gce.yaml  # relative to working_dir
-
 
 - name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
   frequency: weekly

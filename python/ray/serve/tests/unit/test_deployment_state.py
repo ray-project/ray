@@ -2730,13 +2730,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -2924,12 +2924,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 2 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 2
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 2)
                         ]
                         for replica in replicas
@@ -3022,12 +3023,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 1 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 1
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 1)
                         ]
                         for replica in replicas
@@ -3133,12 +3135,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: 1 for replica in replicas
+                        replica._actor.replica_id.to_full_id_str(): 1
+                        for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, 1)
                         ]
                         for replica in replicas
@@ -3449,11 +3452,13 @@ class TestAutoscaling:
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
             aggregated_queued_requests=0,
             aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {ds._replicas.get()[0]._actor.replica_id: 2}
+                RUNNING_REQUESTS_KEY: {
+                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
+                }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ds._replicas.get()[0]._actor.replica_id: [
+                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
                         TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
@@ -3562,11 +3567,13 @@ class TestAutoscaling:
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
             aggregated_queued_requests=0,
             aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {ds1._replicas.get()[0]._actor.replica_id: 2}
+                RUNNING_REQUESTS_KEY: {
+                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
+                }
             },
             metrics={
                 RUNNING_REQUESTS_KEY: {
-                    ds1._replicas.get()[0]._actor.replica_id: [
+                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
                         TimeStampedValue(timer.time() - 0.1, 2)
                     ]
                 }
@@ -3692,13 +3699,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -3758,13 +3765,13 @@ class TestAutoscaling:
                 aggregated_queued_requests=0,
                 aggregated_metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: req_per_replica
+                        replica._actor.replica_id.to_full_id_str(): req_per_replica
                         for replica in replicas
                     }
                 },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id: [
+                        replica._actor.replica_id.to_full_id_str(): [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
                         ]
                         for replica in replicas
@@ -6575,6 +6582,144 @@ class TestScaleDeploymentGangReplicas:
         dsm.update()
         check_counts(
             ds, total=2, by_state=[(ReplicaState.RUNNING, 2, recovery_version)]
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_gang_downscale_stops_complete_gangs(self, mock_deployment_state_manager):
+        """Downscaling a gang deployment stops complete gangs and recovers to healthy."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        gang_size = 2
+        initial_replicas = 4
+        deployment_id = DeploymentID(name="gang_downscale", app_name="app")
+
+        info, version = deployment_info(
+            num_replicas=initial_replicas,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(deployment_id, info)
+        ds = dsm._deployment_states[deployment_id]
+
+        # Start all replicas and reach HEALTHY
+        dsm.update()
+        for replica in ds._replicas.get([ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=initial_replicas,
+            by_state=[(ReplicaState.RUNNING, initial_replicas, version)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # Downscale to 2 replicas (remove 1 gang)
+        new_info, new_version = deployment_info(
+            num_replicas=2,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(deployment_id, new_info)
+        dsm.update()
+
+        # Verify exactly 1 complete gang (2 replicas) is stopping
+        stopping = ds._replicas.get([ReplicaState.STOPPING])
+        running = ds._replicas.get([ReplicaState.RUNNING])
+        assert len(stopping) == 2
+        assert len(running) == 2
+
+        # The 2 stopping replicas must belong to the same gang
+        stopping_gang_ids = {r.gang_context.gang_id for r in stopping}
+        assert len(stopping_gang_ids) == 1
+
+        # The 2 running replicas must belong to the same (surviving) gang
+        running_gang_ids = {r.gang_context.gang_id for r in running}
+        assert len(running_gang_ids) == 1
+        assert stopping_gang_ids != running_gang_ids
+
+        # Complete stopping and verify recovery to HEALTHY
+        for replica in ds._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.RUNNING, 2, new_version)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_gang_downscale_prefers_pending_gang(self, mock_deployment_state_manager):
+        """Downscaling prefers the gang that still has a pending replica."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+        )
+        gang_size = 2
+        initial_replicas = 4
+        deployment_id = DeploymentID(name="gang_downscale_pending", app_name="app")
+
+        info, version = deployment_info(
+            num_replicas=initial_replicas,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(deployment_id, info)
+        ds = dsm._deployment_states[deployment_id]
+
+        # First update creates all 4 replicas in STARTING state
+        dsm.update()
+        starting = ds._replicas.get([ReplicaState.STARTING])
+        assert len(starting) == initial_replicas
+
+        # Mark 3 of 4 replicas ready, leaving 1 replica from the second gang still pending.
+        gangs: dict = {}
+        for replica in starting:
+            gangs.setdefault(replica.gang_context.gang_id, []).append(replica)
+        gang_id1, gang_id2 = list(gangs.keys())
+
+        for replica in gangs[gang_id1]:
+            replica._actor.set_ready()
+        gangs[gang_id2][0]._actor.set_ready()
+
+        dsm.update()
+        check_counts(
+            ds,
+            total=initial_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, 3, version),
+                (ReplicaState.STARTING, 1, version),
+            ],
+        )
+
+        # Downscale to 2 replicas — should prefer gang 2 (has a pending member)
+        new_info, new_version = deployment_info(
+            num_replicas=2,
+            version="v1",
+            gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+        )
+        dsm.deploy(deployment_id, new_info)
+        dsm.update()
+
+        stopping = ds._replicas.get([ReplicaState.STOPPING])
+        running = ds._replicas.get([ReplicaState.RUNNING])
+        assert len(stopping) == 2
+        assert len(running) == 2
+
+        stopping_gang_ids = {r.gang_context.gang_id for r in stopping}
+        assert stopping_gang_ids == {gang_id2}
+        running_gang_ids = {r.gang_context.gang_id for r in running}
+        assert running_gang_ids == {gang_id1}
+
+        # Complete stopping and verify recovery to HEALTHY
+        for replica in ds._replicas.get([ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        dsm.update()
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.RUNNING, 2, new_version)],
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
