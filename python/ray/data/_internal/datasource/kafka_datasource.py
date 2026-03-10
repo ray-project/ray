@@ -436,6 +436,15 @@ def _resolve_offsets(
     # of messages in the partition.
     end_offset = min(end_offset, latest_offset)
 
+    if isinstance(start_offset, int) and start_offset < earliest_offset:
+        logger.warning(
+            f"start_offset ({start_offset}) is below the earliest available offset "
+            f"({earliest_offset}) for partition {topic_partition.partition} in topic "
+            f"{topic_partition.topic} (data may have been deleted by Kafka retention). "
+            f"Falling back to earliest available offset ({earliest_offset})."
+        )
+        start_offset = earliest_offset
+
     if start_offset > end_offset:
         start_str = (
             f"{original_start}"

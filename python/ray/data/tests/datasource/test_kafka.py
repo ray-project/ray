@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from confluent_kafka.admin import AdminClient, NewTopic
 
 import ray
 from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
@@ -1270,7 +1271,6 @@ def test_per_partition_start_offset_specific_offsets(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
     """Per-partition start_offset reads correct slice from each partition."""
-    from confluent_kafka.admin import AdminClient, NewTopic
 
     topic = "test-per-partition-start-offset"
 
@@ -1299,11 +1299,41 @@ def test_per_partition_start_offset_specific_offsets(
     assert len(records) == 40
 
 
+def test_per_partition_end_offset_specific_offsets(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Per-partition end_offset reads correct slice from each partition."""
+    topic = "test-per-partition-end-offset"
+
+    admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
+    topic_config = NewTopic(topic, num_partitions=2, replication_factor=1)
+    admin_client.create_topics([topic_config])
+    time.sleep(2)  # Wait for topic creation
+
+    # Send 50 messages to partition 0 and 50 to partition 1
+    for i in range(50):
+        kafka_producer.produce(topic, value={"id": i}, partition=0)
+        kafka_producer.produce(topic, value={"id": i}, partition=1)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # End partition 0 at offset 30, partition 1 at offset 20
+    # Expected: 30 messages from partition 0 + 20 messages from partition 1 = 50
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset="earliest",
+        end_offset={topic: {0: 30, 1: 20}},
+    )
+
+    records = ds.take_all()
+    assert len(records) == 50
+
+
 def test_per_partition_start_offset_fallback_to_earliest(
     bootstrap_server, kafka_producer, ray_start_regular_shared
 ):
     """Partitions not listed in per-partition dict fall back to 'earliest'."""
-    from confluent_kafka.admin import AdminClient, NewTopic
 
     topic = "test-per-partition-fallback"
 
