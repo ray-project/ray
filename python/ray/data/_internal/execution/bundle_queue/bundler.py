@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 class RebundlingStrategy(abc.ABC):
     """Base class for strategies describing how to rebundle queues."""
 
-    pass
-
     @abc.abstractmethod
     def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
         """Signifies whether we can build a ready bundle. A ready bundle is a bundle
