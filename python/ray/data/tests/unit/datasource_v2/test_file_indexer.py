@@ -78,6 +78,28 @@ class TestListFiles:
         assert len(results) == 1
         assert os.path.basename(results[0][0]) == "visible.csv"
 
+    @pytest.mark.parametrize(
+        "filename",
+        ["_metadata", "_my_file.csv", ".hidden_data"],
+        ids=["underscore-metadata", "underscore-csv", "dot-hidden"],
+    )
+    def test_includes_excluded_prefix_files_in_subdirectories(
+        self, tmp_path, indexer, filename
+    ):
+        """Files whose names start with _ or . should only be excluded when
+        they appear at the top level of the listed directory, not when they
+        appear inside a subdirectory. The relative path from the root is
+        e.g. "subdir/_metadata" which starts with "s", not "_"."""
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        (sub / filename).write_bytes(b"x" * 50)
+        (sub / "normal.csv").write_bytes(b"x" * 50)
+
+        results = _list_all(indexer, [str(tmp_path)])
+        basenames = sorted(os.path.basename(p) for p, _ in results)
+        assert filename in basenames
+        assert "normal.csv" in basenames
+
     def test_skips_zero_size_files(self, tmp_path, indexer):
         (tmp_path / "empty.csv").write_bytes(b"")
         (tmp_path / "real.csv").write_bytes(b"x" * 50)

@@ -28,9 +28,17 @@ def _get_file_infos(
 
 
 def _expand_directory(
-    base_path: str, filesystem: pa.fs.FileSystem, ignore_missing_path: bool
+    base_path: str,
+    filesystem: pa.fs.FileSystem,
+    ignore_missing_path: bool,
+    *,
+    _root_path: Optional[str] = None,
 ) -> Iterable[Tuple[str, Optional[int]]]:
     exclude_prefixes = [".", "_"]
+
+    if _root_path is None:
+        _root_path = base_path
+
     selector = FileSelector(
         base_path, recursive=False, allow_not_found=ignore_missing_path
     )
@@ -40,17 +48,19 @@ def _expand_directory(
     files.sort(key=lambda file_: file_.path)
 
     for file_ in files:
-        if not file_.path.startswith(base_path):
+        if not file_.path.startswith(_root_path):
             continue
 
-        relative = file_.path[len(base_path) :].lstrip("/")
+        relative = file_.path[len(_root_path) :].lstrip("/")
         if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
 
         if file_.type == FileType.File:
             yield (file_.path, file_.size)
         elif file_.type == FileType.Directory:
-            yield from _expand_directory(file_.path, filesystem, ignore_missing_path)
+            yield from _expand_directory(
+                file_.path, filesystem, ignore_missing_path, _root_path=_root_path
+            )
         elif file_.type == FileType.UNKNOWN:
             logger.warning(f"Discovered file with unknown type: '{file_.path}'")
             continue
