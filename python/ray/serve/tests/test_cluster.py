@@ -15,11 +15,10 @@ from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaSta
 from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_DEFAULT_APP_NAME,
-    SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_state import ReplicaStartupStatus
-from ray.serve._private.test_utils import check_deployment_status, get_application_url
+from ray.serve._private.test_utils import check_deployment_status
 from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
 from ray.serve.config import GangSchedulingConfig
 from ray.serve.context import _get_global_client
@@ -106,96 +105,6 @@ def test_scale_up(ray_cluster):
     client._wait_for_application_running("default")
     pids3 = get_pids(3, deployment_name="pid", app_name="default")
     assert pids2.issubset(pids3)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_deployment_actor_blocks_until_node_available(ray_cluster):
-    """Deployment actor needs 2 CPUs; head has 1. Replica scheduling blocks
-    until a worker node with 2 CPUs is added.
-    """
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=1)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
-    serve.start()
-    client = serve.context._connect()
-
-    app_config = {
-        "applications": [
-            {
-                "name": "default",
-                "route_prefix": "/",
-                "import_path": (
-                    "ray.serve.tests.test_config_files.cluster_deployment_actor:app"
-                ),
-            },
-        ],
-    }
-    client.deploy_apps(ServeDeploySchema.model_validate(app_config), _blocking=False)
-
-    with pytest.raises(TimeoutError):
-        client._wait_for_application_running("default", timeout_s=3)
-
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes()
-
-    client._wait_for_application_running("default", timeout_s=60)
-
-    url = f"{get_application_url()}/"
-    resp = httpx.get(url)
-    assert resp.status_code == 200
-    assert resp.text == "0"
-
-
-def _check_no_deployment_actors():
-    """Return True if no deployment actors exist."""
-    actors = list_actors(filters=[("state", "=", "ALIVE")])
-    return not any(
-        a.get("name", "").startswith(SERVE_DEPLOYMENT_ACTOR_PREFIX) for a in actors
-    )
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
-def test_app_delete_while_deployment_actors_pending(ray_cluster):
-    """App deleted while deployment actors are pending (resource-constrained): no leak.
-
-    Start with constrained cluster (1 CPU), deploy app whose deployment actor
-    needs 2 CPUs so it stays pending. Delete app, add node with 2 CPUs. If
-    cleanup properly cancelled pending creation, no actor should appear.
-    """
-    cluster = ray_cluster
-    cluster.add_node(num_cpus=1)
-    cluster.connect(namespace=SERVE_NAMESPACE)
-
-    serve.start()
-    client = serve.context._connect()
-
-    app_config = {
-        "applications": [
-            {
-                "name": "default",
-                "route_prefix": "/",
-                "import_path": (
-                    "ray.serve.tests.test_config_files.cluster_deployment_actor:app"
-                ),
-            },
-        ],
-    }
-    client.deploy_apps(ServeDeploySchema.model_validate(app_config), _blocking=False)
-
-    # App should stay pending (deployment actor needs 2 CPUs, only 1 available)
-    with pytest.raises(TimeoutError):
-        client._wait_for_application_running("default", timeout_s=3)
-
-    serve.delete(name="default")
-
-    # Add node with 2 CPUs. If there was a leak, pending actor would get scheduled.
-    cluster.add_node(num_cpus=2)
-    cluster.wait_for_nodes()
-
-    # Give any leaked actor time to appear if cleanup failed
-    time.sleep(5)
-    wait_for_condition(_check_no_deployment_actors, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")

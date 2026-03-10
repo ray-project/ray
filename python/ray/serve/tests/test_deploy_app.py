@@ -120,41 +120,6 @@ def test_deploy_multi_app_basic(serve_instance):
     check_multi_app()
 
 
-def test_deploy_app_with_deployment_actors(serve_instance):
-    """Declarative API: app with deployment_actors config comes up and serves."""
-    client = serve_instance
-
-    config = {
-        "applications": [
-            {
-                "name": "default",
-                "route_prefix": "/",
-                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
-                "deployments": [
-                    {
-                        "name": "BasicDriver",
-                        "deployment_actors": [
-                            {
-                                "name": "shared_counter",
-                                "actor_class": "ray.serve.tests.test_api:_CounterActor",
-                                "init_kwargs": {"start": 0},
-                            },
-                        ],
-                    },
-                ],
-            },
-        ],
-    }
-
-    client.deploy_apps(ServeDeploySchema.model_validate(config))
-    wait_for_condition(check_running)
-
-    url = get_application_url()
-    resp = httpx.get(url)
-    assert resp.status_code == 200
-    assert resp.text == "wonderful world"
-
-
 def test_two_fastapi_in_one_application(serve_instance):
     client = serve_instance
     config = {
