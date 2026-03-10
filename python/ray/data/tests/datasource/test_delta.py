@@ -212,7 +212,7 @@ def test_read_delta_column_projection(ray_start_regular_shared, temp_delta_path)
 
 
 # =============================================================================
-# Time Travel Tests (PR 5)
+# Time Travel Tests
 # =============================================================================
 
 
@@ -240,7 +240,7 @@ def test_write_delta_invalid_mode(ray_start_regular_shared, temp_delta_path):
 
 
 # =============================================================================
-# Schema Evolution Tests (PR 4)
+# Schema Evolution Tests
 # =============================================================================
 
 
@@ -286,6 +286,39 @@ def test_write_delta_nested_type_unsupported(ray_start_regular_shared, temp_delt
 
     with pytest.raises(ValueError, match=r"nested type|nested"):
         ds.write_delta(temp_delta_path, partition_cols=["nested"])
+
+
+def test_write_delta_compression(ray_start_regular_shared, temp_delta_path):
+    ray.data.range(10).write_delta(temp_delta_path, compression="zstd")
+    assert ray.data.read_delta(temp_delta_path).count() == 10
+
+
+def test_read_delta_empty_table(ray_start_regular_shared, temp_delta_path):
+    """Reading an empty Delta table should return a dataset with correct schema."""
+    schema = pa.schema([("name", pa.string()), ("age", pa.int64())])
+    empty = pa.table({"name": [], "age": []}, schema=schema)
+    ray.data.from_arrow(empty).write_delta(temp_delta_path, schema=schema)
+
+    ds = ray.data.read_delta(temp_delta_path)
+    assert ds.count() == 0
+
+
+def test_write_delta_empty_without_schema_infers_from_data(
+    ray_start_regular_shared, tmp_path
+):
+    """Writing empty dataset without schema= succeeds via schema inference from data."""
+    path = os.path.join(str(tmp_path), "no_schema_table")
+    schema = pa.schema([("id", pa.int64())])
+    empty = pa.table({"id": []}, schema=schema)
+    ray.data.from_arrow(empty).write_delta(path)
+    assert _delta_log_exists(path)
+
+
+def test_read_delta_nonexistent_table(ray_start_regular_shared, tmp_path):
+    """Reading a non-existent table should raise an error."""
+    path = os.path.join(str(tmp_path), "nonexistent")
+    with pytest.raises(Exception):
+        ray.data.read_delta(path).take_all()
 
 
 if __name__ == "__main__":

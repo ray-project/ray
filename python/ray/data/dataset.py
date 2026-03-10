@@ -4405,14 +4405,12 @@ class Dataset:
                 * GCS: gs://bucket/path/to/table
                 * Azure: abfss://container@account.dfs.core.windows.net/path
 
-            mode: Write mode for handling existing tables. **PR 2: Supports append, overwrite, ignore, error.**
+            mode: Write mode for handling existing tables.
 
                 * "append": Add data to existing table (default)
                 * "overwrite": Replace all data in the table
                 * "error": Raise error if table already exists
                 * "ignore": Skip write if table already exists
-
-                Upsert mode will be added in PR 6.
 
             partition_cols: List of column names to partition by. Creates Hive-style
                 partitioning (e.g., year=2024/month=10/). Partition columns are
@@ -4439,26 +4437,13 @@ class Dataset:
                     Existing columns must have compatible types.
                   - "error": Raise error if schemas differ. Use for strict schema enforcement.
 
-                Note: Other write_kwargs (upsert_kwargs, partition_overwrite_mode,
-                target_file_size_bytes) will be added in subsequent PRs.
-
         Raises:
             ImportError: If the deltalake package is not installed. Install with
                 ``pip install deltalake``.
-            ValueError: If mode is not "append", or if partition_cols is provided,
-                or if unsupported write_kwargs are provided (PR 1 limitations).
+            ValueError: If mode is invalid or schema validation fails.
 
         Note:
-            **PR 4 Features:**
-
-            * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
-              Either all files become visible or none do.
-            * **Schema evolution**: Automatically add new columns when writing to existing
-              tables (controlled by ``schema_mode`` parameter).
-            * **Partitioning**: Hive-style partitioning support.
-            * **Write modes**: Append, overwrite, ignore, and error modes.
-
-            The two-phase commit protocol:
+            This method uses a two-phase commit protocol for ACID guarantees:
 
             1. **Phase 1 (Distributed)**: Each Ray task writes its data blocks as
                Parquet files and returns AddAction metadata (files not yet visible).
@@ -4467,12 +4452,6 @@ class Dataset:
 
             If the write fails partway through, uncommitted files can be removed
             by running Delta's VACUUM command.
-
-            **Future PRs will add:**
-            * Time travel reads (PR 5)
-            * Upsert mode (PR 6)
-            * Partition overwrite modes (PR 7)
-            * Advanced optimizations (PR 8)
 
         Note:
             For cloud storage, provide authentication via ``storage_options``:
@@ -4486,21 +4465,18 @@ class Dataset:
         """
         from ray.data._internal.datasource.delta import DeltaDatasink
 
-        # PR 2: Validate mode is one of the supported modes (append, overwrite, ignore, error)
         valid_modes = {"append", "overwrite", "ignore", "error"}
         if mode not in valid_modes:
             raise ValueError(
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
             )
 
-        # PR 3: Partitioning now supported
         if partition_cols:
             from ray.data._internal.datasource.delta.utils import (
                 validate_partition_column_names,
             )
             partition_cols = validate_partition_column_names(partition_cols)
 
-        # PR 4: Schema evolution now supported via schema_mode parameter
         # Also allow schema_mode to be passed in write_kwargs for backward compatibility
         if "schema_mode" in write_kwargs:
             schema_mode = write_kwargs.pop("schema_mode")
@@ -4509,34 +4485,22 @@ class Dataset:
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
             )
 
-        # PR 4: Upsert not supported yet
         if "upsert_kwargs" in write_kwargs:
-            raise ValueError(
-                "PR 4: upsert_kwargs not supported. Upsert mode will be added in PR 6."
-            )
+            raise ValueError("upsert_kwargs is not supported.")
 
-        # PR 4: Partition overwrite not supported yet
         if "partition_overwrite_mode" in write_kwargs:
-            raise ValueError(
-                "PR 4: partition_overwrite_mode not supported. "
-                "Partition overwrite modes will be added in PR 7."
-            )
+            raise ValueError("partition_overwrite_mode is not supported.")
 
-        # PR 4: File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
-            raise ValueError(
-                "PR 4: target_file_size_bytes not supported. "
-                "File buffering will be added in PR 8."
-            )
+            raise ValueError("target_file_size_bytes is not supported.")
 
-        # PR 4: Write modes, partitioning, and schema evolution supported
         datasink = DeltaDatasink(
             path,
             mode=mode,
-            partition_cols=partition_cols or [],  # PR 3: Partitioning supported
+            partition_cols=partition_cols or [],
             filesystem=filesystem,
             schema=schema,
-            schema_mode=schema_mode,  # PR 4: Schema evolution now supported
+            schema_mode=schema_mode,
             **write_kwargs,
         )
         self.write_datasink(

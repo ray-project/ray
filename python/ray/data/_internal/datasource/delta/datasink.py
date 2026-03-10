@@ -103,7 +103,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
     """Datasink for writing to Delta Lake tables.
 
     Uses two-phase commit: write Parquet files, then commit to transaction log.
-    PR 4: Supports APPEND, OVERWRITE, ERROR, and IGNORE modes with partitioning
+    Supports APPEND, OVERWRITE, ERROR, and IGNORE modes with partitioning
     and schema evolution.
 
     Delta Lake: https://delta.io/
@@ -125,8 +125,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         Args:
             path: Path to Delta table (local or cloud storage).
-            mode: Write mode - PR 3: APPEND, OVERWRITE, ERROR, or IGNORE.
-            partition_cols: Columns to partition by (Hive-style). PR 3: Supported.
+            mode: Write mode - APPEND, OVERWRITE, ERROR, or IGNORE.
+            partition_cols: Columns to partition by (Hive-style).
             filesystem: Optional PyArrow filesystem.
                 PyArrow filesystems: https://arrow.apache.org/docs/python/api/filesystems.html
                 Note: For distributed writes, filesystem must be reconstructible from
@@ -199,7 +199,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             }
             if mode not in valid_modes:
                 raise ValueError(
-                    f"PR 3: Mode {mode} not supported. "
+                    f"Mode {mode} not supported. "
                     "Supported: APPEND, OVERWRITE, ERROR, IGNORE"
                 )
             return mode
@@ -213,8 +213,8 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             }
             if m not in mp:
                 raise ValueError(
-                    f"PR 3: Invalid mode '{mode}'. Supported: {list(mp.keys())}. "
-                    "UPSERT will be added in PR 6."
+                    f"Invalid mode '{mode}'. Supported: {list(mp.keys())}. "
+                    "UPSERT is not supported."
                 )
             return mp[m]
         raise ValueError(f"Invalid mode type: {type(mode).__name__}")
@@ -240,7 +240,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             else:
                 validate_partition_columns_match_existing(existing, self.partition_cols)
 
-            # PR 4: Schema evolution - validate and plan evolution
+            # Schema evolution - validate and plan evolution
             if self.schema is not None:
                 existing_schema = existing_table_pyarrow_schema(existing)
                 new_fields = validate_and_plan_evolution(
@@ -330,7 +330,7 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         write_kwargs_for_commit = dict(self.write_kwargs)
         write_kwargs_for_commit["commit_properties"] = commit_props
 
-        # PR 4: Schema reconciliation across workers
+        # Schema reconciliation across workers
         existing_schema = existing_table_pyarrow_schema(existing) if existing else None
         reconciled = reconcile_worker_schemas(schemas, existing_schema)
         if reconciled is not None:
