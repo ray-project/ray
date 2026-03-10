@@ -110,6 +110,10 @@ void ActorPoolManager::UnregisterPool(const ActorPoolID &pool_id) {
     actor_to_pool_.erase(actor_id);
   }
 
+  // TODO(C2): Clean up work_items_ belonging to this pool. Currently work items
+  // for unregistered pools leak (TaskArg objects held). Need to add pool_id field
+  // to PoolWorkItem or maintain a reverse index for efficient cleanup.
+
   // Remove pool
   work_queues_.erase(pool_id);
   pools_.erase(it);
@@ -143,6 +147,9 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
   actor_to_pool_[actor_id] = pool_id;
 
   RAY_LOG(DEBUG) << "Added actor " << actor_id << " to pool " << pool_id;
+
+  // New actor has capacity — drain any queued work.
+  DrainWorkQueue(pool_id);
 }
 
 void ActorPoolManager::RemoveActorFromPool(const ActorPoolID &pool_id,
@@ -246,7 +253,11 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
   }
 
   const auto &pool_info = pool_it->second;
-  const auto &work_queue = work_queues_.at(pool_id);
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it == work_queues_.end()) {
+    return PoolStats{};
+  }
+  const auto &work_queue = wq_it->second;
 
   PoolStats stats;
   stats.total_tasks_submitted = pool_info.total_tasks_submitted;
@@ -513,6 +524,9 @@ void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
     actor_state.num_tasks_in_flight--;
     actor_state.consecutive_failures = 0;  // Reset on success
   }
+
+  // Now that an actor has capacity, drain any queued work.
+  DrainWorkQueue(pool_id);
 }
 
 void ActorPoolManager::ScheduleRetry(const ActorPoolID &pool_id,
@@ -673,6 +687,8 @@ std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
           arg_proto.object_ref().call_site()));
     } else if (!arg_proto.data().empty() || !arg_proto.metadata().empty()) {
       // By-value argument (has data or metadata)
+      // Note: const_cast is safe here because copy_data=true causes
+      // LocalMemoryBuffer to make a deep copy of the data immediately.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (!arg_proto.data().empty()) {
         data = std::make_shared<LocalMemoryBuffer>(
@@ -702,6 +718,32 @@ std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
   }
 
   return cloned_args;
+}
+
+void ActorPoolManager::DrainWorkQueue(const ActorPoolID &pool_id) {
+  auto wq_it = work_queues_.find(pool_id);
+  if (wq_it == work_queues_.end()) {
+    return;
+  }
+
+  auto &work_queue = wq_it->second;
+  while (work_queue->HasWork()) {
+    // Try to find an available actor with capacity.
+    ActorID actor = SelectActorFromPool(pool_id, /*arg_ids=*/{});
+    if (actor.IsNil()) {
+      // No actors with capacity — stop draining.
+      break;
+    }
+
+    auto work_item = work_queue->Pop();
+    if (!work_item.has_value()) {
+      break;
+    }
+
+    RAY_LOG(DEBUG) << "Draining queued work item " << work_item->work_item_id
+                   << " to actor " << actor << " in pool " << pool_id;
+    SubmitToActor(pool_id, actor, std::move(*work_item));
+  }
 }
 
 }  // namespace core

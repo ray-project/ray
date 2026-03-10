@@ -1539,9 +1539,11 @@ def test_map_worker_repr_handles_uninitialized_src_fn_name():
 
 
 @pytest.mark.parametrize("use_core_actor_pool", [False, True])
-def test_actor_pool_map_operator_parity(ray_start_regular_shared, use_core_actor_pool):
+def test_actor_pool_map_operator_parity(
+    ray_start_regular_shared, restore_data_context, use_core_actor_pool
+):
     """Test that ActorPoolMapOperator works with both pool implementations."""
-    ctx = ray.data.DataContext.get_current()
+    ctx = restore_data_context
     ctx.use_core_actor_pool = use_core_actor_pool
 
     class SimpleMapper:
@@ -1565,9 +1567,11 @@ def test_actor_pool_map_operator_parity(ray_start_regular_shared, use_core_actor
 
 
 @pytest.mark.parametrize("use_core_actor_pool", [False, True])
-def test_actor_pool_scaling_parity(ray_start_regular_shared, use_core_actor_pool):
+def test_actor_pool_scaling_parity(
+    ray_start_regular_shared, restore_data_context, use_core_actor_pool
+):
     """Test that scaling works with both pool implementations."""
-    ctx = ray.data.DataContext.get_current()
+    ctx = restore_data_context
     ctx.use_core_actor_pool = use_core_actor_pool
 
     class SlowMapper:
@@ -1591,9 +1595,11 @@ def test_actor_pool_scaling_parity(ray_start_regular_shared, use_core_actor_pool
 
 
 @pytest.mark.parametrize("use_core_actor_pool", [False, True])
-def test_actor_pool_stats_parity(ray_start_regular_shared, use_core_actor_pool):
+def test_actor_pool_stats_parity(
+    ray_start_regular_shared, restore_data_context, use_core_actor_pool
+):
     """Test that ActorPoolMapOperator reports correct stats with both implementations."""
-    ctx = ray.data.DataContext.get_current()
+    ctx = restore_data_context
     ctx.use_core_actor_pool = use_core_actor_pool
 
     class CountingMapper:

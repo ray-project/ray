@@ -391,6 +391,12 @@ class ActorPoolManager {
   void FailWorkItem(const TaskID &work_item_id, const rpc::RayErrorInfo &error_info)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  /// Drain the work queue for a pool, submitting queued items to available actors.
+  /// Called when new capacity becomes available (task succeeded, actor added).
+  ///
+  /// \param pool_id The pool ID whose queue to drain.
+  void DrainWorkQueue(const ActorPoolID &pool_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Clone task arguments for retry (since we need to keep a copy).
   std::vector<std::unique_ptr<TaskArg>> CloneArgs(
       const std::vector<std::unique_ptr<TaskArg>> &args) const;

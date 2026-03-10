@@ -8,6 +8,9 @@ The class-based adapter enables Ray Data to benefit from:
 - C++-backed pool management
 - Cross-actor retry on failures
 - Unified ActorPool API across Ray
+
+Note: This class is NOT thread-safe. All methods should be called from the
+same thread (the operator's execution thread).
 """
 
 import logging
@@ -17,6 +20,7 @@ from typing import Any, Dict, List, Optional, Type
 
 import ray
 from ray.actor import ActorHandle
+from ray.core.generated import gcs_pb2
 from ray.data._internal.actor_autoscaler import AutoscalingActorPool
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     ActorPoolScalingRequest,
@@ -26,6 +30,10 @@ from ray.data._internal.execution.interfaces.physical_operator import _ActorPool
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
+# Cache protobuf enum values at module level to avoid repeated descriptor lookups.
+_ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
+_ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 
 
 @dataclass
@@ -94,11 +102,24 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         self._per_actor_resource_usage = per_actor_resource_usage
         self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
 
-        assert self._min_size >= 1
-        assert self._max_size >= self._min_size
-        assert self._initial_size <= self._max_size
-        assert self._initial_size >= self._min_size
-        assert self._max_tasks_in_flight >= 1
+        if self._min_size < 1:
+            raise ValueError(f"min_size must be >= 1, got {self._min_size}")
+        if self._max_size < self._min_size:
+            raise ValueError(
+                f"max_size ({self._max_size}) must be >= min_size ({self._min_size})"
+            )
+        if self._initial_size > self._max_size:
+            raise ValueError(
+                f"initial_size ({self._initial_size}) must be <= max_size ({self._max_size})"
+            )
+        if self._initial_size < self._min_size:
+            raise ValueError(
+                f"initial_size ({self._initial_size}) must be >= min_size ({self._min_size})"
+            )
+        if self._max_tasks_in_flight < 1:
+            raise ValueError(
+                f"max_tasks_in_flight must be >= 1, got {self._max_tasks_in_flight}"
+            )
 
         # Build static labels for operator tracking
         static_labels = {}
@@ -272,10 +293,9 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
             return False
 
         actor = self._pending_actors.pop(ready_ref)
-        try:
-            actor_location = ray.get(ready_ref)
-        except Exception:
-            raise
+        # TODO(P4): Use ray.wait() with timeout instead of blocking ray.get().
+        # If get_location() fails, this blocks indefinitely.
+        actor_location = ray.get(ready_ref)
 
         self._running_actors[actor] = _ActorState(
             num_tasks_in_flight=0,
@@ -346,6 +366,13 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         worker = worker_module.global_worker
         remote_args = remote_args or {}
 
+        if not self._running_actors:
+            raise RuntimeError(
+                "Cannot submit task to C++ ActorPool: no running actors. "
+                "Ensure actors have been scaled up and moved to running state "
+                "before submitting tasks."
+            )
+
         actor = next(iter(self._running_actors))
         language = actor._ray_actor_language
         fn_signature = actor._ray_method_signatures[method_name]
@@ -378,7 +405,6 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         )
 
         if not object_refs:
-            self._total_num_tasks_in_flight -= 0  # nothing submitted
             raise RuntimeError(
                 "C++ ActorPoolManager returned no refs — pool has no actors "
                 "with available capacity. This indicates a mismatch between "
@@ -404,10 +430,13 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
 
     def on_task_submitted(self, actor: ActorHandle):
         """Called when a task is submitted to an actor."""
-        self._running_actors[actor].num_tasks_in_flight += 1
+        # TODO(P3): Actor may have died between submission and callback.
+        # Add defensive guard: if actor not in self._running_actors, log and return.
+        state = self._running_actors[actor]
+        state.num_tasks_in_flight += 1
         self._total_num_tasks_in_flight += 1
 
-        if self._running_actors[actor].num_tasks_in_flight == 1:
+        if state.num_tasks_in_flight == 1:
             self._num_active_actors += 1
 
     def on_task_completed(self, actor: Optional[ActorHandle] = None):
@@ -418,22 +447,21 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
                    where C++ selected the actor.
         """
         if actor is not None and actor in self._running_actors:
-            assert self._running_actors[actor].num_tasks_in_flight > 0
-            self._running_actors[actor].num_tasks_in_flight -= 1
-            if self._running_actors[actor].num_tasks_in_flight == 0:
+            state = self._running_actors[actor]
+            assert state.num_tasks_in_flight > 0
+            state.num_tasks_in_flight -= 1
+            if state.num_tasks_in_flight == 0:
                 self._num_active_actors -= 1
 
         self._total_num_tasks_in_flight -= 1
 
     def refresh_actor_state(self):
         """Refresh actor states from GCS (alive vs restarting)."""
-        from ray.core.generated import gcs_pb2
-
         for actor in self.get_running_actor_refs():
             actor_state = actor._get_local_state()
-            if actor_state in (None, gcs_pb2.ActorTableData.ActorState.DEAD):
+            if actor_state in (None, _ACTOR_STATE_DEAD):
                 continue
-            elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+            elif actor_state != _ACTOR_STATE_ALIVE:
                 self.update_running_actor_state(actor, is_restarting=True)
             else:
                 self.update_running_actor_state(actor, is_restarting=False)

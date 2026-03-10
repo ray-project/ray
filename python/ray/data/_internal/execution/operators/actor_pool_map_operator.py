@@ -233,7 +233,12 @@ class ActorPoolMapOperator(MapOperator):
                 max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
                 _enable_actor_pool_on_exit_hook=self.data_context._enable_actor_pool_on_exit_hook,
             )
-        self._actor_task_selector = self._create_task_selector(self._actor_pool)
+        # The task selector manages Python-side actor selection (legacy path).
+        # On the Core pool path, C++ handles selection, so skip creating it.
+        if not getattr(self._actor_pool, "supports_pool_submission", False):
+            self._actor_task_selector = self._create_task_selector(self._actor_pool)
+        else:
+            self._actor_task_selector = None
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
         # Cached actor class.
@@ -720,7 +725,10 @@ class ActorPoolMapOperator(MapOperator):
 
         # Trigger Actor Pool's state refresh
         self._actor_pool.refresh_actor_state()
-        self._actor_task_selector.refresh_state()
+        # Only refresh the task selector on the legacy path. The Core pool path
+        # (ClassBasedActorPoolAdapter) manages actor selection in C++.
+        if self._actor_task_selector is not None:
+            self._actor_task_selector.refresh_state()
 
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns Actor counts for Alive, Restarting and Pending Actors."""

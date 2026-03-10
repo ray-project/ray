@@ -9,19 +9,20 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data.context import DataContext
 
 
 @pytest.fixture
-def restore_data_context():
-    ctx = DataContext.get_current()
-    old = ctx.use_core_actor_pool
-    ctx.use_core_actor_pool = True
-    yield ctx
-    ctx.use_core_actor_pool = old
+def enable_core_actor_pool(restore_data_context):
+    """Enable Core actor pool for reconstruction tests.
+
+    Uses the shared restore_data_context fixture from conftest.py to ensure
+    full DataContext restoration after each test.
+    """
+    restore_data_context.use_core_actor_pool = True
+    yield restore_data_context
 
 
-def test_pool_reconstruction_no_data_loss(ray_start_cluster, restore_data_context):
+def test_pool_reconstruction_no_data_loss(ray_start_cluster, enable_core_actor_pool):
     """map_batches(pool) -> collect: kill a worker node, verify all rows present."""
     ray.shutdown()
 
@@ -50,7 +51,7 @@ def test_pool_reconstruction_no_data_loss(ray_start_cluster, restore_data_contex
 
 
 def test_cascading_pool_reconstruction_with_sort(
-    ray_start_cluster, restore_data_context
+    ray_start_cluster, enable_core_actor_pool
 ):
     """map_batches(pool1) -> sort -> map_batches(pool2): kill node, verify results.
 

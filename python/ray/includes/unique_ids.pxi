@@ -451,6 +451,11 @@ cdef class ActorPoolID(BaseID):
         return cls(CActorPoolID.FromRandom().Binary())
 
     @classmethod
+    def from_hex(cls, hex_id):
+        binary_id = CActorPoolID.FromHex(<c_string>hex_id).Binary()
+        return cls(binary_id)
+
+    @classmethod
     def nil(cls):
         return cls(CActorPoolID.Nil().Binary())
 

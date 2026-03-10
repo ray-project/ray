@@ -4895,6 +4895,8 @@ cdef class CoreWorker:
             actor_id: The ID of the actor to add.
             location: Optional node ID where the actor is located.
         """
+        # TODO(P9): Add isinstance checks for pool_id/actor_id to prevent
+        # segfaults if wrong types are passed (e.g., non-ActorID).
         cdef:
             CActorPoolID c_pool_id = pool_id.native()
             CActorID c_actor_id = actor_id.native()
@@ -5036,29 +5038,30 @@ cdef class CoreWorker:
             language, args, &args_vector, function_descriptor,
             &incremented_put_arg_ids)
 
-        with nogil:
-            return_refs = (
-                CCoreWorkerProcess.GetCoreWorker().SubmitTaskToActorPool(
-                    c_pool_id,
-                    ray_function,
-                    move(args_vector),
-                    CTaskOptions(
-                        name,
-                        num_returns,
-                        c_resources,
-                        concurrency_group_name,
-                        generator_backpressure_num_objects,
-                        serialized_runtime_env,
-                        enable_task_events,
-                        c_labels,
-                        c_label_selector,
-                        c_tensor_transport,
-                        c_fallback_strategy),
-                    key))
-
-        for put_arg_id in incremented_put_arg_ids:
-            CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
-                put_arg_id)
+        try:
+            with nogil:
+                return_refs = (
+                    CCoreWorkerProcess.GetCoreWorker().SubmitTaskToActorPool(
+                        c_pool_id,
+                        ray_function,
+                        move(args_vector),
+                        CTaskOptions(
+                            name,
+                            num_returns,
+                            c_resources,
+                            concurrency_group_name,
+                            generator_backpressure_num_objects,
+                            serialized_runtime_env,
+                            enable_task_events,
+                            c_labels,
+                            c_label_selector,
+                            c_tensor_transport,
+                            c_fallback_strategy),
+                        key))
+        finally:
+            for put_arg_id in incremented_put_arg_ids:
+                CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                    put_arg_id)
 
         return VectorToObjectRefs(return_refs, skip_adding_local_ref=True)
 

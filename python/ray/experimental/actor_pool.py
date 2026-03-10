@@ -190,9 +190,13 @@ class ActorPool:
         # Track actor handles for direct access
         self._actor_handles: List[ray.actor.ActorHandle] = []
 
-        # Track tasks submitted (Python-side counter for Phase 1)
-        # Full C++ tracking will be used when SubmitTaskToPool is integrated
+        # Track tasks submitted (Python-side counter, shadows C++ stats
+        # because the adapter path calls submit_task directly on actors,
+        # not through C++ SubmitTaskToPool).
         self._tasks_submitted = 0
+
+        # Track whether shutdown() has been called to prevent double-unregister.
+        self._is_shutdown = False
 
         # Create initial actors
         for _ in range(initial_size):
@@ -376,8 +380,9 @@ class ActorPool:
             - backlog_size: Number of queued tasks
             - total_in_flight: Total in-flight tasks
         """
-        # Get C++ stats and override with Python-side counter for Phase 1
-        # Full C++ tracking will be used when SubmitTaskToPool is integrated
+        # Get C++ stats but override total_tasks_submitted with the Python-side
+        # counter, since tasks submitted via the adapter's direct actor calls
+        # are not tracked by C++ SubmitTaskToPool.
         stats = self._core_worker.get_pool_stats(self._pool_id)
         stats["total_tasks_submitted"] = self._tasks_submitted
         return stats
@@ -397,8 +402,9 @@ class ActorPool:
             logger.info(f"Scaled pool {self._pool_id.hex()} up by {delta} actors")
             return delta
         elif delta < 0:
-            # Remove actors from the end
-            num_to_remove = min(abs(delta), len(self._actor_handles))
+            # Remove actors from the end, but never go below min_size.
+            removable = max(0, len(self._actor_handles) - self._min_size)
+            num_to_remove = min(abs(delta), removable)
             for _ in range(num_to_remove):
                 actor = self._actor_handles.pop()
                 self._actor_to_logical_id.pop(actor, None)
@@ -416,8 +422,12 @@ class ActorPool:
 
         Args:
             force: If True, forcefully kill actors without waiting.
-            grace_period_s: Time to wait for actors to finish (not used in Phase 1).
+            grace_period_s: Time to wait for actors to finish.
+                TODO(P7): Currently unused — implement drain-before-kill.
         """
+        if self._is_shutdown:
+            return
+
         logger.info(f"Shutting down pool {self._pool_id.hex()}")
 
         # Kill all actors
@@ -432,11 +442,16 @@ class ActorPool:
 
         # Unregister the pool
         self._core_worker.unregister_actor_pool(self._pool_id)
+        self._is_shutdown = True
 
     def __del__(self):
         """Cleanup when the pool is garbage collected."""
         try:
-            if hasattr(self, "_pool_id") and hasattr(self, "_core_worker"):
+            if (
+                not getattr(self, "_is_shutdown", True)
+                and hasattr(self, "_pool_id")
+                and hasattr(self, "_core_worker")
+            ):
                 self._core_worker.unregister_actor_pool(self._pool_id)
         except Exception:
             # Ignore errors during cleanup (worker may have shut down)
