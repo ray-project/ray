@@ -157,24 +157,12 @@ def test_get_anyscale_base_byod_image_always_uses_aws_ecr() -> None:
             "RAYCI_BUILD_ID": "a1b2c3d4",
         },
     ):
-        aws_test = Test(name="t", env="aws", cluster={"byod": {}})
-        gce_test = Test(name="t", env="gce", cluster={"byod": {}})
-        azure_test = Test(name="t", env="azure", cluster={"byod": {}})
-        kuberay_test = Test(name="t", env="kuberay", cluster={"byod": {}})
-        gpu_test = Test(name="t", env="gce", cluster={"byod": {"type": "gpu"}})
+        expected_cpu = f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu"
+        for env in ("aws", "gce", "azure", "kuberay"):
+            test = Test(name="t", env=env, cluster={"byod": {}})
+            assert test.get_anyscale_base_byod_image() == expected_cpu, env
 
-        assert aws_test.get_anyscale_base_byod_image() == (
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu"
-        )
-        assert gce_test.get_anyscale_base_byod_image() == (
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu"
-        )
-        assert azure_test.get_anyscale_base_byod_image() == (
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu"
-        )
-        assert kuberay_test.get_anyscale_base_byod_image() == (
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu"
-        )
+        gpu_test = Test(name="t", env="gce", cluster={"byod": {"type": "gpu"}})
         assert gpu_test.get_anyscale_base_byod_image() == (
             f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu"
         )
