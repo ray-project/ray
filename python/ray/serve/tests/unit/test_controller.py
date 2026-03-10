@@ -376,7 +376,7 @@ class TestDurationStats:
     def test_dict_serialization(self):
         """Test that DurationStats serializes to dict."""
         stats = DurationStats(mean=1.0, std=0.5, min=0.5, max=1.5)
-        result = stats.dict()
+        result = stats.model_dump()
         assert result == {"mean": 1.0, "std": 0.5, "min": 0.5, "max": 1.5}
 
 
@@ -395,7 +395,7 @@ class TestControllerHealthMetrics:
         assert metrics.num_asyncio_tasks == 0
         assert metrics.process_memory_mb == 0.0
 
-    def test_dict(self):
+    def test_model_dump(self):
         """Test serialization to dictionary."""
         loop_stats = DurationStats(mean=0.3, std=0.1, min=0.1, max=0.5)
         metrics = ControllerHealthMetrics(
@@ -405,7 +405,7 @@ class TestControllerHealthMetrics:
             num_control_loops=50,
             loop_duration_s=loop_stats,
         )
-        result = metrics.dict()
+        result = metrics.model_dump()
 
         assert isinstance(result, dict)
         assert result["timestamp"] == 1000.0
@@ -414,10 +414,10 @@ class TestControllerHealthMetrics:
         assert result["num_control_loops"] == 50
         assert result["loop_duration_s"]["mean"] == 0.3
 
-    def test_all_fields_in_dict(self):
-        """Ensure dict() includes all fields."""
+    def test_all_fields_in_model_dump(self):
+        """Ensure model_dump() includes all fields."""
         metrics = ControllerHealthMetrics()
-        result = metrics.dict()
+        result = metrics.model_dump()
 
         expected_keys = [
             "timestamp",

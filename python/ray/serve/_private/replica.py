@@ -63,13 +63,13 @@ from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     HEALTHY_MESSAGE,
+    RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
-    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
     RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
@@ -147,6 +147,8 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
     asyncio_grpc_exception_handler,
+    check_obj_ref_ready_nowait,
+    compress_metric_report,
     generate_request_id,
     get_component_file_name,  # noqa: F401
     is_grpc_enabled,
@@ -173,6 +175,7 @@ from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
 from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
+from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -338,6 +341,10 @@ class ReplicaMetricsManager:
         # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
         self._checked_custom_metrics = False
         self._record_autoscaling_stats_fn = None
+
+        # Tracks in-flight metrics push to controller. Skip if new one is sent.
+        self._pending_metrics_push_ref: Optional[ObjectRef] = None
+        self._metrics_push_lock = threading.Lock()
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -638,13 +645,14 @@ class ReplicaMetricsManager:
             self._autoscaling_config.metrics_interval_s,
         )
         # Collect autoscaling metrics locally periodically.
+        record_interval_s = (
+            self._autoscaling_config.look_back_period_s
+            * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
+        )
         self._metrics_pusher.register_or_update_task(
             self.RECORD_METRICS_TASK_NAME,
             self._add_autoscaling_metrics_point_async,
-            min(
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                self._autoscaling_config.metrics_interval_s,
-            ),
+            min(record_interval_s, self._autoscaling_config.metrics_interval_s),
         )
 
     def should_collect_ongoing_requests(self) -> bool:
@@ -905,9 +913,15 @@ class ReplicaMetricsManager:
             aggregated_metrics=new_aggregated_metrics,
             metrics=new_metrics,
         )
-        self._controller_handle.record_autoscaling_metrics_from_replica.remote(
-            replica_metric_report
-        )
+        with self._metrics_push_lock:
+            if self._pending_metrics_push_ref is not None:
+                if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
+                    return  # Previous push still in flight, skip and try again later
+            self._pending_metrics_push_ref = (
+                self._controller_handle.record_autoscaling_metrics_from_replica.remote(
+                    compress_metric_report(replica_metric_report)
+                )
+            )
 
     async def _fetch_custom_autoscaling_metrics(
         self,
@@ -1899,7 +1913,7 @@ class Replica(ReplicaBase):
         async def start_http_server(port):
             options = configure_http_middlewares(
                 configure_http_options_with_defaults(
-                    HTTPOptions(**{**self._http_options.dict(), "port": port})
+                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
                 )
             )
 
@@ -1922,7 +1936,9 @@ class Replica(ReplicaBase):
         if grpc_enabled:
 
             async def start_grpc_server_fn(port):
-                options = gRPCOptions(**{**self._grpc_options.dict(), "port": port})
+                options = gRPCOptions(
+                    **{**self._grpc_options.model_dump(), "port": port}
+                )
                 return await start_grpc_server(
                     self._direct_ingress_service_handler_factory,
                     options,

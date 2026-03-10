@@ -38,6 +38,7 @@ from ray.serve._private.tracing_utils import (
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.grpc_util import gRPCInputStream
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.utils import get_trace_context
 from ray.tests.conftest import *  # noqa
@@ -1028,6 +1029,105 @@ def test_batched_span_attached_to_first_request_trace():
     assert (
         len(batch_indices) == 2
     ), f"Expected two distinct batch indices, got {batch_indices}"
+
+    shutil.rmtree(spans_dir)
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    ["ClientStreaming", "BidiStreaming"],
+)
+def test_grpc_streaming_tracing_attributes(serve_and_ray_shutdown, method_name):
+    """Test that tracing attributes are correctly set for gRPC streaming requests.
+
+    Verifies that for client streaming and bidirectional streaming methods,
+    the proxy gRPC span contains the expected tracing attributes including
+    request_id, deployment, app, request_type, and RPC-specific attributes.
+    """
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip()
+
+    grpc_port = 9000
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=[
+                "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+            ],
+        ),
+    )
+
+    @serve.deployment
+    class StreamingDeployment:
+        async def ClientStreaming(self, request_stream: gRPCInputStream):
+            async for _ in request_stream:
+                pass
+            return serve_pb2.UserDefinedResponse(greeting="ok", num_x2=0)
+
+        async def BidiStreaming(self, request_stream: gRPCInputStream):
+            async for request in request_stream:
+                yield serve_pb2.UserDefinedResponse(
+                    greeting=f"Hello {request.name}",
+                    num_x2=request.num * 2,
+                )
+
+    serve.run(StreamingDeployment.options(name="streaming-deployment").bind())
+
+    setup_tracing(
+        component_name="upstream_app",
+        component_id="345",
+        tracing_sampling_ratio=1.0,
+    )
+
+    tracer = trace.get_tracer("test_tracing")
+    with tracer.start_as_current_span("upstream_streaming"):
+        ctx = get_trace_context()
+        headers = {}
+        TraceContextTextMapPropagator().inject(headers, ctx)
+        metadata = tuple(headers.items())
+
+        channel = grpc.insecure_channel("localhost:9000")
+        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+
+        def request_generator():
+            for i in range(2):
+                yield serve_pb2.UserDefinedMessage(name=f"msg_{i}", num=i, foo="bar")
+
+        if method_name == "ClientStreaming":
+            stub.ClientStreaming(request_generator(), metadata=metadata)
+        else:
+            list(stub.BidiStreaming(request_generator(), metadata=metadata))
+
+    serve.shutdown()
+
+    # Find proxy spans
+    serve_logs_dir = get_serve_logs_dir()
+    spans_dir = os.path.join(serve_logs_dir, "spans")
+    files = os.listdir(spans_dir)
+
+    proxy_spans = None
+    for file in files:
+        if "proxy" in file:
+            proxy_spans = load_spans(os.path.join(spans_dir, file))
+            break
+
+    grpc_proxy_span = next(
+        (span for span in proxy_spans if "proxy_grpc_request" in span["name"]),
+        None,
+    )
+    assert grpc_proxy_span is not None
+    attrs = grpc_proxy_span["attributes"]
+
+    # Verify tracing attributes are set up correctly
+    assert "request_id" in attrs
+    assert attrs["deployment"] == "streaming-deployment"
+    assert "app" in attrs
+    assert attrs["request_type"] == "grpc"
+    assert attrs["rpc.system"] == "grpc"
+    assert f"/ray.serve.UserDefinedService/{method_name}" == attrs["rpc.method"]
+    assert attrs["rpc.grpc.status_code"] == "OK"
+    assert grpc_proxy_span["status"]["status_code"] == "OK"
 
     shutil.rmtree(spans_dir)
 
