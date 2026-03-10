@@ -1,4 +1,3 @@
-import copy
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -184,13 +183,19 @@ class MapTransformer:
         if modify_in_place:
             self._transform_fns = combined_transform_fns
             return self
-
-        # Shallow-copy the transformer to preserve configuration while avoiding
-        # manually copying every attribute.
-        cloned = copy.copy(self)
-        cloned._transform_fns = combined_transform_fns
-        cloned._udf_time_s = 0
-        return cloned
+        else:
+            output_block_size_option_override = self._output_block_size_option_override
+            if output_block_size_option_override is not None:
+                output_block_size_option_override = OutputBlockSizeOption(
+                    target_max_block_size=output_block_size_option_override.target_max_block_size,
+                    target_num_rows_per_block=output_block_size_option_override.target_num_rows_per_block,
+                    disable_block_shaping=output_block_size_option_override.disable_block_shaping,
+                )
+            return MapTransformer(
+                combined_transform_fns,
+                init_fn=self._init_fn,
+                output_block_size_option_override=output_block_size_option_override,
+            )
 
     def get_transform_fns(self) -> List[MapTransformFn]:
         """Get the transform functions."""
