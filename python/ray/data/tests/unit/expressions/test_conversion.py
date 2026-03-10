@@ -275,10 +275,90 @@ class TestToPyArrow:
         converted = ray_expr.to_pyarrow()
         assert isinstance(converted, pc.Expression)
 
+    # ── PyArrow Compute UDF Expressions ──
+
+    @pytest.mark.parametrize(
+        "ray_expr,equivalent_pyarrow_expr,description",
+        [
+            pytest.param(
+                col("name").str.match_regex("foo.*bar"),
+                lambda: pc.match_substring_regex(pc.field("name"), "foo.*bar"),
+                "match_regex",
+                id="match_regex",
+            ),
+            pytest.param(
+                col("name").str.starts_with("foo"),
+                lambda: pc.starts_with(pc.field("name"), "foo"),
+                "starts_with",
+                id="starts_with",
+            ),
+            pytest.param(
+                col("name").str.ends_with("bar"),
+                lambda: pc.ends_with(pc.field("name"), "bar"),
+                "ends_with",
+                id="ends_with",
+            ),
+            pytest.param(
+                col("name").str.contains("baz"),
+                lambda: pc.match_substring(pc.field("name"), "baz"),
+                "contains",
+                id="contains",
+            ),
+            pytest.param(
+                col("name").str.upper(),
+                lambda: pc.utf8_upper(pc.field("name")),
+                "upper",
+                id="upper",
+            ),
+            pytest.param(
+                col("x").ceil(),
+                lambda: pc.ceil(pc.field("x")),
+                "ceil",
+                id="ceil",
+            ),
+            pytest.param(
+                col("x").abs(),
+                lambda: pc.abs_checked(pc.field("x")),
+                "abs",
+                id="abs",
+            ),
+        ],
+    )
+    def test_pyarrow_compute_udf_expressions(
+        self, test_table, ray_expr, equivalent_pyarrow_expr, description
+    ):
+        """Test that PyArrow-compute-backed UDFs convert to PyArrow expressions."""
+        converted = ray_expr.to_pyarrow()
+        expected = equivalent_pyarrow_expr()
+        assert isinstance(converted, pc.Expression)
+        assert isinstance(expected, pc.Expression)
+
+    def test_negated_pyarrow_compute_udf(self, test_table):
+        """Test that negated PyArrow compute UDF expressions convert correctly."""
+        ray_expr = ~col("status").str.match_regex("act.*")
+        converted = ray_expr.to_pyarrow()
+        assert isinstance(converted, pc.Expression)
+
+        dataset = ds.dataset(test_table)
+        result = dataset.to_table(filter=converted)
+        assert all(
+            not bool(pc.match_substring_regex(s, "act.*"))
+            for s in result.column("status").to_pylist()
+        )
+
+    def test_pyarrow_compute_udf_as_dataset_filter(self, test_table):
+        """Test that converted UDF expressions work as dataset scan filters."""
+        ray_expr = col("status").str.match_regex("^active$")
+        pa_expr = ray_expr.to_pyarrow()
+
+        dataset = ds.dataset(test_table)
+        result = dataset.to_table(filter=pa_expr)
+        assert all(s == "active" for s in result.column("status").to_pylist())
+
     # ── Unsupported Expressions ──
 
-    def test_udf_expression_raises(self):
-        """Test that UDF expressions raise TypeError."""
+    def test_user_udf_expression_raises(self):
+        """Test that user-defined UDF expressions raise TypeError."""
 
         def dummy_fn(x):
             return x

@@ -725,6 +725,82 @@ class TestProjectionWithFilterEdgeCases:
             )
 
 
+class TestPyArrowComputeUDFPushdown:
+    """Tests for predicate pushdown of PyArrow-compute-backed UDF expressions.
+
+    String namespace methods (str.match_regex, str.starts_with, etc.) and
+    numeric helpers (ceil, abs, etc.) produce PyArrowComputeUDFExpr nodes
+    that should be pushed into Read operators just like plain comparison
+    expressions.
+    """
+
+    @pytest.fixture
+    def parquet_ds(self, ray_start_regular_shared):
+        return ray.data.read_parquet("example://iris.parquet")
+
+    @pytest.mark.parametrize(
+        "build_filter,verify",
+        [
+            pytest.param(
+                lambda: ~col("variety").str.match_regex("Set.*"),
+                lambda rows: all(not r["variety"].startswith("Set") for r in rows),
+                id="negated_match_regex",
+            ),
+            pytest.param(
+                lambda: col("variety").str.starts_with("Vir"),
+                lambda rows: all(r["variety"].startswith("Vir") for r in rows),
+                id="starts_with",
+            ),
+            pytest.param(
+                lambda: col("variety").str.contains("set"),
+                lambda rows: all("set" in r["variety"] for r in rows),
+                id="contains",
+            ),
+        ],
+    )
+    def test_string_udf_pushdown_into_parquet(self, parquet_ds, build_filter, verify):
+        """String UDF predicates should be pushed into the Parquet reader."""
+        ds = parquet_ds.filter(expr=build_filter())
+        result = ds.take_all()
+        assert len(result) > 0
+        assert verify(result)
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "PyArrow-compute UDF filter should be pushed into Read"
+
+    def test_udf_combined_with_comparison_pushdown(self, parquet_ds):
+        """UDF predicate combined with comparison should both push down."""
+        ds = parquet_ds.filter(
+            expr=col("variety").str.starts_with("Vir") & (col("sepal.length") > 6.0)
+        )
+        result = ds.take_all()
+        assert len(result) > 0
+        assert all(
+            r["variety"].startswith("Vir") and r["sepal.length"] > 6.0 for r in result
+        )
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Combined UDF + comparison filter should be pushed into Read"
+
+    def test_chained_udf_filters_fuse_and_push(self, parquet_ds):
+        """Multiple UDF filters should fuse and push into Read."""
+        ds = parquet_ds.filter(expr=col("variety").str.contains("set")).filter(
+            expr=col("sepal.length") > 5.0
+        )
+        result = ds.take_all()
+        assert len(result) > 0
+        assert all("set" in r["variety"] and r["sepal.length"] > 5.0 for r in result)
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Chained UDF filters should fuse and push into Read"
+
+
 class TestPushIntoBranchesBehavior:
     """Tests for PUSH_INTO_BRANCHES behavior operators.
 
