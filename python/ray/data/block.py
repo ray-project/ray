@@ -21,7 +21,6 @@ from typing import (
 import numpy as np
 import pyarrow as pa
 
-from python.ray.cloudpickle.cloudpickle import instance
 import ray
 from ray._private.ray_constants import env_bool
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
@@ -324,7 +323,7 @@ class BlockAccessor:
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
     """
-    
+
     _DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
         "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
     )
@@ -496,7 +495,7 @@ class BlockAccessor:
 
         elif cls._DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT:
             import pandas as pd
-            
+
             assert block_type is None or block_type == BlockType.ARROW
 
             if isinstance(batch, pd.DataFrame):
