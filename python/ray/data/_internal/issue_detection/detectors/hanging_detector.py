@@ -102,7 +102,9 @@ class HangingExecutionIssueDetector(IssueDetector):
             if state.task_idx not in self._hanging_op_tasks[state.operator_id]:
                 op_name = self._op_id_to_name.get(state.operator_id, state.operator_id)
                 duration = time.perf_counter() - state.start_time_hanging
-                avg_duration = op_task_stats_map[state.operator_id].mean()
+                op_task_stats = op_task_stats_map[state.operator_id]
+                avg_duration = op_task_stats.mean()
+                stdev = op_task_stats.stddev()
 
                 node_id = None
                 pid = None
@@ -114,9 +116,11 @@ class HangingExecutionIssueDetector(IssueDetector):
 
                 message = (
                     f"A task (task_id={state.task_id}) of operator {op_name} (pid={pid}, node_id={node_id}, attempt={attempt_number}) has been running for {duration:.2f}s, which is longer"
-                    f" than the average task duration of this operator ({avg_duration:.2f}s)."
+                    f" than the average task duration + z-score * stdev of this operator ({avg_duration:.2f} + {self._op_task_stats_std_factor_threshold} * {stdev:.2f}s)."
                     f" If this message persists, please check the stack trace of the "
                     "task for potential hanging issues."
+                    " To adjust the z-score threshold, set"
+                    " `ray.data.DataContext.get_current().issue_detectors_config.hanging_detector_config.op_task_stats_std_factor`."
                 )
                 issues.append(
                     Issue(
@@ -158,7 +162,11 @@ class HangingExecutionIssueDetector(IssueDetector):
                             operator_id=operator.id,
                             task_idx=task_idx,
                             task_id=task_info.task_id,
-                            task_state=None,
+                            task_state=(
+                                None
+                                if prev_state_value is None
+                                else prev_state_value.task_state
+                            ),
                             bytes_output=bytes_output,
                             start_time_hanging=time.perf_counter(),
                         )
@@ -172,20 +180,28 @@ class HangingExecutionIssueDetector(IssueDetector):
                     self._hanging_op_tasks[operator.id].discard(task_idx)
 
         hanging_op_tasks = []
+        failed_get_task = False
         for op_id, op_state_values in self._state_map.items():
             op_task_stats = op_task_stats_map[op_id]
             for task_idx, state_value in op_state_values.items():
                 curr_time = time.perf_counter() - state_value.start_time_hanging
                 if op_task_stats.count() >= self._op_task_stats_min_count:
-                    if state_value.task_state is None:
-                        state_value.task_state = get_latest_state_for_task(
-                            state_value.task_id
-                        )
                     mean = op_task_stats.mean()
                     stddev = op_task_stats.stddev()
                     threshold = mean + self._op_task_stats_std_factor_threshold * stddev
 
                     if curr_time > threshold:
+                        if state_value.task_state is None and not failed_get_task:
+                            latest_task_state = get_latest_state_for_task(
+                                state_value.task_id
+                            )
+                            if latest_task_state is None:
+                                # There exists more sophisticated ways to handle failure, but for simplicity,
+                                # any failure grabbing the task info means we stop grabbing task info for the rest
+                                # of the tasks. This prevents a flood of state API calls, which can be slow. On the
+                                # next detection cycle, we will only retry the ones that are None.
+                                failed_get_task = True
+                            state_value.task_state = latest_task_state
                         hanging_op_tasks.append(state_value)
 
         # create issues for newly detected hanging tasks, then update the hanging task set
