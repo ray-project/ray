@@ -5,8 +5,11 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     BlockTransformer,
-    HashShufflingOperatorBase,
+    CpuShuffleEngine,
     ShuffleAggregation,
+)
+from ray.data._internal.execution.operators.shuffle_operator_core import (
+    ShuffleOperatorCore,
 )
 from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import AggregateFn
@@ -78,7 +81,7 @@ class ReducingAggregation(ShuffleAggregation):
         return SortKey(key=list(key_columns), descending=False)
 
 
-class HashAggregateOperator(HashShufflingOperatorBase):
+class HashAggregateOperator(ShuffleOperatorCore):
 
     _DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD = 100
     _DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD = 2000
@@ -100,23 +103,18 @@ class HashAggregateOperator(HashShufflingOperatorBase):
                 aggregation_fns=aggregation_fns,
             )
 
-        super().__init__(
-            name_factory=(
-                lambda num_partitions: f"HashAggregate(key_columns={key_columns}, "
-                f"num_partitions={num_partitions})"
-            ),
+        # NOTE: In case of global aggregations (ie with no key columns specified),
+        #       we override number of partitions to 1, since the whole dataset
+        #       will be reduced to just a single row
+        effective_num_partitions = num_partitions if len(key_columns) > 0 else 1
+
+        engine = CpuShuffleEngine(
             input_ops=[input_op],
             data_context=data_context,
+            operator_name="HashAggregate",
             key_columns=[key_columns],
             num_input_seqs=1,
-            num_partitions=(
-                # NOTE: In case of global aggregations (ie with no key columns specified),
-                #       we override number of partitions to 1, since the whole dataset
-                #       will be reduced to just a single row
-                num_partitions
-                if len(key_columns) > 0
-                else 1
-            ),
+            num_partitions=effective_num_partitions,
             partition_aggregation_factory=_create_reducing_aggregation,
             input_block_transformer=_create_aggregating_transformer(
                 key_columns, aggregation_fns
@@ -124,14 +122,33 @@ class HashAggregateOperator(HashShufflingOperatorBase):
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
             shuffle_progress_bar_name="Shuffle",
             finalize_progress_bar_name="Aggregation",
+            operator_num_cpus_override=data_context.hash_aggregate_operator_actor_num_cpus_override,
+            estimate_aggregator_memory=self._estimate_aggregator_memory_allocation,
+            min_max_shards_compaction_thresholds=(
+                self._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD,
+                self._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD,
+            ),
         )
 
-    def _get_operator_num_cpus_override(self) -> float:
-        return self.data_context.hash_aggregate_operator_actor_num_cpus_override
+        super().__init__(
+            name=(
+                f"HashAggregate(key_columns={key_columns}, "
+                f"num_partitions={engine.num_partitions})"
+            ),
+            input_ops=[input_op],
+            data_context=data_context,
+            engine=engine,
+        )
 
-    @classmethod
+        self._num_partitions = engine.num_partitions
+
+    @property
+    def _aggregator_pool(self):
+        """Backward-compat accessor used by tests and issue detectors."""
+        return self._engine._aggregator_pool
+
+    @staticmethod
     def _estimate_aggregator_memory_allocation(
-        cls,
         *,
         num_aggregators: int,
         num_partitions: int,
@@ -143,14 +160,14 @@ class HashAggregateOperator(HashShufflingOperatorBase):
 
         # Estimate of object store memory required to accommodate all partitions
         # handled by a single aggregator
-        aggregator_shuffle_object_store_memory_required: int = math.ceil(
+        aggregator_shuffle_object_store_memory_required = math.ceil(
             estimated_dataset_bytes / num_aggregators
         )
         # Estimate of memory required to accommodate single partition as an output
         # (inside Object Store)
-        output_object_store_memory_required: int = partition_byte_size_estimate
+        output_object_store_memory_required = partition_byte_size_estimate
 
-        aggregator_total_memory_required: int = (
+        aggregator_total_memory_required = (
             # Inputs (object store)
             aggregator_shuffle_object_store_memory_required
             +
@@ -169,15 +186,6 @@ class HashAggregateOperator(HashShufflingOperatorBase):
         )
 
         return aggregator_total_memory_required
-
-    @classmethod
-    def _get_min_max_partition_shards_compaction_thresholds(
-        cls,
-    ) -> Optional[Tuple[int, int]]:
-        return (
-            cls._DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD,
-            cls._DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD,
-        )
 
 
 def _create_aggregating_transformer(

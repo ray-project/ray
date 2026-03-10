@@ -19,10 +19,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShufflingOperatorBase,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operator_core import (
+    ShuffleOperatorCore,
+)
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import GiB
@@ -45,7 +45,7 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
 # operators downstream from them from starting execution until these operators
 # finish executing.
 _BLOCKING_MATERIALIZING_OPERATORS = (
-    HashShufflingOperatorBase,
+    ShuffleOperatorCore,
     AllToAllOperator,
     # TODO remove after zip made fully streaming
     ZipOperator,
