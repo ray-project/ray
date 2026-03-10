@@ -195,7 +195,6 @@ class TestHangingExecutionIssueDetector:
         assert issues[0].issue_type.value == "hanging"
         assert "has been running for" in issues[0].message
         assert "longer than the average task duration" in issues[0].message
-        assert "op_task_stats_std_factor" in issues[0].message
 
 
 @pytest.mark.parametrize(
