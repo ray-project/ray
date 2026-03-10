@@ -68,8 +68,6 @@ class HangingExecutionIssueDetector(IssueDetector):
         # Map of operator id to dict of task_idx to hanging execution info (bytes read and
         # start time for hanging time calculation)
         self._state_map: Dict[str, Dict[int, HangingExecutionState]] = defaultdict(dict)
-        # Map of operator id to set of task_idx that are hanging
-        self._hanging_op_tasks: Dict[str, Set[int]] = defaultdict(set)
         # Map of operator id to operator name
         self._op_id_to_name: Dict[str, str] = {}
 
@@ -153,7 +151,6 @@ class HangingExecutionIssueDetector(IssueDetector):
                     )
                 )
                 state.logged_already = True
-                self._hanging_op_tasks[state.operator_id].add(state.task_idx)
 
         return issues
 
@@ -167,8 +164,6 @@ class HangingExecutionIssueDetector(IssueDetector):
                 # Remove finished operators / tasks from the state map
                 if operator.id in self._state_map:
                     del self._state_map[operator.id]
-                if operator.id in self._hanging_op_tasks:
-                    del self._hanging_op_tasks[operator.id]
             else:
                 active_tasks_idx = set()
                 # Iterate directly over running tasks tracked in metrics
@@ -201,7 +196,6 @@ class HangingExecutionIssueDetector(IssueDetector):
                 )
                 for task_idx in task_idxs_to_remove:
                     del self._state_map[operator.id][task_idx]
-                    self._hanging_op_tasks[operator.id].discard(task_idx)
 
         hanging_op_tasks = []
         for op_id, op_state_values in self._state_map.items():
