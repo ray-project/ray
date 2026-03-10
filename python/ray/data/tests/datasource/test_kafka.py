@@ -615,6 +615,150 @@ def test_read_kafka_datetime_before_all_messages(
     assert len(records) == 0
 
 
+@pytest.mark.parametrize(
+    "start_offset,expected_error",
+    [
+        (
+            {"my-topic": {0: "latest"}},
+            r"start_offset\['my-topic'\]\[0\] cannot be 'latest'",
+        ),
+        (
+            {"my-topic": {"not-an-int": 100}},
+            r"start_offset\['my-topic'\] keys must be integers",
+        ),
+        (
+            {"my-topic": "not-a-dict"},
+            r"start_offset\['my-topic'\] must be a dict",
+        ),
+    ],
+)
+def test_per_partition_start_offset_invalid_values(start_offset, expected_error):
+    """Per-partition start_offset with disallowed values raises ValueError at init."""
+    with pytest.raises(ValueError, match=expected_error):
+        ray.data.read_kafka(
+            topics="my-topic",
+            bootstrap_servers="localhost:9092",
+            start_offset=start_offset,
+        )
+
+
+@pytest.mark.parametrize(
+    "end_offset,expected_error",
+    [
+        (
+            {"my-topic": {0: "earliest"}},
+            r"end_offset\['my-topic'\]\[0\] cannot be 'earliest'",
+        ),
+        (
+            {"my-topic": {"not-an-int": 100}},
+            r"end_offset\['my-topic'\] keys must be integers",
+        ),
+        (
+            {"my-topic": "not-a-dict"},
+            r"end_offset\['my-topic'\] must be a dict",
+        ),
+    ],
+)
+def test_per_partition_end_offset_invalid_values(end_offset, expected_error):
+    """Per-partition end_offset with disallowed values raises ValueError at init."""
+    with pytest.raises(ValueError, match=expected_error):
+        ray.data.read_kafka(
+            topics="my-topic",
+            bootstrap_servers="localhost:9092",
+            end_offset=end_offset,
+        )
+
+
+def test_per_partition_start_offset_non_existent_partition(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Per-partition dict referencing a non-existent partition raises ValueError."""
+    topic = "test-per-partition-bad-partition"
+
+    for i in range(10):
+        message = {"id": i, "value": f"message-{i}"}
+        kafka_producer.produce(topic, value=message)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    with pytest.raises(
+        ValueError,
+        match=r"start_offset references partition 99 in topic",
+    ):
+        ds = ray.data.read_kafka(
+            topics=[topic],
+            bootstrap_servers=[bootstrap_server],
+            start_offset={topic: {99: 0}},
+        )
+        ds.take_all()
+
+
+def test_per_partition_start_offset_specific_offsets(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Per-partition start_offset reads correct slice from each partition."""
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    topic = "test-per-partition-start-offset"
+
+    admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
+    topic_config = NewTopic(topic, num_partitions=2, replication_factor=1)
+    admin_client.create_topics([topic_config])
+    time.sleep(2)  # Wait for topic creation
+
+    # Send 50 messages to partition 0 and 50 to partition 1
+    for i in range(50):
+        kafka_producer.produce(topic, value={"id": i}, partition=0)
+        kafka_producer.produce(topic, value={"id": i}, partition=1)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # Read partition 0 from offset 20, partition 1 from offset 40
+    # Expected: 30 messages from partition 0 + 10 messages from partition 1 = 40
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset={topic: {0: 20, 1: 40}},
+        end_offset="latest",
+    )
+
+    records = ds.take_all()
+    assert len(records) == 40
+
+
+def test_per_partition_start_offset_fallback_to_earliest(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Partitions not listed in per-partition dict fall back to 'earliest'."""
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    topic = "test-per-partition-fallback"
+
+    admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
+    topic_config = NewTopic(topic, num_partitions=2, replication_factor=1)
+    admin_client.create_topics([topic_config])
+    time.sleep(2)  # Wait for topic creation
+
+    # Send 50 messages to each partition
+    for i in range(50):
+        kafka_producer.produce(topic, value={"id": i}, partition=0)
+        kafka_producer.produce(topic, value={"id": i}, partition=1)
+    kafka_producer.flush()
+    time.sleep(0.3)
+
+    # Only specify offset for partition 0; partition 1 should fall back to earliest (0)
+    # Expected: 30 messages from partition 0 + 50 messages from partition 1 = 80
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset={topic: {0: 20}},
+        end_offset="latest",
+    )
+
+    records = ds.take_all()
+    assert len(records) == 80
+
+
 if __name__ == "__main__":
     import sys
 

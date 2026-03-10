@@ -47,6 +47,7 @@ from ray.data._internal.datasource.json_datasource import (
 from ray.data._internal.datasource.kafka_datasource import (
     KafkaAuthConfig,
     KafkaDatasource,
+    PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
@@ -4398,8 +4399,10 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
-    end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+    start_offset: Union[
+        int, datetime, Literal["earliest"], PerPartitionOffsets
+    ] = "earliest",
+    end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
     consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
@@ -4440,6 +4443,23 @@ def read_kafka(
                 end_offset=datetime(2025, 1, 2),
             )
 
+        .. testcode::
+            :skipif: True
+
+            # Read using per-partition start offsets; partition 2 falls back
+            # to "earliest" because it is not listed
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset={
+                    "my-topic": {
+                        0: 1500,
+                        1: "earliest",
+                    }
+                },
+                end_offset="latest",
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4453,12 +4473,18 @@ def read_kafka(
             - int: Offset number
             - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "earliest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"earliest"``.
 
         end_offset: Ending position for reading (exclusive). Can be:
 
             - int: Offset number
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"latest"``.
 
         kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
         consumer_config: Confluent/librdkafka consumer configuration dict to
