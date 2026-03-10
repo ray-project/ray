@@ -4439,13 +4439,13 @@ class Dataset:
                   - "error": Raise error if schemas differ. Use for strict schema enforcement.
 
                 Note: Other write_kwargs (partition_overwrite_mode,
-                target_file_size_bytes) will be added in subsequent PRs.
+                target_file_size_bytes) may be added in future releases.
 
         Raises:
             ImportError: If the deltalake package is not installed. Install with
                 ``pip install deltalake``.
             ValueError: If mode is not "append", or if partition_cols is provided,
-                or if unsupported write_kwargs are provided (PR 1 limitations).
+                or if unsupported write_kwargs are provided.
 
         Note:
             * **ACID guarantees**: Uses a two-phase commit protocol ensuring atomicity.
@@ -4485,14 +4485,14 @@ class Dataset:
                 f"Invalid mode '{mode}'. Supported modes: {sorted(valid_modes)}"
             )
 
-        # PR 3: Partitioning now supported
+        # Validate and normalize partition columns
         if partition_cols:
             from ray.data._internal.datasource.delta.utils import (
                 validate_partition_column_names,
             )
             partition_cols = validate_partition_column_names(partition_cols)
 
-        # PR 4: Schema evolution now supported via schema_mode parameter
+        # Schema evolution mode
         # Allow schema_mode to be passed in write_kwargs for backward compatibility
         schema_mode = write_kwargs.pop("schema_mode", "merge")
         if schema_mode not in ("merge", "error"):
@@ -4500,7 +4500,7 @@ class Dataset:
                 f"Invalid schema_mode '{schema_mode}'. Supported: ['merge', 'error']"
             )
 
-        # PR 6: Upsert mode now supported
+        # Upsert mode
         upsert_kwargs = write_kwargs.pop("upsert_kwargs", None)
         if mode == "upsert" and not upsert_kwargs:
             raise ValueError(
@@ -4512,21 +4512,18 @@ class Dataset:
                 "upsert_kwargs can only be specified with SaveMode.UPSERT"
             )
 
-        # PR 6: Partition overwrite not supported yet
+        # Partition overwrite not supported yet
         if "partition_overwrite_mode" in write_kwargs:
             raise ValueError(
-                "PR 6: partition_overwrite_mode not supported. "
-                "Partition overwrite modes will be added in PR 7."
+                "partition_overwrite_mode is not supported."
             )
 
-        # PR 6: File buffering not supported yet
+        # File buffering not supported yet
         if "target_file_size_bytes" in write_kwargs:
             raise ValueError(
-                "PR 6: target_file_size_bytes not supported. "
-                "File buffering will be added in PR 8."
+                "target_file_size_bytes is not supported."
             )
 
-        # PR 6: Write modes, partitioning, schema evolution, and upsert supported
         datasink = DeltaDatasink(
             path,
             mode=mode,
