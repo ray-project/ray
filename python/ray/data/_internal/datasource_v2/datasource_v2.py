@@ -11,9 +11,6 @@ Core Principles:
 - Modularity: Separate concerns (indexing, scanning, reading)
 - Expressivity: Declarative capability exposure via mixins
 - Extensibility: Easy to add new datasources with custom optimizations
-
-Note: This module reuses existing infrastructure from ray.anyscale.data for
-FileManifest, FileIndexer, and InMemorySizeEstimator.
 """
 
 from __future__ import annotations
