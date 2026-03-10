@@ -55,9 +55,6 @@ from ray.data._internal.execution.operators.shuffle_engine import (
 from ray.data._internal.execution.operators.shuffle_operator_core import (
     ShuffleOperatorCore,
 )
-from ray.data._internal.execution.operators.sub_progress import (
-    SubProgressBarMixin,  # noqa: F401 — re-exported
-)
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
@@ -626,8 +623,6 @@ class CpuShuffleEngine(ShuffleEngine):
         self._partitions_stats: DefaultDict[
             int, Dict[int, _PartitionStats]
         ] = defaultdict(dict)
-
-        self._estimate_aggregator_memory = estimate_aggregator_memory
 
     # ------------------------------------------------------------------
     # ShuffleEngine interface
