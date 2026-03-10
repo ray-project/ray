@@ -1776,8 +1776,10 @@ class ReplicaBase(ABC):
 
     async def check_health(self):
         try:
-            # If there's no user-defined health check, nothing runs on the user code event
-            # loop and no future is returned.
+            # Always run health check on the user execution path (user method or
+            # no-op probe). So if the user code / event loop is blocked, this
+            # will not complete and the controller will see a timeout and mark
+            # the replica unhealthy.
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
@@ -3280,12 +3282,13 @@ class UserCallableWrapper:
         # If the user provided a health check, call it on the user code thread. If user
         # code blocks the event loop the health check may time out.
         #
-        # To avoid this issue for basic cases without a user-defined health check, skip
-        # interacting with the user callable entirely.
+        # When there is no user-defined health check, we still run a no-op probe on the
+        # user execution path. This ensures that replicas blocked in the request-
+        # handling path (e.g. stuck user code) fail health check and get restarted
+        # (see https://github.com/ray-project/ray/issues/61263).
         if self._user_health_check is not None:
             return self._call_user_health_check()
-
-        return None
+        return self._call_user_health_probe()
 
     @property
     def has_user_routing_stats_method(self) -> bool:
@@ -3311,6 +3314,16 @@ class UserCallableWrapper:
     @_run_user_code
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
+
+    @_run_user_code
+    async def _call_user_health_probe(self):
+        """No-op that runs on the user code event loop.
+
+        Used when there is no user-defined health check. If the loop is blocked
+        (e.g. by a stuck request), this will not complete and the health check
+        will timeout, allowing the controller to mark the replica unhealthy.
+        """
+        await asyncio.sleep(0)
 
     @_run_user_code
     async def _call_user_record_routing_stats(self) -> Dict[str, Any]:

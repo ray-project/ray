@@ -24,6 +24,8 @@ Serve provides some [fault tolerance](serve-ft-detail) features out of the box. 
 ### Replica health-checking
 
 By default, the Serve controller periodically health-checks each Serve deployment replica and restarts it on failure.
+Even if you don't define a custom health check, each check runs on the same execution path as request handling (user code event loop or thread).
+So if a replica is stuck serving a request, the health check will not complete, the controller will see a timeout, and the replica will be marked unhealthy and restarted.
 
 You can define custom application-level health-checks and adjust their frequency and timeout.
 To define a custom health-check, add a `check_health` method to your deployment class.
