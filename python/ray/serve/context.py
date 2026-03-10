@@ -134,8 +134,6 @@ def get_deployment_actor(actor_name: str):
     """
     internal_context = _get_internal_replica_context()
     if internal_context is None:
-        from ray.serve.exceptions import RayServeException
-
         raise RayServeException(
             "`serve.get_deployment_actor()` may only be called from within "
             "a Ray Serve deployment replica."

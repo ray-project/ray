@@ -253,6 +253,7 @@ py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
     files = [
+        "test_deployment_actor_fault_tolerance.py",
         "test_standalone_2.py",
     ],
     tags = [

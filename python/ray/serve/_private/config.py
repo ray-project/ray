@@ -492,11 +492,11 @@ class DeploymentConfig(BaseModel):
             data.pop("gang_scheduling_config", None)
         if "deployment_actors" in data and data["deployment_actors"]:
             deployment_actors = []
+
+            def _loads(b):
+                return cloudpickle.loads(b) if b else None
+
             for proto_dict in data["deployment_actors"]:
-
-                def _loads(b):
-                    return cloudpickle.loads(b) if b else None
-
                 serialized_cls = proto_dict.get("_serialized_actor_class")
                 serialized_args = proto_dict.get("serialized_init_args")
                 serialized_kwargs = proto_dict.get("serialized_init_kwargs")
@@ -504,7 +504,7 @@ class DeploymentConfig(BaseModel):
                 actor_class_name = proto_dict.get("actor_class_name", "")
                 deployment_actors.append(
                     DeploymentActorConfig(
-                        name=proto_dict.get("name", ""),
+                        name=proto_dict.get("name"),
                         actor_class=actor_class_name,
                         _serialized_actor_class=serialized_cls,
                         init_args=_loads(serialized_args) or (),

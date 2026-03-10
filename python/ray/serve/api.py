@@ -211,6 +211,9 @@ def get_deployment_actor(actor_name: str):
                 def __init__(self, max_depth: int = 100):
                     self.max_depth = max_depth
 
+                def insert(self, text: str):
+                    self.max_depth += 1
+
             @serve.deployment(
                 deployment_actors=[
                     DeploymentActorConfig(

@@ -157,9 +157,6 @@ message GangSchedulingConfig {
 
 // Configuration for a deployment-scoped actor.
 message DeploymentActorConfig {
-  // Unique name for this actor within the deployment.
-  string name = 5;
-
   // Cloudpickled actor class (serialized by value so it can be
   // deserialized without the original module being importable).
   bytes _serialized_actor_class = 1;
@@ -172,6 +169,9 @@ message DeploymentActorConfig {
 
   // Cloudpickled actor options.
   bytes serialized_actor_options = 4;
+
+  // Unique name for this actor within the deployment.
+  string name = 5;
 
   // Human-readable import path for the actor class
   // (e.g. "my_module:MyActorClass"). Used for display and
