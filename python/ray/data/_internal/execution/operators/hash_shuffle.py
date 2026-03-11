@@ -1794,9 +1794,7 @@ class HashShuffleAggregator:
             stats: StreamingGeneratorStats = yield block
 
             exec_stats = exec_stats_builder.build(
-                block_ser_time_s=(
-                    stats.object_creation_dur_s if stats else None
-                ),
+                block_ser_time_s=(stats.object_creation_dur_s if stats else None),
             )
 
             yield BlockMetadataWithSchema.from_block(
@@ -1809,7 +1807,6 @@ class HashShuffleAggregator:
 
             # Reset the builder
             exec_stats_builder = BlockExecStats.builder()
-
 
     def _debug_dump(self):
         """Periodically dumps the state of the HashShuffleAggregator for debugging."""
