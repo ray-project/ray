@@ -115,6 +115,7 @@ class DeploymentActorWrapper:
         deployment_id: DeploymentID,
         config: DeploymentActorConfig,
         code_version: str,
+        recovered_handle: Optional[ActorHandle] = None,
     ):
         self._deployment_id = deployment_id
         self._config = config
@@ -122,7 +123,7 @@ class DeploymentActorWrapper:
         self._actor_name = get_deployment_actor_name(
             self._deployment_id, self._config.name, code_version=self._code_version
         )
-        self._handle: Optional[ActorHandle] = None
+        self._handle: Optional[ActorHandle] = recovered_handle
         self._ready_ref: Optional[ObjectRef] = None
 
     @property
@@ -2813,7 +2814,7 @@ class DeploymentState:
                 self._id, cfg.name, code_version=code_ver
             )
             try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
+                handle = ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 logger.info(
                     f"Deployment actor '{cfg.name}' for {self._id} "
@@ -2826,6 +2827,7 @@ class DeploymentState:
                 deployment_id=self._id,
                 config=cfg,
                 code_version=code_ver,
+                recovered_handle=handle,
             )
             self._deployment_actors.add(DeploymentActorState.RUNNING, wrapper)
             recovered += 1
@@ -3659,20 +3661,6 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        # Deployment-scoped actor failed after threshold exceeded (consistent
-        # with replica startup: transition only when retries exhausted).
-        if self._deployment_actor_terminally_failed():
-            msg = self._deployment_actor_failed or "Unknown error"
-            self._curr_status_info = self._curr_status_info.handle_transition(
-                trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
-                message=(
-                    "The deployment failed to start deployment actors "
-                    f"{self._deployment_actor_retry_counter} times "
-                    "in a row. See controller logs for details. Error:\n"
-                    f"{msg}"
-                ),
-            )
-
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
@@ -3683,6 +3671,20 @@ class DeploymentState:
             # number of replicas and only return as completed once
             # reached target replica count
             self._replica_has_started = True
+        # Deployment-scoped actor failed after threshold exceeded (consistent
+        # with replica startup: transition only when retries exhausted).
+        elif self._deployment_actor_terminally_failed():
+            msg = self._deployment_actor_failed or "Unknown error"
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
+                message=(
+                    "The deployment failed to start deployment actors "
+                    f"{self._deployment_actor_retry_counter} times "
+                    "in a row. See controller logs for details. Error:\n"
+                    f"{msg}"
+                ),
+            )
+            return False, any_replicas_recovering
         elif self._replica_startup_failing():
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,

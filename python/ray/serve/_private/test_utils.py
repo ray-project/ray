@@ -281,11 +281,13 @@ class MockDeploymentActorWrapper:
         deployment_id: DeploymentID,
         config,
         code_version: str,
+        recovered_handle=None,
     ):
         self._deployment_id = deployment_id
         self._config = config
         self._code_version = code_version
-        self._ready = False
+        self._recovered_handle = recovered_handle
+        self._ready = recovered_handle is not None
         self._start_error_msg: Optional[str] = None
         self._check_ready_error_msg: Optional[str] = None
         self.killed = False

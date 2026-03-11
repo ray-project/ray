@@ -1,7 +1,7 @@
 import sys
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -2485,7 +2485,7 @@ def test_deployment_actor_retry_counter_reset_on_redeploy(
 
 
 def test_deployment_actor_terminal_failure(mock_deployment_state_manager):
-    """After _failed_to_start_threshold failures, deployment stops retrying."""
+    """After _deployment_actor_failed_to_start_threshold failures, deployment stops retrying."""
     create_dsm, _, _, _ = mock_deployment_state_manager
 
     dsm: DeploymentStateManager = create_dsm()
@@ -2498,7 +2498,7 @@ def test_deployment_actor_terminal_failure(mock_deployment_state_manager):
     assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
     ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
 
-    threshold = ds._failed_to_start_threshold
+    threshold = ds._deployment_actor_failed_to_start_threshold
     for _ in range(threshold):
         dsm.update()
         _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("persistent error")
@@ -2571,14 +2571,18 @@ def test_deployment_actor_recovery_from_checkpoint(mock_deployment_state_manager
 
     # Simulate recovery: create new DSM, which calls _recover_from_checkpoint.
     # _recover_deployment_actors uses ray.get_actor - mock it to "find" the actor.
+    mock_handle = MagicMock()
     with patch("ray.get_actor") as mock_get_actor:
-        mock_get_actor.return_value = None
+        mock_get_actor.return_value = mock_handle
         new_dsm = create_dsm([ds._replicas.get()[0].replica_id.to_full_id_str()])
     new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
-    # Recovered deployment should have deployment actors in READY (from recovery).
+    # Recovered deployment should have deployment actors in RUNNING (from recovery).
     assert (
         new_ds._deployment_actors.count("1", states=[DeploymentActorState.RUNNING]) == 1
     )
+    # The recovered wrapper must hold the actor handle so check_ready works correctly.
+    recovered_wrapper = _get_deployment_actor_wrapper(new_ds, "1")
+    assert recovered_wrapper._recovered_handle is mock_handle
     check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
 
 
