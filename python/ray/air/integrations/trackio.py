@@ -83,7 +83,7 @@ def setup_trackio(
 
                 for step in range(10):
                     loss = train_step()
-                    trackio.log({"loss": loss}, step=step)
+                    run.log({"loss": loss}, step=step)
 
                 run and run.finish()
     """
@@ -131,8 +131,9 @@ class TrackioLoggerCallback(LoggerCallback):
     Logger callback that logs Ray Tune experiment results to Trackio.
 
     This callback integrates Trackio experiment tracking with Ray Tune.
-    Each Ray Tune trial corresponds to a Trackio run. Metrics reported by
-    the training function are automatically logged to Trackio.
+    Each Ray Tune trial corresponds to a Trackio run.Each Ray Tune trial
+    corresponds to a separate Trackio run. Metrics reported by the training
+    function are logged to the corresponding run.
 
     Trackio supports additional capabilities such as GPU telemetry logging,
     remote experiment logging through Hugging Face datasets, and remote
@@ -264,7 +265,7 @@ class TrackioLoggerCallback(LoggerCallback):
                 metrics[key] = value
 
         if metrics:
-            trackio.log(metrics, step=iteration)
+            run.log(metrics, step=iteration)
 
     def log_trial_save(self, trial: Trial):
         """Log checkpoint metadata when a Ray Tune trial checkpoint is saved."""
@@ -274,7 +275,9 @@ class TrackioLoggerCallback(LoggerCallback):
         if checkpoint:
             try:
                 path = checkpoint.path
-                trackio.log({"checkpoint_path": path})
+                run = self._trial_runs.get(trial)
+                if run:
+                    run.log({"checkpoint_path": path})
             except Exception as e:
                 logger.warning(f"trackio: Failed to log checkpoint path: {e}")
 
