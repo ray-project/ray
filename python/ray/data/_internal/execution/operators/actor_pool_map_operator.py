@@ -796,9 +796,7 @@ class _ActorResourceUsageTracker:
         if buckets & _ActorUsageBucket.TOTAL:
             self._update_bucket_total(_ActorUsageBucket.TOTAL, usage, add=add)
         if buckets & _ActorUsageBucket.PENDING_LOGICAL:
-            self._update_bucket_total(
-                _ActorUsageBucket.PENDING_LOGICAL, usage, add=add
-            )
+            self._update_bucket_total(_ActorUsageBucket.PENDING_LOGICAL, usage, add=add)
 
     def _update_bucket_total(
         self, bucket: _ActorUsageBucket, usage: ExecutionResources, *, add: bool
@@ -1295,7 +1293,9 @@ class _ActorPool(AutoscalingActorPool):
             actor_location=actor_location,
             is_restarting=False,
         )
-        self._resource_usage_tracker.update_actor_buckets(actor, _ActorUsageBucket.TOTAL)
+        self._resource_usage_tracker.update_actor_buckets(
+            actor, _ActorUsageBucket.TOTAL
+        )
         return True
 
     def on_task_completed(self, actor: ray.actor.ActorHandle):
