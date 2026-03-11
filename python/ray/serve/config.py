@@ -1005,21 +1005,12 @@ class DeploymentActorConfig(BaseModel):
         if isinstance(actor_class, str):
             actor_module, actor_class = import_module_and_attr(actor_class)
             # ActorClass (from @ray.remote) has __ray_actor_class__ for the underlying class
-            cls_for_meta = (
-                actor_class.__ray_actor_class__
-                if hasattr(actor_class, "__ray_actor_class__")
-                else actor_class
-            )
-            actor_class_name = f"{cls_for_meta.__module__}:{cls_for_meta.__qualname__}"
+            cls_for_meta = actor_class.__ray_actor_class__
         else:
             # For @ray.remote ActorClass, get module and name from underlying class
-            cls_for_meta = (
-                actor_class.__ray_actor_class__
-                if hasattr(actor_class, "__ray_actor_class__")
-                else actor_class
-            )
+            cls_for_meta = actor_class.__ray_actor_class__
             actor_module = inspect.getmodule(cls_for_meta)
-            actor_class_name = f"{cls_for_meta.__module__}:{cls_for_meta.__qualname__}"
+        actor_class_name = f"{cls_for_meta.__module__}:{cls_for_meta.__qualname__}"
 
         if actor_module is not None:
             cloudpickle.register_pickle_by_value(actor_module)

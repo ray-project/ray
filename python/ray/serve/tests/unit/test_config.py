@@ -56,6 +56,7 @@ class FakeRequestRouter:
     ...
 
 
+@ray.remote
 class _TestDummyActor:
     """Used for deployment_actors import path test."""
 
@@ -273,6 +274,7 @@ class TestDeploymentConfig:
     def test_deployment_actors_config(self):
         """Test deployment_actors config and proto roundtrip."""
 
+        @ray.remote
         class DummyActor:
             pass
 
@@ -291,7 +293,10 @@ class TestDeploymentConfig:
         assert config.deployment_actors[0].name == "prefix_tree"
         assert isinstance(config.deployment_actors[0].actor_class, str)
         assert config.deployment_actors[0]._serialized_actor_class
-        assert config.deployment_actors[0].get_actor_class().__name__ == "DummyActor"
+        assert (
+            config.deployment_actors[0].get_actor_class().__ray_actor_class__.__name__
+            == "DummyActor"
+        )
         assert config.deployment_actors[0].init_kwargs == {"max_depth": 100}
 
         deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
@@ -301,7 +306,10 @@ class TestDeploymentConfig:
         assert isinstance(deserialized.deployment_actors[0].actor_class, str)
         assert deserialized.deployment_actors[0]._serialized_actor_class
         assert (
-            deserialized.deployment_actors[0].get_actor_class().__name__ == "DummyActor"
+            deserialized.deployment_actors[0]
+            .get_actor_class()
+            .__ray_actor_class__.__name__
+            == "DummyActor"
         )
         assert deserialized.deployment_actors[0].init_kwargs == {"max_depth": 100}
 
@@ -333,7 +341,10 @@ class TestDeploymentConfig:
             config_str.to_proto_bytes()
         )
         resolved_str = deserialized_str.deployment_actors[0].get_actor_class()
-        assert resolved_str.__name__ == _TestDummyActor.__name__
+        assert (
+            resolved_str.__ray_actor_class__.__name__
+            == _TestDummyActor.__ray_actor_class__.__name__
+        )
 
         # Test duplicate names raise
         with pytest.raises(ValueError, match="unique names"):

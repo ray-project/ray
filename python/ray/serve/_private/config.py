@@ -387,6 +387,8 @@ class DeploymentConfig(BaseModel):
                     )
                 )
             data["deployment_actors"] = deployment_actors_proto
+        else:
+            data.pop("deployment_actors", None)
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
