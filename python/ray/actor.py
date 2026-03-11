@@ -2520,10 +2520,10 @@ class ActorHandle(Generic[T]):
         # cross-language actors returns an ActorMethod instead of raising
         # AttributeError.
         try:
-            return self.__dict__["_cached_hash"]
+            return self.__dict__["_ray_cached_hash"]
         except KeyError:
             h = hash(self._ray_actor_id)
-            self._cached_hash = h
+            self._ray_cached_hash = h
             return h
 
     def __eq__(self, other):
