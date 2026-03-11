@@ -286,12 +286,14 @@ class TrackioLoggerCallback(LoggerCallback):
         if not checkpoint:
             return
 
-        if checkpoint:
+        run = self._trial_runs.get(trial)
+
+        if run is None:
+            self.log_trial_start(trial)
+            run = self._trial_runs.get(trial)
+
             try:
-                path = checkpoint.path
-                run = self._trial_runs.get(trial)
-                if run:
-                    run.log({"checkpoint_path": path})
+                run.log({"checkpoint_saved": 1})
             except Exception as e:
                 logger.warning(f"trackio: Failed to log checkpoint path: {e}")
 
