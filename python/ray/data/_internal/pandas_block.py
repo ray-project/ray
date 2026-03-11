@@ -301,14 +301,21 @@ class PandasBlockBuilder(TableBlockBuilder):
 
         pandas = lazy_import_pandas()
 
+        def _convert_column(column_name, column_values):
+            if len(column_values) == 0:
+                return column_values
+            if not _should_convert_to_tensor(column_values, column_name):
+                return column_values
+            converted = convert_to_numpy(column_values)
+            # Only wrap in TensorArray if result is multi-dimensional (ndim > 1).
+            # 1D arrays (like aggregation results) stay as plain arrays.
+            if isinstance(converted, np.ndarray) and converted.ndim > 1:
+                return TensorArray(converted)
+            return converted
+
         return pandas.DataFrame(
             {
-                column_name: (
-                    TensorArray(convert_to_numpy(column_values))
-                    if len(column_values) > 0
-                    and _should_convert_to_tensor(column_values, column_name)
-                    else column_values
-                )
+                column_name: _convert_column(column_name, column_values)
                 for column_name, column_values in columns.items()
             }
         )
