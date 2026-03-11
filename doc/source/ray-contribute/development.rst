@@ -8,7 +8,11 @@ To contribute to the Ray repository, follow the instructions below to build from
 Depending on your goal, you may not need all sections on this page:
 
 - **Python-only development (fast loop, no C++)** - edit Python files without compiling C++ (see :ref:`python-develop`).
-- **Full source build (C++ + dashboard + editable install)** - make C++ changes or build all of Ray (see :ref:`full-source-build`).
+- **Build Ray with C++** - choose one:
+
+  - **Distributable manylinux wheel** - uses a manylinux build container to produce a ``.whl`` file for installation on a cluster, for testing the packaged artifact locally, or for sharing (see :ref:`build-distributable-wheel`).
+  - **Ray image** - build a nightly-style ``rayproject/ray`` or ``rayproject/ray-llm`` image (see :ref:`build-ray-image`).
+  - **Full source build (editable install)** - make C++ changes or build all of Ray (see :ref:`full-source-build`).
 
 .. contents::
   :local:
@@ -37,6 +41,8 @@ You can propose changes to the main project by submitting a pull request to the 
 
 Prepare a Python virtual environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Skip this section if you're building a :ref:`distributable wheel <build-distributable-wheel>` or a :ref:`Ray image <build-ray-image>`.
 
 Create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
@@ -111,7 +117,7 @@ RLlib, Tune, Autoscaler, and most Python files don't require you to build and co
     # with your local `ray/python/ray/<package>`.
     python python/ray/setup-dev.py
 
-.. note:: [Advanced] You can also optionally skip creating symbolic links for specific directories:
+You can optionally skip creating symbolic links for specific directories:
 
 .. code-block:: shell
 
@@ -127,6 +133,67 @@ RLlib, Tune, Autoscaler, and most Python files don't require you to build and co
     # To uninstall, delete the symlinks first.
     rm -rf <package path>/site-packages/ray # Path will be in the output of `setup-dev.py`.
     pip uninstall ray # or `pip install -U <wheel>`
+
+.. _build-distributable-wheel:
+
+Building distributable manylinux wheels
+----------------------------------------
+
+.. dropdown:: Setup
+  :open:
+
+  Before you begin, make sure you have:
+
+  - A clone of the Ray repository (see :ref:`fork-ray-repo`)
+  - `uv <https://docs.astral.sh/uv/>`_ installed
+  - `Docker <https://docs.docker.com/get-docker/>`_ installed
+
+To build a distributable manylinux ``.whl``, use the ``build-wheel.sh``
+script at the repository root.
+
+.. code-block:: bash
+
+  # Build a manylinux wheel for the host architecture:
+  ./build-wheel.sh 3.12
+
+  # Specify a custom output directory:
+  ./build-wheel.sh 3.12 ./dist
+
+Run ``./build-wheel.sh`` without arguments to see supported Python versions and options.
+Regardless of host OS, the output is always a manylinux wheel (the same format used by CI
+and PyPI). Supported build hosts are Linux x86_64, Linux aarch64, and macOS ARM64.
+
+See ``python/README-building-wheels.md`` for additional options, including building
+manylinux wheels directly with Docker.
+
+.. _build-ray-image:
+
+Building Ray images
+--------------------------
+
+.. dropdown:: Setup
+  :open:
+
+  Before you begin, make sure you have:
+
+  - A clone of the Ray repository (see :ref:`fork-ray-repo`)
+  - `uv <https://docs.astral.sh/uv/>`_ installed
+  - `Docker <https://docs.docker.com/get-docker/>`_ installed
+
+To build a Ray image, use the ``build-image.sh`` script at the repository root.
+
+.. code-block:: bash
+
+  # Build the default Ray image:
+  ./build-image.sh ray
+
+  # Build with a specific Python version:
+  ./build-image.sh ray -p 3.12
+
+  # Build a GPU image:
+  ./build-image.sh ray --platform cu12.8.1-cudnn
+
+Run ``./build-image.sh --help`` to see available image types, Python versions, and platform variants.
 
 
 .. _full-source-build:
@@ -159,7 +226,7 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
-.. note:: The ``install-bazel.sh`` script installs ``bazelisk``. Note that ``bazel`` is installed at ``$HOME/bin/bazel``; make sure it's on your ``PATH``. If you prefer to use ``bazel`` directly, only version ``6.5.0`` is currently supported.
+The ``install-bazel.sh`` script installs ``bazelisk``. Note that ``bazel`` is installed at ``$HOME/bin/bazel``; make sure it's on your ``PATH``. If you prefer to use ``bazel`` directly, only version ``6.5.0`` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -173,7 +240,7 @@ In RedHat, install Bazel manually from this link: https://bazel.build/versions/6
 Preparing to build Ray on macOS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. tip:: If you have grpc or protobuf installed, remove them first for a smooth build: ``brew uninstall grpc``, ``brew uninstall protobuf``. If the build fails with ``No such file or directory`` errors, clean previous builds with ``brew uninstall binutils`` and ``bazel clean --expunge``.
+If you have grpc or protobuf installed, remove them first for a smooth build: ``brew uninstall grpc``, ``brew uninstall protobuf``. If the build fails with ``No such file or directory`` errors, clean previous builds with ``brew uninstall binutils`` and ``bazel clean --expunge``.
 
 To build Ray on macOS, first install these dependencies:
 
@@ -237,9 +304,7 @@ directory take effect without reinstalling the package.
 
 .. warning:: Don't run ``python setup.py install`` — Python copies files from the Ray directory to a packages directory (``/lib/python3.6/site-packages/ray``), so changes you make to files in the Ray directory won't have any effect.
 
-.. tip::
-
-  If your machine runs out of memory during the build, add the following to ``~/.bazelrc``:
+If your machine runs out of memory during the build, add the following to ``~/.bazelrc``:
 
   .. code-block:: shell
 
@@ -247,7 +312,7 @@ directory take effect without reinstalling the package.
 
   The ``build --disk_cache=~/bazel-cache`` option can also speed up repeated builds.
 
-.. note:: If you run into an error building protobuf, switching from miniforge to anaconda might help.
+If you run into an error building protobuf, switching from miniforge to anaconda might help.
 
 .. _NodeJS: https://nodejs.org
 

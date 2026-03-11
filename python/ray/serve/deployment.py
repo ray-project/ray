@@ -392,13 +392,12 @@ class Deployment:
             new_deployment_config.gang_scheduling_config = gang_scheduling_config
 
         gc = new_deployment_config.gang_scheduling_config
-        if gc is not None and num_replicas == "auto":
-            raise ValueError(
-                'num_replicas="auto" is not allowed when '
-                "gang_scheduling_config is provided. Set "
-                "num_replicas to a fixed multiple of gang_size."
-            )
-        if gc is not None and isinstance(new_deployment_config.num_replicas, int):
+        if (
+            gc is not None
+            and isinstance(new_deployment_config.num_replicas, int)
+            and new_deployment_config.autoscaling_config is None
+        ):
+            # When autoscaling is enabled, num_replicas defaults to 1
             if new_deployment_config.num_replicas % gc.gang_size != 0:
                 raise ValueError(
                     f"num_replicas ({new_deployment_config.num_replicas}) must "
@@ -492,6 +491,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "logging_config": d._deployment_config.logging_config,
         "request_router_config": d._deployment_config.request_router_config,
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
+        "deployment_actors": d._deployment_config.deployment_actors,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -554,6 +554,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         logging_config=s.logging_config,
         request_router_config=s.request_router_config,
         gang_scheduling_config=s.gang_scheduling_config,
+        deployment_actors=s.deployment_actors,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
