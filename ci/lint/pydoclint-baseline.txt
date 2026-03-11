@@ -156,11 +156,6 @@ python/ray/_private/runtime_env/plugin.py
     DOC107: Method `RuntimeEnvPlugin.create`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Method `RuntimeEnvPluginManager.create_uri_cache_for_plugin`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [plugin: RuntimeEnvPlugin]. Arguments in the docstring but not in the function signature: [plugin_name: ].
 --------------------
-python/ray/_private/runtime_env/setup_hook.py
-    DOC102: Function `upload_worker_process_setup_hook_if_needed`: Docstring contains more arguments than in function signature.
-    DOC103: Function `upload_worker_process_setup_hook_if_needed`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the docstring but not in the function signature: [decoder: ].
-    DOC201: Function `upload_worker_process_setup_hook_if_needed` does not have a return section in docstring
---------------------
 python/ray/_private/runtime_env/utils.py
     DOC103: Function `check_output_cmd`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [**kwargs: ]. Arguments in the docstring but not in the function signature: [kwargs: ].
 --------------------
