@@ -407,6 +407,10 @@ class BlockAccessor:
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+            copy: Whether to ensure the returned array is a copy
+                (not a zero-copy view).
+        Returns:
+            The block converted to a NumPy ndarray.
         """
         raise NotImplementedError
 
@@ -429,7 +433,8 @@ class BlockAccessor:
 
         Args:
             batch_format: The batch format to convert this block to.
-
+            ensure_copy: Whether to ensure the returned batch is a copy
+                (not a zero-copy view).
         Returns:
             This block formatted as the provided batch format.
         """
