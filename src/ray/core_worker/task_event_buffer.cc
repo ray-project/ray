@@ -280,7 +280,6 @@ void TaskStatusEvent::PopulateRpcRayTaskLifecycleEvent(
         std::move(state_transition);
   }
 
-  lifecycle_event_data.set_node_id(node_id_.Binary());
   lifecycle_event_data.set_job_id(job_id_.Binary());
 
   // Task property updates
@@ -430,15 +429,24 @@ void TaskProfileEvent::ToRpcRayEvents(RayEventsTuple &ray_events_tuple) {
   // Using profile start time as the event generation timestamp
   google::protobuf::Timestamp timestamp = AbslTimeNanosToProtoTimestamp(start_time_);
 
-  // Populate Ray event base fields
-  auto &ray_event = ray_events_tuple.task_profile_event.emplace();
-  PopulateRpcRayEventBaseFields(ray_event, timestamp);
+  // Populate Ray event base fields only if not already populated
+  rpc::events::RayEvent *ray_event_ptr;
+  if (!ray_events_tuple.task_profile_event) {
+    auto &ray_event = ray_events_tuple.task_profile_event.emplace();
+    PopulateRpcRayEventBaseFields(ray_event, timestamp);
+    ray_event_ptr = &ray_event;
 
-  // Populate the task profile event
-  auto *task_profile_events = ray_event.mutable_task_profile_events();
-  task_profile_events->set_task_id(task_id_.Binary());
-  task_profile_events->set_job_id(job_id_.Binary());
-  task_profile_events->set_attempt_number(attempt_number_);
+    // Populate the task profile event base fields
+    auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
+    task_profile_events->set_task_id(task_id_.Binary());
+    task_profile_events->set_job_id(job_id_.Binary());
+    task_profile_events->set_attempt_number(attempt_number_);
+  } else {
+    ray_event_ptr = &ray_events_tuple.task_profile_event.value();
+  }
+
+  // Add this profile event to the events list
+  auto *task_profile_events = ray_event_ptr->mutable_task_profile_events();
   auto profile_events = task_profile_events->mutable_profile_events();
   profile_events->set_component_type(component_type_);
   profile_events->set_component_id(component_id_);
