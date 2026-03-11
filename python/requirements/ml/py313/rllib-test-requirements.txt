@@ -32,3 +32,5 @@ h5py==3.12.1
 
 # Requirements for rendering.
 moviepy
+
+numexpr
