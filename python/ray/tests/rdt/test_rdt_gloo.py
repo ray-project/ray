@@ -1053,7 +1053,7 @@ def test_rdt_memory_summary(ray_start_regular):
     ray.get([receiver.double.remote(ref1), receiver.double.remote(ref2)])
 
     wait_for_condition(
-        lambda: ray.get(sender.get_num_gpu_objects.remote()) == 2,
+        lambda: ray.get(sender.get_num_rdt_objects.remote()) == 2,
         timeout=10,
     )
 

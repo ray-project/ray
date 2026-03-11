@@ -2246,7 +2246,7 @@ cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_st
 
 
 cdef c_vector[CRDTObjectInfo] get_rdt_object_infos_callback() nogil:
-    """Get RDT object infos from the GPU object manager.
+    """Get RDT object infos from the RDT manager.
 
     Returns:
         Vector of RDTObjectInfo structs.

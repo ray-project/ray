@@ -138,7 +138,7 @@ struct CoreWorkerOptions {
   TaskExecutionCallback task_execution_callback;
   /// Callback to free RDT object from the in-actor RDT store.
   FreeActorObjectCallback free_actor_object_callback;
-  /// Callback to get RDT object info from the local GPUObjectStore.
+  /// Callback to get RDT object info from the local RDTStore.
   std::function<std::vector<RDTObjectInfo>()> get_rdt_object_infos_callback;
   /// Callback to set the direct transport metadata for an RDT object.
   SetDirectTransportMetadata set_direct_transport_metadata;

@@ -823,9 +823,9 @@ class RDTManager:
         with self._lock:
             for (
                 obj_id_hex,
-                gpu_object_meta,
-            ) in self._managed_gpu_object_metadata.items():
-                tensor_transport_meta = gpu_object_meta.tensor_transport_meta
+                rdt_meta,
+            ) in self._managed_rdt_metadata.items():
+                tensor_transport_meta = rdt_meta.tensor_transport_meta
                 if tensor_transport_meta is None:
                     continue
 
