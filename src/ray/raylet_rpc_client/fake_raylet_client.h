@@ -286,7 +286,7 @@ class FakeRayletClient : public RayletClientInterface {
   }
 
   void ResizeLocalResourceInstances(
-      const google::protobuf::Map<std::string, double> &resources,
+      google::protobuf::Map<std::string, double> resources,
       const ClientCallback<ResizeLocalResourceInstancesReply> &callback) override {
     last_resize_local_resource_instances_request.clear();
     last_resize_local_resource_instances_request.insert(resources.begin(),

@@ -198,7 +198,7 @@ class RayletClientInterface {
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
   virtual void ResizeLocalResourceInstances(
-      const google::protobuf::Map<std::string, double> &resources,
+      google::protobuf::Map<std::string, double> resources,
       const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) = 0;
 
   virtual void CancelLeasesWithResourceShapes(

@@ -132,7 +132,7 @@ class RayletClient : public RayletClientInterface {
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
 
   void ResizeLocalResourceInstances(
-      const google::protobuf::Map<std::string, double> &resources,
+      google::protobuf::Map<std::string, double> resources,
       const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback)
       override;
 

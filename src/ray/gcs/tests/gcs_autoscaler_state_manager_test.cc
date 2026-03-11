@@ -916,11 +916,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesErrors) {
   AddNode(node);
 
   rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
-  request.Clear();
   request.set_node_id(node->node_id());
   request.mutable_resources()->insert({{"GPU", 1}});
   rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
-  reply.Clear();
   Status callback_status = Status::OK();
   auto send_reply_callback = [&callback_status](ray::Status status,
                                                 std::function<void()> f1,
