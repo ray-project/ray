@@ -292,6 +292,63 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
         assert check_status(DeploymentStatus.UNHEALTHY)
 
 
+def test_replica_stalled_in_user_code_marked_unhealthy(serve_instance):
+    """
+    When a replica stalls in the request-serving path (no user-defined check_health),
+    the default health probe runs on the user execution path. If the user loop is
+    blocked (e.g. by a stuck request), the probe does not complete, the controller
+    sees timeouts, and the replica is marked unhealthy (issue #61263).
+    """
+    # No user-defined check_health -> default probe runs on user loop.
+    # Async __call__ blocks the user loop so the probe never completes.
+    @serve.deployment(
+        health_check_period_s=0.5,
+        health_check_timeout_s=2,
+        graceful_shutdown_timeout_s=0,
+    )
+    class StalledReplica:
+        def __init__(self):
+            self._unblock = asyncio.Event()
+
+        async def __call__(self):
+            await self._unblock.wait()
+            return "ok"
+
+        def set_unblock(self):
+            self._unblock.set()
+
+    handle = serve.run(StalledReplica.bind())
+
+    # Send a request so the replica blocks on _unblock.wait()
+    ref = handle.remote()
+
+    def deployment_unhealthy():
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        return (
+            app_status.deployments["StalledReplica"].status
+            == DeploymentStatus.UNHEALTHY
+        )
+
+    wait_for_condition(deployment_unhealthy, timeout=30)
+
+    # Unblock so replicas can finish (stalled replica may already be replaced).
+    handle.set_unblock.remote()
+    try:
+        ray.get(ref, timeout=2)
+    except Exception:
+        pass
+
+    # Wait for deployment to recover (new replica is healthy).
+    def deployment_healthy():
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        return (
+            app_status.deployments["StalledReplica"].status
+            == DeploymentStatus.HEALTHY
+        )
+
+    wait_for_condition(deployment_healthy, timeout=30)
+
+
 def test_gang_health_check_restarts_gang(serve_instance):
     """RESTART_GANG tears down the entire gang on failure while the deployment
     keeps serving traffic with no downtime."""

@@ -264,6 +264,12 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
+# Timeout in seconds for the thread-pool part of the default health probe when
+# RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1. If the pool does not run a no-op within
+# this time (e.g. all workers busy), we do not fail the health check so that
+# busy replicas are not marked unhealthy (see test_healthcheck_timeout).
+REPLICA_HEALTH_PROBE_THREADPOOL_TIMEOUT_S = 1.0
+
 # The time in seconds that the Serve client waits before rechecking deployment state
 CLIENT_POLLING_INTERVAL_S = 1.0
 
