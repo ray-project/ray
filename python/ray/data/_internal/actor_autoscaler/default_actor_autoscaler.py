@@ -173,22 +173,38 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     delta=1, reason="no running actors, scale up immediately"
                 )
             # When upstream has DC backpressure, pass inflated util so policy scales more.
-            delta = self._compute_upscale_delta(
-                actor_pool,
-                util * self._actor_pool_upscaling_ratio_on_upstream_backpressure
-                if self._is_upstream_backpressured_by_downstream_capacity(op)
-                else util,
+            upstream_dc_backpressured = (
+                self._is_upstream_backpressured_by_downstream_capacity(op)
             )
+            effective_util = util
+            if upstream_dc_backpressured:
+                effective_util *= (
+                    self._actor_pool_upscaling_ratio_on_upstream_backpressure
+                )
+            delta = self._compute_upscale_delta(actor_pool, effective_util)
             if max_scale_up is not None:
                 delta = min(delta, max_scale_up)
             delta = max(1, delta)  # At least scale up by 1
 
-            return ActorPoolScalingRequest.upscale(
-                delta=delta,
-                reason=(
+            if (
+                upstream_dc_backpressured
+                and self._actor_pool_upscaling_ratio_on_upstream_backpressure > 1.0
+            ):
+                reason = (
+                    f"utilization of {util} "
+                    f"(x{self._actor_pool_upscaling_ratio_on_upstream_backpressure} "
+                    "due to upstream DownstreamCapacity backpressure) >= "
+                    f"{self._actor_pool_scaling_up_threshold}"
+                )
+            else:
+                reason = (
                     f"utilization of {util} >= "
                     f"{self._actor_pool_scaling_up_threshold}"
-                ),
+                )
+
+            return ActorPoolScalingRequest.upscale(
+                delta=delta,
+                reason=reason,
             )
         elif util <= self._actor_pool_scaling_down_threshold:
             if actor_pool.current_size() <= actor_pool.min_size():

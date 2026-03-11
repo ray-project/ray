@@ -225,6 +225,67 @@ def test_actor_pool_scaling():
         )
 
 
+def test_actor_pool_scaling_reason_mentions_upstream_dc_backpressure():
+    resource_manager = MagicMock(
+        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+    )
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_upscaling_ratio_on_upstream_backpressure=2.0,
+        ),
+    )
+
+    actor_pool: _ActorPool = MagicMock(
+        spec=_ActorPool,
+        min_size=MagicMock(return_value=5),
+        max_size=MagicMock(return_value=15),
+        current_size=MagicMock(return_value=10),
+        num_active_actors=MagicMock(return_value=10),
+        num_running_actors=MagicMock(return_value=10),
+        num_pending_actors=MagicMock(return_value=0),
+        num_free_task_slots=MagicMock(return_value=5),
+        num_tasks_in_flight=MagicMock(return_value=15),
+        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
+        max_actor_concurrency=MagicMock(return_value=1),
+        get_pool_util=MagicMock(
+            side_effect=lambda: MethodType(_ActorPool.get_pool_util, actor_pool)()
+        ),
+    )
+
+    upstream = MagicMock()
+    upstream._in_task_submission_backpressure = True
+    upstream._task_submission_backpressure_policy = "DownstreamCapacity"
+    op = MagicMock(
+        spec=InternalQueueOperatorMixin,
+        has_completed=MagicMock(return_value=False),
+        _inputs_complete=False,
+        input_dependencies=[upstream],
+        internal_input_queue_num_blocks=MagicMock(return_value=1),
+        metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+    )
+    op_state = OpState(
+        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
+    )
+    op_state._scheduling_status = MagicMock(under_resource_limits=True)
+
+    # Ensure the scale-up code path executes deterministically.
+    with patch(autoscaler, "_compute_upscale_delta", 1):
+        assert autoscaler._derive_target_scaling_config(
+            actor_pool=actor_pool, op=op, op_state=op_state
+        ) == ActorPoolScalingRequest(
+            delta=1,
+            force=False,
+            reason=(
+                "utilization of 1.5 (x2.0 due to upstream DownstreamCapacity "
+                "backpressure) >= 1.0"
+            ),
+        )
+
+
 @pytest.fixture
 def autoscaler_max_upscaling_delta_setup():
     resource_manager = MagicMock(
