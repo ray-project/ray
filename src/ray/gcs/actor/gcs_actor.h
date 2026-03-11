@@ -168,6 +168,8 @@ class GcsActor {
       *actor_table_data_.mutable_label_selector() =
           ray::LabelSelector(task_spec_->label_selector()).ToStringMap();
     }
+    actor_table_data_.mutable_labels()->insert(task_spec_->labels().begin(),
+                                               task_spec_->labels().end());
     lease_spec_ = std::make_unique<LeaseSpecification>(*task_spec_);
     RefreshMetrics();
   }
