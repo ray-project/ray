@@ -205,11 +205,17 @@ def format_batches(
     batch_iter: Iterator[Batch],
     batch_format: Optional[str],
     stats: Optional[DatasetStats] = None,
+    ensure_copy: bool = False,
 ) -> Iterator[Batch]:
     """Given an iterator of batches, returns an iterator of formatted batches."""
     return _MappingIterator(
         batch_iter,
-        functools.partial(_format_batch, batch_format=batch_format, stats=stats),
+        functools.partial(
+            _format_batch,
+            batch_format=batch_format,
+            stats=stats,
+            ensure_copy=ensure_copy,
+        ),
     )
 
 

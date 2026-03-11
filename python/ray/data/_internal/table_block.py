@@ -174,10 +174,10 @@ class TableBlockAccessor(BlockAccessor):
     def _munge_conflict(name, count):
         return f"{name}_{count + 1}"
 
-    def to_default(self) -> Block:
+    def to_default(self, copy: bool = False) -> Block:
         # Always promote Arrow blocks to pandas for consistency, since
         # we lazily convert pandas->Arrow internally for efficiency.
-        default = self.to_pandas()
+        default = self.to_pandas(copy=copy)
 
         return default
 

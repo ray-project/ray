@@ -268,7 +268,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
 
-    def to_pandas(self) -> "pandas.DataFrame":
+    def to_pandas(self, copy: bool = False) -> "pandas.DataFrame":
         from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         # We specify ignore_metadata=True because pyarrow will use the metadata
@@ -277,10 +277,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
         df = self._table.to_pandas(ignore_metadata=ctx.pandas_block_ignore_metadata)
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
+        # Copy the dataframe to ensure its writable (Arrow -> Pandas creates zero-copy views which are read-only).
+        if copy:
+            df = df.copy()
         return df
 
     def to_numpy(
-        self, columns: Optional[Union[str, List[str]]] = None
+        self, columns: Optional[Union[str, List[str]]] = None, copy: bool = False
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.column_names
@@ -308,9 +311,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # (making them compatible with numpy format)
             combined_array = transform_pyarrow.combine_chunked_array(col)
 
-            column_values_ndarrays.append(
-                transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
-            )
+            arr = transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
+            # Copy the array to ensure its writable (Arrow arrays may be read-only views).
+            if copy:
+                arr = arr.copy()
+            column_values_ndarrays.append(arr)
 
         if should_be_single_ndarray:
             assert len(columns) == 1
