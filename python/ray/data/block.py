@@ -267,7 +267,14 @@ class BlockMetadata(BlockStats):
     # The pyarrow schema or types of the block elements, or None.
     # The list of file paths used to generate this block, or
     # the empty list if indeterminate.
-    input_files: Optional[List[str]] = field(default=None)
+    # Stored as a tuple for hash-ability.
+    input_files: Optional[Tuple[str, ...]] = field(default=None)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.input_files is not None and not isinstance(self.input_files, tuple):
+            object.__setattr__(self, "input_files", tuple(self.input_files))
 
     def to_stats(self):
         return BlockStats(
