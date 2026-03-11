@@ -133,6 +133,21 @@ class ReferenceCounterInterface {
   virtual void UpdateResubmittedTaskReferences(
       const std::vector<ObjectID> &argument_ids) = 0;
 
+  /// Add extra submitted_task_ref_count and lineage_ref_count for actor creation
+  /// task arguments. These extra refs keep the args pinned in plasma while a
+  /// non-detached actor with max_restarts > 0 could still restart.
+  ///
+  /// \param[in] arg_ids The argument object IDs to add extra refs for.
+  virtual void AddActorCreationArgReferences(const std::vector<ObjectID> &arg_ids) = 0;
+
+  /// Remove the extra refs added by AddActorCreationArgReferences when the
+  /// actor permanently dies.
+  ///
+  /// \param[in] arg_ids The argument object IDs to remove extra refs for.
+  /// \param[out] deleted Any objects that are newly out of scope.
+  virtual void RemoveActorCreationArgReferences(const std::vector<ObjectID> &arg_ids,
+                                                std::vector<ObjectID> *deleted) = 0;
+
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
   /// arguments. This should be called when the task finishes.

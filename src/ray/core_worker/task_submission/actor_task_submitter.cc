@@ -417,13 +417,16 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
       queue->second.is_restartable_ = is_restartable;
 
       if (queue->second.is_restartable_ && queue->second.owned_) {
-        // Actor is out of scope so there should be no inflight actor tasks.
-        RAY_CHECK(queue->second.wait_for_death_info_tasks_.empty());
-        RAY_CHECK(inflight_task_callbacks.empty());
-        if (!queue->second.actor_submit_queue_->Empty()) {
-          // There are pending lineage reconstruction tasks.
-          RestartActorForLineageReconstruction(actor_id);
-        }
+        // Owner-driven restart: the actor is restartable and we own it.
+        // This handles both out-of-scope (lineage reconstruction) and
+        // worker/node death for non-detached actors.
+        // Move wait_for_death_info_tasks out so they can be failed properly;
+        // they already exhausted retries and should get the death error info.
+        wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks_);
+        queue->second.wait_for_death_info_tasks_ =
+            std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>();
+        // Trigger owner-driven restart via GCS.
+        RestartActorForLineageReconstruction(actor_id);
       } else {
         // If there are pending requests, treat the pending tasks as failed.
         RAY_LOG(INFO).WithField(actor_id)

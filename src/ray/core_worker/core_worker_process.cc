@@ -592,7 +592,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                        rpc_address);
 
   auto actor_manager = std::make_unique<ActorManager>(
-      gcs_client, *actor_task_submitter, *reference_counter);
+      gcs_client,
+      *actor_task_submitter,
+      *reference_counter,
+      [task_manager](const TaskID &task_id) {
+        task_manager->ReleaseActorCreationReferences(task_id);
+      });
 
   // For the recovery manager to lookup the addresses / ports of the nodes with secondary
   // copies.

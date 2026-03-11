@@ -36,12 +36,18 @@ namespace core {
 /// by raylet.
 class ActorManager {
  public:
+  using ReleaseActorCreationReferencesCallback = std::function<void(const TaskID &)>;
+
   ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
                ActorTaskSubmitterInterface &actor_task_submitter,
-               ReferenceCounterInterface &reference_counter)
+               ReferenceCounterInterface &reference_counter,
+               ReleaseActorCreationReferencesCallback
+                   release_actor_creation_refs_callback = nullptr)
       : gcs_client_(std::move(gcs_client)),
         actor_task_submitter_(actor_task_submitter),
-        reference_counter_(reference_counter) {}
+        reference_counter_(reference_counter),
+        release_actor_creation_refs_callback_(
+            std::move(release_actor_creation_refs_callback)) {}
 
   ~ActorManager() = default;
 
@@ -204,6 +210,11 @@ class ActorManager {
   /// Used to keep track of actor handle reference counts.
   /// All actor handle related ref counting logic should be included here.
   ReferenceCounterInterface &reference_counter_;
+
+  /// Callback to release pinned actor creation arg references when the actor
+  /// permanently dies. This keeps constructor args pinned in plasma while an
+  /// actor with max_restarts > 0 could still restart.
+  ReleaseActorCreationReferencesCallback release_actor_creation_refs_callback_;
 
   mutable absl::Mutex mutex_;
 

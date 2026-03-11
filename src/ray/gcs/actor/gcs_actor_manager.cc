@@ -1283,7 +1283,15 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   }
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  RestartActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
+  // For non-detached actors, let the owner drive the restart instead of GCS.
+  // GCS sets the actor to DEAD (with a restartable death cause), and the owner
+  // will request a restart via RestartActorForLineageReconstruction.
+  bool need_reschedule = need_reconstruct;
+  if (need_reschedule && actor_iter != registered_actors_.end() &&
+      !actor_iter->second->IsDetached()) {
+    need_reschedule = false;
+  }
+  RestartActor(actor_id, /*need_reschedule=*/need_reschedule, death_cause);
 }
 
 void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
@@ -1342,9 +1350,15 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
   }
 
   for (auto &actor_id : scheduling_actor_ids) {
+    // For non-detached actors, let the owner drive restart.
+    auto actor = GetActor(actor_id);
+    bool need_reschedule = true;
+    if (actor && !actor->IsDetached()) {
+      need_reschedule = false;
+    }
     RestartActor(actor_id,
-                 /*need_reschedule=*/true,
-                 GenNodeDiedCause(GetActor(actor_id), node));
+                 /*need_reschedule=*/need_reschedule,
+                 GenNodeDiedCause(actor, node));
   }
 
   // Try reconstructing all workers created on the node.
@@ -1369,9 +1383,15 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<const rpc::GcsNodeInfo> node,
 
     for (auto &entry : created_actors) {
       // Reconstruct the removed actor.
+      // For non-detached actors, let the owner drive restart.
+      auto actor = GetActor(entry.second);
+      bool need_reschedule = true;
+      if (actor && !actor->IsDetached()) {
+        need_reschedule = false;
+      }
       RestartActor(entry.second,
-                   /*need_reschedule=*/true,
-                   GenNodeDiedCause(GetActor(entry.second), node));
+                   /*need_reschedule=*/need_reschedule,
+                   GenNodeDiedCause(actor, node));
     }
   }
 

@@ -85,6 +85,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  void AddActorCreationArgReferences(const std::vector<ObjectID> &arg_ids) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  void RemoveActorCreationArgReferences(const std::vector<ObjectID> &arg_ids,
+                                        std::vector<ObjectID> *deleted) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   void UpdateFinishedTaskReferences(const std::vector<ObjectID> &return_ids,
                                     const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage,
