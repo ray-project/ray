@@ -67,7 +67,9 @@ class _TestDummyActor:
 class _TestRayActor:
     """Used for deployment_actors proto roundtrip test (needs __ray_actor_class__)."""
 
-    pass
+    def ping(self):
+        """Dummy method to verify class is deserialized correctly."""
+        return "pong"
 
 
 def test_autoscaling_config_validation():
@@ -313,9 +315,29 @@ class TestDeploymentConfig:
         )
         assert deserialized.deployment_actors[0].init_kwargs == {"max_depth": 100}
 
-        # Test with import path string — actor_class stays as string until
-        # _serialize_actor_class() is called (happens in the build task where
-        # user code is importable).
+    def test_deployment_actors_config_duplicate_names_raise(self):
+        """Test that duplicate deployment_actor names raise ValueError."""
+        with pytest.raises(ValueError, match="unique names"):
+            DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                ],
+            )
+
+    def test_deployment_actors_config_import_path(self):
+        """actor_class stays as string until _serialize_actor_class() is called
+        (happens in the build task where user code is importable).
+        """
         actor_config_str = DeploymentActorConfig(
             name="actor_from_path",
             actor_class="ray.serve.tests.unit.test_config._TestDummyActor",
@@ -346,24 +368,6 @@ class TestDeploymentConfig:
             == _TestDummyActor.__ray_actor_class__.__name__
         )
 
-        # Test duplicate names raise
-        with pytest.raises(ValueError, match="unique names"):
-            DeploymentConfig(
-                num_replicas=1,
-                deployment_actors=[
-                    DeploymentActorConfig(
-                        name="dup",
-                        actor_class=DummyActor,
-                        init_kwargs={},
-                    ),
-                    DeploymentActorConfig(
-                        name="dup",
-                        actor_class=DummyActor,
-                        init_kwargs={},
-                    ),
-                ],
-            )
-
     def test_proto_roundtrip_preserves_actor_class(self):
         """DeploymentActorConfig survives proto serialization and can
         reconstruct the actor class via get_actor_class().
@@ -383,6 +387,11 @@ class TestDeploymentConfig:
 
         resolved = actor_cfg.get_actor_class()
         assert resolved.__ray_actor_class__.__name__ == "_TestRayActor"
+
+        # Verify we can instantiate and invoke methods (class serialized properly)
+        underlying = resolved.__ray_actor_class__
+        instance = underlying()
+        assert instance.ping() == "pong"
 
 
 class TestReplicaConfig:
