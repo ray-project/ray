@@ -93,6 +93,12 @@ class HologresDatasource(Datasource):
         self._columns = columns
         self._connection_options = connection_options or {}
         self._where_filter = where_filter
+        _VALID_READ_MODES = ("select", "copy_to")
+        if read_mode not in _VALID_READ_MODES:
+            raise ValueError(
+                f"Invalid read_mode '{read_mode}'. "
+                f"Must be one of {_VALID_READ_MODES}."
+            )
         self._read_mode = read_mode
         self._is_compressed = is_compressed
 
