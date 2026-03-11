@@ -321,7 +321,9 @@ class ActorPoolMapOperator(MapOperator):
             map_transformer=self._map_transformer,
             actor_location_tracker=get_or_create_actor_location_tracker(),
         )
-        res_ref = actor.get_location.remote()
+        res_ref = actor.get_location.options(
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id}
+        ).remote()
 
         def _task_done_callback(res_ref):
             # res_ref is a future for a now-ready actor; move actor from pending to the
@@ -379,9 +381,12 @@ class ActorPoolMapOperator(MapOperator):
                 op_name=self.name,
                 target_max_block_size_override=self.target_max_block_size_override,
             )
+            actor_task_args = dict(self._ray_actor_task_remote_args)
+            extra_labels = actor_task_args.pop("_labels", None) or {}
             gen = actor.submit.options(
                 num_returns="streaming",
-                **self._ray_actor_task_remote_args,
+                _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **extra_labels},
+                **actor_task_args,
             ).remote(
                 self.data_context,
                 ctx,
