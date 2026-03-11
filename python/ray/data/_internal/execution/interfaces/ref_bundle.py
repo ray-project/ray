@@ -7,7 +7,13 @@ from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 import ray
 from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data.block import Block, BlockAccessor, BlockMetadata, Schema, _make_hashable_schema
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    Schema,
+    _make_hashable_schema,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -365,13 +371,15 @@ class RefBundle:
         )
 
     def __hash__(self) -> int:
-        return hash((
-            *self.blocks,
-            *self.slices,
-            _make_hashable_schema(self.schema) if self.schema is not None else None,
-            self.owns_blocks,
-            self.output_split_idx,
-        ))
+        return hash(
+            (
+                *self.blocks,
+                *self.slices,
+                _make_hashable_schema(self.schema) if self.schema is not None else None,
+                self.owns_blocks,
+                self.output_split_idx,
+            )
+        )
 
     def __len__(self) -> int:
         return len(self.blocks)

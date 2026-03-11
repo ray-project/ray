@@ -294,10 +294,12 @@ class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
 
     def __hash__(self):
-        return hash((
-            BlockMetadata.__hash__(self),
-            _make_hashable_schema(self.schema) if self.schema is not None else None,
-        ))
+        return hash(
+            (
+                BlockMetadata.__hash__(self),
+                _make_hashable_schema(self.schema) if self.schema is not None else None,
+            )
+        )
 
     @staticmethod
     def from_metadata(
@@ -839,8 +841,6 @@ class BlockColumnAccessor:
                 f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
                 f"(got {type(col)})"
             )
-
-
 
 
 def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
