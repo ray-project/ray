@@ -292,10 +292,11 @@ class TrackioLoggerCallback(LoggerCallback):
             self.log_trial_start(trial)
             run = self._trial_runs.get(trial)
 
+        if run:
             try:
                 run.log({"checkpoint_saved": 1})
             except Exception as e:
-                logger.warning(f"trackio: Failed to log checkpoint path: {e}")
+                logger.warning(f"trackio: Failed to log checkpoint: {e}")
 
     def log_trial_end(self, trial: Trial, failed: bool = False):
         """Finalize the Trackio run when a Ray Tune trial finishes."""
