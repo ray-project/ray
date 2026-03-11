@@ -519,6 +519,38 @@ void GcsAutoscalerStateManager::HandleDrainNode(
       });
 }
 
+void GcsAutoscalerStateManager::HandleResizeRayletResourceInstances(
+    rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
+    rpc::autoscaler::ResizeRayletResourceInstancesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(thread_checker_.IsOnSameThread());
+  const NodeID node_id = NodeID::FromBinary(request.node_id());
+
+  auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
+    std::ostringstream stream;
+    stream << "Raylet " << node_id.Hex() << " is not alive.";
+    send_reply_callback(Status::NotFound(stream.str()), nullptr, nullptr);
+    return;
+  }
+
+  auto node = std::move(maybe_node.value());
+  auto raylet_address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node->node_manager_address(), node->node_manager_port());
+  const auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(raylet_address);
+  raylet_client->ResizeLocalResourceInstances(
+      request.resources(),
+      [reply, send_reply_callback](
+          const Status &status,
+          const rpc::ResizeLocalResourceInstancesReply &raylet_reply) {
+        if (status.ok()) {
+          reply->mutable_total_resources()->insert(raylet_reply.total_resources().begin(),
+                                                   raylet_reply.total_resources().end());
+        }
+        send_reply_callback(status, nullptr, nullptr);
+      });
+}
+
 std::string GcsAutoscalerStateManager::DebugString() const {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   std::ostringstream stream;
