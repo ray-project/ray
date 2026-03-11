@@ -49,8 +49,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
 from ray.data._internal.execution.operators.shuffle_engine import (
+    ReducePhaseHooks,
     ShuffleEngine,
-    ShuffleHooks,
+    ShufflePhaseHooks,
 )
 from ray.data._internal.execution.operators.shuffle_operator_core import (
     ShuffleOperatorCore,
@@ -635,7 +636,7 @@ class CpuShuffleEngine(ShuffleEngine):
         self,
         input_bundle: RefBundle,
         input_index: int,
-        hooks: "ShuffleHooks",
+        hooks: "ShufflePhaseHooks",
         upstream_op_num_outputs: int,
     ) -> None:
         input_blocks_refs = input_bundle.block_refs
@@ -719,18 +720,18 @@ class CpuShuffleEngine(ShuffleEngine):
                     input_index, input_block_metadata, partition_shards_stats
                 )
 
-                hooks.on_shuffled_block(input_block_metadata.to_stats())
+                hooks.on_block_shuffled(input_block_metadata.to_stats())
 
                 blocks = [(task.get_waitable(), input_block_metadata)]
                 out_bundle = RefBundle(blocks, schema=None, owns_blocks=False)
-                hooks.on_shuffle_task_output(task_idx, out_bundle)
-                hooks.on_shuffle_task_finished(
+                hooks.on_task_output(task_idx, out_bundle)
+                hooks.on_task_finished(
                     task_idx,
                     None,
                     task_exec_stats=None,
                     task_exec_driver_stats=None,
                 )
-                hooks.on_shuffle_progress(increment=input_block_metadata.num_rows or 0)
+                hooks.on_progress(increment=input_block_metadata.num_rows or 0)
 
             task = self._shuffling_tasks[input_index][
                 cur_shuffle_task_idx
@@ -749,7 +750,7 @@ class CpuShuffleEngine(ShuffleEngine):
                     task.get_requested_resource_bundle()
                 )
 
-            hooks.on_shuffle_task_submitted(
+            hooks.on_task_submitted(
                 cur_shuffle_task_idx,
                 RefBundle(
                     [(block_ref, block_metadata)], schema=None, owns_blocks=False
@@ -764,14 +765,14 @@ class CpuShuffleEngine(ShuffleEngine):
             _, _, num_rows = estimate_total_num_of_blocks(
                 cur_shuffle_task_idx + 1,
                 upstream_op_num_outputs,
-                hooks._get_shuffle_metrics(),
+                hooks._get_metrics(),
                 total_num_tasks=None,
             )
-            hooks.on_shuffle_progress(total=num_rows)
+            hooks.on_progress(total=num_rows)
 
     def try_finalize(
         self,
-        hooks: "ShuffleHooks",
+        hooks: "ReducePhaseHooks",
         inputs_complete: bool,
         upstream_op_num_outputs: int,
     ) -> None:
@@ -791,11 +792,11 @@ class CpuShuffleEngine(ShuffleEngine):
             _, num_outputs, num_rows = estimate_total_num_of_blocks(
                 partition_id + 1,
                 upstream_op_num_outputs,
-                hooks._get_reduce_metrics(),
+                hooks._get_metrics(),
                 total_num_tasks=self._num_partitions,
             )
             hooks.on_output_estimated(num_outputs, num_rows)
-            hooks.on_reduce_progress(
+            hooks.on_progress(
                 increment=bundle.num_rows() or 0,
                 total=num_rows,
             )
@@ -815,7 +816,7 @@ class CpuShuffleEngine(ShuffleEngine):
 
             if partition_id in self._finalizing_tasks:
                 self._finalizing_tasks.pop(partition_id)
-                hooks.on_reduce_task_finished(
+                hooks.on_task_finished(
                     partition_id,
                     exc,
                     task_exec_stats=task_exec_stats,
@@ -920,7 +921,7 @@ class CpuShuffleEngine(ShuffleEngine):
             # NOTE: This is empty because the input is directly forwarded from the
             # output of the shuffling stage, which we don't return.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
-            hooks.on_reduce_task_submitted(
+            hooks.on_task_submitted(
                 partition_id, empty_bundle, task_id=data_task.get_task_id()
             )
 

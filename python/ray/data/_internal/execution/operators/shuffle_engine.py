@@ -1,8 +1,6 @@
 import typing
 from abc import ABC, abstractmethod
-from collections import deque
-from dataclasses import dataclass, field
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -16,97 +14,104 @@ if typing.TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         TaskExecDriverStats,
     )
-    from ray.data._internal.progress.base_progress import BaseProgressBar
     from ray.data.block import TaskExecWorkerStats
 
 
-@dataclass
-class ShuffleCoreState:
-    """Shared mutable state owned by ShuffleOperatorCore and read/written via
-    ShuffleHooks.  The engine never touches this directly."""
+class PhaseHooks:
+    """Shared task-lifecycle callbacks common to both shuffle and reduce phases.
 
-    output_queue: Deque[RefBundle] = field(default_factory=deque)
-    shuffle_metrics: Optional[OpRuntimeMetrics] = None
-    reduce_metrics: Optional[OpRuntimeMetrics] = None
-    shuffle_bar: Optional["BaseProgressBar"] = None
-    reduce_bar: Optional["BaseProgressBar"] = None
-    shuffled_block_stats: List[BlockStats] = field(default_factory=list)
-    output_block_stats: List[BlockStats] = field(default_factory=list)
-
-
-class ShuffleHooks:
-    """Callback bundle passed from ShuffleOperatorCore to a ShuffleEngine.
-
-    Each hook wraps metrics, progress-bar, and queue updates so the engine
-    never imports ``OpRuntimeMetrics`` or ``BaseProgressBar``.
-
-    Dataflow during the **shuffle (map) phase** — ``submit_input()``::
-
-        Engine                              Hooks                       State
-        ──────                              ─────                       ─────
-        submit task to actor
-          ├─ on_shuffle_task_submitted ──► shuffle_metrics.on_task_submitted
-          └─ on_shuffle_progress ────────► shuffle_bar.update(total=…)
-                                            │
-        task completes (callback)           │
-          ├─ on_shuffled_block ──────────► shuffled_block_stats.append
-          ├─ on_shuffle_task_output ─────► shuffle_metrics.on_output_taken
-          │                                 + on_task_output_generated
-          ├─ on_shuffle_task_finished ───► shuffle_metrics.on_task_finished
-          └─ on_shuffle_progress ────────► shuffle_bar.update(increment=…)
-
-    Dataflow during the **reduce (finalize) phase** — ``try_finalize()``::
-
-        Engine                              Hooks                       State
-        ──────                              ─────                       ─────
-        schedule finalization task
-          └─ on_reduce_task_submitted ──► reduce_metrics.on_task_submitted
-                                            │
-        output bundle ready (callback)      │
-          ├─ on_output_ready ────────────► output_queue.append
-          │                                 + reduce_metrics.on_output_queued
-          │                                 + reduce_metrics.on_task_output_generated
-          ├─ on_output_estimated ────────► operator._estimated_num_output_bundles
-          │                                 + operator._estimated_output_num_rows
-          └─ on_reduce_progress ─────────► reduce_bar.update(increment=…, total=…)
-                                            │
-        task completes (callback)           │
-          └─ on_reduce_task_finished ───► reduce_metrics.on_task_finished
+    Subclassed by :class:`ShufflePhaseHooks` and :class:`ReducePhaseHooks`
+    which add phase-specific hooks.
     """
 
-    def on_shuffle_task_submitted(
+    def on_task_submitted(
         self,
         task_index: int,
         input_bundle: RefBundle,
         task_id: str,
     ) -> None:
-        """Called when a shuffle (map-side) task is submitted."""
+        """Called when a task is submitted."""
 
-    def on_shuffle_task_finished(
+    def on_task_finished(
         self,
         task_index: int,
         exception: Optional[Exception],
         task_exec_stats: Optional["TaskExecWorkerStats"],
         task_exec_driver_stats: Optional["TaskExecDriverStats"],
     ) -> None:
-        """Called when a shuffle task completes."""
+        """Called when a task completes."""
 
-    def on_shuffle_task_output(
-        self,
-        task_index: int,
-        output_bundle: RefBundle,
-    ) -> None:
-        """Called when intermediate shuffle output is available (CPU only)."""
-
-    def on_shuffle_progress(
+    def on_progress(
         self,
         increment: Optional[int] = None,
         total: Optional[int] = None,
     ) -> None:
-        """Update the shuffle-phase progress bar."""
+        """Update the phase's progress bar."""
 
-    def on_shuffled_block(self, block_stats: BlockStats) -> None:
+    def _get_metrics(self) -> Optional["OpRuntimeMetrics"]:
+        """Access phase metrics for progress estimation (engine internal use)."""
+        return None
+
+
+class ShufflePhaseHooks(PhaseHooks):
+    """Callbacks for the shuffle (map) phase.
+
+    Passed to :meth:`ShuffleEngine.submit_input`.  Inherits shared task
+    lifecycle hooks from :class:`PhaseHooks` and adds shuffle-specific
+    callbacks.
+
+    Dataflow::
+
+        Engine                          Hooks                       Backing state
+        ──────                          ─────                       ─────────────
+        submit task to actor
+          ├─ on_task_submitted ───────► metrics.on_task_submitted
+          └─ on_progress ─────────────► bar.update(total=…)
+                                          │
+        task completes (callback)         │
+          ├─ on_block_shuffled ────────► block_stats.append
+          ├─ on_task_output ───────────► metrics.on_output_taken
+          │                               + on_task_output_generated
+          ├─ on_task_finished ─────────► metrics.on_task_finished
+          └─ on_progress ─────────────► bar.update(increment=…)
+    """
+
+    def on_task_output(
+        self,
+        task_index: int,
+        output_bundle: RefBundle,
+    ) -> None:
+        """Called when intermediate shuffle output is available."""
+
+    def on_block_shuffled(self, block_stats: BlockStats) -> None:
         """Record stats for a block that has been shuffled."""
+
+
+class ReducePhaseHooks(PhaseHooks):
+    """Callbacks for the reduce (finalize / extraction) phase.
+
+    Passed to :meth:`ShuffleEngine.try_finalize`.  Inherits shared task
+    lifecycle hooks from :class:`PhaseHooks` and adds reduce-specific
+    callbacks.
+
+    Dataflow::
+
+        Engine                          Hooks                       Backing state
+        ──────                          ─────                       ─────────────
+        schedule finalization task
+          └─ on_task_submitted ───────► metrics.on_task_submitted
+                                          │
+        output bundle ready (callback)    │
+          ├─ on_output_ready ──────────► output_queue.append
+          │                               + metrics.on_output_queued
+          │                               + metrics.on_task_output_generated
+          ├─ on_output_estimated ──────► operator._estimated_num_output_bundles
+          │                               + operator._estimated_output_num_rows
+          └─ on_progress ─────────────► bar.update(increment=…, total=…)
+                                          │
+        task completes (callback)         │
+          └─ on_task_finished ─────────► metrics.on_task_finished
+    """
 
     def on_output_ready(
         self,
@@ -115,30 +120,6 @@ class ShuffleHooks:
     ) -> None:
         """Enqueue a finalized output bundle."""
 
-    def on_reduce_task_submitted(
-        self,
-        task_index: int,
-        input_bundle: RefBundle,
-        task_id: str,
-    ) -> None:
-        """Called when a reduce / extraction task is submitted."""
-
-    def on_reduce_task_finished(
-        self,
-        task_index: int,
-        exception: Optional[Exception],
-        task_exec_stats: Optional["TaskExecWorkerStats"],
-        task_exec_driver_stats: Optional["TaskExecDriverStats"],
-    ) -> None:
-        """Called when a reduce task completes."""
-
-    def on_reduce_progress(
-        self,
-        increment: Optional[int] = None,
-        total: Optional[int] = None,
-    ) -> None:
-        """Update the reduce-phase progress bar."""
-
     def on_output_estimated(
         self,
         num_output_bundles: Optional[int],
@@ -146,21 +127,13 @@ class ShuffleHooks:
     ) -> None:
         """Update PhysicalOperator output estimates."""
 
-    def _get_shuffle_metrics(self) -> Optional["OpRuntimeMetrics"]:
-        """Access shuffle metrics for progress estimation (engine internal use)."""
-        return None
-
-    def _get_reduce_metrics(self) -> Optional["OpRuntimeMetrics"]:
-        """Access reduce metrics for progress estimation (engine internal use)."""
-        return None
-
 
 class ShuffleEngine(ABC):
     """Interface for the transport/lifecycle layer of a shuffle operator.
 
     Engines encapsulate actor management, task submission, finalization, and
     resource accounting.  They communicate back to the operator shell
-    exclusively through :class:`ShuffleHooks` — never by holding a reference
+    exclusively through phase-specific hooks — never by holding a reference
     to the operator or its state.
 
     Lifecycle driven by ``ShuffleOperatorCore``::
@@ -173,13 +146,13 @@ class ShuffleEngine(ABC):
         _add_input_inner(bundle)
           ├─ metrics.on_input_received
           └─ engine.submit_input() ──► route blocks to actors
-                                        └─ hooks.on_shuffle_* (callbacks)
+                                        └─ shuffle_hooks.on_* (callbacks)
 
         has_next()
           └─ engine.try_finalize() ──► if inputs_complete and shuffle done:
                                         schedule reduce / extraction tasks
-                                        └─ hooks.on_reduce_* (callbacks)
-                                        └─ hooks.on_output_ready (→ queue)
+                                        └─ reduce_hooks.on_* (callbacks)
+                                        └─ reduce_hooks.on_output_ready (→ queue)
 
         _get_next_inner()
           └─ pop from output_queue
@@ -202,7 +175,7 @@ class ShuffleEngine(ABC):
         self,
         bundle: RefBundle,
         input_index: int,
-        hooks: ShuffleHooks,
+        hooks: ShufflePhaseHooks,
         upstream_op_num_outputs: int,
     ) -> None:
         """Route *bundle* to the appropriate actor(s) for shuffling."""
@@ -211,7 +184,7 @@ class ShuffleEngine(ABC):
     @abstractmethod
     def try_finalize(
         self,
-        hooks: ShuffleHooks,
+        hooks: ReducePhaseHooks,
         inputs_complete: bool,
         upstream_op_num_outputs: int,
     ) -> None:
