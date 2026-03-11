@@ -11,6 +11,7 @@ except ImportError:
 from ray.train._internal.session import get_session
 from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.utils import flatten_dict
 from ray.util import PublicAPI
 
@@ -220,6 +221,8 @@ class TrackioLoggerCallback(LoggerCallback):
 
         if not self.log_config:
             config = {}
+        else:
+            config.pop("callbacks", None)
 
         run = trackio.init(
             project=self.project,
@@ -276,7 +279,8 @@ class TrackioLoggerCallback(LoggerCallback):
                 metrics[key] = value
 
         if metrics:
-            run.log(metrics, step=iteration)
+            training_step = result.get(TRAINING_ITERATION, iteration)
+            run.log(metrics, step=training_step)
 
     def log_trial_save(self, trial: Trial):
         """Log checkpoint metadata when a Ray Tune trial checkpoint is saved."""
