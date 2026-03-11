@@ -910,10 +910,21 @@ class Worker:
         use_object_store: bool = False,
     ):
         rdt_objects: Dict[str, List["torch.Tensor"]] = {}
-        for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
+        for obj_ref, (_, metadata, tensor_transport) in zip(
+            object_refs, serialized_objects
+        ):
             if tensor_transport is None:
                 # The object is not an RDT object, so we cannot use other external transport to
                 # fetch it.
+                continue
+
+            # Assures that the upstream task didn't error out. This logic comes from the
+            # serialization_context deserialize_objects path. RDT tensors are only used
+            # if the metadata field contains that constant
+            if not metadata:
+                continue
+            metadata_fields = metadata.split(b",")
+            if metadata_fields[0] != ray_constants.OBJECT_METADATA_TYPE_PYTHON:
                 continue
 
             object_id = obj_ref.hex()
