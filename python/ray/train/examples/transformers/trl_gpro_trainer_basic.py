@@ -61,7 +61,7 @@ def train_func():
 
     # GRPO Trainer
     trainer = GRPOTrainer(
-        model="Qwen/Qwen2-0.5B-Instruct",
+        model="Qwen/Qwen2.5-3B",
         args=training_args,
         reward_funcs=accuracy_reward,
         train_dataset=dataset,
