@@ -1,11 +1,14 @@
 from dataclasses import replace
 from unittest.mock import patch
 
+import pyarrow as pa
 import pytest
 
 from ray import ObjectRef
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
 from ray.data.block import BlockMetadata
+
+_TEST_SCHEMA = pa.schema([("col", pa.int64())])
 
 
 def test_get_preferred_locations():
@@ -134,7 +137,7 @@ def test_slice_ref_bundle_basic():
             (block_ref_two, meta_two),
         ],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
     )
 
     consumed, remaining = bundle.slice(8)
@@ -184,7 +187,7 @@ def test_slice_ref_bundle_with_existing_slices():
             (block_ref_two, meta_two),
         ],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[
             BlockSlice(start_offset=2, end_offset=10),
             BlockSlice(start_offset=0, end_offset=3),
@@ -314,7 +317,7 @@ def test_slice_ref_bundle_with_none_slices():
             (block_ref_two, meta_two),
         ],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[None, None],
     )
 
@@ -356,13 +359,13 @@ def test_ref_bundle_str():
             (block_ref_three, meta_three),
         ],
         owns_blocks=True,
-        schema="test_schema",
+        schema=_TEST_SCHEMA,
         slices=[None, None, slice_three],
     )
 
-    expected = """RefBundle(3 blocks,
+    expected = f"""RefBundle(3 blocks,
   18 rows,
-  schema=test_schema,
+  schema={_TEST_SCHEMA},
   owns_blocks=True,
   blocks=(
     0: 10 rows, 100 bytes, slice=None (full block)
@@ -389,7 +392,7 @@ def test_merge_ref_bundles():
     bundle_one = RefBundle(
         blocks=[(block_ref_one, metadata_one), (block_ref_one, metadata_one)],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[
             BlockSlice(start_offset=0, end_offset=1),
             BlockSlice(start_offset=1, end_offset=2),
@@ -398,7 +401,7 @@ def test_merge_ref_bundles():
     bundle_two = RefBundle(
         blocks=[(block_ref_two, metadata_two), (block_ref_two, metadata_two)],
         owns_blocks=False,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[
             BlockSlice(start_offset=2, end_offset=3),
             BlockSlice(start_offset=3, end_offset=4),
@@ -407,7 +410,7 @@ def test_merge_ref_bundles():
 
     merged = RefBundle.merge_ref_bundles([bundle_one, bundle_two])
 
-    assert merged.schema == "schema"
+    assert merged.schema == _TEST_SCHEMA
     # The merged bundle should own the blocks if all input bundles own their blocks.
     # Since bundle_two doesn't own its blocks, the merged bundle should not own its
     # blocks.
@@ -433,7 +436,7 @@ def test_ref_bundle_eq_and_hash():
     bundle = RefBundle(
         blocks=[(ref_a, meta)],
         owns_blocks=True,
-        schema="schema",
+        schema=_TEST_SCHEMA,
         slices=[BlockSlice(start_offset=0, end_offset=5)],
         output_split_idx=1,
     )
@@ -463,7 +466,7 @@ def test_ref_bundle_eq_and_hash():
     diff_bundle_2 = replace(bundle, output_split_idx=2)
     assert bundle != diff_bundle_2 and hash(bundle) != hash(diff_bundle_2)
 
-    diff_bundle_3 = replace(bundle, schema="other")
+    diff_bundle_3 = replace(bundle, schema=pa.schema([("other", pa.string())]))
     assert bundle != diff_bundle_3 and hash(bundle) != hash(diff_bundle_3)
 
     diff_bundle_4 = replace(bundle, slices=(None,))

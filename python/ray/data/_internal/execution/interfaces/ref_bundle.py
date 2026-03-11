@@ -73,6 +73,15 @@ class RefBundle:
     _cached_preferred_locations: Optional[Dict[NodeIdStr, int]] = None
 
     def __post_init__(self):
+        if self.schema is not None:
+            import pyarrow as pa
+
+            from ray.data._internal.pandas_block import PandasBlockSchema
+
+            assert isinstance(
+                self.schema, (pa.lib.Schema, PandasBlockSchema)
+            ), f"Schema must be a pyarrow or PandasBlockSchema, got {type(self.schema)}"
+
         if not isinstance(self.blocks, tuple):
             object.__setattr__(self, "blocks", tuple(self.blocks))
 
