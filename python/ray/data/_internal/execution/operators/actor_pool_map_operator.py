@@ -189,7 +189,7 @@ class ActorPoolMapOperator(MapOperator):
                 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
             map_worker_cls_name=self._map_worker_cls_name,
-            _enable_actor_pool_on_exit_hook=self.data_context.enable_actor_pool_on_exit_hook,
+            enable_actor_pool_on_exit_hook=self.data_context.enable_actor_pool_on_exit_hook,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -702,15 +702,16 @@ class _MapWorker:
         if ray.data._map_actor_context is not None:
             for udf_instance in ray.data._map_actor_context.udf_instances.values():
                 if hasattr(udf_instance, "__ray_shutdown__"):
+                    # Safely materialize repr() separately in case it also raises.
+                    try:
+                        instance_repr = repr(udf_instance)
+                    except Exception:
+                        instance_repr = f"<{type(udf_instance).__name__} instance (repr() raised an exception)>"
+
                     try:
                         udf_instance.__ray_shutdown__()
                     except Exception:
                         # Log but don't fail - we want to continue cleanup.
-                        # Safely materialize repr() separately in case it also raises.
-                        try:
-                            instance_repr = repr(udf_instance)
-                        except Exception:
-                            instance_repr = f"<{type(udf_instance).__name__} instance (repr() raised an exception)>"
                         logging.getLogger(__name__).exception(
                             f"Error calling __ray_shutdown__ on {instance_repr}"
                         )
@@ -910,7 +911,7 @@ class _ActorPool(AutoscalingActorPool):
         max_tasks_in_flight_per_actor: int,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
-        _enable_actor_pool_on_exit_hook: bool = False,
+        enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
 
@@ -933,7 +934,7 @@ class _ActorPool(AutoscalingActorPool):
                 be submitted to a single actor at any given time.
             map_worker_cls_name: Name of the map worker class for logging purposes.
             debounce_period_s: Debounce period for scaling down after scaling up.
-            _enable_actor_pool_on_exit_hook: Whether to call UDF cleanup hooks
+            enable_actor_pool_on_exit_hook: Whether to call UDF cleanup hooks
                 (__ray_shutdown__ and __del__) when actor pool workers exit
                 gracefully. See DataContext.enable_actor_pool_on_exit_hook.
         """
@@ -964,7 +965,7 @@ class _ActorPool(AutoscalingActorPool):
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
         # Map from actor handle to its logical ID.
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
-        self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
+        self._enable_actor_pool_on_exit_hook = enable_actor_pool_on_exit_hook
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
