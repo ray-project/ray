@@ -355,6 +355,15 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
         if new_per_replica_pg == prev_per_replica_pg:
             return False
 
+        # All apps must be RUNNING.
+        try:
+            status = serve.status()
+            for app_name in ("survivor_app", "victim_app", "per_replica_app"):
+                if status.applications[app_name].status != "RUNNING":
+                    return False
+        except Exception:
+            return False
+
         return True
 
     wait_for_condition(recovery_complete, timeout=60)
