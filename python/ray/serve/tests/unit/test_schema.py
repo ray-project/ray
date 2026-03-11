@@ -467,12 +467,53 @@ class TestDeploymentSchema:
         schema = DeploymentSchema.model_validate(deployment_schema)
         assert schema.gang_scheduling_config is DEFAULT.VALUE
 
-    def test_gang_scheduling_config_auto_replicas_rejected(self):
+    def test_gang_scheduling_config_auto_replicas_accepted(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
+        deployment_schema["autoscaling_config"] = {
+            "min_replicas": 4,
+            "max_replicas": 8,
+        }
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.gang_scheduling_config.gang_size == 4
+        assert schema.num_replicas == "auto"
 
-        with pytest.raises(ValueError, match='num_replicas="auto" is not allowed'):
+    @pytest.mark.parametrize(
+        "autoscaling_config,invalid_field",
+        [
+            ({"min_replicas": 3, "max_replicas": 8}, "min_replicas"),
+            ({"min_replicas": 4, "max_replicas": 9}, "max_replicas"),
+            (
+                {"min_replicas": 4, "max_replicas": 8, "initial_replicas": 5},
+                "initial_replicas",
+            ),
+        ],
+    )
+    def test_gang_scheduling_config_auto_replicas_invalid_bounds(
+        self, autoscaling_config, invalid_field
+    ):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 4}
+        deployment_schema["autoscaling_config"] = autoscaling_config
+        with pytest.raises(
+            ValueError, match=f"autoscaling_config.{invalid_field}.*must be a multiple"
+        ):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = "auto"
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
+        deployment_schema["autoscaling_config"] = {
+            "min_replicas": 0,
+            "max_replicas": 9,
+        }
+        with pytest.raises(
+            ValueError,
+            match="Scale to zero isn't supported for gang scheduling",
+        ):
             DeploymentSchema.model_validate(deployment_schema)
 
     def test_gang_scheduling_config_invalid_num_replicas(self):
