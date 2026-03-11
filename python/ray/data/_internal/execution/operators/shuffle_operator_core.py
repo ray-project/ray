@@ -211,8 +211,11 @@ class ShuffleOperatorCore(PhysicalOperator, SubProgressBarMixin):
     # ------------------------------------------------------------------
 
     def _do_shutdown(self, force: bool = False) -> None:
-        super()._do_shutdown(force=force)
+        # Kill actors before cancelling tasks: the base method blocks on
+        # ray.get() for each active task during forced shutdown, which hangs
+        # if the actors backing those tasks are still alive.
         self._engine.shutdown(force=force)
+        super()._do_shutdown(force=force)
 
     # ------------------------------------------------------------------
     # Resource accounting
