@@ -1161,16 +1161,10 @@ class PyArrowComputeUDFExpr(UDFExpr):
             return False
 
         return (
-            self.pc_func is other.pc_func
+            super().structurally_equals(other)
+            and self.pc_func is other.pc_func
             and self.pc_positional == other.pc_positional
             and self.pc_kwargs == other.pc_kwargs
-            and len(self.args) == len(other.args)
-            and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
-            and self.kwargs.keys() == other.kwargs.keys()
-            and all(
-                self.kwargs[k].structurally_equals(other.kwargs[k])
-                for k in self.kwargs.keys()
-            )
         )
 
 
