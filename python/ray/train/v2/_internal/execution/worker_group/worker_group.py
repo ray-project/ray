@@ -182,6 +182,13 @@ class WorkerGroup(ExecutionGroup):
             DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
         )
 
+        # Whether the worker group will manage replica groups.
+        self._manages_replica_groups = (
+            train_run_context.backend_config.backend_cls.has_replica_groups
+            if train_run_context.backend_config
+            else False
+        )
+
     ################################################################################
     # Start Worker Group
     ################################################################################
@@ -302,15 +309,30 @@ class WorkerGroup(ExecutionGroup):
             )
             worker_group_state_builder.with_sync_actor(sync_actor)
 
-            workers = self._create_workers(
-                worker_group_context.num_workers,
-                pg_handle.placement_group,
-                worker_group_context.resources_per_worker,
-            )
-            worker_group_state_builder.with_workers(workers)
-
+            # Create workers and (if applicable) replica groups.
+            if self._manages_replica_groups:
+                workers = []
+                for i in range(worker_group_context.num_workers):
+                    workers.extend(
+                        self._create_workers(
+                            1,
+                            pg_handle.placement_group,
+                            worker_group_context.resources_per_worker,
+                            # TODO: change after we support replica groups of size > 1.
+                            [i],
+                            starting_world_rank=i,
+                            world_size=worker_group_context.num_workers,
+                        )
+                    )
+            else:
+                workers = self._create_workers(
+                    worker_group_context.num_workers,
+                    pg_handle.placement_group,
+                    worker_group_context.resources_per_worker,
+                )
             self._replica_groups = [
                 ReplicaGroup(
+                    # TODO: change after we support replica groups of size > 1.
                     [worker],
                     worker_group_context.resources_per_worker,
                     self._world_rank_to_ongoing_poll,
@@ -322,6 +344,7 @@ class WorkerGroup(ExecutionGroup):
                 for i, rg in enumerate(self._replica_groups)
                 for worker in rg.get_workers()
             }
+            worker_group_state_builder.with_workers(workers)
 
             # All the ray.get calls in this try block can possibly error if the
             # worker actors die during initialization.
@@ -370,7 +393,8 @@ class WorkerGroup(ExecutionGroup):
         placement_group: PlacementGroup,
         resources_per_worker: Dict[str, float],
         bundle_indices: Optional[List[int]] = None,
-        distributed_contexts: Optional[List[DistributedContext]] = None,
+        starting_world_rank: int = 0,
+        world_size: Optional[int] = None,
     ) -> List[Worker]:
         """Create worker actors at placement group bundle indices.
 
@@ -380,13 +404,16 @@ class WorkerGroup(ExecutionGroup):
             resources_per_worker: Resources per worker.
             bundle_indices: Optional explicit bundle indices to use.
                 If None, uses range(num_workers).
-            distributed_contexts: Optional pre-computed distributed contexts.
-                If provided, assigns them directly instead of calling
-                _assign_worker_ranks. Used for replica group replacement.
+            starting_world_rank: The starting world rank for this list of
+                workers. Note that world rank is global across replica groups
+                (so we can make only replica group 0 checkpoint) but local rank
+                is local to (node, replica group) pairs (every replica group has
+                different data, so all local rank 0's must download data to node).
+            world_size: The total world size of the worker group.
+                If None, uses the number of workers.
 
         Returns:
-            List of Worker instances. If distributed_contexts is None,
-            workers are sorted by world rank via _assign_worker_ranks.
+            Sorted list of Workers.
         """
         indices = (
             bundle_indices if bundle_indices is not None else list(range(num_workers))
@@ -426,12 +453,9 @@ class WorkerGroup(ExecutionGroup):
             for idx, actor, meta in zip(indices, actors, actor_metadatas)
         ]
 
-        if distributed_contexts is not None:
-            for worker, dc in zip(workers, distributed_contexts):
-                worker.distributed_context = dc
-            return workers
-        else:
-            return WorkerGroup._assign_worker_ranks(workers)
+        return WorkerGroup._assign_worker_ranks(
+            workers, starting_world_rank, world_size
+        )
 
     def _init_train_context(
         self,
@@ -738,7 +762,6 @@ class WorkerGroup(ExecutionGroup):
         # Save old replica group state.
         old_replica_group = self._replica_groups[replica_group_index]
         old_workers = old_replica_group.get_workers()
-        old_distributed_contexts = [w.distributed_context for w in old_workers]
         old_bundle_indices = [w.bundle_index for w in old_workers]
 
         # Shutdown old replica group if it is active.
@@ -755,7 +778,9 @@ class WorkerGroup(ExecutionGroup):
             placement_group=pg,
             resources_per_worker=self._worker_group_context.resources_per_worker,
             bundle_indices=old_bundle_indices,
-            distributed_contexts=old_distributed_contexts,
+            # TODO: change after we support replica groups of size > 1.
+            starting_world_rank=replica_group_index,
+            world_size=len(self._replica_groups),
         )
 
         # Initialize train context on new workers.
@@ -878,10 +903,20 @@ class WorkerGroup(ExecutionGroup):
         return [w for w, name in worker_name_pairs]
 
     @staticmethod
-    def _assign_worker_ranks(workers: List[Worker]) -> List[Worker]:
+    def _assign_worker_ranks(
+        workers: List[Worker],
+        starting_world_rank: int = 0,
+        world_size: Optional[int] = None,
+    ) -> List[Worker]:
         """Assign world ranks to workers by increasing node id and GPU id.
 
         Initializes the `DistributedContext` for each worker.
+
+        Args:
+            workers: The workers to assign ranks to.
+            starting_world_rank: The starting world rank for this list of workers.
+            world_size: The total world size of the worker group.
+                If None, uses the number of workers.
 
         Returns:
             workers: Workers sorted by increasing world rank,
@@ -906,8 +941,8 @@ class WorkerGroup(ExecutionGroup):
             distributed_context = DistributedContext(
                 local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
                 local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
-                world_rank=world_rank,
-                world_size=len(workers),
+                world_rank=starting_world_rank + world_rank,
+                world_size=world_size if world_size is not None else len(workers),
                 node_rank=node_ips.index(worker.metadata.node_ip),
             )
             worker.distributed_context = distributed_context

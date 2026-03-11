@@ -182,7 +182,7 @@ class TrainController:
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
         )
 
-        self._has_replica_groups = (
+        self._manages_replica_groups = (
             train_run_context.backend_config.backend_cls.has_replica_groups
             if train_run_context.backend_config
             else False
@@ -258,7 +258,7 @@ class TrainController:
         )
         all_rgs = poll_status.all_replica_group_indices if poll_status else set()
         if (
-            self._has_replica_groups
+            self._manages_replica_groups
             and bool(failing_rgs)
             and failing_rgs != all_rgs
             and self._worker_group

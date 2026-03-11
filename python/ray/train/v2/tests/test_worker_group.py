@@ -622,6 +622,8 @@ def test_setup_worker_group(tmp_path, replace_rg):
         ),
         worker_group_context=_default_worker_group_context(num_workers=num_workers),
     )
+    if replace_rg:
+        worker_group._manages_replica_groups = True
     worker_group._start()
 
     if replace_rg:
@@ -636,6 +638,22 @@ def test_setup_worker_group(tmp_path, replace_rg):
     def get_storage_context_name():
         return ray.train.get_context().get_storage().experiment_dir_name
 
+    def get_local_rank():
+        return ray.train.get_context().get_local_rank()
+
+    def get_local_world_size():
+        return ray.train.get_context().get_local_world_size()
+
+    def get_node_rank():
+        return ray.train.get_context().get_node_rank()
+
+    if replace_rg:
+        assert worker_group.execute(get_local_rank) == [0] * num_workers
+        assert worker_group.execute(get_local_world_size) == [1] * num_workers
+    else:
+        assert worker_group.execute(get_local_rank) == list(range(num_workers))
+        assert worker_group.execute(get_local_world_size) == [num_workers] * num_workers
+    assert worker_group.execute(get_node_rank) == [0] * num_workers
     assert worker_group.execute(get_world_size) == [num_workers] * num_workers
     assert sorted(worker_group.execute(get_world_rank)) == list(range(num_workers))
     assert worker_group.execute(get_storage_context_name) == ["test"] * num_workers
