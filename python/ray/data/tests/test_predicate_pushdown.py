@@ -816,6 +816,10 @@ class TestPyArrowComputeUDFPushdown:
             optimized_plan, Filter
         ), "Chained UDF filters should fuse and push into Read"
 
+    @pytest.mark.skipif(
+        version_parse(pa.__version__) < version_parse("15.0.0"),
+        reason="Requires PyArrow >= 15 for complex type UDF pushdown",
+    )
     @pytest.mark.parametrize(
         "table,build_filter,equivalent_fn",
         [
