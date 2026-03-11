@@ -139,12 +139,13 @@ def _is_cudf_dataframe(obj: Any) -> bool:
 
 
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
-    if schema is None:
-        return True
-    # PandasBlockSchema is table-like and has .names.
-    if hasattr(schema, "names"):
-        return not schema.names
-    return not schema  # pyarrow schema check
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    return schema is None or (
+        not schema.names
+        if isinstance(schema, PandasBlockSchema)
+        else not schema  # pyarrow schema check
+    )
 
 
 def _take_first_non_empty_schema(schemas: Iterator["Schema"]) -> Optional["Schema"]:
@@ -570,10 +571,6 @@ class BlockAccessor:
             from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
-        elif _is_cudf_dataframe(block):
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
-
-            return ArrowBlockAccessor(block.to_arrow())
         elif isinstance(block, bytes):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 

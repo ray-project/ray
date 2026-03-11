@@ -59,6 +59,14 @@ steps:
       REQUIREMENTS_FILE: "datatfds_py3.12.lock"
     tags: cibase
 
+  - name: docgpubuild-py312
+    label: "wanda: docgpubuild-py3.12"
+    wanda: ci/docker/docgpu.build.wanda.yaml
+    env:
+      PYTHON: "3.12"
+    depends_on: oss-ci-base_gpu-multipy
+    tags: cibase
+
   # tests
   - label: ":database: data: arrow v9 tests"
     tags:
@@ -303,11 +311,11 @@ steps:
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name docgpubuild-py3.10
+        --build-name docgpubuild-py3.12
         --only-tags cudf
         --gpus 1
-        --python-version 3.10
-    depends_on: docgpubuild
+        --python-version 3.12
+    depends_on: docgpubuild-py312
 
   - label: ":database: data: integration tests"
     tags:
