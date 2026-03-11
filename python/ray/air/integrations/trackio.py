@@ -210,6 +210,10 @@ class TrackioLoggerCallback(LoggerCallback):
 
         self._trial_runs: Dict[Trial, object] = {}
 
+        self._effective_excludes = list(self._exclude_results)
+        if not self.log_config:
+            self._effective_excludes.append("config")
+
     def log_trial_start(self, trial: Trial):
         """Initialize a Trackio run when a Ray Tune trial starts."""
 
@@ -261,7 +265,7 @@ class TrackioLoggerCallback(LoggerCallback):
 
         for key, value in flat.items():
 
-            if key in self._exclude_results:
+            if key in self._effective_excludes:
                 continue
 
             if key in self.excludes:
