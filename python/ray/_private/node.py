@@ -426,7 +426,7 @@ class Node:
                 self._node_id,
             )
         # Set node labels from GCS
-        self._node_labels = node_info.get("labels") or {}
+        self._node_labels = node_info.get("labels", {})
 
         # port can be 0 or None for two cases:
         # 1. user is starting a new ray cluster and does not specify the port, components self-bind.
