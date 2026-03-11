@@ -7,3 +7,4 @@ jupytext>1.13.6
 sphinx==6.2.1
 backoff
 datasets
+numexpr>=2.10
