@@ -1407,7 +1407,7 @@ def pyarrow_udf(return_dtype: DataType) -> Callable[..., UDFExpr]:
     characters, cast, list slicing).
 
     For operations that are a direct 1:1 wrapper around a single ``pc.*`` function,
-    use :func:`_create_pyarrow_compute_udf` instead, which produces a
+    use ``_create_pyarrow_compute_udf`` instead, which produces a
     :class:`PyArrowComputeUDFExpr` that retains the compute function identity
     and enables predicate pushdown.
 

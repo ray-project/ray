@@ -10,6 +10,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pytest
+from packaging.version import parse as version_parse
 from pyiceberg.expressions import (
     And,
     EqualTo,
@@ -315,6 +316,10 @@ class TestToPyArrow:
         expected = equivalent_pyarrow_expr()
         assert converted.equals(expected)
 
+    @pytest.mark.skipif(
+        version_parse(pa.__version__) < version_parse("15.0.0"),
+        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
+    )
     def test_negated_pyarrow_compute_udf(self, test_table):
         """Test that negated PyArrow compute UDF expressions convert correctly."""
         ray_expr = ~col("status").str.match_regex("act.*")
