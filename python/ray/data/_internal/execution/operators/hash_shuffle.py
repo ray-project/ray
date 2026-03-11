@@ -698,9 +698,7 @@ class CpuShuffleEngine(ShuffleEngine):
             if should_broadcast_schemas:
                 self._has_schemas_broadcasted[input_index] = True
 
-            def _on_partitioning_done(
-                task_idx: int = cur_shuffle_task_idx,
-            ):
+            def _on_partitioning_done(task_idx: int):
                 task = self._shuffling_tasks[input_index].pop(task_idx)
                 self._shuffling_resource_usage = (
                     self._shuffling_resource_usage.subtract(
