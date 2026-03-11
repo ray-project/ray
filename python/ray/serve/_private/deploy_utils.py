@@ -101,8 +101,9 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     Args:
         app_config: The application config.
 
-    Returns: a hash of the import path and (application level) runtime env representing
-            the code version of the application.
+    Returns:
+        str: A hash of the import path and (application level) runtime env
+            representing the code version of the application.
     """
     request_router_configs = [
         deployment.request_router_config
