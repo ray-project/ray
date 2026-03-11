@@ -1,7 +1,7 @@
 import sys
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -37,6 +37,7 @@ from ray.serve._private.deployment_state import (
     ALL_REPLICA_STATES,
     SLOW_STARTUP_WARNING_S,
     ActorReplicaWrapper,
+    DeploymentActorState,
     DeploymentReplica,
     DeploymentState,
     DeploymentStateManager,
@@ -54,7 +55,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_random_string,
 )
-from ray.serve.config import GangSchedulingConfig
+from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
 from ray.serve.schema import ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
@@ -2198,6 +2199,528 @@ def test_deploy_with_gang_placement_group_failure(mock_deployment_state_manager)
     dsm.update()
     assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert "The deployment failed to start" in ds.curr_status_info.message
+
+
+# ---------------------------------------------------------------------------
+# Deployment actor tests – use setter methods on wrapper instances
+# (similar to MockReplicaActorWrapper).
+# ---------------------------------------------------------------------------
+
+
+def _deployment_actors_config():
+    """DeploymentActorConfig for tests. Uses import path to avoid Ray init."""
+    return [
+        DeploymentActorConfig(
+            name="counter",
+            actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+            init_kwargs={"start": 0},
+        ),
+    ]
+
+
+def _deployment_actors_config_two():
+    """Two deployment actors for partial-failure tests."""
+    return [
+        DeploymentActorConfig(
+            name="counter",
+            actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+            init_kwargs={"start": 0},
+        ),
+        DeploymentActorConfig(
+            name="cache",
+            actor_class="ray.serve.tests.test_deployment_actors:SharedCounter",
+            init_kwargs={"start": 0},
+        ),
+    ]
+
+
+def _get_deployment_actor_wrapper(
+    ds: DeploymentState,
+    code_version: str,
+    actor_name: str = "counter",
+):
+    wrapper = ds._deployment_actors.get_wrapper(code_version, actor_name)
+    if wrapper is None:
+        raise KeyError(
+            f"No deployment actor wrapper for version={code_version!r} "
+            f"name={actor_name!r}"
+        )
+    return wrapper
+
+
+def test_deploy_with_deployment_actors_deferred_replica_creation(
+    mock_deployment_state_manager,
+):
+    """Replicas are not created until deployment actors are ready."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=2,
+        deployment_actors=_deployment_actors_config(),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Deployment actors not ready: no replicas should be created.
+    for _ in range(5):
+        dsm.update()
+    check_counts(ds, total=0)
+
+    # Mark deployment actors ready.
+    _get_deployment_actor_wrapper(ds, "1").set_ready()
+    dsm.update()
+
+    # Now replicas should be created.
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+    for r in ds._replicas.get():
+        r._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+def test_deploy_with_deployment_actor_failure(mock_deployment_state_manager):
+    """Deployment actor constructor failure transitions to DEPLOY_FAILED after threshold."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    error_msg = "Deployment actor 'counter' failed: constructor error"
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=2,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=2,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Fail threshold times (2). Each failure needs two updates:
+    # (1) create wrapper + add to STARTING, (2) check_ready fails, record failure.
+    for i in range(2):
+        dsm.update()  # creates wrapper if missing, adds to STARTING
+        _get_deployment_actor_wrapper(ds, "1").set_failed_to_start(error_msg)
+        dsm.update()  # check_ready fails, record_deployment_actor_startup_failure
+        if i < 1:
+            assert ds.curr_status_info.status == DeploymentStatus.UPDATING
+        else:
+            assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    assert (
+        ds.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+    )
+    assert error_msg in ds.curr_status_info.message
+
+
+def test_delete_deployment_calls_stop_deployment_actors(
+    mock_deployment_state_manager,
+):
+    """Deleting a deployment calls force_stop on deployment actors."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    wrapper_v1 = _get_deployment_actor_wrapper(ds, "1")
+    wrapper_v1.set_ready()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    ds.delete()
+    dsm.update()
+    # Replica transitions to STOPPING.
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()
+    # Deployment is removed; actor kill should have been called.
+    assert wrapper_v1.killed
+
+
+def test_cleanup_orphaned_deployment_actors_on_version_change(
+    mock_deployment_state_manager,
+):
+    """Orphaned version's deployment actor is killed after rollout."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info1, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    wrapper_v1 = _get_deployment_actor_wrapper(ds, "1")
+    wrapper_v1.set_ready()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # Redeploy to new version.
+    info2, _ = deployment_info(
+        version="2",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+    dsm.update()
+    wrapper_v2 = _get_deployment_actor_wrapper(ds, "2")
+    wrapper_v2.set_ready()
+    dsm.update()
+    # Old replica stopping, new one not yet started.
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+
+    # cleanup_orphaned_deployment_actors is called from dsm.update().
+    # Old version actor should be killed after version "2" takes over.
+    assert wrapper_v1.killed
+    assert not wrapper_v2.killed
+
+
+def test_deploy_without_deployment_actors_creates_replicas_immediately(
+    mock_deployment_state_manager,
+):
+    """Deployments without deployment_actors create replicas immediately."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(version="1", num_replicas=2)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+    for r in ds._replicas.get():
+        r._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+# ---------------------------------------------------------------------------
+# 10 additional deployment actor unit tests (retry, partial failure,
+# recovery, double-call, deletion gate, etc.)
+# ---------------------------------------------------------------------------
+
+
+def test_deployment_actor_start_retry_then_succeed(mock_deployment_state_manager):
+    """Deployment actor fails N times (via set_failed_to_start), then succeeds; replicas created."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=2,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=5,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Fail twice via setter (like replica tests).
+    dsm.update()
+    _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("fail")
+    dsm.update()
+    assert ds._deployment_actor_retry_counter == 1
+
+    dsm.update()
+    _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("fail")
+    dsm.update()
+    assert ds._deployment_actor_retry_counter == 2
+
+    # Third attempt succeeds.
+    dsm.update()
+    _get_deployment_actor_wrapper(ds, "1").set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+    for r in ds._replicas.get():
+        r._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+def test_deployment_actor_retry_counter_reset_on_redeploy(
+    mock_deployment_state_manager,
+):
+    """Redeploy resets _deployment_actor_retry_counter."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info1, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=5,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("fail")
+    dsm.update()
+    assert ds._deployment_actor_retry_counter == 1
+
+    # Redeploy to new version resets counter.
+    info2, _ = deployment_info(
+        version="2",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=5,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+    assert ds._deployment_actor_retry_counter == 0
+
+
+def test_deployment_actor_terminal_failure(mock_deployment_state_manager):
+    """After _deployment_actor_failed_to_start_threshold failures, deployment stops retrying."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=3,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    threshold = ds._deployment_actor_failed_to_start_threshold
+    for _ in range(threshold):
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("persistent error")
+        dsm.update()
+
+    assert ds._deployment_actor_terminally_failed()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    assert (
+        ds.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+    )
+
+
+def test_deployment_actor_partial_failure(mock_deployment_state_manager):
+    """One of two deployment actors fails; deployment transitions to DEPLOY_FAILED after threshold."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=2,
+        deployment_actors=_deployment_actors_config_two(),
+        max_constructor_retry_count=2,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Fail threshold times (2): counter ready, cache fails each cycle
+    for _ in range(2):
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1", "counter").set_ready()
+        _get_deployment_actor_wrapper(ds, "1", "cache").set_failed_to_start(
+            "cache actor failed"
+        )
+        dsm.update()
+
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    assert (
+        ds.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+    )
+    assert "cache actor failed" in ds.curr_status_info.message
+
+
+def test_deployment_actor_recovery_from_checkpoint(mock_deployment_state_manager):
+    """recover_target_state_from_checkpoint restores deployment actors via _recover_deployment_actors."""
+    from ray.serve._private.deployment_state import CHECKPOINT_KEY
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, v1 = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    _get_deployment_actor_wrapper(ds, "1").set_ready()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    dsm.save_checkpoint()
+    checkpoint = dsm._kv_store.get(CHECKPOINT_KEY)
+    assert checkpoint is not None
+
+    # Simulate recovery: create new DSM, which calls _recover_from_checkpoint.
+    # _recover_deployment_actors uses ray.get_actor - mock it to "find" the actor.
+    mock_handle = MagicMock()
+    with patch("ray.get_actor") as mock_get_actor:
+        mock_get_actor.return_value = mock_handle
+        new_dsm = create_dsm([ds._replicas.get()[0].replica_id.to_full_id_str()])
+    new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    # Recovered deployment should have deployment actors in RUNNING (from recovery).
+    assert (
+        new_ds._deployment_actors.count("1", states=[DeploymentActorState.RUNNING]) == 1
+    )
+    # The recovered wrapper must hold the actor handle so check_ready works correctly.
+    recovered_wrapper = _get_deployment_actor_wrapper(new_ds, "1")
+    assert recovered_wrapper._recovered_handle is mock_handle
+    check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
+
+
+def test_deployment_actor_multiple_not_ready_until_all_ready(
+    mock_deployment_state_manager,
+):
+    """Replicas not created until ready_count == len(configs)."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=2,
+        deployment_actors=_deployment_actors_config_two(),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    check_counts(ds, total=0)
+
+    # Only counter ready, cache not ready -> still no replicas.
+    _get_deployment_actor_wrapper(ds, "1", "counter").set_ready()
+    dsm.update()
+    check_counts(ds, total=0)
+
+    # Both ready -> replicas created.
+    _get_deployment_actor_wrapper(ds, "1", "cache").set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
+
+
+def test_deployment_actor_deletion_gate_with_starting(
+    mock_deployment_state_manager,
+):
+    """Deletion does not complete until deployment actor is stopped."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    wrapper = _get_deployment_actor_wrapper(ds, "1")
+    wrapper.set_ready()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    ds.delete()
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_done_stopping()
+    dsm.update()
+    # Deployment actor should be killed when replica is gone.
+    assert wrapper.killed
+    dsm.update()
+    # Deployment should be removed from dsm once deletion completes.
+    assert TEST_DEPLOYMENT_ID not in dsm._deployment_states
+
+
+def test_deployment_actor_retry_counter_reset_on_success(mock_deployment_state_manager):
+    """On successful readiness (all actors ready), _deployment_actor_retry_counter is reset."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=5,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # First update creates wrappers. Set ready immediately so we succeed.
+    dsm.update()
+    _get_deployment_actor_wrapper(ds, "1").set_ready()
+    dsm.update()
+    assert ds._deployment_actor_retry_counter == 0
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+def test_deployment_actor_start_failure_increments_counter(
+    mock_deployment_state_manager,
+):
+    """Failure via set_failed_to_start increments _deployment_actor_retry_counter."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=3,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Threshold = max_constructor_retry_count = 3. Fail 3 times via setter.
+    for i in range(3):
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("constructor failed")
+        dsm.update()
+        if i < 2:
+            assert ds._deployment_actor_retry_counter == i + 1
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+
+
+def test_deployment_actor_check_ready_failure_increments_counter(
+    mock_deployment_state_manager,
+):
+    """check_deployment_actors_ready() failure increments counter; DEPLOY_FAILED after threshold."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+        deployment_actors=_deployment_actors_config(),
+        max_constructor_retry_count=3,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Threshold = min(3, 3) = 3. Fail 3 times via check_ready.
+    for i in range(3):
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_failed_to_start("check failed")
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == i + 1
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):

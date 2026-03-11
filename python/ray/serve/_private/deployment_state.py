@@ -16,7 +16,12 @@ import ray
 from ray import ObjectRef, cloudpickle
 from ray._common import ray_constants
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
+from ray.exceptions import (
+    RayActorError,
+    RayError,
+    RayTaskError,
+    RuntimeEnvSetupError,
+)
 from ray.serve import metrics
 from ray.serve._private import default_impl
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -39,6 +44,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
+    CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_LATENCY_BUCKET_MS,
     MAX_PER_REPLICA_RETRY_COUNT,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
@@ -71,12 +77,14 @@ from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
     get_active_placement_group_ids,
     get_capacity_adjusted_num_replicas,
+    get_deployment_actor_name,
     get_random_string,
     msgpack_deserialize,
     msgpack_serialize,
+    override_runtime_envs_except_env_vars,
 )
 from ray.serve._private.version import DeploymentVersion
-from ray.serve.config import GangRuntimeFailurePolicy
+from ray.serve.config import DeploymentActorConfig, GangRuntimeFailurePolicy
 from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
@@ -89,6 +97,245 @@ from ray.util import metrics as ray_metrics
 from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+class DeploymentActorState(Enum):
+    STARTING = 1
+    RUNNING = 2
+
+
+ALL_DEPLOYMENT_ACTOR_STATES = list(DeploymentActorState)
+
+
+class DeploymentActorWrapper:
+    """Lifecycle wrapper for a single deployment-scoped actor."""
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        config: DeploymentActorConfig,
+        code_version: str,
+        recovered_handle: Optional[ActorHandle] = None,
+    ):
+        self._deployment_id = deployment_id
+        self._config = config
+        self._code_version = code_version
+        self._actor_name = get_deployment_actor_name(
+            self._deployment_id, self._config.name, code_version=self._code_version
+        )
+        self._handle: Optional[ActorHandle] = recovered_handle
+        self._ready_ref: Optional[ObjectRef] = None
+
+    @property
+    def actor_logical_name(self) -> str:
+        return self._config.name
+
+    @property
+    def code_version(self) -> str:
+        return self._code_version
+
+    def start(
+        self, deployment_runtime_env: Optional[Dict[str, Any]] = None
+    ) -> Tuple[bool, Optional[str]]:
+        """Start this deployment actor.
+
+        Args:
+            deployment_runtime_env: Runtime env inherited from the deployment.
+
+        Returns:
+            (started_successfully, error_msg). `started_successfully` indicates
+            whether actor start/setup succeeded. Callers should check wrapper
+            state to decide if readiness polling is needed.
+        """
+        deployment_runtime_env = deployment_runtime_env or {}
+        try:
+            actor_cls = self._config.get_actor_class()
+            logger.info(
+                f"Creating deployment actor '{self._config.name}' with "
+                f"name={self._actor_name}"
+            )
+            actor_options = {
+                k: v
+                for k, v in (self._config.actor_options or {}).items()
+                if k not in ("name", "max_restarts")
+            }
+            # Inherit runtime_env from deployment; actor_options override.
+            actor_runtime_env = actor_options.pop("runtime_env", {})
+            merged_runtime_env = override_runtime_envs_except_env_vars(
+                deployment_runtime_env, actor_runtime_env
+            )
+            if merged_runtime_env:
+                actor_options["runtime_env"] = merged_runtime_env
+            actor_options["max_restarts"] = -1
+            # Match controller's max_concurrency so deployment actors can handle
+            # concurrent calls (e.g. from multiple replicas) without blocking.
+            actor_options.setdefault("max_concurrency", CONTROLLER_MAX_CONCURRENCY)
+            self._handle = actor_cls.options(
+                name=self._actor_name,
+                namespace=SERVE_NAMESPACE,
+                lifetime="detached",
+                get_if_exists=True,
+                **actor_options,
+            ).remote(
+                *(self._config.init_args or ()),
+                **(self._config.init_kwargs or {}),
+            )
+            # Keep both handle and __ray_ready__ ref so pending creation can be
+            # cancelled on delete while still waiting for resources.
+            self._ready_ref = self._handle.__ray_ready__.remote()
+            return True, None
+        except Exception as e:
+            logger.exception(
+                f"Failed to create deployment actor '{self._config.name}' "
+                f"for {self._deployment_id}: {e}"
+            )
+            return False, str(e)
+
+    def check_ready(self) -> Tuple[bool, Optional[str]]:
+        """Check readiness for this actor without blocking."""
+        # Already ready: _ready_ref cleared after successful wait
+        if self._ready_ref is None and self._handle is not None:
+            return True, None
+        if self._ready_ref is None:
+            return False, None
+        if not check_obj_ref_ready_nowait(self._ready_ref):
+            return False, None
+
+        try:
+            ray.get(self._ready_ref)
+            self._ready_ref = None
+            return True, None
+        except Exception as e:
+            return False, f"Deployment actor '{self._config.name}' failed: {e}"
+
+    def kill(self) -> None:
+        """Kill this deployment actor by deterministic actor name."""
+        try:
+            if not self._handle:
+                self._handle = ray.get_actor(
+                    self._actor_name, namespace=SERVE_NAMESPACE
+                )
+            ray.kill(self._handle, no_restart=True)
+        except (ValueError, RayActorError):
+            logger.warning(
+                f"Deployment actor '{self._config.name}' for {self._deployment_id} "
+                f"was already stopped"
+            )
+
+
+@dataclass
+class DeploymentActorEntry:
+    """Encapsulates a deployment actor with its version, name, and wrapper.
+
+    Similar to how DeploymentReplica is stored in ReplicaStateContainer.
+    State is tracked by the container via which bucket the entry lives in.
+    """
+
+    code_version: str
+    name: str
+    wrapper: DeploymentActorWrapper
+
+
+class DeploymentActorContainer:
+    """Manages deployment-scoped actor wrappers for a single deployment.
+
+    Entries are keyed by state (like ReplicaStateContainer). Each entry
+    encapsulates version, name, wrapper, and state.
+    """
+
+    def __init__(self, deployment_id: DeploymentID):
+        self._deployment_id = deployment_id
+        self._actors_by_state: Dict[
+            DeploymentActorState, List[DeploymentActorEntry]
+        ] = defaultdict(list)
+        self._actors_index: Dict[
+            Tuple[str, str], Tuple[DeploymentActorState, DeploymentActorEntry]
+        ] = {}  # (code_version, name) -> (state, entry)
+
+    def add(
+        self,
+        state: DeploymentActorState,
+        wrapper: DeploymentActorWrapper,
+    ) -> None:
+        """Add or move a wrapper under the given state."""
+        code_version = wrapper.code_version
+        name = wrapper.actor_logical_name
+        key = (code_version, name)
+
+        # Remove from old state bucket if present (e.g. STARTING -> READY)
+        existing = self._actors_index.get(key)
+        if existing is not None:
+            old_state, old_entry = existing
+            bucket = self._actors_by_state[old_state]
+            bucket.remove(old_entry)
+            if not bucket:
+                del self._actors_by_state[old_state]
+
+        entry = DeploymentActorEntry(
+            code_version=code_version,
+            name=name,
+            wrapper=wrapper,
+        )
+        self._actors_by_state[state].append(entry)
+        self._actors_index[key] = (state, entry)
+
+    def get(
+        self,
+        code_version: Optional[str] = None,
+        states: Optional[List[DeploymentActorState]] = None,
+    ) -> List[DeploymentActorWrapper]:
+        if states is None:
+            states = ALL_DEPLOYMENT_ACTOR_STATES
+        entries = list(
+            itertools.chain.from_iterable(self._actors_by_state[s] for s in states)
+        )
+        if code_version is not None:
+            entries = [e for e in entries if e.code_version == code_version]
+        return [e.wrapper for e in entries]
+
+    def pop(
+        self,
+        code_version: Optional[str] = None,
+        states: Optional[List[DeploymentActorState]] = None,
+    ) -> List[Tuple[DeploymentActorState, DeploymentActorEntry]]:
+        """Remove and return (state, entry) pairs."""
+        if code_version is None:
+            removed: List[Tuple[DeploymentActorState, DeploymentActorEntry]] = []
+            for version in list(
+                {t[1].code_version for t in self._actors_index.values()}
+            ):
+                removed.extend(self.pop(version, states=states))
+            return removed
+
+        if states is None:
+            states = ALL_DEPLOYMENT_ACTOR_STATES
+
+        to_remove: List[Tuple[DeploymentActorState, DeploymentActorEntry]] = []
+        for state in states:
+            bucket = self._actors_by_state.get(state, [])
+            for entry in bucket[:]:
+                if entry.code_version == code_version:
+                    bucket.remove(entry)
+                    to_remove.append((state, entry))
+                    self._actors_index.pop((entry.code_version, entry.name), None)
+            if not bucket:
+                self._actors_by_state.pop(state, None)
+
+        return to_remove
+
+    def count(
+        self,
+        code_version: Optional[str] = None,
+        states: Optional[List[DeploymentActorState]] = None,
+    ) -> int:
+        return len(self.get(code_version, states=states))
+
+    def get_wrapper(
+        self, code_version: str, name: str
+    ) -> Optional[DeploymentActorWrapper]:
+        """Get wrapper by (code_version, name), or None if not found."""
+        existing = self._actors_index.get((code_version, name))
+        return existing[1].wrapper if existing is not None else None
 
 
 class ReplicaStartupStatus(Enum):
@@ -2307,6 +2554,13 @@ class DeploymentState:
         # Flag for whether any replicas of the target version has successfully started.
         # This is reset to False when the deployment is re-deployed.
         self._replica_has_started: bool = False
+        # Set when a deployment-scoped actor fails to start (constructor error).
+        # Checked in check_curr_status to transition to DEPLOY_FAILED.
+        self._deployment_actor_failed: Optional[str] = None
+        # Counter for consecutive deployment actor start failures. Reset on
+        # successful actor readiness or re-deploy. After exceeding the
+        # threshold, the deployment is considered terminally failed.
+        self._deployment_actor_retry_counter: int = 0
 
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
@@ -2335,6 +2589,9 @@ class DeploymentState:
         # Updated on replica creation during upscaling and permanent removal during downscaling.
         self._gang_id_by_replica: Dict[ReplicaID, str] = {}
         self._replicas_by_gang_id: Dict[str, Set[ReplicaID]] = defaultdict(set)
+
+        # Deployment-scoped actor lifecycle (per deployment)
+        self._deployment_actors = DeploymentActorContainer(self._id)
 
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
@@ -2496,6 +2753,7 @@ class DeploymentState:
                 self._target_state.info,
                 self._target_state.target_num_replicas,
             )
+        self._recover_deployment_actors()
 
     def recover_current_state_from_replica_actor_names(
         self, replica_actor_names: List[str]
@@ -2531,6 +2789,54 @@ class DeploymentState:
         # briefly because we will broadcast a replica update with everything in
         # RECOVERING. We should have a grace period where we recover the state
         # of the replicas before doing this update.
+
+    def _recover_deployment_actors(self):
+        """Recover deployment-scoped actors that survived a controller restart.
+
+        Deployment actors are created with ``lifetime="detached"`` and
+        ``get_if_exists=True``, so they survive across controller restarts.
+        After restoring the target state from a checkpoint, probe for each
+        expected actor by name. If found, add a wrapper in READY state to
+        avoid the unnecessary STARTING delay that would occur if we let
+        ``start_deployment_actors()`` recreate them via ``get_if_exists``.
+        """
+        version = self._target_state.version
+        if version is None:
+            return
+        configs = version.deployment_config.deployment_actors
+        if not configs:
+            return
+
+        code_ver = version.code_version
+        recovered = 0
+        for cfg in configs:
+            actor_name = get_deployment_actor_name(
+                self._id, cfg.name, code_version=code_ver
+            )
+            try:
+                handle = ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
+            except ValueError:
+                logger.info(
+                    f"Deployment actor '{cfg.name}' for {self._id} "
+                    f"(code_version={code_ver}) not found during recovery; "
+                    "will be recreated."
+                )
+                continue
+
+            wrapper = DeploymentActorWrapper(
+                deployment_id=self._id,
+                config=cfg,
+                code_version=code_ver,
+                recovered_handle=handle,
+            )
+            self._deployment_actors.add(DeploymentActorState.RUNNING, wrapper)
+            recovered += 1
+
+        if recovered > 0:
+            logger.info(
+                f"Recovered {recovered}/{len(configs)} deployment actors "
+                f"for {self._id} (code_version={code_ver})."
+            )
 
     @property
     def target_info(self) -> DeploymentInfo:
@@ -2571,6 +2877,15 @@ class DeploymentState:
             self._target_state.target_num_replicas * MAX_PER_REPLICA_RETRY_COUNT,
         )
 
+    @property
+    def _deployment_actor_failed_to_start_threshold(self) -> int:
+        """Deployment actor failure threshold. Uses max_constructor_retry_count only.
+
+        Unlike replica threshold, deployment actors are deployment-scoped so we don't
+        scale by target_num_replicas (which would be 0 during scale-to-zero/deletion).
+        """
+        return self._target_state.info.deployment_config.max_constructor_retry_count
+
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of
         failures has exceeded a threshold.
@@ -2585,10 +2900,14 @@ class DeploymentState:
         """Check whether the current version is terminally errored.
 
         The version is considered terminally errored if the number of
-        replica failures has exceeded a threshold, and there hasn't been
-        any replicas of the target version that has successfully started.
+        replica failures has exceeded a threshold (and there hasn't been
+        any replicas of the target version that has successfully started),
+        or if deployment-scoped actors have permanently failed to start.
         """
-        return not self._replica_has_started and self._replica_startup_failing()
+        replica_failed = (
+            not self._replica_has_started and self._replica_startup_failing()
+        )
+        return replica_failed or self._deployment_actor_terminally_failed()
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
@@ -2888,6 +3207,8 @@ class DeploymentState:
         )
         self._replica_constructor_retry_counter = 0
         self._replica_has_started = False
+        self._deployment_actor_failed = None
+        self._deployment_actor_retry_counter = 0
         return True
 
     def autoscale(self, decision_num_replicas: int) -> bool:
@@ -3135,6 +3456,20 @@ class DeploymentState:
         downscale = None
 
         self._check_and_stop_outdated_version_replicas()
+        self.stop_deployment_actors_if_needed()
+
+        # When deployment_actors are configured, start them and wait until ready
+        # before creating replicas.
+        configs = (
+            self._target_state.version.deployment_config.deployment_actors
+            if self._target_state.version
+            else []
+        )
+        if configs:
+            self.start_deployment_actors()
+            if not self.check_deployment_actors_ready():
+                # Deployment actors not ready yet; defer replica creation.
+                return (upscale, downscale)
 
         delta_replicas = self._get_target_replica_delta()
         if delta_replicas == 0:
@@ -3319,6 +3654,9 @@ class DeploymentState:
             self._replicas.count(states=[ReplicaState.RECOVERING]) > 0
         )
         all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
+        all_active_deployment_actors_cnt = self._deployment_actors.count(
+            states=[DeploymentActorState.RUNNING, DeploymentActorState.STARTING]
+        )
         running_at_target_version_replica_cnt = self._replicas.count(
             states=[ReplicaState.RUNNING], version=target_version
         )
@@ -3333,6 +3671,20 @@ class DeploymentState:
             # number of replicas and only return as completed once
             # reached target replica count
             self._replica_has_started = True
+        # Deployment-scoped actor failed after threshold exceeded (consistent
+        # with replica startup: transition only when retries exhausted).
+        elif self._deployment_actor_terminally_failed():
+            msg = self._deployment_actor_failed or "Unknown error"
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
+                message=(
+                    "The deployment failed to start deployment actors "
+                    f"{self._deployment_actor_retry_counter} times "
+                    "in a row. See controller logs for details. Error:\n"
+                    f"{msg}"
+                ),
+            )
+            return False, any_replicas_recovering
         elif self._replica_startup_failing():
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
@@ -3359,14 +3711,26 @@ class DeploymentState:
             )
             == 0
         ):
-            # Check for deleting and a non-zero number of deployments.
-            if self._target_state.deleting and all_running_replica_cnt == 0:
+            # Deletion can complete when no replicas and no deployment actors
+            # (READY or STARTING) remain.
+            if (
+                self._target_state.deleting
+                and all_running_replica_cnt == 0
+                and all_active_deployment_actors_cnt == 0
+            ):
                 return True, any_replicas_recovering
 
             if (
-                self._target_state.target_num_replicas
-                == running_at_target_version_replica_cnt
-                and running_at_target_version_replica_cnt == all_running_replica_cnt
+                # not self._target_state.deleting is important to avoid transitioning to HEALTHY
+                # when the deployment is being deleted. This can happen if all replicas are running at the target version,
+                # but the deployment is still in the process of being deleted because of the deployment actors are not yet
+                # deleted.
+                not self._target_state.deleting
+                and (
+                    self._target_state.target_num_replicas
+                    == running_at_target_version_replica_cnt
+                    and running_at_target_version_replica_cnt == all_running_replica_cnt
+                )
             ):
                 self._curr_status_info = self._curr_status_info.handle_transition(
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
@@ -4109,6 +4473,189 @@ class DeploymentState:
             return None
         return sorted(result, key=lambda d: (d.name))
 
+    def _deployment_actor_terminally_failed(self) -> bool:
+        """True when deployment actors have failed too many times to keep retrying."""
+        return (
+            self._deployment_actor_retry_counter
+            >= self._deployment_actor_failed_to_start_threshold
+        )
+
+    def record_deployment_actor_startup_failure(self, error_msg: str) -> None:
+        """Record that a deployment actor failed to start. Updates message with retries.
+
+        Consistent with record_replica_startup_failure: status stays UPDATING
+        during retries; transition to DEPLOY_FAILED only when threshold exceeded.
+        """
+        configs = (
+            self._target_state.version.deployment_config.deployment_actors
+            if self._target_state.version
+            else []
+        )
+        if not configs:
+            return
+
+        self._deployment_actor_retry_counter += 1
+        self._deployment_actor_failed = error_msg
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
+
+        remaining_retries = max(
+            self._deployment_actor_failed_to_start_threshold
+            - self._deployment_actor_retry_counter,
+            0,
+        )
+        retrying_msg = f" {remaining_retries} more time(s)" if remaining_retries else ""
+        message = (
+            f"A deployment actor failed to start. Retrying{retrying_msg}. "
+            f"Error:\n{error_msg}"
+        )
+        self._curr_status_info = self._curr_status_info.update_message(message)
+
+    def start_deployment_actors(self) -> None:
+        """Start deployment-scoped actors for the target version.
+
+        Initiates creation if not already started or ready.
+        On failure, records `_deployment_actor_failed` for status transition.
+        Stops retrying after `_deployment_actor_failed_to_start_threshold` consecutive failures.
+        """
+        if self._target_state.deleting:
+            return
+
+        version = self._target_state.version
+        if version is None:
+            return
+        configs = version.deployment_config.deployment_actors
+        if not configs:
+            return
+
+        code_ver = version.code_version
+        if self._deployment_actor_terminally_failed():
+            return
+
+        deployment_runtime_env = (version.ray_actor_options or {}).get(
+            "runtime_env", {}
+        )
+        # Create only missing actors (supports partial recovery after controller restart).
+        configs_to_create = [
+            cfg
+            for cfg in configs
+            if self._deployment_actors.get_wrapper(code_ver, cfg.name) is None
+        ]
+        if not configs_to_create:
+            return
+
+        logger.info(
+            f"Creating {len(configs_to_create)} deployment actor(s) for {self._id}"
+        )
+        for cfg in configs_to_create:
+            wrapper = DeploymentActorWrapper(
+                deployment_id=self._id,
+                config=cfg,
+                code_version=code_ver,
+            )
+            started_successfully, error_msg = wrapper.start(deployment_runtime_env)
+            if started_successfully is False:
+                logger.warning(
+                    f"Deployment actor creation failed for {self._id}: {error_msg} "
+                    f"(attempt {self._deployment_actor_retry_counter + 1}/"
+                    f"{self._deployment_actor_failed_to_start_threshold})"
+                )
+                self.record_deployment_actor_startup_failure(error_msg)
+                return
+            self._deployment_actors.add(DeploymentActorState.STARTING, wrapper)
+        return
+
+    def check_deployment_actors_ready(self) -> bool:
+        """Check if deployment-scoped actors are ready for the target version.
+
+        Polls pending refs without blocking.
+        Returns True when all configured actors are ready.
+        Sets _deployment_actor_failed and returns False when an actor constructor fails.
+        """
+        version = self._target_state.version
+        if version is None:
+            return True
+        configs = version.deployment_config.deployment_actors
+        if not configs:
+            return True
+
+        code_ver = version.code_version
+        ready_count = self._deployment_actors.count(
+            code_ver, states=[DeploymentActorState.RUNNING]
+        )
+        starting_count = self._deployment_actors.count(
+            code_ver, states=[DeploymentActorState.STARTING]
+        )
+        if ready_count == len(configs) and starting_count == 0:
+            return True
+
+        pending_wrappers = self._deployment_actors.get(
+            code_ver, states=[DeploymentActorState.STARTING]
+        )
+        if not pending_wrappers:
+            return False
+
+        not_ready_wrappers = []
+        for wrapper in pending_wrappers:
+            ready, error_msg = wrapper.check_ready()
+            if error_msg is not None:
+                logger.warning(
+                    f"Deployment actor '{wrapper.actor_logical_name}' for {self._id} "
+                    f"failed to become ready: {error_msg}"
+                )
+                self.record_deployment_actor_startup_failure(error_msg)
+                self._deployment_actors.pop(code_ver)
+                return False
+            if ready:
+                self._deployment_actors.add(DeploymentActorState.RUNNING, wrapper)
+            else:
+                not_ready_wrappers.append(wrapper)
+
+        all_ready = len(not_ready_wrappers) == 0
+        if all_ready:
+            self._deployment_actor_retry_counter = 0
+        return all_ready
+
+    def stop_deployment_actors_if_needed(self) -> None:
+        """Stop deployment-scoped actors when no longer needed.
+
+        During normal operation, keeps actors for versions that have replicas in
+        any state (STARTING, UPDATING, RECOVERING, RUNNING, STOPPING,
+        PENDING_MIGRATION), since all of these may need deployment actors.
+        During deletion, actors are kept only while replicas still exist.
+        """
+        target_version = self._target_state.version
+        if target_version is None:
+            return
+
+        replicas = self._replicas.get()
+        code_versions_in_use = {r.version.code_version for r in replicas}
+        versions_to_keep = set(code_versions_in_use)
+        if not self._target_state.deleting:
+            versions_to_keep.add(target_version.code_version)
+
+        entries = self._deployment_actors.pop(
+            states=[DeploymentActorState.RUNNING, DeploymentActorState.STARTING]
+        )
+        wrappers_to_stop: List[DeploymentActorWrapper] = []
+        for state, entry in entries:
+            if entry.code_version in versions_to_keep:
+                self._deployment_actors.add(state, entry.wrapper)
+                continue
+            wrappers_to_stop.append(entry.wrapper)
+        self._stop_deployment_actor_wrappers(wrappers_to_stop)
+
+    def _stop_deployment_actor_wrappers(
+        self, wrappers: List[DeploymentActorWrapper]
+    ) -> None:
+        """Best-effort stop for deployment-scoped actor wrappers."""
+        for wrapper in wrappers:
+            logger.info(
+                f"Stopping deployment actor '{wrapper.actor_logical_name}' "
+                f"for {self._id} code_version={wrapper.code_version}"
+            )
+            wrapper.kill()
+
 
 class DeploymentStateManager:
     """Manages all state for deployments in the system.
@@ -4586,6 +5133,8 @@ class DeploymentStateManager:
             any_recovering |= any_replicas_recovering
 
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
+        # (Replicas are only added in scale_deployment_replicas when deployment
+        # actors are ready, so no additional gate needed here.)
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
         )
