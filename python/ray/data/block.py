@@ -52,7 +52,7 @@ Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
 # Represents the schema of a block, which can be either a Python type or a
 # pyarrow schema. This is used to describe the structure of the data in a block.
-Schema = Union[type, "PandasBlockSchema", "pyarrow.lib.Schema"]
+Schema = Union["PandasBlockSchema", "pyarrow.lib.Schema"]
 
 # Represents a single column of the ``Block``
 BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
@@ -282,10 +282,22 @@ class BlockMetadata(BlockStats):
         )
 
 
+def _make_hashable_schema(schema: Schema) -> Tuple[Tuple[str, ...], Tuple]:
+    # NOTE: Pyarrow < 23 schemas metadata contains dicts and therefore
+    #       isn't hashable
+    return (tuple(schema.names), tuple(schema.types))
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
+
+    def __hash__(self):
+        return hash((
+            BlockMetadata.__hash__(self),
+            _make_hashable_schema(self.schema) if self.schema is not None else None,
+        ))
 
     @staticmethod
     def from_metadata(
@@ -827,6 +839,8 @@ class BlockColumnAccessor:
                 f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
                 f"(got {type(col)})"
             )
+
+
 
 
 def _get_group_boundaries_sorted_numpy(columns: list[np.ndarray]) -> np.ndarray:
