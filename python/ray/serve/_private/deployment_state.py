@@ -3016,7 +3016,13 @@ class DeploymentState:
 
             # Stop complete gangs atomically within the budget
             for _, gang_replicas in gangs.items():
-                if code_version_changes + len(gang_replicas) <= max_to_stop:
+                expected_size = gang_replicas[0].gang_context.world_size
+                if len(gang_replicas) != expected_size:
+                    # Gang is incomplete (members may be RECOVERING/UPDATING);
+                    # wait for them to stabilize before tearing down.
+                    for replica in gang_replicas:
+                        self._replicas.add(replica.actor_details.state, replica)
+                elif code_version_changes + len(gang_replicas) <= max_to_stop:
                     for replica in gang_replicas:
                         code_version_changes += 1
                         # Forcefully stop siblings to avoid partial gangs

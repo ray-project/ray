@@ -7164,6 +7164,57 @@ class TestGangRollingUpdate:
         stopping_gang_ids = {r.gang_context.gang_id for r in stopping}
         assert len(stopping_gang_ids) == 2
 
+    def test_recovering_member_skips_gang_update(self, mock_deployment_state_manager):
+        """Gang with a RECOVERING member is skipped during rolling update."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+
+        # Move one replica to RECOVERING so its gang is incomplete.
+        running = ds._replicas.pop(states=[ReplicaState.RUNNING])
+        recovering_replica = running[0]
+        for r in running[1:]:
+            ds._replicas.add(ReplicaState.RUNNING, r)
+        ds._replicas.add(ReplicaState.RECOVERING, recovering_replica)
+
+        v2 = self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        # An incomplete gang (with a RECOVERING member) cannot be stopped.
+        # Additionally, the budget is insufficient because the RECOVERING
+        # replica increases the pending count, preventing any stops.
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+
+        # Recover the replica so the gang is complete again
+        recovering_replica._actor.set_ready()
+        dsm.update()
+
+        # Wave 1: first complete gang stops
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        assert len({r.gang_context.gang_id for r in stopping}) == 1
+
+        # Complete wave 1, trigger wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+
+        # Wave 2: second gang stops
+        assert (
+            ds._replicas.count(exclude_version=v2, states=[ReplicaState.STOPPING])
+            == gang_size
+        )
+
+        # Complete wave 2
+        self._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[(ReplicaState.RUNNING, num_replicas, v2)],
+        )
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
