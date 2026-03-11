@@ -17,6 +17,7 @@ pub mod core_worker;
 pub mod gcs_client;
 pub mod ids;
 pub mod object_ref;
+pub mod rdt;
 pub mod serialization;
 
 // Re-export primary types for Rust consumers.
@@ -99,6 +100,22 @@ fn _raylet(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // ─── Cluster functions ───────────────────────────────────────
     m.add_function(wrap_pyfunction!(cluster::start_cluster, m)?)?;
+
+    // ─── RDT types ────────────────────────────────────────────────
+    m.add_class::<rdt::metadata::PyTensorTransportMetadata>()?;
+    m.add_class::<rdt::store::PyRDTStore>()?;
+
+    // ─── RDT registry functions ─────────────────────────────────
+    m.add_function(wrap_pyfunction!(rdt::registry::register_tensor_transport, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::get_tensor_transport_manager, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::get_transport_data_type, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::device_match_transport, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::normalize_and_validate_tensor_transport, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::validate_one_sided, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::py_ensure_default_transports_registered, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::_reset_transport_registry, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::_has_custom_transports, m)?)?;
+    m.add_function(wrap_pyfunction!(rdt::registry::_get_transport_manager_info, m)?)?;
 
     // ─── Constants ───────────────────────────────────────────────
     m.add("RAY_VERSION", ray_common::constants::RAY_VERSION)?;

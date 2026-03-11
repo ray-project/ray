@@ -1,92 +1,111 @@
-"""Abstract base classes for tensor transport.
+"""Tensor transport manager interface and metadata types.
 
-Adapted from python/ray/experimental/gpu_object_manager/tensor_transport_manager.py
-for standalone use in the Rust Ray backend.
+TensorTransportMetadata stays as a Python dataclass because downstream code
+(e.g. CudaIpcTransportMetadata) subclasses it with @dataclass, which is
+incompatible with PyO3 #[pyclass] types.
+
+TensorTransportManager ABC and CommunicatorMetadata also stay in Python.
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
+if TYPE_CHECKING:
+    import numpy as np
+    import torch
 
-@dataclass
-class CommunicatorMetadata:
-    """Metadata for the communicator."""
+    from ray.actor import ActorHandle
 
 
 @dataclass
 class TensorTransportMetadata:
-    """Metadata for tensors stored in the GPU object store.
-
-    Args:
-        tensor_meta: A list of tuples, each containing the shape and dtype of a tensor.
-        tensor_device: The device of the tensor (e.g. "cuda", "cpu").
-    """
-
-    tensor_meta: List[Tuple]
+    tensor_meta: List[Tuple["torch.Size", "torch.dtype"]]
     tensor_device: Optional[str] = None
 
 
-class TensorTransportManager(ABC):
-    """Interface for custom tensor transports."""
+@dataclass
+class CommunicatorMetadata:
+    """Base metadata for communicators. Subclassed by transport backends."""
+    pass
 
+
+class TensorTransportManager(ABC):
+    """Abstract base class for tensor transport implementations.
+
+    Transport backends (NIXL, NCCL, GLOO, CUDA_IPC) implement this interface.
+    """
+
+    @property
     @abstractmethod
     def tensor_transport_backend(self) -> str:
-        ...
+        raise NotImplementedError
 
     @staticmethod
     @abstractmethod
     def is_one_sided() -> bool:
-        ...
+        raise NotImplementedError
 
     @staticmethod
     @abstractmethod
     def can_abort_transport() -> bool:
-        ...
+        raise NotImplementedError
 
     @abstractmethod
-    def actor_has_tensor_transport(self, actor) -> bool:
-        ...
+    def actor_has_tensor_transport(self, actor: "ActorHandle") -> bool:
+        raise NotImplementedError
 
     @abstractmethod
     def extract_tensor_transport_metadata(
-        self, obj_id: str, gpu_object: List[Any],
-    ) -> TensorTransportMetadata:
-        ...
+        self,
+        obj_id: str,
+        rdt_object: List[Any],
+    ) -> "TensorTransportMetadata":
+        raise NotImplementedError
 
     @abstractmethod
     def get_communicator_metadata(
-        self, src_actor, dst_actor, backend: Optional[str] = None,
-    ) -> CommunicatorMetadata:
-        ...
+        self,
+        src_actor: "ActorHandle",
+        dst_actor: "ActorHandle",
+        tensor_transport_backend: str,
+    ) -> "CommunicatorMetadata":
+        raise NotImplementedError
 
     @abstractmethod
     def recv_multiple_tensors(
-        self, obj_id: str,
-        tensor_transport_metadata: TensorTransportMetadata,
-        communicator_metadata: CommunicatorMetadata,
+        self,
+        obj_id: str,
+        tensor_transport_meta: "TensorTransportMetadata",
+        communicator_meta: "CommunicatorMetadata",
+        target_buffers: Optional[
+            List["torch.Tensor | np.ndarray"]
+        ] = None,
     ) -> List[Any]:
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def send_multiple_tensors(
-        self, tensors: List[Any],
-        tensor_transport_metadata: TensorTransportMetadata,
-        communicator_metadata: CommunicatorMetadata,
-    ):
-        ...
+        self,
+        tensors: List[Any],
+        tensor_transport_meta: "TensorTransportMetadata",
+        communicator_meta: "CommunicatorMetadata",
+    ) -> None:
+        raise NotImplementedError
 
     @abstractmethod
     def garbage_collect(
-        self, obj_id: str,
-        tensor_transport_meta: TensorTransportMetadata,
+        self,
+        obj_id: str,
+        tensor_transport_meta: "TensorTransportMetadata",
         tensors: List[Any],
-    ):
-        ...
+    ) -> None:
+        raise NotImplementedError
 
     @abstractmethod
     def abort_transport(
-        self, obj_id: str,
-        communicator_metadata: CommunicatorMetadata,
-    ):
-        ...
+        self,
+        obj_id: str,
+        communicator_meta: "CommunicatorMetadata",
+    ) -> None:
+        raise NotImplementedError
