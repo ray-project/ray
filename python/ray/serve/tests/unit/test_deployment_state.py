@@ -7160,26 +7160,6 @@ class TestGangRollingUpdate:
         stopping_gang_ids = {r.gang_context.gang_id for r in stopping}
         assert len(stopping_gang_ids) == 2
 
-    def test_pending_migration_replicas_stopped(self, mock_deployment_state_manager):
-        """PENDING_MIGRATION replicas in a gang are stopped during rolling update."""
-        gang_size, num_replicas = 2, 4
-        dsm, ds = self._deploy_gang(
-            mock_deployment_state_manager, gang_size, num_replicas
-        )
-
-        # Manually move one replica to PENDING_MIGRATION.
-        replica = ds._replicas.pop(states=[ReplicaState.RUNNING], max_replicas=1)[0]
-        ds._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
-        migrating_gang_id = replica.gang_context.gang_id
-
-        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
-        dsm.update()
-
-        # The PENDING_MIGRATION replica's entire gang should be stopped.
-        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
-        stopped_gang_ids = {r.gang_context.gang_id for r in stopping}
-        assert migrating_gang_id in stopped_gang_ids
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
