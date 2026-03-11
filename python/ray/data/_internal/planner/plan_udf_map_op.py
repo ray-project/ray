@@ -564,6 +564,7 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
 
             if (
                 not isinstance(input_batch, collections.abc.Mapping)
+                and not _is_cudf_dataframe(input_batch)
                 and BlockAccessor.for_block(input_batch).num_rows() == 0
             ):
                 # For empty input blocks, we directly output them without
