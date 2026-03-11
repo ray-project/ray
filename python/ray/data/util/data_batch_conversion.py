@@ -41,19 +41,20 @@ class BatchFormat(str, Enum):
     CUDF = "cudf"
 
 
-_cudf = None
+_CUDF_UNSET = object()
+_cudf = _CUDF_UNSET
 
 
 def _lazy_import_cudf():
     """Lazy import cudf, returning the module or None if not installed."""
     global _cudf
-    if _cudf is None:
+    if _cudf is _CUDF_UNSET:
         try:
             import cudf
 
             _cudf = cudf
         except ImportError:
-            pass
+            _cudf = None
     return _cudf
 
 
