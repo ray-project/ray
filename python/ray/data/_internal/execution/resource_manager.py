@@ -735,10 +735,15 @@ class OpResourceAllocator(ABC):
     ) -> bool:
         downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
 
-        # NOTE: If this operator is a terminal one, extracting outputs from it
-        #       should not be throttled
+        # If this operator is a terminal one (no downstream eligible ops):
+        # - If there's an external consumer holding data (iter_batches,
+        #   streaming_split), don't unblock — respect output backpressure
+        #   to prevent blocks from piling up faster than the consumer
+        #   can process them.
+        # - Otherwise (e.g., write pipelines where outputs are small stats
+        #   blocks consumed inline), unblock to maintain liveness.
         if not downstream_eligible_ops:
-            return True
+            return self._resource_manager.get_external_consumer_bytes() == 0
 
         for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure

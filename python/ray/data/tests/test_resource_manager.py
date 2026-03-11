@@ -769,7 +769,8 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
     """Tests for OpResourceAllocator._should_unblock_streaming_output_backpressure."""
 
     def test_unblock_backpressure_terminal_operator(self, restore_data_context):
-        """Terminal operator (no downstream eligible ops) should always unblock."""
+        """Terminal operator (no downstream eligible ops) should unblock only
+        when there is no external consumer holding data."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
@@ -784,8 +785,18 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         )
         allocator = resource_manager._op_resource_allocator
 
-        # o2 is terminal (no downstream eligible ops beyond it), should always
-        # unblock
+        # o2 is terminal (no downstream eligible ops beyond it) and no external
+        # consumer — should unblock (e.g., write pipeline).
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+
+        # Simulate an external consumer holding data (e.g., iter_batches or
+        # streaming_split). Should NOT unblock, to prevent blocks from piling up.
+        resource_manager.set_external_consumer_bytes(1000)
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
+
+        # External consumer drains all prefetched data — should unblock again
+        # to maintain liveness and produce blocks for the consumer.
+        resource_manager.set_external_consumer_bytes(0)
         assert allocator._should_unblock_streaming_output_backpressure(o2) is True
 
         # Add o4 operator - o2 is no longer terminal
