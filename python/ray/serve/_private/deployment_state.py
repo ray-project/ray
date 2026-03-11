@@ -3012,36 +3012,21 @@ class DeploymentState:
             # Group restart-candidates by gang_id.
             gangs: Dict[str, List[DeploymentReplica]] = defaultdict(list)
             for replica in need_restart:
-                if replica.gang_context is None:
-                    logger.warning(
-                        f"Replica {replica.replica_id} in gang deployment "
-                        f"{self._id} has no gang_context. This is unexpected "
-                        "and may indicate a bug. Treating as an individual "
-                        "restart candidate."
-                    )
-                else:
-                    gangs[replica.gang_context.gang_id].append(replica)
+                gangs[replica.gang_context.gang_id].append(replica)
 
             # Stop complete gangs atomically within the budget
             for _, gang_replicas in gangs.items():
                 if code_version_changes + len(gang_replicas) <= max_to_stop:
                     for replica in gang_replicas:
                         code_version_changes += 1
-                        graceful_stop = (
-                            replica.actor_details.state == ReplicaState.RUNNING
-                        )
-                        self._stop_replica(replica, graceful_stop=graceful_stop)
+                        # Forcefully stop siblings to avoid partial gangs
+                        self._stop_replica(replica, graceful_stop=False)
                         replicas_changed = True
                 else:
                     # Not enough budget for this gang; put replicas back
                     for replica in gang_replicas:
                         self._replicas.add(replica.actor_details.state, replica)
 
-            if code_version_changes > 0:
-                logger.info(
-                    f"Stopping {code_version_changes} gang replicas of "
-                    f"{self._id} with outdated versions."
-                )
             replicas_to_update = remaining
 
         # Per-replica restart/reconfigure handling

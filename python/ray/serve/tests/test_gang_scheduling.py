@@ -1544,6 +1544,8 @@ class TestGangScaling:
         serve.delete("app")
         serve.shutdown()
 
+
+class TestGangRollingUpdate:
     def test_rolling_update(self, ray_cluster):
         """Verifies that rolling update replaces complete gangs atomically.
 
@@ -1608,10 +1610,13 @@ class TestGangScaling:
         t = threading.Thread(target=update, daemon=True)
         t.start()
 
-        # Poll the controller until the update is complete.
-        # At every observable point, RUNNING replicas of old gangs must
-        # form complete gangs (never partially torn down).
+        # Poll until update completes. RUNNING old-gang replicas must always
+        # form complete gangs (never partially torn down). Track mixed old/new
+        # gang_ids to confirm rolling update.
+        observed_mixed_state = False
+
         def update_complete_with_gang_integrity():
+            nonlocal observed_mixed_state
             replicas = ray.get(
                 controller._dump_replica_states_for_testing.remote(deployment_id)
             )
@@ -1627,15 +1632,26 @@ class TestGangScaling:
                 if gid in initial_gang_ids:
                     assert count == GANG_SIZE
 
+            # Check if we observe both old and new gang_ids simultaneously.
+            current_gang_ids = set(gang_counts.keys())
+            has_old = bool(current_gang_ids & initial_gang_ids)
+            has_new = bool(current_gang_ids - initial_gang_ids)
+            if has_old and has_new:
+                observed_mixed_state = True
+
             # Done when all replicas are running with new gang_ids.
             if len(running) != NUM_REPLICAS:
                 return False
-            return True
+            all_new = current_gang_ids and not (current_gang_ids & initial_gang_ids)
+            return all_new
 
         wait_for_condition(
             update_complete_with_gang_integrity, timeout=60, retry_interval_ms=200
         )
         t.join(timeout=10)
+
+        # Verify we actually observed a rolling update and not a full restart.
+        assert observed_mixed_state
 
         # Confirm all replicas serve the new version.
         for _ in range(20):
