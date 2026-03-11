@@ -648,8 +648,9 @@ class KafkaDatasource(Datasource):
         ):
             if isinstance(offset, dict):
                 for topic, partition_map in offset.items():
+                    topic_partitions = actual_partition_ids.get(topic, set())
                     for pid in partition_map:
-                        if pid not in actual_partition_ids.get(topic, set()):
+                        if pid not in topic_partitions:
                             raise ValueError(
                                 f"{param_name} references partition {pid} in topic "
                                 f"{topic!r}, but that partition does not exist."
