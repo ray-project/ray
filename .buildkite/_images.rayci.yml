@@ -112,20 +112,13 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
           - "3.12"
         cuda:
-          - "12.8.1-cudnn"
           - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
-            cuda: "13.0.0-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             cuda: "12.8.1-cudnn"
-          skip: true
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -136,20 +129,13 @@ steps:
     matrix:
       setup:
         python:
-          - "3.11"
           - "3.12"
         cuda:
-          - "12.8.1-cudnn"
           - "13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
-            cuda: "13.0.0-cudnn"
-          skip: true
-        - with:
-            python: "3.12"
             cuda: "12.8.1-cudnn"
-          skip: true
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
