@@ -1,0 +1,8 @@
+--- a/build_defs/internal_shell.bzl
++++ b/build_defs/internal_shell.bzl
+@@ -35,1 +35,1 @@
+-        exec_tools = tools,
++        tools = tools,
+@@ -80,1 +80,1 @@
+-        exec_tools = tools,
++        tools = tools,

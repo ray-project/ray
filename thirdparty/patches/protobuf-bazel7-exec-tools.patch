@@ -1,0 +1,5 @@
+--- a/src/google/protobuf/BUILD.bazel
++++ b/src/google/protobuf/BUILD.bazel
+@@ -141,1 +141,1 @@
+-    exec_tools = ["//:protoc"],
++    tools = ["//:protoc"],

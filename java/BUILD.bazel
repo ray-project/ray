@@ -244,8 +244,7 @@ java_test(
     ],
 )
 
-# java_test does not produce a _deploy.jar in Bazel 7+. Use a java_binary
-# companion so that all_tests_bin_deploy.jar is available in both Bazel 6 and 7.
+# java_test does not produce a _deploy.jar in Bazel 7+. Use a java_binary\n# companion so that all_tests_bin_deploy.jar is available in both Bazel 6 and 7.
 java_binary(
     name = "all_tests_bin",
     testonly = True,

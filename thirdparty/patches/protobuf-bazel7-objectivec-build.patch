@@ -1,0 +1,5 @@
+--- a/objectivec/BUILD.bazel
++++ b/objectivec/BUILD.bazel
+@@ -45,1 +45,1 @@
+-    exec_tools = ["//:protoc"],
++    tools = ["//:protoc"],

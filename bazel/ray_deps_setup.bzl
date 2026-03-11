@@ -84,6 +84,32 @@ def auto_http_archive(
     )
 
 def ray_deps_setup():
+    # Override build_bazel_rules_apple and build_bazel_apple_support before
+    # grpc_deps() runs. gRPC's rules_apple 1.1.3 uses apple_common.multi_arch_split
+    # which was removed in Bazel 7. rules_apple 3.2.1 is compatible with Bazel 6/7/8
+    # but requires apple_support >= 1.11.1 (for the configs/ package layout).
+    auto_http_archive(
+        name = "build_bazel_rules_apple",
+        sha256 = "9c4f1e1ec4fdfeac5bddb07fa0e872c398e3d8eb0ac596af9c463f9123ace292",
+        url = "https://github.com/bazelbuild/rules_apple/releases/download/3.2.1/rules_apple.3.2.1.tar.gz",
+        strip_prefix = "",
+    )
+
+    auto_http_archive(
+        name = "build_bazel_apple_support",
+        sha256 = "cf4d63f39c7ba9059f70e995bf5fe1019267d3f77379c2028561a5d7645ef67c",
+        url = "https://github.com/bazelbuild/apple_support/releases/download/1.11.1/apple_support.1.11.1.tar.gz",
+        strip_prefix = "",
+        patches = [
+            # In Bazel 7, local_config_apple_cc calls is_xcode_at_least_version
+            # during analysis. On CI machines with only Xcode CLT (no full Xcode
+            # app) xcode_config.xcode_version() returns None, causing a hard
+            # failure. Return False instead so the feature is disabled gracefully.
+            "//thirdparty/patches:build-bazel-apple-support-xcode.patch",
+        ],
+        patch_args = ["-p1"],
+    )
+
     # Explicitly bring in protobuf dependency to work around
     # https://github.com/ray-project/ray/issues/14117
     # This is copied from grpc's bazel/grpc_deps.bzl
@@ -95,6 +121,9 @@ def ray_deps_setup():
         url = "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
+            "//thirdparty/patches:protobuf-bazel7-exec-tools.patch",
+            "//thirdparty/patches:protobuf-bazel7-internal-shell.patch",
+            "//thirdparty/patches:protobuf-bazel7-objectivec-build.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -167,7 +196,8 @@ def ray_deps_setup():
     # Using a local build_file forces content-based cache invalidation:
     # changing org_lzma_lzma.BUILD.bazel triggers re-setup on all machines,
     # including Windows CI with persistent output bases where patching
-    # rules_boost's BUILD.lzma would not propagate.
+    # rules_boost's BUILD.lzma would not propagate (build_file label strings
+    # are used for fingerprinting, not file contents of external-repo labels).
     auto_http_archive(
         name = "org_lzma_lzma",
         sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
