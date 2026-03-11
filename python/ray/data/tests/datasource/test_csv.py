@@ -1,5 +1,4 @@
 import os
-import shutil
 
 import pandas as pd
 import pyarrow as pa
@@ -24,88 +23,92 @@ def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
 
 
-def test_csv_read(
+def test_csv_read_single_file(
     ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
 ):
-    # Single file.
+    """read_csv returns correct data, count, input_files, and schema for a single file."""
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(tmp_path, "test1.csv")
     df1.to_csv(path1, index=False)
     ds = ray.data.read_csv(path1, partitioning=None)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df1.equals(dsdf)
-    # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
-    # Two files, override_num_blocks=2.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "test2.csv")
-    df2.to_csv(path2, index=False)
-    ds = ray.data.read_csv([path1, path2], override_num_blocks=2, partitioning=None)
+
+@pytest.mark.parametrize("num_files", [2, 3])
+def test_csv_read_multiple_files_with_override_num_blocks(
+    ray_start_regular_shared,
+    tmp_path,
+    num_files,
+    target_max_block_size_infinite_or_default,
+):
+    """read_csv merges multiple files correctly with override_num_blocks=2."""
+    two_values = [["a", "b", "c"], ["e", "f", "g"], ["h", "i", "j"]]
+    dfs = []
+    paths = []
+    for i in range(num_files):
+        df = pd.DataFrame(
+            {"one": list(range(i * 3 + 1, (i + 1) * 3 + 1)), "two": two_values[i]}
+        )
+        path = os.path.join(tmp_path, f"test{i}.csv")
+        df.to_csv(path, index=False)
+        dfs.append(df)
+        paths.append(path)
+    ds = ray.data.read_csv(paths, override_num_blocks=2, partitioning=None)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    df = pd.concat([df1, df2], ignore_index=True)
-    assert df.equals(dsdf)
-    # Test metadata ops.
+    expected = pd.concat(dfs, ignore_index=True)
+    assert expected.equals(dsdf)
     for block, meta in ds._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
-    # Three files, override_num_blocks=2.
-    df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    path3 = os.path.join(tmp_path, "test3.csv")
-    df3.to_csv(path3, index=False)
-    ds = ray.data.read_csv(
-        [path1, path2, path3],
-        override_num_blocks=2,
-        partitioning=None,
-    )
-    df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
-    assert df.equals(dsdf)
 
-    # Directory, two files.
+def test_csv_read_directory(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """read_csv reads all CSV files from a single directory."""
     path = os.path.join(tmp_path, "test_csv_dir")
     os.mkdir(path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False)
+    df1.to_csv(os.path.join(path, "data0.csv"), index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False)
+    df2.to_csv(os.path.join(path, "data1.csv"), index=False)
     ds = ray.data.read_csv(path, partitioning=None)
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     pd.testing.assert_frame_equal(df, dsdf)
-    shutil.rmtree(path)
 
-    # Two directories, three files.
-    path1 = os.path.join(tmp_path, "test_csv_dir1")
-    path2 = os.path.join(tmp_path, "test_csv_dir2")
-    os.mkdir(path1)
-    os.mkdir(path2)
+
+def test_csv_read_multiple_directories(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """read_csv reads files across multiple directories."""
+    dir1 = os.path.join(tmp_path, "test_csv_dir1")
+    dir2 = os.path.join(tmp_path, "test_csv_dir2")
+    os.mkdir(dir1)
+    os.mkdir(dir2)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    file_path1 = os.path.join(path1, "data0.csv")
-    df1.to_csv(file_path1, index=False)
+    df1.to_csv(os.path.join(dir1, "data0.csv"), index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    file_path2 = os.path.join(path2, "data1.csv")
-    df2.to_csv(file_path2, index=False)
+    df2.to_csv(os.path.join(dir2, "data1.csv"), index=False)
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    file_path3 = os.path.join(path2, "data2.csv")
-    df3.to_csv(file_path3, index=False)
-    ds = ray.data.read_csv([path1, path2], partitioning=None)
+    df3.to_csv(os.path.join(dir2, "data2.csv"), index=False)
+    ds = ray.data.read_csv([dir1, dir2], partitioning=None)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    shutil.rmtree(path1)
-    shutil.rmtree(path2)
 
-    # Directory and file, two files.
+
+def test_csv_read_mixed_directory_and_file_paths(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """read_csv accepts a mix of directory and file paths."""
     dir_path = os.path.join(tmp_path, "test_csv_dir")
     os.mkdir(dir_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(dir_path, "data0.csv")
-    df1.to_csv(path1, index=False)
+    df1.to_csv(os.path.join(dir_path, "data0.csv"), index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(tmp_path, "data1.csv")
     df2.to_csv(path2, index=False)
@@ -113,24 +116,21 @@ def test_csv_read(
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    shutil.rmtree(dir_path)
 
-    # Directory, two files and non-csv file (test extension-based path filtering).
+
+def test_csv_read_filters_non_csv_by_extension(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """read_csv ignores non-CSV files when file_extensions=["csv"]."""
     path = os.path.join(tmp_path, "test_csv_dir")
     os.mkdir(path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False)
+    df1.to_csv(os.path.join(path, "data0.csv"), index=False)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False)
-
+    df2.to_csv(os.path.join(path, "data1.csv"), index=False)
     # Add a file with a non-matching file extension. This file should be ignored.
     df_txt = pd.DataFrame({"foobar": [1, 2, 3]})
-    df_txt.to_json(
-        os.path.join(path, "foo.txt"),
-    )
-
+    df_txt.to_json(os.path.join(path, "foo.txt"))
     ds = ray.data.read_csv(
         path,
         file_extensions=["csv"],
@@ -139,7 +139,6 @@ def test_csv_read(
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
-    shutil.rmtree(path)
 
 
 def test_csv_read_many_files_basic(ray_start_regular_shared, tmp_path):
