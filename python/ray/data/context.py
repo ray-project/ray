@@ -343,6 +343,9 @@ class AutoscalingConfig:
         actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
             This limits how many actors can be added at once to prevent resource contention
             and scheduling pressure. Defaults to 1 for conservative scaling.
+        actor_pool_upscaling_ratio_on_upstream_backpressure: Scale-up ratio (>= 1) when upstream
+            is backpressured (by DownstreamCapacity policy). Effective util is multiplied by this
+            so this op scales more aggressively. Default 1 (disabled). Set to e.g. 2 to enable.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -356,6 +359,9 @@ class AutoscalingConfig:
 
     # Maximum number of actors to scale up in a single scaling decision
     actor_pool_max_upscaling_delta: int = DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA
+
+    # Scale-up ratio when upstream is backpressured. 1 = disabled; > 1 = more aggressive (e.g. 2).
+    actor_pool_upscaling_ratio_on_upstream_backpressure: float = 1.0
 
 
 def _execution_options_factory() -> "ExecutionOptions":

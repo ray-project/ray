@@ -37,6 +37,9 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             config.actor_pool_util_downscaling_threshold
         )
         self._actor_pool_max_upscaling_delta = config.actor_pool_max_upscaling_delta
+        self._actor_pool_upscaling_ratio_on_upstream_backpressure = (
+            config.actor_pool_upscaling_ratio_on_upstream_backpressure
+        )
 
         self._actor_pool_resizing_policy = (
             actor_pool_resizing_policy
@@ -95,6 +98,15 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         """
         return self._actor_pool_resizing_policy.compute_downscale_delta(actor_pool)
 
+    def _is_upstream_backpressured_by_downstream_capacity(self, op: "PhysicalOperator") -> bool:
+        """True if any upstream of op is backpressured by the DownstreamCapacity policy."""
+        return any(
+            getattr(upstream, "_in_task_submission_backpressure", False)
+            and getattr(upstream, "_task_submission_backpressure_policy", None)
+            == "DownstreamCapacity"
+            for upstream in op.input_dependencies
+        )
+
     def _derive_target_scaling_config(
         self,
         actor_pool: AutoscalingActorPool,
@@ -132,10 +144,6 @@ class DefaultActorAutoscaler(ActorAutoscaler):
 
         if util >= self._actor_pool_scaling_up_threshold:
             average_num_inputs_per_task = op.metrics.average_num_inputs_per_task or 1
-            # Skip scaling up if the current free task slots can handle all pending work.
-            # Each task consumes `average_num_inputs_per_task` input blocks on average,
-            # so the total input capacity is: free_slots × avg_inputs_per_task.
-            # If enqueued blocks ≤ capacity, we have enough resources already.
             if (
                 op_state.total_enqueued_input_blocks()
                 <= actor_pool.num_free_task_slots() * average_num_inputs_per_task
@@ -164,7 +172,13 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 return ActorPoolScalingRequest.upscale(
                     delta=1, reason="no running actors, scale up immediately"
                 )
-            delta = self._compute_upscale_delta(actor_pool, util)
+            # When upstream has DC backpressure, pass inflated util so policy scales more.
+            delta = self._compute_upscale_delta(
+                actor_pool,
+                util * self._actor_pool_upscaling_ratio_on_upstream_backpressure
+                if self._is_upstream_backpressured_by_downstream_capacity(op)
+                else util,
+            )
             if max_scale_up is not None:
                 delta = min(delta, max_scale_up)
             delta = max(1, delta)  # At least scale up by 1
@@ -214,6 +228,11 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             raise ValueError(
                 f"actor_pool_util_upscaling_threshold must be positive, "
                 f"got {self._actor_pool_scaling_up_threshold}"
+            )
+        if self._actor_pool_upscaling_ratio_on_upstream_backpressure < 1.0:
+            raise ValueError(
+                "actor_pool_upscaling_ratio_on_upstream_backpressure must be >= 1.0, "
+                f"got {self._actor_pool_upscaling_ratio_on_upstream_backpressure}"
             )
 
         for op, state in self._topology.items():
