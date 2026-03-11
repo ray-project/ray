@@ -10,6 +10,7 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.utils import DEFAULT
 from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -112,6 +113,27 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         for deployment_config in app_config.deployments
         if isinstance(deployment_config.autoscaling_config, dict)
     ]
+    deployment_actors_configs = []
+    for deployment in app_config.deployments:
+        actors = getattr(deployment, "deployment_actors", None)
+        if actors is None or actors is DEFAULT.VALUE:
+            deployment_actors_configs.append(None)
+            continue
+        # Normalize to JSON-serializable dicts for hashing
+        normalized = []
+        for item in actors:
+            if isinstance(item, dict):
+                normalized.append(item)
+            else:
+                d = item.model_dump()
+                d["actor_class"] = (
+                    item.actor_class
+                    if isinstance(item.actor_class, str)
+                    else f"{item.actor_class.__module__}:{item.actor_class.__qualname__}"
+                )
+                d["init_args"] = list(d.get("init_args") or [])
+                normalized.append(d)
+        deployment_actors_configs.append(normalized)
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
@@ -123,6 +145,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
             "autoscaling_policy": app_config.autoscaling_policy,
             "deployment_autoscaling_policies": deployment_autoscaling_policies,
             "request_router_configs": request_router_configs,
+            "deployment_actors_configs": deployment_actors_configs,
         },
         sort_keys=True,
     ).encode("utf-8")
