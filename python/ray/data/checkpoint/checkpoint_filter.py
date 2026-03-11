@@ -20,54 +20,58 @@ from ray.types import ObjectRef
 logger = logging.getLogger(__name__)
 
 
-@ray.remote
-class CheckpointConverter:
-    """Convert checkpointed IDs from pyarrow.Table to numpy.ndarray.
-    This actor provides:
-    1. the object ref of the checkpointed IDs, which will be passed to each checkpoint filter actor.
-    2. the size of the checkpointed IDs, which will be used to determine the `ray_remote_args`
-       of each checkpoint filter actor.
-    """
+def _numpy_size(array: numpy.ndarray) -> int:
+    """Calculate the size of a numpy ndarray."""
+    total_size = array.nbytes
+    if array.dtype == object:
+        sample_count = 10**4
 
-    def __init__(self):
-        self.checkpointed_ids_ndarray: numpy.ndarray = numpy.array([])
-        self.checkpointed_ids_size: Optional[int] = None
-
-    def set_checkpointed_ids_ndarray(
-        self, checkpointed_ids_arrow: Block, id_column: str
-    ) -> None:
-        """Convert checkpointed IDs from pyarrow.Table to numpy.ndarray."""
-        try:
-            if checkpointed_ids_arrow.num_rows != 0:
-                combined_checkpointed_ids = combine_chunks(checkpointed_ids_arrow)
-                ckpt_chunks = combined_checkpointed_ids[id_column].chunks
-
-                checkpointed_ids_ndarray = []
-                for ckpt_chunk in ckpt_chunks:
-                    checkpointed_ids_ndarray.append(
-                        transform_pyarrow.to_numpy(ckpt_chunk, zero_copy_only=False)
-                    )
-                self.checkpointed_ids_ndarray = numpy.concatenate(
-                    checkpointed_ids_ndarray
-                )
-        except Exception as e:
-            raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
-
-    def numpy_size(self, array: numpy.ndarray) -> int:
-        """Calculate the size of a numpy ndarray."""
-        total_size = array.nbytes
-        if array.dtype == object:
+        if len(array) <= sample_count:
             for item in array.flat:
                 total_size += sys.getsizeof(item)
-        return total_size
+        else:
+            sample_total_size = 0
+            for item in array[:sample_count].flat:
+                sample_total_size += sys.getsizeof(item)
+            total_size += sample_total_size / sample_count * len(array)
+    return total_size
 
-    def get_checkpointed_ids_ndarray(self) -> numpy.ndarray:
-        return self.checkpointed_ids_ndarray
 
-    def get_checkpointed_ids_size(self) -> int:
-        if self.checkpointed_ids_size is None:
-            self.checkpointed_ids_size = self.numpy_size(self.checkpointed_ids_ndarray)
-        return self.checkpointed_ids_size
+@ray.remote
+def convert_checkpointed_ids(
+    checkpointed_ids_arrow: Block, id_column: str
+) -> Tuple[ray.ObjectRef, int]:
+    """Convert checkpointed IDs from pyarrow.Table to numpy.ndarray.
+
+    Args:
+        checkpointed_ids_arrow: A pyarrow.Table containing the checkpointed
+            IDs, loaded from the checkpoint parquet files.
+        id_column: The id column of `checkpoint_ids_array`.
+
+    Returns:
+        A tuple of:
+        - ObjectRef pointing to the checkpointed IDs as numpy.ndarray,
+          which can be passed directly to each checkpoint filter actor.
+        - The size (bytes) of the ndarray, which can be used to determine
+          the `ray_remote_args` of each checkpoint filter actor.
+    """
+    checkpointed_ids_ndarray = numpy.array([])
+
+    try:
+        if checkpointed_ids_arrow.num_rows != 0:
+            combined = combine_chunks(checkpointed_ids_arrow)
+            ckpt_chunks = combined[id_column].chunks
+
+            arrays = []
+            for chunk in ckpt_chunks:
+                arrays.append(transform_pyarrow.to_numpy(chunk, zero_copy_only=False))
+            checkpointed_ids_ndarray = numpy.concatenate(arrays)
+    except Exception as e:
+        raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
+
+    size = _numpy_size(checkpointed_ids_ndarray)
+    ndarray_ref = ray.put(checkpointed_ids_ndarray)
+    return ndarray_ref, size
 
 
 class CheckpointLoader:
@@ -141,17 +145,12 @@ class CheckpointLoader:
 
         # convert arrow-typed ids to numpy-typed ids.
         # Note: the convert is very time-consuming.
-        # Use an actor to hold the checkpointed IDs, because we do not want the IDs
+        # Get the object ref the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
-        checkpoint_holder = CheckpointConverter.remote()
-        ray.get(
-            checkpoint_holder.set_checkpointed_ids_ndarray.remote(
-                block_ref, self.id_column
-            )
-        )
+        result_ref = convert_checkpointed_ids.remote(block_ref, self.id_column)
 
-        checkpointed_ids_ref = checkpoint_holder.get_checkpointed_ids_ndarray.remote()
-        checkpoint_size = ray.get(checkpoint_holder.get_checkpointed_ids_size.remote())
+        checkpointed_ids_ref, checkpoint_size = ray.get(result_ref)
+
         logger.info(
             "Checkpoint loaded for %s in %.2f seconds. SizeBytes = %d, Schema = %s",
             type(self).__name__,

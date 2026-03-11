@@ -1,7 +1,7 @@
 import csv
 import os
 import random
-from typing import List, Union
+from typing import List, Literal, Union
 
 import numpy
 import numpy as np
@@ -57,11 +57,15 @@ pytestmark = [
 
 @pytest.fixture
 def generate_sample_data_csv(tmp_path):
-    def _generate():
+    def _generate(id_type: Literal["int", "str"] = "int"):
         # Generate a dummy dataset with SAMPLE_DATA_NUM_ROWS rows and columns [ID_COL, "col1"]
-        data = [
-            {ID_COL: i, "col1": random.random()} for i in range(SAMPLE_DATA_NUM_ROWS)
-        ]
+        ids = (
+            [f"id_{i}" for i in range(SAMPLE_DATA_NUM_ROWS)]
+            if id_type == "str"
+            else list(range(SAMPLE_DATA_NUM_ROWS))
+        )
+
+        data = [{ID_COL: id_val, "col1": random.random()} for id_val in ids]
 
         f_path = os.path.join(tmp_path, "sample_data.csv")
         with open(f_path, mode="w", newline="") as file:
@@ -969,6 +973,70 @@ def test_plan_read_op_with_checkpoint_filter_with_valid_checkpoint(
     # Should return a CheckpointFilter MapOperator
     assert isinstance(physical_op, MapOperator)
     assert physical_op.name == "CheckpointFilter"
+
+
+@pytest.mark.parametrize(
+    "backend,fs,data_path",
+    [
+        (CheckpointBackend.FILE_STORAGE, None, lazy_fixture("local_path")),
+    ],
+)
+def test_checkpoint_with_string_typed_id(
+    ray_start_10_cpus_shared,
+    generate_sample_data_csv,
+    backend,
+    fs,
+    data_path,
+    data_output_path,
+):
+    """Test the checkpoint when the ID column is of type string."""
+
+    class TestActor:
+        def __init__(self):
+            pass
+
+        def __call__(self, batch):
+            return batch
+
+    ctx = ray.data.DataContext.get_current()
+    ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
+
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=ckpt_path,
+        override_filesystem=fs,
+        override_backend=backend,
+    )
+
+    csv_file = generate_sample_data_csv(id_type="str")
+
+    # Generate checkpoint file
+    checkpointed_ids = [f"id_{id}" for id in range(SAMPLE_DATA_NUM_ROWS // 2)]
+    expected_remaining_ids = sorted(
+        {f"id_{id}" for id in range(SAMPLE_DATA_NUM_ROWS)} - set(checkpointed_ids)
+    )
+
+    ckpt_unwrapped = _unwrap_protocol(ckpt_path)
+
+    os.makedirs(ckpt_unwrapped, exist_ok=True)
+    ckpt_table = pa.table({ID_COL: checkpointed_ids})
+    pq.write_table(ckpt_table, os.path.join(ckpt_unwrapped, "pre_checkpoint.parquet"))
+
+    ds = ray.data.read_csv(csv_file)
+
+    # Execute the dataset with checkpointing enabled.
+    ds = ds.map_batches(TestActor, concurrency=1)
+    ds.write_parquet(data_output_path, filesystem=fs)
+
+    # Ensure that the written data only contains the non-checkpointed rows.
+    # Disable checkpointing before reading back to avoid filtering.
+    ctx.checkpoint_config = None
+    ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)
+    actual_output = sorted([row[ID_COL] for row in ds_readback.iter_rows()])
+    assert actual_output == expected_remaining_ids, (
+        f"Expected only non-checkpointed IDs {expected_remaining_ids}, "
+        f"but got {actual_output}"
+    )
 
 
 if __name__ == "__main__":

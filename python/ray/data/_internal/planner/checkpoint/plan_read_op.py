@@ -49,7 +49,7 @@ def plan_read_op_with_checkpoint_filter(
     info = checkpoint_config.filesystem.get_file_info(
         _unwrap_protocol(checkpoint_config.checkpoint_path)
     )
-    # the directory is not existed
+    # the directory does not exist
     if info.type == fs.FileType.NotFound:
         return physical_read_op
 
@@ -91,51 +91,40 @@ def plan_read_op_with_checkpoint_filter(
     return checkpoint_op
 
 
-def _get_checkpoint_map_transformer(
-    data_context: DataContext, checkpointed_ids_ref: ObjectRef[numpy.ndarray]
-) -> MapTransformer:
-    """Get the MapTransformer that performs checkpoint filtering.
+class _CheckpointFilterFn:
+    def __init__(
+        self,
+        checkpoint_config,
+        checkpointed_ids_ref: ObjectRef[numpy.ndarray],
+    ):
+        self._config = checkpoint_config
+        self._ref = checkpointed_ids_ref
+        self._filter = None
 
-    Args:
-        data_context: DataContext.
-        checkpointed_ids_ref: ObjectRef of the checkpointed ids.
+    def init_checkpoint_filter(self):
+        """Called once per actor worker to materialize the filter."""
+        self._filter = NumpyArrayBasedCheckpointFilter(self._config, self._ref)
 
-    Returns:
-        MapTransformer: A MapTransformer that performs checkpoint filtering.
-    """
-
-    # To make `init_checkpoint_filter` and `transform_logic` use the same `checkpoint_filter`,
-    # we declare `checkpoint_filter` as a list. Note: nonlocal cannot be used here,
-    # because after serialization/deserialization, the two methods would hold pointers
-    # that refer to different `checkpoint_filter` instances.
-    checkpoint_filter = []
-
-    # The initialization method of the checkpoint-actor; Each actor has a checkpoint_filter.
-    # This method will run only once for on single actor.
-    def init_checkpoint_filter():
-        checkpoint_filter.append(
-            NumpyArrayBasedCheckpointFilter(
-                data_context.checkpoint_config, checkpointed_ids_ref
-            )
-        )
-
-    # The transform logic of the checkpoint-actor. The actor receives blocks from
-    # the read operator, filters the blocks, and then outputs them.
-    # This method will run multiple times on each actor.
-    def transform_logic(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-        assert checkpoint_filter, "checkpoint filter was not initialized!"
+    def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        assert self._filter is not None, "checkpoint filter was not initialized!"
         for block in blocks:
-            filtered_block = checkpoint_filter[0].filter_rows_for_block(block)
+            filtered_block = self._filter.filter_rows_for_block(block)
             if filtered_block.num_rows > 0:
                 yield filtered_block
 
+
+def _get_checkpoint_map_transformer(
+    data_context: DataContext, checkpointed_ids_ref: ObjectRef[numpy.ndarray]
+) -> MapTransformer:
+    fn = _CheckpointFilterFn(data_context.checkpoint_config, checkpointed_ids_ref)
+
     transformer_fn = BlockMapTransformFn(
-        block_fn=transform_logic,
+        block_fn=fn,
         output_block_size_option=OutputBlockSizeOption.of(
             target_max_block_size=data_context.target_max_block_size,
         ),
     )
     return MapTransformer(
         transform_fns=[transformer_fn],
-        init_fn=init_checkpoint_filter,
+        init_fn=fn.init_checkpoint_filter,
     )
