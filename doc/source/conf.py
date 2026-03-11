@@ -89,6 +89,9 @@ _TEMPLATE_COLLECTIONS = {
     "deployment-serve-llm": {
         "target": "serve/tutorials/deployment-serve-llm",
     },
+    "model-multiplexing": {
+        "target": "serve/tutorials/model_multiplexing_forecast",
+    },
 }
 
 
@@ -332,6 +335,9 @@ exclude_patterns = [
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
     "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
+    "_collections/serve/tutorials/model_multiplexing_forecast/README.*",
+    "_collections/serve/tutorials/model_multiplexing_forecast/**/*.ipynb",
+   
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
