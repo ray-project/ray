@@ -2256,7 +2256,7 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     def call_helper(paths, fs, kwargs):
         from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
 
-        return get_parquet_dataset(paths, fs, kwargs)
+        return get_parquet_dataset(paths, filesystem=fs, dataset_kwargs=kwargs)
 
     ds = ray.get(call_helper.remote([str(local_file)], problematic_fs, {}))
     assert ds is not None
