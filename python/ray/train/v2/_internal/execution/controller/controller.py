@@ -190,6 +190,9 @@ class TrainController:
         # TODO: These can be attributes of a RunAttempt?
         self._latest_poll_time = float("-inf")
 
+        # Generate an initial run attempt ID so that `_run_controller_hook`
+        # can reference it if a callback fails during `_start`.
+        self._generate_run_attempt_id()
         self._start()
 
     def _run_controller_hook(
@@ -244,7 +247,17 @@ class TrainController:
             return failure_result
 
         if self._worker_group:
-            self._shutdown_worker_group()
+            try:
+                self._shutdown_worker_group()
+            except Exception as e:
+                controller_error = ControllerError(e)
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=controller_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision,
+                    training_failed_error=controller_error,
+                )
 
         optional_controller_error = self._start_worker_group(
             num_workers=decision.num_workers,
@@ -422,15 +435,68 @@ class TrainController:
         return None
 
     def _start(self):
-        for callback in self._controller_callbacks:
-            callback.after_controller_start(self._train_run_context)
+        failure_result = self._run_controller_hook(
+            "after_controller_start", self._train_run_context
+        )
+        if failure_result:
+            self._set_state(failure_result.next_state)
 
-    def _shutdown(self):
+    def _shutdown(self) -> "TrainControllerLoopIterationResult":
+        """Execute shutdown and return the final state transition.
+
+        Shutdown errors are never retried. If an error occurs during shutdown:
+        - If we're already shutting down after a training error
+          (next_state is ErroredState), the original error is preserved.
+        - Otherwise the shutdown error becomes the training failure.
+        """
+        controller_state = self.get_state()
+        assert isinstance(controller_state, ShuttingDownState)
+
+        shutdown_error = None
+
+        # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
         if self._worker_group:
-            self._shutdown_worker_group()
+            try:
+                self._shutdown_worker_group()
+            except Exception as e:
+                shutdown_error = ControllerError(e)
 
-        for callback in self._controller_callbacks:
-            callback.before_controller_shutdown()
+        try:
+            self._controller_callback_manager.invoke("before_controller_shutdown")
+        except ControllerError as e:
+            if shutdown_error:
+                logger.exception(
+                    "An additional error occurred in the before_controller_shutdown "
+                    "callback after a worker group shutdown error. "
+                    "This error is being ignored to preserve the original "
+                    "shutdown error. Error: %s",
+                    e,
+                )
+            else:
+                shutdown_error = e
+
+        if shutdown_error:
+            if isinstance(controller_state.next_state, ErroredState):
+                logger.exception(
+                    "Another error occurred during shutdown after a training error. "
+                    "This error is being ignored to preserve the original "
+                    "training error. Error: %s",
+                    shutdown_error,
+                    exc_info=shutdown_error,
+                )
+            else:
+                return TrainControllerLoopIterationResult(
+                    run_attempt_id=self._get_run_attempt_id(),
+                    previous_state=controller_state,
+                    next_state=ErroredState(training_failed_error=shutdown_error),
+                    training_failed_error=shutdown_error,
+                )
+
+        return TrainControllerLoopIterationResult(
+            run_attempt_id=self._get_run_attempt_id(),
+            previous_state=controller_state,
+            next_state=controller_state.next_state,
+        )
 
     def _shutdown_worker_group(self):
         """Shutdown the worker group and set the worker group to None."""
@@ -585,13 +651,7 @@ class TrainController:
                 ),
             )
         elif isinstance(controller_state, ShuttingDownState):
-            # TODO: move to __del__ after https://github.com/ray-project/ray/issues/53169
-            self._shutdown()
-            return TrainControllerLoopIterationResult(
-                run_attempt_id=self._get_run_attempt_id(),
-                previous_state=controller_state,
-                next_state=controller_state.next_state,
-            )
+            return self._shutdown()
         else:
             raise ValueError(f"Unexpected controller state: {controller_state}")
 
@@ -629,10 +689,20 @@ class TrainController:
         while not self.get_state().is_terminal():
             await self._run_control_loop_iteration()
 
-        # Call after_controller_finish with the final result
+        # Call after_controller_finish with the final result.
         result = self._build_result()
-        for callback in self._controller_callbacks:
-            callback.after_controller_finish(result)
+        failure_result = self._run_controller_hook(
+            "after_controller_finish", result, invoke_failure_decision_callbacks=False
+        )
+        # Since we are already in a terminal state, a callback failure should
+        # not overwrite the training outcome — log and preserve the result.
+        if failure_result:
+            logger.warning(
+                "A callback failed after training finished. "
+                "This failure is being ignored to preserve the original "
+                "training result. Error: %s",
+                failure_result.training_failed_error,
+            )
 
     async def abort(self):
         """Trigger callback abort hooks and terminate the controller process."""
