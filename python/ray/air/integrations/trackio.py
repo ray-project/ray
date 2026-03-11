@@ -1,4 +1,6 @@
-from typing import Dict, Optional, List
+import logging
+from typing import Dict, List, Optional
+
 import numpy as np
 
 try:
@@ -7,15 +9,13 @@ except ImportError:
     trackio = None
 
 from ray.train._internal.session import get_session
+from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
-from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
+logger = logging.getLogger(__name__)
 
-# ------------------------------------------------------------
-# setup_trackio()
-# ------------------------------------------------------------
 
 @PublicAPI(stability="alpha")
 def setup_trackio(
@@ -89,9 +89,7 @@ def setup_trackio(
     """
 
     if trackio is None:
-        raise RuntimeError(
-            "Trackio was not found. Install with `pip install trackio`."
-        )
+        raise RuntimeError("Trackio was not found. Install with `pip install trackio`.")
 
     session = get_session()
 
@@ -100,7 +98,11 @@ def setup_trackio(
 
     if session:
 
-        if rank_zero_only and session.world_rank is not None and session.world_rank != 0:
+        if (
+            rank_zero_only
+            and session.world_rank is not None
+            and session.world_rank != 0
+        ):
             return None
 
         trial_name = session.trial_name
@@ -122,10 +124,6 @@ def setup_trackio(
 
     return run
 
-
-# ------------------------------------------------------------
-# TrackioLoggerCallback
-# ------------------------------------------------------------
 
 @PublicAPI(stability="alpha")
 class TrackioLoggerCallback(LoggerCallback):
@@ -210,8 +208,6 @@ class TrackioLoggerCallback(LoggerCallback):
 
         self._trial_runs: Dict[Trial, object] = {}
 
-    # --------------------------------------------------------
-
     def log_trial_start(self, trial: Trial):
         """Initialize a Trackio run when a Ray Tune trial starts."""
 
@@ -232,8 +228,6 @@ class TrackioLoggerCallback(LoggerCallback):
         )
 
         self._trial_runs[trial] = run
-
-    # --------------------------------------------------------
 
     def log_trial_result(
         self,
@@ -272,8 +266,6 @@ class TrackioLoggerCallback(LoggerCallback):
         if metrics:
             trackio.log(metrics, step=iteration)
 
-    # --------------------------------------------------------
-
     def log_trial_save(self, trial: Trial):
         """Log checkpoint metadata when a Ray Tune trial checkpoint is saved."""
 
@@ -286,8 +278,6 @@ class TrackioLoggerCallback(LoggerCallback):
             except Exception as e:
                 logger.warning(f"trackio: Failed to log checkpoint path: {e}")
 
-    # --------------------------------------------------------
-
     def log_trial_end(self, trial: Trial, failed: bool = False):
         """Finalize the Trackio run when a Ray Tune trial finishes."""
 
@@ -297,8 +287,6 @@ class TrackioLoggerCallback(LoggerCallback):
             run.finish()
 
         self._trial_runs.pop(trial, None)
-
-    # --------------------------------------------------------
 
     def on_experiment_end(self, trials, **info):
         """Finalize all Trackio runs after the Ray Tune experiment completes."""
