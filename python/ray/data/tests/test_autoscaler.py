@@ -273,7 +273,7 @@ def test_actor_pool_scaling_reason_mentions_upstream_dc_backpressure():
     op_state._scheduling_status = MagicMock(under_resource_limits=True)
 
     # Ensure the scale-up code path executes deterministically.
-    with patch(autoscaler, "_compute_upscale_delta", 1):
+    with patch.object(autoscaler, "_compute_upscale_delta", return_value=1):
         assert autoscaler._derive_target_scaling_config(
             actor_pool=actor_pool, op=op, op_state=op_state
         ) == ActorPoolScalingRequest(
