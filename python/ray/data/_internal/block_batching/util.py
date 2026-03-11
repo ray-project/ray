@@ -193,10 +193,12 @@ def _format_batch(
     batch: Batch,
     batch_format: Optional[str],
     stats: Optional[DatasetStats],
+    ensure_copy: bool = False,
 ) -> Batch:
     with stats.iter_format_batch_s.timer() if stats else nullcontext():
         formatted_data = BlockAccessor.for_block(batch.data).to_batch_format(
-            batch_format
+            batch_format,
+            ensure_copy=ensure_copy,
         )
     return dataclasses.replace(batch, data=formatted_data)
 

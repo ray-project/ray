@@ -6323,9 +6323,6 @@ class Dataset:
             builder.add_block(batch)
         block = builder.build()
 
-        # `PandasBlockBuilder` creates a dataframe with internal extension types like
-        # 'TensorDtype'. We use the `to_pandas` method to convert these extension
-        # types to regular types.
         return BlockAccessor.for_block(block).to_pandas()
 
     @ConsumptionAPI(pattern="Time complexity:")
