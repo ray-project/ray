@@ -43,7 +43,7 @@ params = {
 }
 
 
-def test_fit(ray_start_4_cpus):
+def test_fit(ray_start_8_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = XGBoostTrainer(
