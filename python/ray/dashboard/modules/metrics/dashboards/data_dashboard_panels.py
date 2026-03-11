@@ -379,7 +379,7 @@ RUNNING_TASKS_PANEL = Panel(
     targets=[
         Target(
             expr='sum(ray_data_num_tasks_running{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
-            legend="Running Tasks: {{dataset}}, {{operator}}",
+            legend="Active Tasks: {{dataset}}, {{operator}}",
         )
     ],
     fill=0,
