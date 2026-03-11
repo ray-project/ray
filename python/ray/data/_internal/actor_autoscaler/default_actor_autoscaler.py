@@ -144,9 +144,15 @@ class DefaultActorAutoscaler(ActorAutoscaler):
 
         if util >= self._actor_pool_scaling_up_threshold:
             average_num_inputs_per_task = op.metrics.average_num_inputs_per_task or 1
+            upstream_dc_backpressured = (
+                self._is_upstream_backpressured_by_downstream_capacity(op)
+            )
             if (
                 op_state.total_enqueued_input_blocks()
                 <= actor_pool.num_free_task_slots() * average_num_inputs_per_task
+                # If an upstream operator is DC-backpressured, don't short-circuit here:
+                # we may want to scale up more aggressively to relieve upstream pressure.
+                and not upstream_dc_backpressured
             ):
                 return ActorPoolScalingRequest.no_op(
                     reason="enough free task slots to consume the existing inputs"
@@ -173,9 +179,6 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     delta=1, reason="no running actors, scale up immediately"
                 )
             # When upstream has DC backpressure, pass inflated util so policy scales more.
-            upstream_dc_backpressured = (
-                self._is_upstream_backpressured_by_downstream_capacity(op)
-            )
             effective_util = util
             if upstream_dc_backpressured:
                 effective_util *= (
