@@ -212,6 +212,10 @@ class TrackioLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: Trial):
         """Initialize a Trackio run when a Ray Tune trial starts."""
 
+        # Prevent duplicate runs during trial recovery
+        if trial in self._trial_runs:
+            return
+
         config = trial.config.copy()
 
         if not self.log_config:
@@ -240,6 +244,11 @@ class TrackioLoggerCallback(LoggerCallback):
 
         run = self._trial_runs.get(trial)
 
+        # Lazy initialization after experiment restore
+        if run is None:
+            self.log_trial_start(trial)
+            run = self._trial_runs.get(trial)
+
         if not run:
             return
 
@@ -255,12 +264,14 @@ class TrackioLoggerCallback(LoggerCallback):
             if key in self.excludes:
                 continue
 
+            # Convert numpy arrays and scalar types
             if isinstance(value, np.ndarray):
                 value = value.tolist()
 
             if isinstance(value, np.generic):
                 value = value.item()
 
+            # Only log supported metric types
             if isinstance(value, (int, float)):
                 metrics[key] = value
 
@@ -271,6 +282,9 @@ class TrackioLoggerCallback(LoggerCallback):
         """Log checkpoint metadata when a Ray Tune trial checkpoint is saved."""
 
         checkpoint = trial.checkpoint
+
+        if not checkpoint:
+            return
 
         if checkpoint:
             try:
