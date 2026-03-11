@@ -240,6 +240,26 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "worker_killing_policy_by_time",
+    srcs = [
+        "worker_killing_policy_by_time.cc",
+    ],
+    hdrs = [
+        "worker_killing_policy_by_time.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_killing_policy_interface",
+        "//src/ray/common:lease",
+        "//src/ray/common:memory_monitor_utils",
+        "//src/ray/util:compat",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "noop_worker_killing_policy",
     hdrs = [
         "noop_worker_killing_policy.h",
