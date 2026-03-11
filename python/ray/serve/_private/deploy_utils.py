@@ -119,6 +119,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         for deployment in app_config.deployments
         if isinstance(deployment.deployment_actors, list)
     ]
+
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
