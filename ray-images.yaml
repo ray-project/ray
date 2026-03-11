@@ -8,6 +8,9 @@ ray:
 
   python: ["3.10", "3.11", "3.12", "3.13"]
   architectures: [x86_64, aarch64]
+  exceptions:
+    - architectures: [aarch64]
+      platforms: [tpu]  # JAX does not support aarch64 TPU: https://docs.jax.dev/en/latest/installation.html#supported-platforms
   platforms:
     - cpu
     - tpu

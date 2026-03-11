@@ -39,7 +39,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
-    RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -76,6 +75,7 @@ from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
+    decompress_metric_report,
     get_all_live_placement_group_names,
     get_head_node_id,
     is_grpc_enabled,
@@ -322,8 +322,10 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics_from_replica(
-        self, replica_metric_report: ReplicaMetricReport
+        self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        if isinstance(replica_metric_report, bytes):
+            replica_metric_report = decompress_metric_report(replica_metric_report)
         latency = time.time() - replica_metric_report.timestamp
         latency_ms = latency * 1000
         # Record the metrics delay for observability
@@ -337,20 +339,15 @@ class ServeController:
         )
         # Track in health metrics
         self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
-        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
-            logger.warning(
-                f"Received autoscaling metrics from replica {replica_metric_report.replica_id} with timestamp {replica_metric_report.timestamp} "
-                f"which is {latency_ms}ms ago. "
-                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
-            )
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
         )
 
     def record_autoscaling_metrics_from_handle(
-        self, handle_metric_report: HandleMetricReport
+        self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        if isinstance(handle_metric_report, bytes):
+            handle_metric_report = decompress_metric_report(handle_metric_report)
         latency = time.time() - handle_metric_report.timestamp
         latency_ms = latency * 1000
         # Record the metrics delay for observability
@@ -364,13 +361,6 @@ class ServeController:
         )
         # Track in health metrics
         self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
-        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
-            logger.warning(
-                f"Received autoscaling metrics from handle {handle_metric_report.handle_id} for deployment {handle_metric_report.deployment_id} with timestamp {handle_metric_report.timestamp} "
-                f"which is {latency_ms}ms ago. "
-                f"This is greater than the warning threshold RPC latency of {RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                "This may indicate a performance issue with the controller try increasing the RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS environment variable."
-            )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
@@ -389,15 +379,6 @@ class ServeController:
                 "application": report.deployment_id.app_name,
             },
         )
-        if latency_ms > RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS:
-            logger.warning(
-                f"Received async inference task queue metrics for deployment "
-                f"{report.deployment_id} with timestamp {report.timestamp_s} "
-                f"which is {latency_ms}ms ago. "
-                f"This is greater than the warning threshold RPC latency of "
-                f"{RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS}ms. "
-                "This may indicate a performance issue with the controller."
-            )
         self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
     def _get_total_num_requests_for_deployment_for_testing(
@@ -1500,28 +1481,37 @@ class ServeController:
         for proxy. This will allow applications to be discoverable via the
         proxy in situations where their replicas have scaled down to 0.
         """
-        target_groups = []
-        http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
-        grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
+        if self._ha_proxy_enabled:
+            http_targets = []
+            grpc_targets = []
+            include_http = True
+            include_grpc = is_grpc_enabled(self.get_grpc_config())
+        else:
+            http_targets = self.proxy_state_manager.get_targets(RequestProtocol.HTTP)
+            grpc_targets = self.proxy_state_manager.get_targets(RequestProtocol.GRPC)
+            include_http = len(http_targets) > 0
+            include_grpc = len(grpc_targets) > 0
 
-        if http_targets:
+        target_groups = []
+        if include_http:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix=route_prefix,
-                    targets=[] if self._ha_proxy_enabled else http_targets,
+                    targets=http_targets,
                     app_name=app_name,
                 )
             )
-        if grpc_targets:
+        if include_grpc:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.GRPC,
                     route_prefix=route_prefix,
-                    targets=[] if self._ha_proxy_enabled else grpc_targets,
+                    targets=grpc_targets,
                     app_name=app_name,
                 )
             )
+
         return target_groups
 
     def _get_targets_for_protocol(
