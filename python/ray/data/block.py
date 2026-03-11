@@ -168,7 +168,7 @@ class TaskExecWorkerStats:
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockExecStats:
     """Execution stats for a single output block produced by a task."""
 
@@ -213,16 +213,24 @@ class _BlockExecStatsBuilder:
     def __init__(self):
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
+        self._end_time = None
+        self._end_cpu = None
 
-    def build(self, block_ser_time_s: Optional[int] = None) -> "BlockExecStats":
-        end_time = time.perf_counter()
-        end_cpu = time.process_time()
+    def finish(self):
+        """Capture timing now, to be used by a later build() call."""
+        self._end_time = time.perf_counter()
+        self._end_cpu = time.process_time()
+
+    def build(self, **kwargs) -> "BlockExecStats":
+        if self._end_time is None:
+            self.finish()
+
         return BlockExecStats(
             start_time_s=self._start_time,
-            end_time_s=end_time,
-            wall_time_s=end_time - self._start_time,
-            cpu_time_s=end_cpu - self._start_cpu,
-            block_ser_time_s=block_ser_time_s,
+            end_time_s=self._end_time,
+            wall_time_s=self._end_time - self._start_time,
+            cpu_time_s=self._end_cpu - self._start_cpu,
+            **kwargs,
         )
 
 
