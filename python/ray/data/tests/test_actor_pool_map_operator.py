@@ -71,7 +71,7 @@ class PoolWorker:
     def get_location(self) -> str:
         return self.node_id
 
-    def on_exit(self):
+    def __ray_shutdown__(self):
         pass
 
 

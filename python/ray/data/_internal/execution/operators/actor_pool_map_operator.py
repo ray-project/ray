@@ -189,7 +189,6 @@ class ActorPoolMapOperator(MapOperator):
                 * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
             ),
             map_worker_cls_name=self._map_worker_cls_name,
-            enable_actor_pool_on_exit_hook=self.data_context.enable_actor_pool_on_exit_hook,
         )
         self._actor_task_selector = self._create_task_selector(self._actor_pool)
         # A queue of bundles awaiting dispatch to actors.
@@ -692,14 +691,15 @@ class _MapWorker:
         # This can happen during actor restarts or initialization failures.
         return f"MapWorker({getattr(self, 'src_fn_name', '<initializing>')})"
 
-    def on_exit(self):
-        """Called when the actor is about to exit.
-        This enables performing cleanup operations via `UDF.__ray_shutdown__` and
-        `UDF.__del__`.
+    def __ray_shutdown__(self):
+        """Called by Ray Core when the actor exits gracefully.
 
-        Note, this only ensures cleanup is performed when the job exits gracefully.
-        If the driver or the actor is forcefully killed, these methods will not be
-        called.
+        Ray Core guarantees this is called after all tasks complete and before
+        the actor process exits. This enables performing cleanup operations via
+        `UDF.__ray_shutdown__` and `UDF.__del__`.
+
+        Note: this is NOT called if the actor is forcefully killed (e.g. via
+        `ray.kill`) or crashes unexpectedly.
         """
         # Call __ray_shutdown__ on all UDF instances if the method exists.
         # This is the standard Ray shutdown hook that users can implement for cleanup.
@@ -901,7 +901,6 @@ class _ActorPool(AutoscalingActorPool):
     """
 
     _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S = 10
-    _ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S = 30
     _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
 
     def __init__(
@@ -916,7 +915,6 @@ class _ActorPool(AutoscalingActorPool):
         max_tasks_in_flight_per_actor: int,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
-        enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the actor pool.
 
@@ -939,9 +937,6 @@ class _ActorPool(AutoscalingActorPool):
                 be submitted to a single actor at any given time.
             map_worker_cls_name: Name of the map worker class for logging purposes.
             debounce_period_s: Debounce period for scaling down after scaling up.
-            enable_actor_pool_on_exit_hook: Whether to call UDF cleanup hooks
-                (__ray_shutdown__ and __del__) when actor pool workers exit
-                gracefully. See DataContext.enable_actor_pool_on_exit_hook.
         """
 
         self._min_size: int = min_size
@@ -970,7 +965,6 @@ class _ActorPool(AutoscalingActorPool):
         self._pending_actors: Dict[ObjectRef, ray.actor.ActorHandle] = {}
         # Map from actor handle to its logical ID.
         self._actor_to_logical_id: Dict[ray.actor.ActorHandle, str] = {}
-        self._enable_actor_pool_on_exit_hook = enable_actor_pool_on_exit_hook
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
@@ -1293,16 +1287,8 @@ class _ActorPool(AutoscalingActorPool):
     def _release_running_actors(self, force: bool):
         running = list(self._running_actors.keys())
 
-        on_exit_refs = []
-
-        # First release actors and collect their shutdown hook object-refs
         for actor in running:
-            ref = self._release_running_actor(actor)
-            if ref:
-                on_exit_refs.append(ref)
-
-        # Wait for all actors to shutdown gracefully before killing them
-        ray.wait(on_exit_refs, timeout=self._ACTOR_POOL_GRACEFUL_SHUTDOWN_TIMEOUT_S)
+            self._release_running_actor(actor)
 
         # NOTE: Actors can't be brought back after being ``ray.kill``-ed,
         #       hence we're only doing that if this is a forced release
@@ -1310,12 +1296,11 @@ class _ActorPool(AutoscalingActorPool):
             for actor in running:
                 ray.kill(actor)
 
-    def _release_running_actor(
-        self, actor: ray.actor.ActorHandle
-    ) -> Optional[ObjectRef]:
-        """Remove the given actor from the pool and trigger its `on_exit` callback.
+    def _release_running_actor(self, actor: ray.actor.ActorHandle) -> None:
+        """Remove the given actor from the pool.
 
-        This method returns a ``ref`` to the result
+        Ray Core will call `_MapWorker.__ray_shutdown__()` automatically when
+        the actor handle's ref count drops to zero, triggering UDF cleanup.
         """
         # NOTE: By default, we remove references to the actor and let ref counting
         # garbage collect the actor, instead of using ray.kill.
@@ -1323,7 +1308,7 @@ class _ActorPool(AutoscalingActorPool):
         # Otherwise, actor cannot be reconstructed for the purposes of produced
         # object's lineage reconstruction.
         if actor not in self._running_actors:
-            return None
+            return
 
         # Update cached statistics before removing the actor
         actor_state = self._running_actors[actor]
@@ -1339,16 +1324,8 @@ class _ActorPool(AutoscalingActorPool):
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
 
-        if self._enable_actor_pool_on_exit_hook:
-            # Call `on_exit` to trigger `UDF.__del__` which may perform
-            # cleanup operations.
-            ref = actor.on_exit.remote()
-        else:
-            ref = None
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
-
-        return ref
 
     def get_actor_info(self) -> _ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""
