@@ -281,6 +281,11 @@ def ray_deps_setup():
         sha256 = "ec64fdab22726d50fc056474dd29401d914cc616f53ab8f2fe4866772881d581",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
+            # Work around bazelbuild/bazel#21592: with layering_check and
+            # non-sandbox/local spawn, clang can record transitive *.cppmap files
+            # in .d files, which Bazel then reports as undeclared direct deps.
+            # Fixed in Bazel 7.3.0. LLVM used the same workaround by disabling
+            # layering_check in Bazel overlays (llvm/llvm-project@5bba176).
             "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
