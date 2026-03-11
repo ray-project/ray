@@ -144,15 +144,19 @@ class DefaultActorAutoscaler(ActorAutoscaler):
 
         if util >= self._actor_pool_scaling_up_threshold:
             average_num_inputs_per_task = op.metrics.average_num_inputs_per_task or 1
-            upstream_dc_backpressured = (
-                self._is_upstream_backpressured_by_downstream_capacity(op)
+            upstream_dc_backpressured = self._is_upstream_backpressured_by_downstream_capacity(
+                op
+            )
+            upscale_boost_enabled = (
+                upstream_dc_backpressured
+                and self._actor_pool_upscaling_ratio_on_upstream_backpressure > 1.0
             )
             if (
                 op_state.total_enqueued_input_blocks()
                 <= actor_pool.num_free_task_slots() * average_num_inputs_per_task
                 # If an upstream operator is DC-backpressured, don't short-circuit here:
                 # we may want to scale up more aggressively to relieve upstream pressure.
-                and not upstream_dc_backpressured
+                and not upscale_boost_enabled
             ):
                 return ActorPoolScalingRequest.no_op(
                     reason="enough free task slots to consume the existing inputs"
@@ -180,7 +184,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 )
             # When upstream has DC backpressure, pass inflated util so policy scales more.
             effective_util = util
-            if upstream_dc_backpressured:
+            if upscale_boost_enabled:
                 effective_util *= (
                     self._actor_pool_upscaling_ratio_on_upstream_backpressure
                 )
@@ -189,10 +193,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 delta = min(delta, max_scale_up)
             delta = max(1, delta)  # At least scale up by 1
 
-            if (
-                upstream_dc_backpressured
-                and self._actor_pool_upscaling_ratio_on_upstream_backpressure > 1.0
-            ):
+            if upscale_boost_enabled:
                 reason = (
                     f"utilization of {util} "
                     f"(x{self._actor_pool_upscaling_ratio_on_upstream_backpressure} "
