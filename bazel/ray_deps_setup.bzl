@@ -162,6 +162,25 @@ def ray_deps_setup():
         strip_prefix = None
     )
 
+    # Declare org_lzma_lzma before com_github_nelhage_rules_boost so that
+    # boost_deps()'s maybe() skips it and uses this declaration instead.
+    # Using a local build_file forces content-based cache invalidation:
+    # changing org_lzma_lzma.BUILD.bazel triggers re-setup on all machines,
+    # including Windows CI with persistent output bases where patching
+    # rules_boost's BUILD.lzma would not propagate.
+    auto_http_archive(
+        name = "org_lzma_lzma",
+        sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
+        strip_prefix = "xz-5.2.7",
+        urls = [
+            "https://cfhcable.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://superb-sea2.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://ayera.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://astuteinternet.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+        ],
+        build_file = "//thirdparty/patches:org_lzma_lzma.BUILD.bazel",
+    )
+
     auto_http_archive(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
