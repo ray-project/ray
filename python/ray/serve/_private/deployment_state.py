@@ -3027,6 +3027,8 @@ class DeploymentState:
                     for replica in gang_replicas:
                         self._replicas.add(replica.actor_details.state, replica)
 
+            # In gang deployments, replicas that only require reconfiguration are processed below.
+            # All gang replicas that require actor restart and fit within the max_to_stop budget have already been stopped.
             replicas_to_update = remaining
 
         # Per-replica restart/reconfigure handling

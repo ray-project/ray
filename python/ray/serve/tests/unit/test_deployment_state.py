@@ -7023,13 +7023,17 @@ class TestGangRollingUpdate:
         stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
         assert len(stopping) == gang_size
         assert len({r.gang_context.gang_id for r in stopping}) == 1
+        assert all(r.version != v2 for r in stopping)
 
         # Complete wave 1, trigger wave 2
         self._advance_wave(dsm, ds, gang_size)
         dsm.update()
 
         # Second old gang now stopping
-        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == gang_size
+        assert (
+            ds._replicas.count(exclude_version=v2, states=[ReplicaState.STOPPING])
+            == gang_size
+        )
 
         # Complete wave 2
         self._advance_wave(dsm, ds, gang_size)
