@@ -281,6 +281,15 @@ def make_rdt_callback(instance, gpu_object_store, rdt_manager, actor_handle,
             result_info = deserialized[4] if len(deserialized) > 4 else None
             other_args = deserialized[5:]
 
+            # Validate target buffers before attempting NIXL transfer
+            if target_tensors is not None and meta is not None:
+                from ray.experimental.rdt.rdt_store import validate_tensor_buffers
+                validate_tensor_buffers(
+                    target_tensors,
+                    meta.tensor_meta,
+                    meta.tensor_device,
+                )
+
             # Check if tensor is already in local rdt_store (intra-actor case)
             if rdt_manager is not None and rdt_manager.rdt_store.has_object(rdt_obj_id):
                 tensors = rdt_manager.rdt_store.get_object(rdt_obj_id)
@@ -296,7 +305,7 @@ def make_rdt_callback(instance, gpu_object_store, rdt_manager, actor_handle,
                         rdt_obj_id,
                         meta,
                         NixlCommunicatorMetadata(),
-                        target_tensors=target_tensors,
+                        target_buffers=target_tensors,
                     )
                 except Exception as e:
                     # Wrap in RayTaskError-compatible format
@@ -519,12 +528,12 @@ def gpu_worker_main(
     from _raylet import PyCoreWorker, PyWorkerID, PyNodeID
 
     # Set up NIXL actor ID before creating the instance
-    import ray.experimental.rdt.nixl_tensor_transport as _nixl_mod
+    import ray
     actor_name = f"GPU-{gpu_id}-{uuid.uuid4().hex[:8]}"
-    _nixl_mod._current_actor_id = actor_name
+    ray._RuntimeContext._actor_id = actor_name
 
     # Initialize RDT manager
-    from ray.experimental.rdt.rdt_manager import RDTManager
+    from ray._compat_rdt import RDTManager
     from ray._private.worker import global_worker
 
     rdt_mgr = RDTManager()

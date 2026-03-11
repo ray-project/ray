@@ -1202,7 +1202,7 @@ class _RayRuntime:
         self._next_gpu = 0
         self._initialized = True
         # Initialize a driver-side RDT manager for tracking metadata
-        from ray.experimental.rdt.rdt_manager import RDTManager
+        from ray._compat_rdt import RDTManager
         from ray._private.worker import global_worker
         global_worker.rdt_manager = RDTManager()
 
@@ -1238,7 +1238,7 @@ class _RayRuntime:
         _actor_rank_map.clear()
         _group_actors.clear()
         # Reset transport managers
-        from ray.experimental.rdt.util import reset_transport_managers
+        from ray._compat_rdt import reset_transport_managers
         reset_transport_managers()
         # Reset worker global state
         from ray._private.worker import global_worker
@@ -1505,11 +1505,21 @@ class _RayRuntime:
         meta = ref._rdt_meta
         transport = get_tensor_transport_manager("NIXL")
         target_tensors = getattr(ref, '_target_tensors', None)
+
+        # Validate target buffers before attempting NIXL transfer
+        if target_tensors is not None and meta is not None:
+            from ray.experimental.rdt.rdt_store import validate_tensor_buffers
+            validate_tensor_buffers(
+                target_tensors,
+                meta.tensor_meta,
+                meta.tensor_device,
+            )
+
         tensors = transport.recv_multiple_tensors(
             obj_id_hex,
             meta,
             NixlCommunicatorMetadata(),
-            target_tensors=target_tensors,
+            target_buffers=target_tensors,
         )
 
         if len(tensors) == 1:
@@ -1558,7 +1568,7 @@ class _RayRuntime:
             obj_id_hex,
             meta,
             NixlCommunicatorMetadata(),
-            target_tensors=target_tensors,
+            target_buffers=target_tensors,
         )
 
         # Set RDT metadata on the ref for GC
@@ -1766,6 +1776,7 @@ def get_runtime_context():
 class _RuntimeContext:
     """Minimal runtime context for NIXL agent naming."""
 
+    _actor_id = None
+
     def get_actor_id(self):
-        from ray.experimental.rdt.nixl_tensor_transport import _current_actor_id
-        return _current_actor_id
+        return _RuntimeContext._actor_id

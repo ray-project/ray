@@ -96,7 +96,7 @@ impl TaskSpecBuilder {
         self.spec.actor_task_spec = Some(ActorTaskSpec {
             actor_id: actor_id.binary(),
             actor_creation_dummy_object_id: actor_creation_dummy_object_id.binary(),
-            sequence_number,
+            concurrency_group_sequence_number: sequence_number,
         });
         self
     }
@@ -237,7 +237,7 @@ mod tests {
             actor_spec.actor_creation_dummy_object_id,
             dummy_oid.binary()
         );
-        assert_eq!(actor_spec.sequence_number, 42);
+        assert_eq!(actor_spec.concurrency_group_sequence_number, 42);
     }
 
     #[test]
