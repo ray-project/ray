@@ -185,14 +185,6 @@ class HangingExecutionIssueDetector(IssueDetector):
             task_metadata is None and failure_count < _MAX_STATE_FETCH_FAILED_ATTEMPTS
         )
 
-    @staticmethod
-    def _reset_fetch_failures(
-        state_fetch_failures: StateFetchFailures,
-        op_id: OpId,
-        task_idx: TaskIdx,
-    ):
-        state_fetch_failures[op_id][task_idx] = 0
-
     def _refresh_state(
         self,
         operator: "PhysicalOperator",
@@ -282,13 +274,14 @@ class HangingExecutionIssueDetector(IssueDetector):
                 hanging_op_tasks[operator.id][task_idx] = new_state
                 failure_count = state_fetch_failures[operator.id].get(task_idx, 0)
 
-                # 3) Skip if there wasn't any meaningful update to the task. For example,
-                # a task may have made some progress (yield bytes), or a task is retried
-                # giving a different node_id/attempt_number. Also skip, if we still have
-                # metadata retry attempts (so that we don't double log w/ and w/o the metadata.)
-                if old_state == new_state or self._should_fetch_metadata(
-                    new_state.task_metadata, failure_count
-                ):
+                # Skip if we're still waiting for metadata (will retry next cycle).
+                if self._should_fetch_metadata(new_state.task_metadata, failure_count):
+                    continue
+                # Skip if nothing meaningful changed: the execution state
+                # is identical AND the failure count didn't just cross the
+                # exhaustion threshold (which would mean we deferred logging
+                # while retrying and should now emit the issue).
+                if old_state == new_state and old_failures == failure_count:
                     continue
 
                 issues.append(
@@ -330,5 +323,5 @@ def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
         return None
     if isinstance(task_state, list):
         # get the latest task
-        task_state = max(task_state, key=lambda ts: ts.attempt_number)
+        task_state = max(task_state, key=lambda ts: ts.attempt_number, default=None)
     return task_state
