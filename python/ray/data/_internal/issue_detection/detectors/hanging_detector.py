@@ -31,8 +31,8 @@ DEFAULT_OP_TASK_STATS_STD_FACTOR = 10
 # Default detection time interval.
 DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
 # Max failed attempts to fetch task state before giving up for a task.
-# 1 is chosen for now, because the get_state API is known to be slow when
-# processing many http requests.
+# 1 is a lower # chosen for now, because the get_state API is known
+# to be slow when processing many http requests.
 _MAX_STATE_FETCH_FAILED_ATTEMPTS = 1
 
 logger = logging.getLogger(__name__)
@@ -303,7 +303,10 @@ def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
         logger.debug(f"Failed to grab task state with task_id={task_id}", exc_info=True)
         return None
     except Exception:
-        logger.debug(f"Unexpected error when grabbing task state with task_id={task_id}", exc_info=True)
+        logger.debug(
+            f"Unexpected error when grabbing task state with task_id={task_id}",
+            exc_info=True,
+        )
         return None
     if isinstance(task_state, list):
         # get the latest task
