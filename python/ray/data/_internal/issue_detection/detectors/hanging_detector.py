@@ -176,7 +176,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             message=message,
         )
 
-    def _should_retry_metadata_fetch(self, op_id: OpId, task_idx: TaskIdx) -> bool:
+    def _can_retry_metadata_fetch(self, op_id: OpId, task_idx: TaskIdx) -> bool:
         """Whether we haven't exhausted fetch attempts for this task."""
         return (
             self._state_fetch_failures[op_id].get(task_idx, 0)
@@ -215,7 +215,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             self._reset_fetch_failures(operator.id, task_idx)
             task_metadata = None
 
-        if task_metadata is None and self._should_retry_metadata_fetch(
+        if task_metadata is None and self._can_retry_metadata_fetch(
             operator.id, task_idx
         ):
             task_state = get_latest_state_for_task(task_info.task_id)
@@ -280,7 +280,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                 # metadata retry attempts (so that we don't double log w/ and w/o the metadata.)
                 if old_state == new_state or (
                     new_state.task_metadata is None
-                    and self._should_retry_metadata_fetch(operator.id, task_idx)
+                    and self._can_retry_metadata_fetch(operator.id, task_idx)
                 ):
                     continue
 
