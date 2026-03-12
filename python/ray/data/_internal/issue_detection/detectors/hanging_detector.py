@@ -67,11 +67,6 @@ class TaskMetadata:
 
 @dataclass
 class HangingExecutionState:
-    # Equality includes everything except task_metadata: a change
-    # in output means the task made progress and warrants a new log entry.
-    # A change in metadata alone (node/worker reassignment) doesn't
-    # indicate progress, so it's excluded from comparison.  The remaining
-    # fields are static identifiers or timestamps.
     operator_id: OpId
     task_idx: TaskIdx
     task_id: ray.TaskID
@@ -188,10 +183,10 @@ class HangingExecutionIssueDetector(IssueDetector):
             < _MAX_STATE_FETCH_FAILED_ATTEMPTS
         )
 
-    def _reset_fetch_failures(self, op_id: OpId, task_idx: TaskIdx) -> None:
+    def _reset_fetch_failures(self, op_id: OpId, task_idx: TaskIdx):
         self._state_fetch_failures[op_id][task_idx] = 0
 
-    def _record_fetch_failure(self, op_id: OpId, task_idx: TaskIdx) -> None:
+    def _record_fetch_failure(self, op_id: OpId, task_idx: TaskIdx):
         failures = self._state_fetch_failures[op_id]
         failures[task_idx] = failures.get(task_idx, 0) + 1
 
