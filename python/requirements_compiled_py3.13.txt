@@ -1408,7 +1408,7 @@ optree==0.18.0
     # via keras
 optuna==4.1.0
     # via -r python/requirements/ml/tune-requirements.txt
-orjson==3.9.15
+orjson==3.11.6
     # via
     #   gradio
     #   tensordict
