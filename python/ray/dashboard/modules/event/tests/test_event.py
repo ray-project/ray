@@ -8,6 +8,7 @@ import socket
 import sys
 import tempfile
 import time
+from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pprint import pprint
@@ -38,6 +39,8 @@ from ray._private.test_utils import (
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import (
     event_pb2,
+    events_autoscaler_node_provisioning_event_pb2,
+    events_autoscaler_scaling_decision_event_pb2,
     events_base_event_pb2,
     events_event_aggregator_service_pb2,
     export_submission_job_event_pb2,
@@ -59,6 +62,14 @@ class _FakeRequest:
 
     async def json(self):
         return self._payload
+
+
+def _make_event_head_for_external_event_tests(cache_limit=1000):
+    event_head = EventHead.__new__(EventHead)
+    event_head.events = defaultdict(OrderedDict)
+    event_head._cached_external_event_ids = OrderedDict()
+    event_head._external_event_cache_limit = cache_limit
+    return event_head
 
 
 def _get_event(msg="empty message", job_id=None, source_type=None):
@@ -672,7 +683,7 @@ async def test_list_cluster_events_impl():
 
 @pytest.mark.asyncio
 async def test_report_external_ray_events_rejects_invalid_payload():
-    event_head = EventHead.__new__(EventHead)
+    event_head = _make_event_head_for_external_event_tests()
 
     with pytest.raises(aiohttp.web.HTTPBadRequest):
         await event_head.report_external_ray_events(_FakeRequest({"not": "a-list"}))
@@ -680,7 +691,7 @@ async def test_report_external_ray_events_rejects_invalid_payload():
 
 @pytest.mark.asyncio
 async def test_report_external_ray_events_rejects_disallowed_event_types(monkeypatch):
-    event_head = EventHead.__new__(EventHead)
+    event_head = _make_event_head_for_external_event_tests()
     event = events_base_event_pb2.RayEvent(
         event_id=b"1",
         source_type=events_base_event_pb2.RayEvent.SourceType.JOBS,
@@ -704,7 +715,7 @@ async def test_report_external_ray_events_rejects_disallowed_event_types(monkeyp
 
 @pytest.mark.asyncio
 async def test_report_external_ray_events_forwards_allowed_events(monkeypatch):
-    event_head = EventHead.__new__(EventHead)
+    event_head = _make_event_head_for_external_event_tests()
     captured = {}
     event = events_base_event_pb2.RayEvent(
         event_id=b"1",
@@ -740,11 +751,12 @@ async def test_report_external_ray_events_forwards_allowed_events(monkeypatch):
         captured["events"][0].event_type
         == events_base_event_pb2.RayEvent.EventType.DRIVER_JOB_LIFECYCLE_EVENT
     )
+    assert event_head.events == {}
 
 
 @pytest.mark.asyncio
 async def test_forward_external_ray_events_builds_aggregator_request():
-    event_head = EventHead.__new__(EventHead)
+    event_head = _make_event_head_for_external_event_tests()
     captured = {}
     event = events_base_event_pb2.RayEvent(
         event_id=b"1",
@@ -769,6 +781,94 @@ async def test_forward_external_ray_events_builds_aggregator_request():
     assert isinstance(request, events_event_aggregator_service_pb2.AddEventsRequest)
     assert len(request.events_data.events) == 1
     assert request.events_data.events[0].message == "hello"
+
+
+@pytest.mark.asyncio
+async def test_report_external_ray_events_caches_autoscaler_events(monkeypatch):
+    event_head = _make_event_head_for_external_event_tests()
+    event = events_base_event_pb2.RayEvent(
+        event_id=b"\x01",
+        source_type=events_base_event_pb2.RayEvent.SourceType.AUTOSCALER,
+        event_type=events_base_event_pb2.RayEvent.EventType.AUTOSCALER_SCALING_DECISION_EVENT,
+        severity=events_base_event_pb2.RayEvent.Severity.INFO,
+        autoscaler_scaling_decision_event=events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent(
+            launch_actions=[
+                events_autoscaler_scaling_decision_event_pb2.AutoscalerScalingDecisionEvent.LaunchAction(
+                    instance_type="type-1",
+                    count=1,
+                )
+            ]
+        ),
+    )
+    event.timestamp.seconds = 123
+    payload = [
+        message_to_dict(
+            event,
+            always_print_fields_with_no_presence=True,
+            preserving_proto_field_name=False,
+            use_integers_for_enums=False,
+        )
+    ]
+
+    async def _forward(events):
+        assert len(events) == 1
+
+    monkeypatch.setattr(
+        EventHead,
+        "_get_external_ray_event_allowlist",
+        lambda: {"AUTOSCALER_SCALING_DECISION_EVENT"},
+    )
+    event_head._forward_external_ray_events = _forward
+
+    response = await event_head.report_external_ray_events(_FakeRequest(payload))
+
+    assert response.status == 200
+    cached_event = event_head.events["global"]["01"]
+    assert cached_event["source_type"] == "AUTOSCALER"
+    assert cached_event["severity"] == "INFO"
+    assert cached_event["timestamp"] == 123
+    assert json.loads(cached_event["message"]) == {
+        "clusterResourcesAfter": {},
+        "infeasibleClusterResourceConstraints": [],
+        "infeasibleGangResourceRequests": [],
+        "infeasibleResourceRequests": [],
+        "launchActions": [{"count": 1, "instanceType": "type-1"}],
+        "terminateActions": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_external_ray_event_cache_retention_evicts_oldest():
+    event_head = _make_event_head_for_external_event_tests(cache_limit=2)
+
+    for index in range(3):
+        event = events_base_event_pb2.RayEvent(
+            event_id=bytes([index + 1]),
+            source_type=events_base_event_pb2.RayEvent.SourceType.AUTOSCALER,
+            event_type=events_base_event_pb2.RayEvent.EventType.AUTOSCALER_NODE_PROVISIONING_EVENT,
+            severity=events_base_event_pb2.RayEvent.Severity.INFO,
+            autoscaler_node_provisioning_event=events_autoscaler_node_provisioning_event_pb2.AutoscalerNodeProvisioningEvent(
+                requested_instances=[
+                    events_autoscaler_node_provisioning_event_pb2.AutoscalerNodeProvisioningEvent.RequestedInstance(
+                        ray_node_type_name=f"type-{index}",
+                        count=1,
+                    )
+                ]
+            ),
+        )
+        event.timestamp.seconds = index + 1
+        event_head._cache_external_ray_events([event])
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = await _list_cluster_events_impl(
+            all_events=event_head.events,
+            executor=executor,
+            option=create_api_options(),
+        )
+
+    assert "01" not in event_head.events["global"]
+    assert [event["event_id"] for event in result.result] == ["02", "03"]
+    assert all(event["source_type"] == "AUTOSCALER" for event in result.result)
 
 
 def test_export_event_logger(tmp_path):

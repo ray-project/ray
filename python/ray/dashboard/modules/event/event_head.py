@@ -20,6 +20,7 @@ from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.grpc_utils import init_grpc_channel
+from ray._private.protobuf_compat import message_to_dict
 from ray._private.ray_constants import env_integer
 from ray.core.generated import (
     events_base_event_pb2,
@@ -44,6 +45,9 @@ JobEvents = OrderedDict
 dashboard_utils._json_compatible_types.add(JobEvents)
 
 MAX_EVENTS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", 10000))
+MAX_EXTERNAL_EVENTS_TO_CACHE = int(
+    os.environ.get("RAY_DASHBOARD_MAX_EXTERNAL_EVENTS_TO_CACHE", 1000)
+)
 
 # NOTE: Executor in this head is intentionally constrained to just 1 thread by
 #       default to limit its concurrency, therefore reducing potential for
@@ -112,6 +116,8 @@ class EventHead(
         self.module_started = time.monotonic()
         # {job_id hex(str): {event_id (str): event (dict)}}
         self.events: Dict[str, JobEvents] = defaultdict(JobEvents)
+        self._cached_external_event_ids = OrderedDict()
+        self._external_event_cache_limit = MAX_EXTERNAL_EVENTS_TO_CACHE
 
         self._executor = ThreadPoolExecutor(
             max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
@@ -159,6 +165,76 @@ class EventHead(
             if len(job_events) > MAX_EVENTS_TO_CACHE * 1.1:
                 while len(job_events) > MAX_EVENTS_TO_CACHE:
                     job_events.popitem(last=False)
+
+    @staticmethod
+    def _get_external_ray_event_nested_field_name(
+        event: events_base_event_pb2.RayEvent,
+    ) -> Union[str, None]:
+        nested_field_name_by_type = {
+            events_base_event_pb2.RayEvent.EventType.AUTOSCALER_CONFIG_DEFINITION_EVENT: "autoscaler_config_definition_event",
+            events_base_event_pb2.RayEvent.EventType.AUTOSCALER_SCALING_DECISION_EVENT: "autoscaler_scaling_decision_event",
+            events_base_event_pb2.RayEvent.EventType.AUTOSCALER_NODE_PROVISIONING_EVENT: "autoscaler_node_provisioning_event",
+        }
+        return nested_field_name_by_type.get(event.event_type)
+
+    @classmethod
+    def _external_ray_event_to_dashboard_event(
+        cls, event: events_base_event_pb2.RayEvent
+    ) -> Union[dict, None]:
+        nested_field_name = cls._get_external_ray_event_nested_field_name(event)
+        if nested_field_name is None:
+            return None
+
+        nested_event = getattr(event, nested_field_name)
+        message = json.dumps(
+            message_to_dict(
+                nested_event,
+                always_print_fields_with_no_presence=True,
+                preserving_proto_field_name=False,
+                use_integers_for_enums=False,
+            ),
+            sort_keys=True,
+        )
+
+        return {
+            "event_id": event.event_id.hex(),
+            "source_type": events_base_event_pb2.RayEvent.SourceType.Name(
+                event.source_type
+            ),
+            "message": message,
+            "timestamp": event.timestamp.seconds,
+            "severity": events_base_event_pb2.RayEvent.Severity.Name(event.severity),
+            "custom_fields": {},
+        }
+
+    def _enforce_external_event_cache_limit(self) -> None:
+        while len(self._cached_external_event_ids) > self._external_event_cache_limit:
+            _, (job_id, event_id) = self._cached_external_event_ids.popitem(last=False)
+            job_events = self.events.get(job_id)
+            if job_events is not None:
+                job_events.pop(event_id, None)
+                if not job_events:
+                    self.events.pop(job_id, None)
+
+    def _cache_external_ray_events(
+        self, events: List[events_base_event_pb2.RayEvent]
+    ) -> None:
+        cached_events = []
+        for event in events:
+            dashboard_event = self._external_ray_event_to_dashboard_event(event)
+            if dashboard_event is None:
+                continue
+            cached_events.append(dashboard_event)
+            self._cached_external_event_ids[dashboard_event["event_id"]] = (
+                "global",
+                dashboard_event["event_id"],
+            )
+
+        if not cached_events:
+            return
+
+        self._update_events(cached_events)
+        self._enforce_external_event_cache_limit()
 
     @staticmethod
     def _parse_external_ray_events(
@@ -298,6 +374,8 @@ class EventHead(
         except Exception:
             logger.exception("Failed to forward external Ray events to aggregator.")
             raise aiohttp.web.HTTPInternalServerError()
+
+        self._cache_external_ray_events(events)
 
         return dashboard_optional_utils.rest_response(
             success=True,
