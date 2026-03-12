@@ -181,6 +181,20 @@ class TableBlockAccessor(BlockAccessor):
 
         return default
 
+    def to_cudf(self) -> Any:
+        """Convert this block to a cudf.DataFrame (requires cudf to be installed)."""
+        from ray.data.util.data_batch_conversion import _lazy_import_cudf
+
+        cudf = _lazy_import_cudf()
+        if cudf is None:
+            raise ValueError(
+                "Attempted to convert data to cuDF DataFrame but cuDF "
+                "is not installed. Please do `pip install cudf-cu12` to "
+                "install cuDF (GPU required)."
+            )
+
+        return cudf.DataFrame.from_arrow(self.to_arrow())
+
     def column_names(self) -> List[str]:
         raise NotImplementedError
 
