@@ -113,7 +113,11 @@ def test_random_api_none_seed(base_dataset, method):
 
 
 def test_random_api_reseed_behavior(base_dataset):
-    """Test reseed_after_execution behavior across multiple epochs."""
+    """Test reseed_after_execution behavior across multiple epochs.
+
+    For shuffle/block_order we compare full row order (no sort); for random_sample
+    we compare sorted items so we only assert same set of sampled rows.
+    """
     seed_value = 42
     seed_false = RandomSeedConfig(seed=seed_value, reseed_after_execution=False)
     seed_true = RandomSeedConfig(seed=seed_value, reseed_after_execution=True)
@@ -180,6 +184,7 @@ def test_random_api_multiple_epochs(base_dataset, method, seed_param):
         ), f"Fixed seed should produce same results across epochs for {method}"
 
     elif seed_param == "RandomSeedConfig_true":
+        # Require at least two consecutive epochs to differ (reseed produces new orderings).
         assert (epochs[0] != epochs[1]) or (
             epochs[1] != epochs[2]
         ), f"reseed_after_execution=True should produce different results per epoch for {method}"
