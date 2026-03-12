@@ -1457,9 +1457,10 @@ def column_needs_tensor_extension(s: pd.Series) -> bool:
         Whether the provided Series needs a tensor extension representation.
     """
     # NOTE: This is an O(1) check.
-    # Only convert if first element is a multi-dimensional array (ndim > 1).
-    # 1D arrays (like aggregation results) stay as regular object columns.
+    # Only convert if first element is a numeric ndarray (float, int, etc).
+    # Object-dtype arrays (bytes, strings wrapped in numpy) cannot be converted
+    # to ArrowTensorArray and must stay as regular object columns.
     if s.dtype.type is not np.object_ or s.empty:
         return False
     first = s.iloc[0]
-    return isinstance(first, np.ndarray) and first.ndim > 1
+    return isinstance(first, np.ndarray) and not np.issubdtype(first.dtype, np.object_)

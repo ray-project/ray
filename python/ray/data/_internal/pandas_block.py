@@ -307,9 +307,12 @@ class PandasBlockBuilder(TableBlockBuilder):
             if not _should_convert_to_tensor(column_values, column_name):
                 return column_values
             converted = convert_to_numpy(column_values)
-            # Only wrap in TensorArray if result is multi-dimensional (ndim > 1).
-            # 1D arrays (like aggregation results) stay as plain arrays.
-            if isinstance(converted, np.ndarray) and converted.ndim > 1:
+            # Only wrap in TensorArray if result is a numeric ndarray.
+            # Object-dtype arrays (bytes, strings wrapped in numpy) cannot be
+            # converted to ArrowTensorArray and must stay as plain arrays.
+            if isinstance(converted, np.ndarray) and not np.issubdtype(
+                converted.dtype, np.object_
+            ):
                 return TensorArray(converted)
             return converted
 
