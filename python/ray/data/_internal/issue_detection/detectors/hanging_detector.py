@@ -160,7 +160,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             f"{self._op_task_stats_std_factor_threshold} * "
             f"{stdev:.2f}s). "
             f"Task started at {task_started} and "
-            f"last time task produced output was {hanging_since}. "
+            f"last time task produced output or made any progress was {hanging_since}. "
             f"If this message persists, please check "
             f"the stack trace of the task for potential hanging "
             f"issues. To adjust the z-score value, set "
