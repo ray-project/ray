@@ -302,6 +302,9 @@ def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
     except (RayStateApiException, requests.exceptions.RequestException):
         logger.debug(f"Failed to grab task state with task_id={task_id}", exc_info=True)
         return None
+    except Exception:
+        logger.debug(f"Unexpected error when grabbing task state with task_id={task_id}", exc_info=True)
+        return None
     if isinstance(task_state, list):
         # get the latest task
         task_state = max(task_state, key=lambda ts: ts.attempt_number)
