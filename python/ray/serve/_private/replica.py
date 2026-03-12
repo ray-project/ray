@@ -56,19 +56,20 @@ from ray.serve._private.common import (
     ServeComponentType,
     StreamingHTTPRequest,
     gRPCRequest,
+    gRPCStreamingRequest,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     GRPC_CONTEXT_ARG_NAME,
     HEALTH_CHECK_METHOD,
     HEALTHY_MESSAGE,
+    RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
-    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
     RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
@@ -146,6 +147,8 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
     asyncio_grpc_exception_handler,
+    check_obj_ref_ready_nowait,
+    compress_metric_report,
     generate_request_id,
     get_component_file_name,  # noqa: F401
     is_grpc_enabled,
@@ -153,7 +156,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig, HTTPOptions, gRPCOptions
-from ray.serve.context import GangContext, _get_in_flight_requests
+from ray.serve.context import _get_in_flight_requests
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import (
     BackPressureError,
@@ -161,6 +164,7 @@ from ray.serve.exceptions import (
     RayServeException,
     gRPCStatusError,
 )
+from ray.serve.gang import GangContext
 from ray.serve.generated.serve_pb2 import (
     ASGIRequest,
     ASGIResponse,
@@ -168,9 +172,10 @@ from ray.serve.generated.serve_pb2 import (
     ListApplicationsResponse,
 )
 from ray.serve.generated.serve_pb2_grpc import add_ASGIServiceServicer_to_server
-from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.grpc_util import RayServegRPCContext, gRPCInputStream
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
+from ray.types import ObjectRef
 from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -272,6 +277,7 @@ ReplicaMetadata = Tuple[
     Optional[List[str]],  # route_patterns
     Optional[List[DeploymentID]],  # outbound_deployments
     bool,  # has_user_routing_stats_method
+    Optional[GangContext],  # gang_context
 ]
 
 
@@ -335,6 +341,10 @@ class ReplicaMetricsManager:
         # On first call to _fetch_custom_autoscaling_metrics. Failing validation disables _custom_metrics_enabled
         self._checked_custom_metrics = False
         self._record_autoscaling_stats_fn = None
+
+        # Tracks in-flight metrics push to controller. Skip if new one is sent.
+        self._pending_metrics_push_ref: Optional[ObjectRef] = None
+        self._metrics_push_lock = threading.Lock()
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -635,13 +645,14 @@ class ReplicaMetricsManager:
             self._autoscaling_config.metrics_interval_s,
         )
         # Collect autoscaling metrics locally periodically.
+        record_interval_s = (
+            self._autoscaling_config.look_back_period_s
+            * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
+        )
         self._metrics_pusher.register_or_update_task(
             self.RECORD_METRICS_TASK_NAME,
             self._add_autoscaling_metrics_point_async,
-            min(
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                self._autoscaling_config.metrics_interval_s,
-            ),
+            min(record_interval_s, self._autoscaling_config.metrics_interval_s),
         )
 
     def should_collect_ongoing_requests(self) -> bool:
@@ -902,9 +913,15 @@ class ReplicaMetricsManager:
             aggregated_metrics=new_aggregated_metrics,
             metrics=new_metrics,
         )
-        self._controller_handle.record_autoscaling_metrics_from_replica.remote(
-            replica_metric_report
-        )
+        with self._metrics_push_lock:
+            if self._pending_metrics_push_ref is not None:
+                if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
+                    return  # Previous push still in flight, skip and try again later
+            self._pending_metrics_push_ref = (
+                self._controller_handle.record_autoscaling_metrics_from_replica.remote(
+                    compress_metric_report(replica_metric_report)
+                )
+            )
 
     async def _fetch_custom_autoscaling_metrics(
         self,
@@ -1117,6 +1134,7 @@ class ReplicaBase(ABC):
             route_patterns,
             self.list_outbound_deployments(),
             has_user_routing_stats_method,
+            self._gang_context,
         )
 
     def get_dynamically_created_handles(self) -> Set[DeploymentID]:
@@ -1362,20 +1380,88 @@ class ReplicaBase(ABC):
 
             request_args = (scope, receive)
         elif request_metadata.is_grpc_request:
-            assert len(request_args) == 1 and isinstance(request_args[0], gRPCRequest)
-            request: gRPCRequest = request_args[0]
+            if len(request_args) == 1 and isinstance(
+                request_args[0], gRPCStreamingRequest
+            ):
+                # Handle client streaming or bidirectional streaming request
+                streaming_request: gRPCStreamingRequest = request_args[0]
+                request_args, request_kwargs = self._setup_grpc_streaming_args(
+                    request_metadata, streaming_request
+                )
+            else:
+                # Handle unary or server streaming request
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], gRPCRequest
+                )
+                request: gRPCRequest = request_args[0]
 
-            method_info = self._user_callable_wrapper.get_user_method_info(
-                request_metadata.call_method
-            )
-            request_args = (request.user_request_proto,)
-            request_kwargs = (
-                {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
-                if method_info.takes_grpc_context_kwarg
-                else {}
-            )
+                method_info = self._user_callable_wrapper.get_user_method_info(
+                    request_metadata.call_method
+                )
+                request_args = (request.user_request_proto,)
+                request_kwargs = (
+                    {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+                    if method_info.takes_grpc_context_kwarg
+                    else {}
+                )
 
         return request_args, request_kwargs, ray_trace_ctx
+
+    def _setup_grpc_streaming_args(
+        self,
+        request_metadata: RequestMetadata,
+        streaming_request: gRPCStreamingRequest,
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Set up request args for gRPC client/bidirectional streaming.
+
+        Creates a gRPCInputStream that wraps the callback to the proxy,
+        allowing the user method to iterate over incoming request messages.
+        """
+        # Look up the proxy actor fresh per-request to avoid stale handles
+        # if the proxy actor restarts (same name, new actor ID). This mirrors
+        # the per-request lookup in StreamingHTTPRequest.receive_asgi_messages.
+        proxy_actor = ray.get_actor(
+            streaming_request.proxy_actor_name, namespace=SERVE_NAMESPACE
+        )
+
+        # Create a cancel event that will be set when the client cancels
+        cancel_event = asyncio.Event()
+
+        # Create an async iterator that fetches messages from the proxy
+        async def request_message_iterator():
+            while True:
+                # Ray handles serialization - no manual pickle needed
+                (
+                    has_more,
+                    message,
+                    is_cancelled,
+                ) = await proxy_actor.receive_grpc_messages.remote(
+                    streaming_request.session_id
+                )
+                if is_cancelled:
+                    # Set the cancel event so is_cancelled() returns True
+                    cancel_event.set()
+                if not has_more:
+                    break
+                yield message
+
+        # Create the gRPCInputStream wrapper with the cancel event
+        input_stream = gRPCInputStream(
+            request_message_iterator(), cancel_event=cancel_event
+        )
+
+        method_info = self._user_callable_wrapper.get_user_method_info(
+            request_metadata.call_method
+        )
+
+        request_args = (input_stream,)
+        request_kwargs = (
+            {GRPC_CONTEXT_ARG_NAME: request_metadata.grpc_context}
+            if method_info.takes_grpc_context_kwarg
+            else {}
+        )
+
+        return request_args, request_kwargs
 
     async def handle_request(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1827,7 +1913,7 @@ class Replica(ReplicaBase):
         async def start_http_server(port):
             options = configure_http_middlewares(
                 configure_http_options_with_defaults(
-                    HTTPOptions(**{**self._http_options.dict(), "port": port})
+                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
                 )
             )
 
@@ -1850,7 +1936,9 @@ class Replica(ReplicaBase):
         if grpc_enabled:
 
             async def start_grpc_server_fn(port):
-                options = gRPCOptions(**{**self._grpc_options.dict(), "port": port})
+                options = gRPCOptions(
+                    **{**self._grpc_options.model_dump(), "port": port}
+                )
                 return await start_grpc_server(
                     self._direct_ingress_service_handler_factory,
                     options,
@@ -2483,7 +2571,14 @@ class Replica(ReplicaBase):
 
                 await send(msg)
                 response_started = True
-                if msg.get("more_body") is False:
+                # more_body: "Signifies if there is additional content to come (as part
+                # of a Response Body message). If False, and the server is not expecting
+                # Response Trailers, response will be taken as complete and closed.
+                # Optional; if missing defaults to False."
+                # https://asgi.readthedocs.io/en/latest/specs/www.html#response-body-send-event
+                if msg["type"] == "http.response.body" and not msg.get(
+                    "more_body", False
+                ):
                     response_finished = True
 
             async def call_asgi():
