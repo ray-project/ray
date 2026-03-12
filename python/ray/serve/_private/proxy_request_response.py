@@ -230,10 +230,10 @@ class gRPCProxyRequest(ProxyRequest):
     def is_health_request(self) -> bool:
         return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
 
-    @property
     def client(self) -> str:
         return format_grpc_peer_address(self.context.peer())
 
+    @property
     def has_input_stream(self) -> bool:
         """Returns True if this request has a streaming input (client/bidi streaming)."""
         return self.streaming_type in (
