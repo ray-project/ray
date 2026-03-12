@@ -1917,9 +1917,11 @@ def test_stats_actor_metrics():
         final_metric.obj_store_mem_freed
         == ds._plan.stats().extra_metrics["obj_store_mem_freed"]
     )
-    assert (
-        final_metric.bytes_task_outputs_generated == 1000 * 80 * 80 * 4 * 8
-    )  # 8B per int
+    # bytes_task_outputs_generated now reflects the actual serialized object
+    # size from the Ray object store, which includes serialization overhead
+    # beyond the raw in-memory size (1000 * 80 * 80 * 4 * 8 = 204800000).
+    expected_in_memory_size = 1000 * 80 * 80 * 4 * 8  # 8B per int
+    assert final_metric.bytes_task_outputs_generated >= expected_in_memory_size
     assert final_metric.rows_task_outputs_generated == 1000 * 80 * 80 * 4
     # There should be nothing in object store at the end of execution.
 

@@ -1165,6 +1165,7 @@ cdef class StreamingGeneratorExecutionContext:
 @dataclass(frozen=True)
 class StreamingGeneratorStats:
     object_creation_dur_s: float
+    serialized_object_size_bytes: int
 
 
 cdef report_streaming_generator_output(
@@ -1206,6 +1207,9 @@ cdef report_streaming_generator_output(
     # usage asap.
     del output
 
+    # Capture the serialized object size before potentially returning early.
+    cdef size_t serialized_object_size = return_obj.second.get().GetSize()
+
     # NOTE: Once interrupting event is set by the caller, we can NOT access
     #       externally provided data-structures, and have to interrupt the execution
     if interrupt_signal_event is not None and interrupt_signal_event.is_set():
@@ -1230,6 +1234,7 @@ cdef report_streaming_generator_output(
 
     return StreamingGeneratorStats(
         object_creation_dur_s=serialization_dur_s,
+        serialized_object_size_bytes=serialized_object_size,
     )
 
 

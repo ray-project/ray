@@ -1798,13 +1798,20 @@ class HashShuffleAggregator:
             if stats:
                 exec_stats.block_ser_time_s = stats.object_creation_dur_s
 
-            yield BlockMetadataWithSchema.from_block(
+            block_meta = BlockMetadataWithSchema.from_block(
                 block,
                 block_exec_stats=exec_stats,
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
+
+            if stats:
+                # Use actual serialized object size from Ray Core instead
+                # of the in-memory estimate from BlockAccessor.
+                block_meta.size_bytes = stats.serialized_object_size_bytes
+
+            yield block_meta
 
     def _debug_dump(self):
         """Periodically dumps the state of the HashShuffleAggregator for debugging."""

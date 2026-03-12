@@ -766,6 +766,12 @@ def _map_task(
                 gen_stats: StreamingGeneratorStats = yield block
                 if gen_stats:
                     blk_exec_stats.block_ser_time_s = gen_stats.object_creation_dur_s
+                    # Use actual serialized object size from Ray Core instead
+                    # of the in-memory estimate from BlockAccessor.
+                    block_meta = replace(
+                        block_meta,
+                        size_bytes=gen_stats.serialized_object_size_bytes,
+                    )
 
                 blk_exec_stats.udf_time_s = map_transformer.udf_time_s(reset=True)
                 blk_exec_stats.task_idx = ctx.task_idx
