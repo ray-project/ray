@@ -485,6 +485,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Callback for notifying ActorPoolManager when pool tasks complete.
   /// This enables cross-actor retry by allowing the pool to re-enqueue failed tasks.
+  /// Set once during CoreWorker construction via SetPoolTaskCompletionCallback()
+  /// before any concurrent access; immutable thereafter.
   PoolTaskCompletionCallback pool_task_completion_callback_;
 };
 

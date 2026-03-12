@@ -39,11 +39,11 @@ void MaybeNotifyPoolTaskComplete(const PoolTaskCompletionCallback &callback,
   }
 
   // Check if this task belongs to an actor pool
-  const auto &msg = task_spec.GetMessage();
-  if (!msg.has_actor_pool_id() || msg.actor_pool_id().empty()) {
+  if (!task_spec.IsPoolTask()) {
     return;
   }
 
+  const auto &msg = task_spec.GetMessage();
   auto pool_id = ActorPoolID::FromBinary(msg.actor_pool_id());
   TaskID work_item_id = TaskID::Nil();
   if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {

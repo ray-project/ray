@@ -197,8 +197,14 @@ class ActorPoolMapOperator(MapOperator):
             * DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR
         )
 
-        # Use new C++-backed Core Actor Pool if feature flag is enabled
-        if data_context.use_core_actor_pool:
+        # Use new Core Actor Pool if feature flag is enabled.
+        # Fall back to legacy path when ray_remote_args_fn is set, because the
+        # Core pool creates actors with static options baked in at construction
+        # time and has no hook for per-actor dynamic arg generation.
+        use_core_pool = (
+            data_context.use_core_actor_pool and not self._ray_remote_args_fn
+        )
+        if use_core_pool:
             Adapter = _get_class_based_actor_pool_adapter()
             self._actor_pool = Adapter(
                 actor_cls=self._map_worker_cls,

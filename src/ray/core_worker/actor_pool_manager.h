@@ -97,13 +97,6 @@ struct ActorPoolConfig {
   int32_t min_size = 1;
   int32_t max_size = -1;  // -1 = unbounded
   int32_t initial_size = 1;
-
-  /// Topology (Phase 2 - not used in Phase 1)
-  std::vector<int32_t> shape;
-  std::vector<std::string> shape_names;
-
-  /// Placement group (Phase 2 - not used in Phase 1)
-  PlacementGroupID placement_group_id;
 };
 
 /// State of an actor within a pool.

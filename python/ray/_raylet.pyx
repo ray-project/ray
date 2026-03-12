@@ -4829,8 +4829,7 @@ cdef class CoreWorker:
             int32_t max_tasks_in_flight_per_actor=1,
             int32_t min_size=1,
             int32_t max_size=-1,
-            int32_t initial_size=1,
-            initial_actor_ids=None):
+            int32_t initial_size=1):
         """Register a new actor pool.
 
         Args:
@@ -4843,14 +4842,13 @@ cdef class CoreWorker:
             min_size: Minimum pool size for autoscaling.
             max_size: Maximum pool size (-1 for unbounded).
             initial_size: Initial pool size.
-            initial_actor_ids: Optional list of ActorID to add to the pool.
 
         Returns:
             ActorPoolID: The ID of the newly created pool.
         """
         cdef:
             CActorPoolConfig config
-            c_vector[CActorID] c_initial_actors
+            c_vector[CActorID] c_empty_actors
             CActorPoolID c_pool_id
 
         config.max_retry_attempts = max_retry_attempts
@@ -4864,13 +4862,9 @@ cdef class CoreWorker:
         config.max_size = max_size
         config.initial_size = initial_size
 
-        if initial_actor_ids:
-            for actor_id in initial_actor_ids:
-                c_initial_actors.push_back((<ActorID>actor_id).native())
-
         with nogil:
             c_pool_id = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
-                ).RegisterPool(config, c_initial_actors)
+                ).RegisterPool(config, c_empty_actors)
 
         return ActorPoolID(c_pool_id.Binary())
 

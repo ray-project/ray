@@ -849,8 +849,8 @@ void CoreWorker::InternalHeartbeat() {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
       // Pool tasks: redirect to a healthy actor chosen by the pool.
-      const auto &pool_id_bin = spec.GetMessage().actor_pool_id();
-      if (!pool_id_bin.empty()) {
+      if (spec.IsPoolTask()) {
+        const auto &pool_id_bin = spec.GetMessage().actor_pool_id();
         ActorPoolID pool_id = ActorPoolID::FromBinary(pool_id_bin);
         if (actor_pool_manager_->HasPool(pool_id)) {
           ActorID new_actor_id = actor_pool_manager_->SelectActorForTask(pool_id);

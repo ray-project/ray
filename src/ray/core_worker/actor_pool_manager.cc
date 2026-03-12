@@ -36,7 +36,7 @@ ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
       task_manager_(task_manager),
       io_service_(nullptr),
       submit_actor_task_fn_(nullptr) {
-  RAY_LOG(INFO) << "ActorPoolManager initialized (minimal mode, no callbacks)";
+  RAY_LOG(DEBUG) << "ActorPoolManager initialized (minimal mode, no callbacks)";
 }
 
 ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
@@ -49,7 +49,7 @@ ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
       task_manager_(task_manager),
       io_service_(&io_service),
       submit_actor_task_fn_(std::move(submit_actor_task_fn)) {
-  RAY_LOG(INFO) << "ActorPoolManager initialized (full mode with CoreWorker callbacks)";
+  RAY_LOG(DEBUG) << "ActorPoolManager initialized (full mode with CoreWorker callbacks)";
 }
 
 ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
@@ -226,11 +226,8 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     return {};  // Return empty refs; work will be submitted when actor becomes available
   }
 
-  // Store work item for retry tracking before submission
-  auto work_item_copy = std::move(work_item);
-
   // Submit to selected actor
-  return SubmitToActor(pool_id, selected_actor, std::move(work_item_copy));
+  return SubmitToActor(pool_id, selected_actor, std::move(work_item));
 }
 
 std::vector<ActorID> ActorPoolManager::GetPoolActors(const ActorPoolID &pool_id) const {
@@ -625,7 +622,9 @@ bool ActorPoolManager::ShouldRetryTask(const ActorPoolConfig &config,
 
   case rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
   case rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED:
-    // User errors - don't retry by default (can be configured later)
+  case rpc::ErrorType::OUT_OF_MEMORY:
+    // User/resource errors - don't retry (retrying OOM on a different actor
+    // is unlikely to help since the task will likely OOM again).
     return false;
 
   default:
