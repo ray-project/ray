@@ -1,3 +1,4 @@
+import threading
 from collections import deque
 from typing import Deque, List, Tuple
 
@@ -40,64 +41,86 @@ class StreamingRepartitionRefBundler(BaseRefBundler):
         self._ready_bundles: Deque[RefBundle] = deque()
         self._consumed_input_bundles: List[RefBundle] = []
         self._total_pending_rows = 0
+        # Thread lock to protect concurrent access to deques
+        self._lock = threading.Lock()
 
     def _try_build_ready_bundle(self, flush_remaining: bool = False):
-        if self._total_pending_rows >= self._target_num_rows:
-            rows_needed_from_last_bundle = (
-                self._pending_bundles[-1].num_rows()
-                - self._total_pending_rows % self._target_num_rows
-            )
-            assert rows_needed_from_last_bundle >= 0  # This will never be negative
-            pending_bundles = list(self._pending_bundles)
-            remaining_bundle = None
-            if (
-                rows_needed_from_last_bundle > 0
-                and rows_needed_from_last_bundle < pending_bundles[-1].num_rows()
-            ):
-                last_bundle = pending_bundles.pop()
-                sliced_bundle, remaining_bundle = last_bundle.slice(
-                    rows_needed_from_last_bundle
+        with self._lock:
+            if self._total_pending_rows >= self._target_num_rows:
+                rows_needed_from_last_bundle = (
+                    self._pending_bundles[-1].num_rows()
+                    - self._total_pending_rows % self._target_num_rows
                 )
-                pending_bundles.append(sliced_bundle)
-            self._ready_bundles.append(RefBundle.merge_ref_bundles(pending_bundles))
-            self._pending_bundles.clear()
-            self._total_pending_rows = 0
-            if remaining_bundle and remaining_bundle.num_rows() > 0:
-                self._pending_bundles.append(remaining_bundle)
-                self._total_pending_rows += remaining_bundle.num_rows()
-        if flush_remaining and len(self._pending_bundles) > 0:
-            self._ready_bundles.append(
-                RefBundle.merge_ref_bundles(self._pending_bundles)
-            )
-            self._pending_bundles.clear()
-            self._total_pending_rows = 0
+                assert rows_needed_from_last_bundle >= 0  # This will never be negative
+                pending_bundles = list(self._pending_bundles)
+                remaining_bundle = None
+                if (
+                    rows_needed_from_last_bundle > 0
+                    and rows_needed_from_last_bundle < pending_bundles[-1].num_rows()
+                ):
+                    last_bundle = pending_bundles.pop()
+                    sliced_bundle, remaining_bundle = last_bundle.slice(
+                        rows_needed_from_last_bundle
+                    )
+                    pending_bundles.append(sliced_bundle)
+                self._ready_bundles.append(RefBundle.merge_ref_bundles(pending_bundles))
+                self._pending_bundles.clear()
+                self._total_pending_rows = 0
+                if remaining_bundle and remaining_bundle.num_rows() > 0:
+                    self._pending_bundles.append(remaining_bundle)
+                    self._total_pending_rows += remaining_bundle.num_rows()
+            if flush_remaining and self._total_pending_rows > 0:
+                self._ready_bundles.append(
+                    RefBundle.merge_ref_bundles(self._pending_bundles)
+                )
+                self._pending_bundles.clear()
+                self._total_pending_rows = 0
 
     def add_bundle(self, ref_bundle: RefBundle):
-        self._total_pending_rows += ref_bundle.num_rows()
-        self._pending_bundles.append(ref_bundle)
+        with self._lock:
+            self._total_pending_rows += ref_bundle.num_rows()
+            self._pending_bundles.append(ref_bundle)
+            self._consumed_input_bundles.append(ref_bundle)
+        # Call _try_build_ready_bundle outside the lock to avoid deadlock
+        # (it will acquire the lock internally)
         self._try_build_ready_bundle()
-        self._consumed_input_bundles.append(ref_bundle)
 
     def has_bundle(self) -> bool:
-        return len(self._ready_bundles) > 0
+        with self._lock:
+            return len(self._ready_bundles) > 0
 
     def get_next_bundle(
         self,
     ) -> Tuple[List[RefBundle], RefBundle]:
-        consumed_input_bundles = self._consumed_input_bundles
-        self._consumed_input_bundles = []
-        return consumed_input_bundles, self._ready_bundles.popleft()
+        with self._lock:
+            consumed_input_bundles = self._consumed_input_bundles
+            self._consumed_input_bundles = []
+            return consumed_input_bundles, self._ready_bundles.popleft()
 
     def done_adding_bundles(self):
-        if len(self._pending_bundles) > 0:
+        # Check if there are pending bundles inside the lock
+        with self._lock:
+            has_pending = len(self._pending_bundles) > 0
+        if has_pending:
             self._try_build_ready_bundle(flush_remaining=True)
 
     def num_blocks(self):
-        return sum(len(bundle) for bundle in self._pending_bundles) + sum(
-            len(bundle) for bundle in self._ready_bundles
+        # Create copies of the deques inside the lock to avoid "deque mutated during iteration"
+        with self._lock:
+            pending_list = list(self._pending_bundles)
+            ready_list = list(self._ready_bundles)
+        # Calculate outside the lock to avoid holding it for too long
+        return sum(len(bundle) for bundle in pending_list) + sum(
+            len(bundle) for bundle in ready_list
         )
 
     def size_bytes(self) -> int:
-        return sum(bundle.size_bytes() for bundle in self._pending_bundles) + sum(
-            bundle.size_bytes() for bundle in self._ready_bundles
+        # Create copies of the deques inside the lock to avoid "deque mutated during iteration"
+        # This prevents race conditions when another thread modifies the deques while we're iterating
+        with self._lock:
+            pending_list = list(self._pending_bundles)
+            ready_list = list(self._ready_bundles)
+        # Calculate outside the lock to avoid holding it for too long
+        return sum(bundle.size_bytes() for bundle in pending_list) + sum(
+            bundle.size_bytes() for bundle in ready_list
         )
