@@ -294,13 +294,9 @@ def get_num_ready_tpu_slices(
         return 0
 
     # Fetch live resource usage via the State API to ensure slices are idle.
-    try:
-        from ray._private.state import available_resources_per_node
+    from ray._private.state import available_resources_per_node
 
-        node_avail_resources = available_resources_per_node()
-    except Exception as e:
-        logger.warning(f"Failed to fetch live available resources per node: {e}")
-        node_avail_resources = {}
+    node_avail_resources = available_resources_per_node()
 
     slice_to_nodes = {}
     for node in ray.nodes():
