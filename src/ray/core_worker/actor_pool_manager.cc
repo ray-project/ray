@@ -22,6 +22,7 @@
 
 #include "boost/asio/steady_timer.hpp"
 #include "ray/core_worker/actor_management/actor_manager.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/util/logging.h"
 
@@ -43,12 +44,14 @@ ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
                                    ActorTaskSubmitterInterface &task_submitter,
                                    TaskManagerInterface &task_manager,
                                    instrumented_io_context &io_service,
-                                   SubmitActorTaskCallback submit_actor_task_fn)
+                                   SubmitActorTaskCallback submit_actor_task_fn,
+                                   LocalityDataProviderInterface *locality_data_provider)
     : actor_manager_(actor_manager),
       task_submitter_(task_submitter),
       task_manager_(task_manager),
       io_service_(&io_service),
-      submit_actor_task_fn_(std::move(submit_actor_task_fn)) {
+      submit_actor_task_fn_(std::move(submit_actor_task_fn)),
+      locality_data_provider_(locality_data_provider) {
   RAY_LOG(DEBUG) << "ActorPoolManager initialized (full mode with CoreWorker callbacks)";
 }
 
@@ -278,6 +281,43 @@ bool ActorPoolManager::HasPool(const ActorPoolID &pool_id) const {
   return pools_.find(pool_id) != pools_.end();
 }
 
+int64_t ActorPoolManager::GetOccupiedTaskSlots(const ActorPoolID &pool_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    return 0;
+  }
+
+  const auto &pool_info = pool_it->second;
+  int64_t total_in_flight = 0;
+  for (const auto &[actor_id, state] : pool_info.actor_states) {
+    total_in_flight += state.num_tasks_in_flight;
+  }
+
+  auto wq_it = work_queues_.find(pool_id);
+  int64_t backlog = (wq_it != work_queues_.end()) ? wq_it->second->Size() : 0;
+
+  return total_in_flight + backlog;
+}
+
+int32_t ActorPoolManager::GetNumActiveActors(const ActorPoolID &pool_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto pool_it = pools_.find(pool_id);
+  if (pool_it == pools_.end()) {
+    return 0;
+  }
+
+  int32_t active = 0;
+  for (const auto &[actor_id, state] : pool_it->second.actor_states) {
+    if (state.num_tasks_in_flight > 0) {
+      active++;
+    }
+  }
+  return active;
+}
+
 ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
                                              const std::vector<ObjectID> &arg_ids) {
   absl::MutexLock lock(&mu_);
@@ -366,36 +406,65 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     return ActorID::Nil();
   }
 
+  // Compute locality map once for all candidates
+  auto node_bytes = ComputeNodeLocalityMap(arg_ids);
+
   // Select the actor with the lowest rank (best choice)
   auto best_actor = *std::min_element(
       candidates.begin(), candidates.end(), [&](const ActorID &a, const ActorID &b) {
-        return RankActor(a, arg_ids, pool_info) < RankActor(b, arg_ids, pool_info);
+        return RankActor(a, node_bytes, pool_info) < RankActor(b, node_bytes, pool_info);
       });
 
   RAY_LOG(DEBUG) << "Selected actor " << best_actor << " from pool " << pool_id;
   return best_actor;
 }
 
-int32_t ActorPoolManager::RankActor(const ActorID &actor_id,
-                                    const std::vector<ObjectID> &arg_ids,
-                                    const ActorPoolInfo &pool_info) const {
+std::pair<int64_t, int32_t> ActorPoolManager::RankActor(
+    const ActorID &actor_id,
+    const absl::flat_hash_map<NodeID, uint64_t> &node_bytes,
+    const ActorPoolInfo &pool_info) const {
   auto state_it = pool_info.actor_states.find(actor_id);
   if (state_it == pool_info.actor_states.end()) {
-    return INT32_MAX;  // Worst rank
+    return {INT64_MAX, INT32_MAX};  // Worst rank
   }
 
   const auto &state = state_it->second;
+  int32_t load = state.num_tasks_in_flight;
 
-  // Simple ranking: lower is better
-  // For Phase 1, rank purely by load (number of in-flight tasks)
-  // Phase 2 can add locality awareness
-  int32_t rank = state.num_tasks_in_flight;
+  if (node_bytes.empty()) {
+    // No locality data — rank by load only.
+    return {0, load};
+  }
 
-  // TODO(Phase 2): Add locality-aware ranking
-  // int32_t locality_rank = GetLocalityRank(state.location, arg_ids);
-  // rank = locality_rank * 10000 + state.num_tasks_in_flight;
+  // Locality-aware ranking: prefer actors on nodes that hold task data.
+  auto bytes_it = node_bytes.find(state.location);
+  if (bytes_it != node_bytes.end()) {
+    // Actor is on a node with data — rank by -total_bytes (more data = better).
+    return {-static_cast<int64_t>(bytes_it->second), load};
+  }
 
-  return rank;
+  // Actor is on a remote node with no data.
+  return {INT64_MAX, load};
+}
+
+absl::flat_hash_map<NodeID, uint64_t> ActorPoolManager::ComputeNodeLocalityMap(
+    const std::vector<ObjectID> &arg_ids) const {
+  absl::flat_hash_map<NodeID, uint64_t> node_bytes;
+  if (!locality_data_provider_ || arg_ids.empty()) {
+    return node_bytes;
+  }
+
+  for (const auto &arg_id : arg_ids) {
+    auto locality = locality_data_provider_->GetLocalityData(arg_id);
+    if (!locality.has_value()) {
+      continue;
+    }
+    for (const auto &node_id : locality->nodes_containing_object) {
+      node_bytes[node_id] += locality->object_size;
+    }
+  }
+
+  return node_bytes;
 }
 
 std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(

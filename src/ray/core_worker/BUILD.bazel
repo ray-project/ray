@@ -159,6 +159,7 @@ ray_cc_library(
     deps = [
         ":actor_pool_work_queue",
         ":common",
+        ":lease_policy",
         ":task_manager_interface",
         "//src/ray/common:id",
         "//src/ray/common:task_common",

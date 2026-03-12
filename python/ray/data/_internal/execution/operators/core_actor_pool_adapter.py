@@ -152,8 +152,9 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
 
         # Cached counts
         self._num_restarting_actors: int = 0
-        self._num_active_actors: int = 0
-        self._total_num_tasks_in_flight: int = 0
+
+        # Cache worker reference for C++ pool queries
+        self._worker = None
 
     # =========================================================================
     # AutoscalingActorPool Interface Implementation
@@ -172,7 +173,7 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         return len(self._running_actors)
 
     def num_active_actors(self) -> int:
-        return self._num_active_actors
+        return self._get_worker().core_worker.get_num_active_actors(self._pool.pool_id)
 
     def num_pending_actors(self) -> int:
         return len(self._pending_actors)
@@ -190,7 +191,9 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
         return self._max_actor_concurrency
 
     def num_tasks_in_flight(self) -> int:
-        return self._total_num_tasks_in_flight
+        return self._get_worker().core_worker.get_occupied_task_slots(
+            self._pool.pool_id
+        )
 
     def initial_size(self) -> int:
         return self._initial_size
@@ -207,11 +210,11 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
 
     def num_free_task_slots(self) -> int:
         """Number of free task slots across all running actors."""
-        return max(
-            0,
-            self._max_tasks_in_flight * self.num_running_actors()
-            - self._total_num_tasks_in_flight,
+        occupied = self._get_worker().core_worker.get_occupied_task_slots(
+            self._pool.pool_id
         )
+        capacity = self._max_tasks_in_flight * self.num_running_actors()
+        return max(0, capacity - occupied)
 
     def scale(self, req: ActorPoolScalingRequest) -> Optional[int]:
         """Apply scaling request."""
@@ -411,7 +414,8 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
                 "Python num_free_task_slots() and C++ max_tasks_in_flight_per_actor."
             )
 
-        self._total_num_tasks_in_flight += 1
+        # C++ tracks in-flight counts authoritatively via SubmitToActor().
+        # No Python-side increment needed.
 
         if actual_num_returns == STREAMING_GENERATOR_RETURN:
             return ObjectRefGenerator(object_refs[0], worker), None
@@ -429,15 +433,15 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
     # =========================================================================
 
     def on_task_submitted(self, actor: ActorHandle):
-        """Called when a task is submitted to an actor."""
-        # TODO(P3): Actor may have died between submission and callback.
-        # Add defensive guard: if actor not in self._running_actors, log and return.
+        """Called when a task is submitted to an actor (legacy direct-submission path).
+
+        For pool-submitted tasks, C++ tracks counts authoritatively.
+        This method only updates the per-actor Python state for the legacy path.
+        """
+        if actor not in self._running_actors:
+            return
         state = self._running_actors[actor]
         state.num_tasks_in_flight += 1
-        self._total_num_tasks_in_flight += 1
-
-        if state.num_tasks_in_flight == 1:
-            self._num_active_actors += 1
 
     def on_task_completed(self, actor: Optional[ActorHandle] = None):
         """Called when a task completes.
@@ -446,14 +450,13 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
             actor: The actor that ran the task. None for pool-submitted tasks
                    where C++ selected the actor.
         """
+        # For pool-submitted tasks (actor=None), C++ handles decrement
+        # via OnTaskSucceeded(). Only update per-actor Python state for
+        # the legacy direct-submission path.
         if actor is not None and actor in self._running_actors:
             state = self._running_actors[actor]
-            assert state.num_tasks_in_flight > 0
-            state.num_tasks_in_flight -= 1
-            if state.num_tasks_in_flight == 0:
-                self._num_active_actors -= 1
-
-        self._total_num_tasks_in_flight -= 1
+            if state.num_tasks_in_flight > 0:
+                state.num_tasks_in_flight -= 1
 
     def refresh_actor_state(self):
         """Refresh actor states from GCS (alive vs restarting)."""
@@ -483,9 +486,17 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
     # Pool Management
     # =========================================================================
 
+    def _get_worker(self):
+        """Get cached worker reference."""
+        if self._worker is None:
+            import ray._private.worker as worker_module
+
+            self._worker = worker_module.global_worker
+        return self._worker
+
     def num_idle_actors(self) -> int:
         """Number of idle actors (no tasks in flight)."""
-        return len(self._running_actors) - self._num_active_actors
+        return len(self._running_actors) - self.num_active_actors()
 
     def _remove_inactive_actor(self) -> bool:
         """Remove a pending or idle actor."""
@@ -542,13 +553,18 @@ class ClassBasedActorPoolAdapter(AutoscalingActorPool):
             return None
 
         actor_state = self._running_actors[actor]
-        self._total_num_tasks_in_flight -= actor_state.num_tasks_in_flight
-
-        if actor_state.num_tasks_in_flight > 0:
-            self._num_active_actors -= 1
 
         if actor_state.is_restarting:
             self._num_restarting_actors -= 1
+
+        # Sync C++ pool state: remove actor so C++ doesn't hold stale state.
+        try:
+            worker = self._get_worker()
+            worker.core_worker.remove_actor_from_pool(
+                self._pool.pool_id, actor._actor_id
+            )
+        except Exception:
+            pass
 
         ref = None
         if self._enable_actor_pool_on_exit_hook:

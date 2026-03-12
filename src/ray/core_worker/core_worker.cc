@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "ray/core_worker/core_worker_shutdown_executor.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/shutdown_coordinator.h"
 
 #ifndef _WIN32
@@ -419,7 +420,8 @@ CoreWorker::CoreWorker(
                                             std::move(on_complete),
                                             pool_id,
                                             work_item_id);
-      });
+      },
+      dynamic_cast<LocalityDataProviderInterface *>(reference_counter_.get()));
 
   // Wire pool task completion callback from ActorTaskSubmitter to ActorPoolManager.
   // This enables cross-actor retry by notifying the pool when tasks complete.

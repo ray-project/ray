@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -40,6 +41,7 @@ namespace core {
 // Forward declarations
 class ActorManager;
 class ActorTaskSubmitterInterface;
+class LocalityDataProviderInterface;
 class TaskManagerInterface;
 
 /// Callback type for task completion (success or failure).
@@ -190,11 +192,13 @@ class ActorPoolManager {
   /// \param task_manager Reference to the TaskManager.
   /// \param io_service Reference to the IO service for delayed retry scheduling.
   /// \param submit_actor_task_fn Callback to submit actor tasks via CoreWorker.
+  /// \param locality_data_provider Provider for object locality data (nullable).
   ActorPoolManager(ActorManager &actor_manager,
                    ActorTaskSubmitterInterface &task_submitter,
                    TaskManagerInterface &task_manager,
                    instrumented_io_context &io_service,
-                   SubmitActorTaskCallback submit_actor_task_fn);
+                   SubmitActorTaskCallback submit_actor_task_fn,
+                   LocalityDataProviderInterface *locality_data_provider = nullptr);
 
   ~ActorPoolManager() = default;
 
@@ -260,6 +264,18 @@ class ActorPoolManager {
   /// \return True if the pool exists.
   bool HasPool(const ActorPoolID &pool_id) const;
 
+  /// Returns in_flight + backlog — single number for backpressure decisions.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \return Total occupied task slots (in-flight tasks + queued work items).
+  int64_t GetOccupiedTaskSlots(const ActorPoolID &pool_id) const;
+
+  /// Returns number of actors with num_tasks_in_flight > 0.
+  ///
+  /// \param pool_id The ID of the pool.
+  /// \return Number of actors currently processing tasks.
+  int32_t GetNumActiveActors(const ActorPoolID &pool_id) const;
+
   /// Select an actor from the pool for task execution or reconstruction.
   /// Thread-safe wrapper around SelectActorFromPool.
   ///
@@ -291,6 +307,14 @@ class ActorPoolManager {
   FRIEND_TEST(ActorPoolManagerTest, AddRemoveActors);
   FRIEND_TEST(ActorPoolManagerTest, SelectLeastLoadedActor);
   FRIEND_TEST(ActorPoolManagerTest, CrossActorRetry);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, LocalitySelectsDataLocalActor);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, LocalityTiebreakerIsLoad);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, NoLocalityDataFallsBackToLoad);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, EmptyArgIdsFallsBackToLoad);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, LargerDataNodeWins);
+  FRIEND_TEST(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad);
+  FRIEND_TEST(ActorPoolManagerTest, GetOccupiedTaskSlots);
+  FRIEND_TEST(ActorPoolManagerTest, GetNumActiveActors);
 
   /// Select the best actor from a pool based on load and locality.
   ///
@@ -302,14 +326,25 @@ class ActorPoolManager {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Rank an actor for scheduling (lower is better).
+  /// Returns (locality_rank, load) pair for lexicographic comparison.
+  /// locality_rank is -total_bytes for data-local nodes, INT64_MAX for remote.
   ///
   /// \param actor_id The actor to rank.
-  /// \param arg_ids Object IDs for locality calculation.
+  /// \param node_bytes Pre-computed map of NodeID → total data bytes.
   /// \param pool_info Pool information.
-  /// \return Rank value (locality * 10000 + load).
-  int32_t RankActor(const ActorID &actor_id,
-                    const std::vector<ObjectID> &arg_ids,
-                    const ActorPoolInfo &pool_info) const;
+  /// \return (locality_rank, load) pair.
+  std::pair<int64_t, int32_t> RankActor(
+      const ActorID &actor_id,
+      const absl::flat_hash_map<NodeID, uint64_t> &node_bytes,
+      const ActorPoolInfo &pool_info) const;
+
+  /// Compute a map of NodeID → total bytes of task arguments on that node.
+  /// Hoisted out of per-candidate loop for efficiency.
+  ///
+  /// \param arg_ids Object IDs of task arguments.
+  /// \return Map from node ID to total bytes of arguments on that node.
+  absl::flat_hash_map<NodeID, uint64_t> ComputeNodeLocalityMap(
+      const std::vector<ObjectID> &arg_ids) const;
 
   /// Submit a work item to a specific actor.
   ///
@@ -410,6 +445,10 @@ class ActorPoolManager {
   /// Callback to submit actor tasks via CoreWorker.
   /// May be nullptr if using the minimal constructor.
   SubmitActorTaskCallback submit_actor_task_fn_;
+
+  /// Provider for object locality data (for locality-aware scheduling).
+  /// May be nullptr if locality data is unavailable.
+  LocalityDataProviderInterface *locality_data_provider_ = nullptr;
 
   /// Mutex protecting all pool state.
   mutable absl::Mutex mu_;

@@ -4991,6 +4991,44 @@ cdef class CoreWorker:
 
         return exists
 
+    def get_occupied_task_slots(self, ActorPoolID pool_id):
+        """Get total occupied task slots (in-flight + backlog) for a pool.
+
+        Args:
+            pool_id: The ID of the pool.
+
+        Returns:
+            Total occupied task slots.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            int64_t result
+
+        with nogil:
+            result = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).GetOccupiedTaskSlots(c_pool_id)
+
+        return result
+
+    def get_num_active_actors(self, ActorPoolID pool_id):
+        """Get number of actors with tasks in flight for a pool.
+
+        Args:
+            pool_id: The ID of the pool.
+
+        Returns:
+            Number of active actors.
+        """
+        cdef:
+            CActorPoolID c_pool_id = pool_id.native()
+            int32_t result
+
+        with nogil:
+            result = CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).GetNumActiveActors(c_pool_id)
+
+        return result
+
     def submit_task_to_pool(
             self,
             ActorPoolID pool_id,

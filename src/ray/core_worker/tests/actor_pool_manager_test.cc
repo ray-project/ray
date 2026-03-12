@@ -24,6 +24,7 @@
 #include "mock/ray/gcs_client/accessors/actor_info_accessor.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/fake_metric.h"
@@ -32,7 +33,6 @@
 
 namespace ray {
 namespace core {
-namespace {
 
 using ::testing::_;
 using ::testing::Return;
@@ -491,6 +491,351 @@ TEST_F(ActorPoolManagerTest, SelectActorForTaskSkipsDeadActors) {
   EXPECT_EQ(selected, actor2);
 }
 
-}  // namespace
+// =========================================================================
+// MockLocalityDataProvider for locality-aware scheduling tests
+// =========================================================================
+
+class MockLocalityDataProvider : public LocalityDataProviderInterface {
+ public:
+  MockLocalityDataProvider() {}
+
+  explicit MockLocalityDataProvider(
+      absl::flat_hash_map<ObjectID, LocalityData> locality_data)
+      : locality_data_(std::move(locality_data)) {}
+
+  std::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const override {
+    auto it = locality_data_.find(object_id);
+    if (it == locality_data_.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  ~MockLocalityDataProvider() override = default;
+
+  absl::flat_hash_map<ObjectID, LocalityData> locality_data_;
+};
+
+// Test fixture with locality support
+class ActorPoolManagerLocalityTest : public ::testing::Test {
+ protected:
+  ActorPoolManagerLocalityTest()
+      : gcs_options_("localhost",
+                     6793,
+                     ClusterID::Nil(),
+                     /*allow_cluster_id_nil=*/true,
+                     /*fetch_cluster_id_if_nil=*/false),
+        gcs_client_(std::make_shared<MockGcsClient>(gcs_options_)),
+        actor_info_accessor_(new gcs::FakeActorInfoAccessor()),
+        mock_task_submitter_(std::make_shared<MockActorTaskSubmitter>()),
+        mock_task_manager_(std::make_unique<MockTaskManagerInterface>()),
+        publisher_(std::make_unique<pubsub::FakePublisher>()),
+        subscriber_(std::make_unique<pubsub::FakeSubscriber>()),
+        reference_counter_(std::make_unique<ReferenceCounter>(
+            rpc::Address(),
+            publisher_.get(),
+            subscriber_.get(),
+            [](const NodeID &node_id) { return true; },
+            fake_owned_object_count_gauge_,
+            fake_owned_object_size_gauge_,
+            /*lineage_pinning_enabled=*/true)) {
+    gcs_client_->Init(actor_info_accessor_);
+  }
+
+  void SetUp() override {
+    actor_manager_ = std::make_unique<ActorManager>(
+        gcs_client_, *mock_task_submitter_, *reference_counter_);
+  }
+
+  void TearDown() override {
+    pool_manager_.reset();
+    actor_manager_.reset();
+    mock_task_manager_.reset();
+  }
+
+  // Helper to create a pool with default config
+  ActorPoolID CreateTestPool(int32_t max_tasks_in_flight = 2) {
+    ActorPoolConfig config;
+    config.max_retry_attempts = 3;
+    config.retry_backoff_ms = 100;
+    config.retry_on_system_errors = true;
+    config.ordering_mode = PoolOrderingMode::UNORDERED;
+    config.max_tasks_in_flight_per_actor = max_tasks_in_flight;
+    return pool_manager_->RegisterPool(config);
+  }
+
+  ActorID CreateActorID() {
+    return ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+  }
+
+  gcs::GcsClientOptions gcs_options_;
+  std::shared_ptr<MockGcsClient> gcs_client_;
+  gcs::FakeActorInfoAccessor *actor_info_accessor_;
+  std::shared_ptr<MockActorTaskSubmitter> mock_task_submitter_;
+  std::unique_ptr<MockTaskManagerInterface> mock_task_manager_;
+  std::unique_ptr<pubsub::FakePublisher> publisher_;
+  std::unique_ptr<pubsub::FakeSubscriber> subscriber_;
+  ray::observability::FakeGauge fake_owned_object_count_gauge_;
+  ray::observability::FakeGauge fake_owned_object_size_gauge_;
+  std::unique_ptr<ReferenceCounterInterface> reference_counter_;
+  std::unique_ptr<ActorManager> actor_manager_;
+  std::unique_ptr<MockLocalityDataProvider> locality_provider_;
+  std::unique_ptr<ActorPoolManager> pool_manager_;
+};
+
+// =========================================================================
+// Locality-Aware Ranking Tests
+// =========================================================================
+
+// Test: Actor on node with data wins over remote actor
+TEST_F(ActorPoolManagerLocalityTest, LocalitySelectsDataLocalActor) {
+  NodeID local_node = NodeID::FromRandom();
+  NodeID remote_node = NodeID::FromRandom();
+
+  ObjectID obj1 = ObjectID::FromRandom();
+  LocalityData data1;
+  data1.object_size = 1000;
+  data1.nodes_containing_object = {local_node};
+
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>(
+      absl::flat_hash_map<ObjectID, LocalityData>{{obj1, data1}});
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  // Set locality provider directly (it's a private member, but we have FRIEND_TEST)
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool();
+  auto local_actor = CreateActorID();
+  auto remote_actor = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, local_actor, local_node);
+  pool_manager_->AddActorToPool(pool_id, remote_actor, remote_node);
+
+  auto selected = pool_manager_->SelectActorForTask(pool_id, {obj1});
+  EXPECT_EQ(selected, local_actor);
+}
+
+// Test: Two actors on same node, less loaded wins
+TEST_F(ActorPoolManagerLocalityTest, LocalityTiebreakerIsLoad) {
+  NodeID node = NodeID::FromRandom();
+
+  ObjectID obj1 = ObjectID::FromRandom();
+  LocalityData data1;
+  data1.object_size = 1000;
+  data1.nodes_containing_object = {node};
+
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>(
+      absl::flat_hash_map<ObjectID, LocalityData>{{obj1, data1}});
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, node);
+  pool_manager_->AddActorToPool(pool_id, actor2, node);
+
+  // Simulate actor1 having 1 task in flight
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 1;
+  }
+
+  auto selected = pool_manager_->SelectActorForTask(pool_id, {obj1});
+  EXPECT_EQ(selected, actor2);
+}
+
+// Test: Unknown objects → load-only ranking
+TEST_F(ActorPoolManagerLocalityTest, NoLocalityDataFallsBackToLoad) {
+  NodeID node1 = NodeID::FromRandom();
+  NodeID node2 = NodeID::FromRandom();
+
+  // No locality data for any objects
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>();
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, node1);
+  pool_manager_->AddActorToPool(pool_id, actor2, node2);
+
+  // Actor1 has more load
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 2;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 0;
+  }
+
+  ObjectID unknown_obj = ObjectID::FromRandom();
+  auto selected = pool_manager_->SelectActorForTask(pool_id, {unknown_obj});
+  EXPECT_EQ(selected, actor2);
+}
+
+// Test: Empty arg_ids falls back to load
+TEST_F(ActorPoolManagerLocalityTest, EmptyArgIdsFallsBackToLoad) {
+  NodeID node1 = NodeID::FromRandom();
+  NodeID node2 = NodeID::FromRandom();
+
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>();
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, node1);
+  pool_manager_->AddActorToPool(pool_id, actor2, node2);
+
+  // Actor1 has more load
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 3;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 1;
+  }
+
+  // No arg_ids
+  auto selected = pool_manager_->SelectActorForTask(pool_id, {});
+  EXPECT_EQ(selected, actor2);
+}
+
+// Test: Actor on node with more bytes wins
+TEST_F(ActorPoolManagerLocalityTest, LargerDataNodeWins) {
+  NodeID node_small = NodeID::FromRandom();
+  NodeID node_large = NodeID::FromRandom();
+
+  ObjectID obj1 = ObjectID::FromRandom();
+  ObjectID obj2 = ObjectID::FromRandom();
+  LocalityData data1;
+  data1.object_size = 100;
+  data1.nodes_containing_object = {node_small};
+  LocalityData data2;
+  data2.object_size = 10000;
+  data2.nodes_containing_object = {node_large};
+
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>(
+      absl::flat_hash_map<ObjectID, LocalityData>{{obj1, data1}, {obj2, data2}});
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool();
+  auto actor_small = CreateActorID();
+  auto actor_large = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor_small, node_small);
+  pool_manager_->AddActorToPool(pool_id, actor_large, node_large);
+
+  auto selected = pool_manager_->SelectActorForTask(pool_id, {obj1, obj2});
+  EXPECT_EQ(selected, actor_large);
+}
+
+// Test: Null provider falls back to load
+TEST_F(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad) {
+  // No locality provider at all
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  // locality_data_provider_ is already nullptr
+
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+
+  // Actor1 has more load
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 5;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 1;
+  }
+
+  ObjectID obj = ObjectID::FromRandom();
+  auto selected = pool_manager_->SelectActorForTask(pool_id, {obj});
+  // Should not crash, should select actor2 (less loaded)
+  EXPECT_EQ(selected, actor2);
+}
+
+// =========================================================================
+// Backpressure Tests
+// =========================================================================
+
+// Test: GetOccupiedTaskSlots returns in-flight + backlog
+TEST_F(ActorPoolManagerTest, GetOccupiedTaskSlots) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+
+  // Initially zero
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 0);
+
+  // Simulate some in-flight tasks
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 3;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 2;
+  }
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 5);
+
+  // Also add backlog
+  {
+    RayFunction function;
+    std::vector<std::unique_ptr<TaskArg>> args;
+    TaskOptions options;
+    // Remove actors temporarily to force queueing
+    pool_manager_->RemoveActorFromPool(pool_id, actor1);
+    pool_manager_->RemoveActorFromPool(pool_id, actor2);
+    pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+  }
+  // in_flight is now 0 (actors removed) + 1 backlog = 1
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 1);
+
+  // Non-existent pool returns 0
+  EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(ActorPoolID::FromRandom()), 0);
+}
+
+// Test: GetNumActiveActors returns actors with tasks in flight
+TEST_F(ActorPoolManagerTest, GetNumActiveActors) {
+  auto pool_id = CreateTestPool();
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+  auto actor3 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor2, NodeID::FromRandom());
+  pool_manager_->AddActorToPool(pool_id, actor3, NodeID::FromRandom());
+
+  // Initially zero
+  EXPECT_EQ(pool_manager_->GetNumActiveActors(pool_id), 0);
+
+  // Simulate some in-flight tasks
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 2;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 0;
+    pool_manager_->pools_[pool_id].actor_states[actor3].num_tasks_in_flight = 1;
+  }
+  EXPECT_EQ(pool_manager_->GetNumActiveActors(pool_id), 2);
+
+  // Non-existent pool returns 0
+  EXPECT_EQ(pool_manager_->GetNumActiveActors(ActorPoolID::FromRandom()), 0);
+}
+
 }  // namespace core
 }  // namespace ray
