@@ -197,7 +197,7 @@ class HangingExecutionIssueDetector(IssueDetector):
 
         Task metadata (pid, node_id, attempt) is fetched from the Ray
         State API only when unknown or potentially stale (e.g. after the
-        task made progress then stalled again).  Fetches that fail are
+        task made progress then stalled again). Fetches that fail are
         counted in ``state_fetch_failures`` (mutated in-place) and
         skipped after ``_MAX_STATE_FETCH_FAILED_ATTEMPTS``.
         """
