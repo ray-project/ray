@@ -7,6 +7,7 @@ from ray_release.aws import (
     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
     add_tags_to_aws_config,
 )
+from ray_release.compute_config_utils import is_new_schema
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.test import Test
 from ray_release.util import dict_hash, get_anyscale_sdk
@@ -89,15 +90,26 @@ class ClusterManager(abc.ABC):
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
-        if "aws" in cluster_compute:
-            raise ValueError(
-                "aws field is invalid in compute config, "
-                "use advanced_configurations_json instead"
+        if is_new_schema(cluster_compute):
+            if "aws" in cluster_compute:
+                raise ValueError(
+                    "aws field is invalid in new-schema compute config, "
+                    "use advanced_instance_config instead"
+                )
+            aws = cluster_compute.get("advanced_instance_config", {})
+            cluster_compute["advanced_instance_config"] = add_tags_to_aws_config(
+                aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
             )
-        aws = cluster_compute.get("advanced_configurations_json", {})
-        cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
-            aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
-        )
+        else:
+            if "aws" in cluster_compute:
+                raise ValueError(
+                    "aws field is invalid in old-schema compute config, "
+                    "use advanced_configurations_json instead"
+                )
+            aws = cluster_compute.get("advanced_configurations_json", {})
+            cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
+                aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+            )
         return cluster_compute
 
     def build_configs(self, timeout: float = 30.0):

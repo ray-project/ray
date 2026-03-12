@@ -1,3 +1,12 @@
+from ray_release.compute_config_utils import (
+    get_head_node_config,
+    get_worker_min_count,
+    get_worker_max_count,
+    get_worker_node_configs,
+    is_new_schema,
+)
+
+
 def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> dict:
     """Convert cluster compute config to KubeRay compute config format.
     Args:
@@ -5,18 +14,18 @@ def convert_cluster_compute_to_kuberay_compute_config(compute_config: dict) -> d
     Returns:
         Dict containing KubeRay-formatted compute configuration.
     """
-    worker_node_types = compute_config["worker_node_types"]
-    head_node_resources = compute_config.get("head_node_type", {}).get("resources", {})
+    new_schema = is_new_schema(compute_config)
+    head_node_resources = get_head_node_config(compute_config).get("resources", {})
 
     kuberay_worker_nodes = []
-    for worker_node_type in worker_node_types:
+    for i, w in enumerate(get_worker_node_configs(compute_config)):
         worker_node_config = {
-            "group_name": worker_node_type.get("name"),
-            "min_nodes": worker_node_type.get("min_workers"),
-            "max_nodes": worker_node_type.get("max_workers"),
+            "group_name": w.get("name") or f"worker-group-{i}-{w.get('instance_type', 'unknown')}",
+            "min_nodes": get_worker_min_count(w, new_schema),
+            "max_nodes": get_worker_max_count(w, new_schema),
         }
-        if worker_node_type.get("resources", {}):
-            worker_node_config["resources"] = worker_node_type.get("resources", {})
+        if w.get("resources", {}):
+            worker_node_config["resources"] = w["resources"]
         kuberay_worker_nodes.append(worker_node_config)
 
     config = {

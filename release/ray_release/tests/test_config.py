@@ -346,82 +346,147 @@ def test_schema_validation():
     assert validate_test(invalid_test, schema)
 
 
-def test_compute_config_invalid_ebs():
+def _bad_ebs():
+    return {
+        "BlockDeviceMappings": [
+            {
+                "DeviceName": "/dev/sda1",
+                "Ebs": {
+                    "VolumeSize": 1000,
+                },
+            }
+        ]
+    }
+
+
+def _bad_ebs_delete_false():
+    ebs = _bad_ebs()
+    ebs["BlockDeviceMappings"][0]["Ebs"]["DeleteOnTermination"] = False
+    return ebs
+
+
+def _good_ebs():
+    ebs = _bad_ebs()
+    ebs["BlockDeviceMappings"][0]["Ebs"]["DeleteOnTermination"] = True
+    return ebs
+
+
+def test_compute_config_invalid_ebs_old_schema():
+    # Old-schema: head_node_type aws_advanced_configurations
     compute_config = {
-        "aws": {
-            "BlockDeviceMappings": [
-                {
-                    "DeviceName": "/dev/sda1",
-                    "Ebs": {
-                        "VolumeSize": 1000,
-                    },
-                }
-            ]
+        "head_node_type": {
+            "aws_advanced_configurations": _bad_ebs(),
+        },
+        "worker_node_types": [],
+    }
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["head_node_type"]["aws_advanced_configurations"] = (
+        _bad_ebs_delete_false()
+    )
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["head_node_type"]["aws_advanced_configurations"] = _good_ebs()
+    assert not validate_cluster_compute(compute_config)
+
+    # Old-schema: worker_node_types aws_advanced_configurations
+    compute_config["worker_node_types"] = [
+        {"aws_advanced_configurations": _bad_ebs()}
+    ]
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"] = (
+        _bad_ebs_delete_false()
+    )
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["worker_node_types"][0]["aws_advanced_configurations"] = _good_ebs()
+    assert not validate_cluster_compute(compute_config)
+
+    # Old-schema: top-level aws key (tested after node keys to ensure old-schema)
+    compute_config["aws"] = _bad_ebs()
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["aws"] = _bad_ebs_delete_false()
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["aws"] = _good_ebs()
+    assert not validate_cluster_compute(compute_config)
+
+
+def test_compute_config_invalid_ebs_new_schema():
+    # New-schema: top-level advanced_instance_config
+    compute_config = {
+        "head_node": {},
+        "worker_nodes": [],
+        "advanced_instance_config": _bad_ebs(),
+    }
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["advanced_instance_config"] = _bad_ebs_delete_false()
+    assert validate_cluster_compute(compute_config)
+
+    compute_config["advanced_instance_config"] = _good_ebs()
+    assert not validate_cluster_compute(compute_config)
+
+    # New-schema: head_node advanced_instance_config
+    compute_config_head = {
+        "head_node": {"advanced_instance_config": _bad_ebs()},
+        "worker_nodes": [],
+    }
+    assert validate_cluster_compute(compute_config_head)
+
+    compute_config_head["head_node"]["advanced_instance_config"] = (
+        _bad_ebs_delete_false()
+    )
+    assert validate_cluster_compute(compute_config_head)
+
+    compute_config_head["head_node"]["advanced_instance_config"] = _good_ebs()
+    assert not validate_cluster_compute(compute_config_head)
+
+    # New-schema: worker_nodes advanced_instance_config
+    compute_config_worker = {
+        "head_node": {},
+        "worker_nodes": [
+            {"advanced_instance_config": _bad_ebs(), "min_nodes": 0, "max_nodes": 1}
+        ],
+    }
+    assert validate_cluster_compute(compute_config_worker)
+
+    compute_config_worker["worker_nodes"][0]["advanced_instance_config"] = (
+        _bad_ebs_delete_false()
+    )
+    assert validate_cluster_compute(compute_config_worker)
+
+    compute_config_worker["worker_nodes"][0]["advanced_instance_config"] = _good_ebs()
+    assert not validate_cluster_compute(compute_config_worker)
+
+
+def test_compute_config_new_schema_rejects_stale_keys():
+    # New-schema with top-level 'aws' key should be rejected
+    assert validate_cluster_compute({"head_node": {}, "aws": {}})
+
+    # New-schema with aws_advanced_configurations on head_node
+    assert validate_cluster_compute(
+        {"head_node": {"aws_advanced_configurations": {}}, "worker_nodes": []}
+    )
+
+    # New-schema with aws_advanced_configurations on worker_nodes
+    assert validate_cluster_compute(
+        {
+            "head_node": {},
+            "worker_nodes": [{"aws_advanced_configurations": {}}],
         }
-    }
-    assert validate_cluster_compute(compute_config)
+    )
 
-    compute_config["aws"]["BlockDeviceMappings"][0]["Ebs"][
-        "DeleteOnTermination"
-    ] = False
 
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["aws"]["BlockDeviceMappings"][0]["Ebs"]["DeleteOnTermination"] = True
-
-    assert not validate_cluster_compute(compute_config)
-
-    compute_config["head_node_type"] = {}
-    compute_config["head_node_type"]["aws_advanced_configurations"] = {
-        "BlockDeviceMappings": [
-            {
-                "DeviceName": "/dev/sda1",
-                "Ebs": {
-                    "VolumeSize": 1000,
-                },
-            }
-        ]
-    }
-
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["head_node_type"]["aws_advanced_configurations"][
-        "BlockDeviceMappings"
-    ][0]["Ebs"]["DeleteOnTermination"] = False
-
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["head_node_type"]["aws_advanced_configurations"][
-        "BlockDeviceMappings"
-    ][0]["Ebs"]["DeleteOnTermination"] = True
-
-    assert not validate_cluster_compute(compute_config)
-
-    compute_config["worker_node_types"] = [{}]
-    compute_config["worker_node_types"][0]["aws_advanced_configurations"] = {
-        "BlockDeviceMappings": [
-            {
-                "DeviceName": "/dev/sda1",
-                "Ebs": {
-                    "VolumeSize": 1000,
-                },
-            }
-        ]
-    }
-
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["worker_node_types"][0]["aws_advanced_configurations"][
-        "BlockDeviceMappings"
-    ][0]["Ebs"]["DeleteOnTermination"] = False
-
-    assert validate_cluster_compute(compute_config)
-
-    compute_config["worker_node_types"][0]["aws_advanced_configurations"][
-        "BlockDeviceMappings"
-    ][0]["Ebs"]["DeleteOnTermination"] = True
-
-    assert not validate_cluster_compute(compute_config)
+def test_compute_config_mixed_schema():
+    # Mixed schema keys should return an error
+    result = validate_cluster_compute(
+        {"head_node": {}, "worker_node_types": []}
+    )
+    assert result
+    assert "both old-schema and new-schema" in result
 
 
 def test_load_and_validate_test_collection_file():

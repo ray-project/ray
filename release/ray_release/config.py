@@ -9,7 +9,16 @@ import jsonschema
 import yaml
 
 from ray_release.bazel import bazel_runfile
-from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
+from ray_release.compute_config_utils import (
+    get_head_node_config,
+    get_worker_node_configs,
+    is_new_schema,
+)
+from ray_release.exception import (
+    MixedSchemaError,
+    ReleaseTestCLIError,
+    ReleaseTestConfigError,
+)
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
@@ -286,22 +295,50 @@ def validate_test_cluster_compute(
 
 
 def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
-    aws = cluster_compute.get("aws", {})
-    head_node_aws = cluster_compute.get("head_node_type", {}).get(
-        "aws_advanced_configurations", {}
-    )
+    try:
+        new_schema = is_new_schema(cluster_compute)
+    except MixedSchemaError as e:
+        return str(e)
 
-    configs_to_check = [aws, head_node_aws]
-
-    for worker_node in cluster_compute.get("worker_node_types", []):
-        worker_node_aws = worker_node.get("aws_advanced_configurations", {})
-        configs_to_check.append(worker_node_aws)
+    if new_schema:
+        if "aws" in cluster_compute:
+            return (
+                "'aws' field is invalid in new-schema compute config, "
+                "use 'advanced_instance_config' instead"
+            )
+        head = get_head_node_config(cluster_compute)
+        if "aws_advanced_configurations" in head:
+            return (
+                "'aws_advanced_configurations' is invalid in new-schema "
+                "head_node, use 'advanced_instance_config' instead"
+            )
+        configs_to_check = [
+            cluster_compute.get("advanced_instance_config", {}),
+            head.get("advanced_instance_config", {}),
+        ]
+        for worker_node in get_worker_node_configs(cluster_compute):
+            if "aws_advanced_configurations" in worker_node:
+                return (
+                    "'aws_advanced_configurations' is invalid in new-schema "
+                    "worker_nodes, use 'advanced_instance_config' instead"
+                )
+            configs_to_check.append(
+                worker_node.get("advanced_instance_config", {})
+            )
+    else:
+        aws = cluster_compute.get("aws", {})
+        head_node_aws = cluster_compute.get("head_node_type", {}).get(
+            "aws_advanced_configurations", {}
+        )
+        configs_to_check = [aws, head_node_aws]
+        for worker_node in cluster_compute.get("worker_node_types", []):
+            worker_node_aws = worker_node.get("aws_advanced_configurations", {})
+            configs_to_check.append(worker_node_aws)
 
     for config in configs_to_check:
         error = validate_aws_config(config)
         if error:
             return error
-
     return None
 
 
