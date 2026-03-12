@@ -845,28 +845,42 @@ class TestScaleDownReplicaSelection:
     def test_downscale_prefers_fallback_node_then_newest(self, ray_cluster):
         cluster = ray_cluster
         cluster.add_node(num_cpus=1)
-        cluster.add_node(num_cpus=1, labels={"region": "us-east"})
+        cluster.add_node(num_cpus=1, labels={"region": "us-west"})
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
+
+        actor_resources = {"CPU": 1}
+        ray_actor_options = {
+            "num_cpus": 1,
+            "label_selector": {"region": "us-west"},
+            "fallback_strategy": [{"label_selector": {"region": "us-east"}}],
+        }
 
         scheduler, cluster_node_info_cache = self._create_scheduler()
         dep_id = DeploymentID(name="deployment_fallback")
         scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_deployed(
             dep_id,
-            ReplicaConfig.create(lambda: None, ray_actor_options={"num_cpus": 1}),
+            ReplicaConfig.create(lambda: None, ray_actor_options=ray_actor_options),
         )
 
         match_old = ReplicaID(unique_id="replica_match_old", deployment_id=dep_id)
         match_new = ReplicaID(unique_id="replica_match_new", deployment_id=dep_id)
         fallback = ReplicaID(unique_id="replica_fallback", deployment_id=dep_id)
 
-        actor_resources = {"CPU": 1}
-        ray_actor_options = {
-            "label_selector": {"region": "us-west"},
-            "fallback_strategy": [{"label_selector": {"region": "us-east"}}],
-        }
+        cluster.wait_for_nodes()
+        cluster_node_info_cache.update()
+        match_old_actor = self._scale_up_replica(
+            scheduler,
+            dep_id=dep_id,
+            replica_id=match_old,
+            actor_resources=actor_resources,
+            actor_options={"name": "dep_match_old_actor", **ray_actor_options},
+            mark_running=True,
+        )
 
+        cluster.add_node(num_cpus=1, labels={"region": "us-east"})
+        cluster.wait_for_nodes()
         fallback_actor = self._scale_up_replica(
             scheduler,
             dep_id=dep_id,
@@ -876,19 +890,8 @@ class TestScaleDownReplicaSelection:
             mark_running=True,
         )
 
-        cluster.add_node(num_cpus=2, labels={"region": "us-west"})
+        cluster.add_node(num_cpus=1, labels={"region": "us-west"})
         cluster.wait_for_nodes()
-        cluster_node_info_cache.update()
-        cluster_node_info_cache.update()
-
-        match_old_actor = self._scale_up_replica(
-            scheduler,
-            dep_id=dep_id,
-            replica_id=match_old,
-            actor_resources=actor_resources,
-            actor_options={"name": "dep_match_old_actor", **ray_actor_options},
-            mark_running=True,
-        )
         match_new_actor = self._scale_up_replica(
             scheduler,
             dep_id=dep_id,
@@ -920,22 +923,23 @@ class TestScaleDownReplicaSelection:
         cluster.wait_for_nodes()
         ray.init(address=cluster.address)
 
+        actor_resources = {"CPU": 1}
+        ray_actor_options = {
+            "num_cpus": 1,
+            "label_selector": {"region": "us-west"},
+        }
+
         scheduler, cluster_node_info_cache = self._create_scheduler()
         dep_id = DeploymentID(name="target_dep")
         scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_deployed(
             dep_id,
-            ReplicaConfig.create(lambda: None, ray_actor_options={"num_cpus": 1}),
+            ReplicaConfig.create(lambda: None, ray_actor_options=ray_actor_options),
         )
 
         replica_1 = ReplicaID(unique_id="replica_1", deployment_id=dep_id)
         replica_2 = ReplicaID(unique_id="replica_2", deployment_id=dep_id)
         replica_3 = ReplicaID(unique_id="replica_3", deployment_id=dep_id)
-
-        actor_resources = {"CPU": 1}
-        ray_actor_options = {
-            "label_selector": {"region": "us-west"},
-        }
 
         replica_1_actor = self._scale_up_replica(
             scheduler,
