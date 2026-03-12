@@ -40,7 +40,7 @@ ResourceMap = Dict[str, float]
 
 logger.setLevel("DEBUG")
 
-event_logger = AutoscalerEventLogger(MockEventLogger(logger))
+event_logger = AutoscalerEventLogger(export_event_logger=MockEventLogger(logger))
 
 
 def sched_request(
