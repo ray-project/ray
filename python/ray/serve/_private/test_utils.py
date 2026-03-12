@@ -282,12 +282,13 @@ class MockDeploymentActorWrapper:
         config,
         code_version: str,
         recovered_handle=None,
+        **kwargs,
     ):
         self._deployment_id = deployment_id
         self._config = config
         self._code_version = code_version
-        self._recovered_handle = recovered_handle
-        self._ready = recovered_handle is not None
+        self._handle = recovered_handle
+        self._ready = False  # Recovered starts pending until set_ready()
         self._start_error_msg: Optional[str] = None
         self._check_ready_error_msg: Optional[str] = None
         self.killed = False

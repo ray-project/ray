@@ -101,7 +101,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 class DeploymentActorState(Enum):
     STARTING = 1
-    RUNNING = 2
+    RECOVERING = 2
+    RUNNING = 3
 
 
 ALL_DEPLOYMENT_ACTOR_STATES = list(DeploymentActorState)
@@ -125,6 +126,8 @@ class DeploymentActorWrapper:
         )
         self._handle: Optional[ActorHandle] = recovered_handle
         self._ready_ref: Optional[ObjectRef] = None
+        if recovered_handle is not None and hasattr(recovered_handle, "__ray_ready__"):
+            self._ready_ref = recovered_handle.__ray_ready__.remote()
 
     @property
     def actor_logical_name(self) -> str:
@@ -336,6 +339,10 @@ class DeploymentActorContainer:
         """Get wrapper by (code_version, name), or None if not found."""
         existing = self._actors_index.get((code_version, name))
         return existing[1].wrapper if existing is not None else None
+
+    def get_code_versions(self) -> Set[str]:
+        """Return the set of code versions currently in the container."""
+        return {entry.code_version for _, entry in self._actors_index.values()}
 
 
 class ReplicaStartupStatus(Enum):
@@ -2803,13 +2810,13 @@ class DeploymentState:
         version = self._target_state.version
         if version is None:
             return
-        configs = version.deployment_config.deployment_actors
-        if not configs:
+        deployment_actors_configs = self._get_deployment_actors_configs(version)
+        if not deployment_actors_configs:
             return
 
         code_ver = version.code_version
         recovered = 0
-        for cfg in configs:
+        for cfg in deployment_actors_configs:
             actor_name = get_deployment_actor_name(
                 self._id, cfg.name, code_version=code_ver
             )
@@ -2829,12 +2836,12 @@ class DeploymentState:
                 code_version=code_ver,
                 recovered_handle=handle,
             )
-            self._deployment_actors.add(DeploymentActorState.RUNNING, wrapper)
+            self._deployment_actors.add(DeploymentActorState.RECOVERING, wrapper)
             recovered += 1
 
         if recovered > 0:
             logger.info(
-                f"Recovered {recovered}/{len(configs)} deployment actors "
+                f"Recovered {recovered}/{len(deployment_actors_configs)} deployment actors "
                 f"for {self._id} (code_version={code_ver})."
             )
 
@@ -2886,6 +2893,15 @@ class DeploymentState:
         """
         return self._target_state.info.deployment_config.max_constructor_retry_count
 
+    def _get_deployment_actors_configs(
+        self, version: Optional[DeploymentVersion] = None
+    ) -> List[DeploymentActorConfig]:
+        """Return deployment actor configs for the given version, or [] if None."""
+        v = version if version is not None else self._target_state.version
+        if v is None:
+            return []
+        return v.deployment_config.deployment_actors or []
+
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of
         failures has exceeded a threshold.
@@ -2907,7 +2923,7 @@ class DeploymentState:
         replica_failed = (
             not self._replica_has_started and self._replica_startup_failing()
         )
-        return replica_failed or self._deployment_actor_terminally_failed()
+        return replica_failed or self.deployment_actor_terminally_failed()
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
@@ -3459,13 +3475,9 @@ class DeploymentState:
         self.stop_deployment_actors_if_needed()
 
         # When deployment_actors are configured, start them and wait until ready
-        # before creating replicas.
-        configs = (
-            self._target_state.version.deployment_config.deployment_actors
-            if self._target_state.version
-            else []
-        )
-        if configs:
+        # before creating replicas. Skip during deletion.
+        deployment_actors_configs = self._get_deployment_actors_configs()
+        if deployment_actors_configs and not self._target_state.deleting:
             self.start_deployment_actors()
             if not self.check_deployment_actors_ready():
                 # Deployment actors not ready yet; defer replica creation.
@@ -3655,7 +3667,11 @@ class DeploymentState:
         )
         all_running_replica_cnt = self._replicas.count(states=[ReplicaState.RUNNING])
         all_active_deployment_actors_cnt = self._deployment_actors.count(
-            states=[DeploymentActorState.RUNNING, DeploymentActorState.STARTING]
+            states=[
+                DeploymentActorState.RUNNING,
+                DeploymentActorState.STARTING,
+                DeploymentActorState.RECOVERING,
+            ]
         )
         running_at_target_version_replica_cnt = self._replicas.count(
             states=[ReplicaState.RUNNING], version=target_version
@@ -3673,8 +3689,8 @@ class DeploymentState:
             self._replica_has_started = True
         # Deployment-scoped actor failed after threshold exceeded (consistent
         # with replica startup: transition only when retries exhausted).
-        elif self._deployment_actor_terminally_failed():
-            msg = self._deployment_actor_failed or "Unknown error"
+        elif self.deployment_actor_terminally_failed():
+            msg = self._deployment_actor_failed
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.DEPLOYMENT_ACTOR_FAILED,
                 message=(
@@ -3723,7 +3739,7 @@ class DeploymentState:
             if (
                 # not self._target_state.deleting is important to avoid transitioning to HEALTHY
                 # when the deployment is being deleted. This can happen if all replicas are running at the target version,
-                # but the deployment is still in the process of being deleted because of the deployment actors are not yet
+                # but the deployment is still in the process of being deleted because the deployment actors are not yet
                 # deleted.
                 not self._target_state.deleting
                 and (
@@ -4473,14 +4489,10 @@ class DeploymentState:
             return None
         return sorted(result, key=lambda d: (d.name))
 
-    def _deployment_actor_terminally_failed(self) -> bool:
+    def deployment_actor_terminally_failed(self) -> bool:
         """True when deployment actors have failed too many times to keep retrying."""
-        configs = (
-            self._target_state.version.deployment_config.deployment_actors
-            if self._target_state.version
-            else []
-        )
-        if not configs:
+        deployment_actors_configs = self._get_deployment_actors_configs()
+        if not deployment_actors_configs:
             return False
         return (
             self._deployment_actor_retry_counter
@@ -4493,12 +4505,8 @@ class DeploymentState:
         Consistent with record_replica_startup_failure: status stays UPDATING
         during retries; transition to DEPLOY_FAILED only when threshold exceeded.
         """
-        configs = (
-            self._target_state.version.deployment_config.deployment_actors
-            if self._target_state.version
-            else []
-        )
-        if not configs:
+        deployment_actors_configs = self._get_deployment_actors_configs()
+        if not deployment_actors_configs:
             return
 
         self._deployment_actor_retry_counter += 1
@@ -4531,12 +4539,12 @@ class DeploymentState:
         version = self._target_state.version
         if version is None:
             return
-        configs = version.deployment_config.deployment_actors
-        if not configs:
+        deployment_actors_configs = self._get_deployment_actors_configs(version)
+        if not deployment_actors_configs:
             return
 
         code_ver = version.code_version
-        if self._deployment_actor_terminally_failed():
+        if self.deployment_actor_terminally_failed():
             return
 
         deployment_runtime_env = (version.ray_actor_options or {}).get(
@@ -4545,7 +4553,7 @@ class DeploymentState:
         # Create only missing actors (supports partial recovery after controller restart).
         configs_to_create = [
             cfg
-            for cfg in configs
+            for cfg in deployment_actors_configs
             if self._deployment_actors.get_wrapper(code_ver, cfg.name) is None
         ]
         if not configs_to_create:
@@ -4582,22 +4590,24 @@ class DeploymentState:
         version = self._target_state.version
         if version is None:
             return True
-        configs = version.deployment_config.deployment_actors
-        if not configs:
+        deployment_actors_configs = self._get_deployment_actors_configs(version)
+        if not deployment_actors_configs:
             return True
 
         code_ver = version.code_version
         ready_count = self._deployment_actors.count(
             code_ver, states=[DeploymentActorState.RUNNING]
         )
-        starting_count = self._deployment_actors.count(
-            code_ver, states=[DeploymentActorState.STARTING]
+        pending_count = self._deployment_actors.count(
+            code_ver,
+            states=[DeploymentActorState.STARTING, DeploymentActorState.RECOVERING],
         )
-        if ready_count == len(configs) and starting_count == 0:
+        if ready_count == len(deployment_actors_configs) and pending_count == 0:
             return True
 
         pending_wrappers = self._deployment_actors.get(
-            code_ver, states=[DeploymentActorState.STARTING]
+            code_ver,
+            states=[DeploymentActorState.STARTING, DeploymentActorState.RECOVERING],
         )
         if not pending_wrappers:
             return False
@@ -4612,7 +4622,11 @@ class DeploymentState:
                 )
                 self.record_deployment_actor_startup_failure(error_msg)
                 self._deployment_actors.pop(
-                    code_ver, states=[DeploymentActorState.STARTING]
+                    code_ver,
+                    states=[
+                        DeploymentActorState.STARTING,
+                        DeploymentActorState.RECOVERING,
+                    ],
                 )
                 return False
             if ready:
@@ -4620,10 +4634,19 @@ class DeploymentState:
             else:
                 not_ready_wrappers.append(wrapper)
 
-        all_ready = len(not_ready_wrappers) == 0
-        if all_ready:
+        if not_ready_wrappers:
+            return False
+
+        # Verify total RUNNING count equals configured count. When
+        # start_deployment_actors fails partway through, some actors are
+        # never added; we must not return True or reset retry counter.
+        actual_running = self._deployment_actors.count(
+            code_ver, states=[DeploymentActorState.RUNNING]
+        )
+        if actual_running == len(deployment_actors_configs):
             self._deployment_actor_retry_counter = 0
-        return all_ready
+            return True
+        return False
 
     def stop_deployment_actors_if_needed(self) -> None:
         """Stop deployment-scoped actors when no longer needed.
@@ -4638,20 +4661,24 @@ class DeploymentState:
             return
 
         replicas = self._replicas.get()
-        code_versions_in_use = {r.version.code_version for r in replicas}
-        versions_to_keep = set(code_versions_in_use)
+        versions_to_keep = {r.version.code_version for r in replicas}
         if not self._target_state.deleting:
             versions_to_keep.add(target_version.code_version)
 
-        entries = self._deployment_actors.pop(
-            states=[DeploymentActorState.RUNNING, DeploymentActorState.STARTING]
+        versions_to_remove = (
+            self._deployment_actors.get_code_versions() - versions_to_keep
         )
         wrappers_to_stop: List[DeploymentActorWrapper] = []
-        for state, entry in entries:
-            if entry.code_version in versions_to_keep:
-                self._deployment_actors.add(state, entry.wrapper)
-                continue
-            wrappers_to_stop.append(entry.wrapper)
+        for code_version in versions_to_remove:
+            entries = self._deployment_actors.pop(
+                code_version=code_version,
+                states=[
+                    DeploymentActorState.RUNNING,
+                    DeploymentActorState.STARTING,
+                    DeploymentActorState.RECOVERING,
+                ],
+            )
+            wrappers_to_stop.extend(entry.wrapper for _, entry in entries)
         self._stop_deployment_actor_wrappers(wrappers_to_stop)
 
     def _stop_deployment_actor_wrappers(
