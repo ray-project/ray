@@ -57,7 +57,7 @@ class TorchGLOOGroup(BaseGroup):
                 raise RuntimeError(
                     f"TorchGLOOGroup expected metadata in internal_kv with name `{metadata_key}`. "
                     "TorchGLOOGroup should not be instantiated directly. "
-                    "Use ray.experimental.collective.create_collective_group to create the group."
+                    "Use ray.experimental.collective.create_collective_group to create a group."
                 )
             if metadata is None:
                 raise RuntimeError(

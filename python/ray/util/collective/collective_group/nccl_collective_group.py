@@ -21,8 +21,6 @@ from ray.util.collective.types import (
 
 logger = logging.getLogger(__name__)
 
-global _LOG_NCCL_WARNING, _NCCL_AVAILABLE
-
 try:
     import cupy
     import torch

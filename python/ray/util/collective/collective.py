@@ -14,7 +14,7 @@ import ray.experimental.internal_kv as _internal_kv
 from . import types
 from ray._common.network_utils import find_free_port, is_ipv6
 from ray.util.collective.backend_registry import (
-    get_backend_registry,
+    get_backend_registry as _get_backend_registry,
     register_collective_backend,
 )
 from ray.util.collective.collective_group.torch_gloo_collective_group import (
@@ -42,28 +42,28 @@ try:
 except ImportError:
     _TORCH_DISTRIBUTED_AVAILABLE = False
 
-if _NCCL_AVAILABLE:
-    register_collective_backend("NCCL", NCCLGroup)
-if _TORCH_DISTRIBUTED_AVAILABLE:
-    register_collective_backend("GLOO", TorchGLOOGroup)
+register_collective_backend("NCCL", NCCLGroup)
+register_collective_backend("GLOO", TorchGLOOGroup)
 
 
 def nccl_available():
-    global _LOG_NCCL_WARNING
-    if ray.get_gpu_ids() and _LOG_NCCL_WARNING:
-        logger.warning(
-            "NCCL seems unavailable. Please install Cupy "
-            "following the guide at: "
-            "https://docs.cupy.dev/en/stable/install.html."
-        )
-        _LOG_NCCL_WARNING = False
-    return _NCCL_AVAILABLE
+    return is_backend_available("NCCL")
 
 
 def gloo_available():
-    # Since we use torch_gloo as the backend for Gloo,
-    # we can just return the availability of torch.distributed.
-    return _TORCH_DISTRIBUTED_AVAILABLE
+    return is_backend_available("GLOO")
+
+
+def is_backend_available(backend: str) -> bool:
+    """Check if a collective backend is available.
+
+    Args:
+        backend: The name of the backend to check (e.g., "NCCL", "GLOO").
+
+    Returns:
+        True if the backend is available, False otherwise.
+    """
+    return _get_backend_registry().check(backend)
 
 
 def get_address_and_port() -> Tuple[str, int]:
@@ -83,7 +83,7 @@ class GroupManager(object):
 
     def __init__(self):
         self._name_group_map = {}
-        self._registry = get_backend_registry()
+        self._registry = _get_backend_registry()
 
     def create_collective_group(
         self, backend, world_size, rank, group_name, gloo_timeout=None
@@ -199,9 +199,6 @@ def init_collective_group(
     global _group_mgr
     global _group_mgr_lock
 
-    backend_cls = _group_mgr._registry.get(backend)
-    if not backend_cls.check_backend_availability():
-        raise RuntimeError("Backend '{}' is not available.".format(backend))
     # TODO(Hao): implement a group auto-counter.
     if not group_name:
         raise ValueError("group_name '{}' needs to be a string.".format(group_name))
@@ -240,9 +237,6 @@ def create_collective_group(
     Returns:
         None
     """
-    backend_cls = _group_mgr._registry.get(backend)
-    if not backend_cls.check_backend_availability():
-        raise RuntimeError("Backend '{}' is not available.".format(backend))
 
     name = "info_" + group_name
     try:
@@ -787,7 +781,7 @@ def get_group_handle(group_name: str = "default"):
                     rank = int(os.environ["collective_rank"])
                     world_size = int(os.environ["collective_world_size"])
                     backend = os.environ["collective_backend"]
-                    gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
+                    gloo_timeout = int(os.getenv("collective_gloo_timeout", 30000))
                     _group_mgr.create_collective_group(
                         backend, world_size, rank, group_name, gloo_timeout
                     )

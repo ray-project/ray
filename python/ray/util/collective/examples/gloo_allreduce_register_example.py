@@ -5,17 +5,15 @@ from ray.util.collective import (
     allreduce,
     create_collective_group,
     init_collective_group,
+    is_backend_available,
 )
-from ray.util.collective.backend_registry import get_backend_registry
 from ray.util.collective.types import ReduceOp
 
 
 def test_gloo_via_registry():
     ray.init()
 
-    registry = get_backend_registry()
-    assert "GLOO" in registry.list_backends()
-    assert registry.check("GLOO")
+    assert is_backend_available("GLOO")
 
     @ray.remote
     class Worker:

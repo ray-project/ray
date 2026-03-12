@@ -1,5 +1,5 @@
 from ray.util.collective.backend_registry import (
-    get_backend_registry,
+    is_registered_collective_backend,
     register_collective_backend,
 )
 from ray.util.collective.collective import (
@@ -17,6 +17,7 @@ from ray.util.collective.collective import (
     get_rank,
     gloo_available,
     init_collective_group,
+    is_backend_available,
     is_group_initialized,
     nccl_available,
     recv,
@@ -32,6 +33,7 @@ from ray.util.collective.collective import (
 __all__ = [
     "nccl_available",
     "gloo_available",
+    "is_backend_available",
     "is_group_initialized",
     "init_collective_group",
     "destroy_collective_group",
@@ -54,6 +56,6 @@ __all__ = [
     "recv",
     "recv_multigpu",
     "get_group_handle",
-    "get_backend_registry",
     "register_collective_backend",
+    "is_registered_collective_backend",
 ]

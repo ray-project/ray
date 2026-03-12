@@ -5,17 +5,15 @@ from ray.util.collective import (
     allreduce,
     create_collective_group,
     init_collective_group,
+    is_backend_available,
 )
-from ray.util.collective.backend_registry import get_backend_registry
 from ray.util.collective.types import ReduceOp
 
 
 def test_nccl_via_registry():
     ray.init(num_gpus=8)
 
-    registry = get_backend_registry()
-    assert "NCCL" in registry.list_backends()
-    assert registry.check("NCCL")
+    assert is_backend_available("NCCL")
 
     @ray.remote(num_gpus=1)
     class Worker:

@@ -17,7 +17,7 @@ class BackendRegistry:
         if not issubclass(group_cls, BaseGroup):
             raise TypeError(f"{group_cls} is not a subclass of BaseGroup")
         if name.upper() in self._map:
-            raise ValueError(f"Backend {name} already registered")
+            raise ValueError(f"Backend {name.upper()} already registered")
         self._map[name.upper()] = group_cls
 
     def get(self, name: str) -> Type[BaseGroup]:
@@ -42,6 +42,23 @@ _global_registry = BackendRegistry()
 
 def register_collective_backend(name: str, group_cls: Type[BaseGroup]) -> None:
     _global_registry.put(name, group_cls)
+    from . import types
+
+    upper_name = name.upper()
+    if not hasattr(types.Backend, upper_name):
+        setattr(types.Backend, upper_name, upper_name)
+
+
+def is_registered_collective_backend(name: str) -> bool:
+    """Check if a collective backend is registered.
+
+    Args:
+        name: The name of backend to check (e.g., "NCCL", "GLOO").
+
+    Returns:
+        True if the backend is registered, False otherwise.
+    """
+    return name.upper() in _global_registry._map
 
 
 def get_backend_registry() -> BackendRegistry:
