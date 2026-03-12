@@ -860,7 +860,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstances) {
-  auto node = GenNodeInfo();
+  std::shared_ptr<rpc::GcsNodeInfo> node = GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->mutable_resources_total()->insert({"memory", 1024});
   node->set_instance_id("instance_1");
@@ -906,6 +906,48 @@ TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesNotFound)
   gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
       request, &reply, send_reply_callback);
   ASSERT_TRUE(callback_status.IsNotFound());
+  ASSERT_EQ(reply.total_resources_size(), 0);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesInvalidNodeId) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id("invalid");
+  request.mutable_resources()->insert({{"CPU", 8}});
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  Status callback_status = Status::OK();
+  auto send_reply_callback = [&callback_status](ray::Status status,
+                                                std::function<void()> f1,
+                                                std::function<void()> f2) {
+    callback_status = std::move(status);
+  };
+  gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
+      request, &reply, send_reply_callback);
+  ASSERT_TRUE(callback_status.IsInvalidArgument());
+  ASSERT_EQ(callback_status.message(),
+            absl::StrFormat("Expected node_id to be %d bytes, but got %d bytes.",
+                            NodeID::Size(),
+                            request.node_id().size()));
+  ASSERT_EQ(reply.total_resources_size(), 0);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesEmptyNodeId) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id("");
+  request.mutable_resources()->insert({{"CPU", 8}});
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  Status callback_status = Status::OK();
+  auto send_reply_callback = [&callback_status](ray::Status status,
+                                                std::function<void()> f1,
+                                                std::function<void()> f2) {
+    callback_status = std::move(status);
+  };
+  gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
+      request, &reply, send_reply_callback);
+  ASSERT_TRUE(callback_status.IsInvalidArgument());
+  ASSERT_EQ(callback_status.message(),
+            absl::StrFormat("Expected node_id to be %d bytes, but got %d bytes.",
+                            NodeID::Size(),
+                            request.node_id().size()));
   ASSERT_EQ(reply.total_resources_size(), 0);
 }
 

@@ -524,9 +524,19 @@ void GcsAutoscalerStateManager::HandleResizeRayletResourceInstances(
     rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
     rpc::autoscaler::ResizeRayletResourceInstancesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  if (request.node_id().size() != NodeID::Size()) {
+    send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                            "Expected node_id to be %d bytes, but got %d bytes.",
+                            NodeID::Size(),
+                            request.node_id().size())),
+                        nullptr,
+                        nullptr);
+    return;
+  }
   const NodeID node_id = NodeID::FromBinary(request.node_id());
 
-  auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
+  std::optional<std::shared_ptr<const rpc::GcsNodeInfo>> maybe_node =
+      gcs_node_manager_.GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
     send_reply_callback(
         Status::NotFound(absl::StrFormat("Raylet %s is not alive.", node_id.Hex())),
