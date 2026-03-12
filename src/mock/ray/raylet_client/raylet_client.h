@@ -132,6 +132,12 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(
       void,
+      ResizeLocalResourceInstances,
+      ((google::protobuf::Map<std::string, double>) resources,
+       const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback),
+      (override));
+  MOCK_METHOD(
+      void,
       CancelLeasesWithResourceShapes,
       ((const std::vector<google::protobuf::Map<std::string, double>>)&resource_shapes,
        const rpc::ClientCallback<rpc::CancelLeasesWithResourceShapesReply> &callback),
