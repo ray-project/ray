@@ -13,3 +13,17 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "raylet_client_with_io_context_test",
+    size = "small",
+    srcs = ["raylet_client_with_io_context_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/protobuf:node_manager_cc_grpc",
+        "//src/ray/raylet_rpc_client:raylet_client_with_io_context_lib",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
