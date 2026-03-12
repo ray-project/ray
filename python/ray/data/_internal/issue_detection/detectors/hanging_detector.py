@@ -67,15 +67,15 @@ class TaskMetadata:
 
 @dataclass
 class HangingExecutionState:
-    # Equality is based on bytes_output and task_metadata: a change in
-    # output means the task made progress, and a change in metadata means
-    # the task was retried on a different node/worker.  Both warrant a
-    # new log entry.  The remaining fields are static identifiers that
-    # don't indicate a meaningful state change worth re-logging.
+    # Equality includes everything except task_metadata: a change
+    # in output means the task made progress and warrants a new log entry.
+    # A change in metadata alone (node/worker reassignment) doesn't
+    # indicate progress, so it's excluded from comparison.  The remaining
+    # fields are static identifiers or timestamps.
     operator_id: OpId
     task_idx: TaskIdx
     task_id: ray.TaskID
-    task_metadata: TaskMetadata | None
+    task_metadata: TaskMetadata
     bytes_output: int
     task_start_time: float
     start_time_hanging: float
@@ -181,6 +181,20 @@ class HangingExecutionIssueDetector(IssueDetector):
             message=message,
         )
 
+    def _should_retry_metadata_fetch(self, op_id: OpId, task_idx: TaskIdx) -> bool:
+        """Whether we haven't exhausted fetch attempts for this task."""
+        return (
+            self._state_fetch_failures[op_id].get(task_idx, 0)
+            < _MAX_STATE_FETCH_FAILED_ATTEMPTS
+        )
+
+    def _reset_fetch_failures(self, op_id: OpId, task_idx: TaskIdx) -> None:
+        self._state_fetch_failures[op_id][task_idx] = 0
+
+    def _record_fetch_failure(self, op_id: OpId, task_idx: TaskIdx) -> None:
+        failures = self._state_fetch_failures[op_id]
+        failures[task_idx] = failures.get(task_idx, 0) + 1
+
     def _refresh_state(
         self,
         operator: "PhysicalOperator",
@@ -198,21 +212,20 @@ class HangingExecutionIssueDetector(IssueDetector):
         """
         task_metadata: TaskMetadata | None = None
         bytes_output: int | None = None
-        state_fetch_failures = self._state_fetch_failures[operator.id]
         if old_state is not None:
             task_metadata = old_state.task_metadata
             bytes_output = old_state.bytes_output
 
         if bytes_output != task_info.bytes_output:
-            # reset fetch failures when progress is made
-            state_fetch_failures[task_idx] = 0
+            self._reset_fetch_failures(operator.id, task_idx)
             task_metadata = None
 
-        fetch_failures = state_fetch_failures.get(task_idx, 0)
-        if task_metadata is None and fetch_failures < _MAX_STATE_FETCH_FAILED_ATTEMPTS:
+        if task_metadata is None and self._should_retry_metadata_fetch(
+            operator.id, task_idx
+        ):
             task_state = get_latest_state_for_task(task_info.task_id)
             if task_state is None:
-                state_fetch_failures[task_idx] = fetch_failures + 1
+                self._record_fetch_failure(operator.id, task_idx)
             else:
                 task_metadata = TaskMetadata.from_task_state(task_state)
 
@@ -268,8 +281,12 @@ class HangingExecutionIssueDetector(IssueDetector):
 
                 # 3) Skip if there wasn't any meaningful update to the task. For example,
                 # a task may have made some progress (yield bytes), or a task is retried
-                # giving a different node_id/attempt_number
-                if old_state == new_state:
+                # giving a different node_id/attempt_number. Also skip, if we still have
+                # metadata retry attempts (so that we don't double log w/ and w/o the metadata.)
+                if old_state == new_state or (
+                    new_state.task_metadata is None
+                    and self._should_retry_metadata_fetch(operator.id, task_idx)
+                ):
                     continue
 
                 issues.append(
