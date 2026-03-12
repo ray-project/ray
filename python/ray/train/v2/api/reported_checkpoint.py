@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 class ReportedCheckpointStatus(Enum):
     """Reported Checkpoint status.
 
-    * COMMITTED: Saved without validation function
-    * PENDING_VALIDATION: Saved and pending validation function to finish
-    * VALIDATED: Saved and validation function is completed
+    * COMMITTED: The checkpoint is saved, and no validation was requested.
+    * PENDING_VALIDATION: The checkpoint is saved, and validation is in progress.
+    * VALIDATED: The checkpoint is saved, and validation is complete.
     """
 
     COMMITTED = "COMMITTED"
