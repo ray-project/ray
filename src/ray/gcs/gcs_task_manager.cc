@@ -80,8 +80,6 @@ void RemoveFromIndexEntry(
   }
 }
 
-
-
 GcsTaskManager::GcsTaskManager(
     instrumented_io_context &io_service,
     ray::observability::MetricInterface &task_events_reported_gauge,
@@ -314,13 +312,12 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
   const std::optional<rpc::TaskStatus> new_latest_state_key =
       task_events.has_task_info() ? std::make_optional(GetLatestState(task_events))
                                   : std::nullopt;
-  UpdateIndexEntry(
-      loc,
-      loc->GetLatestStateIndexKey(),
-      new_latest_state_key,
-      latest_state_index_,
-      [&loc](auto key) { loc->SetLatestStateIndexKey(key); });
-  }
+  UpdateIndexEntry(loc,
+                   loc->GetLatestStateIndexKey(),
+                   new_latest_state_key,
+                   latest_state_index_,
+                   [&loc](auto key) { loc->SetLatestStateIndexKey(key); });
+}
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
     const std::shared_ptr<TaskEventLocator> &loc) {
@@ -631,8 +628,8 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
           candidate_task_locators = other;
           return;
         }
-        absl::flat_hash_set<std::shared_ptr<
-            GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>>
+        absl::flat_hash_set<
+            std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator>>
             intersection;
         const auto *p_smaller = &other;
         const auto *p_larger = &*candidate_task_locators;
@@ -788,10 +785,9 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                              filter_actor_binary.size() != ActorID::Size()) {
                            throw std::invalid_argument("Invalid actor id size");
                          }
-                         return apply_predicate(
-                             ActorID::FromBinary(task_actor_binary),
-                             actor_filter.predicate(),
-                             ActorID::FromBinary(filter_actor_binary));
+                         return apply_predicate(ActorID::FromBinary(task_actor_binary),
+                                                actor_filter.predicate(),
+                                                ActorID::FromBinary(filter_actor_binary));
                        })) {
         return false;
       }

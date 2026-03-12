@@ -1,5 +1,3 @@
-#include "ray/gcs/gcs_task_manager.h"
-
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -13,6 +11,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs/gcs_task_manager.h"
 #include "ray/observability/fake_metric.h"
 
 namespace ray {
@@ -44,8 +43,8 @@ rpc::TaskEvents MakeTaskEvent(const TaskID &task_id,
 }
 
 rpc::AddTaskEventDataReply SyncAddTaskEventData(GcsTaskManager &mgr,
-                                               instrumented_io_context &io,
-                                               rpc::TaskEventData data) {
+                                                instrumented_io_context &io,
+                                                rpc::TaskEventData data) {
   rpc::AddTaskEventDataRequest request;
   request.mutable_data()->Swap(&data);
   rpc::AddTaskEventDataReply reply;
@@ -60,9 +59,10 @@ rpc::AddTaskEventDataReply SyncAddTaskEventData(GcsTaskManager &mgr,
   return reply;
 }
 
-rpc::GetTaskEventsReply SyncGetTaskEvents(GcsTaskManager &mgr,
-                                         instrumented_io_context &io,
-                                         const rpc::GetTaskEventsRequest::Filters &filters) {
+rpc::GetTaskEventsReply SyncGetTaskEvents(
+    GcsTaskManager &mgr,
+    instrumented_io_context &io,
+    const rpc::GetTaskEventsRequest::Filters &filters) {
   rpc::GetTaskEventsRequest request;
   request.mutable_filters()->CopyFrom(filters);
   rpc::GetTaskEventsReply reply;
@@ -77,7 +77,7 @@ rpc::GetTaskEventsReply SyncGetTaskEvents(GcsTaskManager &mgr,
   return reply;
 }
 
-}
+}  // namespace
 
 TEST(GcsTaskEventsQueryBenchmark, TaskNameEqual) {
   RayConfig::instance().initialize(
@@ -90,8 +90,8 @@ TEST(GcsTaskEventsQueryBenchmark, TaskNameEqual) {
   observability::FakeGauge fake_task_events_reported_gauge;
   observability::FakeGauge fake_task_events_dropped_gauge;
   observability::FakeGauge fake_task_events_stored_gauge;
-  auto io_context = std::make_unique<InstrumentedIOContextWithThread>(
-      "GcsTaskEventsQueryBenchmark");
+  auto io_context =
+      std::make_unique<InstrumentedIOContextWithThread>("GcsTaskEventsQueryBenchmark");
   auto mgr = std::make_unique<GcsTaskManager>(io_context->GetIoService(),
                                               fake_task_events_reported_gauge,
                                               fake_task_events_dropped_gauge,
@@ -109,13 +109,13 @@ TEST(GcsTaskEventsQueryBenchmark, TaskNameEqual) {
   for (int32_t i = 0; i < total_tasks; ++i) {
     TaskID task_id = TaskID::ForNormalTask(JobID::FromInt(job_id_int), RandomTaskId(), 0);
     const bool is_hot = (i < hot_tasks);
-    *data.add_events_by_task() = MakeTaskEvent(task_id,
-                                               0,
-                                               job_id_int,
-                                               is_hot ? hot_name : cold_name,
-                                               actor_id,
-                                               is_hot ? rpc::TaskStatus::RUNNING
-                                                      : rpc::TaskStatus::FINISHED);
+    *data.add_events_by_task() =
+        MakeTaskEvent(task_id,
+                      0,
+                      job_id_int,
+                      is_hot ? hot_name : cold_name,
+                      actor_id,
+                      is_hot ? rpc::TaskStatus::RUNNING : rpc::TaskStatus::FINISHED);
   }
 
   SyncAddTaskEventData(*mgr, io_context->GetIoService(), std::move(data));
@@ -133,11 +133,13 @@ TEST(GcsTaskEventsQueryBenchmark, TaskNameEqual) {
     sink += reply.events_by_task_size();
   }
   auto end = std::chrono::steady_clock::now();
-  auto micros = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  auto micros =
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-  std::cout << "iters=" << iters << " total_tasks=" << total_tasks << " hot_tasks=" << hot_tasks
-            << " time_us=" << micros << " sink=" << sink << "\n";
+  std::cout << "iters=" << iters << " total_tasks=" << total_tasks
+            << " hot_tasks=" << hot_tasks << " time_us=" << micros << " sink=" << sink
+            << "\n";
 }
 
-}
-}
+}  // namespace gcs
+}  // namespace ray
