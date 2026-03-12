@@ -179,6 +179,7 @@ ray_cc_library(
         "//src/ray/common:asio",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
+        "//src/ray/protobuf:events_event_aggregator_service_cc_proto",
         "//src/ray/protobuf/public:events_base_event_cc_proto",
         "//src/ray/rpc:event_aggregator_client",
         "//src/ray/util:logging",

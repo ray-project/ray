@@ -25,6 +25,7 @@
 #include "ray/observability/ray_event_recorder.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/stats/metric.h"
+#include "src/ray/protobuf/events_event_aggregator_service.pb.h"
 #include "src/ray/protobuf/public/events_base_event.pb.h"
 
 namespace ray {
@@ -99,6 +100,13 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     const std::string &session_name,
     const std::string &serialized_event_data,
     int nested_event_field_number);
+
+/// Serialize Python-emitted events into a RayEventsData payload.
+///
+/// Each event is serialized through RayEventInterface::Serialize and appended to
+/// the RayEventsData.events list. The protobuf is returned as serialized bytes.
+std::string SerializeEventsToRayEventsData(
+    std::vector<std::unique_ptr<RayEventInterface>> &&events);
 
 /// Owns all infrastructure for the Python-side event recorder: io_context,
 /// background thread, gRPC client, metrics counter, and the recorder itself.

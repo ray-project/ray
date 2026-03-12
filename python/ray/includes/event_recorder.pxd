@@ -17,6 +17,9 @@ cdef extern from "ray/observability/python_event_interface.h" namespace "ray::ob
         const c_string &serialized_event_data,
         int nested_event_field_number)
 
+    c_string SerializeEventsToRayEventsData(
+        c_vector[unique_ptr[CRayEventInterface]] &&events)
+
     cdef cppclass CPythonEventRecorder "ray::observability::PythonEventRecorder":
         CPythonEventRecorder(const c_string &aggregator_address,
                              int aggregator_port,

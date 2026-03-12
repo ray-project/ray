@@ -2,6 +2,7 @@ from libcpp cimport bool as c_bool
 from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
+from libcpp.vector cimport vector as c_vector
 
 
 cdef extern from "ray/common/ray_config.h" nogil:
@@ -86,3 +87,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         c_bool record_task_actor_creation_sites() const
 
         c_bool start_python_gc_manager_thread() const
+
+        c_vector[c_string] external_ray_event_allowlist() const
