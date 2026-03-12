@@ -1,0 +1,54 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc.events;
+
+import "google/protobuf/timestamp.proto";
+
+// Emitted when pending/failed instance state changes.
+message AutoscalerNodeProvisioningEvent {
+  // Instances requested from cloud provider but not yet allocated.
+  // Lifecycle: LaunchAction -> RequestedInstance -> AllocatedInstance ->
+  //            NodeDefinitionEvent / FailedInstance
+  message RequestedInstance {
+    string instance_type_name = 1;
+    string ray_node_type_name = 2;
+    int32 count = 3;
+    google.protobuf.Timestamp request_ts = 4;
+  }
+
+  // Instances allocated by cloud provider but Ray not yet running.
+  message AllocatedInstance {
+    string instance_type_name = 1;
+    string ray_node_type_name = 2;
+    string instance_id = 3;
+    string ip_address = 4;
+  }
+
+  // Instance launch requests that failed.
+  message FailedInstance {
+    string instance_type_name = 1;
+    string ray_node_type_name = 2;
+    int32 count = 3;
+    string reason = 4;
+    google.protobuf.Timestamp start_ts = 5;
+    google.protobuf.Timestamp failed_ts = 6;
+  }
+
+  repeated RequestedInstance requested_instances = 1;
+  repeated AllocatedInstance allocated_instances = 2;
+  repeated FailedInstance failed_instances = 3;
+}
