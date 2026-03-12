@@ -14,8 +14,34 @@ def test_logrecord_standard_attrs_is_frozenset():
 
 
 def test_logrecord_standard_attrs_contains_standard_names():
-    expected = {"message", "levelname", "name", "pathname", "lineno", "exc_info"}
-    assert expected.issubset(LOGRECORD_STANDARD_ATTRS)
+    expected = frozenset(
+        {
+            "args",
+            "asctime",
+            "created",
+            "exc_info",
+            "exc_text",
+            "filename",
+            "funcName",
+            "levelname",
+            "levelno",
+            "lineno",
+            "message",
+            "module",
+            "msecs",
+            "msg",
+            "name",
+            "pathname",
+            "process",
+            "processName",
+            "relativeCreated",
+            "stack_info",
+            "thread",
+            "threadName",
+            "taskName",
+        }
+    )
+    assert LOGRECORD_STANDARD_ATTRS == expected
 
 
 def test_logrecord_standard_attrs_has_expected_size():
@@ -31,9 +57,26 @@ def test_logkey_is_enum():
     from enum import Enum
 
     assert issubclass(LogKey, Enum)
-    assert LogKey.JOB_ID.value == "job_id"
-    assert LogKey.WORKER_ID.value == "worker_id"
-    assert LogKey.NODE_ID.value == "node_id"
+    expected = {
+        "JOB_ID": "job_id",
+        "WORKER_ID": "worker_id",
+        "NODE_ID": "node_id",
+        "ACTOR_ID": "actor_id",
+        "TASK_ID": "task_id",
+        "ACTOR_NAME": "actor_name",
+        "TASK_NAME": "task_name",
+        "TASK_FUNCTION_NAME": "task_func_name",
+        "ASCTIME": "asctime",
+        "LEVELNAME": "levelname",
+        "MESSAGE": "message",
+        "FILENAME": "filename",
+        "LINENO": "lineno",
+        "EXC_TEXT": "exc_text",
+        "PROCESS": "process",
+        "TIMESTAMP_NS": "timestamp_ns",
+    }
+    actual = {member.name: member.value for member in LogKey}
+    assert actual == expected
 
 
 if __name__ == "__main__":
