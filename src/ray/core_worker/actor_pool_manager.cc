@@ -331,8 +331,11 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
 
   const auto &pool_info = pool_it->second;
 
-  // Filter: only alive actors with available capacity
+  // Prefer alive actors with available capacity, but fall back to any alive actor.
+  // The ActorTaskSubmitter manages its own per-actor queue and always returns valid
+  // ObjectRefs, so over-submitting beyond max_tasks_in_flight_per_actor is safe.
   std::vector<ActorID> candidates;
+  std::vector<ActorID> alive_actors;
   for (const auto &actor_id : pool_info.actor_ids) {
     auto state_it = pool_info.actor_states.find(actor_id);
     if (state_it == pool_info.actor_states.end()) {
@@ -340,15 +343,26 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     }
 
     const auto &state = state_it->second;
-    const int32_t max_concurrency = pool_info.config.max_tasks_in_flight_per_actor;
+    if (!state.is_alive) {
+      continue;
+    }
+    alive_actors.push_back(actor_id);
 
-    if (state.is_alive && state.num_tasks_in_flight < max_concurrency) {
+    const int32_t max_concurrency = pool_info.config.max_tasks_in_flight_per_actor;
+    if (state.num_tasks_in_flight < max_concurrency) {
       candidates.push_back(actor_id);
     }
   }
 
+  // Fall back to all alive actors when none have capacity below the configured
+  // limit. This ensures callers always get valid ObjectRefs instead of empty
+  // results from SubmitTaskToPool.
   if (candidates.empty()) {
-    RAY_LOG(DEBUG) << "No available actors in pool " << pool_id;
+    candidates = std::move(alive_actors);
+  }
+
+  if (candidates.empty()) {
+    RAY_LOG(DEBUG) << "No alive actors in pool " << pool_id;
     return ActorID::Nil();
   }
 

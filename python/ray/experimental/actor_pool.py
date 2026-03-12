@@ -134,8 +134,11 @@ class ActorPool:
         if size is not None:
             if min_size is not None or max_size is not None:
                 raise ValueError("Cannot specify both 'size' and 'min_size'/'max_size'")
-            min_size = size
-            max_size = size
+            # 'size' sets the initial actor count. It does NOT constrain
+            # min_size, so the pool can be scaled freely afterward.
+            # Use min_size/max_size explicitly for autoscaling bounds.
+            min_size = 0
+            max_size = -1
             initial_size = size
         else:
             min_size = min_size or 1
@@ -339,6 +342,11 @@ class ActorPool:
             enable_task_events=True,
             key=key.encode() if key else b"",
         )
+
+        if not object_refs:
+            raise RuntimeError(
+                "Failed to submit task to pool: no alive actors with capacity"
+            )
 
         if len(object_refs) == 1:
             return object_refs[0]

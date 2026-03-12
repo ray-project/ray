@@ -2794,6 +2794,12 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
 
+  // Subscribe to actor state updates so that ActorTaskSubmitter learns the
+  // actor's address (via ConnectActor) when it becomes ALIVE.  Without this,
+  // the task sits queued in the submitter forever because it doesn't know
+  // where to send it.  The method is idempotent.
+  actor_manager_->SubscribeActorState(actor_id);
+
   // Build TaskSpec
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_->GetNextTaskIndex();
