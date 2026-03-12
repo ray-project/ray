@@ -11,11 +11,10 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     CpuShuffleEngine,
+    HashShufflingOperatorBase,
     ShuffleAggregation,
     _combine,
-)
-from ray.data._internal.execution.operators.shuffle_operator_core import (
-    ShuffleOperatorCore,
+    _derive_num_partitions,
 )
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
@@ -344,7 +343,7 @@ class JoiningAggregation(ShuffleAggregation):
         )
 
 
-class JoinOperator(ShuffleOperatorCore):
+class JoinOperator(HashShufflingOperatorBase):
     def __init__(
         self,
         data_context: DataContext,
@@ -383,13 +382,20 @@ class JoinOperator(ShuffleOperatorCore):
 
         input_ops = [left_input_op, right_input_op]
 
+        resolved_num_partitions = (
+            num_partitions
+            if num_partitions is not None
+            else _derive_num_partitions(input_ops, data_context)
+        )
+        op_name = f"Join(num_partitions={resolved_num_partitions})"
+
         engine = CpuShuffleEngine(
             input_ops=input_ops,
             data_context=data_context,
-            operator_name="Join",
+            operator_name=op_name,
             key_columns=[left_key_columns, right_key_columns],
             num_input_seqs=2,
-            num_partitions=num_partitions,
+            num_partitions=resolved_num_partitions,
             partition_size_hint=partition_size_hint,
             partition_aggregation_factory=_create_joining_aggregation,
             aggregator_ray_remote_args_override=aggregator_ray_remote_args_override,
@@ -399,9 +405,6 @@ class JoinOperator(ShuffleOperatorCore):
             estimate_aggregator_memory=self._estimate_aggregator_memory_allocation,
         )
 
-        op_name = f"Join(num_partitions={engine.num_partitions})"
-        engine._operator_name = op_name
-
         super().__init__(
             name=op_name,
             input_ops=input_ops,
@@ -409,7 +412,7 @@ class JoinOperator(ShuffleOperatorCore):
             engine=engine,
         )
 
-        self._num_partitions = engine.num_partitions
+        self._num_partitions = resolved_num_partitions
 
     @property
     def _aggregator_pool(self):

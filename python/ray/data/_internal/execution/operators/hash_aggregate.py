@@ -6,10 +6,9 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.hash_shuffle import (
     BlockTransformer,
     CpuShuffleEngine,
+    HashShufflingOperatorBase,
     ShuffleAggregation,
-)
-from ray.data._internal.execution.operators.shuffle_operator_core import (
-    ShuffleOperatorCore,
+    _derive_num_partitions,
 )
 from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import AggregateFn
@@ -81,7 +80,7 @@ class ReducingAggregation(ShuffleAggregation):
         return SortKey(key=list(key_columns), descending=False)
 
 
-class HashAggregateOperator(ShuffleOperatorCore):
+class HashAggregateOperator(HashShufflingOperatorBase):
 
     _DEFAULT_MIN_NUM_SHARDS_COMPACTION_THRESHOLD = 100
     _DEFAULT_MAX_NUM_SHARDS_COMPACTION_THRESHOLD = 2000
@@ -106,15 +105,27 @@ class HashAggregateOperator(ShuffleOperatorCore):
         # NOTE: In case of global aggregations (ie with no key columns specified),
         #       we override number of partitions to 1, since the whole dataset
         #       will be reduced to just a single row
-        effective_num_partitions = num_partitions if len(key_columns) > 0 else 1
+        resolved_num_partitions = (
+            num_partitions
+            if num_partitions is not None
+            else (
+                1
+                if len(key_columns) == 0
+                else _derive_num_partitions([input_op], data_context)
+            )
+        )
+        op_name = (
+            f"HashAggregate(key_columns={key_columns}, "
+            f"num_partitions={resolved_num_partitions})"
+        )
 
         engine = CpuShuffleEngine(
             input_ops=[input_op],
             data_context=data_context,
-            operator_name="HashAggregate",
+            operator_name=op_name,
             key_columns=[key_columns],
             num_input_seqs=1,
-            num_partitions=effective_num_partitions,
+            num_partitions=resolved_num_partitions,
             partition_aggregation_factory=_create_reducing_aggregation,
             input_block_transformer=_create_aggregating_transformer(
                 key_columns, aggregation_fns
@@ -130,12 +141,6 @@ class HashAggregateOperator(ShuffleOperatorCore):
             ),
         )
 
-        op_name = (
-            f"HashAggregate(key_columns={key_columns}, "
-            f"num_partitions={engine.num_partitions})"
-        )
-        engine._operator_name = op_name
-
         super().__init__(
             name=op_name,
             input_ops=[input_op],
@@ -143,7 +148,7 @@ class HashAggregateOperator(ShuffleOperatorCore):
             engine=engine,
         )
 
-        self._num_partitions = engine.num_partitions
+        self._num_partitions = resolved_num_partitions
 
     @property
     def _aggregator_pool(self):

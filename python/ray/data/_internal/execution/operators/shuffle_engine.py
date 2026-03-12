@@ -1,5 +1,6 @@
 import typing
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -7,14 +8,23 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.interfaces.physical_operator import OpTask
-from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data.block import BlockStats
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         TaskExecDriverStats,
     )
+    from ray.data._internal.progress.base_progress import BaseProgressBar
     from ray.data.block import TaskExecWorkerStats
+
+
+@dataclass(frozen=True)
+class ProgressEstimate:
+    """Estimated totals for a phase's output."""
+
+    num_blocks: Optional[int] = None
+    num_bundles: Optional[int] = None
+    num_rows: Optional[int] = None
 
 
 class PhaseHooks:
@@ -48,9 +58,21 @@ class PhaseHooks:
     ) -> None:
         """Update the phase's progress bar."""
 
-    def _get_metrics(self) -> Optional["OpRuntimeMetrics"]:
-        """Access phase metrics for progress estimation (engine internal use)."""
-        return None
+    def set_progress_bar(self, bar: "BaseProgressBar") -> None:
+        """Attach a progress bar to this phase."""
+
+    def metrics_as_dict(self) -> Dict[str, Any]:
+        """Return the phase's runtime metrics as a plain dict."""
+        return {}
+
+    def estimate_progress(
+        self,
+        num_tasks_submitted: int,
+        upstream_op_num_outputs: int,
+        total_num_tasks: Optional[int] = None,
+    ) -> ProgressEstimate:
+        """Estimate total output blocks, output bundles, and output rows."""
+        return ProgressEstimate()
 
 
 class ShufflePhaseHooks(PhaseHooks):
@@ -62,19 +84,25 @@ class ShufflePhaseHooks(PhaseHooks):
 
     Dataflow::
 
-        Engine                          Hooks                       Backing state
-        ──────                          ─────                       ─────────────
+        Engine                           Hooks
+        ──────                           ─────
+        operator receives input
+          └─ on_input_received ────────► metrics.on_input_received
+
         submit task to actor
-          ├─ on_task_submitted ───────► metrics.on_task_submitted
-          └─ on_progress ─────────────► bar.update(total=…)
-                                          │
-        task completes (callback)         │
-          ├─ on_block_shuffled ────────► block_stats.append
-          ├─ on_task_output ───────────► metrics.on_output_taken
-          │                               + on_task_output_generated
-          ├─ on_task_finished ─────────► metrics.on_task_finished
-          └─ on_progress ─────────────► bar.update(increment=…)
+          ├─ on_task_submitted ────────► metrics.on_task_submitted
+          └─ on_progress ──────────────► bar.update(total=…)
+                                           │
+        task completes (callback)          │
+          ├─ on_block_shuffled ─────────► block_stats.append
+          ├─ on_task_output ────────────► metrics.on_output_taken
+          │                                + on_task_output_generated
+          ├─ on_task_finished ──────────► metrics.on_task_finished
+          └─ on_progress ──────────────► bar.update(increment=…)
     """
+
+    def on_input_received(self, bundle: RefBundle) -> None:
+        """Record that the operator received an input bundle."""
 
     def on_task_output(
         self,
@@ -96,21 +124,24 @@ class ReducePhaseHooks(PhaseHooks):
 
     Dataflow::
 
-        Engine                          Hooks                       Backing state
-        ──────                          ─────                       ─────────────
+        Engine                           Hooks
+        ──────                           ─────
         schedule finalization task
-          └─ on_task_submitted ───────► metrics.on_task_submitted
-                                          │
-        output bundle ready (callback)    │
-          ├─ on_output_ready ──────────► output_queue.append
-          │                               + metrics.on_output_queued
-          │                               + metrics.on_task_output_generated
-          ├─ on_output_estimated ──────► operator._estimated_num_output_bundles
-          │                               + operator._estimated_output_num_rows
-          └─ on_progress ─────────────► bar.update(increment=…, total=…)
-                                          │
-        task completes (callback)         │
-          └─ on_task_finished ─────────► metrics.on_task_finished
+          └─ on_task_submitted ────────► metrics.on_task_submitted
+                                           │
+        output bundle ready (callback)     │
+          ├─ on_output_ready ───────────► output_queue.append
+          │                                + metrics.on_output_queued
+          │                                + metrics.on_task_output_generated
+          ├─ on_output_estimated ───────► callback(num_bundles, num_rows)
+          └─ on_progress ──────────────► bar.update(increment=…, total=…)
+                                           │
+        task completes (callback)          │
+          └─ on_task_finished ──────────► metrics.on_task_finished
+
+        operator takes output
+          ├─ on_output_dequeued ────────► metrics.on_output_dequeued
+          └─ on_output_taken ───────────► metrics.on_output_taken
     """
 
     def on_output_ready(
@@ -119,6 +150,12 @@ class ReducePhaseHooks(PhaseHooks):
         task_index: int,
     ) -> None:
         """Enqueue a finalized output bundle."""
+
+    def on_output_dequeued(self, bundle: RefBundle) -> None:
+        """Called when an output bundle is dequeued from the output queue."""
+
+    def on_output_taken(self, bundle: RefBundle) -> None:
+        """Called when an output bundle is taken from the operator."""
 
     def on_output_estimated(
         self,
@@ -136,15 +173,15 @@ class ShuffleEngine(ABC):
     exclusively through phase-specific hooks — never by holding a reference
     to the operator or its state.
 
-    Lifecycle driven by ``ShuffleOperatorCore``::
+    Lifecycle driven by ``HashShufflingOperatorBase``::
 
-        ShuffleOperatorCore            ShuffleEngine
-        ───────────────────            ─────────────
+        HashShufflingOperatorBase            ShuffleEngine
+        ────────────────────────             ─────────────
         start(options)
           └─ engine.start() ─────────► create actors / pools
 
         _add_input_inner(bundle)
-          ├─ metrics.on_input_received
+          ├─ shuffle_hooks.on_input_received
           └─ engine.submit_input() ──► route blocks to actors
                                         └─ shuffle_hooks.on_* (callbacks)
 
@@ -155,6 +192,8 @@ class ShuffleEngine(ABC):
                                         └─ reduce_hooks.on_output_ready (→ queue)
 
         _get_next_inner()
+          ├─ reduce_hooks.on_output_dequeued
+          ├─ reduce_hooks.on_output_taken
           └─ pop from output_queue
 
         _do_shutdown()
@@ -162,7 +201,7 @@ class ShuffleEngine(ABC):
 
     The engine never reads ``PhysicalOperator`` fields directly.
     ``_inputs_complete`` and ``upstream_op_num_outputs()`` are passed as
-    method parameters by ``ShuffleOperatorCore``.
+    method parameters by ``HashShufflingOperatorBase``.
     """
 
     @abstractmethod

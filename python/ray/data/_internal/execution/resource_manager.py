@@ -19,10 +19,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.shuffle_operator_core import (
-    ShuffleOperatorCore,
+from ray.data._internal.execution.operators.hash_shuffle import (
+    HashShufflingOperatorBase,
 )
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import GiB
@@ -45,7 +45,7 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
 # operators downstream from them from starting execution until these operators
 # finish executing.
 _BLOCKING_MATERIALIZING_OPERATORS = (
-    ShuffleOperatorCore,
+    HashShufflingOperatorBase,
     AllToAllOperator,
     # TODO remove after zip made fully streaming
     ZipOperator,
@@ -263,9 +263,6 @@ class ResourceManager:
 
     def get_global_usage(self) -> ExecutionResources:
         """Return the global resource usage at the current time."""
-        assert (
-            self._global_usage.is_non_negative()
-        ), f"Global usage should be non-negative, got {self._global_usage}"
         return self._global_usage
 
     def get_global_running_usage(self) -> ExecutionResources:
@@ -299,9 +296,6 @@ class ResourceManager:
             * default_mem_fraction
         )
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
-        assert (
-            self._global_limits.is_non_negative()
-        ), f"Global limits should be non-negative, got {self._global_limits}"
         return self._global_limits
 
     def get_op_usage(
@@ -900,16 +894,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if op not in self._op_budgets:
             return None
 
-        budget_obj_store = self._op_budgets[op].object_store_memory
-        # The total output ceiling is the general budget plus the output reservation.
-        # Subtract current output usage to get how much more can be read.
+        res = self._op_budgets[op].object_store_memory
+        # Add the remaining of `_reserved_for_op_outputs`.
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
 
-        res = max(
-            budget_obj_store + self._reserved_for_op_outputs[op] - op_outputs_usage, 0
-        )
+        res += max(self._reserved_for_op_outputs[op] - op_outputs_usage, 0)
         if math.isinf(res):
             self._output_budgets[op] = res
             return None
