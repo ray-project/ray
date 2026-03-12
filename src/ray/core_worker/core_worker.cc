@@ -557,7 +557,6 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() {
   WaitForShutdownComplete();
   if (task_building_executor_) {
-    task_building_executor_->Stop();
     task_building_executor_->Join();
   }
   RAY_LOG(INFO) << "Core worker is destructed";
@@ -2090,22 +2089,29 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
          build_task_spec,
          promise,
          task_building_hook]() mutable {
-          if (task_building_hook) {
-            task_building_hook();
+          try {
+            if (task_building_hook) {
+              task_building_hook();
+            }
+            promise->set_value(build_task_spec(*self,
+                                               task_name,
+                                               function,
+                                               *args,
+                                               num_returns,
+                                               constrained_resources,
+                                               serialized_runtime_env_info,
+                                               generator_backpressure_num_objects,
+                                               enable_task_events,
+                                               labels,
+                                               label_selector,
+                                               fallback_strategy,
+                                               scheduling_strategy));
+          } catch (...) {
+            try {
+              promise->set_exception(std::current_exception());
+            } catch (...) {
+            }
           }
-          promise->set_value(build_task_spec(*self,
-                                             task_name,
-                                             function,
-                                             *args,
-                                             num_returns,
-                                             constrained_resources,
-                                             serialized_runtime_env_info,
-                                             generator_backpressure_num_objects,
-                                             enable_task_events,
-                                             labels,
-                                             label_selector,
-                                             fallback_strategy,
-                                             scheduling_strategy));
         });
     task_spec = future.get();
   } else {
