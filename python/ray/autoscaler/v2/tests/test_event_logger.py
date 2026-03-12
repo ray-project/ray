@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 def test_log_scheduling_updates():
     mock_logger = MockEventLogger(logger)
-    event_logger = AutoscalerEventLogger(mock_logger)
+    event_logger = AutoscalerEventLogger(export_event_logger=mock_logger)
 
     launch_requests = [
         launch_request("m4.large", 2),
@@ -104,6 +104,38 @@ def test_log_scheduling_updates():
     assert mock_logger.get_logs("debug") == [
         "Current cluster resources: {'CPU': 5, 'GPU': 5, 'TPU': 2}."
     ]
+
+
+def test_log_scheduling_updates_publishes_ray_events(monkeypatch):
+    published_events = []
+    sentinel_event = object()
+
+    class _Publisher:
+        def publish(self, event):
+            published_events.append(event)
+
+    class _Builder:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def build(self):
+            return sentinel_event
+
+    monkeypatch.setattr(
+        "ray._common.observability.autoscaler_events.AutoscalerScalingDecisionEventBuilder",
+        _Builder,
+    )
+
+    event_logger = AutoscalerEventLogger(
+        ray_event_publisher=_Publisher(),
+        session_name="test-session",
+    )
+    event_logger.log_cluster_scheduling_update(
+        cluster_resources={"CPU": 5},
+        launch_requests=[launch_request("m4.large", 2)],
+    )
+
+    assert published_events == [sentinel_event]
 
 
 if __name__ == "__main__":
