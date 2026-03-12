@@ -941,7 +941,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             num_outputs=0,
             bytes_output=0,
             num_rows_produced=0,
-            start_time=time.perf_counter(),
+            start_time=time.time(),
             cum_block_gen_time_s=0,
             cum_block_ser_time_s=0,
             task_id=ray.TaskID.nil() if task_id is None else task_id,
@@ -970,13 +970,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Checkpoint time to first block
         is_first_block: bool = task_info.num_outputs == 0
         time_to_first_output_s = (
-            time.perf_counter() - task_info.start_time if is_first_block else None
+            time.time() - task_info.start_time if is_first_block else None
         )
 
         task_info.num_outputs += num_outputs
         task_info.bytes_output += output_bytes
         task_info.num_rows_produced += num_rows_produced
-        task_info.last_updated = time.perf_counter()
+        task_info.last_updated = time.time()
 
         for block_ref, meta in output.blocks:
             exec_stats = meta.exec_stats
@@ -1045,7 +1045,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # NOTE: This metric tracks task's wall-clock time as measured by
         #       the driver which starts upon scheduling of the task and runs
         #       until this callback is invoked
-        task_wall_time_s = time.perf_counter() - task_info.start_time
+        task_wall_time_s = time.time() - task_info.start_time
 
         self.task_completion_time_s += task_wall_time_s
         self.task_completion_time.observe(task_wall_time_s)

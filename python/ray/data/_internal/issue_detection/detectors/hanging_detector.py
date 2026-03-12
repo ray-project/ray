@@ -39,10 +39,11 @@ OpId = str
 TaskIdx = int
 
 
-def _perf_counter_to_datetime(perf_value: float) -> datetime:
-    """Convert a ``time.perf_counter()`` value to a wall-clock datetime."""
-    wall = time.time() - (time.perf_counter() - perf_value)
-    return datetime.fromtimestamp(wall, tz=timezone.utc)
+def _format_timestamp(epoch: float) -> str:
+    """Format a ``time.time()`` epoch value as a human-readable UTC string."""
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S %Z"
+    )
 
 
 @dataclass
@@ -78,7 +79,7 @@ class HangingExecutionState:
     start_time_hanging: float
 
     def hanging_time(self):
-        return time.perf_counter() - self.start_time_hanging
+        return time.time() - self.start_time_hanging
 
 
 @dataclass
@@ -113,8 +114,6 @@ class HangingExecutionIssueDetector(IssueDetector):
         self._state_fetch_failures: DefaultDict[OpId, Dict[TaskIdx, int]] = defaultdict(
             dict
         )
-
-        self._last_detection_cycle: float = time.perf_counter()
 
     @classmethod
     def from_executor(
@@ -152,8 +151,8 @@ class HangingExecutionIssueDetector(IssueDetector):
         if meta is not None:
             metadata_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
-        task_started = _perf_counter_to_datetime(hes.task_start_time)
-        hanging_since = _perf_counter_to_datetime(hes.start_time_hanging)
+        task_started = _format_timestamp(hes.task_start_time)
+        hanging_since = _format_timestamp(hes.start_time_hanging)
 
         message = (
             f"A task (task_id={hes.task_id}) of operator "
@@ -163,8 +162,8 @@ class HangingExecutionIssueDetector(IssueDetector):
             f"({avg_duration:.2f} + "
             f"{self._op_task_stats_std_factor_threshold} * "
             f"{stdev:.2f}s). "
-            f"Task started at {task_started:%Y-%m-%d %H:%M:%S %Z}, "
-            f"hanging since {hanging_since:%Y-%m-%d %H:%M:%S %Z}. "
+            f"Task started at {task_started} and "
+            f"last time task produced output was {hanging_since}. "
             f"If this message persists, please check "
             f"the stack trace of the task for potential hanging "
             f"issues. To adjust the z-score value, set "
@@ -249,7 +248,7 @@ class HangingExecutionIssueDetector(IssueDetector):
 
             for task_idx, task_info in op_metrics._running_tasks.items():
 
-                time_since_last_update = time.perf_counter() - task_info.last_updated
+                time_since_last_update = time.time() - task_info.last_updated
                 if time_since_last_update < threshold:
                     continue
 
@@ -267,8 +266,6 @@ class HangingExecutionIssueDetector(IssueDetector):
                 # 3) Skip if there wasn't any meaningful update to the task. For example,
                 # a task may have made some progress (yield bytes), or a task is retried
                 # giving a different node_id/attempt_number
-                # print(f"old_state={old_state}")
-                # print(f"new_state={new_state}")
                 if old_state == new_state:
                     continue
 
@@ -280,7 +277,6 @@ class HangingExecutionIssueDetector(IssueDetector):
 
         self._hanging_op_tasks = hanging_op_tasks
         self._state_fetch_failures = state_fetch_failures
-        self._last_detection_cycle = time.perf_counter()
         return issues
 
     def detection_time_interval_s(self) -> float:
