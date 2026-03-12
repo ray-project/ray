@@ -167,7 +167,7 @@ def test_chained_filter_with_expressions(parquet_ds):
         (lazy_fixture("s3_path")),
     ],
 )
-def test_pushdown_filter_lance(data_path):
+def test_pushdown_filter_lance(ray_start_regular_shared, data_path):
     """Test that Lance predicate pushdown absorbs expression filters into Read."""
 
     df1 = pa.table({"a": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
