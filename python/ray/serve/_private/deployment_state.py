@@ -4475,6 +4475,13 @@ class DeploymentState:
 
     def _deployment_actor_terminally_failed(self) -> bool:
         """True when deployment actors have failed too many times to keep retrying."""
+        configs = (
+            self._target_state.version.deployment_config.deployment_actors
+            if self._target_state.version
+            else []
+        )
+        if not configs:
+            return False
         return (
             self._deployment_actor_retry_counter
             >= self._deployment_actor_failed_to_start_threshold
@@ -4604,7 +4611,9 @@ class DeploymentState:
                     f"failed to become ready: {error_msg}"
                 )
                 self.record_deployment_actor_startup_failure(error_msg)
-                self._deployment_actors.pop(code_ver)
+                self._deployment_actors.pop(
+                    code_ver, states=[DeploymentActorState.STARTING]
+                )
                 return False
             if ready:
                 self._deployment_actors.add(DeploymentActorState.RUNNING, wrapper)

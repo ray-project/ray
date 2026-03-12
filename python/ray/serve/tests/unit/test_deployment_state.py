@@ -2513,6 +2513,36 @@ def test_deployment_actor_terminal_failure(mock_deployment_state_manager):
     )
 
 
+def test_no_deployment_actors_not_terminally_failed(mock_deployment_state_manager):
+    """Deployment without deployment_actors must not be treated as terminally failed.
+
+    Regression test: _deployment_actor_terminally_failed() must return False
+    when no deployment_actors are configured, regardless of retry counter state.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=1,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    assert not ds._deployment_actor_terminally_failed()
+    assert not ds._terminally_failed()
+
+    # Even if retry counter is artificially bumped past the threshold,
+    # the method must still return False without deployment_actors.
+    ds._deployment_actor_retry_counter = (
+        ds._deployment_actor_failed_to_start_threshold + 1
+    )
+    assert not ds._deployment_actor_terminally_failed()
+
+    dsm.update()
+    assert ds.curr_status_info.status != DeploymentStatus.DEPLOY_FAILED
+
+
 def test_deployment_actor_partial_failure(mock_deployment_state_manager):
     """One of two deployment actors fails; deployment transitions to DEPLOY_FAILED after threshold."""
     create_dsm, _, _, _ = mock_deployment_state_manager
@@ -2542,6 +2572,44 @@ def test_deployment_actor_partial_failure(mock_deployment_state_manager):
         == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
     )
     assert "cache actor failed" in ds.curr_status_info.message
+
+
+def test_deployment_actor_partial_failure_preserves_running(
+    mock_deployment_state_manager,
+):
+    """When one STARTING actor fails, already-RUNNING actors must stay tracked.
+
+    Regression test: pop() must only remove STARTING actors, not RUNNING ones.
+    Otherwise RUNNING actors become orphaned and get needlessly recreated.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        version="1",
+        num_replicas=2,
+        deployment_actors=_deployment_actors_config_two(),
+        max_constructor_retry_count=3,
+    )
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # First update: both actors created in STARTING state.
+    dsm.update()
+    assert ds._deployment_actors.count("1", states=[DeploymentActorState.STARTING]) == 2
+
+    # Counter becomes ready (transitions to RUNNING in check loop),
+    # cache fails during the same check_deployment_actors_ready iteration.
+    _get_deployment_actor_wrapper(ds, "1", "counter").set_ready()
+    _get_deployment_actor_wrapper(ds, "1", "cache").set_failed_to_start(
+        "cache actor failed"
+    )
+    dsm.update()
+
+    # Counter must still be tracked in RUNNING — not orphaned by the pop.
+    assert ds._deployment_actors.count("1", states=[DeploymentActorState.RUNNING]) == 1
+    counter_wrapper = ds._deployment_actors.get_wrapper("1", "counter")
+    assert counter_wrapper is not None, "RUNNING 'counter' actor was orphaned by pop()"
 
 
 def test_deployment_actor_recovery_from_checkpoint(mock_deployment_state_manager):
