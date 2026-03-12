@@ -283,6 +283,14 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
+            # gRPC v1.57.1 explicitly opts into layering_check. With clang-14 and
+            # --spawn_strategy=local, clang reads transitive .cppmap files already
+            # on disk and includes them in the depfile, causing "undeclared inclusion"
+            # errors across ~200 gRPC targets. This is a Bazel bug (https://github.com/bazelbuild/bazel/issues/21592)
+            # fixed in Bazel 7.3.0. LLVM applied the same workaround in their BUILD
+            # files (https://github.com/llvm/llvm-project/commit/5bba176). Remove the
+            # opt-in from the two affected BUILD files until gRPC or Bazel is upgraded.
+            "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
         ],
     )
 
