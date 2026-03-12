@@ -91,7 +91,9 @@ def make_autoscaler():
         gcs_address = gcs_address
         gcs_client = GcsClient(gcs_address)
 
-        event_logger = AutoscalerEventLogger(MockEventLogger(logger))
+        event_logger = AutoscalerEventLogger(
+            export_event_logger=MockEventLogger(logger)
+        )
 
         autoscaler = Autoscaler(
             session_name="test",
