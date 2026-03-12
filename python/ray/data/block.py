@@ -314,6 +314,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             schema=schema,
         )
 
+    @staticmethod
     def from_block(
         block: Block,
         block_exec_stats: Optional["BlockExecStats"] = None,
