@@ -2,20 +2,23 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, DefaultDict, Dict, List, Optional
+
+import requests
+from pandas.core.resample import is_subperiod
 
 import ray
+from ray.data._internal.execution.interfaces.op_runtime_metrics import RunningTaskInfo
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
     IssueDetector,
     IssueType,
 )
+from ray.util.state import get_task
 from ray.util.state.common import TaskState
+from ray.util.state.exception import RayStateApiException
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.op_runtime_metrics import (
-        TaskDurationStats,
-    )
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
@@ -30,16 +33,43 @@ DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
 
 logger = logging.getLogger(__name__)
 
+OpId = str
+TaskIdx = int
+
+
+@dataclass
+class TaskMetadata:
+    """Subset of TaskState fields relevant for hanging detection."""
+
+    attempt_number: int
+    node_id: str
+    pid: int
+
+    @classmethod
+    def from_task_state(cls, task_state: TaskState) -> "TaskMetadata":
+        return cls(
+            attempt_number=task_state.attempt_number,
+            node_id=task_state.node_id,
+            pid=task_state.worker_pid,
+        )
+
 
 @dataclass
 class HangingExecutionState:
-    operator_id: str
-    task_idx: int
-    task_id: ray.TaskID
-    task_state: Optional[TaskState]
-    logged_already: bool
+    # Equality is based on bytes_output and task_metadata: a change in
+    # output means the task made progress, and a change in metadata means
+    # the task was retried on a different node/worker.  Both warrant a
+    # new log entry.  The remaining fields are static identifiers that
+    # don't indicate a meaningful state change worth re-logging.
+    operator_id: OpId = field(compare=False)
+    task_idx: TaskIdx = field(compare=False)
+    task_id: ray.TaskID = field(compare=False)
+    task_metadata: Optional[TaskMetadata]
     bytes_output: int
-    start_time_hanging: float
+    start_time_hanging: float = field(compare=False)
+
+    def time_since_submission(self):
+        return time.perf_counter() - self.start_time_hanging
 
 
 @dataclass
@@ -65,11 +95,10 @@ class HangingExecutionIssueDetector(IssueDetector):
             self._detector_cfg.op_task_stats_std_factor
         )
 
-        # Map of operator id to dict of task_idx to hanging execution info (bytes read and
-        # start time for hanging time calculation)
-        self._state_map: Dict[str, Dict[int, HangingExecutionState]] = defaultdict(dict)
-        # Map of operator id to operator name
-        self._op_id_to_name: Dict[str, str] = {}
+        # Map of operator id to Dict[task index, state]
+        self._hanging_op_tasks: DefaultDict[
+            OpId, Dict[TaskIdx, HangingExecutionState]
+        ] = defaultdict(dict)
 
     @classmethod
     def from_executor(
@@ -91,130 +120,124 @@ class HangingExecutionIssueDetector(IssueDetector):
             config=ctx.issue_detectors_config.hanging_detector_config,
         )
 
-    def _create_issues(
+    def _create_issue(
         self,
-        hanging_op_tasks: List[HangingExecutionState],
-        op_task_stats_map: Dict[str, "TaskDurationStats"],
-    ) -> List[Issue]:
-        issues = []
-        failed_get_task = False
-        for state in hanging_op_tasks:
-            if state.task_state is None:
-                if not failed_get_task:
-                    latest = get_latest_state_for_task(state.task_id)
-                    if latest is None:
-                        # There exists more sophisticated ways to handle failure across multiple tasks, but for simplicity,
-                        # any failure grabbing the task info means we stop grabbing task info for the rest
-                        # of the tasks. This prevents a flood of state API calls, which can be slow. On the
-                        # next detection cycle, we will only retry the ones that are None.
-                        failed_get_task = True
-                    state.task_state = latest
+        operator: "PhysicalOperator",
+        hanging_execution_state: HangingExecutionState,
+    ) -> Issue:
 
-                if state.logged_already and state.task_state is None:
-                    # If we succeeded grabbing task info, or it failed only once, then create an
-                    # issue. We don't want to spam log messages if there are continued failures.
-                    continue
+        hes = hanging_execution_state
+        op_task_stats = operator.metrics._op_task_duration_stats
+        avg_duration = op_task_stats.mean()
+        stdev = op_task_stats.stddev()
 
-                op_name = self._op_id_to_name.get(state.operator_id, state.operator_id)
-                duration = time.perf_counter() - state.start_time_hanging
-                op_task_stats = op_task_stats_map[state.operator_id]
-                avg_duration = op_task_stats.mean()
-                stdev = op_task_stats.stddev()
+        meta = hes.task_metadata
+        metadata_info = ""
+        if meta.pid is not None:
+            metadata_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
-                node_id = None
-                pid = None
-                attempt_number = None
-                metadata_info = ""
-                if state.task_state is not None:
-                    node_id = state.task_state.node_id
-                    pid = state.task_state.worker_pid
-                    attempt_number = state.task_state.attempt_number
-                    metadata_info = (
-                        f"(pid={pid}, node_id={node_id}, attempt={attempt_number}) "
-                    )
+        message = (
+            f"A task (task_id={hes.task_id}) of operator "
+            f"{operator.name} {metadata_info}has been running for "
+            f"{hes.time_since_submission():.2f}s, which is longer than the average task "
+            f"duration + z-score * stdev of this operator "
+            f"({avg_duration:.2f} + "
+            f"{self._op_task_stats_std_factor_threshold} * "
+            f"{stdev:.2f}s). If this message persists, please check "
+            f"the stack trace of the task for potential hanging "
+            f"issues. To adjust the z-score value, set "
+            f"`ray.data.DataContext.get_current()"
+            f".issue_detectors_config.hanging_detector_config"
+            f".op_task_stats_std_factor`."
+        )
 
-                message = (
-                    f"A task (task_id={state.task_id}) of operator {op_name} {metadata_info}has been running for {duration:.2f}s, which is longer"
-                    f" than the average task duration + z-score * stdev of this operator ({avg_duration:.2f} + {self._op_task_stats_std_factor_threshold} * {stdev:.2f}s)."
-                    f" If this message persists, please check the stack trace of the "
-                    "task for potential hanging issues."
-                    " To adjust the z-score threshold, set"
-                    " `ray.data.DataContext.get_current().issue_detectors_config.hanging_detector_config.op_task_stats_std_factor`."
-                )
+        return Issue(
+            dataset_name=self._dataset_id,
+            operator_id=hes.operator_id,
+            issue_type=IssueType.HANGING,
+            message=message,
+        )
 
-                issues.append(
-                    Issue(
-                        dataset_name=self._dataset_id,
-                        operator_id=state.operator_id,
-                        issue_type=IssueType.HANGING,
-                        message=message,
-                    )
-                )
-                state.logged_already = True
+    def _refresh_state(
+        self,
+        operator: "PhysicalOperator",
+        task_idx: TaskIdx,
+        old_state: Optional[HangingExecutionState],
+        task_info: RunningTaskInfo,
+    ) -> HangingExecutionState:
+        """Return a HangingExecutionState for the task, creating one if new.
 
-        return issues
+        Reuses the previously fetched task metadata if available, otherwise
+        attempts to fetch it from the state API.
+        """
+        task_metadata: Optional[TaskMetadata] = (
+            old_state.task_metadata if old_state is not None else None
+        )
+        if task_metadata is None:
+            task_state = get_latest_state_for_task(task_info.task_id)
+            task_metadata = (
+                TaskMetadata.from_task_state(task_state)
+                if task_state is not None
+                else None
+            )
+
+        return HangingExecutionState(
+            operator_id=operator.id,
+            task_idx=task_idx,
+            task_id=task_info.task_id,
+            task_metadata=task_metadata,
+            bytes_output=task_info.bytes_output,
+            start_time_hanging=task_info.start_time,
+        )
 
     def detect(self) -> List[Issue]:
-        op_task_stats_map: Dict[str, "TaskDurationStats"] = {}
+
+        issues: List[is_subperiod] = []
         for operator in self._operators:
-            op_metrics = operator.metrics
-            op_task_stats_map[operator.id] = op_metrics._op_task_duration_stats
-            self._op_id_to_name[operator.id] = operator.name
+
             if operator.has_execution_finished():
-                # Remove finished operators / tasks from the state map
-                if operator.id in self._state_map:
-                    del self._state_map[operator.id]
-            else:
-                active_tasks_idx = set()
-                # Iterate directly over running tasks tracked in metrics
-                for task_idx, task_info in op_metrics._running_tasks.items():
-                    active_tasks_idx.add(task_idx)
-                    bytes_output = task_info.bytes_outputs
-                    prev_state_value = self._state_map[operator.id].get(task_idx, None)
+                # Remove finished operators / tasks from the _hanging_op_tasks map
+                if operator.id in self._hanging_op_tasks:
+                    del self._hanging_op_tasks[operator.id]
+                continue
 
-                    if (
-                        prev_state_value is None
-                        or bytes_output != prev_state_value.bytes_output
-                    ):
-                        self._state_map[operator.id][task_idx] = HangingExecutionState(
-                            operator_id=operator.id,
-                            task_idx=task_idx,
-                            task_id=task_info.task_id,
-                            task_state=(
-                                None
-                                if prev_state_value is None
-                                else prev_state_value.task_state
-                            ),
-                            logged_already=False,
-                            bytes_output=bytes_output,
-                            start_time_hanging=time.perf_counter(),
-                        )
+            op_metrics = operator.metrics
+            # Iterate directly over running tasks tracked in metrics
+            for task_idx, task_info in op_metrics._running_tasks.items():
 
-                # Remove any tasks that are no longer active
-                task_idxs_to_remove = (
-                    set(self._state_map[operator.id].keys()) - active_tasks_idx
+                # 1) Skip if not reached minimum task count
+                op_task_stats = op_metrics._op_task_duration_stats
+                if op_task_stats.count() < self._op_task_stats_min_count:
+                    continue
+
+                # 2) Skip if under threshold of mean + z-score * stdev
+                mean = op_task_stats.mean()
+                stddev = op_task_stats.stddev()
+                threshold = mean + self._op_task_stats_std_factor_threshold * stddev
+                current_task_duration = time.perf_counter() - task_info.start_time
+                if current_task_duration < threshold:
+                    continue
+
+                # 3) Skip if there wasn't any meaningful update to the task. For example,
+                # a task may have made some progress (yield bytes), or a task is retried
+                # giving a different node_id/attempt_number
+                old_state = self._hanging_op_tasks[operator.id].get(task_idx)
+                new_state = self._refresh_state(
+                    operator=operator,
+                    task_idx=task_idx,
+                    old_state=old_state,
+                    task_info=task_info,
                 )
-                for task_idx in task_idxs_to_remove:
-                    del self._state_map[operator.id][task_idx]
+                if old_state == new_state:
+                    continue
 
-        hanging_op_tasks = []
-        for op_id, op_state_values in self._state_map.items():
-            op_task_stats = op_task_stats_map[op_id]
-            for task_idx, state_value in op_state_values.items():
-                curr_time = time.perf_counter() - state_value.start_time_hanging
-                if op_task_stats.count() >= self._op_task_stats_min_count:
-                    mean = op_task_stats.mean()
-                    stddev = op_task_stats.stddev()
-                    threshold = mean + self._op_task_stats_std_factor_threshold * stddev
+                self._hanging_op_tasks[operator.id][task_idx] = new_state
 
-                    if curr_time > threshold:
-                        hanging_op_tasks.append(state_value)
-
-        # create issues for newly detected hanging tasks, then update the hanging task set
-        issues = self._create_issues(
-            hanging_op_tasks=hanging_op_tasks,
-            op_task_stats_map=op_task_stats_map,
-        )
+                issues.append(
+                    self._create_issue(
+                        operator=operator, hanging_execution_state=new_state
+                    )
+                )
 
         return issues
 
@@ -223,16 +246,23 @@ class HangingExecutionIssueDetector(IssueDetector):
 
 
 def get_latest_state_for_task(task_id: ray.TaskID) -> TaskState | None:
+    """Query the Ray State API for the latest attempt of a task.
+
+    Returns the TaskState with the highest attempt_number when multiple
+    attempts exist, or None if the task is not found (can happen when
+    get_task() is called shortly after submission, before the state API
+    has indexed it) or the API is unreachable.
+    """
     try:
-        task_state: TaskState | List[TaskState] | None = ray.util.state.get_task(
+        task_state: TaskState | List[TaskState] | None = get_task(
             task_id.hex(),
-            timeout=1.0,
+            timeout=0,
             _explain=True,
         )
-        if isinstance(task_state, list):
-            # get the latest task
-            task_state = max(task_state, key=lambda ts: ts.attempt_number)
-        return task_state
-    except Exception as e:
-        logger.debug(f"Failed to grab task state with task_id={task_id}: {e}")
+    except (RayStateApiException, requests.exceptions.RequestException):
+        logger.debug(f"Failed to grab task state with task_id={task_id}", exc_info=True)
         return None
+    if isinstance(task_state, list):
+        # get the latest task
+        task_state = max(task_state, key=lambda ts: ts.attempt_number)
+    return task_state

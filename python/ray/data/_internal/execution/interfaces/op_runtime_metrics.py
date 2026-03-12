@@ -135,7 +135,7 @@ def metric_property(
 class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
-    bytes_outputs: int
+    bytes_output: int
     num_rows_produced: int
     start_time: float
     cum_block_gen_time_s: float
@@ -935,7 +935,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
             num_outputs=0,
-            bytes_outputs=0,
+            bytes_output=0,
             num_rows_produced=0,
             start_time=time.perf_counter(),
             cum_block_gen_time_s=0,
@@ -970,7 +970,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         )
 
         task_info.num_outputs += num_outputs
-        task_info.bytes_outputs += output_bytes
+        task_info.bytes_output += output_bytes
         task_info.num_rows_produced += num_rows_produced
 
         for block_ref, meta in output.blocks:
@@ -1034,7 +1034,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info = self._running_tasks[task_index]
 
         self.num_outputs_of_finished_tasks += task_info.num_outputs
-        self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+        self.bytes_outputs_of_finished_tasks += task_info.bytes_output
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
         # NOTE: This metric tracks task's wall-clock time as measured by
