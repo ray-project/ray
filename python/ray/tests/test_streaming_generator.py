@@ -635,15 +635,15 @@ def test_streaming_generator_stats_serialized_object_size(shutdown_only):
     assert len(collected_stats) == 3
 
     for i, stats in enumerate(collected_stats):
-        assert isinstance(stats, StreamingGeneratorStats), (
-            f"stats[{i}] should be StreamingGeneratorStats, got {type(stats)}"
-        )
-        assert stats.serialized_object_size_bytes > 0, (
-            f"stats[{i}].serialized_object_size_bytes should be > 0"
-        )
-        assert stats.object_creation_dur_s >= 0, (
-            f"stats[{i}].object_creation_dur_s should be >= 0"
-        )
+        assert isinstance(
+            stats, StreamingGeneratorStats
+        ), f"stats[{i}] should be StreamingGeneratorStats, got {type(stats)}"
+        assert (
+            stats.serialized_object_size_bytes > 0
+        ), f"stats[{i}].serialized_object_size_bytes should be > 0"
+        assert (
+            stats.object_creation_dur_s >= 0
+        ), f"stats[{i}].object_creation_dur_s should be >= 0"
 
     small_size = collected_stats[0].serialized_object_size_bytes
     numpy_size = collected_stats[1].serialized_object_size_bytes
@@ -657,14 +657,14 @@ def test_streaming_generator_stats_serialized_object_size(shutdown_only):
 
     # The numpy array is 8MB of float64 data; serialized size should
     # be in the same ballpark.
-    assert numpy_size >= 1_000_000, (
-        f"Numpy array serialized size ({numpy_size}B) should be >= 1MB"
-    )
+    assert (
+        numpy_size >= 1_000_000
+    ), f"Numpy array serialized size ({numpy_size}B) should be >= 1MB"
 
     # The pandas DataFrame should also be non-trivial.
-    assert pandas_size >= 10_000, (
-        f"Pandas DataFrame serialized size ({pandas_size}B) should be >= 10KB"
-    )
+    assert (
+        pandas_size >= 10_000
+    ), f"Pandas DataFrame serialized size ({pandas_size}B) should be >= 10KB"
 
 
 if __name__ == "__main__":
