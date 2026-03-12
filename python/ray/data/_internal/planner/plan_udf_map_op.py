@@ -29,6 +29,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import env_integer, get_or_create_event_loop
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -52,7 +53,6 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -195,7 +195,7 @@ def plan_streaming_repartition_op(
     map_transformer = MapTransformer([transform_fn])
 
     if op._strict:
-        ref_bundler = StreamingRepartitionRefBundler(op.target_num_rows_per_block)
+        ref_bundler = RebundleQueue(ExactMultipleSize(op.target_num_rows_per_block))
     else:
         ref_bundler = None
 
