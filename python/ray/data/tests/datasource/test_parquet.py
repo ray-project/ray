@@ -18,6 +18,7 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import FileShuffleConfig, Schema
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
 )
@@ -774,6 +775,32 @@ def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
     on_disk_table = pq.read_table(path)
 
     assert in_memory_table.equals(on_disk_table)
+
+
+def test_parquet_write_ignore_save_mode_reports_zero_rows(
+    ray_start_regular_shared, local_path
+):
+    path = os.path.join(local_path, "test_parquet_ignore_num_rows")
+    os.mkdir(path)
+
+    num_rows_written = None
+    original_on_write_complete = ParquetDatasink.on_write_complete
+
+    def patched_on_write_complete(self, write_result):
+        nonlocal num_rows_written
+        num_rows_written = write_result.num_rows
+        return original_on_write_complete(self, write_result)
+
+    ParquetDatasink.on_write_complete = patched_on_write_complete
+    try:
+        ray.data.range(10, override_num_blocks=2).write_parquet(
+            path, filesystem=None, mode="ignore"
+        )
+    finally:
+        ParquetDatasink.on_write_complete = original_on_write_complete
+
+    assert num_rows_written == 0
+    assert os.listdir(path) == []
 
 
 def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):

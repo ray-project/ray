@@ -182,6 +182,7 @@ class ParquetDatasink(_FileDatasink):
         blocks = list(blocks)
 
         if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
+            self._set_actual_write_stats(ctx, num_rows=0, size_bytes=0)
             return
 
         blocks = [
