@@ -308,7 +308,8 @@ method to compute actions:
     )
 
     # Create the RL environment to test against (same as was used for training earlier).
-    env = gym.make("Pendulum-v1", render_mode="human")
+    # env = gym.make("Pendulum-v1", render_mode="human")
+    env = gym.make("Pendulum-v1")
 
     episode_return = 0.0
     done = False

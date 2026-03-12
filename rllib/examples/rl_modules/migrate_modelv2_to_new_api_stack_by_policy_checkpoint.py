@@ -1,3 +1,4 @@
+import argparse
 import pathlib
 
 import gymnasium as gym
@@ -14,6 +15,9 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.spaces.space_utils import batch
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--render", action="store_true", help="Render the environment.")
+    args = parser.parse_args()
     # Configure and train an old stack default ModelV2.
     config = (
         PPOConfig()
@@ -53,7 +57,7 @@ if __name__ == "__main__":
 
     # Move the old API stack (trained) ModelV2 into the new API stack's RLModule.
     # Run a simple CartPole inference experiment.
-    env = gym.make("CartPole-v1", render_mode="human")
+    env = gym.make("CartPole-v1", render_mode="human" if args.render else None)
     rl_module = ModelV2ToRLModule(
         observation_space=env.observation_space,
         action_space=env.action_space,
@@ -61,7 +65,6 @@ if __name__ == "__main__":
     )
 
     obs, _ = env.reset()
-    env.render()
     done = False
     episode_return = 0.0
     while not done:
@@ -71,7 +74,8 @@ if __name__ == "__main__":
         obs, reward, terminated, truncated, _ = env.step(action)
         done = terminated or truncated
         episode_return += reward
-        env.render()
+        if args.render:
+            env.render()
 
     print(f"Ran episode with trained ModelV2: return={episode_return}")
 
