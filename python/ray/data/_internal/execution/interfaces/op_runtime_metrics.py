@@ -141,6 +141,10 @@ class RunningTaskInfo:
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
+    last_updated: float = field(init=False)
+
+    def __post_init__(self):
+        self.last_updated = self.start_time
 
 
 @dataclass
@@ -972,6 +976,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.num_outputs += num_outputs
         task_info.bytes_output += output_bytes
         task_info.num_rows_produced += num_rows_produced
+        task_info.last_updated = time.perf_counter()
 
         for block_ref, meta in output.blocks:
             exec_stats = meta.exec_stats
