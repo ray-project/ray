@@ -2,6 +2,7 @@ import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, DefaultDict, Dict, List
 
 import requests
@@ -38,6 +39,12 @@ OpId = str
 TaskIdx = int
 
 
+def _perf_counter_to_datetime(perf_value: float) -> datetime:
+    """Convert a ``time.perf_counter()`` value to a wall-clock datetime."""
+    wall = time.time() - (time.perf_counter() - perf_value)
+    return datetime.fromtimestamp(wall, tz=timezone.utc)
+
+
 @dataclass
 class TaskMetadata:
     """Subset of TaskState fields relevant for hanging detection."""
@@ -67,6 +74,7 @@ class HangingExecutionState:
     task_id: ray.TaskID
     task_metadata: TaskMetadata | None
     bytes_output: int
+    task_start_time: float
     start_time_hanging: float
 
     def hanging_time(self):
@@ -144,14 +152,20 @@ class HangingExecutionIssueDetector(IssueDetector):
         if meta is not None:
             metadata_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
+        task_started = _perf_counter_to_datetime(hes.task_start_time)
+        hanging_since = _perf_counter_to_datetime(hes.start_time_hanging)
+
         message = (
             f"A task (task_id={hes.task_id}) of operator "
-            f"{operator.name} {metadata_info}has been running for "
+            f"{operator.name} {metadata_info}has been running or stuck in scheduling for "
             f"{hes.hanging_time():.2f}s, which is longer than the average task "
             f"duration + z-score * stdev of this operator "
             f"({avg_duration:.2f} + "
             f"{self._op_task_stats_std_factor_threshold} * "
-            f"{stdev:.2f}s). If this message persists, please check "
+            f"{stdev:.2f}s). "
+            f"Task started at {task_started:%Y-%m-%d %H:%M:%S %Z}, "
+            f"hanging since {hanging_since:%Y-%m-%d %H:%M:%S %Z}. "
+            f"If this message persists, please check "
             f"the stack trace of the task for potential hanging "
             f"issues. To adjust the z-score value, set "
             f"`ray.data.DataContext.get_current()"
@@ -204,6 +218,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             task_id=task_info.task_id,
             task_metadata=task_metadata,
             bytes_output=task_info.bytes_output,
+            task_start_time=task_info.start_time,
             start_time_hanging=task_info.last_updated,
         )
 
