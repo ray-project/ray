@@ -260,8 +260,10 @@ class HangingExecutionIssueDetector(IssueDetector):
 
                 old_state = self._hanging_op_tasks[operator.id].get(task_idx)
 
-                old_failures = self._state_fetch_failures[operator.id].get(task_idx, 0)
-                state_fetch_failures[operator.id][task_idx] = old_failures
+                old_fail_count = self._state_fetch_failures[operator.id].get(
+                    task_idx, 0
+                )
+                state_fetch_failures[operator.id][task_idx] = old_fail_count
 
                 new_state = self._refresh_state(
                     operator=operator,
@@ -272,16 +274,17 @@ class HangingExecutionIssueDetector(IssueDetector):
                 )
 
                 hanging_op_tasks[operator.id][task_idx] = new_state
-                failure_count = state_fetch_failures[operator.id].get(task_idx, 0)
+                new_fail_count = state_fetch_failures[operator.id].get(task_idx, 0)
 
                 # Skip if we're still waiting for metadata (will retry next cycle).
-                if self._should_fetch_metadata(new_state.task_metadata, failure_count):
+                if self._should_fetch_metadata(new_state.task_metadata, new_fail_count):
                     continue
                 # Skip if nothing meaningful changed: the execution state
                 # is identical AND the failure count didn't just cross the
                 # exhaustion threshold (which would mean we deferred logging
                 # while retrying and should now emit the issue).
-                if old_state == new_state and old_failures == failure_count:
+                fetch_metadata_attempt_failed = old_fail_count < new_fail_count
+                if old_state == new_state and not fetch_metadata_attempt_failed:
                     continue
 
                 issues.append(
