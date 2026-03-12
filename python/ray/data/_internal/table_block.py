@@ -183,7 +183,9 @@ class TableBlockAccessor(BlockAccessor):
 
     def to_cudf(self) -> Any:
         """Convert this block to a cudf.DataFrame (requires cudf to be installed)."""
-        import cudf
+        from ray.data.util.data_batch_conversion import _lazy_import_cudf
+
+        cudf = _lazy_import_cudf()
 
         return cudf.DataFrame.from_arrow(self.to_arrow())
 

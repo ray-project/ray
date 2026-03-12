@@ -514,7 +514,7 @@ def _validate_batch_output(batch: Block) -> None:
             "return `{'results': objects}` instead of just `objects`."
         )
 
-    if isinstance(batch, collections.abc.Mapping):
+    if isinstance(batch, collections.abc.Mapping) and not _is_cudf_dataframe(batch):
         for key, value in list(batch.items()):
             if not _is_valid_column_values(value):
                 raise ValueError(
