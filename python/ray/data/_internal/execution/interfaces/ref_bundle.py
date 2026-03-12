@@ -344,7 +344,6 @@ class RefBundle:
             schema=schema,
             owns_blocks=owns_blocks,
             slices=merged_slices,
-            producer_op_id=bundles[0].producer_op_id,
         )
 
     def __eq__(self, other) -> bool:

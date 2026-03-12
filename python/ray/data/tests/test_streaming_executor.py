@@ -1227,6 +1227,24 @@ class TestDataOpTask:
         task_default = DataOpTask(1, streaming_gen2)
         assert task_default._operator_name == "Unknown"
 
+    def test_on_data_ready_stamps_producer_op_id(self, ray_start_regular_shared):
+        streaming_gen = create_stub_streaming_gen(block_nbytes=[128])
+        output_bundles = []
+
+        data_op_task = DataOpTask(
+            0,
+            streaming_gen,
+            output_ready_callback=lambda bundle: output_bundles.append(bundle),
+            operator_id="test-operator-uuid",
+        )
+
+        while not data_op_task.has_finished:
+            ray.wait([streaming_gen], fetch_local=False)
+            data_op_task.on_data_ready(None)
+
+        assert len(output_bundles) == 1
+        assert output_bundles[0].producer_op_id == "test-operator-uuid"
+
     @pytest.mark.parametrize(
         "preempt_on", ["block_ready_callback", "metadata_ready_callback"]
     )
