@@ -9,5 +9,5 @@ ray cpp --generate-bazel-project-template-to ray-template
 
     # Our generated CPP template does not work with bazel 7.x ,
     # so pin the bazel version to 6
-    USE_BAZEL_VERSION=6.5.0 bash run.sh
+    USE_BAZEL_VERSION=7.5.0 bash run.sh
 )

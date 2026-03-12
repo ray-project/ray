@@ -2677,7 +2677,7 @@ def healthcheck(address, component, skip_version_check):
 )
 @click.option(
     "--bazel-version",
-    default="6.5.0",
+    default="7.5.0",
     required=False,
     type=str,
     help="The bazel version to use, if provided.",
