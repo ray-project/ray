@@ -131,6 +131,36 @@ class FileShuffleConfig:
 
 
 @DeveloperAPI
+@dataclass
+class SubFileShuffleConfig(FileShuffleConfig):
+    """Configuration for sub-file shuffling with task-source-aware batching.
+
+    This extends :class:`FileShuffleConfig` to enable sub-file level shuffling
+    where rows from different read tasks are interleaved within output blocks.
+    Read tasks produce smaller blocks (``target_block_size // num_task_sources_per_batch``),
+    and the :class:`~ray.data._internal.execution.util.ShuffleRefBundler` groups
+    blocks by their source read task, randomly picking from
+    ``num_task_sources_per_batch`` distinct task queues to form each shuffle batch.
+
+    Args:
+        num_task_sources_per_batch: Number of distinct read-task sources to
+            sample from when assembling each shuffle batch. Each read task
+            produces blocks of size ``target_block_size // num_task_sources_per_batch``,
+            and the bundler picks one block from each of
+            ``num_task_sources_per_batch`` task queues to form a single
+            shuffle input. Defaults to 4.
+    """
+
+    num_task_sources_per_batch: int = 4
+
+    def __post_init__(self):
+        self.enable_sub_file_shuffle = True
+        super().__post_init__()
+        if self.num_task_sources_per_batch < 1:
+            raise ValueError("num_task_sources_per_batch must be at least 1.")
+
+
+@DeveloperAPI
 class FileBasedDatasource(Datasource):
     """File-based datasource for reading files.
 

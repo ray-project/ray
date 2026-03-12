@@ -118,9 +118,14 @@ def plan_read_op(
     sub_file_shuffle = (
         shuffle_config is not None and shuffle_config.enable_sub_file_shuffle
     )
-    merge_window = data_context.shuffle_merge_window
     if sub_file_shuffle:
-        effective_block_size = data_context.target_max_block_size // merge_window
+        from ray.data.datasource.file_based_datasource import SubFileShuffleConfig
+
+        if isinstance(shuffle_config, SubFileShuffleConfig):
+            num_task_sources = shuffle_config.num_task_sources_per_batch
+        else:
+            num_task_sources = data_context.shuffle_merge_window
+        effective_block_size = data_context.target_max_block_size // num_task_sources
     else:
         effective_block_size = data_context.target_max_block_size
 
@@ -159,11 +164,6 @@ def plan_read_op(
             "Support for this combination is pending."
         )
 
-    # Enable random output ordering for the read operator so that blocks
-    # from different read tasks are interleaved before reaching the
-    # downstream ShuffleRefBundler.
-    read_op._shuffle_task_outputs = True
-
     # Chain a shuffle operator that concatenates all blocks in a RefBundle
     # and shuffles rows.
     row_block_size = data_context.shuffle_row_block_size
@@ -190,8 +190,7 @@ def plan_read_op(
         data_context,
         name="SubFileShuffle",
         ref_bundler=ShuffleRefBundler(
-            merge_window,
-            data_context.shuffle_sample_ratio,
+            num_task_sources,
             seed=shuffle_seed,
         ),
     )

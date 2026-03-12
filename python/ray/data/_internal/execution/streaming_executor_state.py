@@ -10,8 +10,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
-import numpy as np
-
 import ray
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -477,16 +475,9 @@ def process_completed_tasks(
             state, task = active_tasks[ref]
             ready_tasks_by_op[state].append(task)
 
-        _rng = np.random.default_rng()
         for state, ready_tasks in ready_tasks_by_op.items():
-            if getattr(state.op, "_shuffle_task_outputs", False):
-                # For sub-file shuffle read operators, process ready tasks in
-                # random order so blocks from different files are interleaved.
-                ready_tasks = list(ready_tasks)
-                _rng.shuffle(ready_tasks)
-            else:
-                # TODO elaborate why sorting (helps preserve_order case)
-                ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
+            # TODO elaborate why sorting (helps preserve_order case)
+            ready_tasks = sorted(ready_tasks, key=lambda t: t.task_index())
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
@@ -533,20 +524,8 @@ def process_completed_tasks(
 
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
-        if getattr(op, "_shuffle_task_outputs", False):
-            # Collect all ready outputs and shuffle before dispatching,
-            # so blocks from different read tasks are interleaved.
-            outputs = []
-            while op.has_next():
-                outputs.append(op.get_next())
-            if outputs:
-                _rng = np.random.default_rng()
-                _rng.shuffle(outputs)
-                for ref in outputs:
-                    op_state.add_output(ref)
-        else:
-            while op.has_next():
-                op_state.add_output(op.get_next())
+        while op.has_next():
+            op_state.add_output(op.get_next())
 
     return num_errored_blocks
 

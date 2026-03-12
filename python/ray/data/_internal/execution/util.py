@@ -1,5 +1,6 @@
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Generator, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Generator, Iterable, List, Optional, Tuple
 
 import numpy as np
 
@@ -96,37 +97,40 @@ def concat_and_shuffle(
 class ShuffleRefBundler:
     """Groups small blocks from the read operator for sub-file shuffle.
 
-    Accumulates single-block RefBundles produced by the read operator. Once
-    ``sample_ratio * merge_window`` bundles are buffered, randomly samples
-    ``merge_window`` of them, merges them into one multi-block RefBundle, and
-    emits it as a single shuffle task input. On finalization, remaining
-    bundles are flushed in groups of ``merge_window``.
+    Accumulates single-block RefBundles produced by the read operator, keyed
+    by read task ID. Once at least ``num_task_sources`` queues are buffered,
+    randomly picks ``num_task_sources`` queues and samples one RefBundle from
+    each, merges them into one multi-block RefBundle, and emits it as a
+    single shuffle task input. If fewer queues are available, all queues are
+    used. Empty queues are removed after sampling. On finalization, remaining
+    bundles are flushed the same way.
     """
 
     def __init__(
         self,
-        merge_window: int,
-        sample_ratio: int,
+        num_task_sources: int,
         seed: Optional[int] = None,
     ):
-        self._merge_window = merge_window
-        self._sample_window = merge_window * sample_ratio
-        self._buffer: List["RefBundle"] = []
-        self._buffer_size_bytes: int = 0
+        self._num_task_sources = num_task_sources
+        # read task id -> list of bundles
+        self._buffer: Dict[int, List["RefBundle"]] = defaultdict(list)
+        self._buffer_size_bytes = 0
         self._finalized = False
         self._rng = np.random.default_rng(seed)
 
     def num_blocks(self) -> int:
-        return sum(len(b.block_refs) for b in self._buffer)
+        return sum(
+            len(b.block_refs) for bundles in self._buffer.values() for b in bundles
+        )
 
     def add_bundle(self, bundle: "RefBundle"):
-        self._buffer.append(bundle)
+        self._buffer[bundle.read_task_id].append(bundle)
         self._buffer_size_bytes += bundle.size_bytes()
 
     def has_bundle(self) -> bool:
         if self._finalized:
-            return len(self._buffer) > 0
-        return len(self._buffer) >= self._sample_window
+            return any(self._buffer.values())
+        return len(self._buffer) >= self._num_task_sources
 
     def size_bytes(self) -> int:
         return self._buffer_size_bytes
@@ -138,24 +142,28 @@ class ShuffleRefBundler:
 
         assert self.has_bundle()
 
-        n = len(self._buffer)
-        take = min(self._merge_window, n)
+        keys = list(self._buffer.keys())
+        n = len(keys)
+        take = min(self._num_task_sources, n)
 
-        if take >= n:
-            # Take everything (flush or exact fit).
-            selected = self._buffer
-            self._buffer = []
-        else:
-            # Randomly sample merge_window bundles from the buffer.
-            indices = self._rng.choice(n, size=take, replace=False)
-            indices_set = set(indices.tolist())
-            selected = [self._buffer[i] for i in indices]
-            self._buffer = [
-                b for i, b in enumerate(self._buffer) if i not in indices_set
+        if n > self._num_task_sources:
+            picked_keys = [
+                keys[i] for i in self._rng.choice(n, size=take, replace=False)
             ]
+        else:
+            picked_keys = keys
 
-        self._buffer_size_bytes = sum(b.size_bytes() for b in self._buffer)
-        return list(selected), _merge_ref_bundles(*selected)
+        selected = []
+        for key in picked_keys:
+            idx = self._rng.integers(len(self._buffer[key]))
+            selected.append(self._buffer[key].pop(idx))
+            if not self._buffer[key]:
+                del self._buffer[key]
+
+        self._buffer_size_bytes = sum(
+            b.size_bytes() for bundles in self._buffer.values() for b in bundles
+        )
+        return selected, _merge_ref_bundles(*selected)
 
     def done_adding_bundles(self):
         self._finalized = True

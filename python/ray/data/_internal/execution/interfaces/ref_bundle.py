@@ -64,6 +64,10 @@ class RefBundle:
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
 
+    # The read task index that produced this bundle. Used by ShuffleRefBundler
+    # to group bundles by their source read task.
+    read_task_id: Optional[int] = None
+
     # Object metadata (size, locations, spilling status)
     _cached_object_meta: Optional[Dict[ObjectRef, "_ObjectMetadata"]] = None
 
