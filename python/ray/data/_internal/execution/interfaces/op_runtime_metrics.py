@@ -144,7 +144,7 @@ class RunningTaskInfo:
     last_updated: float = field(init=False)
 
     def __post_init__(self):
-        self.last_updated = self.start_time
+        self.last_updated = time.time()
 
 
 @dataclass
@@ -941,7 +941,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             num_outputs=0,
             bytes_output=0,
             num_rows_produced=0,
-            start_time=time.time(),
+            start_time=time.perf_counter(),
             cum_block_gen_time_s=0,
             cum_block_ser_time_s=0,
             task_id=ray.TaskID.nil() if task_id is None else task_id,
@@ -970,7 +970,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Checkpoint time to first block
         is_first_block: bool = task_info.num_outputs == 0
         time_to_first_output_s = (
-            time.time() - task_info.start_time if is_first_block else None
+            time.perf_counter() - task_info.start_time if is_first_block else None
         )
 
         task_info.num_outputs += num_outputs
@@ -1045,7 +1045,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # NOTE: This metric tracks task's wall-clock time as measured by
         #       the driver which starts upon scheduling of the task and runs
         #       until this callback is invoked
-        task_wall_time_s = time.time() - task_info.start_time
+        task_wall_time_s = time.perf_counter() - task_info.start_time
 
         self.task_completion_time_s += task_wall_time_s
         self.task_completion_time.observe(task_wall_time_s)

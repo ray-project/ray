@@ -70,7 +70,7 @@ class HangingExecutionState:
     task_id: ray.TaskID
     task_metadata: TaskMetadata | None
     bytes_output: int
-    task_start_time: float
+    # from time.time()
     start_time_hanging: float
 
     def hanging_time(self):
@@ -139,7 +139,6 @@ class HangingExecutionIssueDetector(IssueDetector):
         if meta is not None:
             metadata_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
-        task_started = _format_timestamp(hes.task_start_time)
         hanging_since = _format_timestamp(hes.start_time_hanging)
 
         message = (
@@ -150,8 +149,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             f"({avg_duration:.2f} + "
             f"{self._op_task_stats_std_factor_threshold} * "
             f"{stdev:.2f}s). "
-            f"Task started at {task_started} and "
-            f"last time task produced output or made any progress was {hanging_since}. "
+            f"Last time task produced output or made any progress was {hanging_since}. "
             f"If this message persists, please check "
             f"the stack trace of the task for potential hanging "
             f"issues. To adjust the z-score value, set "
@@ -197,7 +195,6 @@ class HangingExecutionIssueDetector(IssueDetector):
             task_id=task_info.task_id,
             task_metadata=task_metadata,
             bytes_output=task_info.bytes_output,
-            task_start_time=task_info.start_time,
             start_time_hanging=task_info.last_updated,
         )
 
