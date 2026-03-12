@@ -80,6 +80,7 @@ class LimitOperator(OneToOneOperator):
             list(zip(out_blocks, out_metadata)),
             owns_blocks=refs.owns_blocks,
             schema=refs.schema,
+            producer_op_id=refs.producer_op_id,
         )
         self._buffer.append(out_refs)
         self._metrics.on_output_queued(out_refs)

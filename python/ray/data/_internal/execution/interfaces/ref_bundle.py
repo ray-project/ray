@@ -64,6 +64,11 @@ class RefBundle:
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
 
+    # Tracks the UUID of the eligible operator that produced this bundle.
+    # Used for per-producer memory attribution in downstream ineligible
+    # operators' external output queues.
+    producer_op_id: Optional[str] = None
+
     # Object metadata (size, locations, spilling status)
     _cached_object_meta: Optional[Dict[ObjectRef, "_ObjectMetadata"]] = None
 
@@ -291,6 +296,7 @@ class RefBundle:
             schema=self.schema,
             owns_blocks=False,
             slices=consumed_slices if consumed_slices else None,
+            producer_op_id=self.producer_op_id,
         )
 
         remaining_bundle = RefBundle(
@@ -298,6 +304,7 @@ class RefBundle:
             schema=self.schema,
             owns_blocks=False,
             slices=remaining_slices if remaining_slices else None,
+            producer_op_id=self.producer_op_id,
         )
 
         return sliced_bundle, remaining_bundle
