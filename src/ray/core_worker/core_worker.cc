@@ -1998,6 +1998,60 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                             ? current_task_id
                             : worker_context_->GetCurrentTaskID();
   auto caller_id = GetCallerId();
+  auto job_id = worker_context_->GetCurrentJobID();
+  auto main_thread_or_actor_creation_task_id =
+      worker_context_->GetMainThreadOrActorCreationTaskID();
+  ActorID root_detached_actor_id;
+  if (!worker_context_->GetRootDetachedActorID().IsNil()) {
+    root_detached_actor_id = worker_context_->GetRootDetachedActorID();
+  }
+  auto build_task_spec =
+      [&](CoreWorker &worker,
+          const std::string &task_name_to_build,
+          const RayFunction &function_to_build,
+          const std::vector<std::unique_ptr<TaskArg>> &args_to_build,
+          int64_t num_returns_to_build,
+          const std::unordered_map<std::string, double> &resources,
+          const std::string &serialized_runtime_env_info,
+          int64_t generator_backpressure_num_objects,
+          bool enable_task_events,
+          const std::unordered_map<std::string, std::string> &labels,
+          const LabelSelector &label_selector,
+          const std::vector<FallbackOption> &fallback_strategy,
+          const rpc::SchedulingStrategy &scheduling_strategy) -> TaskSpecification {
+    TaskSpecBuilder builder;
+    worker.BuildCommonTaskSpec(builder,
+                               job_id,
+                               task_id,
+                               task_name_to_build,
+                               parent_task_id,
+                               next_task_index,
+                               caller_id,
+                               worker.rpc_address_,
+                               function_to_build,
+                               args_to_build,
+                               num_returns_to_build,
+                               resources,
+                               resources,
+                               debugger_breakpoint,
+                               depth,
+                               serialized_runtime_env_info,
+                               call_site,
+                               main_thread_or_actor_creation_task_id,
+                               "",
+                               true,
+                               generator_backpressure_num_objects,
+                               enable_task_events,
+                               labels,
+                               label_selector,
+                               fallback_strategy);
+    builder.SetNormalTaskSpec(max_retries,
+                              retry_exceptions,
+                              serialized_retry_exception_allowlist,
+                              scheduling_strategy,
+                              root_detached_actor_id);
+    return std::move(builder).ConsumeAndBuild();
+  };
 
   TaskSpecification task_spec;
   if (task_building_executor_) {
@@ -2006,110 +2060,54 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     auto task_building_hook = task_building_hook_;
     task_building_executor_->Post(
         [self = shared_from_this(),
-         task_id,
          task_name = std::move(task_name),
-         parent_task_id,
-         next_task_index,
          constrained_resources = std::move(constrained_resources),
          function,
          args = &args,
-         debugger_breakpoint,
-         depth,
          serialized_runtime_env_info = task_options.serialized_runtime_env_info,
          num_returns = task_options.num_returns,
-         call_site,
          generator_backpressure_num_objects =
              task_options.generator_backpressure_num_objects,
          enable_task_events = task_options.enable_task_events,
          labels = task_options.labels,
          label_selector = task_options.label_selector,
          fallback_strategy = task_options.fallback_strategy,
-         max_retries,
-         retry_exceptions,
-         serialized_retry_exception_allowlist,
          scheduling_strategy,
-         caller_id,
+         &build_task_spec,
          promise,
          task_building_hook]() mutable {
           if (task_building_hook) {
             task_building_hook();
           }
-          TaskSpecBuilder builder;
-          self->BuildCommonTaskSpec(
-              builder,
-              self->worker_context_->GetCurrentJobID(),
-              task_id,
-              task_name,
-              parent_task_id,
-              next_task_index,
-              caller_id,
-              self->rpc_address_,
-              function,
-              *args,
-              num_returns,
-              constrained_resources,
-              constrained_resources,
-              debugger_breakpoint,
-              depth,
-              serialized_runtime_env_info,
-              call_site,
-              self->worker_context_->GetMainThreadOrActorCreationTaskID(),
-              "",
-              true,
-              generator_backpressure_num_objects,
-              enable_task_events,
-              labels,
-              label_selector,
-              fallback_strategy);
-          ActorID root_detached_actor_id;
-          if (!self->worker_context_->GetRootDetachedActorID().IsNil()) {
-            root_detached_actor_id = self->worker_context_->GetRootDetachedActorID();
-          }
-          builder.SetNormalTaskSpec(max_retries,
-                                    retry_exceptions,
-                                    serialized_retry_exception_allowlist,
-                                    scheduling_strategy,
-                                    root_detached_actor_id);
-          promise->set_value(std::move(builder).ConsumeAndBuild());
+          promise->set_value(build_task_spec(*self,
+                                             task_name,
+                                             function,
+                                             *args,
+                                             num_returns,
+                                             constrained_resources,
+                                             serialized_runtime_env_info,
+                                             generator_backpressure_num_objects,
+                                             enable_task_events,
+                                             labels,
+                                             label_selector,
+                                             fallback_strategy,
+                                             scheduling_strategy));
         });
     task_spec = future.get();
   } else {
-    TaskSpecBuilder builder;
-    BuildCommonTaskSpec(builder,
-                        worker_context_->GetCurrentJobID(),
-                        task_id,
-                        task_name,
-                        parent_task_id,
-                        next_task_index,
-                        caller_id,
-                        rpc_address_,
-                        function,
-                        args,
-                        task_options.num_returns,
-                        constrained_resources,
-                        constrained_resources,
-                        debugger_breakpoint,
-                        depth,
-                        task_options.serialized_runtime_env_info,
-                        call_site,
-                        worker_context_->GetMainThreadOrActorCreationTaskID(),
-                        "",
-                        true,
-                        task_options.generator_backpressure_num_objects,
-                        task_options.enable_task_events,
-                        task_options.labels,
-                        task_options.label_selector,
-                        task_options.fallback_strategy);
-    ActorID root_detached_actor_id;
-    if (!worker_context_->GetRootDetachedActorID().IsNil()) {
-      root_detached_actor_id = worker_context_->GetRootDetachedActorID();
-    }
-    builder.SetNormalTaskSpec(max_retries,
-                              retry_exceptions,
-                              serialized_retry_exception_allowlist,
-                              scheduling_strategy,
-                              root_detached_actor_id);
-    task_spec = std::move(builder).ConsumeAndBuild();
+    task_spec = build_task_spec(*this,
+                                task_name,
+                                function,
+                                args,
+                                task_options.num_returns,
+                                constrained_resources,
+                                task_options.serialized_runtime_env_info,
+                                task_options.generator_backpressure_num_objects,
+                                task_options.enable_task_events,
+                                task_options.labels,
+                                task_options.label_selector,
+                                task_options.fallback_strategy,
+                                scheduling_strategy);
   }
 
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
