@@ -37,48 +37,45 @@ namespace gcs {
 
 namespace {
 
-rpc::TaskStatus GetLatestState(const rpc::TaskEvents &task_event);
-
-std::optional<std::string> GetNormalizedTaskNameIndexKey(
-    const rpc::TaskEvents &task_event);
-
-std::optional<ActorID> GetActorIdIndexKey(const rpc::TaskEvents &task_event);
-template <typename Key, typename IndexMap, typename SetKeyFunc>
-void UpdateIndexEntry(
-    const std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator> &loc,
-    const std::optional<Key> &old_key,
-    const std::optional<Key> &new_key,
-    IndexMap &index_map,
-    SetKeyFunc &&set_key_fn) {
-  if (old_key.has_value() && (!new_key.has_value() || *new_key != *old_key)) {
-    auto iter = index_map.find(*old_key);
-    RAY_CHECK(iter != index_map.end());
-    RAY_CHECK(iter->second.erase(loc) == 1);
-    if (iter->second.empty()) {
-      index_map.erase(iter);
+rpc::TaskStatus GetLatestState(const rpc::TaskEvents &task_event) {
+  const google::protobuf::EnumDescriptor *task_status_descriptor =
+      ray::rpc::TaskStatus_descriptor();
+  ray::rpc::TaskStatus state = ray::rpc::TaskStatus::NIL;
+  if (task_event.has_state_updates()) {
+    for (int i = task_status_descriptor->value_count() - 1; i >= 0; --i) {
+      const int number = task_status_descriptor->value(i)->number();
+      if (task_event.state_updates().state_ts_ns().contains(number)) {
+        state = static_cast<ray::rpc::TaskStatus>(number);
+        break;
+      }
     }
   }
-  if (new_key.has_value() && (!old_key.has_value() || *new_key != *old_key)) {
-    index_map[*new_key].insert(loc);
-  }
-  set_key_fn(new_key);
+  return state;
 }
 
-template <typename Key, typename IndexMap>
-void RemoveFromIndexEntry(
-    const std::shared_ptr<GcsTaskManager::GcsTaskManagerStorage::TaskEventLocator> &loc,
-    const std::optional<Key> &key,
-    IndexMap &index_map) {
-  if (!key.has_value()) {
-    return;
+std::optional<std::string> GetNormalizedTaskNameIndexKey(
+    const rpc::TaskEvents &task_event) {
+  if (!task_event.has_task_info()) {
+    return std::nullopt;
   }
-  auto iter = index_map.find(*key);
-  RAY_CHECK(iter != index_map.end());
-  RAY_CHECK(iter->second.erase(loc) == 1);
-  if (iter->second.empty()) {
-    index_map.erase(iter);
-  }
+  return absl::AsciiStrToLower(task_event.task_info().name());
 }
+
+std::optional<ActorID> GetActorIdIndexKey(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_task_info()) {
+    return std::nullopt;
+  }
+  const auto &actor_id_binary = task_event.task_info().actor_id();
+  if (actor_id_binary.empty()) {
+    return std::nullopt;
+  }
+  if (actor_id_binary.size() != ActorID::Size()) {
+    return std::nullopt;
+  }
+  return ActorID::FromBinary(actor_id_binary);
+}
+
+}  // namespace
 
 GcsTaskManager::GcsTaskManager(
     instrumented_io_context &io_service,
@@ -297,26 +294,38 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateIndex(
     worker_index_[worker_id].insert(loc);
   }
 
-  UpdateIndexEntry(loc,
-                   loc->GetActorIdIndexKey(),
-                   GetActorIdIndexKey(task_events),
-                   actor_index_,
-                   [&loc](auto key) { loc->SetActorIdIndexKey(std::move(key)); });
+  auto update_index_entry =
+      [&](const auto &old_key, auto new_key, auto &index_map, auto set_key_fn) {
+        if (old_key.has_value() && (!new_key.has_value() || *new_key != *old_key)) {
+          auto iter = index_map.find(*old_key);
+          RAY_CHECK(iter != index_map.end());
+          RAY_CHECK(iter->second.erase(loc) == 1);
+          if (iter->second.empty()) {
+            index_map.erase(iter);
+          }
+        }
+        if (new_key.has_value() && (!old_key.has_value() || *new_key != *old_key)) {
+          index_map[*new_key].insert(loc);
+        }
+        set_key_fn(std::move(new_key));
+      };
 
-  UpdateIndexEntry(loc,
-                   loc->GetTaskNameIndexKey(),
-                   GetNormalizedTaskNameIndexKey(task_events),
-                   task_name_index_,
-                   [&loc](auto key) { loc->SetTaskNameIndexKey(std::move(key)); });
+  update_index_entry(loc->GetActorIdIndexKey(),
+                     GetActorIdIndexKey(task_events),
+                     actor_index_,
+                     [&](auto key) { loc->SetActorIdIndexKey(std::move(key)); });
 
-  const std::optional<rpc::TaskStatus> new_latest_state_key =
-      task_events.has_task_info() ? std::make_optional(GetLatestState(task_events))
-                                  : std::nullopt;
-  UpdateIndexEntry(loc,
-                   loc->GetLatestStateIndexKey(),
-                   new_latest_state_key,
-                   latest_state_index_,
-                   [&loc](auto key) { loc->SetLatestStateIndexKey(key); });
+  update_index_entry(loc->GetTaskNameIndexKey(),
+                     GetNormalizedTaskNameIndexKey(task_events),
+                     task_name_index_,
+                     [&](auto key) { loc->SetTaskNameIndexKey(std::move(key)); });
+
+  update_index_entry(loc->GetLatestStateIndexKey(),
+                     task_events.has_task_info()
+                         ? std::make_optional(GetLatestState(task_events))
+                         : std::optional<rpc::TaskStatus>(),
+                     latest_state_index_,
+                     [&](auto key) { loc->SetLatestStateIndexKey(key); });
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
@@ -327,9 +336,21 @@ void GcsTaskManager::GcsTaskManagerStorage::RemoveFromIndex(
   const auto task_id = TaskID::FromBinary(task_events.task_id());
   const auto worker_id = GetWorkerID(task_events);
 
-  RemoveFromIndexEntry(loc, loc->GetActorIdIndexKey(), actor_index_);
-  RemoveFromIndexEntry(loc, loc->GetTaskNameIndexKey(), task_name_index_);
-  RemoveFromIndexEntry(loc, loc->GetLatestStateIndexKey(), latest_state_index_);
+  auto remove_index_entry = [&](const auto &key, auto &index_map) {
+    if (!key.has_value()) {
+      return;
+    }
+    auto iter = index_map.find(*key);
+    RAY_CHECK(iter != index_map.end());
+    RAY_CHECK(iter->second.erase(loc) == 1);
+    if (iter->second.empty()) {
+      index_map.erase(iter);
+    }
+  };
+
+  remove_index_entry(loc->GetActorIdIndexKey(), actor_index_);
+  remove_index_entry(loc->GetTaskNameIndexKey(), task_name_index_);
+  remove_index_entry(loc->GetLatestStateIndexKey(), latest_state_index_);
 
   // Remove from secondary indices.
   RAY_CHECK(!job_id.IsNil());
@@ -492,44 +513,6 @@ bool apply_predicate_ignore_case(std::string_view lhs,
     throw std::invalid_argument("Unknown filter predicate: " +
                                 rpc::FilterPredicate_Name(predicate));
   }
-}
-
-rpc::TaskStatus GetLatestState(const rpc::TaskEvents &task_event) {
-  const google::protobuf::EnumDescriptor *task_status_descriptor =
-      ray::rpc::TaskStatus_descriptor();
-  ray::rpc::TaskStatus state = ray::rpc::TaskStatus::NIL;
-  if (task_event.has_state_updates()) {
-    for (int i = task_status_descriptor->value_count() - 1; i >= 0; --i) {
-      const int number = task_status_descriptor->value(i)->number();
-      if (task_event.state_updates().state_ts_ns().contains(number)) {
-        state = static_cast<ray::rpc::TaskStatus>(number);
-        break;
-      }
-    }
-  }
-  return state;
-}
-
-std::optional<std::string> GetNormalizedTaskNameIndexKey(
-    const rpc::TaskEvents &task_event) {
-  if (!task_event.has_task_info()) {
-    return std::nullopt;
-  }
-  return absl::AsciiStrToLower(task_event.task_info().name());
-}
-
-std::optional<ActorID> GetActorIdIndexKey(const rpc::TaskEvents &task_event) {
-  if (!task_event.has_task_info()) {
-    return std::nullopt;
-  }
-  const auto &actor_id_binary = task_event.task_info().actor_id();
-  if (actor_id_binary.empty()) {
-    return std::nullopt;
-  }
-  if (actor_id_binary.size() != ActorID::Size()) {
-    return std::nullopt;
-  }
-  return ActorID::FromBinary(actor_id_binary);
 }
 
 }  // namespace
@@ -806,14 +789,14 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
 
     if (filters.state_filters_size() > 0) {
-      const google::protobuf::EnumDescriptor *task_status_descriptor =
+      const google::protobuf::EnumDescriptor *task_status_desc =
           ray::rpc::TaskStatus_descriptor();
       const ray::rpc::TaskStatus state = GetLatestState(task_event);
       if (!std::all_of(filters.state_filters().begin(),
                        filters.state_filters().end(),
-                       [&state, &task_status_descriptor](const auto &state_filter) {
+                       [&state, &task_status_desc](const auto &state_filter) {
                          return apply_predicate_ignore_case(
-                             task_status_descriptor->FindValueByNumber(state)->name(),
+                             task_status_desc->FindValueByNumber(state)->name(),
                              state_filter.predicate(),
                              state_filter.state());
                        })) {
