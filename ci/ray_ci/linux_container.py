@@ -24,8 +24,10 @@ class LinuxContainer(Container):
         tmp_filesystem: Optional[str] = None,
         architecture: Optional[str] = None,
         privileged: bool = False,
+        workdir: Optional[str] = None,
     ) -> None:
         super().__init__(docker_tag, volumes, envs)
+        self.workdir = workdir or "/rayci"
 
         if tmp_filesystem is not None:
             if tmp_filesystem != "tmpfs":
@@ -123,7 +125,7 @@ class LinuxContainer(Container):
             extra_args += ["--gpus", f'"device={",".join(map(str, gpu_ids))}"']
         extra_args += [
             "--workdir",
-            "/rayci",
+            self.workdir,
             "--shm-size=2.5gb",
         ]
         return extra_args
