@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 OpId = str
 TaskIdx = int
+# Map of operator id -> task index -> hanging execution state.
+HangingOpTasks = DefaultDict[OpId, Dict[TaskIdx, "HangingExecutionState"]]
+# Map of operator id -> task index -> number of failed metadata fetch attempts.
+StateFetchFailures = DefaultDict[OpId, Dict[TaskIdx, int]]
 
 
 def _format_timestamp(epoch: float) -> str:
@@ -70,7 +74,7 @@ class HangingExecutionState:
     operator_id: OpId
     task_idx: TaskIdx
     task_id: ray.TaskID
-    task_metadata: TaskMetadata
+    task_metadata: TaskMetadata | None
     bytes_output: int
     task_start_time: float
     start_time_hanging: float
@@ -103,14 +107,10 @@ class HangingExecutionIssueDetector(IssueDetector):
         )
 
         # Map of operator id to Dict[task index, state]
-        self._hanging_op_tasks: DefaultDict[
-            OpId, Dict[TaskIdx, HangingExecutionState]
-        ] = defaultdict(dict)
+        self._hanging_op_tasks: HangingOpTasks = defaultdict(dict)
         # Per-task count of failed get_latest_state_for_task attempts.
         # After _MAX_STATE_FETCH_FAILED_ATTEMPTS, we stop retrying for that task.
-        self._state_fetch_failures: DefaultDict[OpId, Dict[TaskIdx, int]] = defaultdict(
-            dict
-        )
+        self._state_fetch_failures: StateFetchFailures = defaultdict(dict)
 
     @classmethod
     def from_executor(
@@ -176,19 +176,22 @@ class HangingExecutionIssueDetector(IssueDetector):
             message=message,
         )
 
-    def _can_retry_metadata_fetch(self, op_id: OpId, task_idx: TaskIdx) -> bool:
-        """Whether we haven't exhausted fetch attempts for this task."""
+    @staticmethod
+    def _should_fetch_metadata(
+        task_metadata: TaskMetadata | None, failure_count: int
+    ) -> bool:
+        """Whether metadata is missing and we haven't exhausted fetch attempts."""
         return (
-            self._state_fetch_failures[op_id].get(task_idx, 0)
-            < _MAX_STATE_FETCH_FAILED_ATTEMPTS
+            task_metadata is None and failure_count < _MAX_STATE_FETCH_FAILED_ATTEMPTS
         )
 
-    def _reset_fetch_failures(self, op_id: OpId, task_idx: TaskIdx):
-        self._state_fetch_failures[op_id][task_idx] = 0
-
-    def _record_fetch_failure(self, op_id: OpId, task_idx: TaskIdx):
-        failures = self._state_fetch_failures[op_id]
-        failures[task_idx] = failures.get(task_idx, 0) + 1
+    @staticmethod
+    def _reset_fetch_failures(
+        state_fetch_failures: StateFetchFailures,
+        op_id: OpId,
+        task_idx: TaskIdx,
+    ):
+        state_fetch_failures[op_id][task_idx] = 0
 
     def _refresh_state(
         self,
@@ -196,6 +199,7 @@ class HangingExecutionIssueDetector(IssueDetector):
         task_idx: TaskIdx,
         old_state: HangingExecutionState | None,
         task_info: RunningTaskInfo,
+        state_fetch_failures: StateFetchFailures,
     ) -> HangingExecutionState:
         """Build a HangingExecutionState, fetching task metadata lazily.
 
@@ -212,15 +216,14 @@ class HangingExecutionIssueDetector(IssueDetector):
             bytes_output = old_state.bytes_output
 
         if bytes_output != task_info.bytes_output:
-            self._reset_fetch_failures(operator.id, task_idx)
+            state_fetch_failures[operator.id][task_idx] = 0
             task_metadata = None
 
-        if task_metadata is None and self._can_retry_metadata_fetch(
-            operator.id, task_idx
-        ):
+        prev_failures = state_fetch_failures[operator.id].get(task_idx, 0)
+        if self._should_fetch_metadata(task_metadata, prev_failures):
             task_state = get_latest_state_for_task(task_info.task_id)
             if task_state is None:
-                self._record_fetch_failure(operator.id, task_idx)
+                state_fetch_failures[operator.id][task_idx] = prev_failures + 1
             else:
                 task_metadata = TaskMetadata.from_task_state(task_state)
 
@@ -237,11 +240,10 @@ class HangingExecutionIssueDetector(IssueDetector):
     def detect(self) -> List[Issue]:
 
         issues: List[Issue] = []
-        # Build fresh map each cycle so that tasks which finished or
+        # Build fresh maps each cycle so that tasks which finished or
         # dropped below the threshold are automatically pruned.
-        hanging_op_tasks: DefaultDict[
-            OpId, Dict[TaskIdx, HangingExecutionState]
-        ] = defaultdict(dict)
+        hanging_op_tasks: HangingOpTasks = defaultdict(dict)
+        state_fetch_failures: StateFetchFailures = defaultdict(dict)
 
         for operator in self._operators:
             if operator.has_execution_finished():
@@ -265,22 +267,27 @@ class HangingExecutionIssueDetector(IssueDetector):
                     continue
 
                 old_state = self._hanging_op_tasks[operator.id].get(task_idx)
+
+                old_failures = self._state_fetch_failures[operator.id].get(task_idx, 0)
+                state_fetch_failures[operator.id][task_idx] = old_failures
+
                 new_state = self._refresh_state(
                     operator=operator,
                     task_idx=task_idx,
                     old_state=old_state,
                     task_info=task_info,
+                    state_fetch_failures=state_fetch_failures,
                 )
 
                 hanging_op_tasks[operator.id][task_idx] = new_state
+                failure_count = state_fetch_failures[operator.id].get(task_idx, 0)
 
                 # 3) Skip if there wasn't any meaningful update to the task. For example,
                 # a task may have made some progress (yield bytes), or a task is retried
                 # giving a different node_id/attempt_number. Also skip, if we still have
                 # metadata retry attempts (so that we don't double log w/ and w/o the metadata.)
-                if old_state == new_state or (
-                    new_state.task_metadata is None
-                    and self._can_retry_metadata_fetch(operator.id, task_idx)
+                if old_state == new_state or self._should_fetch_metadata(
+                    new_state.task_metadata, failure_count
                 ):
                     continue
 
@@ -291,6 +298,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                 )
 
         self._hanging_op_tasks = hanging_op_tasks
+        self._state_fetch_failures = state_fetch_failures
         return issues
 
     def detection_time_interval_s(self) -> float:
