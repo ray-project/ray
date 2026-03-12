@@ -642,9 +642,10 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``
-                (requires cudf to be installed). If ``batch_format`` is set to
-                ``None`` input block format will be used.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame`` (requires cudf to be installed).
+                If ``batch_format`` is set to ``None`` input block format
+                will be used.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -969,7 +970,8 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
                 If ``"numpy"``, batches are ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The maximum number of Ray workers to use concurrently.
@@ -3686,7 +3688,8 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
 
         Returns:
             A batch of up to ``batch_size`` rows from the dataset.
@@ -5691,7 +5694,8 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``. If ``"cudf"``, batches are ``cudf.DataFrame``.
+                ``pyarrow.Table``. If ``"cudf"`` [Experimental], batches are
+                ``cudf.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the

@@ -179,8 +179,8 @@ class GroupedData:
 
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, ``"pyarrow"`` to
-                select ``pyarrow.Table``, ``"cudf"`` to select ``cudf.DataFrame``, or
-                ``"numpy"`` to select
+                select ``pyarrow.Table``, ``"cudf"`` [Experimental] to select
+                ``cudf.DataFrame``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.
