@@ -3,8 +3,10 @@ from itertools import chain
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterable,
+    Iterator,
     List,
     Optional,
     Tuple,
@@ -29,6 +31,9 @@ if TYPE_CHECKING:
     from lance.fragment import FragmentMetadata
 
 
+_WRITE_LANCE_FRAGMENTS_DESCRIPTION = "write lance fragments"
+
+
 def _declare_table_with_fallback(
     namespace, table_id: List[str]
 ) -> Tuple[str, Optional[Dict[str, str]]]:
@@ -46,6 +51,34 @@ def _declare_table_with_fallback(
         create_request = CreateEmptyTableRequest(id=table_id)
         create_response = namespace.create_empty_table(create_request)
         return create_response.location, create_response.storage_options
+
+
+def _make_stream_factory(
+    stream: Iterable[Union["pa.Table", "pd.DataFrame"]], replayable: bool
+) -> Tuple[
+    Optional[Callable[[], Iterator[Union["pa.Table", "pd.DataFrame"]]]],
+    Optional[Union["pa.Table", "pd.DataFrame"]],
+]:
+    """Return a reusable stream factory and the first block, or (None, None)."""
+    if replayable:
+        blocks = list(stream)
+        if not blocks:
+            return None, None
+
+        def stream_factory() -> Iterator[Union["pa.Table", "pd.DataFrame"]]:
+            return iter(blocks)
+
+        return stream_factory, blocks[0]
+
+    stream_iter = iter(stream)
+    first = next(stream_iter, None)
+    if first is None:
+        return None, None
+
+    def stream_factory() -> Iterator[Union["pa.Table", "pd.DataFrame"]]:
+        return chain([first], stream_iter)
+
+    return stream_factory, first
 
 
 def _write_fragment(
@@ -68,32 +101,16 @@ def _write_fragment(
 
     if retry_params is None:
         retry_params = {
-            "description": "write lance fragments",
+            "description": _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
             "match": [],
             "max_attempts": 1,
             "max_backoff_s": 0,
         }
 
     max_attempts = retry_params.get("max_attempts", 1)
-    if max_attempts > 1:
-        # Retries need a replayable input stream, so materialize blocks only when
-        # the write may be attempted more than once.
-        replayable_stream = list(stream)
-        if not replayable_stream:
-            return []
-        first = replayable_stream[0]
-
-        def stream_factory():
-            return iter(replayable_stream)
-
-    else:
-        stream = iter(stream)
-        first = next(stream, None)
-        if first is None:
-            return []
-
-        def stream_factory():
-            return chain([first], stream)
+    stream_factory, first = _make_stream_factory(stream, replayable=max_attempts > 1)
+    if stream_factory is None or first is None:
+        return []
 
     if schema is None:
         if isinstance(first, pd.DataFrame):
@@ -365,7 +382,7 @@ class LanceDatasink(_BaseLanceDatasink):
         match.extend(lance_config.write_fragments_errors_to_retry)
         match.extend(data_context.retried_io_errors)
         self._retry_params = {
-            "description": "write lance fragments",
+            "description": _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
             "match": match,
             "max_attempts": lance_config.write_fragments_max_attempts,
             "max_backoff_s": lance_config.write_fragments_retry_max_backoff_s,
