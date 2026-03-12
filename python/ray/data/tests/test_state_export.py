@@ -136,6 +136,10 @@ class DummyLogicalOperator(LogicalOperator):
 
         self._data_class = TestDataclass()
 
+    @property
+    def num_outputs(self):
+        return self._num_outputs
+
 
 @pytest.fixture
 def dummy_dataset_topology():
