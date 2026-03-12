@@ -41,11 +41,7 @@ class TimeWindowAverageCalculator:
             _, value = self._values.popleft()
             self._sum -= value
 
-        # Set sum to 0 if there are no values to avoid accumulated floating-point error
+        # Set sum to 0 if there are no values or the sum is negative to avoid accumulated floating-point error
         # from repeated += / -= operations.
-        if len(self._values) == 0:
+        if len(self._values) == 0 or self._sum < 0:
             self._sum = 0
-        # Recalculate the sum if the sum is negative to avoid accumulated floating-point error
-        # from repeated += / -= operations.
-        if self._sum < 0:
-            self._sum = sum(val for _, val in self._values)
