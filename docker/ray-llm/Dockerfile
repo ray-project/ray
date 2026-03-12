@@ -26,7 +26,7 @@ else
 fi
 
 uv pip install --system --no-cache-dir --no-deps \
-    --index-strategy unsafe-best-match \
+    --index-strategy first-index \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
