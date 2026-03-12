@@ -9,7 +9,11 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data import Schema
-from ray.data._internal.datasource.lance_datasink import LanceDatasink, _write_fragment
+from ray.data._internal.datasource.lance_datasink import (
+    _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
+    LanceDatasink,
+    _write_fragment,
+)
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
@@ -333,7 +337,7 @@ def test_write_fragment_only_materializes_stream_when_retrying(
         block_stream(),
         "/tmp/lance-materialization-test",
         retry_params={
-            "description": "write lance fragments",
+            "description": _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
             "match": [],
             "max_attempts": max_attempts,
             "max_backoff_s": 0,
