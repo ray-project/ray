@@ -351,7 +351,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
                    const c_vector[CObjectReference] &nested_refs)
         c_bool HasData() const
         c_bool HasMetadata() const
-        const size_t DataSize() const
+        uint64_t GetSize() const
         const shared_ptr[CBuffer] &GetData()
         const shared_ptr[CBuffer] &GetMetadata() const
         c_bool IsInPlasmaError() const

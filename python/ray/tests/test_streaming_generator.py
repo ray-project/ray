@@ -575,6 +575,98 @@ def test_streaming_generator_exception(shutdown_only):
         ray.get(next(g))
 
 
+def test_streaming_generator_stats_serialized_object_size(shutdown_only):
+    """Test that StreamingGeneratorStats reports serialized_object_size_bytes
+    for objects of varying sizes and types."""
+    ray.init(num_cpus=1)
+
+    from ray._raylet import StreamingGeneratorStats
+
+    @ray.remote
+    def generator_with_stats():
+        """Yields objects and captures the stats sent back for each."""
+        collected_stats = []
+
+        # (1) Small inlined object (well under max_direct_call_object_size).
+        stats = yield {"key": "value"}
+        collected_stats.append(stats)
+
+        # (2) Large numpy array that goes to the object store.
+        stats = yield np.ones(1_000_000, dtype=np.float64)
+        collected_stats.append(stats)
+
+        # (3) A more complex pandas DataFrame.
+        import pandas as pd
+
+        df = pd.DataFrame(
+            {
+                "ints": list(range(10_000)),
+                "floats": np.random.rand(10_000),
+                "strings": [f"row_{i}" for i in range(10_000)],
+            }
+        )
+        stats = yield df
+        collected_stats.append(stats)
+
+        # Final yield to return the collected stats.
+        yield collected_stats
+
+    gen = generator_with_stats.remote()
+    refs = list(gen)
+
+    # First 3 refs are the actual objects; last ref is the collected stats.
+    assert len(refs) == 4
+
+    # Verify the actual objects are correct.
+    small_obj = ray.get(refs[0])
+    assert small_obj == {"key": "value"}
+
+    np_arr = ray.get(refs[1])
+    assert np.array_equal(np_arr, np.ones(1_000_000, dtype=np.float64))
+
+    import pandas as pd
+
+    df = ray.get(refs[2])
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 10_000
+
+    # Verify the stats collected inside the generator.
+    collected_stats = ray.get(refs[3])
+    assert len(collected_stats) == 3
+
+    for i, stats in enumerate(collected_stats):
+        assert isinstance(stats, StreamingGeneratorStats), (
+            f"stats[{i}] should be StreamingGeneratorStats, got {type(stats)}"
+        )
+        assert stats.serialized_object_size_bytes > 0, (
+            f"stats[{i}].serialized_object_size_bytes should be > 0"
+        )
+        assert stats.object_creation_dur_s >= 0, (
+            f"stats[{i}].object_creation_dur_s should be >= 0"
+        )
+
+    small_size = collected_stats[0].serialized_object_size_bytes
+    numpy_size = collected_stats[1].serialized_object_size_bytes
+    pandas_size = collected_stats[2].serialized_object_size_bytes
+
+    # The small dict should be much smaller than the 8MB numpy array.
+    assert small_size < numpy_size, (
+        f"Small object ({small_size}B) should be smaller than "
+        f"numpy array ({numpy_size}B)"
+    )
+
+    # The numpy array is 8MB of float64 data; serialized size should
+    # be in the same ballpark.
+    assert numpy_size >= 1_000_000, (
+        f"Numpy array serialized size ({numpy_size}B) should be >= 1MB"
+    )
+
+    # The pandas DataFrame should also be non-trivial.
+    assert pandas_size >= 10_000, (
+        f"Pandas DataFrame serialized size ({pandas_size}B) should be >= 10KB"
+    )
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-sv", __file__]))
