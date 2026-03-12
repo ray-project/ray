@@ -87,6 +87,10 @@ class Read(
     def _estimate_num_outputs(self) -> Optional[int]:
         metadata = self._cached_output_metadata.metadata
 
+        # Handle edge-case of empty dataset
+        if metadata.size_bytes == 0:
+            return 0
+
         target_max_block_size = DataContext.get_current().target_max_block_size
 
         # In either case of
@@ -116,7 +120,12 @@ class Read(
         read_tasks = self.datasource.get_read_tasks(1)
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
-            empty_meta = BlockMetadata(None, None, None, None)
+            empty_meta = BlockMetadata(
+                num_rows=0,
+                size_bytes=0,
+                input_files=None,
+                exec_stats=None,
+            )
             return BlockMetadataWithSchema.from_metadata(empty_meta, schema=None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
