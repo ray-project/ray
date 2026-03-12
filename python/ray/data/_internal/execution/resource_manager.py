@@ -910,7 +910,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         res = max(
             budget_obj_store + self._reserved_for_op_outputs[op] - op_outputs_usage, 0
         )
-
         if math.isinf(res):
             self._output_budgets[op] = res
             return None
