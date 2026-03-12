@@ -1,6 +1,7 @@
 """This is the script for `ray microbenchmark`."""
 
 import asyncio
+import concurrent.futures
 import logging
 import multiprocessing
 
@@ -142,6 +143,23 @@ def main(results=None):
         ray.get(submitted)
 
     results += timeit("single client submit 10k tasks", submit_task_burst, 10000)
+
+    def submit_task_burst_multithreaded():
+        num_threads = 4
+        per_thread = 2500
+
+        def submit():
+            return [small_value.remote() for _ in range(per_thread)]
+
+        submitted = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as pool:
+            for refs in pool.map(lambda _: submit(), range(num_threads)):
+                submitted.extend(refs)
+        ray.get(submitted)
+
+    results += timeit(
+        "multi-thread submit 10k tasks", submit_task_burst_multithreaded, 10000
+    )
 
     @ray.remote
     def do_put():

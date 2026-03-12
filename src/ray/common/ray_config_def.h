@@ -935,14 +935,12 @@ RAY_CONFIG(int64_t,
            core_worker_num_server_call_thread,
            std::thread::hardware_concurrency() >= 8 ? 2 : 1);
 
-RAY_CONFIG(int64_t,
-           core_worker_task_building_thread_pool_size,
-           std::max((int64_t)1, (int64_t)(std::thread::hardware_concurrency() / 4U)))
+RAY_CONFIG(int64_t, core_worker_task_building_thread_pool_size, 0);
 
 /// Use madvise to prevent worker/raylet coredumps from including
 /// the mapped plasma pages.
-RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
-RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
+RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true);
+RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true);
 
 // Instruct the Python default worker to preload the specified imports.
 // This is specified as a comma-separated list.

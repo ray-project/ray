@@ -68,6 +68,8 @@ class CoreWorkerTest : public ::testing::Test {
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()),
         current_time_ms_(0.0) {
+    RayConfig::instance().initialize(
+        R"({"core_worker_task_building_thread_pool_size": 1})");
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
