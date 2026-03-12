@@ -103,7 +103,7 @@ class ClusterManager(abc.ABC):
         else:
             if "aws" in cluster_compute:
                 raise ValueError(
-                    "aws field is invalid in old-schema compute config, "
+                    "aws field is invalid in legacy-schema compute config, "
                     "use advanced_configurations_json instead"
                 )
             aws = cluster_compute.get("advanced_configurations_json", {})

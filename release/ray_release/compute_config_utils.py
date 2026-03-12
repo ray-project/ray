@@ -7,24 +7,24 @@ def is_new_schema(cluster_compute: dict) -> bool:
     """Detect whether a compute config dict uses the new Anyscale schema.
 
     New schema uses 'head_node' / 'worker_nodes'.
-    Old schema uses 'head_node_type' / 'worker_node_types'.
+    Legacy schema uses 'head_node_type' / 'worker_node_types'.
     All new-schema fields are optional (the SDK provides defaults), so a
-    config with neither old nor new node keys is treated as new-schema.
+    config with neither legacy nor new node keys is treated as new-schema.
     Partial presence is accepted — e.g. a config with only 'head_node' but
     no 'worker_nodes' is treated as new-schema.
-    Raises MixedSchemaError if both old and new schema keys are present.
+    Raises MixedSchemaError if both legacy and new schema keys are present.
     """
     has_new = "head_node" in cluster_compute or "worker_nodes" in cluster_compute
-    has_old = (
+    has_legacy = (
         "head_node_type" in cluster_compute
         or "worker_node_types" in cluster_compute
     )
-    if has_new and has_old:
+    if has_new and has_legacy:
         raise MixedSchemaError(
-            "Compute config contains both old-schema and new-schema keys. "
+            "Compute config contains both legacy-schema and new-schema keys. "
             "Use only one schema."
         )
-    return not has_old
+    return not has_legacy
 
 
 def get_head_node_config(cluster_compute: Dict) -> Dict:

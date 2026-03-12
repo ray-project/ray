@@ -22,13 +22,13 @@ class TestIsNewSchema:
     def test_new_schema_both_keys(self):
         assert is_new_schema({"head_node": {}, "worker_nodes": []}) is True
 
-    def test_old_schema_head_node_type(self):
+    def test_legacy_schema_head_node_type(self):
         assert is_new_schema({"head_node_type": {}}) is False
 
-    def test_old_schema_worker_node_types(self):
+    def test_legacy_schema_worker_node_types(self):
         assert is_new_schema({"worker_node_types": []}) is False
 
-    def test_old_schema_both_keys(self):
+    def test_legacy_schema_both_keys(self):
         assert is_new_schema({"head_node_type": {}, "worker_node_types": []}) is False
 
     def test_neither_keys_is_new_schema(self):
@@ -49,7 +49,7 @@ class TestGetHeadNodeConfig:
         config = {"head_node": {"instance_type": "m5.xlarge"}}
         assert get_head_node_config(config) == {"instance_type": "m5.xlarge"}
 
-    def test_old_schema(self):
+    def test_legacy_schema(self):
         config = {"head_node_type": {"instance_type": "m5.xlarge"}}
         assert get_head_node_config(config) == {"instance_type": "m5.xlarge"}
 
@@ -57,7 +57,7 @@ class TestGetHeadNodeConfig:
         config = {"worker_nodes": []}
         assert get_head_node_config(config) == {}
 
-    def test_old_schema_missing(self):
+    def test_legacy_schema_missing(self):
         config = {"worker_node_types": []}
         assert get_head_node_config(config) == {}
 
@@ -72,7 +72,7 @@ class TestGetWorkerNodeConfigs:
         config = {"worker_nodes": workers}
         assert get_worker_node_configs(config) == workers
 
-    def test_old_schema(self):
+    def test_legacy_schema(self):
         workers = [{"instance_type": "m5.xlarge", "min_workers": 1, "max_workers": 4}]
         config = {"worker_node_types": workers}
         assert get_worker_node_configs(config) == workers
@@ -81,7 +81,7 @@ class TestGetWorkerNodeConfigs:
         config = {"head_node": {}}
         assert get_worker_node_configs(config) == []
 
-    def test_old_schema_missing(self):
+    def test_legacy_schema_missing(self):
         config = {"head_node_type": {}}
         assert get_worker_node_configs(config) == []
 
@@ -98,13 +98,13 @@ class TestGetWorkerMinCount:
     def test_new_schema(self):
         assert get_worker_min_count({"min_nodes": 3}, new_schema=True) == 3
 
-    def test_old_schema(self):
+    def test_legacy_schema(self):
         assert get_worker_min_count({"min_workers": 3}, new_schema=False) == 3
 
     def test_new_schema_default(self):
         assert get_worker_min_count({}, new_schema=True) == 0
 
-    def test_old_schema_default(self):
+    def test_legacy_schema_default(self):
         assert get_worker_min_count({}, new_schema=False) == 0
 
     def test_custom_default(self):
@@ -115,13 +115,13 @@ class TestGetWorkerMaxCount:
     def test_new_schema(self):
         assert get_worker_max_count({"max_nodes": 10}, new_schema=True) == 10
 
-    def test_old_schema(self):
+    def test_legacy_schema(self):
         assert get_worker_max_count({"max_workers": 10}, new_schema=False) == 10
 
     def test_new_schema_default(self):
         assert get_worker_max_count({}, new_schema=True) == 0
 
-    def test_old_schema_default(self):
+    def test_legacy_schema_default(self):
         assert get_worker_max_count({}, new_schema=False) == 0
 
     def test_custom_default(self):

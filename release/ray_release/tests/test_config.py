@@ -371,8 +371,8 @@ def _good_ebs():
     return ebs
 
 
-def test_compute_config_invalid_ebs_old_schema():
-    # Old-schema: head_node_type aws_advanced_configurations
+def test_compute_config_invalid_ebs_legacy_schema():
+    # Legacy-schema: head_node_type aws_advanced_configurations
     compute_config = {
         "head_node_type": {
             "aws_advanced_configurations": _bad_ebs(),
@@ -389,7 +389,7 @@ def test_compute_config_invalid_ebs_old_schema():
     compute_config["head_node_type"]["aws_advanced_configurations"] = _good_ebs()
     assert not validate_cluster_compute(compute_config)
 
-    # Old-schema: worker_node_types aws_advanced_configurations
+    # Legacy-schema: worker_node_types aws_advanced_configurations
     compute_config["worker_node_types"] = [
         {"aws_advanced_configurations": _bad_ebs()}
     ]
@@ -403,7 +403,7 @@ def test_compute_config_invalid_ebs_old_schema():
     compute_config["worker_node_types"][0]["aws_advanced_configurations"] = _good_ebs()
     assert not validate_cluster_compute(compute_config)
 
-    # Old-schema: top-level aws key (tested after node keys to ensure old-schema)
+    # Legacy-schema: top-level aws key (tested after node keys to ensure legacy-schema)
     compute_config["aws"] = _bad_ebs()
     assert validate_cluster_compute(compute_config)
 
@@ -486,7 +486,7 @@ def test_compute_config_mixed_schema():
         {"head_node": {}, "worker_node_types": []}
     )
     assert result
-    assert "both old-schema and new-schema" in result
+    assert "both legacy-schema and new-schema" in result
 
 
 def test_load_and_validate_test_collection_file():

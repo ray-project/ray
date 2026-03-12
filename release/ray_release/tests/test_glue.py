@@ -64,7 +64,7 @@ class MockTest(Test):
         return ""
 
 
-OLD_SCHEMA_CLUSTER_COMPUTE = (
+LEGACY_SCHEMA_CLUSTER_COMPUTE = (
     "{'head_node_type': {'name': 'head_node', "
     "'instance_type': 'm5a.4xlarge'}, 'worker_node_types': []}"
 )
@@ -92,7 +92,7 @@ class GlueTest(unittest.TestCase):
         self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
-        self.writeClusterCompute(OLD_SCHEMA_CLUSTER_COMPUTE)
+        self.writeClusterCompute(LEGACY_SCHEMA_CLUSTER_COMPUTE)
 
         with open(os.path.join(self.tempdir, "driver_fail.sh"), "wt") as f:
             f.write("exit 1\n")
