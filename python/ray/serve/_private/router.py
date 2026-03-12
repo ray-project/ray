@@ -36,8 +36,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
@@ -68,11 +68,14 @@ from ray.serve._private.tracing_utils import (
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
+    check_obj_ref_ready_nowait,
+    compress_metric_report,
     generate_request_id,
     resolve_deployment_response,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.types import ObjectRef
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -153,6 +156,10 @@ class RouterMetricsManager:
         self._deployment_config: Optional[DeploymentConfig] = None
         # Track whether the metrics manager has been shutdown
         self._shutdown: bool = False
+
+        # Tracks in-flight metrics push to controller. Skip if new one is sent.
+        self._pending_metrics_push_ref: Optional[ObjectRef] = None
+        self._metrics_push_lock = threading.Lock()
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -275,13 +282,14 @@ class RouterMetricsManager:
 
             # Record number of queued + ongoing requests at regular
             # intervals into the in-memory metrics store
+            record_interval_s = (
+                autoscaling_config.look_back_period_s
+                * RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR
+            )
             self.metrics_pusher.register_or_update_task(
                 self.RECORD_METRICS_TASK_NAME,
                 self._add_autoscaling_metrics_point,
-                min(
-                    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S,
-                    autoscaling_config.metrics_interval_s,
-                ),
+                min(record_interval_s, autoscaling_config.metrics_interval_s),
             )
             # Push metrics to the controller periodically.
             self.metrics_pusher.register_or_update_task(
@@ -365,10 +373,17 @@ class RouterMetricsManager:
         """Pushes queued and running request metrics to the controller.
 
         These metrics are used by the controller for autoscaling.
+        If a previous push is already in flight, skips this push (will try again next interval).
         """
-        self._controller_handle.record_autoscaling_metrics_from_handle.remote(
-            self._get_metrics_report()
-        )
+        with self._metrics_push_lock:
+            if self._pending_metrics_push_ref is not None:
+                if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
+                    return  # Previous push still in flight, skip and try again later
+            self._pending_metrics_push_ref = (
+                self._controller_handle.record_autoscaling_metrics_from_handle.remote(
+                    compress_metric_report(self._get_metrics_report())
+                )
+            )
 
     def _add_autoscaling_metrics_point(self):
         """Adds metrics point for queued and running requests at replicas.
@@ -446,11 +461,12 @@ class RouterMetricsManager:
                     # If the running requests timeseries is empty, we set the sum
                     # to the current number of requests.
                     running_requests_sum = num_requests
-                avg_running_requests[replica_id] = (
+                replica_str = replica_id.to_full_id_str()
+                avg_running_requests[replica_str] = (
                     running_requests_sum / num_data_points
                 )
                 # Get running requests data
-                running_requests[replica_id] = self.metrics_store.data.get(
+                running_requests[replica_str] = self.metrics_store.data.get(
                     replica_id, [TimeStampedValue(timestamp, num_requests)]
                 )
         handle_metric_report = HandleMetricReport(

@@ -19,6 +19,7 @@ SERVE_LOGGER_NAME = "ray.serve"
 
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
+SERVE_DEPLOYMENT_ACTOR_PREFIX = "SERVE_DEPLOYMENT_ACTOR::"
 
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
@@ -32,11 +33,21 @@ DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Fallback proxy HTTP port
+RAY_SERVE_FALLBACK_PROXY_HTTP_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_HTTP_PORT", 8500
+)
+
 #: Uvicorn timeout_keep_alive Config
 DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 90
 
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
+
+#: Fallback proxy gRPC port
+RAY_SERVE_FALLBACK_PROXY_GRPC_PORT = get_env_int_positive(
+    "RAY_SERVE_FALLBACK_PROXY_GRPC_PORT", 9500
+)
 
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
@@ -356,19 +367,15 @@ RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S = get_env_float(
     "RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S", 10.0
 )
 
-# How often autoscaling metrics are recorded on Serve replicas.
-RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
+# Factor of look_back_period_s for autoscaling metric record interval.
+# Record interval = look_back_period_s * factor. Used by both router and replica.
+RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
+    "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
-)
-
-# How often autoscaling metrics are recorded on Serve handles.
-RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S = get_env_float(
-    "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_INTERVAL_S", 0.5
 )
 
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
@@ -668,6 +675,12 @@ RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
     else None
 )
 
+# When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
+# setting TCP_NODELAY on both client and server connections.
+RAY_SERVE_HAPROXY_TCP_NODELAY = (
+    os.environ.get("RAY_SERVE_HAPROXY_TCP_NODELAY", "0") == "1"
+)
+
 # HAProxy timeout client
 RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S = int(
     os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S", "3600")
@@ -763,11 +776,6 @@ if RAY_SERVE_THROUGHPUT_OPTIMIZED:
 # Direct ingress must be enabled if HAProxy is enabled
 if RAY_SERVE_ENABLE_HA_PROXY:
     RAY_SERVE_ENABLE_DIRECT_INGRESS = True
-
-# The maximum allowed RPC latency in milliseconds.
-# This is used to detect and warn about long RPC latencies
-# between the controller and the replicas.
-RAY_SERVE_RPC_LATENCY_WARNING_THRESHOLD_MS = 2000
 
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
