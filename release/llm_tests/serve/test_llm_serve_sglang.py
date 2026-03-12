@@ -1,5 +1,6 @@
 import sys
 
+import httpx
 import pytest
 from openai import OpenAI
 
@@ -129,6 +130,44 @@ def test_sglang_streaming_completions(sglang_client):
 
     assert collected_text.strip(), "Streaming produced no text"
     assert finish_reason is not None, "Final chunk must have a finish_reason"
+
+
+def test_sglang_tokenize(sglang_client):
+    """Verify tokenize endpoint works."""
+    resp = httpx.post(
+        "http://localhost:8000/tokenize",
+        json={"model": RAY_MODEL_ID, "prompt": "Hello world"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "tokens" in data
+    assert "count" in data
+    assert "max_model_len" in data
+    assert isinstance(data["tokens"], list)
+    assert len(data["tokens"]) > 0
+    assert data["count"] == len(data["tokens"])
+    assert data["max_model_len"] > 0
+
+
+def test_sglang_detokenize(sglang_client):
+    """Verify detokenize endpoint works and round-trips with tokenize."""
+    # First tokenize
+    tok_resp = httpx.post(
+        "http://localhost:8000/tokenize",
+        json={"model": RAY_MODEL_ID, "prompt": "Hello world"},
+    )
+    assert tok_resp.status_code == 200
+    tokens = tok_resp.json()["tokens"]
+
+    # Then detokenize
+    detok_resp = httpx.post(
+        "http://localhost:8000/detokenize",
+        json={"model": RAY_MODEL_ID, "tokens": tokens},
+    )
+    assert detok_resp.status_code == 200
+    data = detok_resp.json()
+    assert "prompt" in data
+    assert "Hello world" in data["prompt"]
 
 
 @pytest.fixture(scope="module")
