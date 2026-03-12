@@ -89,6 +89,9 @@ _TEMPLATE_COLLECTIONS = {
     "deployment-serve-llm": {
         "target": "serve/tutorials/deployment-serve-llm",
     },
+    "unstructured_data_ingestion": {
+        "target": "data/examples/unstructured_data_ingestion",
+    },
 }
 
 
@@ -332,6 +335,8 @@ exclude_patterns = [
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
     "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
+    "_collections/data/examples/unstructured_data_ingestion/**/*.ipynb",
+    "_collections/data/examples/unstructured_data_ingestion/**/README.md",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
