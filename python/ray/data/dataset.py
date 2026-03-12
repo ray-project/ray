@@ -1922,7 +1922,7 @@ class Dataset:
         import pandas as pd
         import pyarrow as pa
 
-        if self._plan.initial_num_blocks() == 0:
+        if not self._plan.initial_num_blocks():
             raise ValueError("Cannot sample from an empty Dataset.")
 
         if fraction < 0 or fraction > 1:
