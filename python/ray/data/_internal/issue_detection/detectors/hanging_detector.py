@@ -31,7 +31,9 @@ DEFAULT_OP_TASK_STATS_STD_FACTOR = 10
 # Default detection time interval.
 DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
 # Max failed attempts to fetch task state before giving up for a task.
-_MAX_STATE_FETCH_ATTEMPTS = 3
+# 1 is chosen for now, because the get_state API is known to be slow when
+# processing many http requests.
+_MAX_STATE_FETCH_FAILED_ATTEMPTS = 1
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +112,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             OpId, Dict[TaskIdx, HangingExecutionState]
         ] = defaultdict(dict)
         # Per-task count of failed get_latest_state_for_task attempts.
-        # After _MAX_STATE_FETCH_ATTEMPTS, we stop retrying for that task.
+        # After _MAX_STATE_FETCH_FAILED_ATTEMPTS, we stop retrying for that task.
         self._state_fetch_failures: DefaultDict[OpId, Dict[TaskIdx, int]] = defaultdict(
             dict
         )
@@ -158,7 +160,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             f"A task (task_id={hes.task_id}) of operator "
             f"{operator.name} {metadata_info}has been running or stuck in scheduling for "
             f"{hes.hanging_time():.2f}s, which is longer than the average task "
-            f"duration + z-score * stdev of this operator "
+            f"duration + z-score * stddev of this operator "
             f"({avg_duration:.2f} + "
             f"{self._op_task_stats_std_factor_threshold} * "
             f"{stdev:.2f}s). "
@@ -185,7 +187,6 @@ class HangingExecutionIssueDetector(IssueDetector):
         task_idx: TaskIdx,
         old_state: HangingExecutionState | None,
         task_info: RunningTaskInfo,
-        state_fetch_failures: Dict[TaskIdx, int],
     ) -> HangingExecutionState:
         """Build a HangingExecutionState, fetching task metadata lazily.
 
@@ -193,18 +194,22 @@ class HangingExecutionIssueDetector(IssueDetector):
         State API only when unknown or potentially stale (e.g. after the
         task made progress then stalled again).  Fetches that fail are
         counted in ``state_fetch_failures`` (mutated in-place) and
-        skipped after ``_MAX_STATE_FETCH_ATTEMPTS``.
+        skipped after ``_MAX_STATE_FETCH_FAILED_ATTEMPTS``.
         """
         task_metadata: TaskMetadata | None = None
         bytes_output: int | None = None
+        state_fetch_failures = self._state_fetch_failures[operator.id]
         if old_state is not None:
             task_metadata = old_state.task_metadata
             bytes_output = old_state.bytes_output
 
+        if bytes_output != task_info.bytes_output:
+            # reset fetch failures when progress is made
+            state_fetch_failures[task_idx] = 0
+            task_metadata = None
+
         fetch_failures = state_fetch_failures.get(task_idx, 0)
-        if (
-            bytes_output != task_info.bytes_output or task_metadata is None
-        ) and fetch_failures < _MAX_STATE_FETCH_ATTEMPTS:
+        if task_metadata is None and fetch_failures < _MAX_STATE_FETCH_FAILED_ATTEMPTS:
             task_state = get_latest_state_for_task(task_info.task_id)
             if task_state is None:
                 state_fetch_failures[task_idx] = fetch_failures + 1
@@ -224,12 +229,11 @@ class HangingExecutionIssueDetector(IssueDetector):
     def detect(self) -> List[Issue]:
 
         issues: List[Issue] = []
-        # Build fresh maps each cycle so that tasks which finished or
+        # Build fresh map each cycle so that tasks which finished or
         # dropped below the threshold are automatically pruned.
         hanging_op_tasks: DefaultDict[
             OpId, Dict[TaskIdx, HangingExecutionState]
         ] = defaultdict(dict)
-        state_fetch_failures: DefaultDict[OpId, Dict[TaskIdx, int]] = defaultdict(dict)
 
         for operator in self._operators:
             if operator.has_execution_finished():
@@ -241,7 +245,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             if op_task_stats.count() < self._op_task_stats_min_count:
                 continue
 
-            # 2) Skip if under threshold of mean + z-score * stdev
+            # 2) Skip if under threshold of mean + z-score * stddev
             mean = op_task_stats.mean()
             stddev = op_task_stats.stddev()
             threshold = mean + self._op_task_stats_std_factor_threshold * stddev
@@ -258,7 +262,6 @@ class HangingExecutionIssueDetector(IssueDetector):
                     task_idx=task_idx,
                     old_state=old_state,
                     task_info=task_info,
-                    state_fetch_failures=state_fetch_failures[operator.id],
                 )
 
                 hanging_op_tasks[operator.id][task_idx] = new_state
@@ -276,7 +279,6 @@ class HangingExecutionIssueDetector(IssueDetector):
                 )
 
         self._hanging_op_tasks = hanging_op_tasks
-        self._state_fetch_failures = state_fetch_failures
         return issues
 
     def detection_time_interval_s(self) -> float:
