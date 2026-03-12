@@ -114,17 +114,12 @@ def plan_read_op(
             yield from read_task()
 
     # Compute effective block size: smaller blocks when sub-file shuffle is active
-    shuffle_config = op.shuffle_config
-    sub_file_shuffle = (
-        shuffle_config is not None and shuffle_config.enable_sub_file_shuffle
-    )
-    if sub_file_shuffle:
-        from ray.data.datasource.file_based_datasource import SubFileShuffleConfig
+    from ray.data.datasource.file_based_datasource import SubFileShuffleConfig
 
-        if isinstance(shuffle_config, SubFileShuffleConfig):
-            num_task_sources = shuffle_config.num_task_sources_per_batch
-        else:
-            num_task_sources = data_context.shuffle_merge_window
+    shuffle_config = op.shuffle_config
+    sub_file_shuffle = isinstance(shuffle_config, SubFileShuffleConfig)
+    if sub_file_shuffle:
+        num_task_sources = shuffle_config.num_task_sources_per_batch
         effective_block_size = data_context.target_max_block_size // num_task_sources
     else:
         effective_block_size = data_context.target_max_block_size

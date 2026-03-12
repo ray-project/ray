@@ -91,13 +91,6 @@ class FileShuffleConfig:
             If False, the random seed is constantly ``seed``, resulting in the same
             shuffling order across executions. Only takes effect when ``seed`` is not None.
             Defaults to True.
-        enable_sub_file_shuffle: If True, enables sub-file level shuffling
-            where rows from different files are interleaved within output blocks.
-            Read tasks produce smaller blocks that are randomly sampled and merged,
-            achieving cross-file row-level shuffling without a full sort or hash
-            shuffle. The merge window and sample ratio are controlled by
-            ``DataContext.shuffle_merge_window`` and
-            ``DataContext.shuffle_sample_ratio``. Defaults to False.
 
     Example:
         >>> import ray
@@ -113,7 +106,6 @@ class FileShuffleConfig:
 
     seed: Optional[int] = None
     reseed_after_execution: bool = True
-    enable_sub_file_shuffle: bool = False
 
     def __post_init__(self):
         """Ensure that the seed is either None or an integer."""
@@ -154,7 +146,6 @@ class SubFileShuffleConfig(FileShuffleConfig):
     num_task_sources_per_batch: int = 4
 
     def __post_init__(self):
-        self.enable_sub_file_shuffle = True
         super().__post_init__()
         if self.num_task_sources_per_batch < 1:
             raise ValueError("num_task_sources_per_batch must be at least 1.")

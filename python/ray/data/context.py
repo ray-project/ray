@@ -60,14 +60,6 @@ MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
-# Default merge window for sub-file shuffle: number of small blocks to merge
-# into one output block.
-DEFAULT_SHUFFLE_MERGE_WINDOW = 100
-
-# Default sample ratio for sub-file shuffle: the queue accumulates
-# sample_ratio * merge_window blocks before sampling merge_window of them.
-DEFAULT_SHUFFLE_SAMPLE_RATIO = 5
-
 # Default row-level shuffle granularity for sub-file shuffle.
 # Rows are shuffled in chunks of this many rows to avoid per-row overhead.
 DEFAULT_SHUFFLE_ROW_BLOCK_SIZE = 128
@@ -582,8 +574,6 @@ class DataContext:
     # `None` means the block size is infinite.
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
-    shuffle_merge_window: int = DEFAULT_SHUFFLE_MERGE_WINDOW
-    shuffle_sample_ratio: int = DEFAULT_SHUFFLE_SAMPLE_RATIO
     shuffle_row_block_size: int = DEFAULT_SHUFFLE_ROW_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
