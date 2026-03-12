@@ -44,6 +44,7 @@
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+#include "ray/core_worker/task_execution/thread_pool.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
 #include "ray/core_worker/task_submission/normal_task_submitter.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
@@ -68,8 +69,6 @@ class CoreWorkerTest : public ::testing::Test {
       : io_work_(io_service_.get_executor()),
         task_execution_service_work_(task_execution_service_.get_executor()),
         current_time_ms_(0.0) {
-    RayConfig::instance().initialize(
-        R"({"core_worker_task_building_thread_pool_size": 1})");
     CoreWorkerOptions options;
     options.worker_type = WorkerType::WORKER;
     options.language = Language::PYTHON;
@@ -1273,7 +1272,7 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
 }
 
 TEST_F(CoreWorkerTest, TaskBuildingOffloaded) {
-  ASSERT_NE(core_worker_->task_building_executor_, nullptr);
+  core_worker_->task_building_executor_ = std::make_unique<BoundedExecutor>(1);
   std::promise<std::thread::id> build_thread_id;
   auto build_thread_id_future = build_thread_id.get_future();
   core_worker_->task_building_hook_ = [&build_thread_id]() {
