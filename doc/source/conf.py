@@ -86,9 +86,8 @@ _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
 _TEMPLATE_COLLECTIONS = {
-    "deployment-serve-llm": {
-        "target": "serve/tutorials/deployment-serve-llm",
-    },
+    "deployment-serve-llm": { "target": "serve/tutorials/deployment-serve-llm" },
+    "model-composition-recsys": { "target": "serve/tutorials/model-composition-recsys" },
 }
 
 
@@ -332,6 +331,8 @@ exclude_patterns = [
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
     "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
     "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
+    "_collections/serve/tutorials/model-composition-recsys/*.ipynb",
+    "_collections/serve/tutorials/model-composition-recsys/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
