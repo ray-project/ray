@@ -194,7 +194,7 @@ def plan_streaming_repartition_op(
     )
     map_transformer = MapTransformer([transform_fn])
 
-    if op._strict:
+    if op.strict:
         ref_bundler = StreamingRepartitionRefBundler(op.target_num_rows_per_block)
     else:
         ref_bundler = None

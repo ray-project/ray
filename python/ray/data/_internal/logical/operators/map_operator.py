@@ -509,7 +509,6 @@ class StreamingRepartition(AbstractMap):
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     compute: Optional[ComputeStrategy] = None
     per_block_limit: Optional[int] = None
-    _strict: bool = field(init=False, repr=False)
     _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
@@ -528,7 +527,6 @@ class StreamingRepartition(AbstractMap):
             "_name",
             f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
         )
-        object.__setattr__(self, "_strict", self.strict)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
