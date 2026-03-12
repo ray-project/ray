@@ -368,11 +368,13 @@ def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
         list(zip(left_blocks, left_meta)),
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
+        producer_op_id=bundle.producer_op_id,
     )
     right = RefBundle(
         list(zip(right_blocks, right_meta)),
         owns_blocks=bundle.owns_blocks,
         schema=bundle.schema,
+        producer_op_id=bundle.producer_op_id,
     )
     assert left.num_rows() == left_size
     assert left.num_rows() + right.num_rows() == bundle.num_rows()

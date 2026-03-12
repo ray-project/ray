@@ -169,12 +169,12 @@ def test_union_memory_attribution_internal_inqueue():
 
 
 def test_union_memory_attribution_outqueue():
-    """Test that Union's external output queue memory is attributed per-input
+    """Test that Union's external output queue memory is attributed per-producer
     to upstream operators, avoiding double-counting.
 
     When Union is ineligible (throttling_disabled=True), its memory is rolled
     into upstream operators via _get_downstream_ineligible_ops_usage. With
-    per-input tracking on RefBundle.input_index, each upstream only gets
+    per-producer tracking on RefBundle.producer_op_id, each upstream only gets
     charged for the bytes it contributed to Union's ext output queue.
 
     Regression test for https://github.com/ray-project/ray/pull/61040.
@@ -193,16 +193,22 @@ def test_union_memory_attribution_outqueue():
         topology, ExecutionOptions(), lambda: total_resources, DataContext.get_current()
     )
 
-    # Create RefBundles tagged with input_index (as Union._add_input_inner does).
+    # Create RefBundles tagged with producer_op_id (stamped by DataOpTask).
     block_ref1 = ray.ObjectRef(b"1" * 28)
     block_ref2 = ray.ObjectRef(b"2" * 28)
     meta1 = BlockMetadata(num_rows=1, size_bytes=10, input_files=None, exec_stats=None)
     meta2 = BlockMetadata(num_rows=1, size_bytes=30, input_files=None, exec_stats=None)
     bundle1 = RefBundle(
-        [(block_ref1, meta1)], owns_blocks=True, schema=None, input_index=0
+        [(block_ref1, meta1)],
+        owns_blocks=True,
+        schema=None,
+        producer_op_id=input1.id,
     )
     bundle2 = RefBundle(
-        [(block_ref2, meta2)], owns_blocks=True, schema=None, input_index=1
+        [(block_ref2, meta2)],
+        owns_blocks=True,
+        schema=None,
+        producer_op_id=input2.id,
     )
 
     # Add to Union's ext output queue (simulating process_completed_tasks drain).
@@ -229,8 +235,8 @@ def test_union_memory_attribution_outqueue():
 
 
 def test_union_memory_attribution_through_limit():
-    """Test that input_index survives through other ineligible operators (e.g., Limit)
-    so that per-input memory attribution works for longer ineligible chains.
+    """Test that producer_op_id survives through other ineligible operators (e.g., Limit)
+    so that per-producer memory attribution works for longer ineligible chains.
 
     Topology:
         input1 ─▶ limit1 ───┐
@@ -253,7 +259,7 @@ def test_union_memory_attribution_through_limit():
         topology, ExecutionOptions(), lambda: total_resources, DataContext.get_current()
     )
 
-    def make_bundle(ref_byte, size_bytes, input_index=None):
+    def make_bundle(ref_byte, size_bytes, producer_op_id=None):
         block_ref = ray.ObjectRef(ref_byte * 28)
         meta = BlockMetadata(
             num_rows=1, size_bytes=size_bytes, input_files=None, exec_stats=None
@@ -262,7 +268,7 @@ def test_union_memory_attribution_through_limit():
             [(block_ref, meta)],
             owns_blocks=True,
             schema=None,
-            input_index=input_index,
+            producer_op_id=producer_op_id,
         )
 
     def get_attributed_usage(op):
@@ -273,34 +279,36 @@ def test_union_memory_attribution_through_limit():
     # Place bundles at different points in the ineligible chain,
     # simulating a steady-state snapshot:
     #
-    # limit1 outqueue:    [B_a(10MB)]           ← from input1, not yet tagged
-    # union_op outqueue:  [B_b(10MB, idx=0)]    ← from input1, tagged by Union
-    # limit_out outqueue: [B_c(30MB, idx=1)]    ← from input2, tag survived Limit
+    # limit1 outqueue:    [B_a(10MB, input1.id)]  ← from input1
+    # union_op outqueue:  [B_b(10MB, input1.id)]  ← from input1
+    # limit_out outqueue: [B_c(30MB, input2.id)]  ← from input2, tag survived Limit
 
-    # Bundle waiting in limit1's outqueue (pre-Union, no input_index yet).
-    topology[limit1].add_output(make_bundle(b"a", 10))
-    # Bundle in Union's outqueue, tagged as input_index=0 (from limit1/input1).
-    topology[union_op].add_output(make_bundle(b"b", 10, input_index=0))
+    # Bundle waiting in limit1's outqueue (tagged with input1's id).
+    topology[limit1].add_output(make_bundle(b"a", 10, producer_op_id=input1.id))
+    # Bundle in Union's outqueue, tagged with input1's id.
+    topology[union_op].add_output(make_bundle(b"b", 10, producer_op_id=input1.id))
     # Feed a tagged bundle through limit_out via _add_input_inner to test that
-    # LimitOperator propagates input_index onto the new RefBundle it creates.
+    # LimitOperator propagates producer_op_id onto the new RefBundle it creates.
     # This ends up in limit_out's internal buffer, then drain to its outqueue.
-    limit_out._add_input_inner(make_bundle(b"c", 30, input_index=1), input_index=0)
+    limit_out._add_input_inner(
+        make_bundle(b"c", 30, producer_op_id=input2.id), input_index=0
+    )
     while limit_out.has_next():
         topology[limit_out].add_output(limit_out.get_next())
 
     resource_manager.update_usages()
 
     # input1 should be charged for:
-    #   - B_a in limit1 outqueue (10MB) — full attribution, single-input op
-    #   - B_b in union_op outqueue (10MB) — per-input attribution, input_index=0
-    #   - nothing in limit_out — no bundles with input_index=0 there
+    #   - B_a in limit1 outqueue (10MB) — per-producer attribution, input1.id
+    #   - B_b in union_op outqueue (10MB) — per-producer attribution, input1.id
+    #   - nothing in limit_out — no bundles with input1.id there
     # Total for input1: 20MB
     assert get_attributed_usage(input1) == 20, get_attributed_usage(input1)
 
     # input2 should be charged for:
     #   - nothing in limit2 outqueue
-    #   - nothing in union_op outqueue — no bundles with input_index=1 there
-    #   - B_c in limit_out outqueue (30MB) — per-input attribution, input_index=1
+    #   - nothing in union_op outqueue — no bundles with input2.id there
+    #   - B_c in limit_out outqueue (30MB) — per-producer attribution, input2.id
     # Total for input2: 30MB
     assert get_attributed_usage(input2) == 30, get_attributed_usage(input2)
 

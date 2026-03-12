@@ -60,8 +60,8 @@ class OpBufferQueue:
         self._lock = threading.Lock()
         # Used to buffer output RefBundles indexed by output splits.
         self._outputs_by_split = defaultdict(create_bundle_queue)
-        # Per-input-index memory tracking for multi-input operators (e.g., Union).
-        self._memory_per_input_index: defaultdict = defaultdict(int)
+        # Per-producer memory tracking for attribution in downstream ineligible ops.
+        self._memory_per_producer: Dict[str, int] = defaultdict(int)
         super().__init__()
 
     @property
@@ -107,8 +107,8 @@ class OpBufferQueue:
             self._num_blocks += len(ref.blocks)
             if ref.output_split_idx is not None:
                 self._num_per_split[ref.output_split_idx] += 1
-            if ref.input_index is not None:
-                self._memory_per_input_index[ref.input_index] += ref.size_bytes()
+            if ref.producer_op_id is not None:
+                self._memory_per_producer[ref.producer_op_id] += ref.size_bytes()
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
@@ -149,21 +149,21 @@ class OpBufferQueue:
             self._num_blocks -= len(ret.blocks)
             if ret.output_split_idx is not None:
                 self._num_per_split[ret.output_split_idx] -= 1
-            if ret.input_index is not None:
-                self._memory_per_input_index[ret.input_index] -= ret.size_bytes()
+            if ret.producer_op_id is not None:
+                self._memory_per_producer[ret.producer_op_id] -= ret.size_bytes()
         return ret
 
-    def memory_usage_for_input(self, input_index: int) -> int:
-        """Return the memory usage of bundles from a specific input index."""
+    def memory_usage_for_producer(self, producer_op_id: str) -> int:
+        """Return the memory usage of bundles from a specific producer operator."""
         with self._lock:
-            return self._memory_per_input_index.get(input_index, 0)
+            return self._memory_per_producer.get(producer_op_id, 0)
 
     def clear(self):
         with self._lock:
             self._queue.clear()
             self._num_blocks = 0
             self._num_per_split.clear()
-            self._memory_per_input_index.clear()
+            self._memory_per_producer.clear()
 
 
 @dataclass
@@ -365,19 +365,19 @@ class OpState:
                 total += inq.memory_usage
         return total
 
-    def output_queue_bytes(self, input_index: Optional[int] = None) -> int:
+    def output_queue_bytes(self, producer_op_id: Optional[str] = None) -> int:
         """Return the object store memory of this operator's outqueue.
 
         Args:
-            input_index: If specified, only return bytes attributable to the
-                given input dependency index. Used for per-input memory
-                attribution in multi-input operators like Union.
+            producer_op_id: If specified, only return bytes attributable to
+                the given producer operator UUID. Used for per-producer memory
+                attribution in downstream ineligible operators.
 
         Returns:
             The object store memory usage in bytes.
         """
-        if input_index is not None:
-            return self.output_queue.memory_usage_for_input(input_index)
+        if producer_op_id is not None:
+            return self.output_queue.memory_usage_for_producer(producer_op_id)
         return self.output_queue.memory_usage
 
     def mark_finished(self, exception: Optional[Exception] = None):
@@ -853,6 +853,7 @@ def dedupe_schemas_with_validation(
             schema=old_schema,
             owns_blocks=bundle.owns_blocks,
             output_split_idx=bundle.output_split_idx,
+            producer_op_id=bundle.producer_op_id,
             _cached_object_meta=bundle._cached_object_meta,
             _cached_preferred_locations=bundle._cached_preferred_locations,
         ),

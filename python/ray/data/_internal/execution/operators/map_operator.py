@@ -611,6 +611,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
+            operator_id=self.id,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()
