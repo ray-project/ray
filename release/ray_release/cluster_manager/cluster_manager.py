@@ -91,25 +91,19 @@ class ClusterManager(abc.ABC):
 
         cluster_compute = cluster_compute.copy()
         if is_new_schema(cluster_compute):
-            if "aws" in cluster_compute:
-                raise ValueError(
-                    "aws field is invalid in new-schema compute config, "
-                    "use advanced_instance_config instead"
-                )
-            aws = cluster_compute.get("advanced_instance_config", {})
-            cluster_compute["advanced_instance_config"] = add_tags_to_aws_config(
-                aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
-            )
+            schema_name, config_key = "new-schema", "advanced_instance_config"
         else:
-            if "aws" in cluster_compute:
-                raise ValueError(
-                    "aws field is invalid in legacy-schema compute config, "
-                    "use advanced_configurations_json instead"
-                )
-            aws = cluster_compute.get("advanced_configurations_json", {})
-            cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
-                aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+            schema_name, config_key = "legacy-schema", "advanced_configurations_json"
+
+        if "aws" in cluster_compute:
+            raise ValueError(
+                f"aws field is invalid in {schema_name} compute config, "
+                f"use {config_key} instead"
             )
+        aws = cluster_compute.get(config_key, {})
+        cluster_compute[config_key] = add_tags_to_aws_config(
+            aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+        )
         return cluster_compute
 
     def build_configs(self, timeout: float = 30.0):
