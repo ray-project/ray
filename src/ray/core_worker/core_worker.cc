@@ -2006,7 +2006,21 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     root_detached_actor_id = worker_context_->GetRootDetachedActorID();
   }
   auto build_task_spec =
-      [&](CoreWorker &worker,
+      [job_id,
+       task_id,
+       parent_task_id,
+       next_task_index,
+       caller_id,
+       debugger_breakpoint_copy = std::string(debugger_breakpoint),
+       depth,
+       call_site_copy = std::string(call_site),
+       main_thread_or_actor_creation_task_id,
+       max_retries,
+       retry_exceptions,
+       serialized_retry_exception_allowlist_copy =
+           std::string(serialized_retry_exception_allowlist),
+       root_detached_actor_id](
+          CoreWorker &worker,
           const std::string &task_name_to_build,
           const RayFunction &function_to_build,
           const std::vector<std::unique_ptr<TaskArg>> &args_to_build,
@@ -2033,10 +2047,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                                num_returns_to_build,
                                resources,
                                resources,
-                               debugger_breakpoint,
+                               debugger_breakpoint_copy,
                                depth,
                                serialized_runtime_env_info,
-                               call_site,
+                               call_site_copy,
                                main_thread_or_actor_creation_task_id,
                                "",
                                true,
@@ -2047,7 +2061,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                                fallback_strategy);
     builder.SetNormalTaskSpec(max_retries,
                               retry_exceptions,
-                              serialized_retry_exception_allowlist,
+                              serialized_retry_exception_allowlist_copy,
                               scheduling_strategy,
                               root_detached_actor_id);
     return std::move(builder).ConsumeAndBuild();
@@ -2073,7 +2087,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
          label_selector = task_options.label_selector,
          fallback_strategy = task_options.fallback_strategy,
          scheduling_strategy,
-         &build_task_spec,
+         build_task_spec,
          promise,
          task_building_hook]() mutable {
           if (task_building_hook) {
