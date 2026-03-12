@@ -310,6 +310,8 @@ class TrainController:
             )
 
         if failure_decision == FailureDecision.RETRY:
+            if self._worker_group:
+                self._shutdown_worker_group()
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,

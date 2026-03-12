@@ -316,30 +316,37 @@ def get_num_ready_tpu_slices(
     for slice_name, nodes in slice_to_nodes.items():
         slice_tpu_chips = sum(node.get("Resources", {}).get("TPU", 0) for node in nodes)
 
-        # Validate the slice has all it's physical chips.
-        if slice_tpu_chips == total_chips_expected:
-            # TPU slices must have a head worker (rank 0).
-            has_head = any(
-                n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
-                for n in nodes
-            )
+        # Validate the slice has all its physical chips.
+        if slice_tpu_chips != total_chips_expected:
+            continue
 
-            # Validate all nodes in this slice are completely idle to avoid
-            # scheduling on multi-tenant slices currently in use.
-            slice_is_idle = True
-            for n in nodes:
-                node_id = n.get("NodeID")
-                # _available_resources_per_node returns dicts keyed by NodeID strings
-                avail = node_avail_resources.get(node_id, {})
-                total_tpus = n.get("Resources", {}).get("TPU", 0)
+        # TPU slices must have a head worker (rank 0).
+        has_head = any(
+            n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY) == "0"
+            for n in nodes
+        )
+        if not has_head:
+            continue
 
-                # If available TPUs < total TPUs on this specific node, it is in use
-                if avail.get("TPU", 0) < total_tpus:
-                    slice_is_idle = False
-                    break
+        # Validate all nodes in this slice are completely idle to avoid
+        # scheduling on multi-tenant slices currently in use.
+        slice_is_idle = True
+        for n in nodes:
+            node_id = n.get("NodeID")
+            total_tpus = n.get("Resources", {}).get("TPU", 0)
 
-            if has_head and slice_is_idle:
-                ready_and_available_slices += 1
+            # If the node is in ray.nodes() but hasn't heartbeated its State to GCS
+            # yet, we default to assuming it's available since this means it was
+            # just provisioned.
+            avail_tpus = node_avail_resources.get(node_id, {}).get("TPU", total_tpus)
+
+            # If available TPUs < total TPUs on this specific node, it is in use
+            if avail_tpus < total_tpus:
+                slice_is_idle = False
+                break
+
+        if slice_is_idle:
+            ready_and_available_slices += 1
 
     return ready_and_available_slices
 

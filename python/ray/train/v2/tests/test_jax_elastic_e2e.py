@@ -8,6 +8,7 @@ import pytest
 
 import ray
 import ray.train
+from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
@@ -109,7 +110,7 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
                 accelerator_type="TPU-V6E",
                 topology="2x4",
                 resources_per_worker={"TPU": 4, "CPU": 1},
-                num_workers=(2, 6),
+                num_workers=(2, 6),  # Scale between 1 and 3 slices.
                 elastic_resize_monitor_interval_s=elastic_resize_monitor_interval_s,
             ),
             run_config=ray.train.RunConfig(
@@ -141,11 +142,15 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
         pod_type = "v6e-8"
         topology = "2x4"
 
-        node_env = os.environ.copy()
-        node_env["TPU_NAME"] = slice_name
-        node_env["TPU_WORKER_ID"] = str(worker_id)
-        node_env["TPU_ACCELERATOR_TYPE"] = pod_type
-        node_env["TPU_TOPOLOGY"] = topology
+        node_env = {
+            "PATH": os.environ.get("PATH", ""),
+            "TPU_NAME": slice_name,
+            "TPU_WORKER_ID": str(worker_id),
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+            "JAX_PLATFORMS": "cpu",
+            HEALTH_CHECK_INTERVAL_S_ENV_VAR: str(health_check_interval_s),
+        }
 
         labels = {
             "ray.io/tpu-slice-name": slice_name,
@@ -167,6 +172,18 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
         )
         return node
 
+    def verify_active_workers(expected_count: int) -> bool:
+        try:
+            from ray.util.state import list_actors
+
+            workers = list_actors(
+                filters=[("class_name", "=", "RayTrainWorker"), ("state", "=", "ALIVE")]
+            )
+            return len(workers) == expected_count
+        except Exception:
+            # Ignore transient State API errors during cluster churn
+            return False
+
     def remove_nodes(nodes: List):
         for node in nodes:
             cluster.remove_node(node)
@@ -184,7 +201,8 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
     ALL_NODES.append(
         provision_tpu_node(slice_name="slice-A", worker_id=1, is_head=False)
     )
-    time.sleep(12)
+    print_status("Waiting for initial scale-up to 2 workers...")
+    wait_for_condition(lambda: verify_active_workers(2), timeout=120)
 
     print_status("Adding full second TPU slice. Policy should upscale.")
     ALL_NODES.append(
@@ -193,8 +211,11 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
     ALL_NODES.append(
         provision_tpu_node(slice_name="slice-B", worker_id=1, is_head=False)
     )
+    print_status("Waiting for elastic scale-up to 4 workers.")
+    wait_for_condition(lambda: verify_active_workers(4), timeout=120)
 
-    time.sleep(30)
+    # Run a couple of epochs at max capacity so the metrics reflect the max_world_size.
+    time.sleep(8)
 
     # Multi-host TPUs on GKE with KubeRay are scaled atomically in slices.
     print_status("Killing second TPU slice to simulate full slice preemption.")
@@ -202,11 +223,13 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
     node_b_head = ALL_NODES.pop()
     remove_nodes([node_b_worker, node_b_head])
 
-    # Wait for policy to scale down to group with 2 workers.
-    time.sleep(12)
+    print_status("Waiting for policy to scale down and recover with 2 workers.")
+    wait_for_condition(lambda: verify_active_workers(2), timeout=120)
+
+    # Run a couple of epochs after the recovery.
+    time.sleep(8)
 
     result: ray.train.Result = ray.get(run_training_future)
-
     print_status(f"Training finished with result: {result}")
     assert not result.error
     assert result.metrics["min_world_size"] == 2
