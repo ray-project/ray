@@ -97,36 +97,36 @@ def _object_ref_deserializer(
     return obj_ref
 
 
-def _gpu_object_ref_deserializer(
-    binary,
-    call_site,
-    owner_address,
-    object_status,
-    tensor_transport,
-    gpu_object_meta,
-):
+def _rdt_ref_deserializer(
+    binary: bytes,
+    call_site: str,
+    owner_address: bytes,
+    object_status: bytes,
+    tensor_transport: str,
+    rdt_meta: "ray.experimental.rdt.rdt_manager.RDTMeta",
+) -> "ray.ObjectRef":
     """
-    Deserialize a GPU object ref. When the GPU object ref is deserialized,
-    it firstly deserialize the normal object ref, and then add metadata of
-    the GPU object to the GPU object manager, which will be used to fetch
-    the GPU object later.
+    Deserialize an RDT object ref. When the RDT object ref is deserialized,
+    it firstly deserializes the normal object ref, and then adds metadata of
+    the RDT object to the RDT manager, which will be used to fetch
+    the RDT object later.
 
     Args:
         binary: The binary data of the object ref.
         call_site: The call site of the object ref.
         owner_address: The owner address of the object ref.
         object_status: The object status of the object ref.
-        tensor_transport: The tensor transport value of the GPU object ref.
-        gpu_object_meta: The GPU object metadata. This is used to fetch the GPU object later.
+        tensor_transport: The tensor transport value of the RDT object ref.
+        rdt_meta: The RDT metadata. This is used to fetch the RDT object later.
 
     Returns:
-        The deserialized GPU object ref.
+        The deserialized RDT object ref.
     """
     obj_ref = _object_ref_deserializer(
         binary, call_site, owner_address, object_status, tensor_transport
     )
-    gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-    gpu_object_manager.set_gpu_object_metadata(obj_ref.hex(), gpu_object_meta)
+    rdt_manager = ray._private.worker.global_worker.rdt_manager
+    rdt_manager.set_rdt_metadata(obj_ref.hex(), rdt_meta)
 
     return obj_ref
 
@@ -216,32 +216,29 @@ class SerializationContext:
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )
-            # Check if this is a GPU ObjectRef being serialized inside a collection
-            if (
-                self.is_in_band_serialization()
-                and worker.gpu_object_manager.is_managed_object(obj.hex())
+            # Check if this is an RDT ObjectRef being serialized inside a collection
+            if self.is_in_band_serialization() and worker.rdt_manager.is_managed_object(
+                obj.hex()
             ):
 
-                gpu_object_manager = (
-                    ray._private.worker.global_worker.gpu_object_manager
-                )
-                gpu_object_meta = gpu_object_manager.get_gpu_object_metadata(obj.hex())
-                if gpu_object_meta.tensor_transport_meta is None:
+                rdt_manager = ray._private.worker.global_worker.rdt_manager
+                rdt_meta = rdt_manager.get_rdt_metadata(obj.hex())
+                if rdt_meta.tensor_transport_meta is None:
                     raise NotImplementedError(
                         f"Tensor transport metadata is not available for object id: {obj.hex()} at the time of borrowing. "
                         "This is likely because the object you're trying to borrow an object that was not created on the "
                         "owner (not through ray.put). This is not supported yet, see issue #59644 for more details."
                     )
                 # We don't want to send over any target buffers the user set
-                if gpu_object_meta.target_buffers:
-                    gpu_object_meta = gpu_object_meta._replace(target_buffers=None)
-                return _gpu_object_ref_deserializer, (
+                if rdt_meta.target_buffers:
+                    rdt_meta = rdt_meta._replace(target_buffers=None)
+                return _rdt_ref_deserializer, (
                     obj.binary(),
                     obj.call_site(),
                     owner_address,
                     object_status,
                     obj.tensor_transport(),
-                    gpu_object_meta,
+                    rdt_meta,
                 )
 
             return _object_ref_deserializer, (
@@ -351,8 +348,8 @@ class SerializationContext:
         Returns:
             Any: The deserialized object.
         """
-        enable_gpu_objects = out_of_band_tensors is not None
-        if enable_gpu_objects:
+        enable_rdt = out_of_band_tensors is not None
+        if enable_rdt:
             self._thread_local.rdt_tensors = out_of_band_tensors
 
         try:
@@ -365,7 +362,7 @@ class SerializationContext:
         except pickle.pickle.PicklingError:
             raise DeserializationError()
         finally:
-            if enable_gpu_objects:
+            if enable_rdt:
                 self._thread_local.rdt_tensors = []
         return obj
 
@@ -440,9 +437,7 @@ class SerializationContext:
                     return b""
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
-                obj = self._deserialize_msgpack_data(
-                    data, metadata_fields, out_of_band_tensors
-                )
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 # The last character is a 1 if weak_ref=True and 0 else.
                 serialized, weak_ref = obj[:-1], obj[-1:] == b"1"
                 return _actor_handle_deserializer(serialized, weak_ref)
@@ -459,9 +454,7 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(
-                    data, metadata_fields, out_of_band_tensors
-                )
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
@@ -484,9 +477,7 @@ class SerializationContext:
                 except google.protobuf.message.DecodeError:
                     # Deserialization from Python. The TaskCancelledError is
                     # serialized and returned directly.
-                    obj = self._deserialize_msgpack_data(
-                        data, metadata_fields, out_of_band_tensors
-                    )
+                    obj = self._deserialize_msgpack_data(data, metadata_fields)
                     return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
@@ -566,14 +557,14 @@ class SerializationContext:
         self,
         serialized_ray_objects: List[SerializedRayObject],
         object_refs,
-        gpu_objects: Dict[str, List[Any]],
+        rdt_objects: Dict[str, List[Any]],
     ):
         assert len(serialized_ray_objects) == len(object_refs)
         # initialize the thread-local field
         if not hasattr(self._thread_local, "object_ref_stack"):
             self._thread_local.object_ref_stack = []
         results = []
-        for object_ref, (data, metadata, transport) in zip(
+        for object_ref, (data, metadata, _transport) in zip(
             object_refs, serialized_ray_objects
         ):
             try:
@@ -583,8 +574,8 @@ class SerializationContext:
                 object_tensors = None
                 if object_ref is not None:
                     object_id = object_ref.hex()
-                    if object_id in gpu_objects:
-                        object_tensors = gpu_objects[object_id]
+                    if object_id in rdt_objects:
+                        object_tensors = rdt_objects[object_id]
                 obj = self._deserialize_object(
                     data,
                     metadata,
@@ -674,7 +665,7 @@ class SerializationContext:
             metadata, msgpack_data, contained_object_refs, pickle5_serialized_object
         )
 
-    def serialize_gpu_objects(
+    def serialize_rdt_objects(
         self,
         value: Any,
         tensor_transport: str,
@@ -687,7 +678,7 @@ class SerializationContext:
         Returns:
             Serialized value.
         """
-        from ray.experimental.gpu_object_manager.util import get_transport_data_type
+        from ray.experimental.rdt.util import get_transport_data_type
 
         def serialize(tensor):
             ctx = ray._private.worker.global_worker.get_serialization_context()
@@ -746,16 +737,16 @@ class SerializationContext:
 
         return serialized_val, tensors
 
-    def store_gpu_objects(
+    def store_rdt_objects(
         self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> bytes:
         """
-        Store GPU objects in the GPU object store.
+        Store RDT objects in the RDT store.
 
         Args:
-            obj_id: The object ID of the value. `obj_id` is required, and the GPU data (e.g. tensors) in `value`
-                will be stored in the GPU object store with the key `obj_id`.
-            tensors: The tensors to store in the GPU object store.
+            obj_id: The object ID of the value. `obj_id` is required, and the RDT data (e.g. tensors) in `value`
+                will be stored in the RDT store with the key `obj_id`.
+            tensors: The tensors to store in the RDT store.
             tensor_transport: The transport with which the RDT object will be transferred.
 
         Returns:
@@ -763,13 +754,13 @@ class SerializationContext:
         """
         assert (
             obj_id is not None
-        ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the GPU object store."
-        # Regardless of whether `tensors` is empty, we always store the GPU object in
-        # the GPU object store. This ensures that direct transport system  tasks are not
+        ), "`obj_id` is required, and it is the key to retrieve corresponding tensors from the RDT store."
+        # Regardless of whether `tensors` is empty, we always store the RDT object in
+        # the RDT store. This ensures that direct transport system tasks are not
         # blocked indefinitely.
         worker = ray._private.worker.global_worker
-        gpu_object_manager = worker.gpu_object_manager
-        tensor_transport_meta = gpu_object_manager.gpu_object_store.add_object_primary(
+        rdt_manager = worker.rdt_manager
+        tensor_transport_meta = rdt_manager.rdt_store.add_object_primary(
             obj_id, tensors, tensor_transport
         )
         return pickle.dumps(tensor_transport_meta)
