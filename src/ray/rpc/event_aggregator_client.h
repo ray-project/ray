@@ -16,11 +16,14 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "ray/common/ray_config.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/events_event_aggregator_service.grpc.pb.h"
 #include "src/ray/protobuf/events_event_aggregator_service.pb.h"
@@ -36,8 +39,8 @@ class EventAggregatorClient {
  public:
   virtual ~EventAggregatorClient() = default;
 
-  virtual void AddEvents(const rpc::events::AddEventsRequest &request,
-                         const ClientCallback<rpc::events::AddEventsReply> &callback) = 0;
+  virtual void AddEvents(AddEventsRequest &&request,
+                         const ClientCallback<AddEventsReply> &callback) = 0;
 
   virtual void Connect(const int port) {}
 };
@@ -63,19 +66,39 @@ class EventAggregatorClientImpl : public EventAggregatorClient {
   void Connect(const int port) override {
     grpc_client_ = std::make_unique<GrpcClient<rpc::events::EventAggregatorService>>(
         "127.0.0.1", port, *client_call_manager_);
+
+    // Create RetryableGrpcClient for automatic retry with exponential backoff
+    retryable_grpc_client_ = RetryableGrpcClient::Create(
+        grpc_client_->Channel(),
+        client_call_manager_->GetMainService(),
+        /*max_pending_requests_bytes=*/std::numeric_limits<uint64_t>::max(),
+        /*check_channel_status_interval_milliseconds=*/
+        ::RayConfig::instance().ray_event_aggregator_check_connection_interval_ms(),
+        /*server_reconnect_timeout_base_seconds=*/
+        ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s(),
+        /*server_reconnect_timeout_max_seconds=*/
+        ::RayConfig::instance().ray_event_aggregator_reconnect_timeout_s() * 2,
+        /*server_unavailable_timeout_callback=*/
+        []() { RAY_LOG(WARNING) << "Event aggregator unavailable for extended period"; },
+        /*server_name=*/"Event aggregator");
   }
 
-  VOID_RPC_CLIENT_METHOD(rpc::events::EventAggregatorService,
-                         AddEvents,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  // Use VOID_RETRYABLE_RPC_CLIENT_METHOD for automatic retry with exponential backoff
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(
+      retryable_grpc_client_,
+      rpc::events::EventAggregatorService,
+      AddEvents,
+      grpc_client_,
+      /*method_timeout_ms*/ ::RayConfig::instance().ray_event_recorder_grpc_timeout_ms(),
+      override)
 
  private:
   // Saved for deferred connection.
   ClientCallManager *client_call_manager_;
   // The RPC client.
-  std::unique_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
+  std::shared_ptr<GrpcClient<rpc::events::EventAggregatorService>> grpc_client_;
+  // Retryable client for automatic retry with exponential backoff.
+  std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 };
 
 }  // namespace rpc
