@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, DefaultDict, Dict, List, Optional
 
 import requests
-from pandas.core.resample import is_subperiod
 
 import ray
 from ray.data._internal.execution.interfaces.op_runtime_metrics import RunningTaskInfo
@@ -68,7 +67,7 @@ class HangingExecutionState:
     bytes_output: int
     start_time_hanging: float = field(compare=False)
 
-    def time_since_submission(self):
+    def time_since_hanging(self):
         return time.perf_counter() - self.start_time_hanging
 
 
@@ -133,13 +132,13 @@ class HangingExecutionIssueDetector(IssueDetector):
 
         meta = hes.task_metadata
         metadata_info = ""
-        if meta.pid is not None:
+        if meta is not None:
             metadata_info = f"(pid={meta.pid}, node_id={meta.node_id}, attempt={meta.attempt_number}) "
 
         message = (
             f"A task (task_id={hes.task_id}) of operator "
             f"{operator.name} {metadata_info}has been running for "
-            f"{hes.time_since_submission():.2f}s, which is longer than the average task "
+            f"{hes.time_since_hanging():.2f}s, which is longer than the average task "
             f"duration + z-score * stdev of this operator "
             f"({avg_duration:.2f} + "
             f"{self._op_task_stats_std_factor_threshold} * "
@@ -192,46 +191,48 @@ class HangingExecutionIssueDetector(IssueDetector):
 
     def detect(self) -> List[Issue]:
 
-        issues: List[is_subperiod] = []
-        for operator in self._operators:
+        issues: List[Issue] = []
+        # Build a fresh map each cycle so that tasks which finished or
+        # dropped below the threshold are automatically pruned.
+        hanging_op_tasks: DefaultDict[
+            OpId, Dict[TaskIdx, HangingExecutionState]
+        ] = defaultdict(dict)
 
+        for operator in self._operators:
             if operator.has_execution_finished():
-                # Remove finished operators / tasks from the _hanging_op_tasks map
-                if operator.id in self._hanging_op_tasks:
-                    del self._hanging_op_tasks[operator.id]
                 continue
 
             op_metrics = operator.metrics
-            # Iterate directly over running tasks tracked in metrics
+            op_task_stats = op_metrics._op_task_duration_stats
+            # 1) Skip if not reached minimum task count
+            if op_task_stats.count() < self._op_task_stats_min_count:
+                continue
+
+            # 2) Skip if under threshold of mean + z-score * stdev
+            mean = op_task_stats.mean()
+            stddev = op_task_stats.stddev()
+            threshold = mean + self._op_task_stats_std_factor_threshold * stddev
+
             for task_idx, task_info in op_metrics._running_tasks.items():
-
-                # 1) Skip if not reached minimum task count
-                op_task_stats = op_metrics._op_task_duration_stats
-                if op_task_stats.count() < self._op_task_stats_min_count:
-                    continue
-
-                # 2) Skip if under threshold of mean + z-score * stdev
-                mean = op_task_stats.mean()
-                stddev = op_task_stats.stddev()
-                threshold = mean + self._op_task_stats_std_factor_threshold * stddev
                 current_task_duration = time.perf_counter() - task_info.start_time
                 if current_task_duration < threshold:
                     continue
 
-                # 3) Skip if there wasn't any meaningful update to the task. For example,
-                # a task may have made some progress (yield bytes), or a task is retried
-                # giving a different node_id/attempt_number
-                old_state = self._hanging_op_tasks[operator.id].get(task_idx)
+                old_state = self._hanging_op_tasks.get(operator.id, {}).get(task_idx)
                 new_state = self._refresh_state(
                     operator=operator,
                     task_idx=task_idx,
                     old_state=old_state,
                     task_info=task_info,
                 )
+
+                hanging_op_tasks[operator.id][task_idx] = new_state
+
+                # 3) Skip if there wasn't any meaningful update to the task. For example,
+                # a task may have made some progress (yield bytes), or a task is retried
+                # giving a different node_id/attempt_number
                 if old_state == new_state:
                     continue
-
-                self._hanging_op_tasks[operator.id][task_idx] = new_state
 
                 issues.append(
                     self._create_issue(
@@ -239,6 +240,7 @@ class HangingExecutionIssueDetector(IssueDetector):
                     )
                 )
 
+        self._hanging_op_tasks = hanging_op_tasks
         return issues
 
     def detection_time_interval_s(self) -> float:
